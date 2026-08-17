@@ -1,0 +1,4378 @@
+{
+  "ranAt": "2026-08-15T13:29:40.456Z",
+  "model": "google/gemma-3n-E4B-it",
+  "reps": 3,
+  "summaries": [
+    {
+      "variant": "v7_rot_noid",
+      "identityHits": 61,
+      "identityTotal": 69,
+      "specHits": 28,
+      "specTotal": 33,
+      "hallucinations": 0,
+      "falsePositives": 0,
+      "missed": 3,
+      "wrong": 10,
+      "calls": 72,
+      "ms": 74938
+    }
+  ],
+  "scores": [
+    {
+      "fixture": "orientalmotor_dgm200r",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "Orientalmotor",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "DGM200R-AZAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM1A91-0",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "HOLLOW ROTARY ACTUATORS",
+                "verdict": "normalized",
+                "hallucinated": false,
+                "note": "contains the expected value verbatim"
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": "0.01°/STEP",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 3,
+              "total": 4,
+              "pct": 75
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "exact",
+              "expected": "UL, CE, UKCA",
+              "got": "CE, UKCA, UL"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "ab_micro820",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "ab_micro820",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Allen-Bradley",
+                "got": "Allen-Bradley",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "Micro820",
+                "got": "Micro820",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "2080-LC20-20QWB",
+                "got": "2080-LC20-200WB",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "PLC - Programmable Logic Controller",
+                "got": "Programmable Logic Controller",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "24VDC",
+                "got": "24VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 3,
+              "total": 4,
+              "pct": 75
+            },
+            "spec": {
+              "hits": 1,
+              "total": 1,
+              "pct": 100
+            },
+            "marks": {
+              "verdict": "correct_null",
+              "expected": "(none)",
+              "got": "(none)"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "ab_micro820_glare",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "ab_micro820_glare",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Allen-Bradley",
+                "got": "Allen-Bradley",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "Micro820",
+                "got": "Micro820",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "2080-LC20-20QWB",
+                "got": "2080-LC20-200WB",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "PLC - Programmable Logic Controller",
+                "got": "Programmable Logic Controller",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "24VDC",
+                "got": "24VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 3,
+              "total": 4,
+              "pct": 75
+            },
+            "spec": {
+              "hits": 1,
+              "total": 1,
+              "pct": 100
+            },
+            "marks": {
+              "verdict": "correct_null",
+              "expected": "(none)",
+              "got": "(none)"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "gs10_vfd",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "gs10_vfd",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "AutomationDirect",
+                "got": "AutomationDirect",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "GS10",
+                "got": "GS10",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "GS10-20P5",
+                "got": "GS10-20P5",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "Variable Frequency Drive",
+                "got": "Variable Frequency Drive",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "208-240VAC",
+                "got": "208-240VAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 4,
+              "total": 4,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 1,
+              "total": 1,
+              "pct": 100
+            },
+            "marks": {
+              "verdict": "correct_null",
+              "expected": "(none)",
+              "got": "(none)"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "gs10_cropped",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "gs10_cropped",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "AutomationDirect",
+                "got": "AutomationDirect",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "GS10",
+                "got": "GS10",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "GS10-20P5",
+                "got": "GS10-20P5",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "Variable Frequency Drive",
+                "got": "Variable Frequency Drive",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 4,
+              "total": 4,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 0,
+              "total": 0,
+              "pct": 0
+            },
+            "marks": {
+              "verdict": "correct_null",
+              "expected": "(none)",
+              "got": "(none)"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "squared_mcc",
+      "runs": [
+        {
+          "variant": "v7_rot_noid",
+          "score": {
+            "fixtureId": "squared_mcc",
+            "variant": "v7_rot_noid",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Square D",
+                "got": "Square D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "MCC-003",
+                "got": "MCC-003",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "Motor Control Center",
+                "got": "Motor Control Center",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "480VAC",
+                "got": "480VAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "100A",
+                "got": "100A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": null,
+                "got": null,
+                "verdict": "correct_null",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 3,
+              "total": 3,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 2,
+              "total": 2,
+              "pct": 100
+            },
+            "marks": {
+              "verdict": "correct_null",
+              "expected": "(none)",
+              "got": "(none)"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          }
+        }
+      ]
+    }
+  ],
+  "raw": [
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "orientalmotor_dgm200r",
+      "rep": 0,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM1A91-0",
+        "equipmentType": "HOLLOW ROTARY ACTUATORS",
+        "voltage": "3.87VDC",
+        "current": "1.27A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": "Amb.40°C",
+        "insulation": "INS.Class A",
+        "marks": "CE, UKCA, UL"
+      },
+      "raw": {
+        "ocrLines": [
+          "Motor-P/N AZM1A91-0",
+          "0.01°/STEP",
+          "3.87VDC 1.27A 0.40°C",
+          "Ins. Class A",
+          "TE",
+          "Orientalmotor",
+          "MODEL",
+          "DGM200R-AZAC",
+          "HOLLOW ROTARY ACTUATORS",
+          "MADE IN JAPAN",
+          "OSI 119701",
+          "200306",
+          "CE",
+          "UKCA",
+          "HOLLOW",
+          "ROTARY",
+          "ACTUATOR",
+          "Motor P/N AZM911AC-0",
+          "3.87VDC",
+          "Amb.40°C",
+          "QSS 1119701",
+          "ORIENTAL MOTOR CO., LTD.",
+          "TOKYO 110-0338 JAPAN",
+          "UL",
+          "12A 0.01°/STEP",
+          "3N5, CLASS A",
+          "GSP-111970",
+          "ORIENTALMOTOR CO., LTD.",
+          "HOLLOW ROTARY",
+          "ACTUATORS",
+          "UL 94-0",
+          "RoHS",
+          "0010975ER",
+          "AMJ-C00000",
+          "0.12A",
+          "Class A"
+        ],
+        "markVotes": {
+          "marks": [
+            "CE",
+            "UKCA",
+            "UL"
+          ],
+          "votes": {
+            "CE": 3,
+            "UKCA": 2,
+            "UL": 2,
+            "RoHS": 1
+          },
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Orientalmotor",
+            "rawText": "Orientalmotor",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "DGM200R-AZAC",
+            "rawText": "DGM200R-AZAC",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "AZM1A91-0",
+            "rawText": "P/N AZM1A91-0",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90"
+            ],
+            "alternatives": [
+              {
+                "value": "AZM911AC-0",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "HOLLOW ROTARY ACTUATORS",
+            "rawText": "HOLLOW ROTARY ACTUATORS",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "3.87VDC",
+            "rawText": "3.87VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "1.27A",
+            "rawText": "1.27A",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90"
+            ],
+            "alternatives": [
+              {
+                "value": "12A",
+                "sources": [
+                  "det:ocr"
+                ]
+              },
+              {
+                "value": "0.12A",
+                "sources": [
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "resolution": {
+            "value": "0.01°/STEP",
+            "rawText": "0.01°/STEP",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr"
+            ],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": "Amb.40°C",
+            "rawText": "Amb.40°C",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270"
+            ],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": "INS.Class A",
+            "rawText": "INS.Class A",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "marks": {
+            "value": "CE, UKCA, UL",
+            "rawText": "CE, UKCA, UL",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "deterministic"
+            ],
+            "alternatives": [
+              {
+                "value": "CE",
+                "sources": [
+                  "semantic"
+                ]
+              }
+            ]
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 4444,
+            "rawResponse": "{\"lines\": [\n\"Motor-P/N AZM1A91-0\",\n\"0.01°/STEP\",\n\"3.87VDC 1.27A 0.40°C\",\n\"Ins. Class A\",\n\"TE\",\n\"Orientalmotor\",\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"HOLLOW ROTARY ACTUATORS\",\n\"MADE IN JAPAN\",\n\"OSI 119701\",\n\"200306\",\n\"CE\",\n\"UKCA\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 4779,
+            "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-0\",\n\"3.87VDC\",\n\"INS. Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.40°C\",\n\"QSS 1119701\",\n\"ORIENTAL MOTOR CO., LTD.\",\n\"TOKYO 110-0338 JAPAN\",\n\"MADE IN JAPAN\",\n\"UL\",\n\"CE\",\n\"UKCA\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 4916,
+            "rawResponse": "{\"lines\": [\n\"Orientalmotor\",\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"3.87VDC\",\n\"12A 0.01°/STEP\",\n\"3N5, CLASS A\",\n\"GSP-111970\",\n\"ORIENTALMOTOR CO., LTD.\",\n\"MADE IN JAPAN\",\n\"HOLLOW ROTARY\",\n\"ACTUATORS\",\n\"UL 94-0\",\n\"CE\",\n\"RoHS\",\n\"0010975ER\",\n\"AMJ-C00000\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 6170,
+            "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATORS\", \"voltage\": \"3.87VDC\", \"current\": \"0.12A\", \"resolution\": null, \"ambient\": null, \"insulation\": \"Class A\", \"marks\": [\"CE\"], \"confidence\": 1.0, \"rawText\": [\"Orientalmotor\", \"MODEL\", \"DGM200R-AZAC\", \"HOLLOW\", \"ROTARY\", \"ACTUATORS\", \"3.87VDC\", \"0.12A\", \"Class A\", \"CE\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "orientalmotor_dgm200r",
+      "rep": 1,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM1A91-0",
+        "equipmentType": "HOLLOW ROTARY ACTUATORS",
+        "voltage": "3.87VDC",
+        "current": "12A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": "Amb.40°C",
+        "insulation": "INS.Class A",
+        "marks": "CE, UL"
+      },
+      "raw": {
+        "ocrLines": [
+          "Motor-P/N AZM1A91-0",
+          "3.87VDC 1.27A 0.01°STEP",
+          "INS. CLASS A",
+          "Model DGM200R-AZAC",
+          "Hollow Rotary Actuators",
+          "Orientalmotor",
+          "MADE IN JAPAN",
+          "OSI 119701",
+          "200306",
+          "CE UK",
+          "0.01°/STEP",
+          "MODEL",
+          "DGM200R-AZAC",
+          "HOLLOW",
+          "ROTARY",
+          "ACTUATOR",
+          "Motor P/N AZM911AC-0",
+          "3.87VDC",
+          "TE",
+          "Amb.40°C",
+          "QSS 1119701",
+          "Oriental Motor Co., LTD.",
+          "TOKYO 110-0338 JAPAN",
+          "UL",
+          "CE",
+          "UKCA",
+          "12A",
+          "Class A",
+          "12A 0.01°/STEP",
+          "3N5,CLASS A",
+          "GSP-111970",
+          "ORIENTALMOTOR CO., LTD.",
+          "HOLLOW ROTARY",
+          "ACTUATORS",
+          "UL 94-0",
+          "RoHS",
+          "0010975ER",
+          "200305"
+        ],
+        "markVotes": {
+          "marks": [
+            "CE",
+            "UL"
+          ],
+          "votes": {
+            "CE": 3,
+            "UL": 2,
+            "UKCA": 1,
+            "RoHS": 1
+          },
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Orientalmotor",
+            "rawText": "Orientalmotor",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "DGM200R-AZAC",
+            "rawText": "Model DGM200R-AZAC",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "AZM1A91-0",
+            "rawText": "P/N AZM1A91-0",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90"
+            ],
+            "alternatives": [
+              {
+                "value": "AZM911AC-0",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "HOLLOW ROTARY ACTUATORS",
+            "rawText": "HOLLOW ROTARY ACTUATORS",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "3.87VDC",
+            "rawText": "3.87VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "12A",
+            "rawText": "12A",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "1.27A",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "resolution": {
+            "value": "0.01°/STEP",
+            "rawText": "0.01°/STEP",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr"
+            ],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": "Amb.40°C",
+            "rawText": "Amb.40°C",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270"
+            ],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": "INS.Class A",
+            "rawText": "INS.Class A",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "marks": {
+            "value": "CE, UL",
+            "rawText": "CE, UL",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "deterministic"
+            ],
+            "alternatives": [
+              {
+                "value": "CE",
+                "sources": [
+                  "semantic"
+                ]
+              }
+            ]
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 3376,
+            "rawResponse": "{\"lines\": [\n\"Motor-P/N AZM1A91-0\",\n\"3.87VDC 1.27A 0.01°STEP\",\n\"INS. CLASS A\",\n\"Model DGM200R-AZAC\",\n\"Hollow Rotary Actuators\",\n\"Orientalmotor\",\n\"MADE IN JAPAN\",\n\"OSI 119701\",\n\"200306\",\n\"CE UK\",\n\"0.01°/STEP\",\n\"0.01°/STEP\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 3370,
+            "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-0\",\n\"3.87VDC\",\n\"INS. Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.40°C\",\n\"QSS 1119701\",\n\"Oriental Motor Co., LTD.\",\n\"TOKYO 110-0338 JAPAN\",\n\"MADE IN JAPAN\",\n\"UL\",\n\"CE\",\n\"UKCA\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3948,
+            "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATORS\", \"voltage\": \"3.87VDC\", \"current\": \"12A\", \"resolution\": null, \"ambient\": null, \"insulation\": \"Class A\", \"marks\": [\"CE\"], \"confidence\": 0.95, \"rawText\": [\"Orientalmotor\", \"MODEL\", \"DGM200R-AZAC\", \"HOLLOW ROTARY ACTUATORS\", \"3.87VDC\", \"12A\", \"Class A\", \"CE\"]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 4126,
+            "rawResponse": "{\"lines\": [\n\"Orientalmotor\",\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"3.87VDC\",\n\"12A 0.01°/STEP\",\n\"3N5,CLASS A\",\n\"GSP-111970\",\n\"ORIENTALMOTOR CO., LTD.\",\n\"MADE IN JAPAN\",\n\"HOLLOW ROTARY\",\n\"ACTUATORS\",\n\"UL 94-0\",\n\"CE\",\n\"RoHS\",\n\"0010975ER\",\n\"200305\",\n\"3.87VDC\",\n\"12A\",\n\"0.01°/STEP\"\n]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "orientalmotor_dgm200r",
+      "rep": 2,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM911AC-0",
+        "equipmentType": "HOLLOW ROTARY ACTUATORS",
+        "voltage": "3.87VDC",
+        "current": "0.12A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": "Amb.40°C",
+        "insulation": "INS.Class A",
+        "marks": "CE, UL"
+      },
+      "raw": {
+        "ocrLines": [
+          "MODEL",
+          "DGM200R-AZAC",
+          "Orientalmotor",
+          "HOLLOW",
+          "ROTARY",
+          "ACTUATOR",
+          "Motor P/N AZM911AC-0",
+          "3.87VDC",
+          "INS. Class A",
+          "TE",
+          "0.01°/STEP",
+          "Amb.40°C",
+          "QSS 1119701",
+          "Oriental Motor Co., LTD.",
+          "TOKYO 110-0338 JAPAN",
+          "MADE IN JAPAN",
+          "UL",
+          "CE",
+          "UKCA",
+          "Motor-P/N AZM1A91-0",
+          "3.87VDC 1.27A 0.40°C",
+          "HOLLOW ROTARY ACTUATORS",
+          "051 119701",
+          "200306",
+          "3.87VDC 0.12A 001°STEP",
+          "INS.CLASS A",
+          "GSB 111970 20",
+          "ORIENTALMOTOR CO., LTD.",
+          "UL 94-0",
+          "RoHS",
+          "0.12A",
+          "001°STEP",
+          "ACTUATORS"
+        ],
+        "markVotes": {
+          "marks": [
+            "CE",
+            "UL"
+          ],
+          "votes": {
+            "UL": 2,
+            "CE": 3,
+            "UKCA": 1,
+            "RoHS": 1
+          },
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Orientalmotor",
+            "rawText": "Orientalmotor",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "DGM200R-AZAC",
+            "rawText": "DGM200R-AZAC",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "AZM911AC-0",
+            "rawText": "P/N AZM911AC-0",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "AZM1A91-0",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "HOLLOW ROTARY ACTUATORS",
+            "rawText": "HOLLOW ROTARY ACTUATORS",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "3.87VDC",
+            "rawText": "3.87VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "0.12A",
+            "rawText": "0.12A",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "1.27A",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "resolution": {
+            "value": "0.01°/STEP",
+            "rawText": "0.01°/STEP",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270",
+              "det:ocr:rot90"
+            ],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": "Amb.40°C",
+            "rawText": "Amb.40°C",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270"
+            ],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": "INS.Class A",
+            "rawText": "INS.Class A",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "det:ocr"
+            ],
+            "alternatives": []
+          },
+          "marks": {
+            "value": "CE, UL",
+            "rawText": "CE, UL",
+            "confidence": 0.75,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "deterministic"
+            ],
+            "alternatives": [
+              {
+                "value": "UL, CE",
+                "sources": [
+                  "semantic"
+                ]
+              }
+            ]
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot270",
+            "ms": 3722,
+            "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-0\",\n\"3.87VDC\",\n\"INS. Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.40°C\",\n\"QSS 1119701\",\n\"Oriental Motor Co., LTD.\",\n\"TOKYO 110-0338 JAPAN\",\n\"MADE IN JAPAN\",\n\"UL\",\n\"CE\",\n\"UKCA\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 5065,
+            "rawResponse": "{\"lines\": [\n\"Motor-P/N AZM1A91-0\",\n\"0.01°/STEP\",\n\"3.87VDC 1.27A 0.40°C\",\n\"INS. CLASS A\",\n\"Orientalmotor\",\n\"DGM200R-AZAC\",\n\"MODEL\",\n\"HOLLOW ROTARY ACTUATORS\",\n\"TE\",\n\"051 119701\",\n\"200306\",\n\"MADE IN JAPAN\",\n\"CE\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 5268,
+            "rawResponse": "{\"lines\": [\n\"Orientalmotor\",\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"3.87VDC 0.12A 001°STEP\",\n\"INS.CLASS A\",\n\"HOLLOW ROTARY ACTUATORS\",\n\"GSB 111970 20\",\n\"ORIENTALMOTOR CO., LTD.\",\n\"MADE IN JAPAN\",\n\"UL 94-0\",\n\"CE\",\n\"RoHS\",\n\"3.87VDC\",\n\"0.12A\",\n\"001°STEP\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 6027,
+            "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATORS\", \"voltage\": \"3.87VDC\", \"current\": \"0.12A\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [\"UL\", \"CE\"], \"confidence\": 0.95, \"rawText\": [\"Orientalmotor\", \"MODEL\", \"DGM200R-AZAC\", \"HOLLOW\", \"ROTARY\", \"ACTUATORS\", \"3.87VDC\", \"0.12A\", \"UL\", \"CE\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820",
+      "rep": 0,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-200WB",
+        "equipmentType": "Programmable Logic Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-200WB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC® Programmable Logic Controller",
+          "Catalog: 2080-LC20-20QWB",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Allen-Bradley",
+          "Micro820 Programmable Controller",
+          "Manufacturer:",
+          "Model:",
+          "Micro820",
+          "Catalog:",
+          "2080-LC20-20QWB",
+          "Voltage:",
+          "24VDC",
+          "I/O Points:",
+          "20",
+          "Type:",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-200WB",
+            "rawText": "Catalog: 2080-LC20-200WB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-20QWB",
+                "sources": [
+                  "det:ocr",
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Logic Controller",
+            "rawText": "Programmable Logic Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 2243,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2498,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2499,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3864,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Logic Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820",
+      "rep": 1,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-200WB",
+        "equipmentType": "Programmable Logic Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-200WB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC® Programmable Logic Controller",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Catalog: 2080-LC20-20QWB",
+          "Allen-Bradley",
+          "Micro820 Programmable Controller",
+          "Manufacturer:",
+          "Model:",
+          "Micro820",
+          "Catalog:",
+          "2080-LC20-20QWB",
+          "Voltage:",
+          "24VDC",
+          "I/O Points:",
+          "20",
+          "Type:",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-200WB",
+            "rawText": "Catalog: 2080-LC20-200WB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-20QWB",
+                "sources": [
+                  "det:ocr",
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Logic Controller",
+            "rawText": "Programmable Logic Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1919,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2097,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2180,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 2998,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Logic Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820",
+      "rep": 2,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-200WB",
+        "equipmentType": "Programmable Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-200WB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC® Programmable Logic Controller",
+          "Catalog: 2080-LC20-20QWB",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Allen-Bradley",
+          "Micro820 Programmable Controller",
+          "Manufacturer:",
+          "Model:",
+          "Micro820",
+          "Catalog:",
+          "2080-LC20-20QWB",
+          "Voltage:",
+          "24VDC",
+          "I/O Points:",
+          "20",
+          "Type:",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-200WB",
+            "rawText": "Catalog: 2080-LC20-200WB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-20QWB",
+                "sources": [
+                  "det:ocr",
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Controller",
+            "rawText": "Programmable Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1882,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2302,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 3676,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3676,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820_glare",
+      "rep": 0,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-200WB",
+        "equipmentType": "Programmable Logic Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-200WB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC® Programmable Logic Controller",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Catalog: 2080-LC20-20QWB",
+          "Allen-Bradley",
+          "Micro820 Programmable Controller",
+          "Manufacturer:",
+          "Model:",
+          "Micro820",
+          "Catalog:",
+          "2080-LC20-20QWB",
+          "Voltage:",
+          "24VDC",
+          "I/O Points:",
+          "20",
+          "Type:",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-200WB",
+            "rawText": "Catalog: 2080-LC20-200WB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-20QWB",
+                "sources": [
+                  "det:ocr",
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Logic Controller",
+            "rawText": "Programmable Logic Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1883,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 4099,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 4099,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 6632,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Logic Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820_glare",
+      "rep": 1,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-20QWB",
+        "equipmentType": "Programmable Logic Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-20QWB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Catalog: 2080-LC20-200WB",
+          "Manufacturer:",
+          "Model:",
+          "Catalog:",
+          "Voltage:",
+          "I/O Points:",
+          "Type:",
+          "Allen-Bradley",
+          "Micro820",
+          "2080-LC20-200WB",
+          "24VDC",
+          "20",
+          "PLC® Programmable Logic Controller",
+          "Micro820 Programmable Controller",
+          "2080-LC20-20QWB",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-20QWB",
+            "rawText": "Catalog: 2080-LC20-20QWB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-200WB",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              },
+              {
+                "value": "ALOG",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Logic Controller",
+            "rawText": "Programmable Logic Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr",
+            "ms": 2964,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 3096,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 3212,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer:\",\n\"Model:\",\n\"Catalog:\",\n\"Voltage:\",\n\"I/O Points:\",\n\"Type:\",\n\"Allen-Bradley\",\n\"Micro820\",\n\"2080-LC20-200WB\",\n\"24VDC\",\n\"20\",\n\"PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3246,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Logic Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "ab_micro820_glare",
+      "rep": 2,
+      "values": {
+        "manufacturer": "Allen-Bradley",
+        "model": "Micro820",
+        "catalogNumber": "2080-LC20-200WB",
+        "equipmentType": "Programmable Logic Controller",
+        "voltage": "24VDC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Allen-Bradley Micro820 Programmable Controller",
+          "Manufacturer: Allen-Bradley",
+          "Model: Micro820",
+          "Catalog: 2080-LC20-200WB",
+          "Voltage: 24VDC",
+          "I/O Points: 20",
+          "Type: PLC® Programmable Logic Controller",
+          "Type: PLC Programmable Logic Controller",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Catalog: 2080-LC20-20QWB",
+          "Allen-Bradley",
+          "Micro820 Programmable Controller",
+          "Manufacturer:",
+          "Model:",
+          "Micro820",
+          "Catalog:",
+          "2080-LC20-20QWB",
+          "Voltage:",
+          "24VDC",
+          "I/O Points:",
+          "20",
+          "Type:",
+          "PLC Programmable Logic Controller"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Allen-Bradley",
+            "rawText": "Manufacturer: Allen-Bradley",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "Micro820",
+            "rawText": "Model: Micro820",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "2080-LC20-200WB",
+            "rawText": "Catalog: 2080-LC20-200WB",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270"
+            ],
+            "alternatives": [
+              {
+                "value": "2080-LC20-20QWB",
+                "sources": [
+                  "det:ocr",
+                  "semantic"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Programmable Logic Controller",
+            "rawText": "Programmable Logic Controller",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "24VDC",
+            "rawText": "24VDC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 2095,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC® Programmable Logic Controller\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2304,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-200WB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2604,
+            "rawResponse": "{\"lines\": [\n\"Allen-Bradley Micro820 Programmable Controller\",\n\"Manufacturer: Allen-Bradley\",\n\"Model: Micro820\",\n\"Catalog: 2080-LC20-20QWB\",\n\"Voltage: 24VDC\",\n\"I/O Points: 20\",\n\"Type: PLC Programmable Logic Controller\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3602,
+            "rawResponse": "{\"manufacturer\": \"Allen-Bradley\", \"model\": \"Micro820\", \"catalogNumber\": \"2080-LC20-20QWB\", \"serialNumber\": null, \"equipmentType\": \"Programmable Logic Controller\", \"voltage\": \"24VDC\", \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Allen-Bradley\", \"Micro820 Programmable Controller\", \"Manufacturer:\", \"Allen-Bradley\", \"Model:\", \"Micro820\", \"Catalog:\", \"2080-LC20-20QWB\", \"Voltage:\", \"24VDC\", \"I/O Points:\", \"20\", \"Type:\", \"PLC Programmable Logic Controller\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_vfd",
+      "rep": 0,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": "208-240VAC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20PS",
+          "Input: 208-240VAC 1Ø",
+          "Output: 0-240VAC 3Ø",
+          "Rating: 0.5HP Variable Frequency Drive",
+          "Catalog: GS10-20P5",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Input: 208-240VAC 1Φ",
+          "Output: 0-240VAC 3Φ",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20P5",
+          "208-240VAC",
+          "0-240VAC",
+          "0.5HP Variable Frequency Drive"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "208-240VAC",
+            "rawText": "208-240VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1874,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2038,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2057,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Φ\",\n\"Output: 0-240VAC 3Φ\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 2937,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": \"208-240VAC\", \"current\": \"0-240VAC\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\", \"208-240VAC\", \"0-240VAC\", \"0.5HP Variable Frequency Drive\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_vfd",
+      "rep": 1,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": "208-240VAC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20PS",
+          "Input: 208-240VAC 1Ø",
+          "Output: 0-240VAC 3Ø",
+          "Rating: 0.5HP Variable Frequency Drive",
+          "Catalog: GS10-20P5",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Input: 208-240VAC 1Φ",
+          "Output: 0-240VAC 3Φ",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20P5",
+          "208-240VAC",
+          "0-240VAC",
+          "0.5HP Variable Frequency Drive"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "208-240VAC",
+            "rawText": "208-240VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1757,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2713,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2713,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Φ\",\n\"Output: 0-240VAC 3Φ\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3589,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": \"208-240VAC\", \"current\": \"0-240VAC\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\", \"208-240VAC\", \"0-240VAC\", \"0.5HP Variable Frequency Drive\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_vfd",
+      "rep": 2,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": "208-240VAC",
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20P5",
+          "Input: 208-240VAC 1Ø",
+          "Output: 0-240VAC 3Ø",
+          "Rating: 0.5HP Variable Frequency Drive",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Catalog: GS10-20PS",
+          "Input: 208-240VAC 1Φ",
+          "Output: 0-240VAC 3Φ",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20P5",
+          "208-240VAC",
+          "0-240VAC",
+          "0.5HP Variable Frequency Drive"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "208-240VAC",
+            "rawText": "208-240VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr",
+            "ms": 1838,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 2612,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\",\n\"Input: 208-240VAC 1Ø\",\n\"Output: 0-240VAC 3Ø\",\n\"Rating: 0.5HP Variable Frequency Drive\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 2612,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\",\n\"Input: 208-240VAC 1Φ\",\n\"Output: 0-240VAC 3Φ\",\n\"Rating: 0.5HP Variable Frequency Drive\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3064,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": \"208-240VAC\", \"current\": \"0-240VAC\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\", \"208-240VAC\", \"0-240VAC\", \"0.5HP Variable Frequency Drive\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_cropped",
+      "rep": 0,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": null,
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20PS",
+          "Catalog: GS10-20P5",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20PS",
+          "Manufacturer:",
+          "Model:",
+          "Catalog:",
+          "GS10-20P5"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              },
+              {
+                "value": "ALOG",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 1196,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 1261,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 1389,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"AutomationDirect\",\n\"GS10\",\n\"GS10-20PS\",\n\"Manufacturer:\",\n\"Model:\",\n\"Catalog:\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 2700,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": null, \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_cropped",
+      "rep": 1,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": null,
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20PS",
+          "Catalog: GS10-20P5",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20PS",
+          "Manufacturer:",
+          "Model:",
+          "Catalog:",
+          "GS10-20P5"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              },
+              {
+                "value": "ALOG",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot90",
+            "ms": 979,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 990,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 1175,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"AutomationDirect\",\n\"GS10\",\n\"GS10-20PS\",\n\"Manufacturer:\",\n\"Model:\",\n\"Catalog:\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 2478,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": null, \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "gs10_cropped",
+      "rep": 2,
+      "values": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10",
+        "catalogNumber": "GS10-20P5",
+        "equipmentType": "Variable Frequency Drive",
+        "voltage": null,
+        "current": null,
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "AutomationDirect GS10 Variable Frequency Drive",
+          "Manufacturer: AutomationDirect",
+          "Model: GS10",
+          "Catalog: GS10-20P5",
+          "AutomationDirect",
+          "GS10",
+          "GS10-20PS",
+          "Manufacturer:",
+          "Model:",
+          "Catalog:",
+          "Catalog: GS10-20PS",
+          "GS10-20P5"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "AutomationDirect",
+            "rawText": "Manufacturer: AutomationDirect",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "GS10",
+            "rawText": "Model: GS10",
+            "confidence": 0.99,
+            "agreementCount": 3,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": "GS10-20P5",
+            "rawText": "Catalog: GS10-20P5",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": [
+              {
+                "value": "ALOG",
+                "sources": [
+                  "det:ocr:rot270"
+                ]
+              },
+              {
+                "value": "GS10-20PS",
+                "sources": [
+                  "det:ocr:rot90"
+                ]
+              }
+            ]
+          },
+          "equipmentType": {
+            "value": "Variable Frequency Drive",
+            "rawText": "Variable Frequency Drive",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "current": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr",
+            "ms": 1795,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20P5\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 1847,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"AutomationDirect\",\n\"GS10\",\n\"GS10-20PS\",\n\"Manufacturer:\",\n\"Model:\",\n\"Catalog:\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 1849,
+            "rawResponse": "{\"lines\": [\n\"AutomationDirect GS10 Variable Frequency Drive\",\n\"Manufacturer: AutomationDirect\",\n\"Model: GS10\",\n\"Catalog: GS10-20PS\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3735,
+            "rawResponse": "{\"manufacturer\": \"AutomationDirect\", \"model\": \"GS10\", \"catalogNumber\": \"GS10-20P5\", \"serialNumber\": null, \"equipmentType\": \"Variable Frequency Drive\", \"voltage\": null, \"current\": null, \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"AutomationDirect\", \"GS10\", \"GS10-20P5\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "squared_mcc",
+      "rep": 0,
+      "values": {
+        "manufacturer": "Square D",
+        "model": "MCC-003",
+        "catalogNumber": null,
+        "equipmentType": "Motor Control Center",
+        "voltage": "480VAC",
+        "current": "100A",
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Square D Motor Control Center Panel MCC-003",
+          "Panel ID: MCC-003",
+          "Manufacturer: Square D",
+          "Voltage: 480VAC",
+          "Current: 100A",
+          "Enclosure: NEMA 12",
+          "Type: Motor Control Center",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Panel ID:",
+          "Manufacturer:",
+          "Voltage:",
+          "Current:",
+          "Enclosure:",
+          "Type:",
+          "MCC-003",
+          "Square D",
+          "480VAC 3F",
+          "100A",
+          "NEMA 12",
+          "Motor Control Center",
+          "480VAC 3Φ",
+          "Motor Control Center Panel MCC-003",
+          "480VAC"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Square D",
+            "rawText": "Manufacturer: Square D",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "MCC-003",
+            "rawText": "MCC-003",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "equipmentType": {
+            "value": "Motor Control Center",
+            "rawText": "Motor Control Center",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "480VAC",
+            "rawText": "480VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "100A",
+            "rawText": "100A",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot90",
+              "det:ocr:rot270",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr",
+            "ms": 1640,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID: MCC-003\",\n\"Manufacturer: Square D\",\n\"Voltage: 480VAC\",\n\"Current: 100A\",\n\"Enclosure: NEMA 12\",\n\"Type: Motor Control Center\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 1680,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\",\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3F\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 1730,
+            "rawResponse": "{\"lines\": [\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3Φ\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 3669,
+            "rawResponse": "{\"manufacturer\": \"Square D\", \"model\": \"MCC-003\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"Motor Control Center\", \"voltage\": \"480VAC\", \"current\": \"100A\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Square D\", \"Motor Control Center Panel MCC-003\", \"Panel ID:\", \"MCC-003\", \"Manufacturer:\", \"Square D\", \"Voltage:\", \"480VAC\", \"Current:\", \"100A\", \"Enclosure:\", \"NEMA 12\", \"Type:\", \"Motor Control Center\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "squared_mcc",
+      "rep": 1,
+      "values": {
+        "manufacturer": "Square D",
+        "model": "MCC-003",
+        "catalogNumber": null,
+        "equipmentType": "Motor Control Center",
+        "voltage": "480VAC",
+        "current": "100A",
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "MCC-003",
+          "Square D",
+          "480VAC 3Φ",
+          "100A",
+          "NEMA 12",
+          "Motor Control Center",
+          "Panel ID:",
+          "Manufacturer:",
+          "Voltage:",
+          "Current:",
+          "Enclosure:",
+          "Type:",
+          "Square D Motor Control Center Panel MCC-003",
+          "480VAC 3F",
+          "Panel ID: MCC-003",
+          "Manufacturer: Square D",
+          "Voltage: 480VAC",
+          "Current: 100A",
+          "Enclosure: NEMA 12",
+          "Type: Motor Control Center",
+          "CAUTION: ELECTRICAL HAZARD",
+          "Motor Control Center Panel MCC-003",
+          "480VAC"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Square D",
+            "rawText": "Manufacturer: Square D",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "MCC-003",
+            "rawText": "MCC-003",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "equipmentType": {
+            "value": "Motor Control Center",
+            "rawText": "Motor Control Center",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "480VAC",
+            "rawText": "480VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "100A",
+            "rawText": "100A",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr:rot270",
+            "ms": 2363,
+            "rawResponse": "{\"lines\": [\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3Φ\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 2826,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\",\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3F\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\"\n]}"
+          },
+          {
+            "name": "ocr",
+            "ms": 2846,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID: MCC-003\",\n\"Manufacturer: Square D\",\n\"Voltage: 480VAC\",\n\"Current: 100A\",\n\"Enclosure: NEMA 12\",\n\"Type: Motor Control Center\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 4715,
+            "rawResponse": "{\"manufacturer\": \"Square D\", \"model\": \"MCC-003\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"Motor Control Center\", \"voltage\": \"480VAC\", \"current\": \"100A\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Square D\", \"Motor Control Center Panel MCC-003\", \"Panel ID:\", \"MCC-003\", \"Manufacturer:\", \"Square D\", \"Voltage:\", \"480VAC\", \"Current:\", \"100A\", \"Enclosure:\", \"NEMA 12\", \"Type:\", \"Motor Control Center\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "variant": "v7_rot_noid",
+      "fixture": "squared_mcc",
+      "rep": 2,
+      "values": {
+        "manufacturer": "Square D",
+        "model": "MCC-003",
+        "catalogNumber": null,
+        "equipmentType": "Motor Control Center",
+        "voltage": "480VAC",
+        "current": "100A",
+        "resolution": null,
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": null,
+        "marks": null
+      },
+      "raw": {
+        "ocrLines": [
+          "Square D Motor Control Center Panel MCC-003",
+          "Panel ID: MCC-003",
+          "Manufacturer: Square D",
+          "Voltage: 480VAC",
+          "Current: 100A",
+          "Enclosure: NEMA 12",
+          "Type: Motor Control Center",
+          "CAUTION: ELECTRICAL HAZARD",
+          "MCC-003",
+          "Square D",
+          "480VAC 3Φ",
+          "100A",
+          "NEMA 12",
+          "Motor Control Center",
+          "Panel ID:",
+          "Manufacturer:",
+          "Voltage:",
+          "Current:",
+          "Enclosure:",
+          "Type:",
+          "480VAC 3F",
+          "Motor Control Center Panel MCC-003",
+          "480VAC"
+        ],
+        "markVotes": {
+          "marks": [],
+          "votes": {},
+          "threshold": 2
+        },
+        "errors": [],
+        "fields": {
+          "manufacturer": {
+            "value": "Square D",
+            "rawText": "Manufacturer: Square D",
+            "confidence": 0.87,
+            "agreementCount": 2,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "model": {
+            "value": "MCC-003",
+            "rawText": "MCC-003",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "catalogNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "equipmentType": {
+            "value": "Motor Control Center",
+            "rawText": "Motor Control Center",
+            "confidence": 0.55,
+            "agreementCount": 1,
+            "passesSeen": 4,
+            "sources": [
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "voltage": {
+            "value": "480VAC",
+            "rawText": "480VAC",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "current": {
+            "value": "100A",
+            "rawText": "100A",
+            "confidence": 0.99,
+            "agreementCount": 4,
+            "passesSeen": 4,
+            "sources": [
+              "det:ocr",
+              "det:ocr:rot270",
+              "det:ocr:rot90",
+              "semantic"
+            ],
+            "alternatives": []
+          },
+          "resolution": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "serialNumber": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "ambient": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "insulation": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          },
+          "marks": {
+            "value": null,
+            "rawText": null,
+            "confidence": 0,
+            "agreementCount": 0,
+            "passesSeen": 4,
+            "sources": [],
+            "alternatives": []
+          }
+        },
+        "passes": [
+          {
+            "name": "ocr",
+            "ms": 1746,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID: MCC-003\",\n\"Manufacturer: Square D\",\n\"Voltage: 480VAC\",\n\"Current: 100A\",\n\"Enclosure: NEMA 12\",\n\"Type: Motor Control Center\",\n\"CAUTION: ELECTRICAL HAZARD\"\n]}"
+          },
+          {
+            "name": "ocr:rot270",
+            "ms": 1973,
+            "rawResponse": "{\"lines\": [\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3Φ\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\"\n]}"
+          },
+          {
+            "name": "ocr:rot90",
+            "ms": 2540,
+            "rawResponse": "{\"lines\": [\n\"Square D Motor Control Center Panel MCC-003\",\n\"Panel ID:\",\n\"Manufacturer:\",\n\"Voltage:\",\n\"Current:\",\n\"Enclosure:\",\n\"Type:\",\n\"MCC-003\",\n\"Square D\",\n\"480VAC 3F\",\n\"100A\",\n\"NEMA 12\",\n\"Motor Control Center\"\n]}"
+          },
+          {
+            "name": "semantic",
+            "ms": 5736,
+            "rawResponse": "{\"manufacturer\": \"Square D\", \"model\": \"MCC-003\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"Motor Control Center\", \"voltage\": \"480VAC\", \"current\": \"100A\", \"resolution\": null, \"ambient\": null, \"insulation\": null, \"marks\": [], \"confidence\": 1.0, \"rawText\": [\"Square D\", \"Motor Control Center Panel MCC-003\", \"Panel ID:\", \"MCC-003\", \"Manufacturer:\", \"Square D\", \"Voltage:\", \"480VAC\", \"Current:\", \"100A\", \"Enclosure:\", \"NEMA 12\", \"Type:\", \"Motor Control Center\", \"CAUTION: ELECTRICAL HAZARD\"]}"
+          }
+        ]
+      }
+    }
+  ]
+}

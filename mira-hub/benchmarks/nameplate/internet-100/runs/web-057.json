@@ -1,0 +1,286 @@
+{
+  "image": "c06r1_05.jpg",
+  "bytes": 220640,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "EATON",
+      "model": "HMCPS",
+      "catalogNumber": "1409D72G56",
+      "serialNumber": "18029DT",
+      "equipmentType": "Motor Circuit Protector",
+      "confidence": 0.95,
+      "rawText": [
+        "EATON",
+        "Motor Circuit Protector",
+        "HMCPS",
+        "7 amps",
+        "600VAC",
+        "250VDC",
+        "CAT HMCPS007CCBP10",
+        "STYLE 6601C9650",
+        "60/75 °C WIRE",
+        "CU/AL (UL)",
+        "CU/AL (CSA)",
+        "18029DT",
+        "LINE",
+        "Aux. Switch",
+        "On",
+        "Off",
+        "FREQ.",
+        "50/60 Hz",
+        "VOLTS",
+        "600",
+        "Amps",
+        "6",
+        "CAT 1 AIX1PK",
+        "STYLE 1409D72G56",
+        "DC",
+        "125",
+        "250",
+        "50",
+        ".25",
+        "CE",
+        "IEC 947",
+        "Ue 690 VAC",
+        "Use (2) Outside Poles in Series For DC.",
+        "Terminal Information",
+        "Socket Head",
+        "Wire Size",
+        "Torque",
+        "3/16 in.",
+        "120",
+        "14-10"
+      ]
+    },
+    "rawText": [
+      "EATON",
+      "Motor Circuit Protector",
+      "HMCPS",
+      "7 amps",
+      "600VAC",
+      "250VDC",
+      "CAT HMCPS007CCBP10",
+      "STYLE 6601C9650",
+      "60/75 °C WIRE",
+      "CU/AL (UL)",
+      "CU/AL (CSA)",
+      "18029DT",
+      "LINE",
+      "Aux. Switch",
+      "On",
+      "Off",
+      "FREQ.",
+      "50/60 Hz",
+      "VOLTS",
+      "600",
+      "Amps",
+      "6",
+      "CAT 1 AIX1PK",
+      "STYLE 1409D72G56",
+      "DC",
+      "125",
+      "250",
+      "50",
+      ".25",
+      "CE",
+      "IEC 947",
+      "Ue 690 VAC",
+      "Use (2) Outside Poles in Series For DC.",
+      "Terminal Information",
+      "Socket Head",
+      "Wire Size",
+      "Torque",
+      "3/16 in.",
+      "120",
+      "14-10"
+    ],
+    "values": {
+      "manufacturer": "EATON",
+      "model": "HMCPS",
+      "catalogNumber": "1409D72G56",
+      "equipmentType": "Motor Circuit Protector",
+      "serialNumber": "18029DT",
+      "voltage": "600VAC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE, CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "EATON"
+        },
+        {
+          "field": "model",
+          "value": "HMCPS"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1409D72G56"
+        },
+        {
+          "field": "serialNumber",
+          "value": "18029DT"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor Circuit Protector"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 89,
+        "cropBbox": {
+          "left": 115,
+          "top": 24,
+          "width": 873,
+          "height": 1236
+        },
+        "imageWidth": 1125,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 2823
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6566,
+    "total_ms": 12982
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Eaton",
+      "model": "HMCPs",
+      "catalogNumber": "HMCPS007C0CBP10",
+      "serialNumber": "180829DT",
+      "equipmentType": "Motor Circuit Protector",
+      "confidence": 0.95,
+      "rawText": [
+        "7 AMPS",
+        "600VAC - 250VDC",
+        "CAT# HMCPS007C0CBP10",
+        "STYLE 6601C9G50",
+        "60/75 °C WIRE",
+        "CU ONLY (CSA)",
+        "180829DT",
+        "On",
+        "Off",
+        "7",
+        "Push To Trip",
+        "LOAD",
+        "AUX. SWITCH",
+        "CAT A1X1PK STYLE 1490D72G56",
+        "FREQ 50/60 Hz",
+        "VOLTS 600",
+        "AMPS 6",
+        "DC 125 250",
+        "125 250",
+        "IEC 947",
+        "Ue 690 VAC",
+        "Use (2) Outside Poles In Series For DC.",
+        "Terminal Information",
+        "Socket Head",
+        "Slotted Head",
+        "Wire Size",
+        "Lbs. In.",
+        "Torque",
+        "3/16 in.",
+        "14-10",
+        "35",
+        "4-6",
+        "45",
+        "6-4",
+        "50",
+        "3-4/0",
+        "50"
+      ]
+    },
+    "rawText": [
+      "7 AMPS",
+      "600VAC - 250VDC",
+      "CAT# HMCPS007C0CBP10",
+      "STYLE 6601C9G50",
+      "60/75 °C WIRE",
+      "CU ONLY (CSA)",
+      "180829DT",
+      "On",
+      "Off",
+      "7",
+      "Push To Trip",
+      "LOAD",
+      "AUX. SWITCH",
+      "CAT A1X1PK STYLE 1490D72G56",
+      "FREQ 50/60 Hz",
+      "VOLTS 600",
+      "AMPS 6",
+      "DC 125 250",
+      "125 250",
+      "IEC 947",
+      "Ue 690 VAC",
+      "Use (2) Outside Poles In Series For DC.",
+      "Terminal Information",
+      "Socket Head",
+      "Slotted Head",
+      "Wire Size",
+      "Lbs. In.",
+      "Torque",
+      "3/16 in.",
+      "14-10",
+      "35",
+      "4-6",
+      "45",
+      "6-4",
+      "50",
+      "3-4/0",
+      "50"
+    ],
+    "values": {
+      "manufacturer": "Eaton",
+      "model": "HMCPs",
+      "catalogNumber": "HMCPS007C0CBP10",
+      "equipmentType": "Motor Circuit Protector",
+      "serialNumber": "180829DT",
+      "voltage": "600VAC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Eaton"
+        },
+        {
+          "field": "model",
+          "value": "HMCPs"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "HMCPS007C0CBP10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "180829DT"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5624
+  }
+}

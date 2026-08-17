@@ -1,0 +1,142 @@
+{
+  "image": "c09r1_05.jpg",
+  "bytes": 152238,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Copeland",
+      "model": "ZR57K3",
+      "catalogNumber": null,
+      "serialNumber": "00DF3645L",
+      "equipmentType": "Scroll",
+      "confidence": 0.95,
+      "rawText": [
+        "Copeland",
+        "COMPLIANT SCROLL",
+        "ZR57K3-TF5-833",
+        "SER. 00DF3645L"
+      ]
+    },
+    "rawText": [
+      "Copeland",
+      "COMPLIANT SCROLL",
+      "ZR57K3-TF5-833",
+      "SER. 00DF3645L"
+    ],
+    "values": {
+      "manufacturer": "Copeland",
+      "model": "ZR57K3",
+      "catalogNumber": null,
+      "equipmentType": "Scroll",
+      "serialNumber": "00DF3645L",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Copeland"
+        },
+        {
+          "field": "model",
+          "value": "ZR57K3"
+        },
+        {
+          "field": "serialNumber",
+          "value": "00DF3645L"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Scroll"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 8,
+        "cropBbox": {
+          "left": 227,
+          "top": 661,
+          "width": 393,
+          "height": 244
+        },
+        "imageWidth": 900,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 2103
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 10379,
+    "total_ms": 12049
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Copeland",
+      "model": "Z85TK3",
+      "catalogNumber": "Z85TK3-TFS",
+      "serialNumber": "00DF9811",
+      "equipmentType": "compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "Copeland",
+        "Z85TK3-TFS",
+        "00DF9811",
+        "COMPLIANT SCROLL"
+      ]
+    },
+    "rawText": [
+      "Copeland",
+      "Z85TK3-TFS",
+      "00DF9811",
+      "COMPLIANT SCROLL"
+    ],
+    "values": {
+      "manufacturer": "Copeland",
+      "model": "Z85TK3",
+      "catalogNumber": "Z85TK3-TFS",
+      "equipmentType": "compressor",
+      "serialNumber": "00DF9811",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Copeland"
+        },
+        {
+          "field": "model",
+          "value": "Z85TK3"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "Z85TK3-TFS"
+        },
+        {
+          "field": "serialNumber",
+          "value": "00DF9811"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1778
+  }
+}

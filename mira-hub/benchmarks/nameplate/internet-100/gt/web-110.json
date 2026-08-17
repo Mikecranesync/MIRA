@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-110",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "small_in_scene", "partially_obstructed", "dirt", "tiny_text", "scratched"],
+  "photo_gt": {
+    "manufacturer": "SUMITOMO",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "gearmotor",
+    "specs": [
+      {"field": "brand_line", "value_verbatim": "SM-CYCLO", "unit": "", "confidence": "high"},
+      {"field": "power_hp", "value_verbatim": "MOTOR H.P. 1", "unit": "HP", "confidence": "medium"},
+      {"field": "rpm", "value_verbatim": "OUTPUT R.P.M. 60.3", "unit": "rpm", "confidence": "low"},
+      {"field": "origin", "value_verbatim": "MADE IN JAPAN", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

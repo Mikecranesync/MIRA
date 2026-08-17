@@ -10,12 +10,36 @@ export interface ChatCitation {
    *  tap-a-chip trust feature renders this). */
   quote?: string | null;
   docId?: string | null;
+  /** Workspace file the cited chunk came from — the door to "Open original at
+   *  cited page" (`/api/namespace/files/{fileId}/`). Present on live sources
+   *  frames AND on persisted turn evidence; never invented client-side. */
+  fileId?: string | null;
 }
 
 export interface ChatTurn {
   answer: string;
   citations: ChatCitation[];
   status: string;
+}
+
+/** Explicit field-by-field mapping so a new server field is a deliberate
+ *  addition here, not an accident of casting — and so `fileId` (the
+ *  open-the-original door) can never be silently dropped. */
+export function normalizeCitations(raw: unknown): ChatCitation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (c): c is Record<string, unknown> =>
+        typeof c === "object" && c !== null && "citationId" in c,
+    )
+    .map((c) => ({
+      citationId: String(c.citationId),
+      sourceTitle: String(c.sourceTitle ?? "Attached document"),
+      page: typeof c.page === "number" ? c.page : null,
+      quote: typeof c.quote === "string" ? c.quote : null,
+      docId: c.docId != null ? String(c.docId) : null,
+      fileId: c.fileId != null ? String(c.fileId) : null,
+    }));
 }
 
 export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
@@ -31,7 +55,7 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
       const frame = JSON.parse(payload) as Record<string, unknown>;
       if (frame.kind === "content") answer += String(frame.content ?? "");
       else if (frame.kind === "sources")
-        citations = (frame.citations as ChatCitation[]) ?? [];
+        citations = normalizeCitations(frame.citations);
       else if (frame.kind === "status") status = String(frame.status ?? "");
     } catch {
       /* keep parsing subsequent frames */

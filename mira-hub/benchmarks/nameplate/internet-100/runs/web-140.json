@@ -1,0 +1,128 @@
+{
+  "image": "c06r1_02.jpg",
+  "bytes": 113973,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "breaker",
+      "confidence": 0.85,
+      "rawText": [
+        "60 AMP",
+        "ON",
+        "OFF",
+        "100,000",
+        "CURRENT INTERRUPTING RATING",
+        "100,000",
+        "RMS AMPS",
+        "WAS 125",
+        "AMPS"
+      ]
+    },
+    "rawText": [
+      "60 AMP",
+      "ON",
+      "OFF",
+      "100,000",
+      "CURRENT INTERRUPTING RATING",
+      "100,000",
+      "RMS AMPS",
+      "WAS 125",
+      "AMPS"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "breaker",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 12,
+        "cropBbox": {
+          "left": 71,
+          "top": 72,
+          "width": 366,
+          "height": 835
+        },
+        "imageWidth": 768,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 1983
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2719,
+    "total_ms": 4674
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "30 AMP",
+        "ON",
+        "OFF",
+        "CURRENT INTERRUPTING RATING 100,000",
+        "REPLACE LUG AFTER WIRING",
+        "REPLACE LUG AFTER WIRING",
+        "REPLACE LUG AFTER WIRING",
+        "REPLACE LUG AFTER WIRING"
+      ]
+    },
+    "rawText": [
+      "30 AMP",
+      "ON",
+      "OFF",
+      "CURRENT INTERRUPTING RATING 100,000",
+      "REPLACE LUG AFTER WIRING",
+      "REPLACE LUG AFTER WIRING",
+      "REPLACE LUG AFTER WIRING",
+      "REPLACE LUG AFTER WIRING"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2073
+  }
+}

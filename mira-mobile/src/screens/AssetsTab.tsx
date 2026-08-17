@@ -3,18 +3,32 @@
 // a code that isn't a FactoryLM asset link lands on the same error surface a
 // bad deep link does). Detail is the field hub (punch list AST-05): nameplate
 // specs + this asset's open work orders + its PM schedules.
-import { useEffect, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   listAssets,
   getAsset,
   getAssetByTag,
   listWorkOrders,
   listPmSchedules,
+  listAssetDocuments,
+  attachFileToTargets,
+  detachFileLink,
+  uploadFileToTargets,
   type Asset,
   type WorkOrder,
   type PmSchedule,
+  type AssetAttachedDoc,
+  type AssetSuggestedDoc,
 } from "../api/resources";
 import { extractAssetTag } from "../lib/tags";
+import { AttachFileSheet } from "./AttachFileSheet";
+import { FilePreview } from "./FilePreview";
+import {
+  fileTypeIcon,
+  formatSize,
+  processingLabel,
+  PickWorkspaceFileSheet,
+} from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { ScanView } from "./ScanView";
 
@@ -184,6 +198,7 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             ))}
           </div>
+          <AssetFilesCard assetId={id} assetName={String(a.name ?? id)} />
           <div className="card">
             <h3>Work orders</h3>
             {wos?.state === "loading" && <Loading what="work orders" />}
@@ -216,6 +231,236 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               ))}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+
+/** Files filed under this asset — the field-hub document shelf.
+ *
+ *  Two lists the server keeps separate and the UI must NOT merge:
+ *   • Attached — a technician explicitly filed this file here. Real link ids,
+ *     so Open / Attach elsewhere / Detach all act on a real relationship.
+ *   • Suggested — matched from the shared corpus on the asset's
+ *     manufacturer/model. Nobody filed it. It is labelled as a suggestion and
+ *     never given a Detach action, because there is nothing to detach.
+ */
+function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const [docs, setDocs] = useState<Loadable<{
+    attached: AssetAttachedDoc[];
+    suggested: AssetSuggestedDoc[];
+  }> | null>(null);
+  const [openFile, setOpenFile] = useState<AssetAttachedDoc | null>(null);
+  const [attachSheet, setAttachSheet] = useState<AssetAttachedDoc | null>(null);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const addFileRef = useRef<HTMLInputElement | null>(null);
+
+  /** Upload straight from the asset via the target-agnostic Files door. The
+   *  server parks the bytes before attaching, so even a failure leaves the file
+   *  in the workspace — the copy says that rather than implying it was lost. */
+  const onAddFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    setNote("Adding the file…");
+    try {
+      const r = await uploadFileToTargets(file, [
+        { targetType: "cmms_asset", targetId: assetId },
+      ]);
+      setNote(
+        r.duplicate
+          ? "That file was already in your workspace — filed here too."
+          : r.warning ??
+              (r.indexed
+                ? "Added and indexed."
+                : "Added. This file type is kept and viewable, but isn't searchable in chat."),
+      );
+    } catch {
+      setNote("Couldn't finish adding that file. It may still be in Files — check there before retrying.");
+    }
+    setBusy(false);
+    refresh();
+  };
+
+  const refresh = () => {
+    void load(() => listAssetDocuments(assetId)).then(setDocs);
+  };
+  useEffect(refresh, [assetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const attached = docs?.state === "ready" ? docs.data.attached : [];
+  const suggested = docs?.state === "ready" ? docs.data.suggested : [];
+
+  const attachExisting = async (fileId: string, filename: string) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      await attachFileToTargets(
+        fileId,
+        [{ targetType: "cmms_asset", targetId: assetId, displayLabel: assetName }],
+        crypto.randomUUID(),
+      );
+      setNote(`“${filename}” attached to this asset.`);
+      setPickOpen(false);
+      refresh();
+    } catch {
+      setNote("Couldn't attach that file — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h3>Files</h3>
+      <div className="meta">
+        {docs?.state !== "ready"
+          ? "Documents and photos filed under this asset."
+          : attached.length === 0
+            ? "No files attached to this asset yet."
+            : `${attached.length} file${attached.length === 1 ? "" : "s"} attached to this asset.`}
+      </div>
+
+      {docs?.state === "loading" && <Loading what="files" />}
+      {docs?.state === "error" && <ErrorState error={docs.error} onRetry={refresh} />}
+      {attached.map((f) => (
+        <div key={f.linkId} className="source-row">
+          <div className="grow">
+            <div className="title">
+              {fileTypeIcon(f.mimeType)} {f.displayLabel ?? f.filename}
+            </div>
+            <div className="meta">
+              {formatSize(f.sizeBytes)} ·{" "}
+              {processingLabel({ capability: f.capability, indexed: f.indexed })}
+              {f.role ? ` · ${f.role}` : ""}
+            </div>
+          </div>
+          <button className="detach row-action" onClick={() => setOpenFile(f)}>
+            Open
+          </button>
+          <button className="detach row-action" onClick={() => setAttachSheet(f)}>
+            Attach elsewhere
+          </button>
+          <button
+            className="detach"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  `Detach “${f.filename}” from ${assetName}? The file stays in your workspace.`,
+                )
+              )
+                return;
+              try {
+                await detachFileLink(f.fileId, f.linkId);
+                setNote("Detached. The file is still in your workspace.");
+              } catch {
+                setNote("Couldn't detach — try again.");
+              }
+              refresh();
+            }}
+          >
+            Detach
+          </button>
+        </div>
+      ))}
+
+      {suggested.length > 0 && (
+        <>
+          <div className="meta" style={{ marginTop: 14, fontWeight: 600 }}>
+            Suggested manuals — matched on this asset's manufacturer/model, NOT
+            attached here
+          </div>
+          {suggested.map((s) => (
+            <div key={s.sourceUrl ?? s.title} className="source-row">
+              <div className="grow">
+                <div className="title">📄 {s.title}</div>
+                <div className="meta">
+                  suggestion · {s.chunkCount} indexed section
+                  {s.chunkCount === 1 ? "" : "s"}
+                  {s.modelNumber ? ` · ${s.modelNumber}` : ""}
+                  {s.verified ? " · verified" : ""}
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="meta">
+            These come from the shared manual library. Nobody filed them here —
+            attach one from Files if it's the right document.
+          </div>
+        </>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button disabled={busy} onClick={() => addFileRef.current?.click()}>
+          Add file
+        </button>
+        <button disabled={busy} onClick={() => setPickOpen(true)}>
+          Attach existing file
+        </button>
+      </div>
+      {/* Uploads from an asset go through the target-agnostic door
+          (POST /api/files/): an asset has no namespace node, so the file is
+          parked and filed here as a stored/viewable attachment. Indexing for
+          chat still requires a node, which is what a machine notebook gives it. */}
+      <input
+        ref={addFileRef}
+        type="file"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          void onAddFile(e.target.files?.[0] ?? null);
+          e.target.value = "";
+        }}
+      />
+      <div className="meta" style={{ marginTop: 8 }}>
+        Files added here are kept and viewable. To make a document searchable in
+        chat, add it in a machine notebook.
+      </div>
+      {note && (
+        <div className="meta" style={{ marginTop: 8 }}>
+          {note}
+        </div>
+      )}
+
+      {openFile && (
+        <div className="sheet-backdrop" onClick={() => setOpenFile(null)}>
+          <div className="sheet" onClick={(ev) => ev.stopPropagation()}>
+            <h3>{openFile.filename}</h3>
+            <FilePreview
+              fileId={openFile.fileId}
+              filename={openFile.filename}
+              mimeType={openFile.mimeType}
+            />
+            <button style={{ marginTop: 12 }} onClick={() => setOpenFile(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {pickOpen && (
+        <PickWorkspaceFileSheet
+          title={`Attach an existing file to ${assetName}`}
+          hint="The file stays in Files — this adds another place it's filed."
+          excludeFileIds={attached.map((f) => f.fileId)}
+          busy={busy}
+          onClose={() => setPickOpen(false)}
+          onPick={(f) => void attachExisting(f.id, f.filename)}
+        />
+      )}
+      {attachSheet && (
+        <AttachFileSheet
+          fileId={attachSheet.fileId}
+          filename={attachSheet.filename}
+          existingLinks={[
+            { id: attachSheet.linkId, targetType: "cmms_asset", targetId: assetId },
+          ]}
+          onClose={() => setAttachSheet(null)}
+          onAttached={(added) => {
+            setAttachSheet(null);
+            setNote(`Attached to ${added} more place${added === 1 ? "" : "s"}.`);
+            refresh();
+          }}
+        />
       )}
     </div>
   );

@@ -1,0 +1,200 @@
+{
+  "image": "c10r1_16.jpg",
+  "bytes": 4235489,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Loher GmbH",
+      "model": "A 160 LA",
+      "catalogNumber": null,
+      "serialNumber": "8 253 379",
+      "equipmentType": "Elektromotorenwerke",
+      "confidence": 0.95,
+      "rawText": [
+        "Loher GmbH",
+        "Elektromotorenwerke",
+        "Ruhstorf / Rott",
+        "Typ",
+        "A 160 LA - V6/4",
+        "3~Mot.Nr.",
+        "8 253 379",
+        "Y/Y",
+        "280",
+        "V",
+        "10 / 28",
+        "A",
+        "4.8",
+        "14 kW",
+        "cos φ 0.87/0.88",
+        "Läufer",
+        "HS",
+        "U/min",
+        "50 Hz",
+        "Isol.-Kl.",
+        "B",
+        "IP 44",
+        "VDE 0530"
+      ]
+    },
+    "rawText": [
+      "Loher GmbH",
+      "Elektromotorenwerke",
+      "Ruhstorf / Rott",
+      "Typ",
+      "A 160 LA - V6/4",
+      "3~Mot.Nr.",
+      "8 253 379",
+      "Y/Y",
+      "280",
+      "V",
+      "10 / 28",
+      "A",
+      "4.8",
+      "14 kW",
+      "cos φ 0.87/0.88",
+      "Läufer",
+      "HS",
+      "U/min",
+      "50 Hz",
+      "Isol.-Kl.",
+      "B",
+      "IP 44",
+      "VDE 0530"
+    ],
+    "values": {
+      "manufacturer": "Loher GmbH",
+      "model": "A 160 LA",
+      "catalogNumber": null,
+      "equipmentType": "Elektromotorenwerke",
+      "serialNumber": "8 253 379",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Loher GmbH"
+        },
+        {
+          "field": "model",
+          "value": "A 160 LA"
+        },
+        {
+          "field": "serialNumber",
+          "value": "8 253 379"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Elektromotorenwerke"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 17,
+        "cropBbox": {
+          "left": 874,
+          "top": 396,
+          "width": 2371,
+          "height": 1667
+        },
+        "imageWidth": 4000,
+        "imageHeight": 3000,
+        "cropRotationDeg": 0,
+        "ms": 2670
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 12840,
+    "total_ms": 16907
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Loher GmbH",
+      "model": "A 160 1 A",
+      "catalogNumber": "3-Mot. Nr. 8 253 379",
+      "serialNumber": null,
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Loher GmbH",
+        "Elektromotorenwerke",
+        "Ruhstorf / Rott",
+        "Typ A 160 1 A",
+        "3-Mot. Nr. 8 253 379",
+        "Y/Y 380",
+        "V 10 / 28",
+        "4.14 kW",
+        "cos φ 0.87/0.88",
+        "0.55 / 1460 U/min",
+        "50 Hz",
+        "Läufer HS 4",
+        "Isol.-Kl.: B",
+        "IP 4.4",
+        "VDE 0530"
+      ]
+    },
+    "rawText": [
+      "Loher GmbH",
+      "Elektromotorenwerke",
+      "Ruhstorf / Rott",
+      "Typ A 160 1 A",
+      "3-Mot. Nr. 8 253 379",
+      "Y/Y 380",
+      "V 10 / 28",
+      "4.14 kW",
+      "cos φ 0.87/0.88",
+      "0.55 / 1460 U/min",
+      "50 Hz",
+      "Läufer HS 4",
+      "Isol.-Kl.: B",
+      "IP 4.4",
+      "VDE 0530"
+    ],
+    "values": {
+      "manufacturer": "Loher GmbH",
+      "model": "A 160 1 A",
+      "catalogNumber": "3-Mot. Nr. 8 253 379",
+      "equipmentType": "Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "1A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Loher GmbH"
+        },
+        {
+          "field": "model",
+          "value": "A 160 1 A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3-Mot. Nr. 8 253 379"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4142
+  }
+}

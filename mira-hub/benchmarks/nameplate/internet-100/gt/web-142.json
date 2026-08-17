@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-142",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "faded"],
+  "photo_gt": {
+    "manufacturer": "Bristol",
+    "model": "H23A423ABCA",
+    "catalogNumber": "703911-06-0732",
+    "serialNumber": "19597011199-S",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "customer_part_number", "value_verbatim": "B9266-298A", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "230/208", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "1", "unit": "", "confidence": "high"},
+      {"field": "locked_rotor_amps", "value_verbatim": "110", "unit": "A", "confidence": "high"},
+      {"field": "work_code", "value_verbatim": "W/C 184", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CSA", "UR"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

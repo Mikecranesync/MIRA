@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 68,
-    "apiRoutes": 168
+    "apiRoutes": 175
   },
   "pages": [
     "/admin",
@@ -156,6 +156,8 @@
     "/api/equipment-notebooks",
     "/api/equipment-notebooks/[id]",
     "/api/equipment-notebooks/[id]/chat",
+    "/api/equipment-notebooks/[id]/nameplate/confirm",
+    "/api/equipment-notebooks/[id]/nameplate/recognize",
     "/api/equipment-notebooks/[id]/sources",
     "/api/equipment-notebooks/[id]/sources/[docId]",
     "/api/equipment-notebooks/[id]/sources/[docId]/passage",
@@ -163,6 +165,11 @@
     "/api/events",
     "/api/events/[id]",
     "/api/export",
+    "/api/files",
+    "/api/files/[fileId]",
+    "/api/files/[fileId]/links",
+    "/api/files/[fileId]/links/[linkId]",
+    "/api/files/[fileId]/relocate",
     "/api/health",
     "/api/hub/status",
     "/api/i3x/v1/info",

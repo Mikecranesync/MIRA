@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-106",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "dirt", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "INGERSOLL-RAND",
+    "model": "2545E10",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "power_hp", "value_verbatim": "HP: 10", "unit": "HP", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "230/460 (prewired 230 volts at factory)", "unit": "V", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "Phases: 3", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "Hertz: 60", "unit": "Hz", "confidence": "high"},
+      {"field": "flow", "value_verbatim": "35 CFM at 175 PSIG", "unit": "CFM", "confidence": "high"},
+      {"field": "pressure", "value_verbatim": "175 PSIG", "unit": "PSIG", "confidence": "high"}
+    ],
+    "marks": ["CSA"],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Label reads 'INGERSOLL-RAND AIR COMPRESSORS', 'Model: 2545E10', 'Serial Number: On Compressor' (i.e., the serial is not printed on this label -> unknown), 'Amps: see motor nameplate', 'USE TIME DELAY FUSES MARKED D.' plus the French equivalent. CSA monogram with 'NRTL/C' and a file number reading approximately 'LR 56258' (digits partly obscured by grime)."
+}

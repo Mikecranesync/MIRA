@@ -1,0 +1,147 @@
+{
+  "image": "c06r1_03.jpg",
+  "bytes": 235092,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Square D",
+      "model": "800 A",
+      "catalogNumber": "12-18012-37",
+      "serialNumber": "MHL3603901",
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "Circuit Breaker",
+        "Interruptor Automático",
+        "Disjoncteur",
+        "800 A",
+        "12-18012-37",
+        "MHL3603901",
+        "Interruption Rating",
+        "Interrupting Rating",
+        "ULCA/CSA/MENA 60 Hz",
+        "480 V",
+        "65 kA",
+        "277 V",
+        "65 kA",
+        "250 V",
+        "75 kA",
+        "AL900MAT",
+        "Cu/Al",
+        "(1) #30 AWG-500 kcmil",
+        "(2) #30 AWG-500 kcmil",
+        "(3) #30 AWG-500 kcmil",
+        "40°C",
+        "HACR TYPE",
+        "Tipo CAAR",
+        "IEC 947-2 50/60 Hz",
+        "BS EN 60947-2",
+        "415/240 V",
+        "35 mm",
+        "CU 750A",
+        "UL 750",
+        "U/T 750A",
+        "Clamp 6 kVA",
+        "AL900MAT",
+        "12-180708-00 REV. 2",
+        "800"
+      ]
+    },
+    "rawText": [
+      "Circuit Breaker",
+      "Interruptor Automático",
+      "Disjoncteur",
+      "800 A",
+      "12-18012-37",
+      "MHL3603901",
+      "Interruption Rating",
+      "Interrupting Rating",
+      "ULCA/CSA/MENA 60 Hz",
+      "480 V",
+      "65 kA",
+      "277 V",
+      "65 kA",
+      "250 V",
+      "75 kA",
+      "AL900MAT",
+      "Cu/Al",
+      "(1) #30 AWG-500 kcmil",
+      "(2) #30 AWG-500 kcmil",
+      "(3) #30 AWG-500 kcmil",
+      "40°C",
+      "HACR TYPE",
+      "Tipo CAAR",
+      "IEC 947-2 50/60 Hz",
+      "BS EN 60947-2",
+      "415/240 V",
+      "35 mm",
+      "CU 750A",
+      "UL 750",
+      "U/T 750A",
+      "Clamp 6 kVA",
+      "AL900MAT",
+      "12-180708-00 REV. 2",
+      "800"
+    ],
+    "values": {
+      "manufacturer": "Square D",
+      "model": "800 A",
+      "catalogNumber": "12-18012-37",
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": "MHL3603901",
+      "voltage": "480V",
+      "current": "800A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "800 A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "12-18012-37"
+        },
+        {
+          "field": "serialNumber",
+          "value": "MHL3603901"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Circuit Breaker"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 20,
+        "cropBbox": {
+          "left": 281,
+          "top": 273,
+          "width": 630,
+          "height": 657
+        },
+        "imageWidth": 1157,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 2601
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3318,
+    "total_ms": 10482
+  },
+  "baseline": {
+    "error": "JSON Parse error: Unterminated string"
+  }
+}

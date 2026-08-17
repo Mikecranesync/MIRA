@@ -1,0 +1,38 @@
+{
+  "sample_id": "web-147",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dense_table", "tiny_text", "low_resolution", "faded"],
+  "photo_gt": {
+    "manufacturer": "Trafo-Union",
+    "model": "TG 5644 D",
+    "catalogNumber": "unknown",
+    "serialNumber": "K7 80099",
+    "equipment_category": "transformer",
+    "specs": [
+      {"field": "power_kva", "value_verbatim": "400 kVA", "unit": "kVA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "voltage_primary", "value_verbatim": "20 000 V", "unit": "V", "confidence": "high"},
+      {"field": "voltage_secondary", "value_verbatim": "400 V", "unit": "V", "confidence": "high"},
+      {"field": "voltage_tap_2_3", "value_verbatim": "21 000 V", "unit": "V", "confidence": "high"},
+      {"field": "voltage_tap_1_4", "value_verbatim": "19 000 V", "unit": "V", "confidence": "high"},
+      {"field": "current_primary", "value_verbatim": "11,55 A", "unit": "A", "confidence": "high"},
+      {"field": "current_secondary", "value_verbatim": "577 A", "unit": "A", "confidence": "high"},
+      {"field": "vector_group", "value_verbatim": "Dyn 5", "unit": "", "confidence": "high"},
+      {"field": "cooling", "value_verbatim": "AN", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP00", "unit": "IP", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "DB", "unit": "", "confidence": "medium"},
+      {"field": "series", "value_verbatim": "20 S/0,5", "unit": "", "confidence": "medium"},
+      {"field": "insulation", "value_verbatim": "B/F", "unit": "class", "confidence": "medium"},
+      {"field": "short_circuit_duration_max", "value_verbatim": "4 s", "unit": "s", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "1,78 t", "unit": "t", "confidence": "medium"},
+      {"field": "year", "value_verbatim": "Baujahr 75", "unit": "", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "VDE 0532/71", "unit": "", "confidence": "high"},
+      {"field": "type_art", "value_verbatim": "LT", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

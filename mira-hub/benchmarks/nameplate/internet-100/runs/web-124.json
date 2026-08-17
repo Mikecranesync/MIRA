@@ -1,0 +1,268 @@
+{
+  "image": "c11r1_01.jpg",
+  "bytes": 487588,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BONFIGLIOLI RIDUTTORI",
+      "model": "M 3 L C 6",
+      "catalogNumber": "8E58030058 - E111057",
+      "serialNumber": "100312",
+      "equipmentType": "gear reducer",
+      "confidence": 0.95,
+      "rawText": [
+        "MADE IN\nITALY",
+        "3 ~ Mot",
+        "M 3 L C 6",
+        "No\n100312",
+        "Cod. 8E58030058 - E111057",
+        "IMB N IP 55",
+        "V △/Y",
+        "I.C.I.F",
+        "S 1",
+        "60",
+        "cos φ",
+        "Hz",
+        "kW",
+        "A △/Y",
+        "min-1",
+        "230/400",
+        "50",
+        "2.2",
+        "10.4 = 6",
+        "930",
+        "0.71",
+        "450",
+        "60",
+        "2.5",
+        "5.9",
+        "1130",
+        "220/240 VA",
+        "10.2 = 19.7 A",
+        "50Hz",
+        "380/415 VY",
+        "5.9 = 6.2 A",
+        "50Hz",
+        "140/430 VY",
+        "5.7 = 5.9 A",
+        "60Hz",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "MADE IN\nITALY",
+      "3 ~ Mot",
+      "M 3 L C 6",
+      "No\n100312",
+      "Cod. 8E58030058 - E111057",
+      "IMB N IP 55",
+      "V △/Y",
+      "I.C.I.F",
+      "S 1",
+      "60",
+      "cos φ",
+      "Hz",
+      "kW",
+      "A △/Y",
+      "min-1",
+      "230/400",
+      "50",
+      "2.2",
+      "10.4 = 6",
+      "930",
+      "0.71",
+      "450",
+      "60",
+      "2.5",
+      "5.9",
+      "1130",
+      "220/240 VA",
+      "10.2 = 19.7 A",
+      "50Hz",
+      "380/415 VY",
+      "5.9 = 6.2 A",
+      "50Hz",
+      "140/430 VY",
+      "5.7 = 5.9 A",
+      "60Hz",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "BONFIGLIOLI RIDUTTORI",
+      "model": "M 3 L C 6",
+      "catalogNumber": "8E58030058 - E111057",
+      "equipmentType": "gear reducer",
+      "serialNumber": "100312",
+      "voltage": null,
+      "current": "19.7A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "M 3 L C 6"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "8E58030058 - E111057"
+        },
+        {
+          "field": "serialNumber",
+          "value": "100312"
+        },
+        {
+          "field": "equipmentType",
+          "value": "gear reducer"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 48,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1067,
+          "height": 775
+        },
+        "imageWidth": 1067,
+        "imageHeight": 775,
+        "cropRotationDeg": 0,
+        "ms": 1973
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5360,
+    "total_ms": 11601
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BONFIGLIOLI RIDUTTORI",
+      "model": "M 3 L C 6",
+      "catalogNumber": "8E58030058 - E111057",
+      "serialNumber": "100312",
+      "equipmentType": "gear reducer",
+      "confidence": 0.95,
+      "rawText": [
+        "MADE IN\nITALY",
+        "3 ~ Mot",
+        "M 3 L C 6",
+        "No 100312",
+        "Cod. 8E58030058 - E111057",
+        "IMB N IP 55",
+        "V △/Y",
+        "I.C.I.F",
+        "S 1",
+        "60",
+        "cos φ",
+        "Hz",
+        "kW",
+        "A △/Y",
+        "min-1",
+        "230/400",
+        "50",
+        "2.2",
+        "10.4 = 6",
+        "930",
+        "0.71",
+        "450",
+        "60",
+        "2.5",
+        "5.9",
+        "1130",
+        "220/240 VA",
+        "10.2 = 19.7 A",
+        "59Hz",
+        "330/415 VY",
+        "5.9 = 6.2 A",
+        "50Hz",
+        "140/430 VY",
+        "5.7 = 5.9 A",
+        "60Hz"
+      ]
+    },
+    "rawText": [
+      "MADE IN\nITALY",
+      "3 ~ Mot",
+      "M 3 L C 6",
+      "No 100312",
+      "Cod. 8E58030058 - E111057",
+      "IMB N IP 55",
+      "V △/Y",
+      "I.C.I.F",
+      "S 1",
+      "60",
+      "cos φ",
+      "Hz",
+      "kW",
+      "A △/Y",
+      "min-1",
+      "230/400",
+      "50",
+      "2.2",
+      "10.4 = 6",
+      "930",
+      "0.71",
+      "450",
+      "60",
+      "2.5",
+      "5.9",
+      "1130",
+      "220/240 VA",
+      "10.2 = 19.7 A",
+      "59Hz",
+      "330/415 VY",
+      "5.9 = 6.2 A",
+      "50Hz",
+      "140/430 VY",
+      "5.7 = 5.9 A",
+      "60Hz"
+    ],
+    "values": {
+      "manufacturer": "BONFIGLIOLI RIDUTTORI",
+      "model": "M 3 L C 6",
+      "catalogNumber": "8E58030058 - E111057",
+      "equipmentType": "gear reducer",
+      "serialNumber": "100312",
+      "voltage": null,
+      "current": "19.7A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "M 3 L C 6"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "8E58030058 - E111057"
+        },
+        {
+          "field": "serialNumber",
+          "value": "100312"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5656
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "image": "c07r1_12.jpg",
+  "bytes": 130546,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "3TF4222-7E",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "AC-3 Contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "3TF4222-7E",
+        "IEC947",
+        "VDE0860",
+        "2S+2O/2NO+2NC",
+        "AC-3",
+        "30A",
+        "600V AC",
+        "30A 600 HP 15",
+        "200 BREAK ALL LINES",
+        "THIS DEVICE OR EXCEEDS NEMA/EMAC REQUIREMENTS",
+        "AUX CONTACTS A800/P600",
+        "CU-WIRE 75°C ONLY",
+        "250 220 360 460 575",
+        "1 2 3 5 10 15",
+        "5000 RMS",
+        "MADE IN GERMANY",
+        "G/",
+        "01",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "3TF4222-7E",
+      "IEC947",
+      "VDE0860",
+      "2S+2O/2NO+2NC",
+      "AC-3",
+      "30A",
+      "600V AC",
+      "30A 600 HP 15",
+      "200 BREAK ALL LINES",
+      "THIS DEVICE OR EXCEEDS NEMA/EMAC REQUIREMENTS",
+      "AUX CONTACTS A800/P600",
+      "CU-WIRE 75°C ONLY",
+      "250 220 360 460 575",
+      "1 2 3 5 10 15",
+      "5000 RMS",
+      "MADE IN GERMANY",
+      "G/",
+      "01",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "3TF4222-7E",
+      "catalogNumber": null,
+      "equipmentType": "AC-3 Contactor",
+      "serialNumber": null,
+      "voltage": "600VAC",
+      "current": "30A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "3TF4222-7E"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC-3 Contactor"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 69,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 713,
+          "height": 1024
+        },
+        "imageWidth": 713,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 1659
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2059,
+    "total_ms": 6558
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "3TF4222-7E",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "circuit breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "3TF4222-7E",
+        "IEC947",
+        "VDE0860",
+        "2S+20/2NO+2NC",
+        "AC-3",
+        "VOLTAGE",
+        "kW",
+        "HP",
+        "le AC-1",
+        "30A",
+        "AC-3",
+        "5.5",
+        "5.5",
+        "7.5",
+        "10",
+        "7.5",
+        "10",
+        "9",
+        "12",
+        "11",
+        "15",
+        "30A",
+        "600V AC",
+        "150",
+        "2",
+        "220",
+        "1",
+        "275",
+        "3",
+        "570",
+        "5",
+        "BREAK ALL LINES",
+        "THIS DEVICE OR EXCEEDS NEMA C",
+        "REQUIREMENTS",
+        "AUX CONTACTS A800/P600",
+        "CU-WIRE 75°C ONLY",
+        "SUITABLE FOR USE ON A CIRCUIT CAPABLE OF DELIVERING NOT MORE THAN 5000 RMS SYM. AMPS. 600V MAX.",
+        "Ø5...6 mm",
+        "1...1.5Nm"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "3TF4222-7E",
+      "IEC947",
+      "VDE0860",
+      "2S+20/2NO+2NC",
+      "AC-3",
+      "VOLTAGE",
+      "kW",
+      "HP",
+      "le AC-1",
+      "30A",
+      "AC-3",
+      "5.5",
+      "5.5",
+      "7.5",
+      "10",
+      "7.5",
+      "10",
+      "9",
+      "12",
+      "11",
+      "15",
+      "30A",
+      "600V AC",
+      "150",
+      "2",
+      "220",
+      "1",
+      "275",
+      "3",
+      "570",
+      "5",
+      "BREAK ALL LINES",
+      "THIS DEVICE OR EXCEEDS NEMA C",
+      "REQUIREMENTS",
+      "AUX CONTACTS A800/P600",
+      "CU-WIRE 75°C ONLY",
+      "SUITABLE FOR USE ON A CIRCUIT CAPABLE OF DELIVERING NOT MORE THAN 5000 RMS SYM. AMPS. 600V MAX.",
+      "Ø5...6 mm",
+      "1...1.5Nm"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "3TF4222-7E",
+      "catalogNumber": null,
+      "equipmentType": "circuit breaker",
+      "serialNumber": null,
+      "voltage": "600VAC",
+      "current": "30A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "3TF4222-7E"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 6872
+  }
+}

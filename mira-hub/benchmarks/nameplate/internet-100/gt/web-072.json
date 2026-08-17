@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-072",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["small_in_scene", "tiny_text", "rotated_90"],
+  "photo_gt": {
+    "manufacturer": "Keyence",
+    "model": "PZ-51T",
+    "catalogNumber": "PZ-51T",
+    "serialNumber": "unknown",
+    "equipment_category": "sensor",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

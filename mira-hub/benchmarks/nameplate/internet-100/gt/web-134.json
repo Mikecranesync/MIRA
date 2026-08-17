@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-134",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "tiny_text", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "1756-L61 B",
+    "catalogNumber": "1756-L61",
+    "serialNumber": "unknown",
+    "equipment_category": "plc",
+    "specs": [
+      {"field": "product", "value_verbatim": "ControlLogix 5561 PROCESSOR", "unit": "", "confidence": "high"},
+      {"field": "firmware_rev", "value_verbatim": "1.10", "unit": "", "confidence": "medium"},
+      {"field": "ambient_max", "value_verbatim": "Tamb Max = 60C", "unit": "°C", "confidence": "medium"},
+      {"field": "current_5v", "value_verbatim": "1.2A @ 5.1VDC", "unit": "A", "confidence": "low"},
+      {"field": "current_24v", "value_verbatim": "14mA @ 24VDC", "unit": "mA", "confidence": "low"},
+      {"field": "date", "value_verbatim": "2011/05/04", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

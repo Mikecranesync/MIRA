@@ -1,0 +1,138 @@
+{
+  "image": "c08r1_16.jpg",
+  "bytes": 317589,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "NUMATICS",
+      "model": "228-702B",
+      "catalogNumber": "228-702B",
+      "serialNumber": null,
+      "equipmentType": "pneumatic cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "NUMATICS",
+        "228-702B",
+        "100-115/50",
+        "110-120/60",
+        "11 AMPS"
+      ]
+    },
+    "rawText": [
+      "NUMATICS",
+      "228-702B",
+      "100-115/50",
+      "110-120/60",
+      "11 AMPS"
+    ],
+    "values": {
+      "manufacturer": "NUMATICS",
+      "model": "228-702B",
+      "catalogNumber": "228-702B",
+      "equipmentType": "pneumatic cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NUMATICS"
+        },
+        {
+          "field": "model",
+          "value": "228-702B"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "228-702B"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 14,
+        "cropBbox": {
+          "left": 454,
+          "top": 125,
+          "width": 593,
+          "height": 596
+        },
+        "imageWidth": 1280,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 1744
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3818,
+    "total_ms": 6169
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NUMATICS",
+      "model": "228-T025",
+      "catalogNumber": "228-T025",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "NUMATICS",
+        "228-T025",
+        "100-115/50",
+        "110-120/60",
+        "11 AMPS"
+      ]
+    },
+    "rawText": [
+      "NUMATICS",
+      "228-T025",
+      "100-115/50",
+      "110-120/60",
+      "11 AMPS"
+    ],
+    "values": {
+      "manufacturer": "NUMATICS",
+      "model": "228-T025",
+      "catalogNumber": "228-T025",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NUMATICS"
+        },
+        {
+          "field": "model",
+          "value": "228-T025"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "228-T025"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2287
+  }
+}

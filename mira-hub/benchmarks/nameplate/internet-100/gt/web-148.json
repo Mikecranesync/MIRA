@@ -1,0 +1,27 @@
+{
+  "sample_id": "web-148",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "partially_obstructed", "curved_surface"],
+  "photo_gt": {
+    "manufacturer": "ASCO",
+    "model": "Red-Hat II",
+    "catalogNumber": "8210G22",
+    "serialNumber": "F 608884",
+    "equipment_category": "solenoid_valve",
+    "specs": [
+      {"field": "rebuild_kit_no", "value_verbatim": "302284", "unit": "", "confidence": "high"},
+      {"field": "pressure_air_inert_gas", "value_verbatim": "5-150", "unit": "PSI", "confidence": "high"},
+      {"field": "pressure_water", "value_verbatim": "5-150", "unit": "PSI", "confidence": "high"},
+      {"field": "pressure_lt_oil", "value_verbatim": "5-100", "unit": "PSI", "confidence": "high"},
+      {"field": "power_watts_60hz", "value_verbatim": "6.1", "unit": "W", "confidence": "high"},
+      {"field": "power_watts_50hz", "value_verbatim": "8.1", "unit": "W", "confidence": "high"},
+      {"field": "pipe_size", "value_verbatim": "1/2", "unit": "in", "confidence": "low"},
+      {"field": "enclosure_types", "value_verbatim": "3, 3S, 4 & 4X", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["UL", "CSA"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

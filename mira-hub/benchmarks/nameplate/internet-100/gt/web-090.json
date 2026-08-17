@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-090",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "curved_surface", "dirt", "partially_obstructed", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Copeland",
+    "model": "ZR40KC-PFV-230",
+    "catalogNumber": "unknown",
+    "serialNumber": "01D1020HL",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "current", "value_verbatim": "I OPER MAX 23.4", "unit": "A", "confidence": "high"},
+      {"field": "flow", "value_verbatim": "V(m³/h) 11.38", "unit": "m³/h", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "n(min⁻¹) 3500", "unit": "min⁻¹", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "BOX IP 21", "unit": "", "confidence": "medium"},
+      {"field": "pressure", "value_verbatim": "MAX OPER PRES H/L BARS 27.5 / 17.0", "unit": "bar", "confidence": "high"},
+      {"field": "locked_rotor_amps", "value_verbatim": "103.0", "unit": "A", "confidence": "low"},
+      {"field": "system_label_part", "value_verbatim": "GP3RA-042K", "unit": "", "confidence": "high"},
+      {"field": "system_label_code", "value_verbatim": "914576G", "unit": "", "confidence": "high"},
+      {"field": "system_label_serial", "value_verbatim": "SERIAL NO: GPB010500022", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

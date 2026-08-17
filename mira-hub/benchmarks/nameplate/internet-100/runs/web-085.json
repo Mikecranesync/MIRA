@@ -1,0 +1,90 @@
+{
+  "image": "c12r1_02.jpg",
+  "bytes": 10593450,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "EX-CELL-O",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "EX-CELL-O"
+      ]
+    },
+    "rawText": [
+      "EX-CELL-O"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "EX-CELL-O",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "EX-CELL-O"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "original_photo"
+    },
+    "fallback_used": true,
+    "detect_ms": 20019,
+    "total_ms": 23540
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "EX-CELL-O",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "EX-CELL-O"
+      ]
+    },
+    "rawText": [
+      "EX-CELL-O"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "EX-CELL-O",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "EX-CELL-O"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3240
+  }
+}

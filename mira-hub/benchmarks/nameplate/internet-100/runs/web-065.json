@@ -1,0 +1,152 @@
+{
+  "image": "c02r1_12.jpg",
+  "bytes": 205988,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "HITACHI",
+      "model": "W200 INVERTER",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "inverter",
+      "confidence": 0.95,
+      "rawText": [
+        "400V",
+        "3PHASE",
+        "0.75 kw",
+        "HITACHI",
+        "W200 INVERTER",
+        "RUN",
+        "PWR",
+        "HZ",
+        "ALM",
+        "A",
+        "PRG",
+        "RUN",
+        "ESC",
+        "STOP",
+        "RESET",
+        "SET"
+      ]
+    },
+    "rawText": [
+      "400V",
+      "3PHASE",
+      "0.75 kw",
+      "HITACHI",
+      "W200 INVERTER",
+      "RUN",
+      "PWR",
+      "HZ",
+      "ALM",
+      "A",
+      "PRG",
+      "RUN",
+      "ESC",
+      "STOP",
+      "RESET",
+      "SET"
+    ],
+    "values": {
+      "manufacturer": "HITACHI",
+      "model": "W200 INVERTER",
+      "catalogNumber": null,
+      "equipmentType": "inverter",
+      "serialNumber": null,
+      "voltage": "400V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HITACHI"
+        },
+        {
+          "field": "model",
+          "value": "W200 INVERTER"
+        },
+        {
+          "field": "equipmentType",
+          "value": "inverter"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 35,
+        "cropBbox": {
+          "left": 79,
+          "top": 117,
+          "width": 810,
+          "height": 998
+        },
+        "imageWidth": 1000,
+        "imageHeight": 1333,
+        "cropRotationDeg": 0,
+        "ms": 2108
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5480,
+    "total_ms": 7945
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "HITACHI",
+      "model": "V200 INVERTER",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "INVERTER",
+      "confidence": 0.95,
+      "rawText": [
+        "HITACHI",
+        "V200 INVERTER"
+      ]
+    },
+    "rawText": [
+      "HITACHI",
+      "V200 INVERTER"
+    ],
+    "values": {
+      "manufacturer": "HITACHI",
+      "model": "V200 INVERTER",
+      "catalogNumber": null,
+      "equipmentType": "INVERTER",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HITACHI"
+        },
+        {
+          "field": "model",
+          "value": "V200 INVERTER"
+        },
+        {
+          "field": "equipmentType",
+          "value": "INVERTER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1443
+  }
+}

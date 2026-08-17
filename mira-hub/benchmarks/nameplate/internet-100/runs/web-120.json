@@ -1,0 +1,216 @@
+{
+  "image": "c08r1_13.jpg",
+  "bytes": 189938,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat II",
+      "catalogNumber": null,
+      "serialNumber": "13109",
+      "equipmentType": "valve",
+      "confidence": 0.95,
+      "rawText": [
+        "ASCO",
+        "Red-Hat II",
+        "LISTED 104R",
+        "GEN. PU",
+        "REBUILD KIT NO.",
+        "30230S",
+        "AIR, INERT GAS (PSI)",
+        "3-230",
+        "WATER (PSI)",
+        "HOT WATER 5-135 psi",
+        "SERIAL NO.",
+        "13109",
+        "VALVE CATALOG NO.",
+        "810G002HW",
+        "www.ascovalve.com",
+        "FLOOR, M PARK, N.J., U.S.A."
+      ]
+    },
+    "rawText": [
+      "ASCO",
+      "Red-Hat II",
+      "LISTED 104R",
+      "GEN. PU",
+      "REBUILD KIT NO.",
+      "30230S",
+      "AIR, INERT GAS (PSI)",
+      "3-230",
+      "WATER (PSI)",
+      "HOT WATER 5-135 psi",
+      "SERIAL NO.",
+      "13109",
+      "VALVE CATALOG NO.",
+      "810G002HW",
+      "www.ascovalve.com",
+      "FLOOR, M PARK, N.J., U.S.A."
+    ],
+    "values": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat II",
+      "catalogNumber": "NO.",
+      "equipmentType": "valve",
+      "serialNumber": "13109",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ASCO"
+        },
+        {
+          "field": "model",
+          "value": "Red-Hat II"
+        },
+        {
+          "field": "serialNumber",
+          "value": "13109"
+        },
+        {
+          "field": "equipmentType",
+          "value": "valve"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 35,
+        "cropBbox": {
+          "left": 244,
+          "top": 0,
+          "width": 885,
+          "height": 1108
+        },
+        "imageWidth": 1200,
+        "imageHeight": 1600,
+        "cropRotationDeg": 0,
+        "ms": 1895
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2478,
+    "total_ms": 6197
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat II",
+      "catalogNumber": "30230",
+      "serialNumber": "10109",
+      "equipmentType": "valve",
+      "confidence": 0.95,
+      "rawText": [
+        "ASCO",
+        "Red-Hat II",
+        "REBUILD KIT NO.",
+        "30230",
+        "AIR, INERT GAS (PSI)",
+        "WATER (PSI)",
+        "HOT WATER 5-145, PSI",
+        "SERIAL NO.",
+        "10109",
+        "VALVE CATALOG NO.",
+        "210C002HW",
+        "LISTED 104R",
+        "GEN. US",
+        "NCL TYPES",
+        "1, 2, 3S, 4, 4X",
+        "PIPE SIZE",
+        "DATE",
+        "1/2",
+        "0933",
+        "LT. OIL (PSI)",
+        "WATTS",
+        "HZ",
+        "WATTS",
+        "HZ",
+        "6-1",
+        "60",
+        "8.1",
+        "50"
+      ]
+    },
+    "rawText": [
+      "ASCO",
+      "Red-Hat II",
+      "REBUILD KIT NO.",
+      "30230",
+      "AIR, INERT GAS (PSI)",
+      "WATER (PSI)",
+      "HOT WATER 5-145, PSI",
+      "SERIAL NO.",
+      "10109",
+      "VALVE CATALOG NO.",
+      "210C002HW",
+      "LISTED 104R",
+      "GEN. US",
+      "NCL TYPES",
+      "1, 2, 3S, 4, 4X",
+      "PIPE SIZE",
+      "DATE",
+      "1/2",
+      "0933",
+      "LT. OIL (PSI)",
+      "WATTS",
+      "HZ",
+      "WATTS",
+      "HZ",
+      "6-1",
+      "60",
+      "8.1",
+      "50"
+    ],
+    "values": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat II",
+      "catalogNumber": "30230",
+      "equipmentType": "valve",
+      "serialNumber": "10109",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ASCO"
+        },
+        {
+          "field": "model",
+          "value": "Red-Hat II"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "30230"
+        },
+        {
+          "field": "serialNumber",
+          "value": "10109"
+        },
+        {
+          "field": "equipmentType",
+          "value": "valve"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3715
+  }
+}

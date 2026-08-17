@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-088",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "PanelView 550",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "hmi",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": {
+    "source_url": "https://sbindustrialsupply.com/shop/used-allen-bradley-2711-k5a2-panelview-550-ser-f-2711k5a2/",
+    "notes": "Front-bezel product photo only — the catalog/serial nameplate (2711-K5A2 per listing) is on the rear and NOT visible in this image. Photo-visible text is limited to brand and product family; catalog number left unknown by rule."
+  }
+}

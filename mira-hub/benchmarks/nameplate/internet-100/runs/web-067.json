@@ -1,0 +1,157 @@
+{
+  "image": "c06r1_04.jpg",
+  "bytes": 111930,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Square D",
+      "model": "FYI4020A",
+      "catalogNumber": null,
+      "serialNumber": "96134",
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "CAUTION Plug-on jaws are factory set. DO NOT ADJUST Do NOT remove joint compound from plug-on jaws.",
+        "Use 60/75°C Wire #14-4 AWG Cu/Al Torque to 35 lb-in (4 N-m)",
+        "LISTED UL BREAKER CSA E572-2004 UL508A",
+        "FYI4020A",
+        "INTERRUPTING RATING",
+        "Volts 120 OC 277 OC",
+        "AIR 18A 14kA",
+        "96134",
+        "ON",
+        "OFF",
+        "A"
+      ]
+    },
+    "rawText": [
+      "CAUTION Plug-on jaws are factory set. DO NOT ADJUST Do NOT remove joint compound from plug-on jaws.",
+      "Use 60/75°C Wire #14-4 AWG Cu/Al Torque to 35 lb-in (4 N-m)",
+      "LISTED UL BREAKER CSA E572-2004 UL508A",
+      "FYI4020A",
+      "INTERRUPTING RATING",
+      "Volts 120 OC 277 OC",
+      "AIR 18A 14kA",
+      "96134",
+      "ON",
+      "OFF",
+      "A"
+    ],
+    "values": {
+      "manufacturer": "Square D",
+      "model": "FYI4020A",
+      "catalogNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": "96134",
+      "voltage": null,
+      "current": "18A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Square D"
+        },
+        {
+          "field": "model",
+          "value": "FYI4020A"
+        },
+        {
+          "field": "serialNumber",
+          "value": "96134"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Circuit Breaker"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 23,
+        "cropBbox": {
+          "left": 119,
+          "top": 45,
+          "width": 292,
+          "height": 1186
+        },
+        "imageWidth": 551,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 1189
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1601,
+    "total_ms": 5561
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Square D",
+      "model": "FYT4020A",
+      "catalogNumber": null,
+      "serialNumber": "96134",
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "FYT4020A",
+        "INTERRUPTING RATING",
+        "Volts",
+        "240 volts",
+        "277 volts",
+        "AIR",
+        "14kA",
+        "96134"
+      ]
+    },
+    "rawText": [
+      "FYT4020A",
+      "INTERRUPTING RATING",
+      "Volts",
+      "240 volts",
+      "277 volts",
+      "AIR",
+      "14kA",
+      "96134"
+    ],
+    "values": {
+      "manufacturer": "Square D",
+      "model": "FYT4020A",
+      "catalogNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": "96134",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "FYT4020A"
+        },
+        {
+          "field": "serialNumber",
+          "value": "96134"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2198
+  }
+}

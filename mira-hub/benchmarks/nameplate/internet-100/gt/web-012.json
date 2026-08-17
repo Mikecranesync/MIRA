@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-012",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["small_in_scene", "tiny_text", "low_resolution", "rotated_90", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "Kollmorgen (GOLDLINE XT)",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "servo_motor",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

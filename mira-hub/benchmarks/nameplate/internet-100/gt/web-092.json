@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-092",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "high_resolution", "dense_table", "tiny_text", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "PanelView Plus 1000",
+    "catalogNumber": "2711P-T10C4D8",
+    "serialNumber": "38792773",
+    "equipment_category": "hmi",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "24 VDC", "unit": "V", "confidence": "high"},
+      {"field": "display_module_catalog", "value_verbatim": "2711P-RDT10C", "unit": "", "confidence": "high"},
+      {"field": "logic_module_catalog", "value_verbatim": "2711P-RPSD", "unit": "", "confidence": "medium"},
+      {"field": "hazardous_location_rating", "value_verbatim": "CLASS I DIV 2, GROUPS A, B, C, D", "unit": "", "confidence": "medium"},
+      {"field": "temperature_code", "value_verbatim": "T4", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CE", "KC", "cUL"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

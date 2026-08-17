@@ -1,0 +1,132 @@
+{
+  "image": "c06r1_09.jpg",
+  "bytes": 112544,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SOLA",
+      "model": "SCL 4 DI5-DN",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SOLA",
+        "SCL 4 DI5-DN",
+        "IN : 115V/230V~ ±10%",
+        "50 / 60 Hz Imax 0.2A",
+        "OUT: ± 15V--; 0.10A",
+        "CUL US 55KM Ind. Cont. Eq."
+      ]
+    },
+    "rawText": [
+      "SOLA",
+      "SCL 4 DI5-DN",
+      "IN : 115V/230V~ ±10%",
+      "50 / 60 Hz Imax 0.2A",
+      "OUT: ± 15V--; 0.10A",
+      "CUL US 55KM Ind. Cont. Eq."
+    ],
+    "values": {
+      "manufacturer": "SOLA",
+      "model": "SCL 4 DI5-DN",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "115V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SOLA"
+        },
+        {
+          "field": "model",
+          "value": "SCL 4 DI5-DN"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 12,
+        "cropBbox": {
+          "left": 17,
+          "top": 0,
+          "width": 943,
+          "height": 960
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 3281
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5029,
+    "total_ms": 7585
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SOLA",
+      "model": "SCL 4 DI5-DN",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SOLA",
+        "SCL 4 DI5-DN",
+        "IN : 115V/230V~ ±10%",
+        "50 / 60 Hz Imax 0.2A",
+        "OUT: ± 15V--;; 0.10A",
+        "C(U)L US 55KM Ind. Cont. Eq."
+      ]
+    },
+    "rawText": [
+      "SOLA",
+      "SCL 4 DI5-DN",
+      "IN : 115V/230V~ ±10%",
+      "50 / 60 Hz Imax 0.2A",
+      "OUT: ± 15V--;; 0.10A",
+      "C(U)L US 55KM Ind. Cont. Eq."
+    ],
+    "values": {
+      "manufacturer": "SOLA",
+      "model": "SCL 4 DI5-DN",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "115V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SOLA"
+        },
+        {
+          "field": "model",
+          "value": "SCL 4 DI5-DN"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2884
+  }
+}

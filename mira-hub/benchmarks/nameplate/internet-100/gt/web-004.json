@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-004",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Siemens",
+    "model": "SIMATIC S7-300 CPU315-2 DP",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "plc",
+    "specs": [
+      {"field": "memory_card", "value_verbatim": "MC 951 / 128 kB / 5V FLASH 6ES7 951-0KG00-0AA0", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": {
+    "source_url": "https://industrial-stores.com/used_siemens_6es7_315_2af03_0ab0_s7_300_cpu_processor_module_p6277.html",
+    "notes": "Front-panel product photo, not a spec nameplate: 'SIEMENS', 'CPU315-2 DP', 'SIMATIC S7-300' are legible. The CPU order number (6ES7 315-2AF03-0AB0 per the listing) is NOT visible in this photo — the visible 6ES7 951-0KG00-0AA0 is the plugged-in memory card's part number, not the CPU's."
+  }
+}

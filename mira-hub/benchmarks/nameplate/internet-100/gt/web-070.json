@@ -1,0 +1,38 @@
+{
+  "sample_id": "web-070",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dense_table", "tiny_text", "low_resolution"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "1336F-B125-AA-EN-GM1-HCS2",
+    "catalogNumber": "1336F-B125-AA-EN-GM1-HCS2",
+    "serialNumber": "unknown",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "series", "value_verbatim": "SER A", "unit": "", "confidence": "high"},
+      {"field": "ct_ac_input_kva", "value_verbatim": "113-143", "unit": "KVA", "confidence": "high"},
+      {"field": "ct_ac_input_voltage", "value_verbatim": "380-480", "unit": "V", "confidence": "high"},
+      {"field": "ct_ac_input_current", "value_verbatim": "172", "unit": "A", "confidence": "high"},
+      {"field": "ct_ac_input_frequency", "value_verbatim": "50/60", "unit": "Hz", "confidence": "high"},
+      {"field": "ct_ac_output_kva", "value_verbatim": "138", "unit": "KVA", "confidence": "high"},
+      {"field": "ct_ac_output_voltage", "value_verbatim": "0-460", "unit": "V", "confidence": "high"},
+      {"field": "ct_ac_output_current", "value_verbatim": "173.0", "unit": "A", "confidence": "medium"},
+      {"field": "ct_ac_output_frequency", "value_verbatim": "0-400", "unit": "Hz", "confidence": "high"},
+      {"field": "vt_ac_input_kva", "value_verbatim": "117-148", "unit": "KVA", "confidence": "high"},
+      {"field": "vt_ac_input_voltage", "value_verbatim": "380-480", "unit": "V", "confidence": "high"},
+      {"field": "vt_ac_input_current", "value_verbatim": "178", "unit": "A", "confidence": "high"},
+      {"field": "vt_ac_input_frequency", "value_verbatim": "50/60", "unit": "Hz", "confidence": "high"},
+      {"field": "vt_ac_output_kva", "value_verbatim": "143", "unit": "KVA", "confidence": "high"},
+      {"field": "vt_ac_output_voltage", "value_verbatim": "0-460", "unit": "V", "confidence": "high"},
+      {"field": "vt_ac_output_current", "value_verbatim": "180.0", "unit": "A", "confidence": "medium"},
+      {"field": "vt_ac_output_frequency", "value_verbatim": "0-400", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN U.S.A.", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["cULus", "CE", "N223"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

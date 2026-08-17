@@ -398,6 +398,23 @@ type AssetDoc = {
   verified: boolean;
 };
 
+/**
+ * `/api/assets/[id]/documents` now returns `{ attached, suggested }` — explicitly
+ * attached workspace files are a different thing from manufacturer/model
+ * inference. Accept the legacy bare array too so this tab keeps working against
+ * an older deploy (without it, a non-array silently fell back to the mock list).
+ */
+function normalizeAssetDocs(data: unknown): AssetDoc[] | null {
+  if (Array.isArray(data)) return data as AssetDoc[];
+  if (data && typeof data === "object") {
+    const d = data as { attached?: AssetDoc[]; suggested?: AssetDoc[] };
+    if (Array.isArray(d.attached) || Array.isArray(d.suggested)) {
+      return [...(d.attached ?? []), ...(d.suggested ?? [])];
+    }
+  }
+  return null;
+}
+
 function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string }) {
   const { toast } = useToast();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -407,8 +424,8 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
     try {
       const res = await fetch(`${API_BASE}/api/assets/${assetId}/documents/`, { cache: "no-store" });
       if (res.ok && !res.url.includes("/login")) {
-        const data = (await res.json()) as AssetDoc[];
-        if (Array.isArray(data)) setRealDocs(data);
+        const docs = normalizeAssetDocs(await res.json());
+        if (docs) setRealDocs(docs);
       }
     } catch {
       /* silent — falls back to mock list */
@@ -422,8 +439,8 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
       .then(async (res) => {
         if (cancelled) return;
         if (res.ok && !res.url.includes("/login")) {
-          const data = (await res.json()) as AssetDoc[];
-          if (!cancelled && Array.isArray(data)) setRealDocs(data);
+          const docs = normalizeAssetDocs(await res.json());
+          if (!cancelled && docs) setRealDocs(docs);
         }
       })
       .catch(() => {

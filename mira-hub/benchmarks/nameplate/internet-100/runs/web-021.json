@@ -1,0 +1,124 @@
+{
+  "image": "c12r1_12.jpg",
+  "bytes": 1168509,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "South Bend",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Lathe",
+      "confidence": 0.95,
+      "rawText": [
+        "SOUTH",
+        "BEND",
+        "LATHE WORKS"
+      ]
+    },
+    "rawText": [
+      "SOUTH",
+      "BEND",
+      "LATHE WORKS"
+    ],
+    "values": {
+      "manufacturer": "South Bend",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "Lathe",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "South Bend"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Lathe"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 1468,
+          "top": 445,
+          "width": 721,
+          "height": 820
+        },
+        "imageWidth": 4160,
+        "imageHeight": 2340,
+        "cropRotationDeg": 0,
+        "ms": 1504
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4044,
+    "total_ms": 5434
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "South Bend",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Lathe",
+      "confidence": 0.95,
+      "rawText": [
+        "SOUTH BEND",
+        "LATHE WORKS",
+        "BENCH NO.",
+        "D-118930",
+        "1443-30/003"
+      ]
+    },
+    "rawText": [
+      "SOUTH BEND",
+      "LATHE WORKS",
+      "BENCH NO.",
+      "D-118930",
+      "1443-30/003"
+    ],
+    "values": {
+      "manufacturer": "South Bend",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "Lathe",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "South Bend"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Lathe"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2274
+  }
+}

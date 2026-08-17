@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-151",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Sola",
+    "model": "SCL 4 D15-DN",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "power_supply",
+    "specs": [
+      {"field": "voltage_input", "value_verbatim": "115V/230V~ +/-10%", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 / 60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "current_input_max", "value_verbatim": "Imax 0.2A", "unit": "A", "confidence": "high"},
+      {"field": "voltage_output", "value_verbatim": "+/- 15V DC", "unit": "V", "confidence": "high"},
+      {"field": "current_output", "value_verbatim": "0.10A", "unit": "A", "confidence": "high"}
+    ],
+    "marks": ["cULus"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

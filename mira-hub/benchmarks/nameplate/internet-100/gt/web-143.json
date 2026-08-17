@@ -1,0 +1,35 @@
+{
+  "sample_id": "web-143",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "faded", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Kollmorgen",
+    "model": "MTC726B2-S1C1",
+    "catalogNumber": "unknown",
+    "serialNumber": "01J726B2-42",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "product_line", "value_verbatim": "GOLDLINE XT", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP65", "unit": "", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3φ PM SERVOMOTOR", "unit": "", "confidence": "high"},
+      {"field": "stall_cont_current", "value_verbatim": "18.3 AMPSrms", "unit": "A", "confidence": "high"},
+      {"field": "stall_cont_torque", "value_verbatim": "50.4 Nm @ 40°C AMB", "unit": "Nm", "confidence": "high"},
+      {"field": "stall_peak_current", "value_verbatim": "64.7 AMPSrms", "unit": "A", "confidence": "high"},
+      {"field": "stall_peak_torque", "value_verbatim": "152 Nm @ 40°C AMB", "unit": "Nm", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "400/480 Vrms L/L", "unit": "V", "confidence": "high"},
+      {"field": "kb", "value_verbatim": "179.8 V/KRPM", "unit": "V/kRPM", "confidence": "high"},
+      {"field": "max_rpm", "value_verbatim": "2000/2300", "unit": "RPM", "confidence": "medium"},
+      {"field": "resistance", "value_verbatim": "RES L/L @ 25°C:0.553", "unit": "ohm", "confidence": "high"},
+      {"field": "brake_voltage", "value_verbatim": "24.0 V", "unit": "V", "confidence": "high"},
+      {"field": "brake_current", "value_verbatim": "1.40 A", "unit": "A", "confidence": "high"},
+      {"field": "brake_torque", "value_verbatim": "73.0 NM", "unit": "Nm", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "CLASS F", "unit": "", "confidence": "high"},
+      {"field": "encoder", "value_verbatim": "512 SINE ENC PPR", "unit": "PPR", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

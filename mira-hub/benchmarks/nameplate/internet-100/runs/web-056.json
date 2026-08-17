@@ -1,0 +1,216 @@
+{
+  "image": "c05r1_13.jpg",
+  "bytes": 154911,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "GRUNDFOS",
+      "model": "A9573565-P10802505",
+      "catalogNumber": null,
+      "serialNumber": "10802505",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Type",
+        "CPNE3-9 AN-F3J-G-E-H0E",
+        "Model",
+        "A9573565-P10802505",
+        "H",
+        "205.7",
+        "Feet",
+        "P2",
+        "1.5",
+        "HP",
+        "Hmax",
+        "208.8",
+        "Feet",
+        "N",
+        "3.5",
+        "RPM",
+        "Q",
+        "152.1",
+        "GPM",
+        "f",
+        "Hz",
+        "Pmax / tmax",
+        "PSI / °F",
+        "ASSEMBLY DATE",
+        "Serial No.",
+        "CE GRUNDFOS"
+      ]
+    },
+    "rawText": [
+      "Type",
+      "CPNE3-9 AN-F3J-G-E-H0E",
+      "Model",
+      "A9573565-P10802505",
+      "H",
+      "205.7",
+      "Feet",
+      "P2",
+      "1.5",
+      "HP",
+      "Hmax",
+      "208.8",
+      "Feet",
+      "N",
+      "3.5",
+      "RPM",
+      "Q",
+      "152.1",
+      "GPM",
+      "f",
+      "Hz",
+      "Pmax / tmax",
+      "PSI / °F",
+      "ASSEMBLY DATE",
+      "Serial No.",
+      "CE GRUNDFOS"
+    ],
+    "values": {
+      "manufacturer": "GRUNDFOS",
+      "model": "A9573565-P10802505",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "10802505",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GRUNDFOS"
+        },
+        {
+          "field": "model",
+          "value": "A9573565-P10802505"
+        },
+        {
+          "field": "serialNumber",
+          "value": "10802505"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 21,
+        "cropBbox": {
+          "left": 173,
+          "top": 48,
+          "width": 712,
+          "height": 528
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2211
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2699,
+    "total_ms": 7311
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "GRUNDFOS",
+      "model": "A557 450/5 - P100802505",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Type",
+        "CRNE3-9 AN-F30-G-110DE",
+        "Model",
+        "A557 450/5 - P100802505",
+        "H",
+        "205.2",
+        "Feet",
+        "P2",
+        "1.5",
+        "HP",
+        "Hmax",
+        "280.8",
+        "Feet",
+        "N",
+        "3400",
+        "RPM",
+        "Q",
+        "15",
+        "GPM",
+        "f",
+        "Hz",
+        "Pmax /tmax",
+        "PSI/°F",
+        "ASSEMBLED IN",
+        "Serial No.",
+        "CE GRUNDFOS"
+      ]
+    },
+    "rawText": [
+      "Type",
+      "CRNE3-9 AN-F30-G-110DE",
+      "Model",
+      "A557 450/5 - P100802505",
+      "H",
+      "205.2",
+      "Feet",
+      "P2",
+      "1.5",
+      "HP",
+      "Hmax",
+      "280.8",
+      "Feet",
+      "N",
+      "3400",
+      "RPM",
+      "Q",
+      "15",
+      "GPM",
+      "f",
+      "Hz",
+      "Pmax /tmax",
+      "PSI/°F",
+      "ASSEMBLED IN",
+      "Serial No.",
+      "CE GRUNDFOS"
+    ],
+    "values": {
+      "manufacturer": "GRUNDFOS",
+      "model": "A557 450/5 - P100802505",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GRUNDFOS"
+        },
+        {
+          "field": "model",
+          "value": "A557 450/5 - P100802505"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3831
+  }
+}

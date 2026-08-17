@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-030",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Parker",
+    "model": "H22VXBG023C",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_solenoid_valve",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "145 PSIG (1000 kPa) MAX", "unit": "PSIG", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "120 V", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "apparent_power", "value_verbatim": "4.5 V A", "unit": "VA", "confidence": "high"},
+      {"field": "series", "value_verbatim": "isys", "unit": "", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "3710", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CSA"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

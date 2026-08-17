@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-144",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "embossed", "high_resolution", "corrosion"],
+  "photo_gt": {
+    "manufacturer": "MAAG",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "machine_tool",
+    "specs": [],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": {
+    "source_url": "https://commons.wikimedia.org/wiki/File:Maag_Zurich_%C5%A1t%C3%ADtek.jpg",
+    "notes": "Manufacturer badge only — cast/embossed plate reading 'MAAG / ZURICH'. No model, serial, or specification text present on the plate. Identity-only sample."
+  }
+}

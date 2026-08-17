@@ -1,0 +1,162 @@
+{
+  "image": "c03r1_07.jpg",
+  "bytes": 66990,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "A1S7J10LP21GE",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Programmable Logic Controller",
+      "confidence": 0.95,
+      "rawText": [
+        "A1S7J10LP21GE",
+        "A1S7J10LP21",
+        "CRC",
+        "OV",
+        "AB IF",
+        "TIME",
+        "DATA",
+        "UNDER",
+        "SD",
+        "RD",
+        "NETWORK",
+        "NO",
+        "DISPLAY",
+        "R",
+        "RLL",
+        "GR NO",
+        "ST NO",
+        "OFF",
+        "ON/SW"
+      ]
+    },
+    "rawText": [
+      "A1S7J10LP21GE",
+      "A1S7J10LP21",
+      "CRC",
+      "OV",
+      "AB IF",
+      "TIME",
+      "DATA",
+      "UNDER",
+      "SD",
+      "RD",
+      "NETWORK",
+      "NO",
+      "DISPLAY",
+      "R",
+      "RLL",
+      "GR NO",
+      "ST NO",
+      "OFF",
+      "ON/SW"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "A1S7J10LP21GE",
+      "catalogNumber": null,
+      "equipmentType": "Programmable Logic Controller",
+      "serialNumber": null,
+      "voltage": "0V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "A1S7J10LP21GE"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Programmable Logic Controller"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 39,
+        "cropBbox": {
+          "left": 288,
+          "top": 170,
+          "width": 573,
+          "height": 599
+        },
+        "imageWidth": 1200,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 3167
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5513,
+    "total_ms": 8942
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Siemens",
+      "model": "AI5710PL21CE",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Analog Input Module",
+      "confidence": 0.95,
+      "rawText": [
+        "AI5710PL21CE",
+        "AI5710PL21CE",
+        "Siemens",
+        "AI5710PL21CE",
+        "AI5710PL21CE"
+      ]
+    },
+    "rawText": [
+      "AI5710PL21CE",
+      "AI5710PL21CE",
+      "Siemens",
+      "AI5710PL21CE",
+      "AI5710PL21CE"
+    ],
+    "values": {
+      "manufacturer": "Siemens",
+      "model": "AI5710PL21CE",
+      "catalogNumber": null,
+      "equipmentType": "Analog Input Module",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Siemens"
+        },
+        {
+          "field": "model",
+          "value": "AI5710PL21CE"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1951
+  }
+}

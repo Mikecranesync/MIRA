@@ -1,0 +1,27 @@
+{
+  "sample_id": "web-036",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "faded"],
+  "photo_gt": {
+    "manufacturer": "Miller Electric Manufacturing Co.",
+    "model": "SR 200",
+    "catalogNumber": "unknown",
+    "serialNumber": "24313",
+    "equipment_category": "dc_arc_welder",
+    "specs": [
+      {"field": "primary_voltage", "value_verbatim": "VOLTS 208/220/440", "unit": "V", "confidence": "high"},
+      {"field": "primary_amps", "value_verbatim": "AMPS. 44 / 42 / 21", "unit": "A", "confidence": "medium"},
+      {"field": "power_kw", "value_verbatim": "K.W. 13", "unit": "kW", "confidence": "high"},
+      {"field": "apparent_power", "value_verbatim": "K.V.A. 16", "unit": "kVA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "CYCLES 50/60", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "THREE PHASE", "unit": "", "confidence": "high"},
+      {"field": "secondary_amps", "value_verbatim": "AMPS. 200", "unit": "A", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "DUTY CYCLE 60 %", "unit": "%", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

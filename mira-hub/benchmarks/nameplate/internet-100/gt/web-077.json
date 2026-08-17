@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-077",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "tiny_text", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "A1SJ71QLP21GE",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "plc network module",
+    "specs": [
+      {"field": "board_marking", "value_verbatim": "A1SJ71QLP21", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

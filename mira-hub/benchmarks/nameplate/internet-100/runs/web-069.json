@@ -1,0 +1,174 @@
+{
+  "image": "c11r1_07.jpg",
+  "bytes": 104173,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Bitzer",
+      "model": "6GE-34Y-40P",
+      "catalogNumber": null,
+      "serialNumber": "1994905770",
+      "equipmentType": "RECIRCITATING COMPRESSOR",
+      "confidence": 0.95,
+      "rawText": [
+        "Bitzer",
+        "Reciprocating Compressor",
+        "型号 Type 6GE-34Y-40P",
+        "编号 S.No. 1994905770",
+        "Bitzer Refrigeration Technology (China) Co.,Ltd",
+        "额定电压",
+        "Nominal Voltage",
+        "V~Ph",
+        "3-Ph",
+        "300-420",
+        "440-480",
+        "60",
+        "60",
+        "频率 Freq. Hz",
+        "Operat. C. A(max)",
+        "Locked Rotor C. A(Y)",
+        "排气量 Displacement. m³/h",
+        "转速 Speed RPM",
+        "IP 54",
+        "重量 Weight 228.00 kg",
+        "压力/高压 LPHP max",
+        "19 / 32 bar",
+        "Refrigerant HFC",
+        "Date 09/2018"
+      ]
+    },
+    "rawText": [
+      "Bitzer",
+      "Reciprocating Compressor",
+      "型号 Type 6GE-34Y-40P",
+      "编号 S.No. 1994905770",
+      "Bitzer Refrigeration Technology (China) Co.,Ltd",
+      "额定电压",
+      "Nominal Voltage",
+      "V~Ph",
+      "3-Ph",
+      "300-420",
+      "440-480",
+      "60",
+      "60",
+      "频率 Freq. Hz",
+      "Operat. C. A(max)",
+      "Locked Rotor C. A(Y)",
+      "排气量 Displacement. m³/h",
+      "转速 Speed RPM",
+      "IP 54",
+      "重量 Weight 228.00 kg",
+      "压力/高压 LPHP max",
+      "19 / 32 bar",
+      "Refrigerant HFC",
+      "Date 09/2018"
+    ],
+    "values": {
+      "manufacturer": "Bitzer",
+      "model": "6GE-34Y-40P",
+      "catalogNumber": null,
+      "equipmentType": "RECIRCITATING COMPRESSOR",
+      "serialNumber": "1994905770",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Bitzer"
+        },
+        {
+          "field": "model",
+          "value": "6GE-34Y-40P"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1994905770"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 36,
+        "cropBbox": {
+          "left": 22,
+          "top": 552,
+          "width": 560,
+          "height": 276
+        },
+        "imageWidth": 720,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 1488
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1858,
+    "total_ms": 7321
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Bitzer",
+      "model": "6E-34Y-40P",
+      "catalogNumber": null,
+      "serialNumber": "1994905770",
+      "equipmentType": "RE الموضوعING COMPRESSOR",
+      "confidence": 0.95,
+      "rawText": [
+        "Bitzer",
+        "型号 Type 6E-34Y-40P",
+        "S.No. 1994905770"
+      ]
+    },
+    "rawText": [
+      "Bitzer",
+      "型号 Type 6E-34Y-40P",
+      "S.No. 1994905770"
+    ],
+    "values": {
+      "manufacturer": "Bitzer",
+      "model": "6E-34Y-40P",
+      "catalogNumber": null,
+      "equipmentType": "RE الموضوعING COMPRESSOR",
+      "serialNumber": "1994905770",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Bitzer"
+        },
+        {
+          "field": "model",
+          "value": "6E-34Y-40P"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1994905770"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1843
+  }
+}

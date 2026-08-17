@@ -1,0 +1,19 @@
+{
+  "sample_id": "web-104",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "ACH550-VCR-072A-4+F267",
+    "catalogNumber": "ACX550-U0-072A-4",
+    "serialNumber": "2194700092",
+    "equipment_category": "vfd_drive",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Two barcode ID labels on a drive chassis. Top label: 'ACH550-VCR-072A-4+F267', barcode, 'S/N 2194700092', 'AX / XT'. Bottom label: 'ACX550-U0-072A-4', 'S/N 2194602904'. No manufacturer name/logo is visible in the frame (ACH550 is an ABB family, but the brand is not printed here), so manufacturer='unknown'. The full electrical ratings plate is not in the frame; no specs or certification marks visible, marks_complete=false because the rating/mark area is cropped out."
+}

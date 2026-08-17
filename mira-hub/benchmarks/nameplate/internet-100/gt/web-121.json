@@ -1,0 +1,29 @@
+{
+  "sample_id": "web-121",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "glare"],
+  "photo_gt": {
+    "manufacturer": "Zhejiang Sanai Transformer Co., Ltd",
+    "model": "LZZBJ-11",
+    "catalogNumber": "unknown",
+    "serialNumber": "31074",
+    "equipment_category": "current_transformer",
+    "specs": [
+      {"field": "rated_current_ratio", "value_verbatim": "15/5 A", "unit": "A", "confidence": "high"},
+      {"field": "accuracy_class", "value_verbatim": "1S11S2 0.5 Class", "unit": "", "confidence": "high"},
+      {"field": "burden", "value_verbatim": "5 VA", "unit": "VA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "rated_insulation_level", "value_verbatim": "12/28/75 KV", "unit": "kV", "confidence": "high"},
+      {"field": "standard_code", "value_verbatim": "IEC60044-1", "unit": "", "confidence": "high"},
+      {"field": "thermal_current_1s", "value_verbatim": "1.5 KA", "unit": "kA", "confidence": "high"},
+      {"field": "rated_dynamic_stability_current", "value_verbatim": "3.75 KA", "unit": "kA", "confidence": "high"},
+      {"field": "date", "value_verbatim": "2012 Y 11 M", "unit": "", "confidence": "high"},
+      {"field": "mc_number", "value_verbatim": "MC 03820522", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CMC"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

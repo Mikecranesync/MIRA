@@ -1,0 +1,48 @@
+{
+  "image": "c04r1_02.jpg",
+  "bytes": 52778,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.6,
+      "rawText": [
+        "null"
+      ]
+    },
+    "rawText": [
+      "null"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "original_photo"
+    },
+    "fallback_used": true,
+    "detect_ms": 957,
+    "total_ms": 1995
+  },
+  "baseline": {
+    "error": "JSON Parse error: Unterminated string"
+  }
+}

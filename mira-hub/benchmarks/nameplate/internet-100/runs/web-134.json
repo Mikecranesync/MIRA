@@ -1,0 +1,180 @@
+{
+  "image": "c03r1_01.jpg",
+  "bytes": 39349,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CONTROLLOGIX 5651",
+      "catalogNumber": "1756-L61 B",
+      "serialNumber": null,
+      "equipmentType": "Processor",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "Logix PAC",
+        "CATALOG SERIES",
+        "1756-L61 B",
+        "CONTROLLOGIX 5651",
+        "PROCESSOR",
+        "PART NO",
+        "PN 15383",
+        "FW REV.",
+        "1.10",
+        "SERIAL NO",
+        "ST",
+        "PRODUCT OF U.S.A",
+        "2011/05/04",
+        "DATA SHEET FOR INSTALLATION"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "Logix PAC",
+      "CATALOG SERIES",
+      "1756-L61 B",
+      "CONTROLLOGIX 5651",
+      "PROCESSOR",
+      "PART NO",
+      "PN 15383",
+      "FW REV.",
+      "1.10",
+      "SERIAL NO",
+      "ST",
+      "PRODUCT OF U.S.A",
+      "2011/05/04",
+      "DATA SHEET FOR INSTALLATION"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CONTROLLOGIX 5651",
+      "catalogNumber": "1756-L61 B",
+      "equipmentType": "Processor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "CONTROLLOGIX 5651"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1756-L61 B"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Processor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 27,
+        "cropBbox": {
+          "left": 99,
+          "top": 189,
+          "width": 470,
+          "height": 224
+        },
+        "imageWidth": 600,
+        "imageHeight": 600,
+        "cropRotationDeg": 0,
+        "ms": 1066
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1301,
+    "total_ms": 4079
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CONTROLOGIX 5561 PROCESSOR",
+      "catalogNumber": "1756-L61 B",
+      "serialNumber": "1756-16178",
+      "equipmentType": "PROCESSOR",
+      "confidence": 0.95,
+      "rawText": [
+        "CONTROLOGIX 5561",
+        "PROCESSOR",
+        "Allen-Bradley",
+        "LOGIX PAC™",
+        "CATALOG SERIES",
+        "1756-L61 B",
+        "PART NO.",
+        "1756-16178",
+        "SERIAL NO",
+        "1756-16178",
+        "PRODUCT OF U.S.A."
+      ]
+    },
+    "rawText": [
+      "CONTROLOGIX 5561",
+      "PROCESSOR",
+      "Allen-Bradley",
+      "LOGIX PAC™",
+      "CATALOG SERIES",
+      "1756-L61 B",
+      "PART NO.",
+      "1756-16178",
+      "SERIAL NO",
+      "1756-16178",
+      "PRODUCT OF U.S.A."
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CONTROLOGIX 5561 PROCESSOR",
+      "catalogNumber": "1756-L61 B",
+      "equipmentType": "PROCESSOR",
+      "serialNumber": "1756-16178",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "CONTROLOGIX 5561 PROCESSOR"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1756-L61 B"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1756-16178"
+        },
+        {
+          "field": "equipmentType",
+          "value": "PROCESSOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2946
+  }
+}

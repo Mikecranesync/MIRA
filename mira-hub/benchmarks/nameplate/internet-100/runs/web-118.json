@@ -1,0 +1,178 @@
+{
+  "image": "c07r1_01.jpg",
+  "bytes": 86544,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "509-BOD",
+      "catalogNumber": "509-BOD",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "NEMA SIZE 1",
+        "CAT 509-BOD",
+        "Allen-Bradley",
+        "B",
+        "MAX. RTGS",
+        "P PH 3-5 POLE",
+        "115V",
+        "200V",
+        "230V",
+        "460-575V",
+        "1 PH",
+        "2 POLE",
+        "2 HP",
+        "3 HP",
+        "2 AMP MAX.",
+        "CONTINUOUS",
+        "800VAC MAX.",
+        "MADE IN U.S.A."
+      ]
+    },
+    "rawText": [
+      "NEMA SIZE 1",
+      "CAT 509-BOD",
+      "Allen-Bradley",
+      "B",
+      "MAX. RTGS",
+      "P PH 3-5 POLE",
+      "115V",
+      "200V",
+      "230V",
+      "460-575V",
+      "1 PH",
+      "2 POLE",
+      "2 HP",
+      "3 HP",
+      "2 AMP MAX.",
+      "CONTINUOUS",
+      "800VAC MAX.",
+      "MADE IN U.S.A."
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "509-BOD",
+      "catalogNumber": "509-BOD",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "460-575V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "509-BOD"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "509-BOD"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 24,
+        "cropBbox": {
+          "left": 11,
+          "top": 114,
+          "width": 789,
+          "height": 302
+        },
+        "imageWidth": 800,
+        "imageHeight": 444,
+        "cropRotationDeg": 0,
+        "ms": 1223
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1580,
+    "total_ms": 4801
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "509-BOD",
+      "catalogNumber": "509-BOD",
+      "serialNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "NEMA SIZE 1",
+        "CAT 509-BOD",
+        "Allen-Bradley",
+        "B",
+        "MAX. RTGS P PH 3-5 pole",
+        "1 PH 2 pole",
+        "2 HP",
+        "3 HP",
+        "115V 200V 230V 460-575V",
+        "27 AMP MAX. CONTINUOUS 800VAC MAX.",
+        "MADE IN U.S.A."
+      ]
+    },
+    "rawText": [
+      "NEMA SIZE 1",
+      "CAT 509-BOD",
+      "Allen-Bradley",
+      "B",
+      "MAX. RTGS P PH 3-5 pole",
+      "1 PH 2 pole",
+      "2 HP",
+      "3 HP",
+      "115V 200V 230V 460-575V",
+      "27 AMP MAX. CONTINUOUS 800VAC MAX.",
+      "MADE IN U.S.A."
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "509-BOD",
+      "catalogNumber": "509-BOD",
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": null,
+      "voltage": "460-575V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "509-BOD"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "509-BOD"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Circuit Breaker"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4766
+  }
+}

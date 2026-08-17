@@ -1,0 +1,170 @@
+{
+  "image": "c09r1_02.jpg",
+  "bytes": 99639,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BRISTOL",
+      "model": "H23A423ABCA",
+      "catalogNumber": null,
+      "serialNumber": "19597011199 -S",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "PART NO: 703911-06-0732",
+        "MADE IN USA",
+        "SERIAL NO: 19597011199 -S",
+        "MODEL NO: H23A423ABCA",
+        "COST. P/N B9266-298A",
+        "THERMALLY PROTECTED",
+        "V~ 230/208",
+        "HZ 60' PH 1",
+        "LRA 110",
+        "V~",
+        "HZ",
+        "PH",
+        "LRA",
+        "W/C 184"
+      ]
+    },
+    "rawText": [
+      "PART NO: 703911-06-0732",
+      "MADE IN USA",
+      "SERIAL NO: 19597011199 -S",
+      "MODEL NO: H23A423ABCA",
+      "COST. P/N B9266-298A",
+      "THERMALLY PROTECTED",
+      "V~ 230/208",
+      "HZ 60' PH 1",
+      "LRA 110",
+      "V~",
+      "HZ",
+      "PH",
+      "LRA",
+      "W/C 184"
+    ],
+    "values": {
+      "manufacturer": "BRISTOL",
+      "model": "H23A423ABCA",
+      "catalogNumber": "B9266-298A",
+      "equipmentType": null,
+      "serialNumber": "19597011199 -S",
+      "voltage": null,
+      "current": "298A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "H23A423ABCA"
+        },
+        {
+          "field": "serialNumber",
+          "value": "19597011199 -S"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 21,
+        "cropBbox": {
+          "left": 27,
+          "top": 78,
+          "width": 815,
+          "height": 429
+        },
+        "imageWidth": 900,
+        "imageHeight": 608,
+        "cropRotationDeg": 0,
+        "ms": 1594
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2022,
+    "total_ms": 5934
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BRISTOL",
+      "model": "H23A423ABCA",
+      "catalogNumber": null,
+      "serialNumber": "19597011199",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "PART NO. 703911-06-0732",
+        "MADE IN USA",
+        "SERIAL NO. 19597011199 -S",
+        "MODEL NO. H23A423ABCA",
+        "COST. P/N B9266-298A",
+        "BRISTOL",
+        "THERMALLY PROTECTED",
+        "V~ 230/208",
+        "HZ 60' PH 1",
+        "LRA 110",
+        "V~",
+        "HZ",
+        "PH",
+        "LRA"
+      ]
+    },
+    "rawText": [
+      "PART NO. 703911-06-0732",
+      "MADE IN USA",
+      "SERIAL NO. 19597011199 -S",
+      "MODEL NO. H23A423ABCA",
+      "COST. P/N B9266-298A",
+      "BRISTOL",
+      "THERMALLY PROTECTED",
+      "V~ 230/208",
+      "HZ 60' PH 1",
+      "LRA 110",
+      "V~",
+      "HZ",
+      "PH",
+      "LRA"
+    ],
+    "values": {
+      "manufacturer": "BRISTOL",
+      "model": "H23A423ABCA",
+      "catalogNumber": "B9266-298A",
+      "equipmentType": null,
+      "serialNumber": "19597011199",
+      "voltage": null,
+      "current": "298A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BRISTOL"
+        },
+        {
+          "field": "model",
+          "value": "H23A423ABCA"
+        },
+        {
+          "field": "serialNumber",
+          "value": "19597011199"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4298
+  }
+}

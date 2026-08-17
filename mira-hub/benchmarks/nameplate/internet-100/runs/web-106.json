@@ -1,0 +1,172 @@
+{
+  "image": "c09r1_07.jpg",
+  "bytes": 127614,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "INGERSOLL-RAND",
+      "model": "2545E10",
+      "catalogNumber": null,
+      "serialNumber": "On Compressor",
+      "equipmentType": "Air Compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "INGERSOLL-RAND",
+        "AIR COMPRESSORS",
+        "Model: 2545E10",
+        "Serial Number: On Compressor",
+        "HP: 10",
+        "Volts: 230/460 (prewired 230 volts at factory)",
+        "Amps: see motor nameplate",
+        "Phases: 3",
+        "Hertz: 60",
+        "35 CFM at 175 PSI",
+        "USE TIME DELAY FUSES MARKED D.",
+        "EMPLOTION FUSIBLES A UNE ACTION DIFFÉREE MARQUE D."
+      ]
+    },
+    "rawText": [
+      "INGERSOLL-RAND",
+      "AIR COMPRESSORS",
+      "Model: 2545E10",
+      "Serial Number: On Compressor",
+      "HP: 10",
+      "Volts: 230/460 (prewired 230 volts at factory)",
+      "Amps: see motor nameplate",
+      "Phases: 3",
+      "Hertz: 60",
+      "35 CFM at 175 PSI",
+      "USE TIME DELAY FUSES MARKED D.",
+      "EMPLOTION FUSIBLES A UNE ACTION DIFFÉREE MARQUE D."
+    ],
+    "values": {
+      "manufacturer": "INGERSOLL-RAND",
+      "model": "2545E10",
+      "catalogNumber": null,
+      "equipmentType": "Air Compressor",
+      "serialNumber": "On Compressor",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "INGERSOLL-RAND"
+        },
+        {
+          "field": "model",
+          "value": "2545E10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "On Compressor"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Air Compressor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 47,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1000,
+          "height": 750
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 1923
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2481,
+    "total_ms": 8911
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "INGERSOLL-RAND",
+      "model": "2545E10",
+      "catalogNumber": null,
+      "serialNumber": "On Compressor",
+      "equipmentType": "Air Compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "INGERSOLL-RAND®",
+        "AIR COMPRESSORS",
+        "Model: 2545E10",
+        "Serial Number: On Compressor",
+        "HP: 10",
+        "Volts: 230/460 (prewired 230 volts at factory)",
+        "Amps: see motor nameplate",
+        "Phases: 3",
+        "Hertz: 60",
+        "35 CFM at 175 PSI",
+        "USE TIME DELAY FUSES MARKED D.",
+        "EMPLOIT FUSIBLES A UNE ACTION DIFFÉREE MARQUE D."
+      ]
+    },
+    "rawText": [
+      "INGERSOLL-RAND®",
+      "AIR COMPRESSORS",
+      "Model: 2545E10",
+      "Serial Number: On Compressor",
+      "HP: 10",
+      "Volts: 230/460 (prewired 230 volts at factory)",
+      "Amps: see motor nameplate",
+      "Phases: 3",
+      "Hertz: 60",
+      "35 CFM at 175 PSI",
+      "USE TIME DELAY FUSES MARKED D.",
+      "EMPLOIT FUSIBLES A UNE ACTION DIFFÉREE MARQUE D."
+    ],
+    "values": {
+      "manufacturer": "INGERSOLL-RAND",
+      "model": "2545E10",
+      "catalogNumber": null,
+      "equipmentType": "Air Compressor",
+      "serialNumber": "On Compressor",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "INGERSOLL-RAND"
+        },
+        {
+          "field": "model",
+          "value": "2545E10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "On Compressor"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Air Compressor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3779
+  }
+}

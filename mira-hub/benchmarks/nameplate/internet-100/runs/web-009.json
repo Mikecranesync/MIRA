@@ -1,0 +1,256 @@
+{
+  "image": "c01r1_01.jpg",
+  "bytes": 118393,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BALDOR-RELIANCE",
+      "model": "Super-E Motor",
+      "catalogNumber": "EM3546T",
+      "serialNumber": null,
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR-RELIANCE",
+        "Super-E Motor",
+        "BALDOR ELECTRIC CO.",
+        "CAT. NO.",
+        "EM3546T",
+        "SPEC.",
+        "35AA001M492G1",
+        "HP",
+        "1",
+        "VOLTS",
+        "208-230/460",
+        "AMPS",
+        "3.1-3/1.5",
+        "R.P.M.",
+        "1760",
+        "FRAME",
+        "143T",
+        "HZ",
+        "60",
+        "PH",
+        "3",
+        "SER. F.",
+        "1.15",
+        "CODE",
+        "L",
+        "DES",
+        "B",
+        "CLASS",
+        "F",
+        "NEMA NOM. EFF.",
+        "85.5",
+        "%",
+        "P.F.",
+        "71",
+        "RATING",
+        "40C AMB-CONT",
+        "CC",
+        "010A",
+        "USABLE AT 208V 3.1",
+        "BEARINGS"
+      ]
+    },
+    "rawText": [
+      "BALDOR-RELIANCE",
+      "Super-E Motor",
+      "BALDOR ELECTRIC CO.",
+      "CAT. NO.",
+      "EM3546T",
+      "SPEC.",
+      "35AA001M492G1",
+      "HP",
+      "1",
+      "VOLTS",
+      "208-230/460",
+      "AMPS",
+      "3.1-3/1.5",
+      "R.P.M.",
+      "1760",
+      "FRAME",
+      "143T",
+      "HZ",
+      "60",
+      "PH",
+      "3",
+      "SER. F.",
+      "1.15",
+      "CODE",
+      "L",
+      "DES",
+      "B",
+      "CLASS",
+      "F",
+      "NEMA NOM. EFF.",
+      "85.5",
+      "%",
+      "P.F.",
+      "71",
+      "RATING",
+      "40C AMB-CONT",
+      "CC",
+      "010A",
+      "USABLE AT 208V 3.1",
+      "BEARINGS"
+    ],
+    "values": {
+      "manufacturer": "BALDOR-RELIANCE",
+      "model": "Super-E Motor",
+      "catalogNumber": "EM3546T",
+      "equipmentType": "Motor",
+      "serialNumber": null,
+      "voltage": "208V",
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR-RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "Super-E Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EM3546T"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 47,
+        "cropBbox": {
+          "left": 66,
+          "top": 31,
+          "width": 754,
+          "height": 641
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2192
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3554,
+    "total_ms": 9012
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BALDOR-RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EM3546T",
+      "serialNumber": null,
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR-RELIANCE",
+        "SuperE Motor",
+        "BALDOR ELECTRIC CO.",
+        "FT:SMITH, AR. MFG. IN U.S.A.",
+        "CAT. NO. EM3546T",
+        "SPEC. 35AA001M492G1",
+        "1",
+        "HP",
+        "208-230/460",
+        "VOLTS",
+        "3.1-3/1.5",
+        "AMPS",
+        "1760",
+        "R.P.M.",
+        "1760",
+        "HZ 60",
+        "PH 3",
+        "FRAME 143T",
+        "CODE L DES B CLASS F",
+        "SER. F. 1.15",
+        "NEMA nom. eff. 85.5",
+        "P.F. 71",
+        "40C AMB-CONT",
+        "CC 010A",
+        "BEARINGS 6205",
+        "ENCL SN F11201182"
+      ]
+    },
+    "rawText": [
+      "BALDOR-RELIANCE",
+      "SuperE Motor",
+      "BALDOR ELECTRIC CO.",
+      "FT:SMITH, AR. MFG. IN U.S.A.",
+      "CAT. NO. EM3546T",
+      "SPEC. 35AA001M492G1",
+      "1",
+      "HP",
+      "208-230/460",
+      "VOLTS",
+      "3.1-3/1.5",
+      "AMPS",
+      "1760",
+      "R.P.M.",
+      "1760",
+      "HZ 60",
+      "PH 3",
+      "FRAME 143T",
+      "CODE L DES B CLASS F",
+      "SER. F. 1.15",
+      "NEMA nom. eff. 85.5",
+      "P.F. 71",
+      "40C AMB-CONT",
+      "CC 010A",
+      "BEARINGS 6205",
+      "ENCL SN F11201182"
+    ],
+    "values": {
+      "manufacturer": "BALDOR-RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EM3546T",
+      "equipmentType": "Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR-RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperE Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EM3546T"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4525
+  }
+}

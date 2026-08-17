@@ -1,0 +1,37 @@
+{
+  "sample_id": "web-079",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "faded", "scratched", "dense_table", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Westinghouse",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "power transformer",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "230000 GRD.Y-15000 VOLTS", "unit": "V", "confidence": "medium"},
+      {"field": "frequency", "value_verbatim": "60 CYCLES", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "THREE PHASE", "unit": "", "confidence": "high"},
+      {"field": "cooling_class", "value_verbatim": "CLASS FOA", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "INSULDUR INSULATION", "unit": "", "confidence": "high"},
+      {"field": "capacity_55c", "value_verbatim": "300000 KVA-55°C. AVG. RISE", "unit": "kVA", "confidence": "high"},
+      {"field": "capacity_65c", "value_verbatim": "336000 KVA-65°C. AVG. RISE", "unit": "kVA", "confidence": "high"},
+      {"field": "impedance", "value_verbatim": "11.8 %", "unit": "%", "confidence": "low"},
+      {"field": "temperature_rating", "value_verbatim": "AT 55°C RATING", "unit": "°C", "confidence": "high"},
+      {"field": "spec_number", "value_verbatim": "SPEC.IM-1004-08", "unit": "", "confidence": "medium"},
+      {"field": "instruction_book", "value_verbatim": "I-M-1004-12", "unit": "", "confidence": "medium"},
+      {"field": "schematic_wiring_diagram", "value_verbatim": "IM-1004-04", "unit": "", "confidence": "medium"},
+      {"field": "physical_wiring_diagram", "value_verbatim": "I-M-1004-05", "unit": "", "confidence": "medium"},
+      {"field": "impulse_test_level", "value_verbatim": "H.V. 825 KV., L.V. 110 KV., H.V. NEUT. 110 KV.", "unit": "kV", "confidence": "medium"},
+      {"field": "hv_tap_volts", "value_verbatim": "241500 / 235750 / 230000 / 224250 / 218500", "unit": "V", "confidence": "medium"},
+      {"field": "hv_tap_amperes", "value_verbatim": "717 / 735 / 753 / 772 / 793", "unit": "A", "confidence": "medium"},
+      {"field": "lv_volts", "value_verbatim": "15000", "unit": "V", "confidence": "high"},
+      {"field": "lv_amperes", "value_verbatim": "11547", "unit": "A", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

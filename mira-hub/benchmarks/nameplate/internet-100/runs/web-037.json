@@ -1,0 +1,140 @@
+{
+  "image": "c08r1_10.jpg",
+  "bytes": 296848,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Parker",
+      "model": "19124MXS",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Pneumatic",
+      "confidence": 0.95,
+      "rawText": [
+        "19124MXS",
+        "Parker",
+        "Pneumatic",
+        "p Max = 10 bar",
+        "t = -10C +55C",
+        "40/98"
+      ]
+    },
+    "rawText": [
+      "19124MXS",
+      "Parker",
+      "Pneumatic",
+      "p Max = 10 bar",
+      "t = -10C +55C",
+      "40/98"
+    ],
+    "values": {
+      "manufacturer": "Parker",
+      "model": "19124MXS",
+      "catalogNumber": null,
+      "equipmentType": "Pneumatic",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Parker"
+        },
+        {
+          "field": "model",
+          "value": "19124MXS"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Pneumatic"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 8,
+        "cropBbox": {
+          "left": 0,
+          "top": 627,
+          "width": 1971,
+          "height": 433
+        },
+        "imageWidth": 2048,
+        "imageHeight": 1536,
+        "cropRotationDeg": 0,
+        "ms": 2280
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6724,
+    "total_ms": 8595
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Parker",
+      "model": "19124MXS",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Pneumatic",
+      "confidence": 0.95,
+      "rawText": [
+        "Parker",
+        "19124MXS",
+        "t=-10C +55C",
+        "p Max = 10 bar",
+        "40/98",
+        "Pneumatic"
+      ]
+    },
+    "rawText": [
+      "Parker",
+      "19124MXS",
+      "t=-10C +55C",
+      "p Max = 10 bar",
+      "40/98",
+      "Pneumatic"
+    ],
+    "values": {
+      "manufacturer": "Parker",
+      "model": "19124MXS",
+      "catalogNumber": null,
+      "equipmentType": "Pneumatic",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Parker"
+        },
+        {
+          "field": "model",
+          "value": "19124MXS"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Pneumatic"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1718
+  }
+}

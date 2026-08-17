@@ -1,0 +1,278 @@
+{
+  "image": "c05r1_04.jpg",
+  "bytes": 251890,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "NORD",
+      "model": "112MH",
+      "catalogNumber": null,
+      "serialNumber": "P086537488 00",
+      "equipmentType": "gear motor",
+      "confidence": 0.95,
+      "rawText": [
+        "www.nord.com",
+        "RU E 191510",
+        "SP US LR 112560",
+        "CSA E",
+        "CE",
+        "Mtr 112MH",
+        "No. P086537488 00",
+        "PH-S",
+        "SF 1.15",
+        "NEMA",
+        "DUTY CONT",
+        "IP 55",
+        "INS F",
+        "EFF",
+        "% PF",
+        "0.74",
+        "FR 112",
+        "AMB 40 °C",
+        "ENCL TEFC",
+        "DP CODE",
+        "5.00",
+        "Hp",
+        "2.79",
+        "kW",
+        "1770 rpm",
+        "50 Hz",
+        "rpm",
+        "3 Hz",
+        "230/460 V",
+        "V",
+        "rpm",
+        "V",
+        "14.47 20 A",
+        "A",
+        "A",
+        "Brake",
+        "Nm",
+        "VAC",
+        "VDC"
+      ]
+    },
+    "rawText": [
+      "www.nord.com",
+      "RU E 191510",
+      "SP US LR 112560",
+      "CSA E",
+      "CE",
+      "Mtr 112MH",
+      "No. P086537488 00",
+      "PH-S",
+      "SF 1.15",
+      "NEMA",
+      "DUTY CONT",
+      "IP 55",
+      "INS F",
+      "EFF",
+      "% PF",
+      "0.74",
+      "FR 112",
+      "AMB 40 °C",
+      "ENCL TEFC",
+      "DP CODE",
+      "5.00",
+      "Hp",
+      "2.79",
+      "kW",
+      "1770 rpm",
+      "50 Hz",
+      "rpm",
+      "3 Hz",
+      "230/460 V",
+      "V",
+      "rpm",
+      "V",
+      "14.47 20 A",
+      "A",
+      "A",
+      "Brake",
+      "Nm",
+      "VAC",
+      "VDC"
+    ],
+    "values": {
+      "manufacturer": "NORD",
+      "model": "112MH",
+      "catalogNumber": null,
+      "equipmentType": "gear motor",
+      "serialNumber": "P086537488 00",
+      "voltage": "460V",
+      "current": "20A",
+      "resolution": null,
+      "ambient": "Amb.40°C",
+      "insulation": null,
+      "marks": "CE, CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NORD"
+        },
+        {
+          "field": "model",
+          "value": "112MH"
+        },
+        {
+          "field": "serialNumber",
+          "value": "P086537488 00"
+        },
+        {
+          "field": "equipmentType",
+          "value": "gear motor"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 48,
+        "cropBbox": {
+          "left": 127,
+          "top": 442,
+          "width": 1035,
+          "height": 690
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2770
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3537,
+    "total_ms": 8429
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NORD",
+      "model": "Mtr 42MH",
+      "catalogNumber": "900637488 00",
+      "serialNumber": null,
+      "equipmentType": "Mtr",
+      "confidence": 0.95,
+      "rawText": [
+        "www.nord.com",
+        "R",
+        "E 191510",
+        "LR 112560",
+        "CE",
+        "Mtr 42MH",
+        "No. 900637488 00",
+        "PH 5",
+        "SF 1.13",
+        "NEMA",
+        "DUTY",
+        "EFF",
+        "% PF",
+        "FR",
+        "INS",
+        "EFF",
+        "0.74",
+        "kW",
+        "AMB 40 °C",
+        "ENCL IP55",
+        "DP CODE",
+        "5.00",
+        "Hp",
+        "2.79",
+        "1770 rpm",
+        "Hz",
+        "rpm",
+        "230/480 V",
+        "V",
+        "14.67/29",
+        "A",
+        "A",
+        "Brake",
+        "Nm",
+        "VAC",
+        "VDC"
+      ]
+    },
+    "rawText": [
+      "www.nord.com",
+      "R",
+      "E 191510",
+      "LR 112560",
+      "CE",
+      "Mtr 42MH",
+      "No. 900637488 00",
+      "PH 5",
+      "SF 1.13",
+      "NEMA",
+      "DUTY",
+      "EFF",
+      "% PF",
+      "FR",
+      "INS",
+      "EFF",
+      "0.74",
+      "kW",
+      "AMB 40 °C",
+      "ENCL IP55",
+      "DP CODE",
+      "5.00",
+      "Hp",
+      "2.79",
+      "1770 rpm",
+      "Hz",
+      "rpm",
+      "230/480 V",
+      "V",
+      "14.67/29",
+      "A",
+      "A",
+      "Brake",
+      "Nm",
+      "VAC",
+      "VDC"
+    ],
+    "values": {
+      "manufacturer": "NORD",
+      "model": "Mtr 42MH",
+      "catalogNumber": "900637488 00",
+      "equipmentType": "Mtr",
+      "serialNumber": null,
+      "voltage": "480V",
+      "current": null,
+      "resolution": null,
+      "ambient": "Amb.40°C",
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NORD"
+        },
+        {
+          "field": "model",
+          "value": "Mtr 42MH"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "900637488 00"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Mtr"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5226
+  }
+}

@@ -28,6 +28,7 @@ import pathlib
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
@@ -233,20 +234,28 @@ def _resp(status_code: int, content_type: str = "", content: bytes = b""):
 
 
 @pytest.mark.asyncio
-async def test_validate_pdf_true_on_head_content_type():
-    ctx = _fake_async_client(head_response=_resp(200, "application/pdf"))
-    with patch.object(search_mod.httpx, "AsyncClient", return_value=ctx):
-        assert await search_mod.validate_pdf("https://example.com/x.pdf") is True
+async def test_validate_pdf_true_on_head_content_type(monkeypatch):
+    monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+
+    def handler(request):
+        assert request.method == "HEAD"
+        return httpx.Response(200, headers={"content-type": "application/pdf"})
+
+    monkeypatch.setattr(search_mod, "_transport_for_tests", httpx.MockTransport(handler))
+    assert await search_mod.validate_pdf("https://good.example/x.pdf") is True
 
 
 @pytest.mark.asyncio
-async def test_validate_pdf_falls_back_to_magic_bytes_when_head_lacks_content_type():
-    ctx = _fake_async_client(
-        head_response=_resp(200, ""),  # no content-type on HEAD
-        get_response=_resp(206, "", b"%PDF-1.4"),
-    )
-    with patch.object(search_mod.httpx, "AsyncClient", return_value=ctx):
-        assert await search_mod.validate_pdf("https://example.com/x") is True
+async def test_validate_pdf_falls_back_to_magic_bytes_when_head_lacks_content_type(monkeypatch):
+    monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+
+    def handler(request):
+        if request.method == "HEAD":
+            return httpx.Response(200, headers={"content-type": ""})
+        return httpx.Response(206, content=b"%PDF-1.4", headers={"content-type": ""})
+
+    monkeypatch.setattr(search_mod, "_transport_for_tests", httpx.MockTransport(handler))
+    assert await search_mod.validate_pdf("https://good.example/x") is True
 
 
 @pytest.mark.asyncio
@@ -357,3 +366,110 @@ async def test_record_manual_discovery_combines_both_bridges(tmp_path, monkeypat
     assert result["manual_cache_written"] is False  # no DB configured
     assert result["manual_queue_json_appended"] is True
     assert json.loads(queue_path.read_text())[0]["manufacturer"] == "Rockwell Automation"
+
+
+# ── SSRF guard (Codex P1, 2026-08-16) ────────────────────────────────────────
+#
+# validate_pdf probes attacker-influenceable URLs (search-engine results) from
+# inside the production network. These tests pin: scheme allowlist, direct
+# private/metadata IPv4+IPv6 rejection, per-HOP redirect re-validation (the
+# private hop is never even requested), and the happy path. DNS is
+# deterministic via a patched socket.getaddrinfo; HTTP via httpx.MockTransport.
+
+import httpx as _httpx
+
+_FAKE_DNS = {
+    "good.example": "93.184.216.34",     # public
+    "evil-internal.example": "10.0.0.8", # private
+    "evil-loop.example": "127.0.0.1",
+    "evil-cgnat.example": "100.64.0.1",  # CGNAT via DNS    # loopback
+}
+
+
+def _fake_getaddrinfo(host, port, *args, **kwargs):
+    ip = _FAKE_DNS.get(host, host)  # literal IPs pass through
+    family = 10 if ":" in ip else 2
+    return [(family, 1, 6, "", (ip, port or 80))]
+
+
+class TestSsrfGuardDirect:
+    def test_blocks_private_loopback_linklocal_and_schemes(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+        blocked = [
+            "http://127.0.0.1/x",
+            "http://10.0.0.8/manual.pdf",
+            "http://192.168.4.1/m.pdf",
+            "http://169.254.169.254/latest/meta-data/",  # cloud metadata
+            "http://100.64.0.1/x",                       # CGNAT (Codex-reproduced bypass)
+            "http://100.127.255.254/x",                  # CGNAT upper edge
+            "http://[::1]/x",
+            "http://[fe80::1]/x",
+            "http://[::ffff:127.0.0.1]/x",               # v4-mapped loopback
+            "http://[::ffff:100.64.0.1]/x",              # v4-mapped CGNAT
+            "file:///etc/passwd",
+            "gopher://good.example/x",
+            "http://evil-internal.example/m.pdf",        # private via DNS
+            "http://evil-loop.example/m.pdf",            # loopback via DNS
+        ]
+        for url in blocked:
+            assert search_mod._url_is_probeable(url) is False, url
+
+    def test_allows_public_hosts(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+        assert search_mod._url_is_probeable("https://good.example/manual.pdf") is True
+        assert search_mod._url_is_probeable("http://93.184.216.34/manual.pdf") is True
+
+
+class TestValidatePdfSsrf:
+    @pytest.mark.asyncio
+    async def test_redirect_to_private_hop_blocked_before_request(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+        seen: list[str] = []
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            seen.append(str(request.url))
+            if request.url.host == "good.example":
+                return _httpx.Response(302, headers={"location": "http://169.254.169.254/latest/meta-data/"})
+            return _httpx.Response(200, headers={"content-type": "application/pdf"})
+
+        monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
+        ok = await search_mod.validate_pdf("https://good.example/manual.pdf")
+        assert ok is False
+        # The private hop must never reach the transport — blocked pre-request.
+        assert all("169.254.169.254" not in u for u in seen)
+
+    @pytest.mark.asyncio
+    async def test_redirect_to_ipv6_loopback_blocked(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+        seen: list[str] = []
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            seen.append(str(request.url))
+            return _httpx.Response(302, headers={"location": "http://[::1]/admin"})
+
+        monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
+        assert await search_mod.validate_pdf("https://good.example/m.pdf") is False
+        assert all("::1" not in u for u in seen)
+
+    @pytest.mark.asyncio
+    async def test_public_pdf_still_validates(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            return _httpx.Response(200, headers={"content-type": "application/pdf"})
+
+        monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
+        assert await search_mod.validate_pdf("https://good.example/manual.pdf") is True
+
+    @pytest.mark.asyncio
+    async def test_redirect_budget_bounded(self, monkeypatch):
+        monkeypatch.setattr(search_mod.socket, "getaddrinfo", _fake_getaddrinfo)
+        n = {"count": 0}
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            n["count"] += 1
+            return _httpx.Response(302, headers={"location": f"https://good.example/hop{n['count']}"})
+
+        monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
+        assert await search_mod.validate_pdf("https://good.example/m.pdf") is False
+        assert n["count"] <= (search_mod._MAX_REDIRECT_HOPS + 1) * 2  # HEAD loop + GET loop

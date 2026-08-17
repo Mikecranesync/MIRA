@@ -1,0 +1,1780 @@
+{
+  "ranAt": "2026-08-16T00:07:21.867Z",
+  "model": "google/gemma-3n-E4B-it",
+  "source": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+  "sourceInfo": {
+    "format": "jpeg",
+    "width": 3000,
+    "height": 4000,
+    "exifOrientation": 1,
+    "megapixels": 12,
+    "bytes": 2861578
+  },
+  "uprightRotationDeg": 270,
+  "rects": {
+    "label": {
+      "left": 1050,
+      "top": 150,
+      "width": 1550,
+      "height": 2750
+    },
+    "spec": {
+      "left": 1300,
+      "top": 2000,
+      "width": 1150,
+      "height": 560
+    }
+  },
+  "rectCoordinateSpace": "image rotated 270deg clockwise (4000x3000)",
+  "reps": 3,
+  "results": [
+    {
+      "config": "E1_spec_1x_sideways",
+      "reader": "shipped",
+      "describe": "CONTROL: the same spec block, cropped but NOT uprighted. Isolates tightness from rotation.",
+      "image": {
+        "bytes": 147052,
+        "kb": 143.60546875,
+        "width": 560,
+        "height": 1150,
+        "recipe": {
+          "source": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+          "rotateDeg": 0,
+          "cropRectInRotatedSpace": {
+            "left": 440,
+            "top": 1300,
+            "width": 560,
+            "height": 1150
+          },
+          "upscale": 1,
+          "fitWithin": null,
+          "grayscale": false,
+          "normalize": false,
+          "jpegQuality": 95
+        }
+      },
+      "reps": [
+        {
+          "rep": 0,
+          "ok": true,
+          "ms": 2588,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "0S81119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "UL, CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E1_spec_1x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "0S81119701",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 4,
+              "total": 6,
+              "pct": 66.7
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "0S81119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "0S81119701",
+                "UL",
+                "UK",
+                "CE",
+                "CA"
+              ]
+            }
+          }
+        },
+        {
+          "rep": 1,
+          "ok": true,
+          "ms": 2221,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "0S81119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E1_spec_1x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "0S81119701",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 4,
+              "total": 6,
+              "pct": 66.7
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "0S81119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "0S81119701",
+                "PL",
+                "UK",
+                "CE",
+                "CA"
+              ]
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "ok": true,
+          "ms": 2368,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "QS8 1119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "UL, CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E1_spec_1x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "QS8 1119701",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "QS8 1119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "QS8 1119701",
+                "MOTOR CO. LTD",
+                "JAPAN",
+                "UL",
+                "202306",
+                "CE",
+                "UK"
+              ]
+            }
+          }
+        }
+      ],
+      "exactByField": {
+        "current": 3,
+        "voltage": 3,
+        "resolution": 0,
+        "ambient": 3,
+        "insulation": 3,
+        "catalogNumber": 3,
+        "serialNumber": 1,
+        "model": 0,
+        "manufacturer": 0,
+        "equipmentType": 0,
+        "marks": 0
+      },
+      "currentVerbatim": [
+        "1.27A",
+        "1.27A",
+        "1.27A"
+      ],
+      "hallucinationsPerRep": [
+        0,
+        0,
+        0
+      ],
+      "hallucinatedValues": [],
+      "meanMs": 2392.3333333333335,
+      "callsTotal": 3
+    },
+    {
+      "config": "E2_spec_2x_sideways",
+      "reader": "shipped",
+      "describe": "CONTROL: C2's 2x upscale, but left lying on its side.",
+      "image": {
+        "bytes": 394573,
+        "kb": 385.3251953125,
+        "width": 1120,
+        "height": 2300,
+        "recipe": {
+          "source": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+          "rotateDeg": 0,
+          "cropRectInRotatedSpace": {
+            "left": 440,
+            "top": 1300,
+            "width": 560,
+            "height": 1150
+          },
+          "upscale": 2,
+          "fitWithin": null,
+          "grayscale": false,
+          "normalize": false,
+          "jpegQuality": 95
+        }
+      },
+      "reps": [
+        {
+          "rep": 0,
+          "ok": true,
+          "ms": 2860,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "QS81119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "UL, CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E2_spec_2x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "QS81119701",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "QS81119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "QS81119701",
+                "MOTOR CO. LTD",
+                "JAPAN",
+                "UL",
+                "CE",
+                "UK"
+              ]
+            }
+          }
+        },
+        {
+          "rep": 1,
+          "ok": true,
+          "ms": 2567,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "QS81119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "UL, CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E2_spec_2x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "QS81119701",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "QS81119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "QS81119701",
+                "MOTOR CO. LTD",
+                "JAPAN",
+                "UL",
+                "202306",
+                "CE",
+                "UK"
+              ]
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "ok": true,
+          "ms": 2453,
+          "calls": 1,
+          "values": {
+            "manufacturer": "TE",
+            "model": "AZM911AC-D",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "Motor",
+            "serialNumber": "QS81119701",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "UL, CE"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "E2_spec_2x_sideways",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "TE",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "AZM911AC-D",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Motor",
+                "verdict": "wrong",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": "QS81119701",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 1,
+              "total": 4,
+              "pct": 25
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "candidate": {
+              "manufacturer": "TE",
+              "model": "AZM911AC-D",
+              "catalogNumber": null,
+              "serialNumber": "QS81119701",
+              "equipmentType": "Motor",
+              "confidence": 0.95,
+              "rawText": [
+                "Motor P/N AZM911AC-D",
+                "3.87VDC",
+                "1.27A",
+                "0.01°STEP",
+                "INS. Class A",
+                "Amb. 40°C",
+                "QS81119701",
+                "MOTOR CO. LTD",
+                "JAPAN",
+                "UL",
+                "202306",
+                "CE",
+                "UK"
+              ]
+            }
+          }
+        }
+      ],
+      "exactByField": {
+        "current": 3,
+        "voltage": 3,
+        "resolution": 0,
+        "ambient": 3,
+        "insulation": 3,
+        "catalogNumber": 3,
+        "serialNumber": 3,
+        "model": 0,
+        "manufacturer": 0,
+        "equipmentType": 0,
+        "marks": 0
+      },
+      "currentVerbatim": [
+        "1.27A",
+        "1.27A",
+        "1.27A"
+      ],
+      "hallucinationsPerRep": [
+        0,
+        0,
+        0
+      ],
+      "hallucinatedValues": [],
+      "meanMs": 2626.6666666666665,
+      "callsTotal": 3
+    },
+    {
+      "config": "F_label_1x__full2",
+      "reader": "full2",
+      "describe": "CANDIDATE: the whole label crop through semantic+OCR (2 calls) — identity AND digits.",
+      "image": {
+        "bytes": 1116464,
+        "kb": 1090.296875,
+        "width": 1550,
+        "height": 2750,
+        "recipe": {
+          "source": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+          "rotateDeg": 270,
+          "cropRectInRotatedSpace": {
+            "left": 1050,
+            "top": 150,
+            "width": 1550,
+            "height": 2750
+          },
+          "upscale": 1,
+          "fitWithin": null,
+          "grayscale": false,
+          "normalize": false,
+          "jpegQuality": 95
+        }
+      },
+      "reps": [
+        {
+          "rep": 0,
+          "ok": true,
+          "ms": 4623,
+          "calls": 2,
+          "values": {
+            "manufacturer": "Orientalmotor",
+            "model": "DGM200R-AZAC",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "HOLLOW ROTARY ACTUATOR",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": "0.01°/STEP",
+            "serialNumber": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "CE, UKCA"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "F_label_1x__full2",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "Orientalmotor",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "DGM200R-AZAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "HOLLOW ROTARY ACTUATOR",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": "0.01°/STEP",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 4,
+              "total": 4,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "CE, UKCA"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "ocrLines": [
+              "MODEL",
+              "DGM200R-AZAC",
+              "Orientalmotor",
+              "HOLLOW",
+              "ROTARY",
+              "ACTUATOR",
+              "Motor P/N AZM911AC-D",
+              "3.87VDC",
+              "1.27A",
+              "INS.Class A",
+              "TE",
+              "0.01°/STEP",
+              "Amb.-40°C",
+              "QSB 1119701",
+              "ORIENTAL MOTOR CO., LTD",
+              "TOKYO 110-8536 JAPAN",
+              "MADE IN JAPAN",
+              "CE UK CA",
+              "2023/05",
+              "HOLLOW ROTARY ACTUATOR",
+              "0.01\"/STEP",
+              "Amb.+40°C",
+              "QSB 119701",
+              "CE",
+              "UK",
+              "CA",
+              "UL",
+              "RoHS"
+            ],
+            "errors": [],
+            "passes": [
+              {
+                "name": "ocr",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-D\",\n\"3.87VDC\",\n\"1.27A\",\n\"INS.Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.-40°C\",\n\"QSB 1119701\",\n\"ORIENTAL MOTOR CO., LTD\",\n\"TOKYO 110-8536 JAPAN\",\n\"MADE IN JAPAN\",\n\"CE UK CA\",\n\"2023/05\"\n]}",
+                "parsed": {
+                  "lines": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW",
+                    "ROTARY",
+                    "ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "INS.Class A",
+                    "TE",
+                    "0.01°/STEP",
+                    "Amb.-40°C",
+                    "QSB 1119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN",
+                    "CE UK CA",
+                    "2023/05"
+                  ]
+                },
+                "ms": 3167
+              },
+              {
+                "name": "semantic",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATOR\", \"voltage\": \"3.87VDC\", \"current\": \"1.27A\", \"resolution\": \"0.01\\\"/STEP\", \"ambient\": \"40°C\", \"insulation\": \"Ins.Class A\", \"marks\": [\"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"], \"confidence\": 0.95, \"rawText\": [\"MODEL\", \"DGM200R-AZAC\", \"Orientalmotor\", \"HOLLOW ROTARY ACTUATOR\", \"Motor P/N AZM911AC-D\", \"3.87VDC\", \"1.27A\", \"0.01\\\"/STEP\", \"INS.Class A\", \"Amb.+40°C\", \"TE\", \"QSB 119701\", \"ORIENTAL MOTOR CO., LTD\", \"TOKYO 110-8536 JAPAN\", \"MADE IN JAPAN\", \"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"]}",
+                "parsed": {
+                  "manufacturer": "Orientalmotor",
+                  "model": "DGM200R-AZAC",
+                  "catalogNumber": null,
+                  "serialNumber": null,
+                  "equipmentType": "HOLLOW ROTARY ACTUATOR",
+                  "voltage": "3.87VDC",
+                  "current": "1.27A",
+                  "resolution": "0.01\"/STEP",
+                  "ambient": "40°C",
+                  "insulation": "Ins.Class A",
+                  "marks": [
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ],
+                  "confidence": 0.95,
+                  "rawText": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW ROTARY ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "0.01\"/STEP",
+                    "INS.Class A",
+                    "Amb.+40°C",
+                    "TE",
+                    "QSB 119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN",
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ]
+                },
+                "ms": 4616
+              }
+            ]
+          }
+        },
+        {
+          "rep": 1,
+          "ok": true,
+          "ms": 4433,
+          "calls": 2,
+          "values": {
+            "manufacturer": "Orientalmotor",
+            "model": "DGM200R-AZAC",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "HOLLOW ROTARY ACTUATOR",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": "0.01°/STEP",
+            "serialNumber": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "CE, UKCA"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "F_label_1x__full2",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "Orientalmotor",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "DGM200R-AZAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "HOLLOW ROTARY ACTUATOR",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": "0.01°/STEP",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 4,
+              "total": 4,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "CE, UKCA"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "ocrLines": [
+              "MODEL",
+              "DGM200R-AZAC",
+              "Orientalmotor",
+              "HOLLOW",
+              "ROTARY",
+              "ACTUATOR",
+              "Motor P/N AZM911AC-D",
+              "3.87VDC",
+              "1.27A",
+              "INS.Class A",
+              "TE",
+              "0.01°/STEP",
+              "Amb.-40°C",
+              "QSB 119701",
+              "ORIENTAL MOTOR CO., LTD",
+              "TOKYO 110-8536 JAPAN",
+              "MADE IN JAPAN",
+              "CE UK CA",
+              "cUL",
+              "2023/05",
+              "HOLLOW ROTARY ACTUATOR",
+              "0.01\"/STEP",
+              "40°C",
+              "CE",
+              "UK",
+              "CA",
+              "UL",
+              "RoHS"
+            ],
+            "errors": [],
+            "passes": [
+              {
+                "name": "ocr",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-D\",\n\"3.87VDC\",\n\"1.27A\",\n\"INS.Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.-40°C\",\n\"QSB 119701\",\n\"ORIENTAL MOTOR CO., LTD\",\n\"TOKYO 110-8536 JAPAN\",\n\"MADE IN JAPAN\",\n\"CE UK CA\",\n\"cUL\",\n\"2023/05\"\n]}",
+                "parsed": {
+                  "lines": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW",
+                    "ROTARY",
+                    "ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "INS.Class A",
+                    "TE",
+                    "0.01°/STEP",
+                    "Amb.-40°C",
+                    "QSB 119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN",
+                    "CE UK CA",
+                    "cUL",
+                    "2023/05"
+                  ]
+                },
+                "ms": 3209
+              },
+              {
+                "name": "semantic",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATOR\", \"voltage\": \"3.87VDC\", \"current\": \"1.27A\", \"resolution\": \"0.01\\\"/STEP\", \"ambient\": \"40°C\", \"insulation\": \"Ins.Class A\", \"marks\": [\"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"], \"confidence\": 0.95, \"rawText\": [\"MODEL\", \"DGM200R-AZAC\", \"Orientalmotor\", \"HOLLOW ROTARY ACTUATOR\", \"Motor P/N AZM911AC-D\", \"3.87VDC\", \"1.27A\", \"0.01\\\"/STEP\", \"INS.Class A\", \"40°C\", \"TE\", \"QSB 119701\", \"ORIENTAL MOTOR CO., LTD\", \"TOKYO 110-8536 JAPAN\", \"MADE IN JAPAN\", \"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"]}",
+                "parsed": {
+                  "manufacturer": "Orientalmotor",
+                  "model": "DGM200R-AZAC",
+                  "catalogNumber": null,
+                  "serialNumber": null,
+                  "equipmentType": "HOLLOW ROTARY ACTUATOR",
+                  "voltage": "3.87VDC",
+                  "current": "1.27A",
+                  "resolution": "0.01\"/STEP",
+                  "ambient": "40°C",
+                  "insulation": "Ins.Class A",
+                  "marks": [
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ],
+                  "confidence": 0.95,
+                  "rawText": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW ROTARY ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "0.01\"/STEP",
+                    "INS.Class A",
+                    "40°C",
+                    "TE",
+                    "QSB 119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN",
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ]
+                },
+                "ms": 4432
+              }
+            ]
+          }
+        },
+        {
+          "rep": 2,
+          "ok": true,
+          "ms": 4053,
+          "calls": 2,
+          "values": {
+            "manufacturer": "Orientalmotor",
+            "model": "DGM200R-AZAC",
+            "catalogNumber": "AZM911AC-D",
+            "equipmentType": "HOLLOW ROTARY ACTUATOR",
+            "voltage": "3.87VDC",
+            "current": "1.27A",
+            "resolution": "0.01°/STEP",
+            "serialNumber": null,
+            "ambient": "Amb.40°C",
+            "insulation": "INS.Class A",
+            "marks": "CE, UKCA"
+          },
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "F_label_1x__full2",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "Orientalmotor",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "DGM200R-AZAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": "AZM911AC-D",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "HOLLOW ROTARY ACTUATOR",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "1.27A",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": "0.01°/STEP",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": "Amb.40°C",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 4,
+              "total": 4,
+              "pct": 100
+            },
+            "spec": {
+              "hits": 5,
+              "total": 6,
+              "pct": 83.3
+            },
+            "marks": {
+              "verdict": "missed",
+              "expected": "UL, CE, UKCA",
+              "got": "CE, UKCA"
+            },
+            "hallucinations": 0,
+            "hallucinatedValues": [],
+            "falsePositives": 0
+          },
+          "raw": {
+            "ocrLines": [
+              "MODEL",
+              "DGM200R-AZAC",
+              "Orientalmotor",
+              "HOLLOW",
+              "ROTARY",
+              "ACTUATOR",
+              "Motor P/N AZM911AC-D",
+              "3.87VDC",
+              "1.27A",
+              "INS.Class A",
+              "TE",
+              "0.01°/STEP",
+              "Amb.-40°C",
+              "CE UK CA",
+              "QSB I119701",
+              "ORIENTAL MOTOR CO., LTD",
+              "TOKYO 110-8536 JAPAN",
+              "MADE IN JAPAN",
+              "HOLLOW ROTARY ACTUATOR",
+              "0.01\"/STEP",
+              "Amb.40°C",
+              "CE",
+              "UK",
+              "CA",
+              "UL",
+              "RoHS"
+            ],
+            "errors": [],
+            "passes": [
+              {
+                "name": "ocr",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"lines\": [\n\"MODEL\",\n\"DGM200R-AZAC\",\n\"Orientalmotor\",\n\"HOLLOW\",\n\"ROTARY\",\n\"ACTUATOR\",\n\"Motor P/N AZM911AC-D\",\n\"3.87VDC\",\n\"1.27A\",\n\"INS.Class A\",\n\"TE\",\n\"0.01°/STEP\",\n\"Amb.-40°C\",\n\"CE UK CA\",\n\"QSB I119701\",\n\"ORIENTAL MOTOR CO., LTD\",\n\"TOKYO 110-8536 JAPAN\",\n\"MADE IN JAPAN\"\n]}",
+                "parsed": {
+                  "lines": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW",
+                    "ROTARY",
+                    "ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "INS.Class A",
+                    "TE",
+                    "0.01°/STEP",
+                    "Amb.-40°C",
+                    "CE UK CA",
+                    "QSB I119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN"
+                  ]
+                },
+                "ms": 3145
+              },
+              {
+                "name": "semantic",
+                "model": "google/gemma-3n-E4B-it",
+                "rawResponse": "{\"manufacturer\": \"Orientalmotor\", \"model\": \"DGM200R-AZAC\", \"catalogNumber\": null, \"serialNumber\": null, \"equipmentType\": \"HOLLOW ROTARY ACTUATOR\", \"voltage\": \"3.87VDC\", \"current\": \"1.27A\", \"resolution\": \"0.01\\\"/STEP\", \"ambient\": \"Amb.40°C\", \"insulation\": \"INS.Class A\", \"marks\": [\"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"], \"confidence\": 0.95, \"rawText\": [\"MODEL\", \"DGM200R-AZAC\", \"Orientalmotor\", \"HOLLOW ROTARY ACTUATOR\", \"Motor P/N AZM911AC-D\", \"3.87VDC\", \"1.27A\", \"0.01\\\"/STEP\", \"INS.Class A\", \"Amb.40°C\", \"TE\", \"QSB I119701\", \"ORIENTAL MOTOR CO., LTD\", \"TOKYO 110-8536 JAPAN\", \"MADE IN JAPAN\", \"CE\", \"UK\", \"CA\", \"UL\", \"RoHS\"]}",
+                "parsed": {
+                  "manufacturer": "Orientalmotor",
+                  "model": "DGM200R-AZAC",
+                  "catalogNumber": null,
+                  "serialNumber": null,
+                  "equipmentType": "HOLLOW ROTARY ACTUATOR",
+                  "voltage": "3.87VDC",
+                  "current": "1.27A",
+                  "resolution": "0.01\"/STEP",
+                  "ambient": "Amb.40°C",
+                  "insulation": "INS.Class A",
+                  "marks": [
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ],
+                  "confidence": 0.95,
+                  "rawText": [
+                    "MODEL",
+                    "DGM200R-AZAC",
+                    "Orientalmotor",
+                    "HOLLOW ROTARY ACTUATOR",
+                    "Motor P/N AZM911AC-D",
+                    "3.87VDC",
+                    "1.27A",
+                    "0.01\"/STEP",
+                    "INS.Class A",
+                    "Amb.40°C",
+                    "TE",
+                    "QSB I119701",
+                    "ORIENTAL MOTOR CO., LTD",
+                    "TOKYO 110-8536 JAPAN",
+                    "MADE IN JAPAN",
+                    "CE",
+                    "UK",
+                    "CA",
+                    "UL",
+                    "RoHS"
+                  ]
+                },
+                "ms": 4052
+              }
+            ]
+          }
+        }
+      ],
+      "exactByField": {
+        "current": 3,
+        "voltage": 3,
+        "resolution": 3,
+        "ambient": 3,
+        "insulation": 3,
+        "catalogNumber": 3,
+        "serialNumber": 0,
+        "model": 3,
+        "manufacturer": 3,
+        "equipmentType": 3,
+        "marks": 0
+      },
+      "currentVerbatim": [
+        "1.27A",
+        "1.27A",
+        "1.27A"
+      ],
+      "hallucinationsPerRep": [
+        0,
+        0,
+        0
+      ],
+      "hallucinatedValues": [],
+      "meanMs": 4369.666666666667,
+      "callsTotal": 6
+    }
+  ]
+}

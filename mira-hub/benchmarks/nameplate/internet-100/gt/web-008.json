@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-008",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["rotated_90", "curved_surface", "dirt", "scratched"],
+  "photo_gt": {
+    "manufacturer": "SMC",
+    "model": "CDS1TN140-150-X77US-209",
+    "catalogNumber": "CDS1TN140-150-X77US-209",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "MAX. PRESS: 145 PSI", "unit": "PSI", "confidence": "high"},
+      {"field": "pressure", "value_verbatim": "1.0 MPa", "unit": "MPa", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN USA", "unit": "", "confidence": "high"},
+      {"field": "lot_code", "value_verbatim": "OYI", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

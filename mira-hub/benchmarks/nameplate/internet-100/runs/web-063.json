@@ -1,0 +1,162 @@
+{
+  "image": "c02r1_08.jpg",
+  "bytes": 68491,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Yaskawa",
+      "model": "VS mini V7",
+      "catalogNumber": null,
+      "serialNumber": "FPST31042-15",
+      "equipmentType": "VFD",
+      "confidence": 0.95,
+      "rawText": [
+        "VS mini V7",
+        "FPST31042-15",
+        "YASKAWA",
+        "RUN",
+        "ALARM",
+        "WARNING—Risk of electric shock.",
+        "Read manual before installing.",
+        "Wait 1 minute for capacitor discharge after disconnecting power supply.",
+        "To conform to CE requirements, make sure to ground the supply neutral for 400V class",
+        "Avertissement—Risque de décharge électrique.",
+        "Lire le manuel avant l'installation.",
+        "Pour permettre la décharge des condensateurs, pour prédomer aux exigences CE, s'assurer que le neutre soit relié à la terre, pour la série 400V",
+        "危険",
+        "誤一電のリスク—感電のおそれがあります。",
+        "電源が切れた後、 capacitors discharge after disconnecting power supply.",
+        "400Vをインバーターの場合は、電源の中央部が接地されていることを確認して下さい。（※灰色）"
+      ]
+    },
+    "rawText": [
+      "VS mini V7",
+      "FPST31042-15",
+      "YASKAWA",
+      "RUN",
+      "ALARM",
+      "WARNING—Risk of electric shock.",
+      "Read manual before installing.",
+      "Wait 1 minute for capacitor discharge after disconnecting power supply.",
+      "To conform to CE requirements, make sure to ground the supply neutral for 400V class",
+      "Avertissement—Risque de décharge électrique.",
+      "Lire le manuel avant l'installation.",
+      "Pour permettre la décharge des condensateurs, pour prédomer aux exigences CE, s'assurer que le neutre soit relié à la terre, pour la série 400V",
+      "危険",
+      "誤一電のリスク—感電のおそれがあります。",
+      "電源が切れた後、 capacitors discharge after disconnecting power supply.",
+      "400Vをインバーターの場合は、電源の中央部が接地されていることを確認して下さい。（※灰色）"
+    ],
+    "values": {
+      "manufacturer": "Yaskawa",
+      "model": "VS mini V7",
+      "catalogNumber": null,
+      "equipmentType": "VFD",
+      "serialNumber": "FPST31042-15",
+      "voltage": "400V",
+      "current": "1A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Yaskawa"
+        },
+        {
+          "field": "model",
+          "value": "VS mini V7"
+        },
+        {
+          "field": "serialNumber",
+          "value": "FPST31042-15"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 46,
+        "cropBbox": {
+          "left": 341,
+          "top": 163,
+          "width": 340,
+          "height": 592
+        },
+        "imageWidth": 750,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 1750
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2056,
+    "total_ms": 6316
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "YASKAWA",
+      "model": "VS mini V7",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "VFD",
+      "confidence": 0.95,
+      "rawText": [
+        "VS mini V7",
+        "FP5T3304215",
+        "RUN",
+        "ALARM",
+        "YASKAWA",
+        "Digital Inverter",
+        "VVP-140"
+      ]
+    },
+    "rawText": [
+      "VS mini V7",
+      "FP5T3304215",
+      "RUN",
+      "ALARM",
+      "YASKAWA",
+      "Digital Inverter",
+      "VVP-140"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA",
+      "model": "VS mini V7",
+      "catalogNumber": null,
+      "equipmentType": "VFD",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "YASKAWA"
+        },
+        {
+          "field": "model",
+          "value": "VS mini V7"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1774
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "sample_id": "web-103",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "dense_table", "dirt"],
+  "photo_gt": {
+    "manufacturer": "FANUC",
+    "model": "αiS 30/4000HV",
+    "catalogNumber": "A06B-0269-B200#0100",
+    "serialNumber": "C077B9912",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "power_kw", "value_verbatim": "5.5 kW CONT.", "unit": "kW", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "353 V", "unit": "V", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "3000 min-1", "unit": "min-1", "confidence": "high"},
+      {"field": "current", "value_verbatim": "9.3 A", "unit": "A", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "200 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "400-480 V 50/60Hz", "unit": "V", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "98%", "unit": "%", "confidence": "high"},
+      {"field": "winding_connection", "value_verbatim": "Y", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "INS. CLASS F", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 67", "unit": "", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3 PHASES", "unit": "", "confidence": "high"},
+      {"field": "stall_torque", "value_verbatim": "30 Nm", "unit": "Nm", "confidence": "high"},
+      {"field": "stall_current", "value_verbatim": "16 A", "unit": "A", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "IEC60034-1", "unit": "", "confidence": "high"},
+      {"field": "manual_number", "value_verbatim": "B-65262", "unit": "", "confidence": "high"},
+      {"field": "date", "value_verbatim": "2007.07", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Yellow FANUC AC Servo Motor plate: MODEL αiS 30/4000HV, SPEC A06B-0269-B200#0100, No. C077B9912, DATE 2007.07, 'FANUC LTD YAMANASHI. MADE IN JAPAN'. Two triangular certification marks flank the CE mark (one with a check symbol, one TUV-style) but their fine print is too small to identify with certainty, so only CE is listed and marks_complete=false."
+}

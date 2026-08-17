@@ -1,0 +1,172 @@
+{
+  "image": "c04r1_11.jpg",
+  "bytes": 27757,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Yaskawa Electric Japan",
+      "model": "USA6ED-02AS2K",
+      "catalogNumber": null,
+      "serialNumber": "311449-18-001",
+      "equipmentType": "AC Servo Motor",
+      "confidence": 0.98,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE USA6ED-02AS2K",
+        "W 150 N·m 0.96 A 3.0",
+        "r/min 1500 DATE 9310",
+        "S/N 311449-18-001",
+        "YASKAWA ELECTRIC JAPAN",
+        "N.K7697-1N"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE USA6ED-02AS2K",
+      "W 150 N·m 0.96 A 3.0",
+      "r/min 1500 DATE 9310",
+      "S/N 311449-18-001",
+      "YASKAWA ELECTRIC JAPAN",
+      "N.K7697-1N"
+    ],
+    "values": {
+      "manufacturer": "Yaskawa Electric Japan",
+      "model": "USA6ED-02AS2K",
+      "catalogNumber": null,
+      "equipmentType": "AC Servo Motor",
+      "serialNumber": "311449-18-001",
+      "voltage": null,
+      "current": "0.96A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Yaskawa Electric Japan"
+        },
+        {
+          "field": "model",
+          "value": "USA6ED-02AS2K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "311449-18-001"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC Servo Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 15,
+        "cropBbox": {
+          "left": 63,
+          "top": 16,
+          "width": 390,
+          "height": 281
+        },
+        "imageWidth": 519,
+        "imageHeight": 320,
+        "cropRotationDeg": 0,
+        "ms": 434
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 626,
+    "total_ms": 3772
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC JAPAN",
+      "model": "USA-CED-02AS2K",
+      "catalogNumber": null,
+      "serialNumber": "311449-18-001",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.98,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE",
+        "USA-CED-02AS2K",
+        "W",
+        "150",
+        "N-m",
+        "0.96",
+        "A",
+        "3.0",
+        "r/min",
+        "1500",
+        "DATE",
+        "9310",
+        "S/N",
+        "311449-18-001",
+        "YASKAWA ELECTRIC JAPAN",
+        "N.K7697-1N"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE",
+      "USA-CED-02AS2K",
+      "W",
+      "150",
+      "N-m",
+      "0.96",
+      "A",
+      "3.0",
+      "r/min",
+      "1500",
+      "DATE",
+      "9310",
+      "S/N",
+      "311449-18-001",
+      "YASKAWA ELECTRIC JAPAN",
+      "N.K7697-1N"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC JAPAN",
+      "model": "USA-CED-02AS2K",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "311449-18-001",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "YASKAWA ELECTRIC JAPAN"
+        },
+        {
+          "field": "model",
+          "value": "USA-CED-02AS2K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "311449-18-001"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3102
+  }
+}

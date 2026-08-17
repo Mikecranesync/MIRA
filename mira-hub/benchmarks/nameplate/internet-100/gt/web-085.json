@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-085",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "embossed", "corrosion"],
+  "photo_gt": {
+    "manufacturer": "Ex-Cell-O",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "machine_tool",
+    "specs": [],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

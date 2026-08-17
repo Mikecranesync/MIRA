@@ -11,6 +11,7 @@
  * hub_uploads.tenant_id (TEXT) against the session UUID as text.
  */
 
+import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 
@@ -45,6 +46,9 @@ export type NotebookSource = {
   sourceRole: string | null;
   pages: number | null;
   fileId: string | null; // namespace_direct_uploads id for the byte-serving viewer
+  /** Persisted applicability evidence (075 match_evidence) — matched tokens,
+   *  evidence pages, decision method, discovery/final URLs, confidence. */
+  matchEvidence: unknown | null;
 };
 
 // Aliased for SELECTs that join the source-count subquery (needs `n.`).
@@ -236,33 +240,94 @@ export async function attachSource(
       [tenantId, notebookId],
     );
     if (nb.rows.length === 0) return { ok: false, error: "notebook_not_found" };
-    const matchState = opts.matchState ?? "user_confirmed";
-    await c.query(
-      `INSERT INTO equipment_notebook_sources
-         (notebook_id, doc_id, tenant_id, enabled_by_default, match_state, source_role, added_by)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
-       ON CONFLICT (notebook_id, doc_id)
-       DO UPDATE SET match_state = EXCLUDED.match_state, source_role = EXCLUDED.source_role`,
-      [
-        notebookId,
-        docId,
-        tenantId,
-        // PRD §7.1: only user_confirmed/verified sources are enabled by default.
-        matchState === "user_confirmed" || matchState === "verified",
-        matchState,
-        opts.sourceRole ?? null,
-        opts.addedBy ?? null,
-      ],
-    );
+    await upsertNotebookSourceTx(c, {
+      tenantId,
+      notebookId,
+      docId,
+      matchState: opts.matchState ?? "user_confirmed",
+      sourceRole: opts.sourceRole ?? null,
+      addedBy: opts.addedBy ?? null,
+    });
     return { ok: true };
   });
+}
+
+/**
+ * Source-membership upsert on an existing tenant-scoped client — the seam that
+ * lets workspace-files.ts write the file link AND the source row in ONE
+ * transaction. Callers own notebook/doc validation; this only writes.
+ */
+export async function upsertNotebookSourceTx(
+  c: PoolClient,
+  opts: {
+    tenantId: string;
+    notebookId: string;
+    docId: string;
+    matchState: MatchState;
+    sourceRole?: string | null;
+    addedBy?: string | null;
+    matchEvidence?: unknown;
+  },
+): Promise<void> {
+  const evidence =
+    opts.matchEvidence === undefined || opts.matchEvidence === null
+      ? null
+      : JSON.stringify(opts.matchEvidence);
+  // Conflict transitions never DOWNGRADE trust (a candidate re-suggestion must
+  // not demote a user-confirmed row) and enabled_by_default is recomputed from
+  // the RESULTING state in the same statement — the candidate->user_confirmed
+  // upsert used to leave enabled_by_default=false behind, silently keeping a
+  // confirmed source out of chat (Codex P1, 2026-08-16). An explicit re-attach
+  // by a USER over a rejected row un-rejects it (the re-attach IS the user
+  // decision) — but an incoming 'candidate' is a SYSTEM re-suggestion, never a
+  // user decision: it must not resurrect a human-rejected row, and it must not
+  // flip enabled_by_default on a row a human already ruled on (re-enabling a
+  // source the user explicitly disabled would be the system overriding the
+  // human — the same trust inversion as client-minted "verified").
+  await c.query(
+    `INSERT INTO equipment_notebook_sources
+       (notebook_id, doc_id, tenant_id, enabled_by_default, match_state,
+        source_role, added_by, match_evidence)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb)
+     ON CONFLICT (notebook_id, doc_id)
+     DO UPDATE SET
+       match_state = CASE
+         WHEN equipment_notebook_sources.match_state = 'verified' THEN 'verified'
+         WHEN EXCLUDED.match_state = 'verified' THEN 'verified'
+         WHEN equipment_notebook_sources.match_state IN ('user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.match_state
+         ELSE EXCLUDED.match_state
+       END,
+       enabled_by_default = CASE
+         WHEN EXCLUDED.match_state = 'verified' THEN true
+         WHEN equipment_notebook_sources.match_state IN ('verified', 'user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.enabled_by_default
+         ELSE EXCLUDED.match_state IN ('user_confirmed', 'verified')
+       END,
+       source_role    = EXCLUDED.source_role,
+       match_evidence = COALESCE(EXCLUDED.match_evidence,
+                                 equipment_notebook_sources.match_evidence)`,
+    [
+      opts.notebookId,
+      opts.docId,
+      opts.tenantId,
+      // PRD §7.1: only user_confirmed/verified sources are enabled by default.
+      opts.matchState === "user_confirmed" || opts.matchState === "verified",
+      opts.matchState,
+      opts.sourceRole ?? null,
+      opts.addedBy ?? null,
+      evidence,
+    ],
+  );
 }
 
 export async function setSourceState(
   tenantId: string,
   notebookId: string,
   docId: string,
-  patch: { enabledByDefault?: boolean; matchState?: MatchState },
+  patch: { enabledByDefault?: boolean; matchState?: MatchState; matchEvidence?: unknown },
 ): Promise<boolean> {
   return withTenantContext(tenantId, async (c) => {
     const sets: string[] = [];
@@ -274,6 +339,10 @@ export async function setSourceState(
     if (patch.matchState !== undefined) {
       sets.push(`match_state = $${vals.length + 1}`);
       vals.push(patch.matchState);
+    }
+    if (patch.matchEvidence !== undefined) {
+      sets.push(`match_evidence = $${vals.length + 1}::jsonb`);
+      vals.push(patch.matchEvidence === null ? null : JSON.stringify(patch.matchEvidence));
     }
     if (sets.length === 0) return false;
     const res = await c.query(
@@ -306,7 +375,8 @@ export async function listSources(
 ): Promise<NotebookSource[]> {
   const memb = await withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT doc_id::text AS doc_id, enabled_by_default, match_state, source_role
+      `SELECT doc_id::text AS doc_id, enabled_by_default, match_state, source_role,
+              match_evidence
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
         ORDER BY created_at`,
@@ -340,6 +410,7 @@ export async function listSources(
       sourceRole: (m.source_role as string) ?? null,
       pages: null,
       fileId: d ? ((d.file_id as string) ?? null) : null,
+      matchEvidence: m.match_evidence ?? null,
     };
   });
 }
@@ -366,12 +437,17 @@ export async function validateChatSources(
       [tenantId, notebookId],
     );
     if (nb.rows.length === 0) return { ok: false as const, error: "notebook_not_found" };
+    // Chat grounding requires POSITIVE trust, not merely "not rejected": a
+    // candidate (system-suggested, never human-confirmed) source must not be
+    // citable, and a source the user disabled must not ride along (Codex P1,
+    // 2026-08-16).
     const res = await c.query(
       `SELECT doc_id::text AS doc_id
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND doc_id = ANY($3::uuid[])
-          AND match_state <> 'rejected'`,
+          AND match_state IN ('user_confirmed', 'verified')
+          AND enabled_by_default = true`,
       [tenantId, notebookId, requestedDocIds],
     );
     const valid = new Set(res.rows.map((r: Record<string, unknown>) => String(r.doc_id)));

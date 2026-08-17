@@ -1,0 +1,240 @@
+{
+  "image": "c05r1_07.jpg",
+  "bytes": 264966,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperT Motor",
+      "catalogNumber": "VEM3546",
+      "serialNumber": "F2004291463",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "CAT.NO. VEM3546",
+        "SPEC 35302M492G1",
+        "HP 1",
+        "VOLTS 230/460",
+        "AMPS 3/1.5",
+        "RPM 1760",
+        "FRAME 56C",
+        "HZ 60",
+        "SF 1-15",
+        "CODE L",
+        "DES B",
+        "CLASS F",
+        "NEMA NOM. EFF 85.5",
+        "% PF 71",
+        "RATING 40C AMB-CONT",
+        "CC 010A",
+        "USABLE AT 208V 3.1",
+        "ENCL TEFC",
+        "SER F2004291463",
+        "BRG DE 6205",
+        "ODE 6203",
+        "VPWM INVERTER READY",
+        "CT 6-80 Hz (10:1) VT 3-60 Hz (20:1",
+        "USABLE AT 50Hz 1HP 190/380V 3.6-1.84",
+        "BALDOR ELECTRIC CO.",
+        "SF1.0",
+        "WITH. AR. MFG IN U.S.A.",
+        "3441LUA"
+      ]
+    },
+    "rawText": [
+      "CAT.NO. VEM3546",
+      "SPEC 35302M492G1",
+      "HP 1",
+      "VOLTS 230/460",
+      "AMPS 3/1.5",
+      "RPM 1760",
+      "FRAME 56C",
+      "HZ 60",
+      "SF 1-15",
+      "CODE L",
+      "DES B",
+      "CLASS F",
+      "NEMA NOM. EFF 85.5",
+      "% PF 71",
+      "RATING 40C AMB-CONT",
+      "CC 010A",
+      "USABLE AT 208V 3.1",
+      "ENCL TEFC",
+      "SER F2004291463",
+      "BRG DE 6205",
+      "ODE 6203",
+      "VPWM INVERTER READY",
+      "CT 6-80 Hz (10:1) VT 3-60 Hz (20:1",
+      "USABLE AT 50Hz 1HP 190/380V 3.6-1.84",
+      "BALDOR ELECTRIC CO.",
+      "SF1.0",
+      "WITH. AR. MFG IN U.S.A.",
+      "3441LUA"
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperT Motor",
+      "catalogNumber": "VEM3546",
+      "equipmentType": "Motor",
+      "serialNumber": "F2004291463",
+      "voltage": "208V",
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "catalogNumber",
+          "value": "VEM3546"
+        },
+        {
+          "field": "serialNumber",
+          "value": "F2004291463"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "model",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 71,
+        "cropBbox": {
+          "left": 247,
+          "top": 82,
+          "width": 1031,
+          "height": 1204
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2803
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3622,
+    "total_ms": 10441
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperK Motor",
+      "catalogNumber": "VEM3546",
+      "serialNumber": "F2004291463",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR RELIANCE",
+        "SuperK Motor",
+        "CAT.NO. VEM3546",
+        "SPEC 35302M492G1",
+        "HP 1",
+        "VOLTS 230/460",
+        "AMPS 3/1.5",
+        "RPM 1760",
+        "FRAME 56C",
+        "Hz 60",
+        "PH 3",
+        "SF 1.15",
+        "CODE L DES B CLASS F",
+        "NEMA NOM. EFF 85.5 % PF 71 %",
+        "RATING 40C AMB-CONT",
+        "CC 010A",
+        "USABLE AT 208V 3.1",
+        "ENCL TEFC",
+        "SER F2004291463",
+        "BRG DE 6205",
+        "ODE 6203",
+        "VPWM INVERTER READY",
+        "CT 6-80 Hz (10:1) VI 3-60 Hz (20:1)",
+        "USABLE AT 50Hz 1HP 190/380V 3.6-1.8A",
+        "BALDOR ELECTRIC CO. TI",
+        "SF1.0",
+        "3441LUA",
+        "NEMA Premium",
+        "Energy Verified MC 183051",
+        "RU"
+      ]
+    },
+    "rawText": [
+      "BALDOR RELIANCE",
+      "SuperK Motor",
+      "CAT.NO. VEM3546",
+      "SPEC 35302M492G1",
+      "HP 1",
+      "VOLTS 230/460",
+      "AMPS 3/1.5",
+      "RPM 1760",
+      "FRAME 56C",
+      "Hz 60",
+      "PH 3",
+      "SF 1.15",
+      "CODE L DES B CLASS F",
+      "NEMA NOM. EFF 85.5 % PF 71 %",
+      "RATING 40C AMB-CONT",
+      "CC 010A",
+      "USABLE AT 208V 3.1",
+      "ENCL TEFC",
+      "SER F2004291463",
+      "BRG DE 6205",
+      "ODE 6203",
+      "VPWM INVERTER READY",
+      "CT 6-80 Hz (10:1) VI 3-60 Hz (20:1)",
+      "USABLE AT 50Hz 1HP 190/380V 3.6-1.8A",
+      "BALDOR ELECTRIC CO. TI",
+      "SF1.0",
+      "3441LUA",
+      "NEMA Premium",
+      "Energy Verified MC 183051",
+      "RU"
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperK Motor",
+      "catalogNumber": "VEM3546",
+      "equipmentType": "Motor",
+      "serialNumber": "F2004291463",
+      "voltage": "208V",
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperK Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "VEM3546"
+        },
+        {
+          "field": "serialNumber",
+          "value": "F2004291463"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 6291
+  }
+}

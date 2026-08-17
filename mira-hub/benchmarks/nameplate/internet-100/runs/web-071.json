@@ -1,0 +1,208 @@
+{
+  "image": "c11r1_13.jpg",
+  "bytes": 140887,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "NISHISHIBA ELECTRIC CO., LTD.",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "53056A1A-3",
+      "equipmentType": "MARINE ALTERNATING CURRENT GENERATOR",
+      "confidence": 0.95,
+      "rawText": [
+        "No.3 DIESEL GENERATOR",
+        "MARINE ALTERNATING CURRENT GENERATOR",
+        "BRUSHLESS EXCITATION SYSTEM",
+        "PHASE 3",
+        "OUTPUT 3300kW",
+        "VOLTS 6600",
+        "PF 0.8",
+        "EXCITATION VOLTS 145",
+        "FIELD AMPS. GEN. 165",
+        "ARM. CONNECTION GEN. A",
+        "COOLANT TEMP. FRESH WATER 36 °C",
+        "ARM. TEMP.RISE GEN. 95 °C(R) EXC. 95 °C(R)",
+        "FIELD TEMP.RISE GEN. 100 °C(R) EXC. 95 °C(R)",
+        "SPACE HEATER AC 16 220V 720W",
+        "CODE GL",
+        "TOTAL WEIGHT 16950 kg",
+        "DATE OF MANUF.",
+        "SERIAL NO. 53056A1A-3",
+        "NSDK",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "No.3 DIESEL GENERATOR",
+      "MARINE ALTERNATING CURRENT GENERATOR",
+      "BRUSHLESS EXCITATION SYSTEM",
+      "PHASE 3",
+      "OUTPUT 3300kW",
+      "VOLTS 6600",
+      "PF 0.8",
+      "EXCITATION VOLTS 145",
+      "FIELD AMPS. GEN. 165",
+      "ARM. CONNECTION GEN. A",
+      "COOLANT TEMP. FRESH WATER 36 °C",
+      "ARM. TEMP.RISE GEN. 95 °C(R) EXC. 95 °C(R)",
+      "FIELD TEMP.RISE GEN. 100 °C(R) EXC. 95 °C(R)",
+      "SPACE HEATER AC 16 220V 720W",
+      "CODE GL",
+      "TOTAL WEIGHT 16950 kg",
+      "DATE OF MANUF.",
+      "SERIAL NO. 53056A1A-3",
+      "NSDK",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "NISHISHIBA ELECTRIC CO., LTD.",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "MARINE ALTERNATING CURRENT GENERATOR",
+      "serialNumber": "53056A1A-3",
+      "voltage": "220V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "serialNumber",
+          "value": "53056A1A-3"
+        },
+        {
+          "field": "equipmentType",
+          "value": "MARINE ALTERNATING CURRENT GENERATOR"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 75,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1072,
+          "height": 1324
+        },
+        "imageWidth": 1072,
+        "imageHeight": 1440,
+        "cropRotationDeg": 0,
+        "ms": 2224
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2765,
+    "total_ms": 8153
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NISHIHIBA ELECTRIC CO., LTD.",
+      "model": "No.3",
+      "catalogNumber": null,
+      "serialNumber": "530586A1A-3",
+      "equipmentType": "DIESEL GENERATOR",
+      "confidence": 0.95,
+      "rawText": [
+        "No.3 DIESEL GENERATOR",
+        "MARINE ALTERNATING CURRENT GENERATOR",
+        "BRUSHLESS EXCITATION SYSTEM",
+        "PHASE 3",
+        "TYPE NTAKL",
+        "FORM RCP",
+        "OUTPUT 3300kW",
+        "POLES 10",
+        "RPM 720",
+        "VOLTS 6600",
+        "AMP.S 361",
+        "Hz 60",
+        "PF 0.8",
+        "RATING CONT. PROTECTION IP44",
+        "EXCITATION VOLTS GEN. 145 EXC. 130",
+        "FIELD AMPS. GEN. 145 EXC. A",
+        "ARM.CONNECTION GEN. EXC. A",
+        "COOLANT TEMP. FRESH WATER 36 °C INSU. CLASS F",
+        "ARM.TEMP.RISE GEN. 95 °C(R) EXC. 95 °C(R)",
+        "FIELD TEMP.RISE GEN. 100°C(R) EXC. 95 °C(R)",
+        "SPACE HEATER AC 12 220V 720W",
+        "CODE GL",
+        "SERIAL NO. 530586A1A-3",
+        "TOTAL WEIGHT 16950 kg DATE OF MANUF. ",
+        "NDSK",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "No.3 DIESEL GENERATOR",
+      "MARINE ALTERNATING CURRENT GENERATOR",
+      "BRUSHLESS EXCITATION SYSTEM",
+      "PHASE 3",
+      "TYPE NTAKL",
+      "FORM RCP",
+      "OUTPUT 3300kW",
+      "POLES 10",
+      "RPM 720",
+      "VOLTS 6600",
+      "AMP.S 361",
+      "Hz 60",
+      "PF 0.8",
+      "RATING CONT. PROTECTION IP44",
+      "EXCITATION VOLTS GEN. 145 EXC. 130",
+      "FIELD AMPS. GEN. 145 EXC. A",
+      "ARM.CONNECTION GEN. EXC. A",
+      "COOLANT TEMP. FRESH WATER 36 °C INSU. CLASS F",
+      "ARM.TEMP.RISE GEN. 95 °C(R) EXC. 95 °C(R)",
+      "FIELD TEMP.RISE GEN. 100°C(R) EXC. 95 °C(R)",
+      "SPACE HEATER AC 12 220V 720W",
+      "CODE GL",
+      "SERIAL NO. 530586A1A-3",
+      "TOTAL WEIGHT 16950 kg DATE OF MANUF. ",
+      "NDSK",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "NISHIHIBA ELECTRIC CO., LTD.",
+      "model": "No.3",
+      "catalogNumber": null,
+      "equipmentType": "DIESEL GENERATOR",
+      "serialNumber": "530586A1A-3",
+      "voltage": "220V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "No.3"
+        },
+        {
+          "field": "serialNumber",
+          "value": "530586A1A-3"
+        },
+        {
+          "field": "equipmentType",
+          "value": "DIESEL GENERATOR"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 7097
+  }
+}

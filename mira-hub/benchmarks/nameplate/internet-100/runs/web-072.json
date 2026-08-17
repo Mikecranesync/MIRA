@@ -1,0 +1,112 @@
+{
+  "image": "c07r1_07.jpg",
+  "bytes": 65846,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "REVENGE",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "REVENGE"
+      ]
+    },
+    "rawText": [
+      "REVENGE"
+    ],
+    "values": {
+      "manufacturer": "REVENGE",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "REVENGE"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 11,
+        "cropBbox": {
+          "left": 148,
+          "top": 129,
+          "width": 392,
+          "height": 483
+        },
+        "imageWidth": 933,
+        "imageHeight": 700,
+        "cropRotationDeg": 0,
+        "ms": 2310
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2788,
+    "total_ms": 4086
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "KEYENCE",
+      "model": "P2-31T",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Sensor",
+      "confidence": 0.95,
+      "rawText": [
+        "KEYENCE",
+        "P2-31T"
+      ]
+    },
+    "rawText": [
+      "KEYENCE",
+      "P2-31T"
+    ],
+    "values": {
+      "manufacturer": "KEYENCE",
+      "model": "P2-31T",
+      "catalogNumber": null,
+      "equipmentType": "Sensor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "KEYENCE"
+        },
+        {
+          "field": "model",
+          "value": "P2-31T"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1420
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "image": "c04r1_13.jpg",
+  "bytes": 71622,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "GE Fanuc",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "motor",
+      "confidence": 0.85,
+      "rawText": [
+        "GE Fanuc"
+      ]
+    },
+    "rawText": [
+      "GE Fanuc"
+    ],
+    "values": {
+      "manufacturer": "GE Fanuc",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GE Fanuc"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "original_photo"
+    },
+    "fallback_used": true,
+    "detect_ms": 2873,
+    "total_ms": 4171
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "GE Fanuc",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "motor",
+      "confidence": 0.85,
+      "rawText": [
+        "GE Fanuc"
+      ]
+    },
+    "rawText": [
+      "GE Fanuc"
+    ],
+    "values": {
+      "manufacturer": "GE Fanuc",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GE Fanuc"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1063
+  }
+}

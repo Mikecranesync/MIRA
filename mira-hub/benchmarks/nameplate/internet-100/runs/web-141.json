@@ -1,0 +1,172 @@
+{
+  "image": "c04r1_03.jpg",
+  "bytes": 93177,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "SGMGH-44A2A-YR18",
+      "catalogNumber": null,
+      "serialNumber": "R16622 527",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "Type SGMGH-44A2A-YR18",
+        "4400 W 28.4 N·m 1500 r/min",
+        "45 A 200 V CONT. ins. F",
+        "O/N R16622 527",
+        "S/N B0168F909210001",
+        "DATE 1608",
+        "YASKAWA ELECTRIC",
+        "MADE IN JAPAN",
+        "R16622 527",
+        "B0168F909210001"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "Type SGMGH-44A2A-YR18",
+      "4400 W 28.4 N·m 1500 r/min",
+      "45 A 200 V CONT. ins. F",
+      "O/N R16622 527",
+      "S/N B0168F909210001",
+      "DATE 1608",
+      "YASKAWA ELECTRIC",
+      "MADE IN JAPAN",
+      "R16622 527",
+      "B0168F909210001"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "SGMGH-44A2A-YR18",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "R16622 527",
+      "voltage": "200V",
+      "current": "45A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "YASKAWA ELECTRIC"
+        },
+        {
+          "field": "model",
+          "value": "SGMGH-44A2A-YR18"
+        },
+        {
+          "field": "serialNumber",
+          "value": "R16622 527"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 15,
+        "cropBbox": {
+          "left": 120,
+          "top": 213,
+          "width": 241,
+          "height": 178
+        },
+        "imageWidth": 480,
+        "imageHeight": 640,
+        "cropRotationDeg": 0,
+        "ms": 1006
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1337,
+    "total_ms": 5479
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Yaskawa Electric",
+      "model": "SGMGH-44A2A-YR18",
+      "catalogNumber": null,
+      "serialNumber": "B0168F909210001",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE SGMGH-44A2A-YR18",
+        "4400 W",
+        "28.4 Nm",
+        "1500 r/min",
+        "45 A",
+        "200 V",
+        "CONT. ins. F",
+        "O/N R16622 527",
+        "S/N B0168F909210001",
+        "DATE 1608",
+        "YASKAWA ELECTRIC",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE SGMGH-44A2A-YR18",
+      "4400 W",
+      "28.4 Nm",
+      "1500 r/min",
+      "45 A",
+      "200 V",
+      "CONT. ins. F",
+      "O/N R16622 527",
+      "S/N B0168F909210001",
+      "DATE 1608",
+      "YASKAWA ELECTRIC",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "Yaskawa Electric",
+      "model": "SGMGH-44A2A-YR18",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "B0168F909210001",
+      "voltage": "200V",
+      "current": "45A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Yaskawa Electric"
+        },
+        {
+          "field": "model",
+          "value": "SGMGH-44A2A-YR18"
+        },
+        {
+          "field": "serialNumber",
+          "value": "B0168F909210001"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3615
+  }
+}

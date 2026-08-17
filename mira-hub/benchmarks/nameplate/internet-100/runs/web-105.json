@@ -1,0 +1,176 @@
+{
+  "image": "c10r1_03.jpg",
+  "bytes": 6104394,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Westinghouse",
+      "model": "Marine D.C. Motor",
+      "catalogNumber": null,
+      "serialNumber": "157P205",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Westinghouse",
+        "MARINE",
+        "D.C. MOTOR",
+        "SERIAL",
+        "157P205",
+        "REFER TO INSTRUCTION BOOK",
+        "5107",
+        "WESTINGHOUSE ELECTRIC & MANUFACTURING COMPANY",
+        "E. PITTSBURGH, WORKS, EAST PITTSBURGH, PA, U.S.A",
+        "1000 H.P.",
+        "600 VOLTS",
+        "AMPS. 1520",
+        "R.P.M. 428"
+      ]
+    },
+    "rawText": [
+      "Westinghouse",
+      "MARINE",
+      "D.C. MOTOR",
+      "SERIAL",
+      "157P205",
+      "REFER TO INSTRUCTION BOOK",
+      "5107",
+      "WESTINGHOUSE ELECTRIC & MANUFACTURING COMPANY",
+      "E. PITTSBURGH, WORKS, EAST PITTSBURGH, PA, U.S.A",
+      "1000 H.P.",
+      "600 VOLTS",
+      "AMPS. 1520",
+      "R.P.M. 428"
+    ],
+    "values": {
+      "manufacturer": "Westinghouse",
+      "model": "Marine D.C. Motor",
+      "catalogNumber": null,
+      "equipmentType": "Motor",
+      "serialNumber": "157P205",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Westinghouse"
+        },
+        {
+          "field": "model",
+          "value": "Marine D.C. Motor"
+        },
+        {
+          "field": "serialNumber",
+          "value": "157P205"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 18,
+        "cropBbox": {
+          "left": 302,
+          "top": 200,
+          "width": 2661,
+          "height": 1776
+        },
+        "imageWidth": 3456,
+        "imageHeight": 2208,
+        "cropRotationDeg": 0,
+        "ms": 1632
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 18801,
+    "total_ms": 22141
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Westinghouse",
+      "model": "Marine D.C. Motor",
+      "catalogNumber": null,
+      "serialNumber": "157P205",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Westinghouse",
+        "1000 H.P.",
+        "600 VOLTS",
+        "MARINE",
+        "D.C. MOTOR",
+        "SERIAL",
+        "157P205",
+        "REFER TO INSTRUCTION BOOK",
+        "5107",
+        "AMPS. 1520",
+        "R.P.M. 428",
+        "WESTINGHOUSE ELECTRIC & MANUFACTURING COMPANY",
+        "E. PITTSBURGH, WORKS, EAST PITTSBURGH, PA, U.S.A."
+      ]
+    },
+    "rawText": [
+      "Westinghouse",
+      "1000 H.P.",
+      "600 VOLTS",
+      "MARINE",
+      "D.C. MOTOR",
+      "SERIAL",
+      "157P205",
+      "REFER TO INSTRUCTION BOOK",
+      "5107",
+      "AMPS. 1520",
+      "R.P.M. 428",
+      "WESTINGHOUSE ELECTRIC & MANUFACTURING COMPANY",
+      "E. PITTSBURGH, WORKS, EAST PITTSBURGH, PA, U.S.A."
+    ],
+    "values": {
+      "manufacturer": "Westinghouse",
+      "model": "Marine D.C. Motor",
+      "catalogNumber": null,
+      "equipmentType": "Motor",
+      "serialNumber": "157P205",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Westinghouse"
+        },
+        {
+          "field": "model",
+          "value": "Marine D.C. Motor"
+        },
+        {
+          "field": "serialNumber",
+          "value": "157P205"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4146
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "image": "c05r1_11.jpg",
+  "bytes": 90037,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "MG100LC2-28FT130-H3",
+      "catalogNumber": null,
+      "serialNumber": "99208359",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "3~MOT",
+        "MG100LC2-28FT130-H3",
+        "P₂ 3,00 kW",
+        "2-pole/S1",
+        "No.99208359",
+        "50 Hz",
+        "Δ/Y",
+        "U 200-220/346-380 V",
+        "I√ 11,6-11,6/6,65-6,65 A",
+        "Imax 12,4-12,4/7,2-7,1A",
+        "cos φ 0,85-0,77",
+        "n 2920-2940min⁻¹",
+        "Eff. IE3 87,1% - IE3 87,1",
+        "60 Hz",
+        "Δ/Y",
+        "U 200-220/346-380 V",
+        "I√ 11,4-10,4/6,55-6 A",
+        "Imax 12,4-11,2/7,15-6,55A",
+        "cos φ 0,88-0,86",
+        "n 3500-3520min⁻¹",
+        "Eff. IE2 87,5% - IE3 88,5"
+      ]
+    },
+    "rawText": [
+      "3~MOT",
+      "MG100LC2-28FT130-H3",
+      "P₂ 3,00 kW",
+      "2-pole/S1",
+      "No.99208359",
+      "50 Hz",
+      "Δ/Y",
+      "U 200-220/346-380 V",
+      "I√ 11,6-11,6/6,65-6,65 A",
+      "Imax 12,4-12,4/7,2-7,1A",
+      "cos φ 0,85-0,77",
+      "n 2920-2940min⁻¹",
+      "Eff. IE3 87,1% - IE3 87,1",
+      "60 Hz",
+      "Δ/Y",
+      "U 200-220/346-380 V",
+      "I√ 11,4-10,4/6,55-6 A",
+      "Imax 12,4-11,2/7,15-6,55A",
+      "cos φ 0,88-0,86",
+      "n 3500-3520min⁻¹",
+      "Eff. IE2 87,5% - IE3 88,5"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "MG100LC2-28FT130-H3",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "99208359",
+      "voltage": "346-380V",
+      "current": "6.65A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "MG100LC2-28FT130-H3"
+        },
+        {
+          "field": "serialNumber",
+          "value": "99208359"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 23,
+        "cropBbox": {
+          "left": 168,
+          "top": 131,
+          "width": 657,
+          "height": 538
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 1863
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2185,
+    "total_ms": 8836
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "MOT",
+      "model": "MG100LC2-28FT130-H3",
+      "catalogNumber": null,
+      "serialNumber": "No.99208359",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "3~MOT",
+        "MG100LC2-28FT130-H3",
+        "P₂ 3,00 kW",
+        "2-pole/S1",
+        "No.99208359",
+        "50 Hz",
+        "U 200-220/346-380 V",
+        "cos φ 0,85-0,77",
+        "I½ 11,6-11,6/6,65-6,65 A",
+        "Eff. IE3 87,1% - IE3 87,1",
+        "Imax 12,4-12,4/7,2-7,1~",
+        "n 2920-2940min⁻¹",
+        "60 Hz",
+        "U 200-220/346-380 V",
+        "cos φ 0,88-0,86",
+        "I½ 11,4-10,4/6,55-6 A",
+        "Eff. IE2 87,5% - IE3 88,5",
+        "97702205"
+      ]
+    },
+    "rawText": [
+      "3~MOT",
+      "MG100LC2-28FT130-H3",
+      "P₂ 3,00 kW",
+      "2-pole/S1",
+      "No.99208359",
+      "50 Hz",
+      "U 200-220/346-380 V",
+      "cos φ 0,85-0,77",
+      "I½ 11,6-11,6/6,65-6,65 A",
+      "Eff. IE3 87,1% - IE3 87,1",
+      "Imax 12,4-12,4/7,2-7,1~",
+      "n 2920-2940min⁻¹",
+      "60 Hz",
+      "U 200-220/346-380 V",
+      "cos φ 0,88-0,86",
+      "I½ 11,4-10,4/6,55-6 A",
+      "Eff. IE2 87,5% - IE3 88,5",
+      "97702205"
+    ],
+    "values": {
+      "manufacturer": "MOT",
+      "model": "MG100LC2-28FT130-H3",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "No.99208359",
+      "voltage": "346-380V",
+      "current": "6.65A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MOT"
+        },
+        {
+          "field": "model",
+          "value": "MG100LC2-28FT130-H3"
+        },
+        {
+          "field": "serialNumber",
+          "value": "No.99208359"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 6315
+  }
+}

@@ -1,9 +1,10 @@
-// More tab — identity, capability-filtered sections (team, usage), sign out.
-// The "sheet of remaining sections" grows in later phases; account deletion
-// lands here in Phase 5 (store requirement).
-import { useEffect, useState, type MutableRefObject } from "react";
+// More tab — identity, Files (the workspace file manager), capability-filtered
+// sections (team, usage), sign out. The "sheet of remaining sections" grows in
+// later phases; account deletion lands here in Phase 5 (store requirement).
+import { useState, type MutableRefObject } from "react";
 import { listTeam, getUsage, type Me, type TeamMember } from "../api/resources";
 import { Loading, ErrorState, load, type Loadable } from "./common";
+import { FilesScreen, type FilesRoute } from "./FilesScreen";
 
 export function MoreTab({
   me,
@@ -14,10 +15,26 @@ export function MoreTab({
   onSignOut: () => Promise<void>;
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
-  backRef.current = () => false;
   const [team, setTeam] = useState<Loadable<TeamMember[]> | null>(null);
   const [usage, setUsage] = useState<Loadable<Record<string, unknown> | null> | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [files, setFiles] = useState<FilesRoute | null>(null);
+
+  // Android back pops the Files stack before leaving the tab.
+  backRef.current = () => {
+    if (files?.name === "detail") {
+      setFiles({ name: "list" });
+      return true;
+    }
+    if (files) {
+      setFiles(null);
+      return true;
+    }
+    return false;
+  };
+
+  if (files)
+    return <FilesScreen route={files} setRoute={setFiles} onBack={() => setFiles(null)} />;
 
   return (
     <div className="content bottompad">
@@ -28,6 +45,14 @@ export function MoreTab({
           role: {me.role || "(none — least privilege)"} · {me.capabilities.length} capabilities
         </div>
         <div className="meta">tenant {me.tenantId.slice(0, 8)}…</div>
+      </div>
+
+      <div className="card" onClick={() => setFiles({ name: "list" })}>
+        <h3>Files</h3>
+        <div className="meta">
+          Every manual, drawing, and photo in this workspace — and where each
+          one is filed.
+        </div>
       </div>
 
       <div className="card" onClick={() => void load(listTeam).then(setTeam)}>

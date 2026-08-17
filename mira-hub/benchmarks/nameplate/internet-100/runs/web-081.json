@@ -1,0 +1,141 @@
+{
+  "image": "c03r1_13.jpg",
+  "bytes": 1327321,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "S7-300",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "industrial equipment",
+      "confidence": 0.95,
+      "rawText": [
+        "SIMATIC",
+        "S7-300"
+      ]
+    },
+    "rawText": [
+      "SIMATIC",
+      "S7-300"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "S7-300",
+      "catalogNumber": null,
+      "equipmentType": "industrial equipment",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "S7-300"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 4,
+        "cropBbox": {
+          "left": 392,
+          "top": 155,
+          "width": 1167,
+          "height": 1624
+        },
+        "imageWidth": 2863,
+        "imageHeight": 1779,
+        "cropRotationDeg": 0,
+        "ms": 1533
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6224,
+    "total_ms": 7982
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "S7-300",
+      "catalogNumber": null,
+      "serialNumber": "2 215-2EL00-0AB0",
+      "equipmentType": "CPU",
+      "confidence": 0.95,
+      "rawText": [
+        "CPU3-P/DP",
+        "S7-300",
+        "2 215-2EL00-0AB0",
+        "SIMATIC",
+        "SIEMENS",
+        "SM323",
+        "DI0/DI6/DO24/DM",
+        "SM322",
+        "DO24/DM",
+        "SM320",
+        "DO24/DM"
+      ]
+    },
+    "rawText": [
+      "CPU3-P/DP",
+      "S7-300",
+      "2 215-2EL00-0AB0",
+      "SIMATIC",
+      "SIEMENS",
+      "SM323",
+      "DI0/DI6/DO24/DM",
+      "SM322",
+      "DO24/DM",
+      "SM320",
+      "DO24/DM"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "S7-300",
+      "catalogNumber": null,
+      "equipmentType": "CPU",
+      "serialNumber": "2 215-2EL00-0AB0",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "S7-300"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2 215-2EL00-0AB0"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CPU"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3202
+  }
+}

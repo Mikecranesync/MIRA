@@ -1,0 +1,140 @@
+{
+  "image": "c04r1_09.jpg",
+  "bytes": 117182,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "HEIDENHAIN",
+      "model": null,
+      "catalogNumber": "LID 311/10",
+      "serialNumber": "5 139 132 C R5",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "LID 311/10",
+        "HEIDENHAIN",
+        "D-83301 Traunreut",
+        "S.Nr. 5 139 132 C R5",
+        "Made in Germany",
+        "Id.Nr. 245 630 02"
+      ]
+    },
+    "rawText": [
+      "LID 311/10",
+      "HEIDENHAIN",
+      "D-83301 Traunreut",
+      "S.Nr. 5 139 132 C R5",
+      "Made in Germany",
+      "Id.Nr. 245 630 02"
+    ],
+    "values": {
+      "manufacturer": "HEIDENHAIN",
+      "model": null,
+      "catalogNumber": "LID 311/10",
+      "equipmentType": null,
+      "serialNumber": "5 139 132 C R5",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HEIDENHAIN"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "LID 311/10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "5 139 132 C R5"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 7,
+        "cropBbox": {
+          "left": 23,
+          "top": 62,
+          "width": 1121,
+          "height": 420
+        },
+        "imageWidth": 1280,
+        "imageHeight": 581,
+        "cropRotationDeg": 0,
+        "ms": 1785
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6205,
+    "total_ms": 8670
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LID 311/10",
+      "catalogNumber": null,
+      "serialNumber": "S.Nr. 5 139 132 C R5",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "LID 311/10",
+        "HEIDENHAIN",
+        "D-83301 Traunreut",
+        "Id.Nr. 245 630 02",
+        "S.Nr. 5 139 132 C R5",
+        "Made in Germany"
+      ]
+    },
+    "rawText": [
+      "LID 311/10",
+      "HEIDENHAIN",
+      "D-83301 Traunreut",
+      "Id.Nr. 245 630 02",
+      "S.Nr. 5 139 132 C R5",
+      "Made in Germany"
+    ],
+    "values": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LID 311/10",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "S.Nr. 5 139 132 C R5",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HEIDENHAIN"
+        },
+        {
+          "field": "model",
+          "value": "LID 311/10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "S.Nr. 5 139 132 C R5"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2392
+  }
+}

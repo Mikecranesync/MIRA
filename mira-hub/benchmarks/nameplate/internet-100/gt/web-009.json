@@ -1,0 +1,39 @@
+{
+  "sample_id": "web-009",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "curved_surface"],
+  "photo_gt": {
+    "manufacturer": "Baldor-Reliance (Baldor Electric Co.)",
+    "model": "Super-E Motor",
+    "catalogNumber": "EM3546T",
+    "serialNumber": "F1112011572",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "spec_number", "value_verbatim": "35AA001M492G1", "unit": "", "confidence": "high"},
+      {"field": "power_hp", "value_verbatim": "1", "unit": "HP", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "208-230/460", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "3.1-3/1.5", "unit": "A", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1760", "unit": "RPM", "confidence": "high"},
+      {"field": "frame", "value_verbatim": "143T", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3", "unit": "", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "1.15", "unit": "", "confidence": "high"},
+      {"field": "code", "value_verbatim": "L", "unit": "", "confidence": "high"},
+      {"field": "design", "value_verbatim": "B", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "F", "unit": "", "confidence": "high"},
+      {"field": "nema_nominal_efficiency", "value_verbatim": "85.5", "unit": "%", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "71", "unit": "%", "confidence": "high"},
+      {"field": "rating", "value_verbatim": "40C AMB-CONT", "unit": "", "confidence": "high"},
+      {"field": "cc", "value_verbatim": "010A", "unit": "", "confidence": "high"},
+      {"field": "usable_at_208v", "value_verbatim": "3.1", "unit": "A", "confidence": "high"},
+      {"field": "bearing_drive_end", "value_verbatim": "6205", "unit": "", "confidence": "high"},
+      {"field": "bearing_opposite_end", "value_verbatim": "6203", "unit": "", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "TEFC", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["NEMA Premium"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-063",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Yaskawa",
+    "model": "VS mini V7",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "digital_operator", "value_verbatim": "DIGITAL OPERATOR JVOP-140", "unit": "", "confidence": "high"},
+      {"field": "label_id", "value_verbatim": "FPST31042-15", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

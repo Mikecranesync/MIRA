@@ -1,0 +1,132 @@
+{
+  "image": "c04r1_08.jpg",
+  "bytes": 53059,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LS 486",
+      "catalogNumber": null,
+      "serialNumber": "285 090 07 S",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "LS 486",
+        "HEIDENHAIN",
+        "ML 170 mm",
+        "Id.Nr. 285 090 07 S",
+        "D-83301 Traunreut",
+        "Made in Germany"
+      ]
+    },
+    "rawText": [
+      "LS 486",
+      "HEIDENHAIN",
+      "ML 170 mm",
+      "Id.Nr. 285 090 07 S",
+      "D-83301 Traunreut",
+      "Made in Germany"
+    ],
+    "values": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LS 486",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "285 090 07 S",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HEIDENHAIN"
+        },
+        {
+          "field": "model",
+          "value": "LS 486"
+        },
+        {
+          "field": "serialNumber",
+          "value": "285 090 07 S"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 7,
+        "cropBbox": {
+          "left": 127,
+          "top": 27,
+          "width": 824,
+          "height": 201
+        },
+        "imageWidth": 1003,
+        "imageHeight": 297,
+        "cropRotationDeg": 0,
+        "ms": 1099
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2752,
+    "total_ms": 5466
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LS 486",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "LS 486",
+        "HEIDENHAIN",
+        "D-83301 Traunreut",
+        "Made in Germany"
+      ]
+    },
+    "rawText": [
+      "LS 486",
+      "HEIDENHAIN",
+      "D-83301 Traunreut",
+      "Made in Germany"
+    ],
+    "values": {
+      "manufacturer": "HEIDENHAIN",
+      "model": "LS 486",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HEIDENHAIN"
+        },
+        {
+          "field": "model",
+          "value": "LS 486"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1493
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sample_id": "web-016",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text", "high_resolution", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "unknown",
+    "catalogNumber": "22F-A4P2N103",
+    "serialNumber": "FA4P2N0W1440023",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "series", "value_verbatim": "SERIES A", "unit": "", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "IP20 / UL Open-Type", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "rated -10°C to 50°C Ambient", "unit": "°C", "confidence": "high"},
+      {"field": "motor_rating", "value_verbatim": "0.75kW/1.0HP", "unit": "", "confidence": "high"},
+      {"field": "input_phase", "value_verbatim": "1 Phase", "unit": "", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "200-240V", "unit": "V", "confidence": "high"},
+      {"field": "input_frequency", "value_verbatim": "48-63Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_voltage_range", "value_verbatim": "180-264", "unit": "V", "confidence": "high"},
+      {"field": "input_amps", "value_verbatim": "8.2", "unit": "A", "confidence": "high"},
+      {"field": "output_phase", "value_verbatim": "3 Phase", "unit": "", "confidence": "high"},
+      {"field": "output_frequency", "value_verbatim": "0-400Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "output_voltage_range", "value_verbatim": "0 - 230", "unit": "V", "confidence": "high"},
+      {"field": "continuous_amps", "value_verbatim": "4.2", "unit": "A", "confidence": "high"},
+      {"field": "ovld_amps_60sec", "value_verbatim": "6.3", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_current", "value_verbatim": "100kA", "unit": "kA", "confidence": "high"},
+      {"field": "terminal_torque", "value_verbatim": "1.47 Nm(13.02 in-lbs.)", "unit": "Nm", "confidence": "medium"},
+      {"field": "wire_spec", "value_verbatim": "Use 75°C Cu Wire 3.3 mm2 - 0.8 mm2 (12-18 AWG)", "unit": "", "confidence": "medium"},
+      {"field": "mfd_date", "value_verbatim": "MFD.IN 2011 ON OCT. 23", "unit": "", "confidence": "high"},
+      {"field": "firmware", "value_verbatim": "FRN: 2.01", "unit": "", "confidence": "high"},
+      {"field": "made_in", "value_verbatim": "MADE IN CHINA", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE", "cULus", "N223"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}
