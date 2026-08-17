@@ -646,11 +646,21 @@ def call_cascade(
                 url,
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json=payload,
-                timeout=120.0,
+                timeout=300.0,
             )
             r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"] or ""
+            if not content.strip():
+                # gpt-oss reasoning shares the completion budget: a long diff at
+                # High effort can consume ALL of max_tokens as hidden reasoning
+                # and return HTTP 200 with an EMPTY message (observed live on
+                # CU-03 round 10). An empty review is no review — fall through.
+                attempts.append(
+                    f"{name}: empty completion (reasoning consumed the budget?) — falling through"
+                )
+                continue
             attempts.append(f"{name}: ok (reasoning_effort={sent_effort})")
-            return r.json()["choices"][0]["message"]["content"], f"{name} ({model})", attempts
+            return content, f"{name} ({model})", attempts
         except Exception as e:  # noqa: BLE001 — any provider failure falls through
             attempts.append(f"{name}: {type(e).__name__} — {str(e)[:120]}")
     return None, "", attempts
@@ -804,7 +814,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
         text, provider, attempts = call_cascade(
             build_adjudication_prompt(prior_report, redact(rebuttal), diff, prior),
-            max_tokens=12000,
+            max_tokens=24000,
         )
         if text is None:
             print("Gate 7: ENTIRE CASCADE FAILED — no adjudication produced.", file=sys.stderr)
@@ -855,10 +865,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
 
     # gpt-oss reasoning burns out of the same completion budget as the report,
-    # so High reasoning needs far more headroom than the visible output alone.
+    # AND scales with input length — a 26k-char diff at High effort consumed a
+    # 12k budget entirely as hidden reasoning (empty message, HTTP 200). Size
+    # for the reasoning, not the visible report.
     text, provider, attempts = call_cascade(
         build_prompt(title, body, diff, level, reasons),
-        max_tokens=12000 if level == "xhigh" else 10000,
+        max_tokens=32000 if level == "xhigh" else 24000,
     )
     if text is None:
         print("Gate 7: ENTIRE CASCADE FAILED — no review produced.", file=sys.stderr)

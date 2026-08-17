@@ -567,6 +567,43 @@ def test_cascade_sends_high_reasoning_where_supported(monkeypatch):
     assert "reasoning_effort=high" in attempts[-1]
 
 
+def test_cascade_treats_empty_completion_as_failure_not_success(monkeypatch):
+    """Observed live (CU-03 round 10): gpt-oss at High reasoning on a long diff
+    consumed the whole completion budget as hidden reasoning and returned
+    HTTP 200 with an EMPTY message. An empty review must fall through the
+    cascade, never be returned as a 'successful' review."""
+    import httpx
+
+    from gate7_review import call_cascade
+
+    class _EmptyResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": ""}}]}
+
+    class _OkResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "real review"}}]}
+
+    responses = [_EmptyResp(), _OkResp()]
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        return responses.pop(0)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
+    text, provider, attempts = call_cascade("prompt", reasoning_effort="high")
+    assert text == "real review"
+    assert provider.startswith("cerebras")
+    assert "empty completion" in attempts[0]
+
+
 def test_cascade_records_provider_default_when_reasoning_unsupported(monkeypatch):
     """Qwen on Together has no reasoning_effort — the attempt must SAY the run
     rode the provider default rather than silently implying High."""
