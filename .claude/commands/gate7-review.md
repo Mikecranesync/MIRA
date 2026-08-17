@@ -89,9 +89,10 @@ schema-, or auth-adjacent). Those wait for the real lane.
   path is fix → fresh adversarial review of the new head — a PASS "earned" by adjudicating
   a stale report against fixed code is invalid (Gate 9 re-review, 2026-08-16).
 - **Every report embeds Run receipts** (head SHA, `--paths` scope, excluded files, chars
-  sent/total, a sha256 of the exact reviewed diff bytes, and the requested
-  reasoning_effort). A committed PASS file without receipts that match the claimed head
-  and scope does not satisfy the evidence requirement.
+  sent/total, a sha256 of the exact reviewed diff bytes, a sha256 of the FULL scoped diff
+  pre-cap — so beyond-cap content is tamper-evident, never silently outside the receipt —
+  and the requested reasoning_effort). A committed PASS file without receipts that match
+  the claimed head and scope does not satisfy the evidence requirement.
 - **Large PRs** → review per file group with `--paths PREFIX` (repeatable); the run prints
   every excluded file — each group needs its own PASS and every excluded file must be
   covered by another group's run.

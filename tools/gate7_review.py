@@ -593,22 +593,29 @@ def receipts_block(
     head_sha: str,
     scopes: Optional[list[str]],
     excluded: list[str],
-    sent_diff: str,
-    total_chars: int,
+    full_diff: str,
     reasoning_effort: str,
 ) -> list[str]:
     """Immutable run identity, embedded in every report (Gate 9 re-review: a
     committed PASS file must independently prove WHAT was reviewed — head SHA,
     --paths scope, the files that scope excluded, cap, chars sent, and a hash
-    of the exact reviewed bytes — not rely on the operator's say-so)."""
+    of the exact reviewed bytes — not rely on the operator's say-so).
+
+    TWO hashes (round-10 group-C finding): the reviewed-bytes hash proves what
+    the reviewer saw; the full-scoped-diff hash (pre-cap) binds the identity of
+    everything the scope selected, so content beyond a truncation cap is
+    tamper-evident rather than silently outside the receipt. A truncated run
+    shows sent < total AND two differing hashes — loud, never hidden."""
+    sent_diff = full_diff[:MAX_DIFF_CHARS]
     return [
         "## Run receipts",
         "",
         f"- head: `{head_sha or 'unknown'}`",
         f"- scope (--paths): {', '.join(scopes) if scopes else 'full PR diff'}",
         f"- excluded by scope ({len(excluded)}): {', '.join(excluded) if excluded else 'none'}",
-        f"- diff chars sent/total: {len(sent_diff):,}/{total_chars:,} (cap {MAX_DIFF_CHARS:,})",
-        f"- reviewed-diff sha256: `{hashlib.sha256(sent_diff.encode('utf-8')).hexdigest()}`",
+        f"- diff chars sent/total: {len(sent_diff):,}/{len(full_diff):,} (cap {MAX_DIFF_CHARS:,})",
+        f"- reviewed-diff sha256 (sent bytes): `{hashlib.sha256(sent_diff.encode('utf-8')).hexdigest()}`",
+        f"- full scoped-diff sha256 (pre-cap): `{hashlib.sha256(full_diff.encode('utf-8')).hexdigest()}`",
         f"- requested reasoning_effort: {reasoning_effort} (see Cascade attempts for what was sent)",
     ]
 
@@ -793,7 +800,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"(redacted: IP/MAC/SN)" + (" — TRUNCATED" if len(diff) > MAX_DIFF_CHARS else ""),
         file=sys.stderr,
     )
-    receipts = receipts_block(head_sha, a.paths, excluded, diff[:MAX_DIFF_CHARS], len(diff), "high")
+    receipts = receipts_block(head_sha, a.paths, excluded, diff, "high")
 
     if a.adjudicate:
         try:

@@ -199,20 +199,37 @@ def test_receipts_block_carries_immutable_run_identity():
     from gate7_review import receipts_block
 
     out = "\n".join(
-        receipts_block("deadbeef", ["tools/"], ["docs/uncovered.md"], "+sent diff", 99999, "high")
+        receipts_block("deadbeef", ["tools/"], ["docs/uncovered.md"], "+full diff", "high")
     )
     assert "`deadbeef`" in out
     assert "tools/" in out
     assert "docs/uncovered.md" in out  # scope exclusions are named, never silent
-    assert "99,999" in out
-    assert hashlib.sha256(b"+sent diff").hexdigest() in out
+    assert hashlib.sha256(b"+full diff").hexdigest() in out
     assert "reasoning_effort: high" in out
+
+
+def test_receipts_block_hashes_both_sent_and_full_scoped_diff(monkeypatch):
+    """Round-10 group-C finding: hashing only the truncated view leaves
+    beyond-cap content outside the receipt. The receipt now binds BOTH — the
+    exact bytes the reviewer saw AND the full scoped diff pre-cap — so a
+    truncated run shows two differing hashes and is tamper-evident."""
+    import hashlib
+
+    import gate7_review
+    from gate7_review import receipts_block
+
+    monkeypatch.setattr(gate7_review, "MAX_DIFF_CHARS", 4)
+    full = "abcdefgh"
+    out = "\n".join(receipts_block("h", None, [], full, "high"))
+    assert hashlib.sha256(b"abcd").hexdigest() in out  # sent bytes (capped)
+    assert hashlib.sha256(full.encode()).hexdigest() in out  # full scoped diff
+    assert "4/8" in out  # sent < total is loud
 
 
 def test_receipts_block_full_diff_run_names_no_exclusions():
     from gate7_review import receipts_block
 
-    out = "\n".join(receipts_block("abc", None, [], "d", 1, "high"))
+    out = "\n".join(receipts_block("abc", None, [], "d", "high"))
     assert "full PR diff" in out
     assert "excluded by scope (0): none" in out
 
