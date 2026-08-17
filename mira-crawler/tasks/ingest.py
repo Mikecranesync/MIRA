@@ -551,10 +551,17 @@ def ingest_all_pending():
                 manufacturer=manufacturer,
                 model=model,
                 source_type="manual",
-                # Shared corpus: the pending-manual queue (mira-core
-                # db.neon.get_pending_urls) holds publicly-reachable OEM
-                # manual URLs.
-                is_private=False,
+                # FAIL CLOSED (Gate 7 finding). This queue is assembled by
+                # `mira-core db.neon.get_pending_urls` from several upstream
+                # tables (`source_fingerprints` and friends); no column on
+                # those rows records who submitted a URL or whether it is
+                # public. "They are OEM manuals" was an assumption, not a
+                # fact — and this whole unit exists because a feeder must
+                # declare only what it can establish. It cannot, so it takes
+                # the private floor. #3268's sources.yaml gate still refuses
+                # uncurated hosts independently. Restoring shared status for
+                # this path needs recoverable provenance first — filed.
+                is_private=True,
             )
             queued += 1
 

@@ -857,7 +857,10 @@ approved:
     # WHAT CHANGED: the SELECT list gained `is_private` so a recrawl carries the
     # existing row's visibility forward. The WHERE clause — the part this
     # checker classifies on — is UNCHANGED.
-    query_sha256: "fc98afe0c5754992b2f968e2c0581769dd6db1f3ef4409b3a5836a264b63b1e5"
+    # Re-migrated within CU-03 after the Gate 7 round-2 fix: the NULL-handling
+    # comment sits inside this query's context window, so the hash moved again.
+    # The SQL is unchanged from the previous migration below.
+    query_sha256: "b00114a524720af053ad1a419c97f85f9f15ec902ac4c989b9048e417e7862c2"
     reason: "Stale-content maintenance sweep over ONE tenant's own rows to queue recrawls (pure-tenant carve-out). Not a retrieval surface. SELECTs is_private so the recrawl preserves visibility rather than inheriting a default."
     query_snippet: |
       FROM knowledge_entries

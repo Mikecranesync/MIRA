@@ -1307,7 +1307,16 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
             )
         else:
             continue
-        if called not in names:
+        if called == "send_task":
+            # celery_app.send_task("tasks.ingest.ingest_url", ...) dispatches by
+            # NAME, bypassing every symbol-based check (Gate 7 finding).
+            first = node.args[0] if node.args else None
+            named = (
+                isinstance(first, ast.Constant) and first.value == _INGEST_URL_TASK_NAME
+            )
+            if not named:
+                continue
+        elif called not in names:
             continue
         declared = any(kw.arg == "is_private" for kw in node.keywords)
         # Celery's `apply_async(kwargs={...})` passes task arguments inside a
@@ -1331,9 +1340,43 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
     return missing
 
 
+_INGEST_URL_TASK_NAME = "tasks.ingest.ingest_url"
+_INGEST_URL_SCAN_SKIP = {
+    "node_modules", ".git", "__pycache__", ".venv", "venv", ".next",
+    "dist", "build", "out", ".claude", ".codegraph",
+}
+
+
 def _ingest_url_dispatch_files() -> list[Path]:
-    tasks_dir = _ROOT / "mira-crawler" / "tasks"
-    return sorted(p for p in tasks_dir.rglob("*.py") if p.is_file())
+    """Every repo .py file, not just mira-crawler/tasks/ (Gate 7 finding).
+
+    A helper that wraps the dispatch (``def queue_ingest(): ingest_url.delay(...)``)
+    is itself a dispatch site, and it need not live under tasks/. Scoping the
+    scan to one directory would let the wrapper escape the contract.
+    Nested git worktrees are skipped: a linked worktree has `.git` as a FILE,
+    which no directory-name filter can express.
+    """
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _INGEST_URL_SCAN_SKIP
+            and not (Path(dirpath) / d / ".git").is_file()
+        ]
+        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
+    return sorted(out)
+
+
+# Files whose omission of is_private IS the assertion. Narrow and named — NOT a
+# blanket tests/ exemption, because a dispatch helper could legitimately live in
+# a test-support module and must still be fenced.
+_INGEST_URL_DISPATCH_ALLOWLIST: dict[str, str] = {
+    "mira-crawler/tests/test_celery_tasks.py": (
+        "exercises ingest_url's default-visibility behaviour directly; declaring "
+        "is_private at these call sites would defeat the thing under test"
+    ),
+}
 
 
 def test_ingest_url_dispatches_declare_visibility():
@@ -1341,10 +1384,28 @@ def test_ingest_url_dispatches_declare_visibility():
     offenders: list[str] = []
     for path in _ingest_url_dispatch_files():
         rel = path.relative_to(_ROOT).as_posix()
+        if rel in _INGEST_URL_DISPATCH_ALLOWLIST or rel == "tests/test_architecture.py":
+            continue
         offenders.extend(
             scan_ingest_url_dispatches(rel, path.read_text(encoding="utf-8", errors="replace"))
         )
     assert not offenders, "\n".join(offenders)
+
+
+def test_ingest_url_dispatch_allowlist_is_honest():
+    """Every exemption still exists and still omits is_private.
+
+    Without this, an entry outlives its reason and quietly exempts a file that
+    has since grown a real production dispatch.
+    """
+    for rel in _INGEST_URL_DISPATCH_ALLOWLIST:
+        path = _ROOT / rel
+        assert path.exists(), f"allowlisted {rel} no longer exists — drop the entry"
+        found = scan_ingest_url_dispatches(rel, path.read_text(encoding="utf-8", errors="replace"))
+        assert found, (
+            f"allowlisted {rel} now declares is_private everywhere — remove its "
+            "exemption so the contract covers it"
+        )
 
 
 def test_ingest_url_scanner_sees_the_known_population():
@@ -1382,6 +1443,8 @@ def test_ingest_url_scanner_catches_violations():
         "direct call": 'ingest_url(url=u)\n',
         "apply_async": 'ingest_url.apply_async(kwargs={"url": u})\n',
         "apply_async dict without the key": 'ingest_url.apply_async(kwargs={"url": u, "source_type": "m"})\n',
+        "send_task by name": 'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u})\n',
+        "helper wrapper": 'def queue(u):\n    ingest_url.delay(url=u)\n',
         "import alias": (
             "from tasks.ingest import ingest_url as iu\n"
             'iu.delay(url=u, source_type="manual")\n'
@@ -1400,6 +1463,9 @@ def test_ingest_url_scanner_catches_violations():
         ),
         "apply_async kwargs dict carrying the key":
             'ingest_url.apply_async(kwargs={"url": u, "is_private": False})\n',
+        "send_task by name WITH the key":
+            'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u, "is_private": False})\n',
+        "send_task for an unrelated task": 'app.send_task("tasks.other.thing", kwargs={"url": u})\n',
     }
     for label, src in good.items():
         assert scan_ingest_url_dispatches("good.py", src) == [], f"false positive: {label}"

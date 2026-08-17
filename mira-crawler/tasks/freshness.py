@@ -147,7 +147,16 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
                     # Carried so the recrawl can preserve visibility. Without
                     # it the refresh inherits ingest_url's default and a
                     # private row silently becomes shared.
-                    "is_private": bool(row[3]),
+                    #
+                    # NULL maps to PRIVATE, not False (Gate 7 finding). The
+                    # column is `BOOLEAN DEFAULT false` — nullable — and the
+                    # hybrid read filter is `is_private = false OR tenant_id =
+                    # :tid`. In SQL `NULL = false` is NULL, never true, so a
+                    # NULL row is invisible to the shared branch: it already
+                    # behaves as private on read. `bool(None)` would be False
+                    # and would recrawl it as explicitly shared, converting an
+                    # effectively-private row into a public one.
+                    "is_private": True if row[3] is None else bool(row[3]),
                 }
             )
         logger.info("Found %d stale entries for tenant %s", len(stale), tenant_id)
