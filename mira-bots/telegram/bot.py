@@ -60,6 +60,11 @@ from shared.photo_handler import (
     DEFAULT_PHOTO_CAPTION,
     preserve_first_meaningful_caption,
 )
+from shared.photo_routing import (
+    asks_for_documentation,
+    asks_for_identity,
+    declares_not_a_print,
+)
 from shared.tenant.authorizer import Authorizer
 from shared.visual import evidence_answer, question_resolution
 from shared.workers.nameplate_tokens import (
@@ -1381,7 +1386,9 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
-def _format_no_pack_reply(fields: dict, fallback_reason: str | None) -> str:
+def _format_no_pack_reply(
+    fields: dict, fallback_reason: str | None, *, doc_request: bool = False
+) -> str:
     """Honest "no approved pack" reply that never asks for a field we already read.
 
     Leads with what the plate actually said, states plainly that no approved
@@ -1389,6 +1396,12 @@ def _format_no_pack_reply(fields: dict, fallback_reason: str | None) -> str:
     still missing (nothing, when the type/catalog code or model is in hand).
     The resolver's own refusal — which always asks for "the model/series" — is
     used only when the read was empty and there is nothing to report.
+
+    ``doc_request`` adds one sentence answering the question that was actually
+    asked when the caption wanted paperwork ("find me the PDF manual"): MIRA
+    cannot fetch a manual today, and saying so with the plate read in hand is
+    the honest answer. Retrieving it is a separate capability — do not let this
+    line imply one exists.
     """
     read = format_plate_read(fields)
     ask = missing_identity_ask(fields)
@@ -1398,6 +1411,11 @@ def _format_no_pack_reply(fields: dict, fallback_reason: str | None) -> str:
         f"\U0001f4c7 Read from the plate: {read}",
         "I don't have an approved service pack for it, so I won't guess at its settings or faults.",
     ]
+    if doc_request:
+        lines.append(
+            "I can't pull the manual for you yet — that read is what the plate says, "
+            "so you can search the maker's site with it."
+        )
     if ask:
         lines.append(ask)
     return "\n".join(lines)
@@ -1520,15 +1538,35 @@ async def _try_nameplate_drive_pack_reply(
             memo["answer"] = ident_reply
         return True
 
+    doc_request = asks_for_documentation(caption) if has_question else False
+
     if has_question and "recognized manufacturer" in resolution.reason:
         # A drive nameplate was clearly present (we recognized the
         # manufacturer) but the model/series didn't resolve to a live pack —
         # give the honest, actionable refusal instead of guessing or silently
         # falling through to a generic engine answer.
-        no_pack_reply = _format_no_pack_reply(fields, resolution.reason)
+        no_pack_reply = _format_no_pack_reply(fields, resolution.reason, doc_request=doc_request)
         await update.message.reply_text(no_pack_reply)
         if memo is not None:
             memo["answer"] = no_pack_reply
+        return True
+
+    if has_question and asks_for_identity(caption) and format_plate_read(fields):
+        # The technician asked WHAT this is, or for its paperwork / printed
+        # identifier — a question the PLATE answers. Claim it on the read
+        # itself, whatever the vision classifier would go on to say about the
+        # image. Live defect (prod 2026-08-17): a nameplate captioned "find the
+        # PDF user manual for me" classified ELECTRICAL_PRINT at 0.66 (dense
+        # plates look like schematics) and burned ~40 s producing a schematic
+        # analysis whose own first line called the photo a nameplate. This is
+        # flow OWNERSHIP, not re-labelling the image: `asks_for_identity` is
+        # vetoed by any print vocabulary in the caption, and the branch only
+        # fires when the plate actually read as something.
+        identity_reply = _format_no_pack_reply(fields, None, doc_request=doc_request)
+        logger.info("NAMEPLATE_CAPTION_GATE claimed turn: identity request, plate read present")
+        await update.message.reply_text(identity_reply)
+        if memo is not None:
+            memo["answer"] = identity_reply
         return True
 
     if not has_question and has_anchored_identity(plate_tokens):
@@ -1924,6 +1962,21 @@ async def _try_print_translator_reply(
     if wiring_intake.parse_wiring_intent(caption or "").kind == "intake":
         return False  # wiring intake owns it — no vision call needed here
 
+    # SECOND flow-ownership carve-out (live defect, prod 2026-08-17), same
+    # shape as the wiring one above: a caption asking for the equipment's
+    # PAPERWORK or a printed identifier ("can you find the PDF user manual",
+    # "what's the part number") is not a print question — no schematic
+    # interpretation can answer it. The classifier cannot be the only guard
+    # here: a dense nameplate reads as ELECTRICAL_PRINT (0.66 on the live
+    # case), and the nameplate rung ahead of us only claims when the plate
+    # actually read. Narrow on purpose — `asks_for_documentation` excludes the
+    # bare "what is this?" family (which still reaches the interpreter) and is
+    # vetoed by any print vocabulary, so "what's the part number on this
+    # print?" is unaffected.
+    if asks_for_documentation(caption):
+        logger.info("PRINT_CAPTION_GATE declined turn: caption asks for documentation")
+        return False  # no vision call, no interpreter — the plate answers this
+
     import time as _time
 
     t0 = _time.monotonic()
@@ -2011,6 +2064,45 @@ async def _try_print_translator_reply(
             graph_sink=print_workspace.graph_sink_for(str(update.effective_chat.id)),
         )
     final_text = reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
+
+    # Self-declared misroute (live defect, prod 2026-08-17): the interpretation
+    # opened with "This photograph is the equipment's factory nameplate, not a
+    # wiring schematic" — and we shipped the schematic analysis under it
+    # anyway. When the interpreter disowns the photo, its answer is about an
+    # artifact that isn't there: suppress it, and recover with the plate read
+    # the nameplate rung already extracted this turn (memo — no second call).
+    # With nothing to recover from, fall through unchanged. Fail-open: any
+    # error in the guard leaves the existing behaviour exactly as it was.
+    try:
+        misrouted = declares_not_a_print(final_text)
+    except Exception as e:  # noqa: BLE001 — a routing guard must never eat a turn
+        logger.warning("print misroute guard failed: %s", e)
+        misrouted = False
+    if misrouted:
+        plate_fields = (memo or {}).get("nameplate_fields") or {}
+        recovered = (
+            _format_no_pack_reply(plate_fields, None, doc_request=asks_for_documentation(caption))
+            if format_plate_read(plate_fields)
+            else ""
+        )
+        logger.info(
+            "PRINT_MISROUTE_SUPPRESSED chars=%d recovered=%s", len(final_text), bool(recovered)
+        )
+        if not recovered:
+            return False  # nothing better to say — leave the turn to the engine
+        await _reply_chunked(update, recovered)
+        if memo is not None:
+            memo["answer"] = recovered
+        await _persist_equipment_workspace_turn(
+            update,
+            raw_bytes=raw_bytes,
+            caption=caption,
+            answer=recovered,
+            vision_data={"classification": "NAMEPLATE"},
+            nameplate_fields=plate_fields,
+        )
+        return True
+
     await _reply_chunked(update, final_text)
     _schedule_print_autoeval(
         question=caption,
