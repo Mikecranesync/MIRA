@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Codex adversarial review envelope",
   "type": "object",
-  "required": ["status", "summary", "findings"],
+  "required": ["status", "summary", "files_reviewed", "findings"],
   "additionalProperties": false,
   "properties": {
     "status": {
       "description": "GREEN only when there are zero BLOCKER/HIGH/MEDIUM/LOW findings. The render step re-derives this from the findings and never upgrades toward GREEN.",
       "enum": ["GREEN", "ISSUES_FOUND"]
+    },
+    "files_reviewed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-relative paths of every changed file you actually inspected. The runner REJECTS a GREEN that does not cover every file in the PR diff — an envelope emitted before the review is complete will fail this gate."
     },
     "summary": {
       "type": "string",

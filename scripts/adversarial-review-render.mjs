@@ -50,6 +50,9 @@ if (typeof env !== "object" || env === null || Array.isArray(env)) fail("top lev
 if (!["GREEN", "ISSUES_FOUND"].includes(env.status)) fail(`bad status: ${JSON.stringify(env.status)}`);
 if (typeof env.summary !== "string" || env.summary.length === 0) fail("summary missing");
 if (!Array.isArray(env.findings)) fail("findings must be an array");
+if (!Array.isArray(env.files_reviewed) || env.files_reviewed.some((f) => typeof f !== "string")) {
+  fail("files_reviewed must be an array of strings");
+}
 
 for (const [i, f] of env.findings.entries()) {
   if (typeof f !== "object" || f === null) fail(`finding[${i}] not an object`);
@@ -97,6 +100,8 @@ if (status === "GREEN") {
   lines.push("");
 }
 lines.push(`**Summary:** ${clip(env.summary, 2000)}`);
+lines.push("");
+lines.push(`**Files reviewed (${env.files_reviewed.length}):** ${clip(env.files_reviewed.map((f) => `\`${f}\``).join(", "), 2000)}`);
 lines.push("");
 
 const order = { BLOCKER: 0, HIGH: 1, MEDIUM: 2, LOW: 3, FALSE_POSITIVE: 4 };

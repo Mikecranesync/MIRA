@@ -77,8 +77,17 @@ the PR head (push first); clean tracked working tree; `gh auth status` OK;
 
 Codex's final response is schema-constrained JSON
 (`scripts/adversarial-review-schema.json`): `status` GREEN|ISSUES_FOUND,
-`summary`, and `findings[]` each carrying `id, severity, title, file, line,
-symbol, confidence, failure_scenario, evidence, remediation, test_to_prove`.
+`summary`, `files_reviewed[]`, and `findings[]` each carrying `id, severity,
+title, file, line, symbol, confidence, failure_scenario, evidence,
+remediation, test_to_prove`.
+
+**Anti-premature-GREEN coverage gate:** a live run once emitted a schema-valid
+GREEN whose summary was a *plan*, before any review happened. The runner
+therefore accepts a GREEN only when `files_reviewed` covers every file in the
+PR diff; an uncovered GREEN is treated as an incomplete review (exit 2, not
+posted, never GREEN). Codex also runs with `--ignore-user-config` (ChatGPT
+auth is preserved; the user's MCP servers/plugins are not loaded — they
+crashed live runs) — so the reviewer is a clean, reproducible agent.
 Severities: `BLOCKER | HIGH | MEDIUM | LOW | FALSE_POSITIVE` (the last =
 "considered and dismissed", recorded so it is not re-raised). Confidence:
 `observed | supported | speculative`.

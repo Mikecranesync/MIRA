@@ -143,7 +143,10 @@ node -e '
 # ── Run Codex (read-only, ephemeral, schema-constrained) ─────────────────────
 ENVELOPE="$OUT_DIR/envelope-$PR_NUMBER-$HEAD_SHA.json"
 CODEX_LOG="$OUT_DIR/codex-$PR_NUMBER-$HEAD_SHA.log"
-CODEX_ARGS=(exec --ephemeral -s read-only -C "$ROOT"
+# --ignore-user-config: auth still comes from CODEX_HOME, but the user's MCP
+# servers / plugins / skills are NOT loaded — reviews run in a clean,
+# reproducible agent (user-config MCP servers crashed live runs, 2026-08-16).
+CODEX_ARGS=(exec --ephemeral --ignore-user-config -s read-only -C "$ROOT"
   --output-schema "$ROOT/scripts/adversarial-review-schema.json"
   --output-last-message "$ENVELOPE" --color never)
 if [ -n "${CODEX_MODEL:-}" ]; then CODEX_ARGS+=(-m "$CODEX_MODEL"); fi
@@ -168,6 +171,30 @@ if ! STATUS_LINE="$(node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOP
       --sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION" --check-only)"; then
   echo "ERROR: Codex envelope is malformed. Envelope: $ENVELOPE  Log: $CODEX_LOG" >&2
   exit 2
+fi
+
+# ── Anti-premature-GREEN coverage gate ───────────────────────────────────────
+# A live run produced a schema-valid GREEN whose summary was a PLAN ("I'll
+# inspect…") emitted before any review happened. A GREEN is accepted only if
+# files_reviewed covers EVERY changed file in the diff; otherwise it is an
+# incomplete review => tooling failure, never GREEN.
+if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
+  CHANGED_FILE_LIST="$OUT_DIR/changed-$PR_NUMBER-$HEAD_SHA.txt"
+  git diff --name-only "$MERGE_BASE"..HEAD > "$CHANGED_FILE_LIST"
+  if ! node -e '
+    const fs=require("fs");
+    const env=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+    const reviewed=new Set((env.files_reviewed||[]).map(s=>s.replace(/\\/g,"/")));
+    const changed=fs.readFileSync(process.argv[2],"utf8").split("\n").filter(Boolean);
+    const missing=changed.filter(f=>!reviewed.has(f));
+    if(missing.length){
+      console.error("GREEN rejected: files_reviewed does not cover: "+missing.join(", "));
+      process.exit(1);
+    }
+  ' "$ENVELOPE" "$CHANGED_FILE_LIST"; then
+    echo "ERROR: GREEN envelope failed the diff-coverage gate (incomplete review). Not posting." >&2
+    exit 2
+  fi
 fi
 BODY_FILE="$OUT_DIR/comment-$PR_NUMBER-$HEAD_SHA.md"
 node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \

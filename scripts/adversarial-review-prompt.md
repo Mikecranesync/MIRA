@@ -69,5 +69,11 @@ tests; rollback/recovery weaknesses; operational failure modes.
 
 {{PRIOR_CONTEXT}}
 
+## Output discipline
+
 Your final response must be ONLY the JSON envelope conforming to the provided
-schema — no prose outside it.
+schema — no prose outside it. Do NOT emit the envelope until the review is
+actually finished: an envelope whose summary describes what you *plan* to do
+is an automatic failure. `files_reviewed` must list every changed file you
+actually inspected — the runner rejects a GREEN that does not cover the full
+diff, so a premature or lazy GREEN cannot pass the gate.
