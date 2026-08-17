@@ -45,6 +45,16 @@ Do not create an empty/noisy PR when an assigned issue or existing canonical
 PR already provides an adequate claim. A PR that carries the actual work is
 itself a valid claim.
 
+**Claim acquisition is check-then-act and therefore racy — the winner is
+decided by a post-claim reread, not by the pre-check.** After posting your
+claim, RE-READ the claim namespace (open PRs + issues + markers for the
+slice). If another ACTIVE claim overlapping your slice exists with an
+earlier GitHub creation time/event id, **you lost**: set your claim's Status
+to RELEASED and coordinate on the winner's thread instead of editing.
+Earliest-created ACTIVE claim wins, deterministically. Only after the reread
+confirms yours is the earliest may editing begin. The pre-push overlap check
+(§4) remains as defense in depth, not as the primary collision control.
+
 ## 3. Isolate; never touch another session's work
 
 - Parallel efforts are isolated by worktree, branch, scope, and PR. Use an
@@ -84,10 +94,22 @@ closeout (§9).
 
 ## 6. Adversarial review gate (roles, staleness, fail-closed)
 
-Mechanics live in `docs/adversarial-review-workflow.md` +
-`scripts/adversarial-review{,-loop}.sh` (canonical home: PR #3279 until
-merged — if unmerged, run the tooling from that branch; do not casually copy
-or reimplement it). The invariants, which hold regardless of tooling:
+**Activation state.** The mechanized review lane
+(`docs/adversarial-review-workflow.md` + `scripts/adversarial-review{,-loop}.sh`)
+is canonical on **PR #3279 and is NOT yet at HEAD of the default branch**.
+Until that dependency merges, the mechanized lane is **pending**, and a
+session doing substantial work must do exactly one of:
+
+  (a) run the canonical tooling directly from the `feat/adversarial-review-automation`
+      branch (verify the scripts by their documented markers before use),
+      and record that deviation in the PR; or
+  (b) report **PARTIAL/BLOCKED** naming PR #3279 as the exact missing
+      dependency.
+
+Never casually copy or reimplement the tooling, and never treat a mutable PR
+branch as a satisfied dependency — once #3279 merges, the mechanics above
+become mandatory as-committed. The **invariants below bind in all cases,
+tooling or no tooling**:
 
 - **Claude implements and remediates. Codex reviews read-only** and produces
   evidence-backed findings; it must not edit the implementation branch during
