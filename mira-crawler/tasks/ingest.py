@@ -55,11 +55,32 @@ _TRANSIENT = (
     retry_backoff_max=300,
     retry_jitter=True,
 )
-def ingest_url(self, url: str, manufacturer: str = "",
-               model: str = "", source_type: str = "equipment_manual"):
+def ingest_url(
+    self,
+    url: str,
+    manufacturer: str = "",
+    model: str = "",
+    source_type: str = "equipment_manual",
+    is_private: bool = True,
+):
     """Download, extract, chunk, embed, and store one document.
 
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
+
+    ``is_private`` (CU-03/I-2) is the corpus visibility every feeder must
+    declare. Unlike ``ingest.store.insert_chunk`` — which makes it *required*
+    because it is an in-process call — this is a Celery task signature, i.e. a
+    wire contract. Messages enqueued by an older worker are still in the queue
+    at deploy time and carry no ``is_private`` kwarg; a required parameter would
+    make those drain as ``TypeError``. So it takes a default, and the default is
+    the safe direction: **private**. A feeder that wants the shared corpus says
+    so explicitly, and says it because its source manifest is curated.
+
+    A ``file://`` URL can never be a shared-corpus write. Local files reach this
+    task from ``tasks/gdrive.py`` (a Google Drive mirror) and from operator
+    drops — non-public provenance by construction — so a ``is_private=False``
+    on a ``file://`` URL is overridden to ``True`` and logged, rather than
+    trusted. See `.claude/rules/knowledge-entries-tenant-scoping.md`.
     """
     from ingest.chunker import chunk_blocks
     from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
@@ -73,6 +94,16 @@ def ingest_url(self, url: str, manufacturer: str = "",
     if not tenant_id:
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
+
+    # Fail-closed visibility floor: a local file has no public provenance, so it
+    # can never enter the shared corpus no matter what the caller declared.
+    if not is_private and url.startswith("file://"):
+        logger.warning(
+            "Forcing is_private=True for local-file ingest %s — file:// has no "
+            "public provenance and cannot enter the shared corpus",
+            url[:120],
+        )
+        is_private = True
 
     # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
@@ -229,6 +260,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 tenant_id=tenant_id,
                 content=chunk["text"],
                 embedding=embedding,
+                is_private=is_private,
                 source_url=url,
                 source_type=source_type,
                 manufacturer=manufacturer,

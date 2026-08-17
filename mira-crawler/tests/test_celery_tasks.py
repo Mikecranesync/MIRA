@@ -9,7 +9,7 @@ The Docker image uses mira_crawler.* paths via PYTHONPATH.
 
 from __future__ import annotations
 
-import httpx  # ensure httpx is in sys.modules before any patch.dict(sys.modules) runs
+import httpx  # noqa: F401 — keep httpx in sys.modules before any patch.dict(sys.modules)
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -19,6 +19,31 @@ from unittest.mock import MagicMock, patch
 
 def _fake_embedding(dim: int = 768) -> list[float]:
     return [0.01] * dim
+
+
+def _patch_download(body: bytes, content_type: str):
+    """Patch the streaming download `tasks.ingest.ingest_url` actually uses.
+
+    These tests used to patch ``httpx.get``. ``ingest_url`` was refactored to a
+    streaming download (``httpx.Client(...).stream("GET", url)``) so the chunked
+    body can be size-capped mid-flight, and the mock was never updated — so the
+    tests have been issuing **real network requests to example.com** and failing
+    on the 404 ever since, silently. Repaired for CU-03, which needs a real
+    behavior lock on this function's visibility argument.
+    """
+    resp = MagicMock()
+    resp.headers = {"content-type": content_type}
+    resp.raise_for_status = MagicMock()
+    resp.iter_bytes = MagicMock(return_value=iter([body]))
+    resp.__enter__ = MagicMock(return_value=resp)
+    resp.__exit__ = MagicMock(return_value=False)
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=resp)
+    client.__enter__ = MagicMock(return_value=client)
+    client.__exit__ = MagicMock(return_value=False)
+
+    return patch("httpx.Client", return_value=client)
 
 
 def _fake_blocks(n: int = 3) -> list[dict]:
@@ -115,15 +140,10 @@ class TestIngestUrl:
 
     @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
     def test_full_pipeline(self):
-        fake_resp = MagicMock()
-        fake_resp.content = b"%PDF-1.4 fake"
-        fake_resp.headers = {"content-type": "application/pdf"}
-        fake_resp.raise_for_status = MagicMock()
-
         chunks = _fake_chunks(5)
 
         with (
-            patch("httpx.get", return_value=fake_resp),
+            _patch_download(b"%PDF-1.4 fake", "application/pdf"),
             patch("ingest.converter.extract_from_pdf", return_value=_fake_blocks(5)),
             patch("ingest.chunker.chunk_blocks", return_value=chunks),
             patch("ingest.store.chunk_exists", return_value=False),
@@ -140,13 +160,8 @@ class TestIngestUrl:
 
     @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
     def test_dedup_skips(self):
-        fake_resp = MagicMock()
-        fake_resp.content = b"<html>test</html>"
-        fake_resp.headers = {"content-type": "text/html"}
-        fake_resp.raise_for_status = MagicMock()
-
         with (
-            patch("httpx.get", return_value=fake_resp),
+            _patch_download(b"<html>test</html>", "text/html"),
             patch("ingest.converter.extract_from_html", return_value=_fake_blocks(3)),
             patch("ingest.chunker.chunk_blocks", return_value=_fake_chunks(3)),
             patch("ingest.store.chunk_exists", return_value=True),
@@ -163,29 +178,74 @@ class TestIngestUrl:
 
     @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
     def test_empty_extraction(self):
-        fake_resp = MagicMock()
-        fake_resp.content = b"empty"
-        fake_resp.headers = {"content-type": "text/html"}
-        fake_resp.raise_for_status = MagicMock()
-
         with (
-            patch("httpx.get", return_value=fake_resp),
+            _patch_download(b"empty", "text/html"),
             patch("ingest.converter.extract_from_html", return_value=[]),
         ):
             from tasks.ingest import ingest_url
+
             result = ingest_url("https://example.com/empty.html")
 
         assert result["error"] == "no_content"
 
-    @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
-    def test_embed_failure_graceful(self):
-        fake_resp = MagicMock()
-        fake_resp.content = b"%PDF-1.4"
-        fake_resp.headers = {"content-type": "application/pdf"}
-        fake_resp.raise_for_status = MagicMock()
+    # --- CU-03/I-2: corpus visibility -------------------------------------
+
+    def _run_and_capture_visibility(self, url: str, **kwargs) -> bool:
+        """Run ingest_url over one chunk and return the is_private it wrote."""
+        seen: dict = {}
+
+        def _capture(**kw):
+            seen.update(kw)
+            return "entry-1"
 
         with (
-            patch("httpx.get", return_value=fake_resp),
+            _patch_download(b"%PDF-1.4 fake", "application/pdf"),
+            patch("ingest.converter.extract_from_pdf", return_value=_fake_blocks(1)),
+            patch("ingest.chunker.chunk_blocks", return_value=_fake_chunks(1)),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.embedder.embed_text", return_value=_fake_embedding()),
+            patch("ingest.store.insert_chunk", _capture),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
+            from tasks.ingest import ingest_url
+
+            ingest_url(url, **kwargs)
+
+        return seen["is_private"]
+
+    @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
+    def test_defaults_to_private_when_caller_does_not_declare(self):
+        """An undeclared feeder must not land in the shared corpus.
+
+        This is also the in-flight-message case: a task enqueued by a worker
+        running the previous release carries no is_private kwarg, and must
+        drain to the safe side rather than raising TypeError.
+        """
+        assert self._run_and_capture_visibility("https://example.com/m.pdf") is True
+
+    @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
+    def test_threads_explicit_shared_corpus_declaration(self):
+        assert (
+            self._run_and_capture_visibility("https://example.com/m.pdf", is_private=False) is False
+        )
+
+    @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
+    def test_local_file_can_never_reach_the_shared_corpus(self, tmp_path):
+        """The fail-closed floor: file:// overrides a caller's is_private=False.
+
+        `tasks/gdrive.py` queues Google Drive PDFs as file:// URLs. Before
+        CU-03 those landed is_private=false — private documents in the corpus
+        every tenant reads.
+        """
+        pdf = tmp_path / "drive-doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+
+        assert self._run_and_capture_visibility(f"file://{pdf}", is_private=False) is True
+
+    @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
+    def test_embed_failure_graceful(self):
+        with (
+            _patch_download(b"%PDF-1.4", "application/pdf"),
             patch("ingest.converter.extract_from_pdf", return_value=_fake_blocks(3)),
             patch("ingest.chunker.chunk_blocks", return_value=_fake_chunks(3)),
             patch("ingest.store.chunk_exists", return_value=False),

@@ -210,7 +210,14 @@ def check_sitemaps() -> dict:
 
                 if is_new or is_updated:
                     try:
-                        ingest_url.delay(url=loc, source_type="equipment_manual")
+                        # Shared corpus: every URL here came from a sitemap in
+                        # the curated `_SITEMAPS` manifest — OEM documentation
+                        # the manufacturer publishes openly.
+                        ingest_url.delay(
+                            url=loc,
+                            source_type="equipment_manual",
+                            is_private=False,
+                        )
                         new_urls += 1
                         logger.debug(
                             "Queued %s (new=%s, updated=%s, lastmod=%s)",

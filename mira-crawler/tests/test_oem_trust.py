@@ -57,12 +57,14 @@ def captured(monkeypatch) -> dict:
     def _fake_store(
         valid,
         tenant_id,
+        *,
+        is_private,
         manufacturer="",
         model_number="",
         image_embedding=None,
         verified=False,
     ):
-        box.update({"tenant_id": tenant_id, "verified": verified})
+        box.update({"tenant_id": tenant_id, "verified": verified, "is_private": is_private})
         return len(valid)
 
     monkeypatch.setattr(base_crawler, "store_chunks", _fake_store)
@@ -85,6 +87,8 @@ def test_manufacturer_crawl_writes_shared_pool_verified(tmp_path, captured) -> N
     assert stored == 1
     assert captured["tenant_id"] == SHARED
     assert captured["verified"] is True
+    # CU-03: curated, publicly-published OEM material stays in the shared corpus.
+    assert captured["is_private"] is False
 
 
 def test_curriculum_crawl_is_unchanged(tmp_path, captured) -> None:
@@ -95,6 +99,9 @@ def test_curriculum_crawl_is_unchanged(tmp_path, captured) -> None:
     assert stored == 1
     assert captured["tenant_id"] == GARAGE
     assert captured["verified"] is False
+    # CU-03: still shared — public web content. `verified` is the trust axis
+    # that keeps it out of citations; visibility is a separate decision.
+    assert captured["is_private"] is False
 
 
 def test_base_crawler_defaults_to_untrusted() -> None:

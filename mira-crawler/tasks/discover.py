@@ -151,6 +151,8 @@ def discover_manufacturer(self, manufacturer: str, start_url: str,
             manufacturer=manufacturer,
             model="",
             source_type="equipment_manual",
+            # Manufacturer-site discovery — publicly-published OEM docs.
+            is_private=False,
         )
 
     return {"manufacturer": manufacturer, "urls_found": len(pdf_urls)}

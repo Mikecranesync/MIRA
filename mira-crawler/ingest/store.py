@@ -64,6 +64,8 @@ def insert_chunk(
     tenant_id: str,
     content: str,
     embedding: list[float],
+    *,
+    is_private: bool,
     source_url: str = "",
     source_type: str = "equipment_manual",
     manufacturer: str = "",
@@ -76,7 +78,25 @@ def insert_chunk(
     image_embedding: list[float] | None = None,
     verified: bool = False,
 ) -> str:
-    """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
+    """Insert a single chunk into knowledge_entries. Returns entry ID or empty string.
+
+    ``is_private`` is **required and keyword-only** (CU-03/I-1). It is the row's
+    visibility in the hybrid corpus, and there is deliberately no default:
+
+    * ``False`` — shared OEM corpus. Readable by every tenant. Only legitimate
+      for curated, publicly-published OEM material.
+    * ``True``  — per-tenant. Readable only by ``tenant_id`` (the read filter is
+      ``is_private = false OR tenant_id = :caller``).
+
+    Until CU-03 this was the SQL literal ``false``: no caller could influence it,
+    so *every* crawler write landed in the shared corpus — including the
+    ``file://`` Google-Drive feed, which carries non-public documents. A default
+    of either value would reintroduce that failure mode one writer at a time, so
+    omitting the argument is a ``TypeError``.
+
+    See `.claude/rules/knowledge-entries-tenant-scoping.md` (the hybrid-corpus
+    law) and issue #1833 (the leak shape this closes).
+    """
     from sqlalchemy import text
 
     from .manufacturer_normalize import normalize_manufacturer
@@ -108,7 +128,7 @@ def insert_chunk(
                     VALUES
                         (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                          :content, cast(:embedding AS vector), :source_url, :source_page,
-                         cast(:metadata AS jsonb), false, :verified, :chunk_type,
+                         cast(:metadata AS jsonb), :is_private, :verified, :chunk_type,
                          cast(:image_embedding AS vector))
                     ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
                     WHERE (metadata->>'chunk_index') IS NOT NULL
@@ -125,6 +145,7 @@ def insert_chunk(
                     "source_url": source_url,
                     "source_page": page_num,
                     "metadata": json.dumps(metadata),
+                    "is_private": is_private,
                     "chunk_type": chunk_type,
                     "verified": verified,
                     "image_embedding": img_emb_val,
@@ -140,6 +161,8 @@ def insert_chunk(
 def store_chunks(
     chunks_with_embeddings: list[tuple[dict, list[float]]],
     tenant_id: str,
+    *,
+    is_private: bool,
     manufacturer: str = "",
     model_number: str = "",
     image_embedding: list[float] | None = None,
@@ -150,9 +173,16 @@ def store_chunks(
     Skips chunks that already exist (dedup by source_url + chunk_index).
     Returns number of chunks inserted.
     image_embedding: optional 768-dim visual vector stored alongside text embedding.
+    is_private: required, keyword-only — the batch's corpus visibility. Threaded
+    verbatim to `insert_chunk`; see its docstring for why there is no default.
     verified: when True the chunk is written as trusted (citable while
     MIRA_ENFORCE_APPROVED_RETRIEVAL is on). Only OEM-trusted crawlers pass
     True — see .claude/rules/oem-crawler-trusted.md.
+
+    `is_private` and `verified` are independent axes: `is_private` decides WHO
+    can read the row, `verified` decides whether it is citable at all. A shared
+    OEM manual is (private=False, verified=True); a customer upload is
+    (private=True, verified=False) until approved.
 
     UNS+KG flywheel (spec §4.4): when manufacturer+model are known, this
     upserts an `equipment` and a `manual` entity, links the chunk row to
@@ -212,6 +242,7 @@ def store_chunks(
             tenant_id=tenant_id,
             content=chunk["text"],
             embedding=embedding,
+            is_private=is_private,
             source_url=source_url,
             source_type=chunk.get("source_type", "equipment_manual"),
             manufacturer=manufacturer,

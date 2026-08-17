@@ -146,6 +146,9 @@ def ingest_text_inline(
                 tenant_id=tenant_id,
                 content=chunk["text"],
                 embedding=embedding,
+                # Public web text (Reddit bodies, patent abstracts, rendered
+                # HTML) — shared corpus, unchanged from pre-CU-03 behavior.
+                is_private=False,
                 source_url=source_url,
                 source_type=source_type,
                 chunk_index=chunk_idx,

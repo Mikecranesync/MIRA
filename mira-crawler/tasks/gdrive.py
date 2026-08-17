@@ -159,7 +159,11 @@ def sync_google_drive() -> dict:
 
         file_url = f"file://{pdf_path}"
         try:
-            ingest_url.delay(url=file_url, source_type="manual")
+            # Google Drive mirror — private documents, not published OEM
+            # material. BEHAVIOR CHANGE (CU-03/I-2): these landed in the shared
+            # corpus before. `ingest_url` also enforces this for any `file://`
+            # URL regardless of what a caller declares.
+            ingest_url.delay(url=file_url, source_type="manual", is_private=True)
             new_queued += 1
             newly_processed.append(path_str)
             processed.add(path_str)

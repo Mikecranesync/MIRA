@@ -1172,10 +1172,31 @@ def scan_knowledge_entries_insert(rel_path: str, source: str) -> list[str]:
     return violations
 
 
+def _is_nested_worktree(d: Path) -> bool:
+    """True for a git worktree checked out inside the repo.
+
+    A linked worktree has `.git` as a *file* (a gitdir pointer), not a directory
+    — which is why no `.gitignore` glob can express this and the exclusion has
+    to live in code (same reasoning as the nested-worktree check in
+    `tools/codegraph-preflight.sh`).
+
+    Without this, Contract 13 scans every duplicate copy of the repo under
+    `.worktrees/`, `.audit-worktrees/`, or an ad-hoc `git worktree add` path and
+    reports their files as violations — a false RED on any developer machine
+    that has one, while CI's clean checkout stays green. Found while running
+    this contract for CU-03.
+    """
+    return (d / ".git").is_file()
+
+
 def _knowledge_entries_write_candidates() -> list[Path]:
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(_ROOT):
-        dirnames[:] = [d for d in dirnames if d not in _KE_EXCLUDED_DIRS]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in _KE_EXCLUDED_DIRS
+            and not _is_nested_worktree(Path(dirpath) / d)
+        ]
         for name in filenames:
             p = Path(dirpath) / name
             if p.suffix in _KE_WRITE_SUFFIXES:

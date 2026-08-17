@@ -579,6 +579,8 @@ def ingest_youtube_channels() -> dict:
             stored = store_chunks(
                 valid_pairs,
                 tenant_id=tenant_id,
+                # Public YouTube transcripts — shared corpus, unchanged.
+                is_private=False,
                 manufacturer="",
                 model_number="",
             )

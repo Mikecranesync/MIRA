@@ -50,6 +50,7 @@ def test_insert_chunk_defaults_to_unverified(captured: dict) -> None:
         embedding=[0.1],
         source_url="u",
         chunk_index=0,
+        is_private=False,
     )
     assert entry_id
     assert captured["verified"] is False
@@ -62,6 +63,7 @@ def test_insert_chunk_binds_verified_true_when_asked(captured: dict) -> None:
         embedding=[0.1],
         source_url="u",
         chunk_index=0,
+        is_private=False,
         verified=True,
     )
     assert entry_id
@@ -83,6 +85,7 @@ def test_store_chunks_passes_verified_through(monkeypatch) -> None:
         [({"text": "hello", "source_url": "u", "chunk_index": 0}, [0.1])],
         tenant_id="t1",
         manufacturer="AutomationDirect",
+        is_private=False,
         verified=True,
     )
     assert inserted == 1
@@ -103,5 +106,6 @@ def test_store_chunks_defaults_to_unverified(monkeypatch) -> None:
     store.store_chunks(
         [({"text": "hello", "source_url": "u", "chunk_index": 0}, [0.1])],
         tenant_id="t1",
+        is_private=False,
     )
     assert seen["verified"] is False

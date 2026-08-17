@@ -123,7 +123,11 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
             return
 
         with recorder.stage("store", backend="neon"):
-            stored = store_chunks(valid, tenant_id=config.mira_tenant_id)
+            # Operator-dropped local file — non-public provenance, so it stays
+            # scoped to config.mira_tenant_id instead of entering the shared
+            # corpus every tenant reads. BEHAVIOR CHANGE (CU-03/I-1): this path
+            # wrote is_private=false before, which is the #1833 leak shape.
+            stored = store_chunks(valid, tenant_id=config.mira_tenant_id, is_private=True)
             dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
         recorder.set_metric("stored_chunks", stored)
         logger.info("Ingested %s: %d chunks stored", path.name, stored)

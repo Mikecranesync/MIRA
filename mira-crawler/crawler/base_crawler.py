@@ -162,6 +162,10 @@ class BaseCrawler:
                 else self.config.mira_tenant_id
             ),
             manufacturer=manufacturer,
+            # Every crawler in this class walks publicly-published web sources
+            # from a curated manifest (sources.yaml) — shared corpus. Unchanged
+            # from pre-CU-03 behavior; `verified` is the separate trust axis.
+            is_private=False,
             verified=self.oem_trusted,
         )
 

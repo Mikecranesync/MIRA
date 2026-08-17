@@ -365,6 +365,10 @@ def insert_to_neondb(
     stored = store_chunks(
         [(chunk, embedding)],
         tenant_id=tenant_id,
+        # Photographs of a specific plant's equipment are that tenant's own
+        # material, not publicly-published OEM documentation. BEHAVIOR CHANGE
+        # (CU-03/I-1): this wrote is_private=false before.
+        is_private=True,
         manufacturer=result.get("make") or "",
         model_number=result.get("model") or "",
         image_embedding=image_embedding,

@@ -160,7 +160,26 @@ class LearningIngester:
     # ── NeonDB insert ──────────────────────────────────────────────────────
 
     def insert_faq(self, content: str, embedding: list[float], chat_id: str) -> bool:
-        """Insert one FAQ chunk into NeonDB knowledge_entries."""
+        """Insert one FAQ chunk into NeonDB knowledge_entries.
+
+        Written ``is_private=true`` — per-tenant, scoped to ``self.cfg.tenant_id``.
+
+        BEHAVIOR CHANGE (CU-03/I-3): this wrote ``is_private=false`` alongside
+        ``verified=true``, which put one tenant's approved technician
+        conversations into the shared corpus *as citable knowledge* for every
+        other tenant. That contradicted this module's own contract — its
+        docstring says ``MIRA_TENANT_ID`` is the "tenant for KB writes" — and it
+        is the `#1833 <https://github.com/Mikecranesync/MIRA/issues/1833>`_ leak
+        shape applied to conversation content.
+
+        Retrieval for the owning tenant is unaffected: the hybrid read filter is
+        ``is_private = false OR tenant_id = :caller``
+        (`.claude/rules/knowledge-entries-tenant-scoping.md`), and every bot
+        surface resolves a tenant before recall (``RAGWorker`` falls back to
+        ``MIRA_TENANT_ID``, the same value written here). Callers that pass no
+        tenant at all read the shared corpus only — and those are exactly the
+        anonymous callers that must not see this content.
+        """
         try:
             from sqlalchemy import create_engine, text
             from sqlalchemy.pool import NullPool
@@ -185,11 +204,12 @@ class LearningIngester:
                         " metadata, is_private, verified, chunk_type, created_at) "
                         "VALUES (:id, :tid, 'approved_faq', '', '', '', :content, "
                         "        cast(:emb AS vector), :url, 0, cast(:meta AS jsonb), "
-                        "        false, true, 'faq', now())"
+                        "        :is_private, true, 'faq', now())"
                     ),
                     {
                         "id": str(uuid.uuid4()),
                         "tid": self.cfg.tenant_id,
+                        "is_private": True,
                         "content": content,
                         "emb": str(embedding),
                         "url": f"feedback://approved/{chat_hash}",
