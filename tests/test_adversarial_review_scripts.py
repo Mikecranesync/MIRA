@@ -104,12 +104,10 @@ def test_malformed_and_foreign_records_never_validate(tmp_path):
 
 def test_valid_green_at_sha_is_recognized(tmp_path):
     ledger = run_ledger(tmp_path, [_record(SHA_A, "GREEN", 1)], sha=SHA_A)
-    assert ledger == {
-        "next_iteration": 2,
-        "consumed": 1,
-        "already": 1,
-        "prior_status": "GREEN",
-    }
+    assert ledger["next_iteration"] == 2
+    assert ledger["consumed"] == 1
+    assert ledger["already"] == 1
+    assert ledger["prior_status"] == "GREEN"
 
 
 # ── Script fixtures ──────────────────────────────────────────────────────────
@@ -194,7 +192,35 @@ FIX="{fix}"
 echo "$*" >> "$FIX/gh.log"
 case "$*" in
   "api user --jq .login") echo "{VIEWER}" ;;
-  api\\ repos/*/comments*|api\\ repos*comments\\ --paginate)
+  api\\ repos/*/comments\\ -F\\ body=@*\\ --jq\\ .id)
+      # POST a comment (reservation). Atomic append under a mkdir lock —
+      # this is the shared ledger two racing processes contend on.
+      body=""
+      for a in "$@"; do case "$a" in body=@*) body="${{a#body=@}}" ;; esac; done
+      if [ "${{STUB_HOLD_POST:-0}}" = "1" ]; then
+        : > "$FIX/post-waiting-${{ADV_TEST_PROC:-x}}"
+        i=0
+        until [ -e "$FIX/go-post" ]; do i=$((i+1)); [ "$i" -gt 300 ] && exit 71; sleep 0.1; done
+      fi
+      i=0
+      until mkdir "$FIX/lock" 2>/dev/null; do i=$((i+1)); [ "$i" -gt 300 ] && exit 70; sleep 0.05; done
+      node -e '
+        const fs=require("fs");
+        const [cf,bf,viewer]=process.argv.slice(1);
+        const arr=JSON.parse(fs.readFileSync(cf,"utf8"));
+        const id=arr.reduce((m,c)=>Math.max(m,c.id||0),1000)+1;
+        arr.push({{id, user:{{login:viewer}}, body:fs.readFileSync(bf,"utf8")}});
+        // Atomic replace: concurrent readers must see the old or new ledger,
+        // never a truncated half-write (the real GitHub API is atomic).
+        fs.writeFileSync(cf+".tmp",JSON.stringify(arr));
+        fs.renameSync(cf+".tmp",cf);
+        console.log(id);
+      ' "$FIX/comments.json" "$body" "{VIEWER}"
+      rc=$?
+      rmdir "$FIX/lock"
+      exit "$rc" ;;
+  api\\ repos/*/comments\\ --paginate)
+      if [ "${{STUB_FAIL_LIST:-0}}" = "1" ]; then exit 1; fi
       cat "$FIX/comments.json" ;;
   "pr view 99 --json number,title,baseRefName,headRefOid,headRefName")
       cat "$FIX/pr.json" ;;
@@ -218,6 +244,7 @@ esac
             f'''#!/usr/bin/env bash
 FIX="{fix}"
 cat > /dev/null  # consume the prompt on stdin
+echo "${{ADV_TEST_PROC:-x}}" >> "$FIX/codex-count"
 out=""
 prev=""
 for a in "$@"; do
@@ -230,7 +257,7 @@ cp "$FIX/envelope.json" "$out"
         _write_exec(
             self.stubs / "claude",
             f'''#!/usr/bin/env bash
-touch "{fix}/claude-invoked"
+echo "${{ADV_TEST_PROC:-x}}" >> "{fix}/claude-invoked"
 cat > /dev/null
 ''',
         )
@@ -249,20 +276,44 @@ cat > /dev/null
     def set_envelope(self, envelope: dict) -> None:
         (self.fix / "envelope.json").write_text(json.dumps(envelope), encoding="utf-8")
 
-    def run(self, script: str, *args: str, env_extra: dict | None = None):
+    def _env(self, env_extra: dict | None = None) -> dict:
         env = dict(os.environ)
         env["PATH"] = str(self.stubs) + os.pathsep + env["PATH"]
         env["ADV_REVIEW_OUT_DIR"] = _posix(self.out_dir)
         env["CODEX_BIN"] = "codex"
         env["CLAUDE_BIN"] = "claude"
-        env.pop("ADV_REVIEW_HUMAN_AUTHORIZED", None)
+        for k in ("ADV_REVIEW_HUMAN_AUTHORIZED", "ADV_REVIEW_MODE", "STUB_HOLD_POST",
+                  "STUB_FAIL_LIST", "ADV_TEST_PROC"):
+            env.pop(k, None)
         if env_extra:
             env.update(env_extra)
+        return env
+
+    def run(self, script: str, *args: str, env_extra: dict | None = None):
         return subprocess.run(
             [BASH, f"scripts/{script}", *args],
-            cwd=self.repo, env=env, capture_output=True,
-            text=True, encoding="utf-8", errors="replace", timeout=120,
+            cwd=self.repo, env=self._env(env_extra), capture_output=True,
+            text=True, encoding="utf-8", errors="replace", timeout=180,
         )
+
+    def popen(self, script: str, *args: str, env_extra: dict | None = None):
+        return subprocess.Popen(
+            [BASH, f"scripts/{script}", *args],
+            cwd=self.repo, env=self._env(env_extra),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+
+    def codex_runs(self) -> int:
+        f = self.fix / "codex-count"
+        return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+
+    def claude_runs(self) -> int:
+        f = self.fix / "claude-invoked"
+        return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+
+    def ledger(self) -> list:
+        return json.loads((self.fix / "comments.json").read_text(encoding="utf-8"))
 
     def posted(self) -> str:
         return "\n---\n".join(
@@ -276,6 +327,60 @@ GREEN_ENVELOPE = {
     "findings": [],
     "files_reviewed": ["work.txt"],
 }
+
+ISSUES_ENVELOPE = {
+    "status": "ISSUES_FOUND",
+    "summary": "found one",
+    "files_reviewed": ["work.txt"],
+    "findings": [
+        {
+            "id": "F1",
+            "severity": "HIGH",
+            "title": "t",
+            "file": "work.txt",
+            "confidence": "observed",
+            "failure_scenario": "s",
+            "evidence": "e",
+            "remediation": "r",
+            "test_to_prove": "p",
+        }
+    ],
+}
+
+
+def _reservation(
+    run_id: str,
+    sha: str,
+    mode: str,
+    comment_id: int,
+    human: str = "false",
+    author: str = VIEWER,
+) -> dict:
+    body = (
+        "[ADVERSARIAL-ROUND-RESERVATION]\n\n```\n"
+        f"run_id: {run_id}\n"
+        f"head_sha: {sha}\n"
+        f"mode: {mode}\n"
+        f"human_authorized: {human}\n"
+        "requested_at: 2026-08-17T00:00:00Z\n```"
+    )
+    return {"id": comment_id, "body": body, "user": {"login": author}}
+
+
+def _remediation(run_id: str, reviewed: str, new_head: str, author: str = VIEWER) -> dict:
+    body = (
+        "[CLAUDE-REMEDIATION]\n\n```\n"
+        f"remediated_review_sha: {reviewed}\n"
+        f"new_head_sha: {new_head}\n"
+        f"run_id: {run_id}\n"
+        "iteration: 1\n```"
+    )
+    return {"body": body, "user": {"login": author}}
+
+
+RID_1 = "1" * 32
+RID_2 = "2" * 32
+RID_3 = "3" * 32
 
 
 # ── adversarial-review.sh: argument strictness ───────────────────────────────
@@ -407,4 +512,212 @@ def test_loop_restart_does_not_reset_the_durable_budget(tmp_path):
     r = h.run("adversarial-review-loop.sh", "99")
     assert r.returncode == 1
     assert "durable review budget exhausted" in h.posted()
-    assert not (h.fix / "claude-invoked").exists()
+    assert h.claude_runs() == 0
+
+
+# ── Atomic round reservation (Codex iteration-4 F1) ──────────────────────────
+
+
+def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
+    """THE F1 acceptance test: two real loop processes, one shared stub
+    ledger, a barrier ensuring BOTH observe the same available final slot
+    before EITHER's reservation posts. Exactly one reservation becomes
+    canonical; exactly one process runs Codex and launches Claude; the loser
+    exits fail-closed; both run_ids persist distinctly; the winner stays
+    bound to the original head."""
+    h = Harness(tmp_path)
+    # Two of three slots already consumed by canonical FULL reservations on
+    # earlier heads — both racers see exactly one slot left.
+    h.set_comments(
+        [
+            _reservation(RID_1, "d" * 40, "full", 2001),
+            _reservation(RID_2, "e" * 40, "full", 2002),
+        ]
+    )
+    h.set_envelope(ISSUES_ENVELOPE)
+
+    p1 = h.popen(
+        "adversarial-review-loop.sh", "99",
+        env_extra={"STUB_HOLD_POST": "1", "ADV_TEST_PROC": "p1"},
+    )
+    p2 = h.popen(
+        "adversarial-review-loop.sh", "99",
+        env_extra={"STUB_HOLD_POST": "1", "ADV_TEST_PROC": "p2"},
+    )
+    # Barrier: wait until BOTH processes are blocked at their reservation POST
+    # (each has already read the ledger and seen the free slot), then release.
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "post-waiting-p1").exists() and (h.fix / "post-waiting-p2").exists():
+            break
+        time.sleep(0.1)
+    else:
+        p1.kill(), p2.kill()
+        pytest.fail("both processes never reached the reservation POST barrier")
+    (h.fix / "go-post").write_text("go", encoding="utf-8")
+
+    out1, _ = p1.communicate(timeout=180)
+    out2, _ = p2.communicate(timeout=180)
+    rcs = {p1.returncode, p2.returncode}
+
+    # Exactly one Codex review and exactly one privileged remediation ran.
+    assert h.codex_runs() == 1, out1 + out2
+    assert h.claude_runs() == 1, out1 + out2
+    # One process lost the race and exited fail-closed before Codex.
+    assert "LOST RESERVATION RACE" in out1 + out2
+    assert 0 not in rcs  # winner escalates no-progress (1); loser fails closed (2)
+    # Both reservations persist with DISTINCT run_ids — never collapsed.
+    ledger = h.ledger()
+    res_bodies = [c["body"] for c in ledger if c["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")]
+    new_res = [b for b in res_bodies if f"head_sha: {h.head}" in b]
+    assert len(new_res) == 2
+    run_ids = {b.split("run_id: ")[1][:32] for b in new_res}
+    assert len(run_ids) == 2
+    # The winning (canonical) reservation is bound to the exact original head.
+    out = subprocess.run(
+        [NODE, str(SCRIPTS / "adversarial-review-ledger.mjs"),
+         str(h.fix / "comments.json"), VIEWER, "--sha", h.head],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    parsed = json.loads(out.stdout)
+    assert parsed["canonical_run_id_for_sha"] in run_ids
+    assert parsed["canonical_full"] == 3  # winner consumed the final slot
+
+    # Restarting the LOSER cannot reclaim or duplicate the consumed round:
+    # the durable budget is now exhausted, so a fresh invocation refuses
+    # before Codex ever runs.
+    r = h.run("adversarial-review-loop.sh", "99", env_extra={"ADV_TEST_PROC": "p2r"})
+    assert r.returncode == 1
+    assert "durable review budget exhausted" in h.posted()
+    assert h.codex_runs() == 1  # unchanged
+    assert h.claude_runs() == 1  # unchanged
+
+
+def test_reservation_already_held_by_another_run_fails_closed(tmp_path):
+    """Deterministic single-process complement to the race: the head already
+    has a canonical reservation from another run — this invocation must post,
+    lose, and exit before Codex."""
+    h = Harness(tmp_path)
+    h.set_comments([_reservation(RID_1, h.head, "full", 2001)])
+    h.set_envelope(ISSUES_ENVELOPE)
+    r = h.run("adversarial-review.sh", "99", env_extra={"ADV_REVIEW_MODE": "full"})
+    assert r.returncode == 3
+    assert "LOST RESERVATION RACE" in r.stderr
+    assert h.codex_runs() == 0
+
+
+def test_crashed_winner_conservatively_keeps_slots_consumed(tmp_path):
+    """Three canonical FULL reservations with NO review records (all three
+    'crashed' before reviewing) still exhaust the budget — a failed privileged
+    round never silently returns its slot."""
+    h = Harness(tmp_path)
+    h.set_comments(
+        [
+            _reservation(RID_1, "d" * 40, "full", 2001),
+            _reservation(RID_2, "e" * 40, "full", 2002),
+            _reservation(RID_3, "f" * 40, "full", 2003),
+        ]
+    )
+    r = h.run("adversarial-review.sh", "99")
+    assert r.returncode == 3
+    assert "durable review budget" in r.stderr
+    assert h.codex_runs() == 0
+
+
+def test_duplicate_reservation_posts_collapse_distinct_run_ids_do_not(tmp_path):
+    comments = [
+        _reservation(RID_1, SHA_A, "full", 2001),
+        _reservation(RID_1, SHA_A, "full", 2005),  # retry of the SAME run — collapses
+        _reservation(RID_2, SHA_B, "full", 2003),
+    ]
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps(comments), encoding="utf-8")
+    out = subprocess.run(
+        [NODE, str(SCRIPTS / "adversarial-review-ledger.mjs"), str(f), VIEWER, "--sha", SHA_A],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    j = json.loads(out.stdout)
+    assert j["reservations"] == 2  # RID_1 collapsed to its earliest comment
+    assert j["canonical_full"] == 2  # distinct run_ids never collapse
+    assert j["canonical_run_id_for_sha"] == RID_1
+
+
+def test_malformed_and_forged_reservations_never_participate(tmp_path):
+    comments = [
+        {"id": 2001, "body": "[ADVERSARIAL-ROUND-RESERVATION]\nrun_id: junk\n", "user": {"login": VIEWER}},
+        _reservation(RID_1, SHA_A, "full", 2002, author="attacker"),
+    ]
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps(comments), encoding="utf-8")
+    out = subprocess.run(
+        [NODE, str(SCRIPTS / "adversarial-review-ledger.mjs"), str(f), VIEWER, "--sha", SHA_A],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    j = json.loads(out.stdout)
+    assert j["reservations"] == 0
+    assert j["canonical_full"] == 0
+    assert j["canonical_run_id_for_sha"] is None
+
+
+def test_remediation_completion_is_run_id_bound(tmp_path):
+    """The pre-privileged recheck refuses a round whose run_id already has a
+    completion record — a repeated launch cannot double-remediate one round."""
+    comments = [
+        _reservation(RID_1, SHA_A, "full", 2001),
+        _remediation(RID_1, SHA_A, SHA_B),
+    ]
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps(comments), encoding="utf-8")
+    out = subprocess.run(
+        [NODE, str(SCRIPTS / "adversarial-review-ledger.mjs"), str(f), VIEWER,
+         "--sha", SHA_A, "--run-id", RID_1],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    j = json.loads(out.stdout)
+    assert j["remediation_completed_for_run_id"] == 1
+    assert j["mine_is_canonical_for_its_sha"] == 1
+
+
+def test_pagination_failure_fails_closed(tmp_path):
+    h = Harness(tmp_path)
+    r = h.run("adversarial-review.sh", "99", env_extra={"STUB_FAIL_LIST": "1"})
+    assert r.returncode == 2
+    assert h.codex_runs() == 0
+
+
+def test_head_movement_before_claude_skips_privileged_remediation(tmp_path):
+    """ISSUES_FOUND at head H, but the PR head moves before remediation — the
+    loop must not launch Claude against stale findings."""
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    # The loop's pre-remediation head re-verify pops a MOVED head.
+    h.set_pr_head(h.head, sequence=["9" * 40])
+    r = h.run("adversarial-review-loop.sh", "99")
+    assert r.returncode != 0
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+
+
+def test_post_cap_human_authorized_review_only_never_invokes_claude(tmp_path):
+    """The post-cap override is review-only BY CONSTRUCTION: it reviews once,
+    stamps the authorization + run_id into the record, and never remediates."""
+    h = Harness(tmp_path)
+    h.set_comments(_three_consumed())
+    h.set_envelope(ISSUES_ENVELOPE)
+    r = h.run(
+        "adversarial-review-loop.sh", "99", "--review-only",
+        env_extra={"ADV_REVIEW_HUMAN_AUTHORIZED": "1"},
+    )
+    assert r.returncode == 1  # issues found, stopped before remediation
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    posted = h.posted()
+    assert "post_cap_human_authorized: true" in posted
+    assert "run_id: " in posted  # review record is reservation-bound
+    # And the reservation itself is review_only + human_authorized.
+    res = [c["body"] for c in h.ledger() if c["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")]
+    assert len(res) == 1
+    assert "mode: review_only" in res[0]
+    assert "human_authorized: true" in res[0]

@@ -41,6 +41,13 @@ const checkOnly = process.argv.includes("--check-only");
 // record so a post-cap review is visibly authorized, never silent. The line
 // sits AFTER review_iteration so the strict ledger envelope is unaffected.
 const humanAuthorized = process.argv.includes("--human-authorized");
+// Reservation binding (Codex iteration-4 F1): the review record carries the
+// run_id + reservation comment id it executed under, after the strict-parsed
+// prefix lines so the ledger envelope is unaffected.
+const runId = arg("--run-id", null);
+const reservationId = arg("--reservation-id", null);
+if (runId !== null && !/^[0-9a-f]{32}$/.test(runId)) fail("--run-id must be 32 lowercase hex chars");
+if (reservationId !== null && !/^[0-9]+$/.test(reservationId)) fail("--reservation-id must be numeric");
 if (!sha) fail("--sha is required");
 if (!Number.isInteger(iteration) || iteration < 1) fail("--iteration must be a positive integer");
 
@@ -89,6 +96,8 @@ lines.push(`base_sha: ${baseSha}`);
 lines.push(`status: ${status}`);
 lines.push(`review_iteration: ${iteration}`);
 if (humanAuthorized) lines.push("post_cap_human_authorized: true");
+if (runId) lines.push(`run_id: ${runId}`);
+if (reservationId) lines.push(`reservation_comment_id: ${reservationId}`);
 lines.push("");
 lines.push(`BLOCKER: ${counts.BLOCKER}`);
 lines.push(`HIGH: ${counts.HIGH}`);

@@ -167,6 +167,46 @@ inside its fenced block, so a post-cap review is visibly authorized in the
 durable ledger, never silent. An unreadable ledger is a tooling failure —
 unknown budget is never treated as budget available.
 
+### Atomic round reservation (Codex iteration-4 F1, 2026-08-17)
+
+Reading the budget and then acting on it is racy: two invocations can both
+observe a free slot before either posts anything. The acquisition is therefore
+**post-first, then decide**, using GitHub itself as the reservation ledger (no
+local locks — sessions run on different machines):
+
+1. Before running Codex, the runner posts a strict
+   `[ADVERSARIAL-ROUND-RESERVATION]` record — unique 128-bit `run_id`, exact
+   `head_sha`, `mode: full | review_only` (the loop sets `full`; anything else
+   is review-only), `human_authorized`, `requested_at` — and captures the
+   comment's immutable numeric id.
+2. It then re-reads the COMPLETE ledger and proceeds only if its reservation
+   is **canonical**: the earliest valid same-account reservation for that
+   head by numeric comment id (creation time is advisory only). Every loser
+   exits fail-closed before Codex runs. Duplicate posts of the same `run_id`
+   collapse to the earliest comment (idempotent retry); distinct `run_id`s
+   never collapse; forged/malformed reservations never participate.
+3. The budget counts **canonical full-mode reservations** (each is one
+   autonomous slot, consumed at reservation — a crashed remediation
+   conservatively keeps its slot; work continues only on a new head or via
+   the human-authorized review-only override). `consumed` is the max of that
+   count and the legacy validated-review-round count, so pre-reservation
+   history still counts and nothing ever under-counts.
+4. **Immediately before privileged remediation** (`claude
+   --dangerously-skip-permissions`) the loop re-reads the ledger and proves
+   again, from the trusted local reservation artifact: it still owns the
+   canonical reservation for the reviewed head; the `run_id` matches; the PR
+   head still equals the reserved head; the reservation is within budget; and
+   no `[CLAUDE-REMEDIATION]` completion exists for that `run_id`. Any failure
+   exits without launching Claude.
+5. **Evidence binding:** the review record, the remediation disposition, and
+   escalation records all carry the same `run_id` (+ reservation comment id);
+   the loop rejects a disposition whose `run_id` does not match the round it
+   authorized. Remediation input still comes ONLY from the trusted local
+   runner artifact, never from PR comments.
+6. Any GitHub API failure, incomplete pagination, malformed ledger, or
+   inability to prove ownership stops the process — never proceed
+   optimistically.
+
 ## Loop rules
 
 - Maximum **3** autonomous cycles, then `[ADVERSARIAL-ESCALATION]`.

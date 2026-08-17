@@ -33,6 +33,7 @@
 set -euo pipefail
 
 MARKER='[CODEX-ADVERSARIAL-REVIEW]'
+RESERVATION_MARKER='[ADVERSARIAL-ROUND-RESERVATION]'
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_TIMEOUT_SECS="${CODEX_TIMEOUT_SECS:-2400}"
 MAX_TOTAL_ROUNDS=3
@@ -114,7 +115,10 @@ if [ -z "$VIEWER" ]; then
   echo "ERROR: could not resolve the authenticated GitHub user (gh api user)" >&2
   exit 2
 fi
-COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER.json"
+# Per-process cache ($$): two concurrent invocations sharing OUT_DIR must
+# never truncate each other's ledger snapshot mid-read (found by the
+# two-process race test).
+COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER-$$.json"
 gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
   echo "ERROR: could not list PR comments" >&2; exit 2; }
 LEDGER_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" --sha "$HEAD_SHA")" || {
@@ -154,8 +158,8 @@ if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
   esac
 fi
 
-# ── Durable review budget (cross-restart; the ledger is the counter) ─────────
-# The dedupe early-exit above consumes nothing; only a NEW review is budgeted.
+# ── Durable review budget — advisory precheck (authoritative check is AFTER
+# the reservation posts; this only avoids wasting a reservation comment) ─────
 HUMAN_AUTHORIZED=0
 if [ "$CONSUMED" -ge "$MAX_TOTAL_ROUNDS" ]; then
   if [ "${ADV_REVIEW_HUMAN_AUTHORIZED:-0}" = "1" ]; then
@@ -164,11 +168,97 @@ if [ "$CONSUMED" -ge "$MAX_TOTAL_ROUNDS" ]; then
          "$CONSUMED validated rounds already recorded on PR #$PR_NUMBER."
   else
     echo "ERROR: the durable review budget for PR #$PR_NUMBER is exhausted" \
-         "($CONSUMED validated review rounds >= $MAX_TOTAL_ROUNDS, counted from the PR ledger)." >&2
+         "($CONSUMED validated rounds >= $MAX_TOTAL_ROUNDS, counted from the PR ledger)." >&2
     echo "       A restarted script does NOT reset this budget. Post-cap review requires an" >&2
     echo "       explicit human authorization: ADV_REVIEW_HUMAN_AUTHORIZED=1 (review-only)." >&2
     exit 3
   fi
+fi
+
+# ── Atomic round reservation (Codex iteration-4 F1, 2026-08-17) ──────────────
+# Check-then-act on the ledger is racy: two invocations can both observe a
+# free slot. The fix is post-FIRST, then decide: publish a reservation with a
+# unique 128-bit run_id, re-read the COMPLETE ledger, and proceed only if this
+# run's reservation is CANONICAL (earliest valid reservation for this head by
+# immutable numeric comment id) AND within the durable budget. Every loser
+# exits fail-closed BEFORE Codex runs; a crashed winner conservatively keeps
+# its slot consumed. Mode is review_only unless the full loop set
+# ADV_REVIEW_MODE=full (only full-mode canonical reservations consume
+# autonomous slots — review records remain the conservative floor).
+RUN_ID=""
+RESERVATION_ID=""
+MODE="${ADV_REVIEW_MODE:-review_only}"
+if [ "$MODE" != "full" ] && [ "$MODE" != "review_only" ]; then
+  echo "ERROR: ADV_REVIEW_MODE must be 'full' or 'review_only' (got: '$MODE')." >&2
+  exit 3
+fi
+if [ "$DRY_RUN" -eq 0 ]; then
+  RUN_ID="$(node -e 'process.stdout.write(require("crypto").randomBytes(16).toString("hex"))')"
+  HA_FLAG=false
+  if [ "$HUMAN_AUTHORIZED" -eq 1 ]; then HA_FLAG=true; fi
+  # Per-process ($$): two invocations racing the same head must never share a
+  # body file, or one's run_id silently replaces the other's before posting
+  # (found by the two-process race test).
+  RES_FILE="$OUT_DIR/reservation-body-$PR_NUMBER-$HEAD_SHA-$$.md"
+  {
+    printf '%s\n\n' "$RESERVATION_MARKER"
+    printf '```\n'
+    printf 'run_id: %s\n' "$RUN_ID"
+    printf 'head_sha: %s\n' "$HEAD_SHA"
+    printf 'mode: %s\n' "$MODE"
+    printf 'human_authorized: %s\n' "$HA_FLAG"
+    printf 'requested_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '```\n'
+  } > "$RES_FILE"
+  RESERVATION_ID="$(gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" \
+      -F body=@"$RES_FILE" --jq .id)" || {
+    echo "ERROR: could not post the round reservation — refusing to review without one." >&2
+    exit 2
+  }
+  if ! [[ "$RESERVATION_ID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: reservation post returned no numeric comment id — cannot prove ownership." >&2
+    exit 2
+  fi
+
+  # Re-read the COMPLETE ledger and prove ownership. Any failure here is a
+  # stop — never continue optimistically on an unprovable reservation.
+  gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
+    echo "ERROR: could not re-list PR comments after reserving — cannot prove ownership." >&2
+    exit 2
+  }
+  ACQ_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" \
+      --sha "$HEAD_SHA" --run-id "$RUN_ID")" || {
+    echo "ERROR: could not parse the ledger after reserving — cannot prove ownership." >&2
+    exit 2
+  }
+  # The single-quoted JS below intentionally contains JS template literals.
+  # shellcheck disable=SC2016
+  read -r MINE_FOUND MINE_ID CANONICAL FULL_BEFORE < <(printf '%s' "$ACQ_JSON" | node -e '
+    let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+      const j=JSON.parse(d);
+      process.stdout.write(`${j.mine_found} ${j.mine_comment_id} ${j.mine_is_canonical_for_its_sha} ${j.canonical_full_before_mine}\n`);
+    });')
+  if [ "${MINE_FOUND:-0}" != "1" ] || [ "$MINE_ID" != "$RESERVATION_ID" ]; then
+    echo "ERROR: this run's reservation ($RUN_ID) is not the earliest comment carrying its" >&2
+    echo "       run_id — duplicated or forged; failing closed without reviewing." >&2
+    exit 3
+  fi
+  if [ "${CANONICAL:-0}" != "1" ]; then
+    echo "LOST RESERVATION RACE: an earlier reservation owns head ${HEAD_SHA:0:12} on PR #$PR_NUMBER." >&2
+    echo "Exiting fail-closed without reviewing (run_id $RUN_ID, comment $RESERVATION_ID)." >&2
+    exit 3
+  fi
+  if [ "$MODE" = "full" ] && [ "${FULL_BEFORE:-$MAX_TOTAL_ROUNDS}" -ge "$MAX_TOTAL_ROUNDS" ]; then
+    echo "ERROR: durable budget exhausted at acquisition ($FULL_BEFORE canonical full" >&2
+    echo "       reservations ahead of this one >= $MAX_TOTAL_ROUNDS). Failing closed." >&2
+    exit 3
+  fi
+  # Trusted local artifact binding this round to its reservation — the loop's
+  # pre-privileged recheck consumes THIS, never PR-comment content.
+  printf '{"run_id":"%s","reservation_comment_id":%s,"mode":"%s","head_sha":"%s"}\n' \
+    "$RUN_ID" "$RESERVATION_ID" "$MODE" "$HEAD_SHA" \
+    > "$OUT_DIR/reservation-$PR_NUMBER-$HEAD_SHA.json"
+  echo "Round reserved: run_id $RUN_ID (comment $RESERVATION_ID, mode $MODE)."
 fi
 
 # Prior-round context: pass the last review's finding ids so Codex can confirm
@@ -235,6 +325,11 @@ fi
 # ── Validate + render (fail-safe: malformed => exit 2, never GREEN) ──────────
 RENDER_ARGS=(--sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION")
 if [ "$HUMAN_AUTHORIZED" -eq 1 ]; then RENDER_ARGS+=(--human-authorized); fi
+# Bind the review record to its reservation (evidence chain: reservation ->
+# review -> disposition all carry the same run_id).
+if [ -n "$RUN_ID" ]; then
+  RENDER_ARGS+=(--run-id "$RUN_ID" --reservation-id "$RESERVATION_ID")
+fi
 if ! STATUS_LINE="$(node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
       "${RENDER_ARGS[@]}" --check-only)"; then
   echo "ERROR: Codex envelope is malformed. Envelope: $ENVELOPE  Log: $CODEX_LOG" >&2

@@ -52,11 +52,17 @@ rules > source code > reproduction > either model's unsupported opinion.
 ```
 remediated_review_sha: {{REVIEWED_SHA}}
 new_head_sha: <the SHA you pushed, or "none" if nothing changed>
+run_id: {{RUN_ID}}
+reservation_comment_id: {{RESERVATION_ID}}
 iteration: {{ITERATION}}
 
 <finding-id>: ACCEPTED | PARTIALLY_ACCEPTED | FALSE_POSITIVE | NEEDS_HUMAN_DECISION — <one-line reason / what you did>
 ...one line per finding...
 ```
+
+The `run_id` and `reservation_comment_id` values above bind this disposition
+to the round reservation that authorized the remediation — reproduce them
+EXACTLY as given; the loop rejects a disposition whose run_id does not match.
 
 8. If EVERY finding is FALSE_POSITIVE or NEEDS_HUMAN_DECISION, push nothing —
    still post the disposition comment (with `new_head_sha: none`).

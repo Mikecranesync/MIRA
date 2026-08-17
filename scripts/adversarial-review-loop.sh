@@ -91,6 +91,8 @@ escalate() { # $1 = reason
 \`\`\`
 head_sha: $sha
 reason: $1
+run_id: ${RUN_ID:-none}
+reservation_comment_id: ${RESERVATION_ID:-none}
 cycles_run: ${CYCLE:-0} (max $MAX_ITER this invocation; durable cap $MAX_TOTAL_ROUNDS)
 \`\`\`
 
@@ -109,7 +111,7 @@ decision is required. See the latest [CODEX-ADVERSARIAL-REVIEW] and
 consumed_rounds() {
   local viewer comments
   viewer="$(gh api user --jq .login 2>/dev/null)" || return 1
-  comments="$OUT_DIR/loop-comments-$PR_NUMBER.json"
+  comments="$OUT_DIR/loop-comments-$PR_NUMBER-$$.json"
   gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$comments" || return 1
   node "$ROOT/scripts/adversarial-review-ledger.mjs" "$comments" "$viewer" 2>/dev/null | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
@@ -134,8 +136,11 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   echo "── Cycle $CYCLE/$MAX_ITER (durable rounds consumed: $CONSUMED/$MAX_TOTAL_ROUNDS) ──"
 
   PRE_SHA="$(git rev-parse HEAD)"
+  # The runner posts the round RESERVATION (atomic acquisition at the GitHub
+  # ledger) — mode=full announces that a privileged remediation may follow.
+  if [ "$REVIEW_ONLY" -eq 1 ]; then LOOP_MODE=review_only; else LOOP_MODE=full; fi
   set +e
-  "$ROOT/scripts/adversarial-review.sh" "$PR_NUMBER"
+  ADV_REVIEW_MODE="$LOOP_MODE" "$ROOT/scripts/adversarial-review.sh" "$PR_NUMBER"
   RC=$?
   set -e
 
@@ -197,10 +202,62 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     continue
   fi
 
+  # ── Pre-privileged reservation recheck (Codex iteration-4 F1) ─────────────
+  # Immediately before launching privileged remediation, re-prove ownership
+  # from the DURABLE ledger: this run still owns the canonical reservation for
+  # the reviewed head, its run_id matches the trusted local artifact, the
+  # reservation is within the autonomous budget, and no remediation completion
+  # already exists for it. Any failure exits WITHOUT launching Claude.
+  RES_ARTIFACT="$OUT_DIR/reservation-$PR_NUMBER-$PRE_SHA.json"
+  if [ ! -s "$RES_ARTIFACT" ]; then
+    escalate "trusted reservation artifact missing for ${PRE_SHA:0:12} — refusing privileged remediation without proven round ownership"
+    exit 2
+  fi
+  # The single-quoted JS below intentionally contains JS template literals.
+  # shellcheck disable=SC2016
+  read -r RUN_ID RESERVATION_ID RES_MODE RES_HEAD < <(node -e '
+    const fs=require("fs");
+    const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+    process.stdout.write(`${j.run_id} ${j.reservation_comment_id} ${j.mode} ${j.head_sha}\n`);
+  ' "$RES_ARTIFACT")
+  if [ "$RES_MODE" != "full" ] || [ "$RES_HEAD" != "$PRE_SHA" ]; then
+    escalate "reservation artifact is not a full-mode reservation for ${PRE_SHA:0:12} (mode=$RES_MODE head=${RES_HEAD:0:12}) — refusing privileged remediation"
+    exit 2
+  fi
+  RECHECK_COMMENTS="$OUT_DIR/recheck-comments-$PR_NUMBER-$$.json"
+  gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$RECHECK_COMMENTS" || {
+    escalate "could not re-read the ledger before privileged remediation — refusing to launch Claude"
+    exit 2
+  }
+  RECHECK_VIEWER="$(gh api user --jq .login 2>/dev/null)" || {
+    escalate "could not resolve the posting account before privileged remediation"
+    exit 2
+  }
+  RECHECK_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$RECHECK_COMMENTS" "$RECHECK_VIEWER" \
+      --sha "$PRE_SHA" --run-id "$RUN_ID")" || {
+    escalate "ledger unusable at the pre-privileged recheck — refusing to launch Claude"
+    exit 2
+  }
+  RECHECK_OK="$(printf '%s' "$RECHECK_JSON" | node -e '
+    let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+      const j=JSON.parse(d);
+      const ok = j.mine_found===1
+        && j.mine_is_canonical_for_its_sha===1
+        && j.canonical_run_id_for_sha===process.argv[1]
+        && j.canonical_full_before_mine < 3
+        && j.remediation_completed_for_run_id===0;
+      process.stdout.write(ok?"1":"0");
+    });' "$RUN_ID")"
+  if [ "$RECHECK_OK" != "1" ]; then
+    escalate "pre-privileged recheck failed for run_id $RUN_ID (ownership lost, budget exceeded, or remediation already completed) — Claude NOT launched"
+    exit 2
+  fi
+
   # ── Claude remediation (headless) ─────────────────────────────────────────
   # The review content is injected VERBATIM from the runner's own artifact
   # (Codex F1, round 2): remediation must never fetch its instructions from
-  # PR comments, which any account can forge.
+  # PR comments, which any account can forge. The reservation identity rides
+  # into the disposition so completion evidence binds to this exact round.
   REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$PRE_SHA.md"
   REVIEW_ARTIFACT="$OUT_DIR/comment-$PR_NUMBER-$PRE_SHA.md"
   if [ ! -s "$REVIEW_ARTIFACT" ]; then
@@ -209,16 +266,16 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   fi
   node -e '
     const fs=require("fs");
-    const [tpl,out,pr,sha,iter,reviewFile]=process.argv.slice(1);
+    const [tpl,out,pr,sha,iter,reviewFile,runId,resId]=process.argv.slice(1);
     let s=fs.readFileSync(tpl,"utf8");
     const review=fs.readFileSync(reviewFile,"utf8");
-    for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:sha,ITERATION:iter,REVIEW_CONTENT:review}))
+    for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:sha,ITERATION:iter,REVIEW_CONTENT:review,RUN_ID:runId,RESERVATION_ID:resId}))
       s=s.split("{{"+k+"}}").join(v);
     fs.writeFileSync(out,s);
   ' "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$REM_PROMPT" \
-    "$PR_NUMBER" "$PRE_SHA" "$CYCLE" "$REVIEW_ARTIFACT"
+    "$PR_NUMBER" "$PRE_SHA" "$CYCLE" "$REVIEW_ARTIFACT" "$RUN_ID" "$RESERVATION_ID"
 
-  echo "Invoking Claude for remediation (cycle $CYCLE)…"
+  echo "Invoking Claude for remediation (cycle $CYCLE, run_id $RUN_ID)…"
   set +e
   # --dangerously-skip-permissions: required for unattended operation; the
   # repo's deterministic hooks (prod-guard, rm-guard, git-state-guard) remain
@@ -254,23 +311,24 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     escalate "new PR head ${NEW_SHA:0:12} does not descend from the reviewed ${PRE_SHA:0:12} — not remediation progress"
     exit 2
   fi
-  # Strictly-parsed attestation (Codex round 3 F2): the disposition must bind
-  # BOTH ends — remediated_review_sha == the reviewed commit AND new_head_sha
-  # == the head we are about to accept. An older disposition (attesting some
-  # earlier head) can never satisfy a later cycle.
+  # Strictly-parsed attestation (Codex round 3 F2 + iteration-4 F1): the
+  # disposition must bind THREE ends — remediated_review_sha == the reviewed
+  # commit, new_head_sha == the head we are about to accept, AND run_id == this
+  # round's reservation. An older disposition (attesting some earlier head or
+  # another run's round) can never satisfy this cycle.
   DISPO_OK="$(gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       const arr=JSON.parse("["+d.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-      const [viewer,sha,newSha]=process.argv.slice(1);
-      const RE=/^\[CLAUDE-REMEDIATION\]\r?\n\r?\n```\r?\nremediated_review_sha: ([0-9a-f]{40})\r?\nnew_head_sha: ([0-9a-f]{40}|none)\r?\n/;
+      const [viewer,sha,newSha,runId]=process.argv.slice(1);
+      const RE=/^\[CLAUDE-REMEDIATION\]\r?\n\r?\n```\r?\nremediated_review_sha: ([0-9a-f]{40})\r?\nnew_head_sha: ([0-9a-f]{40}|none)\r?\nrun_id: ([0-9a-f]{32})\r?\n/;
       const ok=arr.some(c=>{
         if(typeof c.body!=="string"||!c.user||c.user.login!==viewer) return false;
         const m=c.body.match(RE);
-        return !!m && m[1]===sha && m[2]===newSha;
+        return !!m && m[1]===sha && m[2]===newSha && m[3]===runId;
       });
       process.stdout.write(ok?"1":"0");
     });
-  ' "$(gh api user --jq .login 2>/dev/null || echo '?')" "$PRE_SHA" "$NEW_SHA" || echo 0)"
+  ' "$(gh api user --jq .login 2>/dev/null || echo '?')" "$PRE_SHA" "$NEW_SHA" "$RUN_ID" || echo 0)"
   if [ "$DISPO_OK" != "1" ]; then
     escalate "PR head advanced to ${NEW_SHA:0:12} without a disposition attesting exactly (${PRE_SHA:0:12} -> ${NEW_SHA:0:12}) — not counting as remediation progress"
     exit 2
