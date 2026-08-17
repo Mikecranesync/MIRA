@@ -9,10 +9,14 @@
 # `gh pr comment`. See docs/adversarial-review-workflow.md.
 #
 # Exit codes:
-#   0  GREEN (or already reviewed at this SHA)
+#   0  GREEN (or already reviewed GREEN at this SHA) — re-verified against the
+#      CURRENT PR head at exit; a GREEN is authoritative only for a head that
+#      is still the reviewed SHA
 #   1  ISSUES_FOUND (review posted)
 #   2  tooling failure (codex/gh/parse) — NEVER interpreted as GREEN
 #   3  precondition failure (no PR, dirty tree, HEAD mismatch)
+#   4  stale GREEN — the review is GREEN for the reviewed SHA, but the PR head
+#      advanced while Codex ran; the new head is unreviewed
 #
 # Env overrides: CODEX_BIN, CODEX_TIMEOUT_SECS (default 2400), CODEX_MODEL,
 # ADV_REVIEW_OUT_DIR (default .adversarial-review/, gitignored).
@@ -212,4 +216,18 @@ else
   echo "Posted review to PR #$PR_NUMBER."
 fi
 
-[ "$STATUS" = "GREEN" ] && exit 0 || exit 1
+if [ "$STATUS" != "GREEN" ]; then
+  exit 1
+fi
+# F1 (PR #3279 round 1): the head may advance while Codex runs. A GREEN is
+# authoritative only if the reviewed SHA is STILL the PR head at exit.
+CUR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
+if [ -z "$CUR_HEAD" ]; then
+  echo "WARNING: could not re-verify the PR head after the review — treating the GREEN as stale." >&2
+  exit 4
+fi
+if [ "$CUR_HEAD" != "$HEAD_SHA" ]; then
+  echo "STALE: PR head advanced to ${CUR_HEAD:0:12} during the review of ${HEAD_SHA:0:12} — this GREEN applies only to the reviewed SHA." >&2
+  exit 4
+fi
+exit 0

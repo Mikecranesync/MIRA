@@ -75,11 +75,30 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   RC=$?
   set -e
 
-  case "$RC" in
-    0) echo "ADVERSARIAL GATE: GREEN (PR #$PR_NUMBER @ ${PRE_SHA:0:12})"; exit 0 ;;
-    1) : ;; # issues found — remediate below
-    *) escalate "review tooling failed (rc=$RC) at cycle $CYCLE — NOT green"; exit 2 ;;
-  esac
+  if [ "$RC" -eq 0 ] || [ "$RC" -eq 4 ]; then
+    # F1 (PR #3279 round 1): a GREEN is terminal only if the PR head is STILL
+    # the reviewed SHA — a push landing mid-review must trigger another cycle,
+    # never an announcement of GREEN for an unreviewed head.
+    CUR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
+    if [ "$RC" -eq 0 ] && [ -n "$CUR_HEAD" ] && [ "$CUR_HEAD" = "$PRE_SHA" ]; then
+      echo "ADVERSARIAL GATE: GREEN (PR #$PR_NUMBER @ ${PRE_SHA:0:12})"
+      exit 0
+    fi
+    if [ -z "$CUR_HEAD" ]; then
+      escalate "could not re-verify the PR head after a GREEN review — NOT green"
+      exit 2
+    fi
+    echo "PR head advanced to ${CUR_HEAD:0:12} during the review — syncing and continuing."
+    git fetch origin -q || true
+    if ! git merge --ff-only "$CUR_HEAD" 2>/dev/null; then
+      escalate "local checkout diverged from advanced PR head ${CUR_HEAD:0:12} at cycle $CYCLE — manual sync required"
+      exit 2
+    fi
+    continue
+  elif [ "$RC" -ne 1 ]; then
+    escalate "review tooling failed (rc=$RC) at cycle $CYCLE — NOT green"
+    exit 2
+  fi
 
   if [ "$REVIEW_ONLY" -eq 1 ]; then
     echo "--review-only: issues found; stopping before remediation."
