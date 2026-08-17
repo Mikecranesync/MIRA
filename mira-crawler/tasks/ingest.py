@@ -352,6 +352,10 @@ def ingest_all_pending():
                 manufacturer=manufacturer,
                 model=model,
                 source_type="manual",
+                # The pending-manual queue (mira-core db.neon.get_pending_urls)
+                # holds publicly-reachable OEM manual URLs — shared corpus
+                # (CU-03).
+                is_private=False,
             )
             queued += 1
 

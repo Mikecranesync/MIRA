@@ -188,7 +188,12 @@ def poll_rss_feeds() -> dict:
         #    successful queue so a mid-run crash does not lose dedup state (M2).
         for entry in new_entries:
             try:
-                ingest_url.delay(url=entry["url"], source_type="rss_article")
+                ingest_url.delay(
+                    url=entry["url"],
+                    source_type="rss_article",
+                    # Public syndicated articles — shared corpus (CU-03).
+                    is_private=False,
+                )
                 r.sadd(_REDIS_SEEN_KEY, entry["guid"])  # incremental persist
                 seen_guids.add(entry["guid"])            # within-run dedup
                 new_articles += 1

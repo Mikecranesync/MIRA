@@ -1272,6 +1272,86 @@ def test_ke_insert_checker_catches_violations():
 
 
 # ---------------------------------------------------------------------------
+# Contract 15: every ingest_url dispatch declares its corpus visibility
+# ---------------------------------------------------------------------------
+# `tasks.ingest.ingest_url` takes `is_private` with a default of True, because a
+# Celery signature is a wire contract and in-flight messages from the previous
+# release carry no such kwarg (CU-03/I-2). That default is the right *floor* for
+# an unknown caller, but it is the wrong answer for a known one: a feeder that
+# forgets it silently privatizes public OEM content.
+#
+# Gate 7 caught exactly this on CU-03's own PR — four in-repo dispatch sites
+# (foundational, rss, freshness, ingest_pending_urls) had been missed, and the
+# freshness one would have privatized shared-corpus rows one refresh cycle at a
+# time. Point-fixing those four does not stop the fifth. This contract does.
+
+
+def _ingest_url_dispatch_sites() -> list[tuple[str, int, ast.Call]]:
+    """Every `ingest_url(...)` / `ingest_url.delay(...)` call under mira-crawler."""
+    out: list[tuple[str, int, ast.Call]] = []
+    tasks_dir = _ROOT / "mira-crawler" / "tasks"
+    for py in sorted(tasks_dir.rglob("*.py")):
+        rel = py.relative_to(_ROOT).as_posix()
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = None
+            if isinstance(fn, ast.Name):
+                name = fn.id
+            elif isinstance(fn, ast.Attribute):
+                if fn.attr in {"delay", "apply_async"} and isinstance(fn.value, ast.Name):
+                    name = fn.value.id
+                else:
+                    name = fn.attr
+            if name == "ingest_url":
+                out.append((rel, node.lineno, node))
+    return out
+
+
+def test_ingest_url_dispatches_declare_visibility():
+    """No mira-crawler feeder may queue an ingest without stating is_private."""
+    offenders: list[str] = []
+    sites = _ingest_url_dispatch_sites()
+    for rel, lineno, call in sites:
+        # The definition itself, and recursive self-dispatch inside ingest.py's
+        # own retry paths, are not feeders.
+        if any(kw.arg == "is_private" for kw in call.keywords):
+            continue
+        offenders.append(
+            f"{rel}:{lineno} queues ingest_url without an is_private argument — it "
+            "would inherit the fail-closed default (private) and silently drop "
+            "public content out of the shared corpus "
+            "(.claude/rules/knowledge-entries-tenant-scoping.md, CU-03/I-2)"
+        )
+    assert not offenders, "\n".join(offenders)
+
+
+def test_ingest_url_dispatch_scanner_finds_the_known_sites():
+    """Honesty check: the scanner must actually be finding call sites.
+
+    Without this, deleting or breaking `_ingest_url_dispatch_sites` turns the
+    contract above into a vacuous pass — the false-green shape Gate 7 hunts.
+    """
+    sites = _ingest_url_dispatch_sites()
+    files = {rel for rel, _, _ in sites}
+    for expected in (
+        "mira-crawler/tasks/sitemaps.py",
+        "mira-crawler/tasks/gdrive.py",
+        "mira-crawler/tasks/rss.py",
+        "mira-crawler/tasks/freshness.py",
+        "mira-crawler/tasks/foundational.py",
+        "mira-crawler/tasks/discover.py",
+        "mira-crawler/tasks/playwright_crawler.py",
+    ):
+        assert expected in files, f"scanner no longer sees {expected}"
+
+
+# ---------------------------------------------------------------------------
 # Contract 14: every Architecture Registry entry carries valid taxonomy tags
 # ---------------------------------------------------------------------------
 # Doctrine section 6 defines the architecture tag taxonomy (type:*, domain:*).

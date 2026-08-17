@@ -210,6 +210,9 @@ def ingest_foundational_kb():
             manufacturer=target.get("manufacturer", ""),
             model="",
             source_type=target["source_type"],
+            # DIRECT_TARGETS is a curated in-repo manifest of publicly-published
+            # curriculum and OEM documents — shared corpus (CU-03).
+            is_private=False,
         )
         queued_direct += 1
 
