@@ -189,19 +189,25 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     escalate "new PR head ${NEW_SHA:0:12} does not descend from the reviewed ${PRE_SHA:0:12} — not remediation progress"
     exit 2
   fi
+  # Strictly-parsed attestation (Codex round 3 F2): the disposition must bind
+  # BOTH ends — remediated_review_sha == the reviewed commit AND new_head_sha
+  # == the head we are about to accept. An older disposition (attesting some
+  # earlier head) can never satisfy a later cycle.
   DISPO_OK="$(gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       const arr=JSON.parse("["+d.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-      const [viewer,sha]=process.argv.slice(1);
-      const ok=arr.some(c=>typeof c.body==="string"
-        && c.body.startsWith("[CLAUDE-REMEDIATION]")
-        && c.user && c.user.login===viewer
-        && c.body.includes("remediated_review_sha: "+sha));
+      const [viewer,sha,newSha]=process.argv.slice(1);
+      const RE=/^\[CLAUDE-REMEDIATION\]\r?\n\r?\n```\r?\nremediated_review_sha: ([0-9a-f]{40})\r?\nnew_head_sha: ([0-9a-f]{40}|none)\r?\n/;
+      const ok=arr.some(c=>{
+        if(typeof c.body!=="string"||!c.user||c.user.login!==viewer) return false;
+        const m=c.body.match(RE);
+        return !!m && m[1]===sha && m[2]===newSha;
+      });
       process.stdout.write(ok?"1":"0");
     });
-  ' "$(gh api user --jq .login 2>/dev/null || echo '?')" "$PRE_SHA" || echo 0)"
+  ' "$(gh api user --jq .login 2>/dev/null || echo '?')" "$PRE_SHA" "$NEW_SHA" || echo 0)"
   if [ "$DISPO_OK" != "1" ]; then
-    escalate "PR head advanced without a remediation disposition for ${PRE_SHA:0:12} (third-party push?) — not counting as progress"
+    escalate "PR head advanced to ${NEW_SHA:0:12} without a disposition attesting exactly (${PRE_SHA:0:12} -> ${NEW_SHA:0:12}) — not counting as remediation progress"
     exit 2
   fi
   # Sync the local checkout to the pushed head for the next review round.

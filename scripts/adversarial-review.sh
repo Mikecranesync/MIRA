@@ -118,10 +118,27 @@ if [ -z "${PRIOR_STATUS:-}" ]; then
   exit 2
 fi
 
+# A GREEN — fresh OR deduplicated — is authoritative only if the reviewed SHA
+# is STILL the PR head at exit (Codex round 3 F1: the dedupe early-exit used
+# to skip this, silently re-approving a head that advanced mid-run).
+final_green_gate() {
+  local cur
+  cur="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
+  if [ -z "$cur" ]; then
+    echo "WARNING: could not re-verify the PR head — treating the GREEN as stale." >&2
+    exit 4
+  fi
+  if [ "$cur" != "$HEAD_SHA" ]; then
+    echo "STALE: PR head advanced to ${cur:0:12} — this GREEN applies only to the reviewed ${HEAD_SHA:0:12}." >&2
+    exit 4
+  fi
+  exit 0
+}
+
 if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
   echo "Already reviewed at $HEAD_SHA (prior status: $PRIOR_STATUS). Use --force to re-review."
   case "$PRIOR_STATUS" in
-    GREEN) exit 0 ;;
+    GREEN) final_green_gate ;;
     ISSUES_FOUND) exit 1 ;;
     *) echo "Prior review at this SHA is malformed — re-reviewing is required (--force)." >&2; exit 2 ;;
   esac
@@ -237,15 +254,5 @@ fi
 if [ "$STATUS" != "GREEN" ]; then
   exit 1
 fi
-# F1 (PR #3279 round 1): the head may advance while Codex runs. A GREEN is
-# authoritative only if the reviewed SHA is STILL the PR head at exit.
-CUR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
-if [ -z "$CUR_HEAD" ]; then
-  echo "WARNING: could not re-verify the PR head after the review — treating the GREEN as stale." >&2
-  exit 4
-fi
-if [ "$CUR_HEAD" != "$HEAD_SHA" ]; then
-  echo "STALE: PR head advanced to ${CUR_HEAD:0:12} during the review of ${HEAD_SHA:0:12} — this GREEN applies only to the reviewed SHA." >&2
-  exit 4
-fi
-exit 0
+# Rounds 1+3: fresh and deduplicated GREENs share ONE final head verification.
+final_green_gate
