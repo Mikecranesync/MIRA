@@ -333,3 +333,6 @@ tests/regime1_telethon/campaign/retrieval/
 
 # ARPK T2108 fixture binary — fetch via tests/beta/fixtures/t2108/fetch.py
 tests/beta/fixtures/t2108/*.pdf
+
+# Adversarial-review runner artifacts (prompts, envelopes, logs) — never committed
+.adversarial-review/

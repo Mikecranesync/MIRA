@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex adversarial review envelope",
+  "type": "object",
+  "required": ["status", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "description": "GREEN only when there are zero BLOCKER/HIGH/MEDIUM/LOW findings. The render step re-derives this from the findings and never upgrades toward GREEN.",
+      "enum": ["GREEN", "ISSUES_FOUND"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "2-6 sentences: what was reviewed and the overall verdict."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "file",
+          "confidence",
+          "failure_scenario",
+          "evidence",
+          "remediation",
+          "test_to_prove"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable short id, e.g. F1, F2 — referenced by the remediation disposition."
+          },
+          "severity": {
+            "enum": ["BLOCKER", "HIGH", "MEDIUM", "LOW", "FALSE_POSITIVE"],
+            "description": "FALSE_POSITIVE = a concern you considered and dismissed yourself; record it so it is not re-raised. It does not count toward ISSUES_FOUND."
+          },
+          "title": { "type": "string" },
+          "file": { "type": "string", "description": "Repo-relative path." },
+          "line": { "type": ["integer", "null"] },
+          "symbol": { "type": ["string", "null"] },
+          "confidence": {
+            "enum": ["observed", "supported", "speculative"],
+            "description": "observed = reproduced or directly demonstrated in code; supported = strong code-level evidence, not executed; speculative = plausible but unverified."
+          },
+          "failure_scenario": {
+            "type": "string",
+            "description": "Concrete inputs/state -> wrong output/crash/loss."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "File:line references, code excerpts, or command output that substantiates the finding."
+          },
+          "remediation": { "type": "string" },
+          "test_to_prove": {
+            "type": "string",
+            "description": "The test that would fail before the fix and pass after."
+          }
+        }
+      }
+    }
+  }
+}
