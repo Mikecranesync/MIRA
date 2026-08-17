@@ -55,6 +55,17 @@ Earliest-created ACTIVE claim wins, deterministically. Only after the reread
 confirms yours is the earliest may editing begin. The pre-push overlap check
 (§4) remains as defense in depth, not as the primary collision control.
 
+**Handoff and stale claims.** A claim names a slice, not a person: to hand a
+slice to another session, the current owner (or the human) updates the claim's
+`Owner/session:` and `Last updated:` — a resumed session under the same claim
+is a continuation, not a takeover. An ACTIVE claim goes **stale** when BOTH
+its claim record and its branch have been idle for 24+ hours; a stale claim
+may be taken over only by posting a takeover note on the claim's own thread
+citing the idle evidence (last commit time, last claim update) and updating
+the claim — **never silently, and never while the branch is moving**.
+`RELEASED` and `COMPLETE` free the slice immediately. When in doubt whether
+an owner is dead or just slow, ask the human instead of taking over.
+
 ## 3. Isolate; never touch another session's work
 
 - Parallel efforts are isolated by worktree, branch, scope, and PR. Use an
@@ -94,28 +105,27 @@ closeout (§9).
 
 ## 6. Adversarial review gate (roles, staleness, fail-closed)
 
-**Activation is determined by observable repository state — never by this
-document's age.** Check the CURRENT default-branch HEAD:
+The mechanized lane — `scripts/adversarial-review.sh`,
+`scripts/adversarial-review-loop.sh`, `scripts/adversarial-review-ledger.mjs`,
+and `docs/adversarial-review-workflow.md` — is **committed on the default
+branch and mandatory as-committed there** (merged via PR #3279,
+`6fe5fff84658`). Run it from the branch under review after rebasing onto
+current `main`; never casually copy, fork, or reimplement it in another PR,
+and never source it from a mutable branch name — a moved branch can silently
+swap the reviewer out from under you. If those paths are ever absent, broken,
+or unauthorized at the HEAD you are working from, that is the
+missing-tooling case: **fail closed** per the invariant below — do not
+resurrect old pins or ad-hoc copies.
 
-- **ACTIVE:** if `scripts/adversarial-review.sh`,
-  `scripts/adversarial-review-loop.sh`, and
-  `docs/adversarial-review-workflow.md` exist at `origin/main` HEAD
-  (`git cat-file -e origin/main:scripts/adversarial-review.sh`), the
-  mechanized lane is mandatory **as-committed there**.
-- **PENDING:** otherwise (canonical home: PR #3279). A session doing
-  substantial work must then do exactly one of:
-  (a) run the canonical tooling **pinned at immutable commit
-      `514389224b1657c0b19e0991b54838511c3ea2b7`** — materialize via
-      `git show <pin>:scripts/<file>`, never a mutable branch name — and
-      record the pin SHA in the PR's review evidence. A newer canonical pin
-      may be substituted only by recording the new SHA and why; or
-  (b) report **PARTIAL/BLOCKED** naming PR #3279 as the exact missing
-      dependency.
+**The review ledger is durable and GitHub-backed.** Budget rounds, round
+reservations (run_ids), verdicts, and remediation dispositions are counted
+from validated, same-account, strictly-parsed PR comments — never from local
+state or terminal output. Restarting a session, crashing, or re-invoking the
+runner **never resets the budget**: a crashed reservation stays consumed
+(there is no takeover — recovery is a new head), and duplicate posts of the
+same run_id collapse instead of double-charging.
 
-Never casually copy or reimplement the tooling into another PR, and never
-treat a mutable branch name as a satisfied dependency — a moved branch can
-silently swap the reviewer out from under you. The **invariants below bind
-in all cases, tooling or no tooling**:
+The **invariants below bind in all cases, tooling or no tooling**:
 
 - **Claude implements and remediates. Codex reviews read-only** and produces
   evidence-backed findings; it must not edit the implementation branch during
@@ -189,7 +199,7 @@ governance changes — may read `n/a`, never be omitted.)
   teardown obligations
 - `.claude/rules/dangerous-commands-safety.md` — destructive-command floor
 - `docs/environments.md` — dev/staging/prod promotion; merge/deploy gating
-- `docs/adversarial-review-workflow.md` — review-loop mechanics (canonical on
-  PR #3279 until merged)
+- `docs/adversarial-review-workflow.md` — review-loop mechanics (committed;
+  merged via PR #3279)
 - `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md` — R0
   rollback points + gated workflow for architecture-affecting work
