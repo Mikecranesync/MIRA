@@ -661,6 +661,76 @@ def test_malformed_and_forged_reservations_never_participate(tmp_path):
     assert j["canonical_run_id_for_sha"] is None
 
 
+# ── Budget accounting: per-head union (round-5 F1) ───────────────────────────
+# consumed is charged AT RESERVATION. The former global
+# max(reviewRounds, canonicalFull) let a crashed FULL reservation at a NEW
+# head vanish behind legacy review records at OTHER heads.
+
+
+def test_legacy_rounds_plus_crashed_reservation_are_additive(tmp_path):
+    """The round-5 direct regression: legacy consumed = 3, one distinct
+    post-legacy FULL reservation that never completed => consumed = 4, not 3."""
+    legacy = [
+        _record(SHA_A, "ISSUES_FOUND", 1),
+        _record(SHA_B, "ISSUES_FOUND", 2),
+        _record(SHA_C, "ISSUES_FOUND", 3),
+    ]
+    crashed = _reservation(RID_1, "d" * 40, "full", 3001)  # no review record ever lands
+    ledger = run_ledger(tmp_path, legacy + [crashed])
+    assert ledger["consumed"] == 4
+
+
+def test_completed_reservation_era_round_is_one_slot_not_two(tmp_path):
+    """A reservation + its review record at the SAME head is ONE consumed
+    slot — the per-head union must not double-charge completion."""
+    comments = [
+        _reservation(RID_1, SHA_A, "full", 3001),
+        _record(SHA_A, "ISSUES_FOUND", 1),
+    ]
+    ledger = run_ledger(tmp_path, comments)
+    assert ledger["consumed"] == 1
+
+
+def test_multiple_post_legacy_reservations_accumulate(tmp_path):
+    """Legacy 1 + completed reservation round + crashed reservation round = 3."""
+    comments = [
+        _record(SHA_A, "ISSUES_FOUND", 1),  # legacy head, no reservation
+        _reservation(RID_1, SHA_B, "full", 3001),
+        _record(SHA_B, "ISSUES_FOUND", 2),  # RID_1 completed
+        _reservation(RID_2, SHA_C, "full", 3002),  # crashed — stays consumed
+    ]
+    ledger = run_ledger(tmp_path, comments)
+    assert ledger["consumed"] == 3
+
+
+def test_replayed_reservation_identity_never_double_charges(tmp_path):
+    """Idempotent retry: the SAME run_id posted twice at the same head is one
+    slot; review_only reservations charge nothing."""
+    comments = [
+        _reservation(RID_1, SHA_A, "full", 3001),
+        _reservation(RID_1, SHA_A, "full", 3005),  # replay of the same identity
+        _reservation(RID_2, SHA_B, "review_only", 3006, human="true"),
+    ]
+    ledger = run_ledger(tmp_path, comments)
+    assert ledger["consumed"] == 1
+    assert ledger["canonical_full"] == 1
+
+
+def test_forced_rereviews_at_one_legacy_head_still_count_each_round(tmp_path):
+    """Existing-format preservation: multiple validated iterations at one
+    UNreserved head keep counting individually (the old floor), and a reserved
+    head with records still counts its record rounds when they exceed one."""
+    comments = [
+        _record(SHA_A, "ISSUES_FOUND", 1),
+        _record(SHA_A, "ISSUES_FOUND", 2),  # forced re-review, same legacy head
+        _reservation(RID_1, SHA_B, "full", 3001),
+        _record(SHA_B, "ISSUES_FOUND", 3),
+        _record(SHA_B, "ISSUES_FOUND", 4),  # human-forced re-review at reserved head
+    ]
+    ledger = run_ledger(tmp_path, comments)
+    assert ledger["consumed"] == 4  # 2 (SHA_A legacy) + max(2, 1) (SHA_B)
+
+
 def test_remediation_completion_is_run_id_bound(tmp_path):
     """The pre-privileged recheck refuses a round whose run_id already has a
     completion record — a repeated launch cannot double-remediate one round."""

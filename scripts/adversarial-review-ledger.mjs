@@ -48,10 +48,16 @@
 //   - Distinct run_ids never collapse. Duplicate posts of the SAME run_id
 //     collapse to the earliest comment id (idempotent retry), and a caller
 //     whose own comment id is not that earliest must fail closed.
-//   - consumed = max(distinct validated review rounds, canonical FULL
-//     reservations): review-record counting is kept as the conservative floor
-//     (pre-reservation history, review-only runs), reservations are the
-//     atomic ceiling for full autonomous cycles. max() never under-counts.
+//   - consumed is a PER-HEAD union (round-5 F1, 2026-08-17): for each head,
+//     max(validated review rounds at that head, 1 if it holds the canonical
+//     FULL reservation), summed across heads. A completed reservation-era
+//     round (reservation + review record at the SAME head) is one slot — no
+//     double count — while a crashed FULL reservation at a NEW head and
+//     legacy review rounds at OTHER heads are ADDITIVE. The former global
+//     max(reviewRounds, canonicalFull) let a crashed reservation vanish
+//     behind the legacy count, undercounting the consume-at-reservation
+//     contract. The per-head union is >= the global max on every ledger, so
+//     it can only close that undercount, never relax an existing count.
 //
 // Exit codes: 0 ok · 3 unusable input (callers must treat as tooling failure,
 // never as an empty ledger).
@@ -124,7 +130,6 @@ for (const c of reviewComments) {
   else if (headSha && c.body.includes(`reviewed_sha: ${headSha}`)) sawMalformedAtSha = true;
 }
 const nextIteration = reviews.length ? Math.max(...reviews.map((r) => r.iteration)) + 1 : 1;
-const reviewRounds = new Set(reviews.map((r) => `${r.sha}#${r.iteration}`)).size;
 
 let already = 0;
 let priorStatus = "NONE";
@@ -165,7 +170,26 @@ const canonicalFull = [...canonicalBySha.values()]
   .filter((r) => r.mode === "full")
   .sort((a, b) => a.commentId - b.commentId);
 
-const consumed = Math.max(reviewRounds, canonicalFull.length);
+// Per-head union (round-5 F1): budget is consumed AT RESERVATION, so a
+// crashed FULL reservation must stay charged even when legacy review records
+// exist at other heads. Per head: a reservation-era round that completed
+// (reservation + review record, same head) is ONE slot; heads with records
+// but no reservation are legacy slots; a reserved head with no record is a
+// crashed-but-consumed slot. Sum — never a global max that lets one side
+// hide the other.
+const reviewRoundsBySha = new Map();
+for (const r of reviews) {
+  if (!reviewRoundsBySha.has(r.sha)) reviewRoundsBySha.set(r.sha, new Set());
+  reviewRoundsBySha.get(r.sha).add(r.iteration);
+}
+const reservedFullShas = new Set(canonicalFull.map((r) => r.sha));
+let consumed = 0;
+for (const [sha, iterations] of reviewRoundsBySha) {
+  consumed += Math.max(iterations.size, reservedFullShas.has(sha) ? 1 : 0);
+}
+for (const sha of reservedFullShas) {
+  if (!reviewRoundsBySha.has(sha)) consumed += 1;
+}
 
 // ── Remediation completions (run_id-bound) ───────────────────────────────────
 const completedRunIds = new Set();
