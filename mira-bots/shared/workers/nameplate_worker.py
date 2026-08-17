@@ -28,9 +28,11 @@ NAMEPLATE_FIELDS: tuple[str, ...] = (
     "manufacturer",
     "model",
     "serial",
+    "catalog",
     "voltage",
     "fla",
     "hp",
+    "kw",
     "frequency",
     "rpm",
 )
@@ -38,13 +40,17 @@ NAMEPLATE_FIELDS: tuple[str, ...] = (
 _EXTRACTION_PROMPT = (
     "You are an industrial nameplate OCR assistant. "
     "Examine the nameplate in this image and extract the following fields exactly as printed: "
-    "manufacturer, model, serial, voltage, fla (full-load amps), hp (horsepower), "
+    "manufacturer, model, serial, catalog (the type/catalog/part code — the line labelled "
+    "TYPE, T/C, CAT NO or P/N), voltage, fla (full-load amps), hp (horsepower), kw (kilowatts), "
     "frequency (Hz), rpm. "
+    "manufacturer is the COMPANY that made the unit, never the product family or series. "
+    "Keep the serial, the model and the catalog/type code distinct — do not put one in "
+    "another's field. "
     "Respond ONLY with a single JSON object — no prose, no markdown, no code fences. "
     "Use null for any field not visible or unreadable. Never guess or infer values. "
     'Example: {"manufacturer": "AutomationDirect", "model": "GS1-45P0", '
-    '"serial": "AD2024-78956", "voltage": "460V", "fla": "12A", "hp": "5", '
-    '"frequency": "60Hz", "rpm": null}'
+    '"serial": "AD2024-78956", "catalog": "GS1-45P0", "voltage": "460V", "fla": "12A", '
+    '"hp": "5", "kw": "3.7 kW", "frequency": "60Hz", "rpm": null}'
 )
 
 # Regex to pull the first {...} block out of a response that contains extra prose.

@@ -61,6 +61,13 @@ from shared.photo_handler import (
 )
 from shared.tenant.authorizer import Authorizer
 from shared.visual import evidence_answer, question_resolution
+from shared.workers.nameplate_tokens import (
+    apply_plate_ocr,
+    format_plate_read,
+    has_anchored_identity,
+    missing_identity_ask,
+    plate_ocr_text,
+)
 from shared.workers.vision_worker import ocr_lane_report
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
@@ -894,9 +901,11 @@ _EQUIPMENT_FIELD_SYNONYMS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("model", ("model number", "model no", "what model", "which model", "the model")),
     ("manufacturer", ("manufacturer", "who makes", "who made", "what make", "what brand")),
     ("serial", ("serial number", "serial no", "the serial")),
+    ("catalog", ("catalog number", "catalog no", "type code", "part number", "part no")),
     ("voltage", ("voltage", "how many volts", "rated volts", "volt rating")),
     ("fla", ("full load amps", "how many amps", "rated amps", "the fla", "amp rating", "amperage")),
     ("hp", ("horsepower", "how many hp", "the hp", "hp rating")),
+    ("kw", ("kilowatt", "how many kw", "the kw", "kw rating")),
     ("frequency", ("what frequency", "rated frequency", "how many hertz", "the hz")),
     ("rpm", ("rpm", "rated speed", "how fast does it spin")),
 )
@@ -905,9 +914,11 @@ _EQUIPMENT_FIELD_LABELS = {
     "model": "Model",
     "manufacturer": "Manufacturer",
     "serial": "Serial number",
+    "catalog": "Catalog / type code",
     "voltage": "Voltage",
     "fla": "Full-load amps",
     "hp": "Horsepower",
+    "kw": "Kilowatts",
     "frequency": "Frequency",
     "rpm": "RPM",
 }
@@ -1278,6 +1289,28 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
+def _format_no_pack_reply(fields: dict, fallback_reason: str | None) -> str:
+    """Honest "no approved pack" reply that never asks for a field we already read.
+
+    Leads with what the plate actually said, states plainly that no approved
+    service pack matches it, and asks ONLY for the specific identifier that is
+    still missing (nothing, when the type/catalog code or model is in hand).
+    The resolver's own refusal — which always asks for "the model/series" — is
+    used only when the read was empty and there is nothing to report.
+    """
+    read = format_plate_read(fields)
+    ask = missing_identity_ask(fields)
+    if not read:
+        return fallback_reason or ask or ""
+    lines = [
+        f"\U0001f4c7 Read from the plate: {read}",
+        "I don't have an approved service pack for it, so I won't guess at its settings or faults.",
+    ]
+    if ask:
+        lines.append(ask)
+    return "\n".join(lines)
+
+
 async def _try_nameplate_drive_pack_reply(
     vision_bytes: bytes,
     caption: str,
@@ -1299,14 +1332,35 @@ async def _try_nameplate_drive_pack_reply(
     (returns ``False``) — non-nameplate photos are untouched by this path.
     """
     photo_b64 = base64.b64encode(vision_bytes).decode()
+    # The printed plate is ground truth; the vision model is a guesser. Run the
+    # deterministic Tesseract floor CONCURRENTLY with the vision call (so it
+    # costs no extra wall time) and let labelled plate tokens — T/C, P/N, S/N,
+    # kW/HP — override the model's fields. Zero LLM, zero network.
+    ocr_task = asyncio.create_task(asyncio.to_thread(plate_ocr_text, vision_bytes))
     try:
         fields = await engine.nameplate.extract(photo_b64)
     except Exception as e:
+        ocr_task.cancel()
         logger.warning("nameplate drive-pack extract failed: %s", e)
         return False
 
     if not isinstance(fields, dict) or "parse_error" in fields:
+        ocr_task.cancel()
         return False
+
+    try:
+        plate_text = await ocr_task
+    except Exception as e:  # noqa: BLE001 — the OCR floor must never eat a turn
+        logger.warning("nameplate plate-OCR floor failed: %s", e)
+        plate_text = ""
+
+    fields, plate_tokens, plate_overrides = apply_plate_ocr(fields, plate_text)
+    if plate_overrides:
+        logger.info(
+            "nameplate plate-OCR corrected %d field(s): %s",
+            len(plate_overrides),
+            ", ".join(sorted(plate_overrides)),
+        )
 
     # Photo-memory: the extracted fields are evidence the dispatcher persists
     # into the chat's photo workspace (whether or not this path claims the
@@ -1324,10 +1378,11 @@ async def _try_nameplate_drive_pack_reply(
     # (for a future Hub sink); the log line stays a concise identity summary.
     identity = build_asset_identity(nameplate=fields, resolution=resolution)
     logger.info(
-        "nameplate asset identity: manufacturer=%s model=%s sku_prefix=%s "
+        "nameplate asset identity: manufacturer=%s model=%s catalog=%s sku_prefix=%s "
         "serial=%s candidate_pack=%s approval=%s",
         identity.manufacturer,
         identity.model_number,
+        identity.catalog_number,
         identity.sku_prefix,
         identity.serial_number,
         identity.candidate_pack_id,
@@ -1378,9 +1433,23 @@ async def _try_nameplate_drive_pack_reply(
         # manufacturer) but the model/series didn't resolve to a live pack —
         # give the honest, actionable refusal instead of guessing or silently
         # falling through to a generic engine answer.
-        await update.message.reply_text(resolution.reason)
+        no_pack_reply = _format_no_pack_reply(fields, resolution.reason)
+        await update.message.reply_text(no_pack_reply)
         if memo is not None:
-            memo["answer"] = resolution.reason
+            memo["answer"] = no_pack_reply
+        return True
+
+    if not has_question and has_anchored_identity(plate_tokens):
+        # The plate printed a LABELLED identifier (T/C, CAT NO, P/N or S/N) —
+        # an anchor that does not occur on equipment photos or schematics, so
+        # this is certainly a nameplate. No approved service pack matches it,
+        # but the read itself is real evidence: report it instead of dropping
+        # the turn into a generic photo flow that asks for what is already in
+        # the photo.
+        plate_reply = _format_no_pack_reply(fields, None)
+        await update.message.reply_text(plate_reply)
+        if memo is not None:
+            memo["answer"] = plate_reply
         return True
 
     # Nothing recognized at all (not a drive nameplate, or extraction was too

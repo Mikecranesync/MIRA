@@ -91,9 +91,11 @@ NAMEPLATE_IDENTITY_FIELDS: tuple[str, ...] = (
     "manufacturer",
     "model",
     "serial",
+    "catalog",
     "voltage",
     "fla",
     "hp",
+    "kw",
     "frequency",
     "rpm",
 )

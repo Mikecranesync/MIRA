@@ -30,6 +30,32 @@ import pytest  # noqa: E402
 
 from bot import _try_nameplate_drive_pack_reply, engine  # noqa: E402
 
+# The real Danfoss VLT AQUA Drive plate behind the 2026-08-17 prod defect, and
+# exactly what the vision model returned for it. Deterministic-extraction unit
+# tests live in ``test_nameplate_tokens.py``; this file covers the wiring.
+_DANFOSS_PLATE_OCR = """DANFOSS
+Danfoss A/S, DK-6430 Nordborg, Denmark
+VLT AQUA Drive
+T/C: FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX
+P/N: 131H4017    S/N: 02334H073
+15 kW / 20 HP
+IN: 3X200-240V 50/60Hz 54A
+OUT: 3x0-Vin 0-590Hz 59.4A"""
+
+_DANFOSS_TYPE_CODE = "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX"
+
+_DANFOSS_VISION_FIELDS = {
+    "manufacturer": "VLT",
+    "model": "AQUA Drive",
+    "serial": "TC=20P72B2R2XCNXXXXXXXXD",
+    "catalog": None,
+}
+
+
+def _mock_plate_ocr(text: str):
+    """Stub the Tesseract floor — no binary, no image decode, no network."""
+    return patch("bot.plate_ocr_text", return_value=text)
+
 
 def _mock_photo_update_context():
     update = MagicMock()
@@ -131,6 +157,67 @@ async def test_unrelated_nameplate_falls_through_to_existing_engine_flow():
     with _mock_nameplate_extract(fields):
         handled = await _try_nameplate_drive_pack_reply(
             b"fake-jpeg-bytes", "what is wrong?", update, context
+        )
+
+    assert handled is False
+    update.message.reply_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_danfoss_plate_is_reported_instead_of_asking_for_what_was_photographed():
+    """Prod defect 2026-08-17: MIRA read a Danfoss VLT AQUA Drive plate as
+    manufacturer=VLT with a hallucinated serial and no type code, then asked
+    the technician for the model number that was in the photo. The plate text
+    is ground truth — report what it says and ask for nothing we have."""
+    update, context = _mock_photo_update_context()
+    with _mock_nameplate_extract(dict(_DANFOSS_VISION_FIELDS)), _mock_plate_ocr(_DANFOSS_PLATE_OCR):
+        handled = await _try_nameplate_drive_pack_reply(
+            b"fake-jpeg-bytes", "Analyze this equipment photo", update, context
+        )
+
+    assert handled is True
+    text = update.message.reply_text.call_args[0][0]
+    assert "Danfoss" in text
+    assert "VLT" not in text.split("\n")[0]  # the family never stands in for the maker
+    assert _DANFOSS_TYPE_CODE in text
+    assert "02334H073" in text
+    assert "TC=20P72B2R2XCNXXXXXXXXD" not in text
+    # Never asks for the model / type code — both were read off the plate.
+    assert "need the model" not in text.lower()
+    assert "type/catalog code" not in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_danfoss_plate_fields_are_corrected_before_being_memoed():
+    """The corrected fields — not the model's guesses — are what the photo
+    workspace persists for later text follow-ups."""
+    update, context = _mock_photo_update_context()
+    memo: dict = {}
+    with _mock_nameplate_extract(dict(_DANFOSS_VISION_FIELDS)), _mock_plate_ocr(_DANFOSS_PLATE_OCR):
+        await _try_nameplate_drive_pack_reply(
+            b"fake-jpeg-bytes", "Analyze this equipment photo", update, context, memo=memo
+        )
+
+    fields = memo["nameplate_fields"]
+    assert fields["manufacturer"] == "Danfoss"
+    assert fields["catalog"] == _DANFOSS_TYPE_CODE
+    assert fields["serial"] == "02334H073"
+    assert fields["kw"] == "15 kW"
+    assert fields["hp"] == "20 HP"
+
+
+@pytest.mark.asyncio
+async def test_plate_without_labelled_identifiers_still_falls_through():
+    """The new plate-read branch claims a turn ONLY on a labelled anchor
+    (T/C / CAT NO / P/N / S/N). An equipment photo with none of those is left
+    to the existing engine photo flow, unchanged."""
+    update, context = _mock_photo_update_context()
+    with (
+        _mock_nameplate_extract({"manufacturer": "Yaskawa", "model": "GA800"}),
+        _mock_plate_ocr("GA800\nINVERTER"),
+    ):
+        handled = await _try_nameplate_drive_pack_reply(
+            b"fake-jpeg-bytes", "Analyze this equipment photo", update, context
         )
 
     assert handled is False

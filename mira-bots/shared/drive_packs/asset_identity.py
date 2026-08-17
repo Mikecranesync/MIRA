@@ -37,9 +37,11 @@ _NAMEPLATE_FIELD_MAP: dict[str, str] = {
     "manufacturer": "manufacturer",
     "model": "model_number",
     "serial": "serial_number",
+    "catalog": "catalog_number",
     "voltage": "input_voltage",
     "fla": "current_or_fla",
     "hp": "hp",
+    "kw": "kw",
     "frequency": "frequency",
 }
 
