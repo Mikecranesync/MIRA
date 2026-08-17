@@ -231,9 +231,18 @@ def _mock_nameplate_extract(fields: dict):
 @pytest.mark.asyncio
 async def test_manual_request_on_a_plate_is_answered_from_the_plate():
     """The live defect, from the top: the nameplate rung claims the turn, so the
-    print interpreter never sees it."""
+    print interpreter never sees it.
+
+    The paperwork question now reaches the real manual lookup (stubbed here as
+    a miss — no network); the honest answer is that the search came back empty,
+    not that MIRA cannot fetch files. The found-document wiring is covered in
+    ``test_telegram_manual_lookup.py``."""
     update, context = _mock_photo_update_context()
-    with _mock_nameplate_extract(dict(_PLATE_FIELDS)), patch("bot.plate_ocr_text", return_value=""):
+    with (
+        _mock_nameplate_extract(dict(_PLATE_FIELDS)),
+        patch("bot.plate_ocr_text", return_value=""),
+        patch("bot.find_official_manual", AsyncMock(return_value=None)),
+    ):
         handled = await bot._try_nameplate_drive_pack_reply(
             b"fake-jpeg", _LIVE_CAPTION, update, context
         )
@@ -242,7 +251,8 @@ async def test_manual_request_on_a_plate_is_answered_from_the_plate():
     text = update.message.reply_text.call_args[0][0]
     assert "Danfoss" in text and "FC-202" in text
     # the paperwork question is answered honestly, not silently ignored
-    assert "can't pull the manual" in text.lower()
+    assert "couldn't find an official PDF" in text
+    assert "send it to me here as a PDF" in text
 
 
 @pytest.mark.asyncio

@@ -48,6 +48,14 @@ from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.integrations.atlas_cmms import AtlasCMMSClient
 from shared.integrations.wo_outbox import OutboxRow, run_drain_forever
+from shared.manual_lookup import (
+    MANUAL_NOT_FOUND,
+    ManualHit,
+    find_official_manual,
+    format_manual_found,
+    lookup_identifier,
+    manual_lookup_enabled,
+)
 from shared.notifications.push import send_push
 from shared.photo_batch_queue import (
     BURST_WINDOW_SECONDS,
@@ -1387,7 +1395,12 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 def _format_no_pack_reply(
-    fields: dict, fallback_reason: str | None, *, doc_request: bool = False
+    fields: dict,
+    fallback_reason: str | None,
+    *,
+    doc_request: bool = False,
+    manual: ManualHit | None = None,
+    manual_searched: bool = False,
 ) -> str:
     """Honest "no approved pack" reply that never asks for a field we already read.
 
@@ -1397,11 +1410,18 @@ def _format_no_pack_reply(
     The resolver's own refusal — which always asks for "the model/series" — is
     used only when the read was empty and there is nothing to report.
 
-    ``doc_request`` adds one sentence answering the question that was actually
-    asked when the caption wanted paperwork ("find me the PDF manual"): MIRA
-    cannot fetch a manual today, and saying so with the plate read in hand is
-    the honest answer. Retrieving it is a separate capability — do not let this
-    line imply one exists.
+    ``doc_request`` answers the question that was actually asked when the
+    caption wanted paperwork ("find me the PDF manual"), in exactly one of
+    three honest states:
+
+    - ``manual`` — a HEAD-validated official document was found: name it, its
+      host and its URL (``shared.manual_lookup.format_manual_found``).
+    - ``manual_searched`` with no ``manual`` — we looked and found nothing we
+      could verify: say so, and offer the upload path.
+    - neither — no lookup was attempted (disabled, or no manufacturer +
+      identifier to search on): the pre-existing line, which claims nothing.
+
+    Never let any of these imply a document exists that wasn't validated.
     """
     read = format_plate_read(fields)
     ask = missing_identity_ask(fields)
@@ -1412,13 +1432,64 @@ def _format_no_pack_reply(
         "I don't have an approved service pack for it, so I won't guess at its settings or faults.",
     ]
     if doc_request:
-        lines.append(
-            "I can't pull the manual for you yet — that read is what the plate says, "
-            "so you can search the maker's site with it."
-        )
+        if manual is not None:
+            lines.append(format_manual_found(manual))
+        elif manual_searched:
+            lines.append(MANUAL_NOT_FOUND)
+        else:
+            lines.append(
+                "I can't pull the manual for you yet — that read is what the plate says, "
+                "so you can search the maker's site with it."
+            )
     if ask:
         lines.append(ask)
     return "\n".join(lines)
+
+
+async def _find_manual_for_plate(
+    fields: dict,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[ManualHit | None, bool]:
+    """Look up the official manual for a plate read — progress, then result.
+
+    Returns ``(hit, searched)``. ``searched`` is False whenever no lookup was
+    attempted OR the lookup itself failed, so the caller falls back to its
+    pre-existing wording rather than claiming a fruitless search.
+
+    Only fires for a caption that actually asked for paperwork
+    (``asks_for_documentation``) on a plate that actually read as something —
+    a search needs a manufacturer and an identifier, and inventing either is
+    how you get a confident link to the wrong machine's manual.
+
+    Fast-path discipline (``.claude/rules/fast-path-optimization.md``):
+    read-only apart from the existing crawler ingest queue, never raises, and
+    a miss is reported as a miss.
+    """
+    if not asks_for_documentation(caption) or not format_plate_read(fields):
+        return None, False
+    manufacturer = str((fields or {}).get("manufacturer") or "").strip()
+    identifier = lookup_identifier(fields)
+    if not manual_lookup_enabled() or not manufacturer or not identifier:
+        return None, False
+
+    await update.message.reply_text(
+        f"\U0001f50e Looking for the official {manufacturer} document for {identifier}…"
+    )
+    try:
+        async with typing_action(context, update.effective_chat.id):
+            hit = await find_official_manual(manufacturer, identifier)
+    except Exception as e:  # noqa: BLE001 — a lookup must never eat the turn
+        logger.warning("manual lookup failed for %s %s: %s", manufacturer, identifier, e)
+        return None, False
+    logger.info(
+        "MANUAL_LOOKUP manufacturer=%s identifier=%s found=%s",
+        manufacturer,
+        identifier,
+        bool(hit),
+    )
+    return hit, True
 
 
 async def _try_nameplate_drive_pack_reply(
@@ -1539,13 +1610,24 @@ async def _try_nameplate_drive_pack_reply(
         return True
 
     doc_request = asks_for_documentation(caption) if has_question else False
+    # The technician asked for paperwork: go get it. Search + HEAD-validate +
+    # queue via the capability that already ships (shared/manual_search), then
+    # say exactly what came back. Both claiming branches below render the same
+    # three states — found / searched-and-missed / not attempted.
+    manual, manual_searched = await _find_manual_for_plate(fields, caption, update, context)
 
     if has_question and "recognized manufacturer" in resolution.reason:
         # A drive nameplate was clearly present (we recognized the
         # manufacturer) but the model/series didn't resolve to a live pack —
         # give the honest, actionable refusal instead of guessing or silently
         # falling through to a generic engine answer.
-        no_pack_reply = _format_no_pack_reply(fields, resolution.reason, doc_request=doc_request)
+        no_pack_reply = _format_no_pack_reply(
+            fields,
+            resolution.reason,
+            doc_request=doc_request,
+            manual=manual,
+            manual_searched=manual_searched,
+        )
         await update.message.reply_text(no_pack_reply)
         if memo is not None:
             memo["answer"] = no_pack_reply
@@ -1562,7 +1644,13 @@ async def _try_nameplate_drive_pack_reply(
         # flow OWNERSHIP, not re-labelling the image: `asks_for_identity` is
         # vetoed by any print vocabulary in the caption, and the branch only
         # fires when the plate actually read as something.
-        identity_reply = _format_no_pack_reply(fields, None, doc_request=doc_request)
+        identity_reply = _format_no_pack_reply(
+            fields,
+            None,
+            doc_request=doc_request,
+            manual=manual,
+            manual_searched=manual_searched,
+        )
         logger.info("NAMEPLATE_CAPTION_GATE claimed turn: identity request, plate read present")
         await update.message.reply_text(identity_reply)
         if memo is not None:
@@ -2080,8 +2168,19 @@ async def _try_print_translator_reply(
         misrouted = False
     if misrouted:
         plate_fields = (memo or {}).get("nameplate_fields") or {}
+        # The caption that produced this misroute is the very one that asked
+        # for a manual — recover the plate read AND go find the document.
+        manual, manual_searched = await _find_manual_for_plate(
+            plate_fields, caption, update, context
+        )
         recovered = (
-            _format_no_pack_reply(plate_fields, None, doc_request=asks_for_documentation(caption))
+            _format_no_pack_reply(
+                plate_fields,
+                None,
+                doc_request=asks_for_documentation(caption),
+                manual=manual,
+                manual_searched=manual_searched,
+            )
             if format_plate_read(plate_fields)
             else ""
         )
