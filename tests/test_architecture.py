@@ -1258,6 +1258,14 @@ def test_ke_insert_checker_catches_violations():
 # boundary above it. They are different populations: a dispatch site never calls
 # insert_chunk directly, so Contract 13 cannot see it.
 #
+# KNOWN BOUNDARY, stated rather than implied (Gate 7): no static scan can
+# follow fully dynamic dispatch — `getattr(mod, name).delay(...)`, a task looked
+# up from a registry dict, or a `Signature` built at runtime. There are zero
+# such sites in this repo today, and the contract fails CLOSED on every partial
+# form it CAN see (non-literal `kwargs=`, positional `args=`), so the gap is a
+# ceiling on coverage, not a hole that silently passes. Truly dynamic dispatch
+# is a review question, not a lint question.
+#
 # The scan is AST-only BY CONSTRUCTION. `ast.parse` discards comments entirely,
 # and a docstring is a Constant node rather than a keyword — so no comment,
 # docstring, or adjacent prose can satisfy this contract. That property is
@@ -1318,17 +1326,29 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
                 continue
         elif called not in names:
             continue
+
         declared = any(kw.arg == "is_private" for kw in node.keywords)
-        # Celery's `apply_async(kwargs={...})` passes task arguments inside a
-        # dict literal rather than as call keywords (Gate 7 finding). Read the
-        # dict's KEYS — still executable syntax, still not prose.
+
+        # Celery passes task arguments two other ways, and both must fail
+        # CLOSED rather than be assumed compliant (Gate 7 findings):
+        #
+        #   apply_async(kwargs={...})  — a dict LITERAL. Read its keys; still
+        #       executable syntax, never prose. If `kwargs=` is anything else
+        #       (a variable, a call, a comprehension) the scan cannot see
+        #       inside it, so it stays undeclared and the site is flagged.
+        #
+        #   send_task(..., args=[...]) — positional. `is_private` is
+        #       KEYWORD-ONLY, so a positional dispatch can never set it: such a
+        #       site always silently takes the default and is always flagged.
         if not declared:
             for kw in node.keywords:
-                if kw.arg == "kwargs" and isinstance(kw.value, ast.Dict):
-                    declared = any(
-                        isinstance(k, ast.Constant) and k.value == "is_private"
-                        for k in kw.value.keys
-                    )
+                if kw.arg == "kwargs":
+                    if isinstance(kw.value, ast.Dict):
+                        declared = any(
+                            isinstance(k, ast.Constant) and k.value == "is_private"
+                            for k in kw.value.keys
+                        )
+                    # non-literal kwargs -> unverifiable -> stays undeclared
                     break
         if not declared:
             missing.append(
@@ -1444,6 +1464,12 @@ def test_ingest_url_scanner_catches_violations():
         "apply_async": 'ingest_url.apply_async(kwargs={"url": u})\n',
         "apply_async dict without the key": 'ingest_url.apply_async(kwargs={"url": u, "source_type": "m"})\n',
         "send_task by name": 'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u})\n',
+        "send_task positional args (cannot set a keyword-only param)":
+            'app.send_task("tasks.ingest.ingest_url", args=[u, "m", "", "manual"])\n',
+        "apply_async with a non-literal kwargs dict":
+            'ingest_url.apply_async(kwargs=payload)\n',
+        "apply_async kwargs built by a call":
+            'ingest_url.apply_async(kwargs=dict(url=u))\n',
         "helper wrapper": 'def queue(u):\n    ingest_url.delay(url=u)\n',
         "import alias": (
             "from tasks.ingest import ingest_url as iu\n"
