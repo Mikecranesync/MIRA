@@ -276,3 +276,77 @@ class TestFiniteTypesIncluded:
         expected_finite = {"equipment_manual", "knowledge_article", "standard", "forum_post", "rss_article"}
         for expected in expected_finite:
             assert expected in finite_values, f"{expected} must be in CASE bound params"
+
+
+class TestRecrawlPreservesVisibility:
+    """CU-03: a recrawl refreshes content; it must NOT change who can read it.
+
+    `_find_stale_entries` re-queues rows that are ALREADY in the corpus, so if
+    the recrawl dispatch let `ingest_url`'s fail-closed default (private) apply,
+    shared-corpus rows would be privatized one refresh cycle at a time —
+    gradual, silent, and invisible in any single run. Gate 7 caught this on
+    PR #3274.
+
+    Every other test in this file mocks `fetchall` to `[]`, so the row-unpacking
+    path below was previously unexercised.
+    """
+
+    def _fake_engine_returning(self, rows):
+        import unittest.mock as mock
+
+        def fake_execute(query, params=None):
+            result = mock.MagicMock()
+            result.fetchall.return_value = rows
+            return result
+
+        fake_conn = mock.MagicMock()
+        fake_conn.__enter__ = lambda s: s
+        fake_conn.__exit__ = mock.MagicMock(return_value=False)
+        fake_conn.execute = fake_execute
+
+        fake_engine = mock.MagicMock()
+        fake_engine.connect.return_value = fake_conn
+        return fake_engine
+
+    def test_find_stale_entries_selects_and_returns_is_private(self, monkeypatch):
+        import tasks.freshness as freshness_mod
+
+        rows = [
+            ("id-shared", "https://library.e.abb.com/a.pdf", "equipment_manual", False),
+            ("id-private", "https://example.invalid/b.pdf", "equipment_manual", True),
+        ]
+        monkeypatch.setattr(
+            freshness_mod, "_engine", lambda: self._fake_engine_returning(rows)
+        )
+
+        stale = freshness_mod._find_stale_entries("test-tenant-id")
+
+        assert [e["is_private"] for e in stale] == [False, True]
+        assert stale[0]["source_url"] == "https://library.e.abb.com/a.pdf"
+
+    def test_stale_query_selects_the_is_private_column(self, monkeypatch):
+        """The column must be in the SELECT, or row[3] would IndexError."""
+        import inspect
+        import re
+
+        import tasks.freshness as freshness_mod
+
+        src = inspect.getsource(freshness_mod._find_stale_entries)
+
+        # Assert on the SELECT clause specifically, NOT on the token appearing
+        # somewhere in the function — the function also builds a dict key named
+        # "is_private", so a bare substring check passes even when the column is
+        # missing from the query. (That false-green was caught by running this
+        # test against a deliberately-broken SELECT before trusting it.)
+        select = re.search(r"SELECT\s+(.+?)\s+FROM\s+knowledge_entries", src, re.S)
+        assert select, "could not locate the stale-entry SELECT"
+        columns = [c.strip() for c in select.group(1).split(",")]
+        assert "is_private" in columns, (
+            "_find_stale_entries must SELECT is_private — the recrawl dispatch "
+            f"threads it through so a refresh cannot change visibility (CU-03). "
+            f"Selected columns: {columns}"
+        )
+        assert columns.index("is_private") == 3, (
+            "is_private must stay the 4th selected column — the row unpacking "
+            f"reads row[3]. Selected columns: {columns}"
+        )

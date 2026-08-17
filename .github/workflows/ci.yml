@@ -801,6 +801,23 @@ jobs:
         # guard nobody is checking.
         run: pytest tests/test_knowledge_entries_security_check.py -q
 
+      - name: knowledge_entries write-path visibility locks (CU-03)
+        # The step above fences knowledge_entries READS; this fences WRITES.
+        # `insert_chunk`/`store_chunks` take a required keyword-only `is_private`
+        # and `ingest_url` defaults to private with a `file://` floor
+        # (.claude/rules/knowledge-entries-tenant-scoping.md). Enumerated here
+        # for the reason spelled out immediately above: neither `tests/` nor
+        # `mira-crawler/tests/` is collected wholesale, so a lock that is not
+        # named runs nowhere. Class-scoped on test_celery_tasks because that
+        # file also holds two beat-schedule tests that are red on main.
+        run: |
+          (cd mira-crawler && pytest \
+            tests/test_knowledge_entries_visibility.py \
+            tests/test_celery_tasks.py::TestIngestUrl \
+            tests/test_store_verified.py \
+            tests/test_oem_trust.py \
+            tests/test_freshness.py -q)
+
       - name: deploy release-tag resolver contract tests
         # Workflow-contract tests for the deploy-vps release-tag resolver (#3055):
         # behavioral (fake git: tag present/late/absent, hotfix fallback) + static
