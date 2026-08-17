@@ -39,7 +39,12 @@ vi.mock("@/lib/node-knowledge-ingest", () => {
       this.name = "NoExtractableTextError";
     }
   }
-  return { ingestTextToNode: vi.fn(), ingestPdfToNode: vi.fn(), NoExtractableTextError };
+  return {
+    ingestTextToNode: vi.fn(),
+    ingestPdfToNode: vi.fn(),
+    deleteOrphanNodeIngest: vi.fn(async () => undefined),
+    NoExtractableTextError,
+  };
 });
 vi.mock("@/lib/manual-discovery", () => ({
   discoverManual: vi.fn(),
@@ -55,7 +60,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState, updateNotebook } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
-import { ingestTextToNode, ingestPdfToNode, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
+import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
 import { safeDownloadPdf } from "@/lib/safe-download";
 
@@ -132,6 +137,7 @@ function importableDiscovery() {
     validated: true,
     isDirectPdf: true,
     oemHost: true,
+    trustedDistributorHost: false,
     reason: "validated OEM PDF",
   };
 }
@@ -238,6 +244,7 @@ describe("the confirmed nameplate becomes a citable source", () => {
       validated: false,
       isDirectPdf: false,
       oemHost: false,
+      trustedDistributorHost: false,
       reason: "no official manual found",
     });
 
@@ -278,6 +285,7 @@ describe("the confirmed nameplate becomes a citable source", () => {
       validated: false,
       isDirectPdf: false,
       oemHost: false,
+      trustedDistributorHost: false,
       reason: "search service unavailable",
     });
     await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
@@ -304,6 +312,7 @@ describe("discovery terminal states", () => {
       validated: false,
       isDirectPdf: false,
       oemHost: false,
+      trustedDistributorHost: false,
       reason: "search service unavailable",
     });
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
@@ -324,6 +333,7 @@ describe("discovery terminal states", () => {
       validated: false,
       isDirectPdf: false,
       oemHost: false,
+      trustedDistributorHost: false,
       reason: "no official manual found",
     });
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
@@ -509,6 +519,7 @@ describe("atomic, idempotent materialization (Codex P1, 2026-08-16)", () => {
       ok: true,
       buffer: Buffer.from("%PDF-1.4 fake"),
       finalUrl: CANDIDATE.url,
+      contentType: "application/pdf",
     });
     // Text park: already ingested (not under test here).
     vi.mocked(parkOrReuseFile)
@@ -539,5 +550,53 @@ describe("atomic, idempotent materialization (Codex P1, 2026-08-16)", () => {
     // Explicit partial — never a silent ok with a missing citable source.
     expect(body.nameplate).toMatchObject({ docId: null, ingested: false });
     expect(releaseIngestClaim).toHaveBeenCalled();
+  });
+});
+
+describe("fail-closed attach + orphan cleanup (self-review round 3, 2026-08-16)", () => {
+  it("attachSource returning ok:false is a partial — never ingested:true, never discovery", async () => {
+    // The ingest succeeded but the source row did NOT land: without it the doc
+    // is not citable in this notebook, so reporting ingested:true would fail
+    // open on the route's primary deliverable.
+    vi.mocked(attachSource).mockResolvedValue({ ok: false, error: "doc_not_found" });
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("nameplate_not_indexed");
+    expect(body.nameplate).toMatchObject({ docId: null, ingested: false });
+    expect(discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("attachSource throwing is a partial — the swallowed error must not fail open", async () => {
+    vi.mocked(attachSource).mockRejectedValue(new Error("db down"));
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("nameplate_not_indexed");
+    expect(body.nameplate).toMatchObject({ docId: null, ingested: false });
+    expect(discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("a lost nameplate fence deletes the orphaned duplicate ingest", async () => {
+    vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("nameplate_not_indexed");
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, NAMEPLATE_DOC_ID);
+  });
+
+  it("a lost manual fence deletes the orphaned duplicate ingest", async () => {
+    // Nameplate: already materialized (reused). Manual: ingests, loses the fence.
+    vi.mocked(parkOrReuseFile)
+      .mockResolvedValueOnce({ fileId: "eeeeeeee-1111-2222-3333-444444444444", reused: true, uploadId: NAMEPLATE_DOC_ID })
+      .mockResolvedValueOnce({ fileId: MANUAL_FILE_ID, reused: false, uploadId: null });
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue({
+      ok: true,
+      buffer: Buffer.from("%PDF-1.4 fake"),
+      finalUrl: CANDIDATE.url,
+      contentType: "application/pdf",
+    });
+    vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
+    await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, MANUAL_DOC_ID);
   });
 });

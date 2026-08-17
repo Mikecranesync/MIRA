@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
@@ -361,6 +361,8 @@ export async function POST(
         // double-count it. Token-fenced against stale-window takeover.
         const won = await linkFileToUpload(ctx.tenantId, directId, uploadId, claim.claimToken);
         if (!won) {
+          // Fence lost → duplicate chunk set; remove it (best-effort).
+          await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
           return NextResponse.json(
             { ok: true, indexed: false, indexing: true, fileId: directId },
             { status: 202 },

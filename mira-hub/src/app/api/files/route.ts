@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 import {
   listFiles,
@@ -261,8 +261,10 @@ export async function POST(req: Request) {
         });
         const won = await linkFileToUpload(ctx.tenantId, park.fileId, uploadId, claim.claimToken);
         if (!won) {
-          // Claim stolen mid-ingest — our doc is orphaned; report indexing so
-          // the client re-fetches the winner's result rather than a duplicate.
+          // Claim stolen mid-ingest — our doc is orphaned; remove its duplicate
+          // chunk set (best-effort) and report indexing so the client
+          // re-fetches the winner's result rather than a duplicate.
+          await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
           return NextResponse.json(
             { ok: true, indexed: false, fileId: park.fileId, indexing: true },
             { status: 202 },

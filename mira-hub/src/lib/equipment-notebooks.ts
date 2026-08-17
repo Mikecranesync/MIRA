@@ -278,7 +278,12 @@ export async function upsertNotebookSourceTx(
   // the RESULTING state in the same statement — the candidate->user_confirmed
   // upsert used to leave enabled_by_default=false behind, silently keeping a
   // confirmed source out of chat (Codex P1, 2026-08-16). An explicit re-attach
-  // over a rejected row un-rejects it (the re-attach IS the user decision).
+  // by a USER over a rejected row un-rejects it (the re-attach IS the user
+  // decision) — but an incoming 'candidate' is a SYSTEM re-suggestion, never a
+  // user decision: it must not resurrect a human-rejected row, and it must not
+  // flip enabled_by_default on a row a human already ruled on (re-enabling a
+  // source the user explicitly disabled would be the system overriding the
+  // human — the same trust inversion as client-minted "verified").
   await c.query(
     `INSERT INTO equipment_notebook_sources
        (notebook_id, doc_id, tenant_id, enabled_by_default, match_state,
@@ -289,15 +294,16 @@ export async function upsertNotebookSourceTx(
        match_state = CASE
          WHEN equipment_notebook_sources.match_state = 'verified' THEN 'verified'
          WHEN EXCLUDED.match_state = 'verified' THEN 'verified'
-         WHEN equipment_notebook_sources.match_state = 'user_confirmed'
-              AND EXCLUDED.match_state = 'candidate' THEN 'user_confirmed'
+         WHEN equipment_notebook_sources.match_state IN ('user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.match_state
          ELSE EXCLUDED.match_state
        END,
        enabled_by_default = CASE
-         WHEN equipment_notebook_sources.match_state = 'verified' THEN true
          WHEN EXCLUDED.match_state = 'verified' THEN true
-         WHEN equipment_notebook_sources.match_state = 'user_confirmed'
-              AND EXCLUDED.match_state = 'candidate' THEN true
+         WHEN equipment_notebook_sources.match_state IN ('verified', 'user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.enabled_by_default
          ELSE EXCLUDED.match_state IN ('user_confirmed', 'verified')
        END,
        source_role    = EXCLUDED.source_role,

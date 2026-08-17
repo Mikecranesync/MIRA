@@ -29,7 +29,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
-import { ingestTextToNode, ingestPdfToNode, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
+import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual, allowedHostsForCandidate } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
@@ -260,6 +260,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             claim.claimToken,
           );
           nameplateDocId = won ? ingested.uploadId : null;
+          // Fence lost: our fully-ingested doc duplicates the winner's chunk
+          // set. Remove it — leaving it would recreate the duplicate-corpus
+          // bug the claim exists to prevent (best-effort, never throws).
+          if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ingested.uploadId);
         } catch (err) {
           await releaseIngestClaim(ctx.tenantId, parkedText.fileId, claim.claimToken).catch(() => {});
           throw err;
@@ -275,11 +279,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // no meaningful byte record for the user (the canonical PHOTO is the
       // parked file, and it is already linked). attachSource is the honest
       // seam for "a document that exists as an indexed doc".
-      await attachSource(ctx.tenantId, notebookId, nameplateDocId, {
+      const att = await attachSource(ctx.tenantId, notebookId, nameplateDocId, {
         matchState: "user_confirmed",
         sourceRole: "photo",
         addedBy: ctx.userId ?? null,
       });
+      // attachSource reports failure by RETURN VALUE, not throw. Without the
+      // source row the doc is not citable in this notebook — fail closed.
+      if (!att.ok) throw new Error(`attach_source_failed: ${att.error}`);
     }
   } catch (err) {
     console.warn(
@@ -287,6 +294,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         (err as Error).message
       }`,
     );
+    // Fail-closed: an ingested doc WITHOUT a source row is not citable. If the
+    // attach step failed after a successful ingest, reporting the docId would
+    // let the route claim ingested:true (and march on to discovery) for a
+    // nameplate that cannot enter chat. Null it; the retry re-parks the same
+    // bytes (dedup returns the existing doc) and re-attaches.
+    nameplateDocId = null;
   }
   nameplateIngestFailed = nameplateDocId === null;
 
@@ -461,6 +474,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ? await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId, manualClaimToken)
         : await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
       manualDocId = won ? ing.uploadId : null;
+      // Fence lost → our doc duplicates the winner's chunk set; remove it.
+      if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ing.uploadId);
     } catch (err) {
       if (manualClaimToken) {
         await releaseIngestClaim(ctx.tenantId, manualParked.fileId, manualClaimToken).catch(() => {});

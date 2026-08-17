@@ -16,6 +16,7 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/node-knowledge-ingest", () => ({
   ingestPdfToNode: vi.fn(),
   ingestTextToNode: vi.fn(),
+  deleteOrphanNodeIngest: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/workspace-files", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/workspace-files")>();

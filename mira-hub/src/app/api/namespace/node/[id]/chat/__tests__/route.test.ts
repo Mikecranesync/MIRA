@@ -203,7 +203,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
@@ -224,7 +224,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           calls.push(sql);
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
@@ -267,7 +267,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));

@@ -19,7 +19,11 @@ import { NextResponse } from "next/server";
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
-vi.mock("@/lib/node-knowledge-ingest", () => ({ ingestPdfToNode: vi.fn(), ingestTextToNode: vi.fn() }));
+vi.mock("@/lib/node-knowledge-ingest", () => ({
+  ingestPdfToNode: vi.fn(),
+  ingestTextToNode: vi.fn(),
+  deleteOrphanNodeIngest: vi.fn(async () => undefined),
+}));
 vi.mock("@/lib/uploads", () => ({ findDuplicateUpload: vi.fn(async () => null) }));
 // Parking/linking now goes through the canonical Files service (075). The pure
 // capability helper stays real — it is the thing the "stored, not indexed"

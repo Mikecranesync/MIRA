@@ -13,7 +13,7 @@ vi.mock("@/lib/db", () => ({ default: { query: (...a: unknown[]) => poolQuery(..
 
 const upsertNotebookSourceTx = vi.fn(async () => {});
 vi.mock("@/lib/equipment-notebooks", () => ({
-  upsertNotebookSourceTx: (...a: unknown[]) => upsertNotebookSourceTx(...a),
+  upsertNotebookSourceTx: (...a: unknown[]) => (upsertNotebookSourceTx as (...args: unknown[]) => unknown)(...a),
 }));
 
 // withTenantContext: run the callback against the scripted client. Tracks call
