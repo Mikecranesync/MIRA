@@ -43,8 +43,13 @@
 //   - Canonical = the earliest valid reservation for a given head_sha by
 //     immutable numeric comment id (creation time is advisory only). Later
 //     reservations for the same head LOSE, deterministically, forever — a
-//     crashed winner conservatively keeps the slot consumed; work continues
-//     only on a NEW head (or by explicit human-authorized review-only).
+//     crashed winner conservatively keeps the slot consumed, and there is NO
+//     takeover (with no heartbeat, "crashed" is indistinguishable from
+//     "still reviewing"; human authorization raises the BUDGET cap, it does
+//     not override canonical ownership). The only recovery for a crashed
+//     canonical reservation is to continue on a NEW head. (Observed live
+//     2026-08-17 on this PR: a killed round-6 run's reservation kept head
+//     d99db7f05 closed; the retry correctly failed closed.)
 //   - Distinct run_ids never collapse. Duplicate posts of the SAME run_id
 //     collapse to the earliest comment id (idempotent retry), and a caller
 //     whose own comment id is not that earliest must fail closed.
