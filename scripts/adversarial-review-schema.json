@@ -22,6 +22,8 @@
           "severity",
           "title",
           "file",
+          "line",
+          "symbol",
           "confidence",
           "failure_scenario",
           "evidence",
