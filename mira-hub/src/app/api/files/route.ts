@@ -231,6 +231,16 @@ export async function POST(req: Request) {
       const claim = await claimIngest(ctx.tenantId, park.fileId);
       if (!claim.claimed) {
         if (claim.reason === "already_ingested" && claim.uploadId) {
+          // Idempotent reconciliation (review round 2 F1): this request's
+          // attach ran while uploadId was still null (raced finalize), and a
+          // prior request's sync may have failed transiently — re-running the
+          // upsert here is what heals a stranded notebook membership on retry.
+          await syncNotebookSourcesForFile(
+            ctx.tenantId,
+            park.fileId,
+            claim.uploadId,
+            ctx.userId ?? null,
+          ).catch((err) => console.warn("[api/files POST] source re-sync failed", err));
           return NextResponse.json(
             { ok: true, indexed: true, duplicate: true, fileId: park.fileId, uploadId: claim.uploadId },
             { status: 200 },
@@ -274,11 +284,23 @@ export async function POST(req: Request) {
         // Targets were attached BEFORE ingestion (uploadId was null), so
         // notebook source membership was skipped then — create it now, or the
         // doc is indexed but never citable in notebook chat (review F1).
-        await syncNotebookSourcesForFile(ctx.tenantId, park.fileId, uploadId, ctx.userId ?? null);
+        // NOT inside the ingest try/catch semantics (round 2 F1): indexing has
+        // COMMITTED by this point, so a transient sync failure must not be
+        // reported as an indexing failure — report indexed:true with
+        // sourcesSynced:false; the already_ingested retry path re-runs the
+        // idempotent sync and heals the membership.
+        let sourcesSynced = true;
+        try {
+          await syncNotebookSourcesForFile(ctx.tenantId, park.fileId, uploadId, ctx.userId ?? null);
+        } catch (err) {
+          sourcesSynced = false;
+          console.warn("[api/files POST] notebook source sync failed (retry heals)", err);
+        }
         return NextResponse.json(
           {
             ok: true,
             indexed: true,
+            sourcesSynced,
             fileId: park.fileId,
             uploadId,
             chunkCount,

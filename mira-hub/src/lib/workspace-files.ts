@@ -679,9 +679,13 @@ export async function listFiles(
     }
     const page = async (lim: number, off: number) => {
       const r = await c.query<FileRow>(
+        // f.id DESC tie-breaker: created_at alone is not a total order, and
+        // batch-scanning with LIMIT/OFFSET over tied rows lets Postgres pick a
+        // different order per query — duplicating/omitting rows across batches
+        // (review round 2 F2).
         `SELECT ${FILE_COLS} FROM namespace_direct_uploads f
           WHERE ${where}
-          ORDER BY f.created_at DESC
+          ORDER BY f.created_at DESC, f.id DESC
           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, lim, off],
       );

@@ -160,6 +160,42 @@ describe("POST /api/files", () => {
     expect(syncNotebookSourcesForFile).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID, USER);
   });
 
+  it("a transient source-sync failure never voids committed indexing, and the retry heals it (round 2 F1)", async () => {
+    vi.mocked(withTenantContext)
+      .mockResolvedValueOnce(NODE_ID as never)
+      .mockResolvedValueOnce(null as never);
+    vi.mocked(ingestTextToNode).mockResolvedValue({ uploadId: UPLOAD_ID, chunkCount: 1 });
+    vi.mocked(syncNotebookSourcesForFile).mockRejectedValueOnce(new Error("db blip"));
+    const res = await POST(
+      upload("note.txt", "text/plain", "torque spec 42Nm", [
+        { targetType: "equipment_notebook", targetId: NOTEBOOK_ID },
+      ]),
+    );
+    // Indexing COMMITTED before the sync — a sync failure must not be
+    // reported as an indexing failure.
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ indexed: true, sourcesSynced: false });
+
+    // Retry: same bytes → claim says already_ingested. The retry path MUST
+    // re-run the idempotent sync — that is what un-strands the membership.
+    vi.mocked(syncNotebookSourcesForFile).mockClear();
+    vi.mocked(syncNotebookSourcesForFile).mockResolvedValue(1);
+    vi.mocked(withTenantContext).mockResolvedValueOnce(NODE_ID as never);
+    vi.mocked(claimIngest).mockResolvedValue({
+      claimed: false,
+      reason: "already_ingested",
+      uploadId: UPLOAD_ID,
+    });
+    const retry = await POST(
+      upload("note.txt", "text/plain", "torque spec 42Nm", [
+        { targetType: "equipment_notebook", targetId: NOTEBOOK_ID },
+      ]),
+    );
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ indexed: true, duplicate: true, uploadId: UPLOAD_ID });
+    expect(syncNotebookSourcesForFile).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID, USER);
+  });
+
   it("reuses an already-parsed file without re-parsing", async () => {
     vi.mocked(parkOrReuseFile).mockResolvedValue({
       fileId: FILE_ID,

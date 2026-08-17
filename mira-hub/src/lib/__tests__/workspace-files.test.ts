@@ -479,6 +479,15 @@ describe("listFiles capability paging (PR #3245 review F2)", () => {
     expect(out.map((f) => f.filename)).toEqual(["manual.pdf"]);
   });
 
+  it("orders with a unique tie-breaker (created_at, id) so batches cannot shuffle tied rows (round 2 F2)", async () => {
+    const { query } = clientFromRoutes([
+      { match: /FROM namespace_direct_uploads/, rows: [] },
+    ]);
+    await listFiles(TENANT, { capability: "indexable", limit: 5 });
+    const sql = String(query.mock.calls[0][0]);
+    expect(sql).toMatch(/ORDER BY f\.created_at DESC, f\.id DESC/);
+  });
+
   it("applies offset to the FILTERED sequence, not raw rows", async () => {
     const rows = [
       fileRow(1, "application/pdf", "one.pdf"),
