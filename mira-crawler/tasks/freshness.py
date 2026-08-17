@@ -79,7 +79,7 @@ def _engine():
 def _find_stale_entries(tenant_id: str) -> list[dict]:
     """Query NeonDB for all knowledge_entries past their TTL.
 
-    Returns list of dicts with keys: id, source_url, source_type.
+    Returns list of dicts with keys: id, source_url, source_type, is_private.
     Types with TTL=None are excluded from the query.
     """
     from sqlalchemy import text
@@ -126,7 +126,7 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
         exclude_clause = f"AND source_type NOT IN ({', '.join(never_names)})"
 
     query = text(f"""
-        SELECT id, source_url, source_type
+        SELECT id, source_url, source_type, is_private
         FROM knowledge_entries
         WHERE tenant_id = :tenant_id
           {exclude_clause}
@@ -144,6 +144,10 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
                     "id": str(row[0]),
                     "source_url": row[1] or "",
                     "source_type": row[2] or "",
+                    # Carried so the recrawl can preserve visibility. Without
+                    # it the refresh inherits ingest_url's default and a
+                    # private row silently becomes shared.
+                    "is_private": bool(row[3]),
                 }
             )
         logger.info("Found %d stale entries for tenant %s", len(stale), tenant_id)
@@ -263,7 +267,17 @@ def audit_stale_content() -> dict:
 
         if source_url and source_url.startswith("http"):
             try:
-                ingest_url.delay(url=source_url, source_type=source_type)
+                # A recrawl refreshes CONTENT; it must not change WHO CAN READ
+                # IT. Carry the existing row's visibility forward in both
+                # directions: shared stays shared, private stays private.
+                # Asserting a constant here would either drain the shared
+                # corpus (if private) or leak private rows (if shared), one
+                # refresh cycle at a time — gradual and invisible.
+                ingest_url.delay(
+                    url=source_url,
+                    source_type=source_type,
+                    is_private=entry["is_private"],
+                )
                 recrawl_queued += 1
                 logger.debug(
                     "Queued recrawl for stale entry %s (%s)", entry_id, source_url[:60]

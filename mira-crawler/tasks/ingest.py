@@ -211,10 +211,33 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     retry_jitter=True,
 )
 def ingest_url(self, url: str, manufacturer: str = "",
-               model: str = "", source_type: str = "equipment_manual"):
+               model: str = "", source_type: str = "equipment_manual",
+               is_private: bool = True):
     """Download, extract, chunk, embed, and store one document.
 
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
+
+    ``is_private`` is the corpus visibility this ingest writes. The curation
+    gate below decides whether a source is *allowed* to be shared; this
+    argument is the calling feeder declaring what it *intends*. Both must agree
+    before a row reaches the shared corpus — authorization and intent are
+    different questions, and a feeder that never states its intent is exactly
+    how a private document ends up shared.
+
+    **Why this has a default when `insert_chunk`'s is required.** That is an
+    in-process call; this is a Celery task signature, i.e. a wire contract. At
+    deploy time the queue still holds messages enqueued by the previous
+    release, carrying no ``is_private`` kwarg — a required parameter would make
+    those drain as ``TypeError``. So it takes a default, and the default is the
+    **safe direction: private**. Re-sharing a wrongly-privatized row is a
+    recrawl; un-sharing a leaked one is an incident.
+
+    A ``file://`` URL is **forced private** regardless of what the caller
+    declares. Local files reach this task from ``tasks/gdrive.py`` (a Google
+    Drive mirror) and from operator drops — non-public provenance by
+    construction. The containment check in ``_validated_local_path`` answers
+    "may we read this path"; it cannot answer "may every tenant read its
+    contents", and those are not the same question.
     """
     from ingest.chunker import chunk_blocks
     from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
@@ -228,6 +251,17 @@ def ingest_url(self, url: str, manufacturer: str = "",
     if not tenant_id:
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
+
+    # Visibility floor: a local file has no public provenance, so no caller
+    # declaration can put it in the shared corpus. Passing the containment
+    # check means "we may read this path", never "everyone may read it".
+    if not is_private and url.lower().startswith("file://"):
+        logger.warning(
+            "Forcing is_private=True for local-file ingest %s — file:// has no "
+            "public provenance and cannot enter the shared corpus",
+            url[:120],
+        )
+        is_private = True
 
     # 0. Curation gate (I-2) — BEFORE any network access. This task writes
     # shared rows; an uncurated source must be refused, not shared. To ingest
@@ -423,10 +457,12 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 section=chunk.get("section", ""),
                 chunk_index=chunk_idx,
                 chunk_type=chunk.get("chunk_type", "text"),
-                # Shared corpus: source passed the sources.yaml gate above
-                # (or is operator-initiated file:// ingest). Unverified —
-                # trust stays with the OEM crawler class, not this task.
-                is_private=False,
+                # Visibility is the caller's declaration (defaulting private),
+                # after the file:// floor above. The sources.yaml gate decides
+                # whether sharing is AUTHORIZED; this says whether it was
+                # INTENDED. Unverified either way — trust stays with the OEM
+                # crawler class, not this task.
+                is_private=is_private,
             )
             if entry_id:
                 inserted += 1
@@ -510,6 +546,10 @@ def ingest_all_pending():
                 manufacturer=manufacturer,
                 model=model,
                 source_type="manual",
+                # Shared corpus: the pending-manual queue (mira-core
+                # db.neon.get_pending_urls) holds publicly-reachable OEM
+                # manual URLs.
+                is_private=False,
             )
             queued += 1
 

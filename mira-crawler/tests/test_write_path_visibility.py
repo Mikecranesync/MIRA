@@ -531,3 +531,211 @@ class TestSchemeCaseNormalization:
         ok, reason = self._gate()("ftp://ibiblio.org/manual.pdf")
         assert not ok
         assert "unsupported scheme" in reason
+
+
+class TestIngestUrlVisibilityDeclaration:
+    """The TASK boundary above insert_chunk (salvaged from duplicate PR #3274).
+
+    `insert_chunk` requires `is_private`; `ingest_url` cannot, because a Celery
+    signature is a wire contract and the queue still holds messages enqueued by
+    the previous release at deploy time. So it defaults — and the default must
+    fail in the SAFE direction. These lock that, and lock the `file://` floor
+    that keeps the Google Drive mirror out of the shared corpus.
+    """
+
+    def _run(self, monkeypatch, url: str, **kwargs):
+        from unittest.mock import patch
+
+        monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
+        insert_kwargs: dict = {}
+
+        class _Resp:
+            status_code = 200
+            headers = {"content-type": "application/pdf"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self, chunk_size):
+                yield b"%PDF-1.4"
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def stream(self, method, url):
+                return _Resp()
+
+        def _fake_insert(**kw):
+            insert_kwargs.update(kw)
+            return "id-1"
+
+        fake_chunks = [
+            {"text": "chunk body long enough", "chunk_index": 0, "chunk_type": "text"}
+        ]
+        with (
+            patch("tasks.ingest.httpx.Client", _Client),
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
+            patch("ingest.chunker.chunk_blocks", return_value=fake_chunks),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", side_effect=_fake_insert),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
+            try:
+                from tasks.ingest import ingest_url
+            except ImportError:
+                from mira_crawler.tasks.ingest import ingest_url
+
+            ingest_url.run(url=url, **kwargs)
+        return insert_kwargs
+
+    _CURATED = "https://ibiblio.org/manual.pdf"
+
+    def test_undeclared_dispatch_defaults_to_private(self, monkeypatch) -> None:
+        """The in-flight-message case: a task enqueued by the previous release
+        carries no is_private kwarg. It must drain to the safe side, not raise
+        and not share."""
+        assert self._run(monkeypatch, self._CURATED)["is_private"] is True
+
+    def test_explicit_shared_declaration_is_threaded(self, monkeypatch) -> None:
+        assert self._run(monkeypatch, self._CURATED, is_private=False)["is_private"] is False
+
+    def test_local_file_cannot_reach_the_shared_corpus(self, monkeypatch, tmp_path) -> None:
+        """tasks/gdrive.py queues Drive documents as file:// URLs.
+
+        Passing the containment check answers "may we read this path"; it does
+        not answer "may every tenant read its contents". Before this floor the
+        file:// branch reached is_private=False and Drive documents landed in
+        the shared corpus.
+        """
+        import tasks.ingest as ingest_mod
+
+        base = tmp_path / "inbox"
+        base.mkdir()
+        pdf = base / "drive-doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: base.resolve())
+
+        seen = self._run(monkeypatch, f"file://{pdf}", is_private=False)
+        assert seen["is_private"] is True, "file:// must be forced private"
+
+    def test_uppercase_file_scheme_also_forced_private(self, monkeypatch, tmp_path) -> None:
+        """The floor is scheme-case-insensitive — FILE:// is still a local file."""
+        import tasks.ingest as ingest_mod
+
+        base = tmp_path / "inbox"
+        base.mkdir()
+        pdf = base / "d.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: base.resolve())
+
+        seen = self._run(monkeypatch, f"FILE://{pdf}", is_private=False)
+        assert seen["is_private"] is True
+
+
+class TestRecrawlPreservesVisibility:
+    """A refresh changes CONTENT, never WHO CAN READ IT (salvaged from #3274).
+
+    `_find_stale_entries` re-queues rows that are ALREADY in the corpus. If the
+    recrawl let ingest_url's default apply, every refreshed shared row would be
+    privatized one cycle at a time — gradual, silent, and invisible in any
+    single run. Asserting the opposite constant would leak private rows just as
+    quietly. The only correct answer is to carry the row's own value forward.
+
+    Every other test of this module mocks `fetchall` to `[]`, so the row
+    unpacking below was previously unexercised.
+    """
+
+    def _engine_returning(self, rows):
+        from unittest.mock import MagicMock
+
+        def fake_execute(query, params=None):
+            result = MagicMock()
+            result.fetchall.return_value = rows
+            return result
+
+        conn = MagicMock()
+        conn.__enter__ = lambda s: s
+        conn.__exit__ = MagicMock(return_value=False)
+        conn.execute = fake_execute
+        engine = MagicMock()
+        engine.connect.return_value = conn
+        return engine
+
+    def test_stale_query_returns_visibility_for_both_kinds(self, monkeypatch) -> None:
+        import tasks.freshness as freshness_mod
+
+        rows = [
+            ("id-shared", "https://library.e.abb.com/a.pdf", "equipment_manual", False),
+            ("id-private", "https://example.invalid/b.pdf", "equipment_manual", True),
+        ]
+        monkeypatch.setattr(freshness_mod, "_engine", lambda: self._engine_returning(rows))
+
+        stale = freshness_mod._find_stale_entries("test-tenant-id")
+        assert [e["is_private"] for e in stale] == [False, True]
+
+    def test_stale_query_selects_is_private_as_the_fourth_column(self) -> None:
+        """row[3] would IndexError, or read the wrong column, without this."""
+        import inspect
+        import re
+
+        import tasks.freshness as freshness_mod
+
+        # Parse the SELECT clause specifically. A bare `"is_private" in src`
+        # check passes against a BROKEN query, because the same function builds
+        # a dict key of that name — verified by running this against a
+        # deliberately-broken SELECT before trusting it.
+        src = inspect.getsource(freshness_mod._find_stale_entries)
+        match = re.search(r"SELECT\s+(.+?)\s+FROM\s+knowledge_entries", src, re.S)
+        assert match, "could not locate the stale-entry SELECT"
+        columns = [c.strip() for c in match.group(1).split(",")]
+        assert columns.index("is_private") == 3, f"selected columns: {columns}"
+
+    def test_shared_row_stays_shared_and_private_row_stays_private(self, monkeypatch) -> None:
+        from unittest.mock import MagicMock
+
+        import tasks.freshness as freshness_mod
+
+        dispatched: list[dict] = []
+        fake_task = MagicMock()
+        fake_task.delay = lambda **kw: dispatched.append(kw)
+
+        import sys
+        import types
+
+        monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
+        stub = types.ModuleType("tasks.ingest")
+        stub.ingest_url = fake_task
+        monkeypatch.setitem(sys.modules, "tasks.ingest", stub)
+        monkeypatch.setitem(sys.modules, "mira_crawler.tasks.ingest", stub)
+
+        monkeypatch.setattr(
+            freshness_mod,
+            "_find_stale_entries",
+            lambda tenant_id: [
+                {"id": "a", "source_url": "https://x.invalid/a.pdf",
+                 "source_type": "equipment_manual", "is_private": False},
+                {"id": "b", "source_url": "https://x.invalid/b.pdf",
+                 "source_type": "equipment_manual", "is_private": True},
+            ],
+        )
+        monkeypatch.setattr(freshness_mod, "_mark_entries_stale_batch", lambda ids: None)
+
+        freshness_mod.audit_stale_content.run()
+
+        by_url = {d["url"]: d["is_private"] for d in dispatched}
+        assert by_url["https://x.invalid/a.pdf"] is False, "shared row must stay shared"
+        assert by_url["https://x.invalid/b.pdf"] is True, "private row must stay private"
