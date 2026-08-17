@@ -93,8 +93,12 @@ read -r ITERATION ALREADY PRIOR_STATUS < <(node -e '
     const m=atSha[atSha.length-1].body.match(/^status: (GREEN|ISSUES_FOUND)$/m);
     prior=m?m[1]:"MALFORMED";
   }
-  process.stdout.write(`${reviews.length+1} ${atSha.length?1:0} ${prior}`);
+  process.stdout.write(`${reviews.length+1} ${atSha.length?1:0} ${prior}\n`);
 ' "$COMMENTS_FILE" "$MARKER" "$HEAD_SHA")
+if [ -z "${PRIOR_STATUS:-}" ]; then
+  echo "ERROR: could not parse the PR comment ledger" >&2
+  exit 2
+fi
 
 if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
   echo "Already reviewed at $HEAD_SHA (prior status: $PRIOR_STATUS). Use --force to re-review."
@@ -106,17 +110,21 @@ if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
 fi
 
 # Prior-round context: pass the last review's finding ids so Codex can confirm
-# fixes and avoid re-litigating documented FALSE_POSITIVEs.
-PRIOR_CONTEXT="$(node -e '
+# fixes and avoid re-litigating documented FALSE_POSITIVEs. Written to a REAL
+# file — node is a native Windows binary and cannot read MSYS /dev/fd paths,
+# so bash process substitution must never be passed to it as a filename.
+PRIOR_FILE="$OUT_DIR/prior-$PR_NUMBER-$HEAD_SHA.md"
+node -e '
   const fs=require("fs");
-  const raw=fs.readFileSync(process.argv[1],"utf8");
+  const [commentsFile,marker,outFile]=process.argv.slice(1);
+  const raw=fs.readFileSync(commentsFile,"utf8");
   const arr=JSON.parse("["+raw.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-  const marker=process.argv[2];
   const reviews=arr.filter(c=>typeof c.body==="string"&&c.body.startsWith(marker));
-  if(!reviews.length){process.stdout.write("This is the first review of this PR.");process.exit(0);}
-  const last=reviews[reviews.length-1].body;
-  process.stdout.write("A previous round exists. Verify its findings were actually fixed at the new SHA; do not re-raise its FALSE_POSITIVE entries without new evidence. Previous review (may be truncated):\n\n"+last.slice(0,6000));
-' "$COMMENTS_FILE" "$MARKER")"
+  const text=reviews.length
+    ? "A previous round exists. Verify its findings were actually fixed at the new SHA; do not re-raise its FALSE_POSITIVE entries without new evidence. Previous review (may be truncated):\n\n"+reviews[reviews.length-1].body.slice(0,6000)
+    : "This is the first review of this PR.";
+  fs.writeFileSync(outFile,text);
+' "$COMMENTS_FILE" "$MARKER" "$PRIOR_FILE"
 
 # ── Build the prompt ─────────────────────────────────────────────────────────
 PROMPT_FILE="$OUT_DIR/prompt-$PR_NUMBER-$HEAD_SHA.md"
@@ -130,7 +138,7 @@ node -e '
   fs.writeFileSync(out,s);
 ' "$ROOT/scripts/adversarial-review-prompt.md" "$PROMPT_FILE" \
   "$PR_NUMBER" "$PR_TITLE" "$BASE_REF" "$MERGE_BASE" "$HEAD_SHA" "$ITERATION" \
-  <(printf '%s' "$PRIOR_CONTEXT")
+  "$PRIOR_FILE"
 
 # ── Run Codex (read-only, ephemeral, schema-constrained) ─────────────────────
 ENVELOPE="$OUT_DIR/envelope-$PR_NUMBER-$HEAD_SHA.json"
