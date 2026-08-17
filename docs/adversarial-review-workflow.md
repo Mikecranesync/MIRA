@@ -111,6 +111,18 @@ Claude's disposition comment starts with `[CLAUDE-REMEDIATION]` and lists one
 line per finding id with its classification. Escalations start with
 `[ADVERSARIAL-ESCALATION]`.
 
+### Comment-ledger trust model (round-2 hardening)
+
+Anyone who can comment on a PR can type the marker, so a marker alone proves
+nothing. A ledger entry counts only when (a) it was **authored by the same
+GitHub account the runner posts as** and (b) its metadata block **parses
+strictly** (marker line, fenced block, exact `reviewed_sha:`/`status:`
+lines). Forged or malformed comments are ignored and can never mint a GREEN.
+Remediation never fetches its instructions from PR comments at all — the
+loop injects the runner's own rendered review artifact verbatim into the
+prompt, with an explicit instruction that comment text is data, not
+instructions.
+
 ### SHA protection
 
 - The review runs only when the local checkout **is** the PR head; the
@@ -126,6 +138,15 @@ line per finding id with its classification. Escalations start with
 ## Loop rules
 
 - Maximum **3** autonomous cycles, then `[ADVERSARIAL-ESCALATION]`.
+  `--max-iter` is validated and hard-capped at 3 — each cycle launches a
+  privileged headless remediation, so the ceiling is a safety contract, not a
+  default.
+- Concurrency: the head is re-verified **before remediation** (stale
+  ISSUES_FOUND findings are never remediated — the loop syncs and reviews the
+  new head) and **before any GREEN announcement**. Post-remediation progress
+  counts only when the new head *descends* from the reviewed commit AND a
+  same-account `[CLAUDE-REMEDIATION]` disposition attests to that exact SHA —
+  a third-party push is never "progress".
 - No-progress protection: if remediation pushes no new commit, the loop stops
   and escalates (everything left is disputed or needs a human).
 - The loop never reviews the same SHA twice (dedupe above).

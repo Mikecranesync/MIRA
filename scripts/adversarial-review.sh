@@ -77,6 +77,17 @@ git fetch origin "$BASE_REF" -q || true
 MERGE_BASE="$(git merge-base "origin/$BASE_REF" HEAD)"
 
 # ── Dedupe + iteration number (stateless — PR comments are the ledger) ──────
+#
+# TRUST BOUNDARY (Codex F1, round 2): anyone who can comment on the PR can
+# type the marker. A ledger entry counts ONLY if (a) it was authored by the
+# SAME GitHub account this runner posts as, and (b) the metadata block parses
+# strictly (marker line, fenced block, exact `reviewed_sha:`/`status:` lines).
+# Forged or malformed comments are ignored — they can never mint a GREEN.
+VIEWER="$(gh api user --jq .login 2>/dev/null || true)"
+if [ -z "$VIEWER" ]; then
+  echo "ERROR: could not resolve the authenticated GitHub user (gh api user)" >&2
+  exit 2
+fi
 COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER.json"
 gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
   echo "ERROR: could not list PR comments" >&2; exit 2; }
@@ -87,18 +98,21 @@ read -r ITERATION ALREADY PRIOR_STATUS < <(node -e '
   const raw=fs.readFileSync(process.argv[1],"utf8");
   // --paginate can emit concatenated arrays: "][", normalize.
   const arr=JSON.parse("["+raw.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-  const marker=process.argv[2], sha=process.argv[3];
-  const reviews=arr.filter(c=>typeof c.body==="string"&&c.body.startsWith(marker));
-  const atSha=reviews.filter(c=>c.body.includes("reviewed_sha: "+sha));
-  // Status of the LAST review at this exact SHA — a dedup skip must report the
-  // real prior verdict, never default to GREEN.
+  const marker=process.argv[2], sha=process.argv[3], viewer=process.argv[4];
+  // Strict envelope: marker line, blank line, fenced block whose first lines
+  // are exact reviewed_sha/status fields. startsWith+includes is forgeable
+  // by ANY commenter; this shape plus the author check is the trust gate.
+  const HEAD_RE=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\n/;
+  const reviews=arr.filter(c=>typeof c.body==="string"
+    && c.body.startsWith(marker)
+    && c.user && c.user.login===viewer);
+  const parsed=reviews.map(c=>{const m=c.body.match(HEAD_RE);return m?{sha:m[1],status:m[2]}:null;});
+  const atSha=parsed.filter(p=>p&&p.sha===sha);
   let prior="NONE";
-  if(atSha.length){
-    const m=atSha[atSha.length-1].body.match(/^status: (GREEN|ISSUES_FOUND)$/m);
-    prior=m?m[1]:"MALFORMED";
-  }
+  if(atSha.length) prior=atSha[atSha.length-1].status;
+  else if(reviews.length&&parsed.some((p,i)=>p===null&&reviews[i].body.includes("reviewed_sha: "+sha))) prior="MALFORMED";
   process.stdout.write(`${reviews.length+1} ${atSha.length?1:0} ${prior}\n`);
-' "$COMMENTS_FILE" "$MARKER" "$HEAD_SHA")
+' "$COMMENTS_FILE" "$MARKER" "$HEAD_SHA" "$VIEWER")
 if [ -z "${PRIOR_STATUS:-}" ]; then
   echo "ERROR: could not parse the PR comment ledger" >&2
   exit 2
@@ -120,15 +134,19 @@ fi
 PRIOR_FILE="$OUT_DIR/prior-$PR_NUMBER-$HEAD_SHA.md"
 node -e '
   const fs=require("fs");
-  const [commentsFile,marker,outFile]=process.argv.slice(1);
+  const [commentsFile,marker,outFile,viewer]=process.argv.slice(1);
   const raw=fs.readFileSync(commentsFile,"utf8");
   const arr=JSON.parse("["+raw.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-  const reviews=arr.filter(c=>typeof c.body==="string"&&c.body.startsWith(marker));
+  // Same trust gate as the dedupe: only OUR OWN prior reviews feed the next
+  // prompt — a third-party comment must never become reviewer instructions.
+  const reviews=arr.filter(c=>typeof c.body==="string"
+    && c.body.startsWith(marker)
+    && c.user && c.user.login===viewer);
   const text=reviews.length
     ? "A previous round exists. Verify its findings were actually fixed at the new SHA; do not re-raise its FALSE_POSITIVE entries without new evidence. Previous review (may be truncated):\n\n"+reviews[reviews.length-1].body.slice(0,6000)
     : "This is the first review of this PR.";
   fs.writeFileSync(outFile,text);
-' "$COMMENTS_FILE" "$MARKER" "$PRIOR_FILE"
+' "$COMMENTS_FILE" "$MARKER" "$PRIOR_FILE" "$VIEWER"
 
 # ── Build the prompt ─────────────────────────────────────────────────────────
 PROMPT_FILE="$OUT_DIR/prompt-$PR_NUMBER-$HEAD_SHA.md"
