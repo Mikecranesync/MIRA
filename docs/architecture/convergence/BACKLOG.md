@@ -48,6 +48,13 @@
 - `store.py::insert_chunk` gains a required `is_private` parameter (no silent default); `ingest_url` validates against `sources.yaml` before shared-corpus writes; audit `learning_ingester.py` visibility.
 - Behavior-lock first: tenant-scoping tests asserting today's exact write shapes (OEM public, uploads private) before touching the code.
 - **Risk:** medium-high (tenancy-adjacent) → **Gate 7 xhigh**, human GO. Not a pilot candidate for exactly that reason.
+- **Status: IMPLEMENTED 2026-08-17, awaiting Gate 7 + Gate 9.** R0 `1ce65139a`. First unit to walk Gate 7 on the **real** cascade lane (CU-11's `tools/gate7_review.py`), xhigh fired deterministically on the tenant-scoping trigger. Full record in `units/CU-03.md`.
+- **Two framings above were rejected on evidence and the record says why** (doctrine §5):
+  - *"today's exact write shapes (OEM public, uploads private)"* is **false** — `insert_chunk` hardcoded the SQL literal `false`, so **nothing** on this path was ever private, including the `file://` Google-Drive feed. The lock characterizes what actually shipped.
+  - *"validates against `sources.yaml`"* taken literally is a URL allowlist that breaks on contact: `sources.yaml` curates 18 hosts, and the sitemap seed list points at 5 hosts that are **not** among them — a literal allowlist would silently stop most sitemap-fed OEM manuals reaching the shared corpus. The real defect is `file://` (no public provenance by construction), which is what shipped as a fail-closed floor. The general curated-host question is filed as follow-up work, not absorbed.
+- **New findings recorded rather than silently fixed:** duplicate `insert_chunk` in `tools/vendor_coverage_ingest.py:184`; the curated-host provenance question; and the existing-row backfill question (selectable for the learning-ingester rows via `source_type='approved_faq'`, but it mutates prod data and gets its own unit and its own GO — CU-03 moves no rows).
+- **Two false-reds repaired in passing:** Contract 13's walker scanned nested git worktrees (failed on any dev machine with one, green in CI); and `TestIngestUrl` still patched `httpx.get` after `ingest_url` moved to a streaming download, so those tests had been making real network calls and failing silently — `ingest_url` had **no** working coverage at the moment this unit needed to lock it.
+- **Next unit: CU-04** (factorylm legacy strangulation, phase 1 — statuses + proof, no deletion).
 
 ## CU-04 — factorylm legacy strangulation, phase 1 (statuses + proof, no deletion)
 
