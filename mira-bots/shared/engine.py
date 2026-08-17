@@ -109,6 +109,7 @@ from .photo_handler import (
     save_session_photo,
 )
 from .quota import QUOTA_BLOCK_MESSAGE, check_quota
+from .reply_voice import sanitize_voice
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
@@ -2367,6 +2368,18 @@ class Supervisor:
             fsm_state=result.get("next_state", ""),
             evidence=result.get("_citation_evidence"),
         )
+        # Voice guard (2026-08-16): strip the generic chat-assistant register a
+        # model falls back into when it drops the response contract — "You are
+        # absolutely right! My apologies. I am unable to access external files
+        # …" reached a technician verbatim through the `parse_response` plain-
+        # text branch. Deterministic, zero tokens, byte-identical pass-through
+        # when nothing fires.
+        #
+        # Runs BEFORE H4 on purpose. A false capability claim is rewritten into
+        # a real gap admission worded so H4 recognises it, so the same message
+        # can never carry two admissions in two voices; and H4's own two-part
+        # `[KB-gap: …]` block — which other code reads — is never edited.
+        reply = sanitize_voice(reply)
         # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
         # or an explicit KB-gap admission. Applied AFTER the quality gate so the
         # appended text doesn't confuse the gate's heuristics. Skips graceful-
