@@ -94,22 +94,28 @@ closeout (§9).
 
 ## 6. Adversarial review gate (roles, staleness, fail-closed)
 
-**Activation state.** The mechanized review lane
-(`docs/adversarial-review-workflow.md` + `scripts/adversarial-review{,-loop}.sh`)
-is canonical on **PR #3279 and is NOT yet at HEAD of the default branch**.
-Until that dependency merges, the mechanized lane is **pending**, and a
-session doing substantial work must do exactly one of:
+**Activation is determined by observable repository state — never by this
+document's age.** Check the CURRENT default-branch HEAD:
 
-  (a) run the canonical tooling directly from the `feat/adversarial-review-automation`
-      branch (verify the scripts by their documented markers before use),
-      and record that deviation in the PR; or
+- **ACTIVE:** if `scripts/adversarial-review.sh`,
+  `scripts/adversarial-review-loop.sh`, and
+  `docs/adversarial-review-workflow.md` exist at `origin/main` HEAD
+  (`git cat-file -e origin/main:scripts/adversarial-review.sh`), the
+  mechanized lane is mandatory **as-committed there**.
+- **PENDING:** otherwise (canonical home: PR #3279). A session doing
+  substantial work must then do exactly one of:
+  (a) run the canonical tooling **pinned at immutable commit
+      `514389224b1657c0b19e0991b54838511c3ea2b7`** — materialize via
+      `git show <pin>:scripts/<file>`, never a mutable branch name — and
+      record the pin SHA in the PR's review evidence. A newer canonical pin
+      may be substituted only by recording the new SHA and why; or
   (b) report **PARTIAL/BLOCKED** naming PR #3279 as the exact missing
       dependency.
 
-Never casually copy or reimplement the tooling, and never treat a mutable PR
-branch as a satisfied dependency — once #3279 merges, the mechanics above
-become mandatory as-committed. The **invariants below bind in all cases,
-tooling or no tooling**:
+Never casually copy or reimplement the tooling into another PR, and never
+treat a mutable branch name as a satisfied dependency — a moved branch can
+silently swap the reviewer out from under you. The **invariants below bind
+in all cases, tooling or no tooling**:
 
 - **Claude implements and remediates. Codex reviews read-only** and produces
   evidence-backed findings; it must not edit the implementation branch during
