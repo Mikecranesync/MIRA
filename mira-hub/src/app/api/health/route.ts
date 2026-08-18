@@ -18,21 +18,42 @@ export function GET() {
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
   };
 
+  const rawWorkflowToggle = (process.env.MIRA_CHANNEL_WORKFLOW_ENABLED ?? "0")
+    .trim()
+    .toLowerCase();
+  const enabledValues = new Set(["1", "true", "yes", "on"]);
+  const disabledValues = new Set(["", "0", "false", "no", "off"]);
+  const invalid =
+    enabledValues.has(rawWorkflowToggle) ||
+    disabledValues.has(rawWorkflowToggle)
+      ? []
+      : ["MIRA_CHANNEL_WORKFLOW_ENABLED"];
+  const workflowEnabled = enabledValues.has(rawWorkflowToggle);
   const required = [
     "NEON_DATABASE_URL",
     "INGEST_URL",
-    ...(process.env.MIRA_CHANNEL_WORKFLOW_ENABLED === "true"
-      ? (["HUB_INGEST_TOKEN"] as const)
-      : []),
+    ...(workflowEnabled ? (["HUB_INGEST_TOKEN"] as const) : []),
   ] as const;
   const missing = required.filter((k) => !process.env[k]);
 
-  if (missing.length > 0) {
+  if (missing.length > 0 || invalid.length > 0) {
     return NextResponse.json(
-      { status: "unhealthy", service: "mira-hub", missing, ...identity, ts: Date.now() },
+      {
+        status: "unhealthy",
+        service: "mira-hub",
+        missing,
+        invalid,
+        ...identity,
+        ts: Date.now(),
+      },
       { status: 503 },
     );
   }
 
-  return NextResponse.json({ status: "ok", service: "mira-hub", ...identity, ts: Date.now() });
+  return NextResponse.json({
+    status: "ok",
+    service: "mira-hub",
+    ...identity,
+    ts: Date.now(),
+  });
 }

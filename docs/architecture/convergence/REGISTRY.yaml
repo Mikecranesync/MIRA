@@ -16,13 +16,15 @@ mira-bots:
   declared_state: "Supervisor engine is THE brain (root CLAUDE.md)"
   key_components:
     - "shared/engine.py (Supervisor FSM + RAG)"
+    - "shared/channel_workflow.py (service-auth Hub operation client; semantic rendering only)"
     - "telegram/slack/email adapters"
     - "ask_api (Ignition HMI fast-path)"
     - "prompts/ (workflow templates)"
   dependencies:
     - mira-pipeline
     - mira-mcp
-  known_drift: []   # filled by Gate 0 discovery
+  known_drift:
+    - "Telegram/Slack legacy manual, PDF, and visual paths remain flag-off rollback fallbacks until CU-CHANNEL-WORKFLOW staging proof + Mike GO"
 
 mira-hub:
   repo: MIRA
@@ -39,6 +41,7 @@ mira-hub:
     - "Next.js 16 app"
     - "db (NeonDB migrations)"
     - "auth (next-auth)"
+    - "channel workflow (canonical nameplate/manual/Files/notebook orchestration + durable operations)"
     - "sync workers"
   dependencies:
     - mira-pipeline

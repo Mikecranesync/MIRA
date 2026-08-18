@@ -62,7 +62,7 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|
 | `NEON_DATABASE_URL`  | mira-ingest (NeonDB)                 |
-| `MIRA_TENANT_ID`     | mira-ingest (tenant scoping)         |
+| `MIRA_TENANT_ID`     | mira-ingest and canonical channel-workflow clients (tenant scoping). Must be a UUID when `MIRA_CHANNEL_WORKFLOW_ENABLED=1`; adapter hints never override the authenticated tenant. |
 | `KNOWLEDGE_COLLECTION_ID` | mira-bots, mira-ingest          |
 | `LANGFUSE_SECRET_KEY`| mira-bots (tracing)                  |
 | `LANGFUSE_PUBLIC_KEY`| mira-bots (tracing)                  |
@@ -73,8 +73,12 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `ATLAS_PUBLIC_API_URL` | mira-cmms atlas-api + atlas-frontend — public URL for Atlas CMMS API (e.g. `http://bravo:8088`) |
 | `ATLAS_PUBLIC_FRONT_URL` | mira-cmms atlas-api — public URL for Atlas CMMS frontend |
 | `ATLAS_PUBLIC_MINIO_URL` | mira-cmms atlas-api + atlas-frontend — public URL for MinIO |
-| `HUB_BASE_PATH`     | mira-hub — URL base path the Hub is served under (e.g. `/hub`). Default `/hub` in `docker-compose.saas.yml`. Must match the NextAuth basePath / reverse-proxy prefix. |
-| `HUB_INGEST_TOKEN`  | mira-hub + mira-bot-telegram — bearer token authorizing server-side file intake to the Hub `/api/uploads/folder` ingest path (Telegram file routing, #2547). Empty disables the authenticated ingest shortcut. |
+| `MIRA_CHANNEL_WORKFLOW_ENABLED` | mira-hub + Telegram + Slack — enables the channel-neutral identity/manual/Files workflow. Default `0`. Accepted true values: `1`, `true`, `yes`, `on`; invalid values fail startup/health validation. Enable only after the same `HUB_INGEST_TOKEN` and a UUID `MIRA_TENANT_ID` reach the clients and Hub. |
+| `MIRA_CHANNEL_WORKFLOW_POLL_SECONDS` | Telegram + Slack canonical-operation status polling interval. Default `2`; must be positive. |
+| `MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS` | Telegram + Slack maximum wait for a durable canonical operation. Default `600`; timeout returns the operation ID and current truthful state without promising a later answer. |
+| `HUB_URL` | Telegram + Slack internal HTTP(S) origin for the canonical Hub workflow. Must be an origin only: no credentials, path, query, or fragment. Production uses `http://mira-hub:3000`; VPS staging uses `http://stg-mira-hub:3000`. |
+| `HUB_BASE_PATH`     | Telegram + Slack path prefix for internal Hub APIs. Production/VPS staging Hub images are built root-mounted, so their compose value is empty. Standalone `docker-compose.hub.yml` retains Next.js's `/hub` default. |
+| `HUB_INGEST_TOKEN`  | mira-hub + Telegram + Slack — shared bearer token for authenticated channel operations and legacy `/api/uploads/folder` intake. Never log or commit its value. Empty is allowed only while `MIRA_CHANNEL_WORKFLOW_ENABLED=0`; enabled clients fail before polling and enabled Hub health returns 503 without it. |
 | `HUB_SSO_SECRET`    | mira-hub + Atlas CMMS API — shared HS256 secret for Hub-to-Atlas SSO assertions. Must match on both services. |
 | `HUB_SSO_ISSUER`    | mira-hub + Atlas CMMS API — optional SSO issuer override. Default `factorylm-hub`. |
 | `HUB_SSO_AUDIENCE`  | mira-hub + Atlas CMMS API — optional SSO audience override. Default `atlas-cmms`. |

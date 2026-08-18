@@ -111,9 +111,12 @@ recognition and manual discovery are separate, unconnected implementations.
 #2547 added optional Telegram variables using empty defaults. In the production SaaS
 compose, Telegram receives `HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}`, but the Hub and Slack
 service blocks do not receive a matching required contract. The deployed staging bot lacks
-the variables entirely, and several staging services default `MIRA_TENANT_ID` to the
-non-UUID string `staging`, which the Hub UUID tenancy boundary rejects. Configuration was
-therefore allowed to deploy in a user-visible but unusable state.
+the variables entirely. Production Telegram also defaulted `HUB_BASE_PATH=/hub` even though
+the internal SaaS Hub image is built root-mounted, so a provisioned token would still target
+the wrong internal route unless Doppler happened to override the path. Several staging
+services default `MIRA_TENANT_ID` to the non-UUID string `staging`, which the Hub UUID
+tenancy boundary rejects. Configuration was therefore allowed to deploy in a user-visible
+but unusable state.
 
 ### 6. Does `/api/uploads/folder` return enough identity to associate the File?
 
@@ -217,6 +220,16 @@ shared Python client, render returned blocks/citations/buttons, and ACK delivery
 not choose manuals, decide possession, attach Files, or perform grounding. When the Hub
 returns an explicit `printsense` delegation for a non-nameplate image, the existing print
 path remains the temporary branch-by-abstraction fallback.
+
+### Deployment boundary
+
+Production and VPS staging now pass the same feature flag and service token to the Hub and
+each deployed bot, with the exact internal root-mounted Hub origin/path. Standalone Hub/bot
+compose retains `/hub`, matching that image's build default. Bot configuration validation
+runs before Telegram polling or Slack Socket Mode and requires an HTTP(S) origin, token,
+UUID tenant, valid toggle, and positive timing values when enabled. Hub health accepts the
+same boolean vocabulary and returns 503 for a missing token or invalid toggle. The flag
+remains `0` by default: provisioning and enabling it are separate `PENDING-HUMAN` actions.
 
 ## Old implementation
 

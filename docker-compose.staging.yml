@@ -94,6 +94,14 @@ services:
     environment:
       <<: *staging-env
       TELEGRAM_BOT_TOKEN: ${STAGING_TELEGRAM_BOT_TOKEN:?STAGING_TELEGRAM_BOT_TOKEN required — register @MiraStaging_bot with BotFather and add to factorylm/stg}
+      # Optional external/root-mounted staging Hub. Enabling with any missing
+      # boundary value makes the bot fail before polling Telegram.
+      MIRA_CHANNEL_WORKFLOW_ENABLED: ${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      HUB_URL: ${MIRA_HUB_URL:-http://host.docker.internal:4101}
+      HUB_BASE_PATH: ${HUB_BASE_PATH:-}
+      HUB_INGEST_TOKEN: ${HUB_INGEST_TOKEN:-}
+      MIRA_CHANNEL_WORKFLOW_POLL_SECONDS: ${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
+      MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS: ${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
       # Operator's personal Telegram id; only this id may chat with the staging bot.
       ADMIN_TELEGRAM_IDS: ${STAGING_ADMIN_TELEGRAM_IDS:-${ADMIN_TELEGRAM_IDS:-}}
       SESSION_RECORDING_PATH: /data/sessions
