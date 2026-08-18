@@ -31,7 +31,7 @@ Verdicts use the registry vocabulary: `CANONICAL | CONSUMER | MIGRATE | DUPLICAT
 
 | Implementation | Verdict | Why |
 |---|---|---|
-| `MIRA/simlab` | **CANONICAL** | CI-gated (`simlab-gate` on every PR), deterministic, publishes through the canonical `ingest_contract` ("one contract, every transport", `simlab/publishers.py:221`) |
+| `MIRA/simlab` | **CANONICAL** | actively maintained, real consumers (`tools/proof/`, two `tools/seeds/` files), its own seed lane in `apply-seeds.yml`, deterministic, publishes through the canonical `ingest_contract` ("one contract, every transport", `simlab/publishers.py:221`). ⚠️ **CORRECTED 2026-08-18 (CU-08 F1, #3310):** this row previously read *"CI-gated (`simlab-gate` on every PR)"*. `simlab-gate` **runs** on every code PR but does **not** gate — it is absent from branch protection's required contexts and from `ci-gate`'s `needs:` array, deliberately so per `ci.yml:1161-1164`. CANONICAL stands on the other grounds listed here; "CI-gated" was never the load-bearing reason. |
 | `MIRA/mira-fault-sim`, `MIRA/mira-fault-detective` | **EXPERIMENTAL (bench-only)** | only referenced by `docker-compose.fault-detective.yml`; zero imports from main codebase; last touched May/June. Keep as bench harness OR nominate for Gate 11 review — decision, not assumption |
 | `factorylm/simulation` | **DELETE_CANDIDATE** (confirmed by CU-04) | stale since 2026-03-01; zero inbound on every Gate 11 axis, including across all 65 `origin` refs — the only one of the four that clears |
 | `factorylm/sim` | **LEGACY** (CU-04 downgrade) | `workers/plc_simulator_tasks.py:24-25` imports it at TOP LEVEL in a module that registers Celery tasks — deletion breaks worker startup |
