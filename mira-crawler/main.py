@@ -30,6 +30,7 @@ from ingest.chunker import chunk_blocks
 from ingest.converter import extract_from_docling, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
+from ingest.provenance import visibility_for_source
 from ingest.store import store_chunks
 from metrics import heartbeat
 from metrics.latency import IngestLatencyRecorder
@@ -124,7 +125,15 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
 
         with recorder.stage("store", backend="neon"):
             # CLI crawl of curated sources -> shared corpus (unverified).
-            stored = store_chunks(valid, tenant_id=config.mira_tenant_id, is_private=False)
+            # Local filesystem source -> PRIVATE, per the canonical classifier.
+            # Owner decision 2026-08-18: no folder-watcher file may enter the
+            # shared corpus. Derived, not hardcoded, so the policy lives in one
+            # place (ingest/provenance.py) rather than in three call sites.
+            stored = store_chunks(
+                valid,
+                tenant_id=config.mira_tenant_id,
+                is_private=visibility_for_source(str(path)),
+            )
             dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
         recorder.set_metric("stored_chunks", stored)
         logger.info("Ingested %s: %d chunks stored", path.name, stored)

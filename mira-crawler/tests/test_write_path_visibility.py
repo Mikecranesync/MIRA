@@ -759,3 +759,277 @@ class TestRecrawlPreservesVisibility:
         assert param.kind is inspect.Parameter.KEYWORD_ONLY, (
             f"is_private must be keyword-only, got {param.kind}"
         )
+
+
+class TestLocalFileSchemeCannotReachSharedCorpus:
+    """The `file:` bypass, and the invariant that replaced it.
+
+    The floor used to key on `url.lower().startswith("file://")` while the
+    download branch keyed on `urlparse(url).scheme == "file"`. The single-slash
+    form `file:/allowed/path/doc.pdf` — an empty authority, permitted by
+    RFC 8089 — satisfied the second and escaped the first, so a caller-supplied
+    `is_private=False` survived to `insert_chunk`. Same URL, two recognizers,
+    opposite answers.
+
+    Invariant now: **no URL whose PARSED scheme is `file` can reach persistence
+    as shared**, whatever its case, slash count, authority, or the caller's
+    declaration. Allowed-directory validation gates ingestion, never privacy.
+    """
+
+    # Every form the production parser resolves to scheme "file".
+    LOCAL_FORMS = [
+        "file:///{p}",            # canonical triple slash
+        "file:/{p}",              # single slash — THE BYPASS
+        "FILE:///{p}",            # uppercase scheme
+        "File:/{p}",              # mixed case + single slash
+        "file://localhost/{p}",   # explicit localhost authority
+    ]
+
+    def _run(self, monkeypatch, url: str, **kwargs):
+        from unittest.mock import patch
+
+        monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
+        seen: dict = {}
+
+        def _fake_insert(**kw):
+            seen.update(kw)
+            return "id-1"
+
+        fake_chunks = [{"text": "chunk body long enough", "chunk_index": 0, "chunk_type": "text"}]
+        with (
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
+            patch("ingest.chunker.chunk_blocks", return_value=fake_chunks),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", side_effect=_fake_insert),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
+            try:
+                from tasks.ingest import ingest_url
+            except ImportError:
+                from mira_crawler.tasks.ingest import ingest_url
+
+            ingest_url.run(url=url, **kwargs)
+        return seen
+
+    def _allowed_pdf(self, monkeypatch, tmp_path):
+        import tasks.ingest as ingest_mod
+
+        base = tmp_path / "inbox"
+        base.mkdir()
+        pdf = base / "document.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: base.resolve())
+        return pdf
+
+    # --- the classifier itself -------------------------------------------
+
+    def test_classifier_recognises_every_local_form(self, tmp_path):
+        from ingest.provenance import is_local_source
+
+        for form in self.LOCAL_FORMS:
+            url = form.format(p="a/b/document.pdf")
+            assert is_local_source(url) is True, f"not recognised as local: {url}"
+
+    def test_classifier_leaves_remote_sources_remote(self):
+        from ingest.provenance import is_local_source
+
+        for url in (
+            "https://library.e.abb.com/manual.pdf",
+            "http://ibiblio.org/book.pdf",
+            "HTTPS://LIBRARY.E.ABB.COM/manual.pdf",
+        ):
+            assert is_local_source(url) is False, f"wrongly treated as local: {url}"
+
+    def test_classifier_fails_closed_on_bare_paths_and_empty(self):
+        """A bare filesystem path and an empty source have no remote origin."""
+        from ingest.provenance import is_local_source
+
+        assert is_local_source("/inbox/document.pdf") is True
+        assert is_local_source("C:\\inbox\\document.pdf") is True
+        assert is_local_source("") is True
+
+    def test_declared_shared_cannot_lower_a_local_file(self):
+        from ingest.provenance import visibility_for_source
+
+        assert visibility_for_source("file:/x/doc.pdf", declared_private=False) is True
+        assert visibility_for_source("file:///x/doc.pdf", declared_private=False) is True
+        # ...and an unknown-provenance remote source also fails closed
+        assert visibility_for_source("https://x.invalid/d.pdf", declared_private=None) is True
+        # ...while an explicit shared declaration on a remote source is honoured
+        assert visibility_for_source("https://x.invalid/d.pdf", declared_private=False) is False
+
+    # --- end to end, at the persistence boundary --------------------------
+
+    def test_no_local_form_reaches_persistence_as_shared(self, monkeypatch, tmp_path):
+        """The invariant, asserted where it actually matters: insert_chunk."""
+        pdf = self._allowed_pdf(monkeypatch, tmp_path)
+        for form in self.LOCAL_FORMS:
+            url = form.format(p=str(pdf).lstrip("/"))
+            seen = self._run(monkeypatch, url, is_private=False)
+            assert seen.get("is_private") is True, (
+                f"{url} reached insert_chunk as SHARED — privacy bypass"
+            )
+
+    def test_single_slash_form_is_the_regression_case(self, monkeypatch, tmp_path):
+        """Pinned separately: this exact form is what the old check missed."""
+        pdf = self._allowed_pdf(monkeypatch, tmp_path)
+        seen = self._run(monkeypatch, f"file:{pdf}", is_private=False)
+        assert seen.get("is_private") is True
+
+    def test_disallowed_local_path_is_refused_outright(self, monkeypatch, tmp_path):
+        """Outside the allowed dir: refused, so nothing persists at all.
+
+        Containment governs INGESTION. Privacy is decided separately and
+        earlier, which is why both tests exist.
+        """
+        import tasks.ingest as ingest_mod
+
+        allowed = tmp_path / "inbox"
+        allowed.mkdir()
+        outside = tmp_path / "elsewhere"
+        outside.mkdir()
+        pdf = outside / "secret.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: allowed.resolve())
+
+        seen = self._run(monkeypatch, f"file://{pdf}", is_private=False)
+        assert seen == {}, "a disallowed local path must not persist anything"
+
+    def test_production_code_has_no_string_prefix_local_check(self):
+        """Guard the fix: one parsed answer, never a URL prefix comparison.
+
+        AST, not text. A first draft of this test grepped lines and flagged the
+        explanatory COMMENT above the fix — the same false-positive class as
+        issue #3281, where a docstring can flip a security classification
+        because the checker reads surrounding text instead of syntax. Comments
+        and docstrings are discarded by `ast.parse`, so they cannot trip or
+        satisfy this.
+        """
+        import ast
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[1]
+        offenders = []
+        for py in (root / "tasks").rglob("*.py"):
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "startswith"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and node.args[0].value.lower().startswith("file:")
+                ):
+                    offenders.append(f"{py.name}:{node.lineno}")
+        assert not offenders, (
+            "local files must be recognised by PARSED SCHEME, not a string prefix "
+            "(that mismatch was the bypass): " + "; ".join(offenders)
+        )
+
+
+class TestLocalIngestCallSitesArePrivate:
+    """Owner policy (2026-08-18): every local filesystem source is private.
+
+    Both call sites previously passed an unconditional `is_private=False`. They
+    now DERIVE the value from `ingest.provenance`, so the policy lives in one
+    module rather than being restated per file — which is how the two of them
+    drifted from the task-level floor in the first place.
+    """
+
+    def test_folder_watcher_derives_visibility_structurally(self):
+        """Always-on hermetic lock: main.py must DERIVE, not hardcode.
+
+        The runtime test below needs `apscheduler` (imported at main.py module
+        scope) and skips without it. This one has no dependencies, so the
+        invariant is still fenced on a bare checkout.
+        """
+        import ast
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parents[1] / "main.py"
+        tree = ast.parse(src.read_text(encoding="utf-8", errors="replace"))
+        calls = [
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "store_chunks"
+        ]
+        assert calls, "store_chunks call not found in main.py — test is stale"
+        for call in calls:
+            kw = {k.arg: k.value for k in call.keywords}
+            assert "is_private" in kw, "folder watcher must state is_private"
+            val = kw["is_private"]
+            assert not (isinstance(val, ast.Constant) and val.value is False), (
+                "folder watcher must not hardcode is_private=False"
+            )
+            assert isinstance(val, ast.Call) and getattr(val.func, "id", "") == "visibility_for_source", (
+                "must DERIVE visibility from ingest.provenance"
+            )
+
+    def test_folder_watcher_persists_private(self, monkeypatch, tmp_path):
+        import pytest
+
+        pytest.importorskip("apscheduler", reason="main.py imports apscheduler at module scope")
+        import main as crawler_main
+
+        seen: dict = {}
+        monkeypatch.setattr(
+            crawler_main, "store_chunks",
+            lambda valid, tenant_id, **kw: (seen.update(kw), len(valid))[1],
+        )
+        monkeypatch.setattr(crawler_main, "embed_batch", lambda chunks, **kw: [(chunks[0], [0.1])])
+        monkeypatch.setattr(crawler_main, "chunk_blocks", lambda blocks, **kw: [{"text": "c", "chunk_index": 0}])
+        monkeypatch.setattr(crawler_main, "extract_from_pdf", lambda data, **kw: [{"text": "b"}])
+
+        class _Dedup:
+            def __init__(self, **kw): pass
+            def is_already_indexed(self, data): return False
+            def mark_indexed(self, *a, **kw): pass
+
+        monkeypatch.setattr(crawler_main, "DedupStore", _Dedup)
+
+        pdf = tmp_path / "dropped.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        cfg = crawler_main.CrawlerConfig()
+        cfg.use_docling = False
+        crawler_main._ingest_file(pdf, cfg)
+
+        assert seen.get("is_private") is True, "a folder-watcher drop must persist private"
+
+    def test_folder_watcher_cannot_be_flipped_by_the_classifier_alone(self):
+        """The derivation, isolated: a dropped path always classifies private."""
+        from ingest.provenance import visibility_for_source
+
+        for p in ("/incoming/dropped.pdf", "file:///incoming/dropped.pdf", "dropped.pdf"):
+            assert visibility_for_source(p) is True
+
+    def test_equipment_photo_ingest_persists_private(self):
+        """The photo script derives from the same classifier as the watcher."""
+        import ast
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parents[2] / "mira-core/scripts/ingest_equipment_photos.py"
+        tree = ast.parse(src.read_text(encoding="utf-8", errors="replace"))
+        calls = [
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "store_chunks"
+        ]
+        assert calls, "store_chunks call not found — test is stale"
+        for call in calls:
+            kw = {k.arg: k.value for k in call.keywords}
+            assert "is_private" in kw, "store_chunks must state is_private"
+            val = kw["is_private"]
+            assert not (isinstance(val, ast.Constant) and val.value is False), (
+                "equipment-photo ingest must not hardcode is_private=False"
+            )
+            assert isinstance(val, ast.Call) and getattr(val.func, "id", "") == "visibility_for_source", (
+                "must DERIVE visibility from ingest.provenance, not restate a constant"
+            )

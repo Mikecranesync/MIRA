@@ -237,12 +237,17 @@ def ingest_url(self, url: str, manufacturer: str = "",
     scans keywords would not see it. Celery dispatch is keyword-based, so this
     costs nothing.
 
-    A ``file://`` URL is **forced private** regardless of what the caller
-    declares. Local files reach this task from ``tasks/gdrive.py`` (a Google
-    Drive mirror) and from operator drops — non-public provenance by
-    construction. The containment check in ``_validated_local_path`` answers
-    "may we read this path"; it cannot answer "may every tenant read its
-    contents", and those are not the same question.
+    **Any URL whose parsed scheme is ``file`` is forced private**, regardless of
+    what the caller declares, of letter case, and of slash count — ``file://x``
+    and ``file:/x`` alike. Local files reach this task from ``tasks/gdrive.py``
+    (a Google Drive mirror) and from operator drops: non-public provenance by
+    construction.
+
+    The containment check in ``_validated_local_path`` answers "may we read this
+    path"; it cannot answer "may every tenant read its contents". Those are
+    different questions, and **being inside the allowed directory never lowers a
+    file's privacy classification** — it only decides whether it may be ingested
+    at all.
     """
     from ingest.chunker import chunk_blocks
     from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
@@ -257,13 +262,28 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
+    # Parse the URL ONCE and derive every local-file decision from that single
+    # answer. Two different recognizers is how the bypass below happened.
+    from urllib.parse import urlparse as _up
+
+    is_file_url = _up(url).scheme.lower() == "file"
+
     # Visibility floor: a local file has no public provenance, so no caller
     # declaration can put it in the shared corpus. Passing the containment
-    # check means "we may read this path", never "everyone may read it".
-    if not is_private and url.lower().startswith("file://"):
+    # check means "we may read this path", never "everyone may read it" —
+    # allowed-directory validation gates INGESTION, never privacy.
+    #
+    # This keys on the PARSED SCHEME, not on a `startswith("file://")` string
+    # test. That string test was the bypass: `file:/allowed/path/doc.pdf` (one
+    # slash — an empty authority, which RFC 8089 permits and `urlparse`
+    # resolves to scheme "file") took the local branch at `is_file_url` below
+    # while sliding past the prefix check, so a caller-supplied
+    # `is_private=False` survived all the way to `insert_chunk`. Same URL, two
+    # recognizers, opposite answers.
+    if not is_private and is_file_url:
         logger.warning(
-            "Forcing is_private=True for local-file ingest %s — file:// has no "
-            "public provenance and cannot enter the shared corpus",
+            "Forcing is_private=True for local-file ingest %s — a local file has "
+            "no public provenance and cannot enter the shared corpus",
             url[:120],
         )
         is_private = True
@@ -273,9 +293,6 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # a new OEM domain, add it to sources.yaml (minutes, auditable forever).
     # file:// is validated inside its branch below so the SAME resolved path
     # that passed validation is the one opened (Gate 9 TOCTOU finding).
-    from urllib.parse import urlparse as _up
-
-    is_file_url = _up(url).scheme.lower() == "file"
     final_url = url
     if not is_file_url:
         allowed, gate_reason = shared_corpus_source_allowed(url)

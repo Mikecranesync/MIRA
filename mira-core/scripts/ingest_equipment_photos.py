@@ -45,6 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "mira-crawler"))
 from ingest.embedder import embed_image as _crawler_embed_image  # noqa: E402
 from ingest.embedder import embed_text as _crawler_embed_text  # noqa: E402
+from ingest.provenance import visibility_for_source  # noqa: E402
 from ingest.store import chunk_exists, store_chunks  # noqa: E402
 
 INCOMING = REPO_ROOT / "mira-core" / "data" / "equipment_photos" / "incoming"
@@ -362,16 +363,17 @@ def insert_to_neondb(
         "chunk_index": 0,
         "chunk_type": "text",
     }
+    # Local filesystem source (photos on disk) -> PRIVATE, per the canonical
+    # classifier. Owner decision 2026-08-18: no locally-ingested equipment photo
+    # may enter the shared corpus. Photographs of a specific plant's equipment
+    # are that tenant's material, not published OEM documentation.
     stored = store_chunks(
         [(chunk, embedding)],
         tenant_id=tenant_id,
         manufacturer=result.get("make") or "",
         model_number=result.get("model") or "",
         image_embedding=image_embedding,
-        # Operator-run bench/garage photo ingest -> shared corpus (unverified),
-        # preserving pre-CU-03 behavior. Customer photo uploads do not use
-        # this script.
-        is_private=False,
+        is_private=visibility_for_source(str(photo_path)),
     )
     if stored > 0:
         logger.info("Inserted knowledge entry for %s", photo_path.name)
