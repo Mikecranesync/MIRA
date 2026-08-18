@@ -151,10 +151,10 @@ def store_chunks(
     chunks_with_embeddings: list[tuple[dict, list[float]]],
     tenant_id: str,
     manufacturer: str = "",
-    model_number: str = "",
     image_embedding: list[float] | None = None,
     verified: bool = False,
     *,
+    model_number: str,
     is_private: bool,
 ) -> int:
     """Store a batch of (chunk, embedding) pairs into NeonDB.
@@ -169,6 +169,25 @@ def store_chunks(
     decision, threaded to every insert_chunk. False = shared corpus;
     True = the owning tenant only. Visibility is orthogonal to trust
     (verified).
+    model_number: REQUIRED (#3177) — the caller's explicit model decision,
+    for the same reason is_private is required. It was an optional ""
+    default, and `crawler/base_crawler.py` silently accepted that default
+    while holding the real model in `equipment_id`. The blast radius of
+    that one omission was three systems, not one:
+      1. the chunk row got a blank model_number, and
+         `neon_recall._product_search` filters `model_number ILIKE :pat`,
+         so the product-scoped retrieval stream could not see the chunk;
+      2. the KG guard below (`manufacturer and model_number`) evaluated
+         False, so no equipment/manual entity was ever registered;
+      3. steps 2-3 nest under that entity, so no `equipment_entity_id`
+         link AND the fault-code extractor never ran.
+    A caller with genuinely no model (a local-file CLI crawl, a forum
+    transcript) passes "" explicitly — that is a reviewable statement of
+    intent, not an accident. Do NOT pass a filename-derived guess: the
+    `chunker._extract_equipment_id` heuristic yields tokens like
+    "GS10USERMANUAL", which `_product_search`'s suffix-exclude regex then
+    discards at query time — a tag that looks right in the database and is
+    silently dropped when it matters.
 
     UNS+KG flywheel (spec §4.4): when manufacturer+model are known, this
     upserts an `equipment` and a `manual` entity, links the chunk row to

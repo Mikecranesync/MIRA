@@ -124,7 +124,17 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
 
         with recorder.stage("store", backend="neon"):
             # CLI crawl of curated sources -> shared corpus (unverified).
-            stored = store_chunks(valid, tenant_id=config.mira_tenant_id, is_private=False)
+            # No declared model: this path ingests a local file and never
+            # receives an equipment_id from a source manifest. Explicit ""
+            # rather than a filename guess — chunker._extract_equipment_id
+            # would yield junk like "GS10USERMANUAL" that _product_search's
+            # suffix-exclude regex discards at query time (#3177).
+            stored = store_chunks(
+                valid,
+                tenant_id=config.mira_tenant_id,
+                model_number="",
+                is_private=False,
+            )
             dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
         recorder.set_metric("stored_chunks", stored)
         logger.info("Ingested %s: %d chunks stored", path.name, stored)

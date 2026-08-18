@@ -110,6 +110,7 @@ class TestStoreChunksVisibility:
         store.store_chunks(
             [({"text": "x", "source_url": "u", "chunk_index": 0}, [0.1])],
             tenant_id="t1",
+            model_number="",
             is_private=True,
         )
         assert seen["is_private"] is True
@@ -343,29 +344,53 @@ class TestCallerPopulationExplicit:
     """
 
     TARGETS = {"insert_chunk", "store_chunks", "ingest_text_inline"}
+    # #3177: model_number is required on store_chunks only. insert_chunk and
+    # ingest_text_inline still accept a "" default — their caller populations
+    # were not converted in this unit, and claiming otherwise here would make
+    # a green suite mean less than it says.
+    MODEL_TARGETS = {"store_chunks"}
+    #: Test files whose `pytest.raises(TypeError)` cases deliberately omit a
+    #: required kwarg — the omission IS the assertion, so scanning them would
+    #: flag the very tests that prove the requirement. Keep this list to files
+    #: that assert a required-kwarg contract; it is not a general escape hatch.
+    REQUIRED_KWARG_TEST_FILES = {
+        "mira-crawler/tests/test_write_path_visibility.py",
+        "mira-crawler/tests/test_model_number_tagging.py",
+    }
     PRUNE_DIRS = {
         ".git", "node_modules", ".venv", "venv", "__pycache__", ".next",
         "dist", "build", ".claude", "plc",  # plc/ holds dual Py2 sources
     }
 
     @classmethod
-    def _scan_tree(cls, tree, rel_posix: str) -> list[str]:
+    def _scan_tree(
+        cls,
+        tree,
+        rel_posix: str,
+        required_kw: str = "is_private",
+        targets: set[str] | None = None,
+    ) -> list[str]:
         """Flag target calls in one parsed module that lack an explicit
-        is_private keyword. Gate 9 round-2 hardenings: import ALIASES of the
-        targets are resolved (``from x import insert_chunk as ic``), and
+        ``required_kw`` keyword. Gate 9 round-2 hardenings: import ALIASES of
+        the targets are resolved (``from x import insert_chunk as ic``), and
         ``**kwargs`` forwarding does NOT count as explicit — the decision must
-        be visible at the call site."""
+        be visible at the call site.
+
+        Parameterised by (required_kw, targets) for #3177 so model_number gets
+        the SAME locked caller population as is_private, rather than a second
+        divergent scanner."""
         import ast
 
-        target_names = set(cls.TARGETS)
+        scan_targets = cls.TARGETS if targets is None else set(targets)
+        target_names = set(scan_targets)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 for alias in node.names:
-                    if alias.name in cls.TARGETS and alias.asname:
+                    if alias.name in scan_targets and alias.asname:
                         target_names.add(alias.asname)
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name.split(".")[-1] in cls.TARGETS and alias.asname:
+                    if alias.name.split(".")[-1] in scan_targets and alias.asname:
                         target_names.add(alias.asname)
 
         missing: list[str] = []
@@ -385,11 +410,15 @@ class TestCallerPopulationExplicit:
             # Self-defined lookalikes (e.g. seed_kb_gaps._insert_chunk,
             # vendor_coverage_ingest.insert_chunk) still get scanned: an
             # explicit is_private decision is right for them too.
-            if "is_private" not in {kw.arg for kw in node.keywords}:
+            if required_kw not in {kw.arg for kw in node.keywords}:
                 missing.append(f"{rel_posix}:{node.lineno} {name}(")
         return missing
 
-    def _call_sites_missing_is_private(self) -> list[str]:
+    def _call_sites_missing(
+        self,
+        required_kw: str = "is_private",
+        targets: set[str] | None = None,
+    ) -> list[str]:
         import ast
         import os
 
@@ -400,9 +429,10 @@ class TestCallerPopulationExplicit:
             py_files.extend(Path(root) / f for f in files if f.endswith(".py"))
         for path in py_files:
             rel = path.relative_to(REPO_ROOT)
-            if rel.as_posix() == "mira-crawler/tests/test_write_path_visibility.py":
-                # This file's pytest.raises(TypeError) cases deliberately omit
-                # is_private — that omission IS the assertion. Only self-exempt.
+            if rel.as_posix() in self.REQUIRED_KWARG_TEST_FILES:
+                # These files' pytest.raises(TypeError) cases deliberately omit
+                # the required kwarg — that omission IS the assertion. Exempt
+                # only the test files that assert the requirement itself.
                 continue
             # ingest/store.py is deliberately NOT exempt: its internal
             # store_chunks -> insert_chunk call must pass is_private too.
@@ -410,8 +440,11 @@ class TestCallerPopulationExplicit:
                 tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
             except SyntaxError:
                 continue  # non-3.x or vendored oddities — not our call sites
-            missing.extend(self._scan_tree(tree, rel.as_posix()))
+            missing.extend(self._scan_tree(tree, rel.as_posix(), required_kw, targets))
         return missing
+
+    def _call_sites_missing_is_private(self) -> list[str]:
+        return self._call_sites_missing("is_private", None)
 
     def test_scanner_catches_import_alias(self) -> None:
         import ast
@@ -438,6 +471,52 @@ class TestCallerPopulationExplicit:
         assert not missing, (
             "call sites without an explicit is_private decision (I-1): "
             + ", ".join(missing)
+        )
+
+    def test_every_store_chunks_call_site_passes_model_number(self) -> None:
+        """#3177: the same lock, for the same reason.
+
+        base_crawler.process() held the model in `equipment_id` and silently
+        accepted store_chunks' `model_number=""` default. That blanked the
+        column _product_search filters on AND turned off the whole KG
+        densification branch (`manufacturer and model_number`)."""
+        missing = self._call_sites_missing("model_number", self.MODEL_TARGETS)
+        assert not missing, (
+            "store_chunks call sites without an explicit model_number decision "
+            "(#3177): " + ", ".join(missing)
+        )
+
+    def test_model_number_scanner_catches_an_omission(self) -> None:
+        """A scanner that can never fail is not a guard (mutation check)."""
+        import ast
+
+        src = "store_chunks(pairs, tenant_id='t', is_private=False)\n"
+        flagged = self._scan_tree(
+            ast.parse(src), "synthetic.py", "model_number", self.MODEL_TARGETS
+        )
+        assert flagged == ["synthetic.py:1 store_chunks("]
+
+        src_ok = "store_chunks(pairs, tenant_id='t', model_number='', is_private=False)\n"
+        assert (
+            self._scan_tree(
+                ast.parse(src_ok), "synthetic.py", "model_number", self.MODEL_TARGETS
+            )
+            == []
+        )
+
+    def test_model_scanner_does_not_scan_untargeted_writers(self) -> None:
+        """MODEL_TARGETS is store_chunks only — insert_chunk keeps its ""
+        default until its caller population is converted. Asserting the
+        narrower scope explicitly stops a future edit from widening it by
+        accident and turning the suite red for the wrong reason."""
+        import ast
+
+        src = "insert_chunk(tenant_id='t', content='x', embedding=[0.1], is_private=False)\n"
+        assert (
+            self._scan_tree(
+                ast.parse(src), "synthetic.py", "model_number", self.MODEL_TARGETS
+            )
+            == []
         )
 
     def test_scanner_sees_the_known_population(self) -> None:
