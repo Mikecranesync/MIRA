@@ -1,0 +1,31 @@
+{
+  "recorded_utc": "2026-07-15T03:05:00Z",
+  "recorded_local": "2026-07-14T23:05:00-04:00 (America/New_York)",
+  "repo": "Mikecranesync/MIRA",
+  "main_head_at_record": "720e2181c9553d1072de6e0c22e022ecece54639",
+  "repo_version_file": "3.146.9",
+  "implementation_ladder": {
+    "2698_preprocess_guard_tests": "7c2ef472",
+    "2699_tiling_blind_verify": "0e55a5d5",
+    "2700_cli": "afea72ae",
+    "2701_dup_gate_per_section": "83955481",
+    "2705_type_text_rubric_lane": "8a9cdad7",
+    "2706_variance_harness": "416200ed",
+    "2704_docs_evidence": "720e2181"
+  },
+  "printsense_test_count_on_main": 133,
+  "models_under_comparison": {
+    "incumbent": {"model": "claude-opus-4-8", "effort": "xhigh", "thinking": "adaptive"},
+    "candidate": {"model": "claude-opus-4-8", "effort": "medium", "thinking": "adaptive"},
+    "eliminated": {"model": "claude-opus-4-8", "effort": "high", "reason": "broke A-band (ABABA) in the 2026-07-15 rerun"}
+  },
+  "staging_print_vision_config": {
+    "PRINT_VISION_PROVIDER": "anthropic",
+    "PRINT_VISION_EFFORT": "(unset in factorylm/stg -> code default xhigh, printsense/interpret.py)",
+    "PRINT_VISION_MODEL": "(unset -> code default claude-opus-4-8)"
+  },
+  "grader_identity": "printsense/grader.py + grade_case.py + gates.py at main 720e2181 (type_text lane per #2705; per-section duplicate gate per #2701)",
+  "rubric_identity": "printsense/benchmarks/scu2_sheet20/rubric.json at 720e2181 (lanes: device/type_text/wire/xref)",
+  "pricing_basis": "claude-api skill 2026-07-14: opus-4-8 $5/$25 MTok; Batches -50%; Sonnet/Haiku not under comparison",
+  "notes": "Batch runs cannot measure latency; latency evidence is the interactive 2026-07-14 cost benchmark (n=1/config)."
+}
