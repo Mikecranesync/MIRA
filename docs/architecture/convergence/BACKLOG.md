@@ -64,8 +64,10 @@
 
 ## CU-08 — Simulation estate decision  ← **NEXT**
 
-- SimLab stays canonical (CI-gated). Decide: `mira-fault-sim`/`mira-fault-detective` → keep as bench harness (register EXPERIMENTAL) or retire; factorylm sim quartet (`sim`, `simulation`, `cosmos`, `cookoff`) is one coupled deletion unit (15+ cross-imports).
-- **Risk:** low. Human taste decision on the bench harness.
+- SimLab stays canonical (CI-gated). Decide: `mira-fault-sim`/`mira-fault-detective` → keep as bench harness or retire.
+- ~~factorylm sim quartet (`sim`, `simulation`, `cosmos`, `cookoff`) is one coupled deletion unit (15+ cross-imports)~~ — **REFUTED by CU-04 (#3306).** Measured cross-coupling is **2**, both `cookoff` → `sim`; `simulation` and `cosmos` have none in either direction. The four are not one deletion unit. All four were reclassified on Gate 11 runtime evidence in CU-04: `simulation` DELETE_CANDIDATE (confirmed, the only one that clears), `sim`/`cosmos`/`cookoff` downgraded to LEGACY because CANONICAL code imports them. **The factorylm half of CU-08 is therefore a sequencing question, not an open classification.**
+- Note `mira-fault-sim` / `mira-fault-detective` are **already registered EXPERIMENTAL** — that half of the original scope line is done; what remains is keep-vs-retire.
+- **Risk:** low. Human taste decision on the bench harness — CU-08 evidences and recommends, it does not decide.
 
 ## CU-07 — FactoryLM Personal SWE-Bench v0
 

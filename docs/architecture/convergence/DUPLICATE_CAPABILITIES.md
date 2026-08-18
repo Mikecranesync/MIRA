@@ -33,8 +33,22 @@ Verdicts use the registry vocabulary: `CANONICAL | CONSUMER | MIGRATE | DUPLICAT
 |---|---|---|
 | `MIRA/simlab` | **CANONICAL** | CI-gated (`simlab-gate` on every PR), deterministic, publishes through the canonical `ingest_contract` ("one contract, every transport", `simlab/publishers.py:221`) |
 | `MIRA/mira-fault-sim`, `MIRA/mira-fault-detective` | **EXPERIMENTAL (bench-only)** | only referenced by `docker-compose.fault-detective.yml`; zero imports from main codebase; last touched May/June. Keep as bench harness OR nominate for Gate 11 review — decision, not assumption |
-| `factorylm/sim`, `factorylm/simulation` | **LEGACY → DELETE_CANDIDATE** | stale since 2026-03-01 |
-| `factorylm/cosmos`, `factorylm/cookoff` | **LEGACY → DELETE_CANDIDATE** (coupled) | Cosmos Cookoff 2026 snapshot; 15+ internal imports mean the four factorylm sim dirs must be evaluated as one deletion unit |
+| `factorylm/simulation` | **DELETE_CANDIDATE** (confirmed by CU-04) | stale since 2026-03-01; zero inbound on every Gate 11 axis, including across all 65 `origin` refs — the only one of the four that clears |
+| `factorylm/sim` | **LEGACY** (CU-04 downgrade) | `workers/plc_simulator_tasks.py:24-25` imports it at TOP LEVEL in a module that registers Celery tasks — deletion breaks worker startup |
+| `factorylm/cosmos` | **LEGACY** (CU-04 downgrade) | `services/plc_monitor/monitor.py:9-10` top-level import, plus 5 more inbound |
+| `factorylm/cookoff` | **LEGACY** (CU-04 downgrade) | `core/pipeline.py:195,374` imports it after a deliberate `sys.path.insert` |
+
+> **⚠️ CORRECTED 2026-08-18 by CU-04 (#3306).** This section previously read *"15+ internal imports
+> mean the four factorylm sim dirs must be evaluated as one deletion unit"*. **Measured cross-imports
+> among the four: 2** — both `cookoff/visual_test_loop.py:56-57` → `sim`. `simulation` and `cosmos`
+> have no quartet coupling in either direction, so the four are **not** one deletion unit; they are
+> one coupled pair plus two independents and can be sequenced separately.
+>
+> The "coupled" framing also hid the constraint that actually matters. What blocks three of them is
+> **inbound imports from CANONICAL code** (`workers`, `core`, `scripts`, `tests`), not coupling to
+> each other — a different and stronger blocker. All four were reclassified on Gate 11 runtime
+> evidence in `units/CU-04.md`; the rows above reflect that, and the registry carries the
+> `blocking_evidence` per component.
 
 ## 4. Knowledge ingestion — multi-path by design, but three real write-path issues
 
