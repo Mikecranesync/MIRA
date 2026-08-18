@@ -78,7 +78,10 @@ def _reconcile_sitemaps(r) -> dict:
     except ImportError:
         from mira_crawler.ingest.store import ingested_source_urls
 
-    ingested = ingested_source_urls([rec.get("url", "") for rec in recs.values() if rec.get("url")])
+    ingested = ingested_source_urls(
+        [rec.get("url", "") for rec in recs.values() if rec.get("url")],
+        os.getenv("MIRA_TENANT_ID", ""),
+    )
     ledger.reconcile(r, _LEDGER_KIND, ingested_urls=ingested)
 
     out = {}

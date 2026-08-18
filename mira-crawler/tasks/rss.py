@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import feedparser
 import httpx
@@ -100,7 +101,7 @@ def _reconcile_rss(r) -> dict:
         from ingest.store import ingested_source_urls
     except ImportError:
         from mira_crawler.ingest.store import ingested_source_urls
-    return ledger.reconcile(r, _LEDGER_KIND, ingested_urls=ingested_source_urls([u for u in urls if u]))
+    return ledger.reconcile(r, _LEDGER_KIND, ingested_urls=ingested_source_urls([u for u in urls if u], os.getenv("MIRA_TENANT_ID", "")))
 
 # HTTP fetch timeout in seconds
 _FETCH_TIMEOUT = 20

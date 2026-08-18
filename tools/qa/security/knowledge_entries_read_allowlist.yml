@@ -903,6 +903,14 @@ approved:
       FROM knowledge_entries
                       WHERE tenant_id = :tid
                         AND created_at > NOW() - INTERVAL ':hours hours'
+  # CU-03b (Gate 7): the reconciliation probe that makes "seen" mean ingested.
+  "mira-crawler/ingest/store.py:280":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4355dfa79b46268581eb1d03737ac3cf155cea656dbe921c75e21f8e40329042"
+    reason: "Existence probe, not a retrieval surface — returns only which source_urls already have rows, never content, and feeds ingest_ledger.reconcile so a GUID/lastmod is marked processed only after the document is really in the corpus. Scoped to the ingesting tenant (MIRA_TENANT_ID): reconciliation must not observe another tenant's rows, and the shared OEM corpus is irrelevant to whether THIS crawler's enqueue succeeded. Legit TENANT-ONLY under the pure-tenant carve-out."
+    query_snippet: |
+      SELECT DISTINCT source_url FROM knowledge_entries
+      WHERE source_url = ANY(:urls) AND tenant_id = :tid
   "mira-crawler/ingest/store.py:50":
     approved_classification: TENANT-ONLY
     query_sha256: "755bbe16d50c8cce1f9cee02b83c326ee34f21db3e97ba0b597d7842875b8abd"
