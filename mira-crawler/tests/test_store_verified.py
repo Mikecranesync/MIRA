@@ -86,6 +86,7 @@ def test_store_chunks_passes_verified_through(monkeypatch) -> None:
         tenant_id="t1",
         manufacturer="AutomationDirect",
         verified=True,
+        model_number="GS10",
         is_private=False,
     )
     assert inserted == 1
@@ -106,6 +107,7 @@ def test_store_chunks_defaults_to_unverified(monkeypatch) -> None:
     store.store_chunks(
         [({"text": "hello", "source_url": "u", "chunk_index": 0}, [0.1])],
         tenant_id="t1",
+        model_number="",
         is_private=False,
     )
     assert seen["verified"] is False

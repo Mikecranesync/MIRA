@@ -163,6 +163,13 @@ class BaseCrawler:
             ),
             manufacturer=manufacturer,
             verified=self.oem_trusted,
+            # The source entry's declared model (#3177). This was omitted, so
+            # every document this crawler ingested landed with a blank
+            # model_number: invisible to _product_search AND silently skipping
+            # the whole KG densification path (no equipment entity, no
+            # equipment_entity_id link, no fault-code extraction). Provenance
+            # from sources.yaml, never a filename guess.
+            model_number=equipment_id,
             # Crawlers ingest public web/OEM content -> shared corpus. Trust
             # (verified) is decided above; visibility is never per-tenant here.
             is_private=False,

@@ -129,9 +129,16 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
             # Owner decision 2026-08-18: no folder-watcher file may enter the
             # shared corpus. Derived, not hardcoded, so the policy lives in one
             # place (ingest/provenance.py) rather than in three call sites.
+            #
+            # No declared model: this path ingests a local file and never
+            # receives an equipment_id from a source manifest. Explicit ""
+            # rather than a filename guess -- chunker._extract_equipment_id
+            # would yield junk like "GS10USERMANUAL" that _product_search's
+            # suffix-exclude regex discards at query time (#3177).
             stored = store_chunks(
                 valid,
                 tenant_id=config.mira_tenant_id,
+                model_number="",
                 is_private=visibility_for_source(str(path)),
             )
             dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
