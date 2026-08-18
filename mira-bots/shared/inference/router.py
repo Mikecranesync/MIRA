@@ -55,16 +55,23 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 # manual for the PowerFlex 525".
 #
 # Two mutually exclusive value branches, and the split is the fix:
-#   1. a REAL separator (`[:.\s#-]+`) after the keyword — then the token needs no
-#      digit, so a digit-less "serial number ABCDEFGH" still redacts;
-#   2. NO separator — then the token MUST contain a digit, which keeps "SN12345"
-#      redacted while "services" (value "vices", no digit) does not match.
+#   A. a real separator that is NOT a period (`[:\s#-]+`) — the token then needs
+#      no digit, so a digit-less "serial number ABCDEFGH" still redacts;
+#   B. a period, or no separator at all — the token MUST then contain a digit.
 #
 # The hyphen belongs in the separator class, not only in the token class: Gate 7
-# round 1 on this very change caught that omitting it silently regressed
+# round 1 on this change caught that omitting it silently regressed
 # "SERIAL-ABCD" (digit-less, hyphen-separated), which the pre-#3305 pattern DID
-# redact. The period is likewise a separator, which fixes a pre-existing false
-# negative — "Serial No. 4477-A" was never redacted before.
+# redact.
+#
+# The period gets its own branch, and the digit requirement there is the whole
+# point. A period after a keyword is ambiguous: "Serial No. 4477-A" is an
+# abbreviation, but "Record the serial. PowerFlex 525 fault F004" is a SENTENCE
+# BREAK — and an earlier revision of this fix, which treated the period as an
+# ordinary separator, swallowed the first word of the next sentence and turned
+# that into "Record the [SN] 525 fault F004". That reached the staging gate as a
+# groundedness-1 hard fail on the PowerFlex case. Requiring a digit in branch B
+# separates the two: "4477-A" qualifies, "PowerFlex" does not.
 #
 # KNOWN, PRE-EXISTING over-redaction, unchanged by #3305 and deliberately not
 # "fixed" here: branch 1 requires no digit, so "Serial number unknown" redacts
@@ -78,9 +85,9 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 _SERIAL_RE = re.compile(
     r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
     r"(?:"
-    r"[:.\s#-]+[A-Z0-9\-]{4,20}"
+    r"[:\s#-]+[A-Z0-9\-]{4,20}"
     r"|"
-    r"(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    r"[.:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r")\b",
     re.IGNORECASE,
 )

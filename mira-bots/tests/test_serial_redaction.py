@@ -51,6 +51,7 @@ MUST_REDACT = [
     ("sn 4001", "short bare form"),
     ("SERIAL-ABCD", "hyphen separator, digit-less — Gate 7 caught this regression"),
     ("SN-ABCD1234", "hyphen separator with digits"),
+    ("SN. ABCD1234", "period separator, digits present"),
 ]
 
 # --- Ordinary maintenance language. NONE of these may be touched. -----------
@@ -69,6 +70,16 @@ MUST_NOT_REDACT = [
     ("serviceable parts are listed in section 4", "serviceable"),
     ("Take the line out of service. 12345 units were lost.", "sentence break before digits"),
     ("sermon notes 4455", "unrelated ser- word"),
+    # A period after a ser- word is a SENTENCE BREAK, not a serial separator.
+    # An earlier revision of this fix treated it as an ordinary separator and
+    # swallowed the first word of the next sentence — it reached the staging
+    # gate as a groundedness-1 hard fail on the PowerFlex case below.
+    ("Check the serial. Replace the unit if damaged.", "sentence break, next word is not serial-shaped"),
+    ("Record the serial. PowerFlex 525 fault F004 indicates a ground fault.", "the staging-gate regression"),
+    ("See the service manual. F0004 is an overcurrent trip.", "sentence break after service"),
+    ("the drive series. Check parameter P047 next.", "sentence break after series"),
+    ("PowerFlex 525 F004 ground fault on the output", "no keyword at all"),
+    ("The 525 series-drive shows F004", "series- compound"),
 ]
 
 
