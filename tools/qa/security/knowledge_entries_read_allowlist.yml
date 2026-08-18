@@ -865,8 +865,23 @@ approved:
       # --- Trigger.dev Cloud task-run history is NOT in the repo ---
   "mira-crawler/tasks/freshness.py:130":
     approved_classification: TENANT-ONLY
-    query_sha256: "26293fd4b846c25c627c544fbcd4cb7117d3311e6b82933e6d52be7d47c09a01"
-    reason: "TODO: justify this read pattern"
+    # Hash migrated 2026-08-17 (CU-03) — an EXPLICIT migration shipped with the
+    # change that altered this query, per the rule's "never silently refresh
+    # approvals". Prior hash: 26293fd4b846c25c…
+    # RE-READ before re-approving, as the checker instructs: this is a
+    # stale-content maintenance sweep over ONE tenant's own rows to queue
+    # recrawls. Scanning the tenant's own corpus is the point — the shared OEM
+    # corpus must not be swept on another tenant's TTL schedule. Still
+    # TENANT-ONLY under the pure-tenant carve-out, and still not a retrieval
+    # surface: nothing here reaches a technician answer.
+    # WHAT CHANGED: the SELECT list gained `is_private` so a recrawl carries the
+    # existing row's visibility forward. The WHERE clause — the part this
+    # checker classifies on — is UNCHANGED.
+    # Re-migrated within CU-03 after the Gate 7 round-2 fix: the NULL-handling
+    # comment sits inside this query's context window, so the hash moved again.
+    # The SQL is unchanged from the previous migration below.
+    query_sha256: "b00114a524720af053ad1a419c97f85f9f15ec902ac4c989b9048e417e7862c2"
+    reason: "Stale-content maintenance sweep over ONE tenant's own rows to queue recrawls (pure-tenant carve-out). Not a retrieval surface. SELECTs is_private so the recrawl preserves visibility rather than inheriting a default."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = :tenant_id
