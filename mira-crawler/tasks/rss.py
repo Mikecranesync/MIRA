@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import feedparser
 import httpx
@@ -15,6 +16,11 @@ try:
     from mira_crawler.tasks._shared import get_redis
 except ImportError:
     from tasks._shared import get_redis
+
+try:
+    from mira_crawler.ingest import ingest_ledger as ledger
+except ImportError:  # local-path layout used by the crawler container
+    from ingest import ingest_ledger as ledger
 
 logger = logging.getLogger("mira-crawler.tasks.rss")
 
@@ -70,6 +76,32 @@ RSS_FEEDS: list[dict] = [
 
 # Redis key for GUID deduplication
 _REDIS_SEEN_KEY = "mira:rss:seen_guids"
+
+#: Ledger namespace for this flow (see ingest/ingest_ledger.py).
+_LEDGER_KIND = "rss"
+
+
+def _reconcile_rss(r) -> dict:
+    """Promote pending GUIDs to committed once their article is in the corpus."""
+    try:
+        pending = r.hgetall(ledger.pending_key(_LEDGER_KIND)) or {}
+    except Exception:
+        return {}
+    if not pending:
+        return {}
+    import json as _json
+
+    urls = []
+    for raw in pending.values():
+        try:
+            urls.append(_json.loads(raw).get("url", ""))
+        except Exception:
+            continue
+    try:
+        from ingest.store import ingested_source_urls
+    except ImportError:
+        from mira_crawler.ingest.store import ingested_source_urls
+    return ledger.reconcile(r, _LEDGER_KIND, ingested_urls=ingested_source_urls([u for u in urls if u], os.getenv("MIRA_TENANT_ID", "")))
 
 # HTTP fetch timeout in seconds
 _FETCH_TIMEOUT = 20
@@ -145,7 +177,13 @@ def poll_rss_feeds() -> dict:
     # 1. Load seen GUIDs
     try:
         r = _get_redis()
+        # Legacy set: GUIDs marked "seen" at ENQUEUE time by the pre-ledger code.
+        # Honoured so this change does not re-ingest history, but nothing new is
+        # ever added to it — the ledger is the source of truth from here on.
         seen_guids: set[str] = r.smembers(_REDIS_SEEN_KEY)  # type: ignore[assignment]
+
+        # Settle whatever the previous polls enqueued, against the corpus itself.
+        _reconcile_rss(r)
     except Exception as exc:
         logger.error("Redis connection failed — aborting poll_rss_feeds: %s", exc)
         return {"feeds_checked": 0, "new_articles": 0, "error": str(exc)}
@@ -184,13 +222,18 @@ def poll_rss_feeds() -> dict:
             len(new_entries),
         )
 
-        # 4. Queue new entries — persist each GUID to Redis immediately after
-        #    successful queue so a mid-run crash does not lose dedup state (M2).
+        # 4. Queue new entries as PENDING. A GUID becomes "seen" only once
+        #    `_reconcile_rss` verifies the article actually landed in the
+        #    corpus — enqueue proves a broker accepted a message, nothing more.
+        #    Marking at enqueue is what let curation refusals, 404s and worker
+        #    crashes masquerade as successful ingestion.
         for entry in new_entries:
+            if not ledger.eligible_for_enqueue(r, _LEDGER_KIND, entry["guid"]):
+                continue  # committed, dead-lettered, or still in flight
             try:
                 ingest_url.delay(url=entry["url"], source_type="rss_article")
-                r.sadd(_REDIS_SEEN_KEY, entry["guid"])  # incremental persist
-                seen_guids.add(entry["guid"])            # within-run dedup
+                ledger.mark_pending(r, _LEDGER_KIND, entry["guid"], entry["url"])
+                seen_guids.add(entry["guid"])  # within-run dedup only
                 new_articles += 1
             except Exception as exc:
                 logger.warning(
