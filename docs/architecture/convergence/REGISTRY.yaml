@@ -1013,9 +1013,9 @@ services-diagnosis:
   declared_state: "DUPLICATE_CAPABILITIES.md:11 proposes 'LEGACY -> DELETE_CANDIDATE'"
   deletion_safe: false
   blocking_evidence:
-    - "factorylm/docker-compose.yml:44-58 — defined compose service 'diagnosis' (container factorylm-diagnosis, :8200, build context ./services/diagnosis, CMD uvicorn main:app)"
-    - "/Users/charlienode/CLAUDE.md — declares the SCADA stack incl. 'Diagnosis :8200' with documented start + health commands"
+    - "factorylm/docker-compose.yml:44-58 — defined compose service 'diagnosis' (container factorylm-diagnosis, :8200, build context ./services/diagnosis, CMD uvicorn main:app). TRACKED and re-verifiable from any clone; this blocker stands on its own."
     - "docker-compose.yml:56 — depends_on plc-modbus; it is wired into a multi-service stack, not standalone"
+    - "CHARLIE-LOCAL, corroborating only: /Users/charlienode/CLAUDE.md declares the SCADA stack incl. 'Diagnosis :8200' with start + health commands. The home directory is not a git repo, so a deletion unit on another node cannot re-verify this — the tracked compose service above is the decisive evidence."
   known_drift: ["ZERO Python imports (it is not even a package: only main.py + a JS skill + docs), so an import-graph check alone would clear it. The compose service and the CLAUDE.md declaration are what block deletion (CU-04)"]
 
 services-telegram-bot:
@@ -1065,9 +1065,10 @@ services-plc-modbus:
   blocking_evidence:
     - "factorylm/docker-compose.yml:26-41 — defined compose service (container factorylm-plc, :8001, healthcheck) "
     - "docker-compose.yml:52,70,109 — THREE peer services consume it by URL (PLC_MODBUS_URL, PLC_API_URL, FACTORYLM_PLC_MODBUS_URL); :56,76,114 declare depends_on"
-    - "factorylm/docs/ops/registry.yaml:67-69 — registered with entry_point 'services/plc-modbus/backend/main.py'"
-    - "/Users/charlienode/CLAUDE.md:43,76 — declares it AUTHORITATIVE ('PLC Modbus driver (162 tests)') with a documented run command"
-  known_drift: ["four independent Gate 11 blockers. 1,561 of its 1,619 .py files are a committed .venv/; real source is ~43 files (CU-04)"]
+    - "factorylm/docs/ops/registry.yaml:67-69 — registered with entry_point 'services/plc-modbus/backend/main.py' (TRACKED, re-verifiable from any clone)"
+    - "factorylm/README.md:363 — the repo QUICKSTART tells a new developer to run it: 'cd services/plc-modbus && PLC_USE_MOCK=true uvicorn backend.main:app --reload' (TRACKED). This is the doc-authority blocker in re-verifiable form."
+    - "CHARLIE-LOCAL, not re-verifiable elsewhere: /Users/charlienode/CLAUDE.md:43,76 declares it AUTHORITATIVE ('PLC Modbus driver (162 tests)') with the same run command. The home directory is not a git repo, so a deletion unit on another node cannot check this — it is listed for completeness, and the two TRACKED blockers above stand without it."
+  known_drift: ["four independent Gate 11 blockers, three of them re-verifiable from a fresh clone. 1,561 of its 1,619 .py files are a committed .venv/; real source is ~43 files (CU-04)"]
 
 services:
   repo: factorylm
