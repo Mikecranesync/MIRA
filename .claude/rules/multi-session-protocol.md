@@ -23,6 +23,20 @@ an existing canonical effort.
 
 ## 2. Claim only unclaimed work — with a durable claim
 
+Every claim, canonical PR, and ownership-changing handoff must include the
+repository agent identity block:
+
+```
+Agent-Identity: <agent>/<machine>/<session-id>
+Agent-Role: implementation | review | triage
+Human-Owner: @github-handle
+```
+
+Every commit introduced by a PR must carry `Agent-Identity` and `Agent-Role`
+Git trailers. The required `agent-identity` GitHub check validates new PRs;
+repository administrators must make it a required branch-protection check.
+This is attribution metadata, not cryptographic proof of the local runtime.
+
 Use the repository's established claim mechanism where one exists (an
 assigned GitHub issue, a convergence-unit record under
 `docs/architecture/convergence/units/`, or an existing canonical PR).

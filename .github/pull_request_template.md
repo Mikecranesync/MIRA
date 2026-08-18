@@ -12,6 +12,20 @@ trace why this code looks the way it does.
 
 -
 
+## Agent identity
+
+```text
+Agent-Identity: <agent>/<machine>/<session-id>
+Agent-Role: implementation | review | triage
+Human-Owner: @github-handle
+# Only for a human-authorized governance exception:
+Human-Authorization: @github-handle <explicit authorization>
+```
+
+- [ ] Identity matches the actual runtime and machine.
+- [ ] Role follows `.claude/rules/multi-session-protocol.md`.
+- [ ] Every commit in this PR has `Agent-Identity` and `Agent-Role` trailers.
+
 ## Spec reference
 
 `docs/specs/_____.md`
