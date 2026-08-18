@@ -198,7 +198,9 @@ def scrape_forums() -> dict:
                         tenant_id=tenant_id,
                         ollama_url=ollama_url,
                         embed_model=embed_model,
-                        is_private=False,  # public forum content -> shared corpus
+                        is_private=False,  # declaration only — ingest/store.py enforces the
+# canonical policy at the write boundary (Reddit is private there,
+# so this value cannot publish it). Gate 9 round 1, F1.
                     )
                     if n > 0:
                         posts_ingested += 1

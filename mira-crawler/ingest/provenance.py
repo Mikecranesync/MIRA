@@ -45,6 +45,7 @@ __all__ = [
     "load_policy",
     "classify_origin",
     "shared_corpus_allowed",
+    "enforce_visibility",
     "POLICY_PATH",
 ]
 
@@ -177,3 +178,49 @@ def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bo
     if cls in _SHARED_OK:
         return (True, reason)
     return (False, f"{cls}: {reason}")
+
+
+def enforce_visibility(source_url: str, declared_private: bool) -> tuple[bool, bool, str]:
+    """The write-boundary enforcement point. Returns ``(allowed, is_private, reason)``.
+
+    **Every** storage route calls this, not just `tasks/ingest.py`. Gate 9 round 1
+    found why that matters: the policy classified Reddit, patents and YouTube as
+    private and ManualsLib as blocked, while four writers published those exact
+    sources to the shared corpus with a hardcoded ``is_private=False``. A policy
+    enforced at one door is a policy that documents an intention, which is worse
+    than none because it reads as protection.
+
+    Fixing the four callers would not have been the fix — the fifth writer would
+    reintroduce it. Enforcement belongs at the boundary they all pass through.
+
+    The decision, fail-closed at every step:
+
+    ==================  ==========================================================
+    classification      outcome
+    ==================  ==========================================================
+    ``blocked``         **refused** — the row is not written at all
+    ``infrastructure``  **refused** — an API endpoint is not a document
+    ``private``         written, **forced tenant-scoped**
+    ``local``           written, **forced tenant-scoped** (the local-file floor)
+    ``unclassified``    written, **forced tenant-scoped** — an origin nobody has
+                        classified may be ingested but must never be shared. This
+                        is what closes the arbitrary-crawl door: a depth-2 Apify
+                        crawl returning an off-domain URL cannot publish it.
+    ``curated``         the caller's declaration stands
+    ==================  ==========================================================
+
+    Note the asymmetry: this can make a row **more** private than the caller
+    asked, never less, and it can refuse — it can never grant sharing that the
+    caller did not request.
+    """
+    try:
+        cls, reason = classify_origin(source_url)
+    except Exception as exc:  # unreadable policy -> refuse, never publish
+        return (False, True, f"provenance policy unreadable ({exc}) — refusing the write")
+
+    if cls in ("blocked", "infrastructure"):
+        return (False, True, f"{cls}: {reason}")
+    if cls == "curated":
+        return (True, bool(declared_private), reason)
+    # private / local / unclassified -> ingest, but never shared
+    return (True, True, f"{cls}: {reason}")

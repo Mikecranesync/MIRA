@@ -581,7 +581,9 @@ def ingest_youtube_channels() -> dict:
                 tenant_id=tenant_id,
                 manufacturer="",
                 model_number="",
-                is_private=False,  # public video transcripts -> shared corpus
+                is_private=False,  # declaration only — ingest/store.py enforces the
+# canonical policy at the write boundary (YouTube transcripts is private there,
+# so this value cannot publish it). Gate 9 round 1, F1.
             )
             total_stored += stored
 

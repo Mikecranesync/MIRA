@@ -64,15 +64,56 @@ class TestInsertChunkVisibility:
             )
 
     def test_binds_is_private_false(self, captured: dict) -> None:
+        """A CURATED origin may bind False — and only a curated one.
+
+        The source_url used to be the placeholder `"u"`, which has no
+        classifiable origin. Since Gate 9 round 1 the write boundary enforces
+        provenance, so an unclassified origin is forced tenant-scoped and this
+        assertion would (correctly) fail. Using a real curated host keeps the
+        test proving what it was written to prove — that a declared `False`
+        survives to the bound parameters — while no longer depending on the
+        absence of enforcement.
+        """
         entry_id = store.insert_chunk(
             tenant_id="t1",
             content="x",
             embedding=[0.1],
-            source_url="u",
+            source_url="https://library.e.abb.com/manual.pdf",
             is_private=False,
         )
         assert entry_id
         assert captured["is_private"] is False
+
+    def test_unclassified_origin_is_forced_private_at_the_write_boundary(
+        self, captured: dict
+    ) -> None:
+        """Gate 9 F1: an origin nobody classified may be ingested, never shared.
+
+        This is what closes the arbitrary-crawl door — a depth-2 Apify crawl
+        returning an off-domain URL cannot publish it, regardless of what the
+        caller declared.
+        """
+        entry_id = store.insert_chunk(
+            tenant_id="t1",
+            content="x",
+            embedding=[0.1],
+            source_url="https://never-classified.invalid/page",
+            is_private=False,
+        )
+        assert entry_id, "an unclassified origin is still ingestible"
+        assert captured["is_private"] is True, "...but never shared"
+
+    def test_blocked_origin_is_refused_at_the_write_boundary(self, captured: dict) -> None:
+        """A blocked origin must not produce a row at all, from ANY writer."""
+        entry_id = store.insert_chunk(
+            tenant_id="t1",
+            content="x",
+            embedding=[0.1],
+            source_url="https://www.manualslib.com/doc",
+            is_private=False,
+        )
+        assert entry_id == "", "a blocked origin must be refused"
+        assert "is_private" not in captured, "nothing may be written"
 
     def test_binds_is_private_true(self, captured: dict) -> None:
         entry_id = store.insert_chunk(

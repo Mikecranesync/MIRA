@@ -95,6 +95,28 @@ def insert_chunk(
     # GROUPs BY) stays canonical regardless of which caller wrote it (#1596).
     manufacturer = normalize_manufacturer(manufacturer).canonical
 
+    # ── Provenance enforcement at the write boundary (Gate 9 round 1, F1) ──
+    # Every storage route passes through here, which is the point: enforcing in
+    # tasks/ingest.py only meant reddit/patents/youtube/manualslib_scraper and
+    # the Apify coverage tool published policy-private and policy-BLOCKED
+    # sources to the shared corpus with a hardcoded is_private=False. Patching
+    # those five callers would not have been the fix — the sixth would
+    # reintroduce it.
+    #
+    # This can make a row more private than the caller asked, or refuse it
+    # outright. It can never grant sharing the caller did not request.
+    try:
+        from .provenance import enforce_visibility
+    except ImportError:  # pragma: no cover — flat-path layout
+        from provenance import enforce_visibility  # type: ignore[no-redef]
+
+    allowed, is_private, prov_reason = enforce_visibility(source_url, is_private)
+    if not allowed:
+        logger.warning(
+            "Refusing knowledge_entries write for %s — %s", (source_url or "<no url>")[:100], prov_reason
+        )
+        return ""
+
     entry_id = str(uuid.uuid4())
     metadata = {
         "chunk_index": chunk_index,

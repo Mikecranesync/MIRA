@@ -396,3 +396,112 @@ class TestPrivateRedirectChains:
         assert result.get("error") == "uncurated_redirect"
         assert b not in requested
         assert seen == {}
+
+
+class TestEveryWriteRouteEnforcesThePolicy:
+    """Gate 9 round 1, F1 — the policy must bind at EVERY storage route.
+
+    The finding: `provenance_policy.yaml` classified Reddit, patents and YouTube
+    private and ManualsLib blocked, while five writers published those exact
+    sources to the shared corpus with a hardcoded `is_private=False`. Only
+    `tasks/ingest.py` consulted the policy, so the file documented an intention
+    it did not enforce — worse than no policy, because it reads as protection.
+
+    The remediation deliberately is NOT five caller patches: the sixth writer
+    would reintroduce it. Enforcement lives at the write boundary they all pass
+    through, and these tests assert it there — with the caller declaring
+    `is_private=False` in every case, i.e. actively asking to publish.
+    """
+
+    @pytest.mark.parametrize(
+        "url,expect_written,expect_private,why",
+        [
+            ("https://www.reddit.com/r/x/post", True, True, "policy: private"),
+            ("https://patents.google.com/patent/X", True, True, "policy: private"),
+            ("https://youtube.com/watch?v=x", True, True, "policy: private"),
+            ("https://www.manualslib.com/manual/1", False, True, "policy: blocked"),
+            ("https://static-data2.manualslib.com/x", False, True, "blocked via subdomain"),
+            ("https://api.groq.com/v1/chat", False, True, "policy: infrastructure"),
+            ("https://off-domain-crawl.invalid/p", True, True, "unclassified -> never shared"),
+            ("https://library.e.abb.com/m.pdf", True, False, "policy: curated"),
+        ],
+    )
+    def test_declared_shared_is_honoured_only_for_curated_origins(
+        self, monkeypatch, url, expect_written, expect_private, why
+    ):
+        from ingest import store
+
+        captured: dict = {}
+
+        class _Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                return False
+
+            def execute(self, stmt, params):
+                captured.update(params)
+
+            def commit(self):
+                pass
+
+        class _Engine:
+            def connect(self):
+                return _Conn()
+
+        monkeypatch.setattr(store, "_engine", lambda: _Engine())
+
+        entry_id = store.insert_chunk(
+            tenant_id="t1",
+            content="body",
+            embedding=[0.1],
+            source_url=url,
+            is_private=False,  # the caller ASKS to publish, in every case
+        )
+
+        if not expect_written:
+            assert entry_id == "", f"{url} must be refused ({why})"
+            assert not captured, "a refused origin must write nothing at all"
+        else:
+            assert entry_id, f"{url} should still be ingestible ({why})"
+            assert captured["is_private"] is expect_private, (
+                f"{url} bound is_private={captured['is_private']}, expected "
+                f"{expect_private} ({why})"
+            )
+
+    def test_enforcement_can_only_tighten_never_loosen(self):
+        """It may make a row more private, or refuse it. Never grant sharing."""
+        from ingest.provenance import enforce_visibility
+
+        # A caller asking for private always gets private, whatever the policy.
+        for url in (
+            "https://library.e.abb.com/m.pdf",  # curated
+            "https://www.reddit.com/r/x",       # private
+            "https://unknown.invalid/x",        # unclassified
+        ):
+            allowed, is_private, _ = enforce_visibility(url, True)
+            if allowed:
+                assert is_private is True, f"{url}: a private request must stay private"
+
+    def test_the_duplicate_writer_also_enforces(self):
+        """tools/vendor_coverage_ingest.py has its OWN insert_chunk (#3275).
+
+        It does not pass through ingest/store.py, so central enforcement does
+        not reach it. It must classify each Apify dataset item independently or
+        a depth-2 crawl can publish an arbitrary off-domain page.
+        """
+        import pathlib
+
+        src = (
+            pathlib.Path(__file__).resolve().parents[2]
+            / "tools"
+            / "vendor_coverage_ingest.py"
+        ).read_text(encoding="utf-8", errors="replace")
+        assert "enforce_visibility" in src, (
+            "the duplicate writer must enforce provenance — central enforcement "
+            "in ingest/store.py cannot reach it"
+        )
+        assert "refusing a shared write" in src, (
+            "it must FAIL CLOSED when the policy is unavailable, not publish"
+        )
