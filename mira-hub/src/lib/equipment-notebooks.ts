@@ -98,7 +98,16 @@ export type CreateNotebookInput = {
   createdBy?: string | null;
 };
 
-export async function createNotebook(
+/**
+ * Transaction-local notebook creation primitive.
+ *
+ * Callers that already own a tenant-scoped transaction (for example the
+ * channel workspace allocator) must use this helper so the notebook and its
+ * owning session commit atomically. Public request handlers should continue
+ * to call createNotebook(), which establishes the tenant context itself.
+ */
+export async function createNotebookTx(
+  c: PoolClient,
   tenantId: string,
   input: CreateNotebookInput,
 ): Promise<EquipmentNotebook> {
@@ -106,43 +115,48 @@ export async function createNotebook(
   if (!name) throw new Error("display_name_required");
   if (name.length > 200) throw new Error("display_name_too_long");
 
-  return withTenantContext(tenantId, async (c) => {
-    // Backing node — approval_state MUST be pinned 'verified' or chat 404s
-    // (audit trap #6; the migration-set default is contradictory).
-    const node = await c.query(
-      `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
-       VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
-       RETURNING id::text AS id`,
-      [name, tenantId],
-    );
-    const nodeId = String(node.rows[0].id);
-    const res = await c.query(
-      `INSERT INTO equipment_notebooks
-         (tenant_id, display_name, manufacturer, model, catalog_number, serial_number,
-          equipment_type, asset_tag, location_label, identity_status, identity_confidence,
-          identity_source_type, identity_observation, node_id, created_by)
-       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::uuid, $15)
-       RETURNING ${NOTEBOOK_COLS_BARE}`,
-      [
-        tenantId,
-        name,
-        input.manufacturer ?? null,
-        input.model ?? null,
-        input.catalogNumber ?? null,
-        input.serialNumber ?? null,
-        input.equipmentType ?? null,
-        input.assetTag ?? null,
-        input.locationLabel ?? null,
-        input.identityStatus ?? "unknown",
-        input.identityConfidence ?? null,
-        input.identitySourceType ?? null,
-        input.identityObservation ? JSON.stringify(input.identityObservation) : null,
-        nodeId,
-        input.createdBy ?? null,
-      ],
-    );
-    return rowToNotebook(res.rows[0]);
-  });
+  // Backing node — approval_state MUST be pinned 'verified' or chat 404s
+  // (audit trap #6; the migration-set default is contradictory).
+  const node = await c.query(
+    `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
+     VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
+     RETURNING id::text AS id`,
+    [name, tenantId],
+  );
+  const nodeId = String(node.rows[0].id);
+  const res = await c.query(
+    `INSERT INTO equipment_notebooks
+       (tenant_id, display_name, manufacturer, model, catalog_number, serial_number,
+        equipment_type, asset_tag, location_label, identity_status, identity_confidence,
+        identity_source_type, identity_observation, node_id, created_by)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::uuid, $15)
+     RETURNING ${NOTEBOOK_COLS_BARE}`,
+    [
+      tenantId,
+      name,
+      input.manufacturer ?? null,
+      input.model ?? null,
+      input.catalogNumber ?? null,
+      input.serialNumber ?? null,
+      input.equipmentType ?? null,
+      input.assetTag ?? null,
+      input.locationLabel ?? null,
+      input.identityStatus ?? "unknown",
+      input.identityConfidence ?? null,
+      input.identitySourceType ?? null,
+      input.identityObservation ? JSON.stringify(input.identityObservation) : null,
+      nodeId,
+      input.createdBy ?? null,
+    ],
+  );
+  return rowToNotebook(res.rows[0]);
+}
+
+export async function createNotebook(
+  tenantId: string,
+  input: CreateNotebookInput,
+): Promise<EquipmentNotebook> {
+  return withTenantContext(tenantId, (c) => createNotebookTx(c, tenantId, input));
 }
 
 export async function listNotebooks(tenantId: string): Promise<EquipmentNotebook[]> {

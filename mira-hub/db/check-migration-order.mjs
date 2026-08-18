@@ -36,6 +36,11 @@ const DEP_MAP = [
   { pattern: /008-tenants-rls/,      issue: "#578", deps: ["#562", "#565", "#566", "#568", "#574", "#576"] },
   { pattern: /009-sso/,              issue: "#579", deps: ["#578"] },
   { pattern: /010-pwa-sync/,         issue: "#575", deps: ["#565"] },
+  // Synthetic keys make dependencies on legacy migrations executable even
+  // though those files predate the `-- Issue:` header convention.
+  { pattern: /019_sessions_and_signals/, issue: "migration-019", deps: [] },
+  { pattern: /073_equipment_notebooks/, issue: "migration-073", deps: ["migration-019"] },
+  { pattern: /078_channel_workflow/, issue: "#3299", deps: ["migration-019", "migration-073"] },
 ];
 
 // ---------------------------------------------------------------------------
