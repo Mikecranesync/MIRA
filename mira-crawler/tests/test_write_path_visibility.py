@@ -180,18 +180,31 @@ class TestCurationGate:
         assert not ok
 
     def test_unreadable_manifest_fails_closed(self, monkeypatch) -> None:
+        """An unreadable curation manifest refuses the write; it never opens it.
+
+        Retargeted for CU-03a (Gate 6): the gate no longer reads `sources.yaml`
+        directly — it consults the canonical `provenance_policy.yaml` through
+        `ingest.provenance`, so ONE list answers for both the gate and the
+        feeders. The invariant under test is unchanged and is the important
+        half: a manifest we cannot read must fail CLOSED. An unvalidatable
+        shared write is a refused write.
+        """
         try:
             from tasks import ingest as ingest_mod
         except ImportError:
             from mira_crawler.tasks import ingest as ingest_mod
 
-        def _boom():
-            raise OSError("manifest unreadable")
+        from ingest import provenance as prov_mod
 
-        monkeypatch.setattr(ingest_mod, "_curated_hosts", _boom)
+        def _boom(*a, **k):
+            raise RuntimeError("policy unreadable")
+
+        monkeypatch.setattr(prov_mod, "load_policy", _boom)
+        monkeypatch.setattr(prov_mod, "_POLICY", None, raising=False)
+
         ok, reason = ingest_mod.shared_corpus_source_allowed("https://ibiblio.org/x.pdf")
-        assert not ok
-        assert "fail closed" in reason or "sources.yaml" in reason
+        assert ok is False
+        assert "fail closed" in reason or "unreadable" in reason
 
     def test_ingest_url_refuses_uncurated_before_download(self, monkeypatch) -> None:
         # No network patches: if the gate were not first, this would raise a

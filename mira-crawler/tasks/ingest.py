@@ -183,19 +183,22 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
         # Hop-0 contract (Gate 9 round 2): only http/https/file are ever
         # eligible — ftp://curated-host must fail at the GATE, not in transport.
         return False, f"unsupported scheme {scheme!r} — http/https/file only"
+    # CANONICAL POLICY (CU-03a / Gate 6). One list decides this, for both the
+    # gate and the feeders — `mira-crawler/provenance_policy.yaml`, read through
+    # ingest.provenance. Previously this consulted sources.yaml directly while
+    # 17 feeder manifests kept their own origins, 31 of which the gate refused.
+    # An origin with no policy entry classifies `unclassified` and is REFUSED,
+    # so the consistency test's finding is a production behaviour, not a
+    # CI-only warning.
     try:
-        hosts = _curated_hosts()
+        from ingest.provenance import shared_corpus_allowed as _policy_allows
+    except ImportError:  # container layout
+        from mira_crawler.ingest.provenance import shared_corpus_allowed as _policy_allows
+
+    try:
+        return _policy_allows(url)
     except Exception as e:
-        return False, f"sources.yaml unreadable ({e}) — fail closed"
-
-    from urllib.parse import urlparse
-
-    host = (urlparse(url).hostname or "").lower()
-    if not host:
-        return False, "no host in url"
-    if host in hosts or any(host.endswith("." + h) for h in hosts):
-        return True, "curated host"
-    return False, f"host {host} not in sources.yaml"
+        return False, f"provenance policy unreadable ({e}) — fail closed"
 
 
 @app.task(

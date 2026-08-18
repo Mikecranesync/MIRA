@@ -31,9 +31,18 @@ CU-03 unit record. Do not add a second host list here in the meantime.
 
 from __future__ import annotations
 
+from pathlib import Path
 from urllib.parse import urlparse
 
-__all__ = ["is_local_source", "visibility_for_source", "LOCAL_SOURCE_IS_PRIVATE"]
+__all__ = [
+    "is_local_source",
+    "visibility_for_source",
+    "LOCAL_SOURCE_IS_PRIVATE",
+    "load_policy",
+    "classify_origin",
+    "shared_corpus_allowed",
+    "POLICY_PATH",
+]
 
 #: The human policy decision this module encodes (owner: @Mikecranesync,
 #: 2026-08-18): no folder-watcher file and no locally-ingested equipment photo
@@ -77,3 +86,90 @@ def visibility_for_source(source: str, *, declared_private: bool | None = None) 
     if declared_private is None:
         return True  # unknown provenance -> fail closed
     return bool(declared_private)
+
+
+# ── Canonical origin policy (CU-03a / Gate 6) ───────────────────────────────
+#
+# The remote half of provenance. `sources.yaml` used to be consulted directly by
+# the curation gate while four-plus feeder manifests kept their own origin lists;
+# structural discovery found 17 manifests and 38 origins, 31 absent from the
+# gate. `provenance_policy.yaml` is now the single answer, and
+# `tests/test_provenance_policy.py` fails if any configured origin lacks an entry.
+
+_POLICY: dict | None = None
+POLICY_PATH = Path(__file__).resolve().parents[1] / "provenance_policy.yaml"
+
+#: Classifications that permit a shared-corpus write. Deliberately a whitelist —
+#: an unknown or malformed classification must not read as permission.
+_SHARED_OK = frozenset({"curated"})
+
+
+def load_policy(path: "Path | None" = None) -> dict:
+    """Load and cache the canonical origin policy. Raises if unreadable.
+
+    Failing loud is the point: a missing or malformed policy must not silently
+    degrade into "allow everything" (or into "allow nothing", which would look
+    like an outage and get worked around).
+    """
+    global _POLICY  # noqa: PLW0603
+    if _POLICY is not None and path is None:
+        return _POLICY
+    import yaml
+
+    target = path or POLICY_PATH
+    data = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+    origins = data.get("origins")
+    if not isinstance(origins, dict) or not origins:
+        raise RuntimeError(f"provenance policy at {target} has no origins — refusing to guess")
+    if path is None:
+        _POLICY = data
+    return data
+
+
+def classify_origin(url: str, *, policy: "dict | None" = None) -> tuple[str, str]:
+    """Return ``(classification, reason)`` for a URL's origin.
+
+    An origin with no entry is ``unclassified`` — treated as refusal by
+    `shared_corpus_allowed`, never as permission. That is what makes the
+    consistency test meaningful: an unclassified origin fails closed in
+    production as well as in CI.
+    """
+    if is_local_source(url):
+        return ("local", "local filesystem source — always private")
+    host = (urlparse(str(url)).hostname or "").lower()
+    if not host:
+        return ("unclassified", "no resolvable host")
+    entries = (policy or load_policy()).get("origins", {})
+    entry = entries.get(host)
+    if entry:
+        return (str(entry.get("classification", "unclassified")), str(entry.get("reason", "")))
+
+    # A subdomain INHERITS its parent origin's classification. The gate this
+    # replaced matched subdomains, and dropping that would have silently
+    # refused e.g. `literature.rockwellautomation.com` under a curated
+    # `rockwellautomation.com` — caught by an existing test, kept deliberately.
+    #
+    # Inheritance runs in BOTH directions: a subdomain of a `blocked` origin is
+    # blocked too, so classifying an aggregator does not leave its CDN open.
+    # The match is anchored on a dot boundary, so `evil-manualslib.com` cannot
+    # inherit from `manualslib.com`; and the LONGEST parent wins, so a specific
+    # entry always beats a broader one.
+    best = None
+    for parent in entries:
+        if host.endswith("." + parent) and (best is None or len(parent) > len(best)):
+            best = parent
+    if best:
+        e = entries[best]
+        return (
+            str(e.get("classification", "unclassified")),
+            f"subdomain of {best}: {e.get('reason', '')}",
+        )
+    return ("unclassified", f"origin {host!r} has no entry in the canonical provenance policy")
+
+
+def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bool, str]:
+    """May this URL be written to the shared corpus? Fail-closed."""
+    cls, reason = classify_origin(url, policy=policy)
+    if cls in _SHARED_OK:
+        return (True, reason)
+    return (False, f"{cls}: {reason}")
