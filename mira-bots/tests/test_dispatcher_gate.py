@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from shared.chat.dispatcher import ChatDispatcher
-from shared.chat.types import NormalizedAttachment, NormalizedChatEvent
+from shared.chat.types import NormalizedAttachment, NormalizedChatEvent, NormalizedChatResponse
 from shared.identity.service import IdentityService, MiraUser
 
 
@@ -150,3 +150,87 @@ async def test_non_admin_still_blocked(fake_engine, monkeypatch):
     resp = await disp.dispatch(_event("999", "hi"))
     assert "invite" in resp.text.lower()
     fake_engine.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_canonical_workflow_uses_resolved_identity_and_bypasses_engine(fake_engine):
+    tenant = "11111111-1111-4111-8111-111111111111"
+    user = "22222222-2222-4222-8222-222222222222"
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(
+        return_value=MiraUser(id=user, tenant_id=tenant, display_name="A", email="a@x")
+    )
+    workflow = MagicMock()
+    workflow.enabled = True
+    workflow.prepare_execute = AsyncMock(
+        return_value=NormalizedChatResponse(
+            text="Canonical answer",
+            operation_id="33333333-3333-4333-8333-333333333333",
+            workflow_handled=True,
+        )
+    )
+    disp = ChatDispatcher(fake_engine, identity_service=identity, channel_workflow_client=workflow)
+    incoming = _event("555", "find the manual", tenant_id="malicious-adapter-hint")
+
+    response = await disp.try_channel_workflow(incoming)
+
+    assert response is not None
+    assert response.text == "Canonical answer"
+    workflow.prepare_execute.assert_awaited_once_with(
+        incoming,
+        actor_id=user,
+        uploader_id=user,
+        action="message",
+        context=None,
+        prior_operation_id="",
+        confirmed_identity=None,
+        on_progress=None,
+    )
+    assert incoming.tenant_id == tenant
+    assert incoming.user_id == user
+    fake_engine.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_disabled_or_delegated_workflow_falls_through_without_duplicate_delivery(fake_engine):
+    tenant = "11111111-1111-4111-8111-111111111111"
+    user = "22222222-2222-4222-8222-222222222222"
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(
+        return_value=MiraUser(id=user, tenant_id=tenant, display_name="A", email="a@x")
+    )
+    disabled = MagicMock(enabled=False)
+    disp = ChatDispatcher(fake_engine, identity_service=identity, channel_workflow_client=disabled)
+    assert await disp.try_channel_workflow(_event("555", "diagnose")) is None
+    disabled.prepare_execute.assert_not_called()
+
+    delegated = MagicMock(enabled=True)
+    delegated.prepare_execute = AsyncMock(
+        return_value=NormalizedChatResponse(text="", workflow_handled=False)
+    )
+    disp = ChatDispatcher(fake_engine, identity_service=identity, channel_workflow_client=delegated)
+    assert await disp.try_channel_workflow(_event("555", "diagnose")) is None
+
+    replay = MagicMock(enabled=True)
+    replay.prepare_execute = AsyncMock(
+        return_value=NormalizedChatResponse(text="", workflow_handled=True, suppress_delivery=True)
+    )
+    disp = ChatDispatcher(fake_engine, identity_service=identity, channel_workflow_client=replay)
+    suppressed = await disp.try_channel_workflow(_event("555", "diagnose"))
+    assert suppressed is not None and suppressed.suppress_delivery is True
+    fake_engine.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delivery_ack_is_explicitly_separate_from_workflow_execution(fake_engine):
+    workflow = MagicMock(enabled=True)
+    workflow.ack_delivery = AsyncMock(return_value=True)
+    disp = ChatDispatcher(fake_engine, identity_service=None, channel_workflow_client=workflow)
+    response = NormalizedChatResponse(
+        text="answer",
+        operation_id="33333333-3333-4333-8333-333333333333",
+        terminal_delivery_token="44444444-4444-4444-8444-444444444444",
+    )
+
+    assert await disp.ack_channel_delivery(response) is True
+    workflow.ack_delivery.assert_awaited_once_with(response)

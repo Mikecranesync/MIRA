@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from .types import NormalizedChatEvent, NormalizedChatResponse
 
 if TYPE_CHECKING:
+    from shared.channel_workflow import ChannelWorkflowClient, ProgressCallback
     from shared.identity.service import IdentityService
 
 logger = logging.getLogger("mira-gsd")
@@ -28,14 +29,119 @@ class ChatDispatcher:
     """Takes normalized events from any adapter, runs them through MIRA's engine,
     returns normalized responses."""
 
-    def __init__(self, engine, identity_service: "IdentityService | None" = None):
+    def __init__(
+        self,
+        engine,
+        identity_service: "IdentityService | None" = None,
+        channel_workflow_client: "ChannelWorkflowClient | None" = None,
+    ):
         """engine is a Supervisor instance (GSDEngine).
         identity_service is optional; when provided, resolves user_id before dispatch.
         """
         self.engine = engine
         self._identity = identity_service
+        self._channel_workflow = channel_workflow_client
         # {chat_id: [monotonic_timestamp, ...]} — pruned on every check
         self._rate_windows: dict[str, list[float]] = {}
+
+    async def _resolve_identity(self, event: NormalizedChatEvent):
+        import asyncio
+
+        if self._identity is None:
+            logger.error("DISPATCH_NO_IDENTITY platform=%s — failing closed", event.platform)
+            return None, NormalizedChatResponse(
+                text=(
+                    "MIRA is not configured for multi-tenant access yet. "
+                    "If you believe this is a mistake, ask your admin."
+                ),
+                thread_id=event.external_thread_id,
+            )
+        try:
+            mira_user = await asyncio.to_thread(
+                self._identity.lookup_only, event.platform, event.external_user_id
+            )
+        except Exception as exc:
+            logger.error(
+                "IDENTITY_LOOKUP_FAILED platform=%s ext=%s err=%s",
+                event.platform,
+                event.external_user_id,
+                exc,
+            )
+            return None, NormalizedChatResponse(
+                text="MIRA is temporarily unavailable. Please retry shortly.",
+                thread_id=event.external_thread_id,
+            )
+
+        if mira_user is None:
+            admin_ids = _admin_telegram_ids()
+            if event.platform == "telegram" and str(event.external_user_id) in admin_ids:
+                from shared.identity.service import MiraUser as _MiraUser
+
+                tenant_id = os.getenv("MIRA_TENANT_ID", "")
+                mira_user = _MiraUser(
+                    id=f"admin:{event.external_user_id}",
+                    tenant_id=tenant_id,
+                    display_name="Admin",
+                    email="",
+                )
+                logger.info(
+                    "DISPATCH_ADMIN_BYPASS platform=%s ext=%s tenant=%s",
+                    event.platform,
+                    event.external_user_id,
+                    tenant_id,
+                )
+            else:
+                logger.info(
+                    "DISPATCH_BLOCKED platform=%s ext=%s reason=stranger",
+                    event.platform,
+                    event.external_user_id,
+                )
+                return None, NormalizedChatResponse(
+                    text=(
+                        "Hi — I'm MIRA, your team's maintenance assistant. "
+                        "I'm invite-only. Ask your admin to send you an enrollment link."
+                    ),
+                    thread_id=event.external_thread_id,
+                )
+        return mira_user, None
+
+    async def try_channel_workflow(
+        self,
+        event: NormalizedChatEvent,
+        *,
+        action: str = "message",
+        context: dict[str, str] | None = None,
+        prior_operation_id: str = "",
+        confirmed_identity: dict | None = None,
+        on_progress: "ProgressCallback | None" = None,
+    ) -> NormalizedChatResponse | None:
+        """Attempt the Hub workflow; return None only for explicit delegation/flag-off."""
+
+        if self._channel_workflow is None or not self._channel_workflow.enabled:
+            return None
+        mira_user, denied = await self._resolve_identity(event)
+        if denied is not None:
+            return denied
+        event.tenant_id = mira_user.tenant_id
+        event.user_id = mira_user.id
+        response = await self._channel_workflow.prepare_execute(
+            event,
+            actor_id=mira_user.id,
+            uploader_id=mira_user.id,
+            action=action,
+            context=context,
+            prior_operation_id=prior_operation_id,
+            confirmed_identity=confirmed_identity,
+            on_progress=on_progress,
+        )
+        if response.workflow_handled is False:
+            return None
+        return response
+
+    async def ack_channel_delivery(self, response: NormalizedChatResponse) -> bool:
+        if self._channel_workflow is None:
+            return False
+        return await self._channel_workflow.ack_delivery(response)
 
     def _check_rate_limit(self, chat_id: str) -> bool:
         """Return True if under limit, False if the user should be throttled.
@@ -60,7 +166,6 @@ class ChatDispatcher:
 
     async def dispatch(self, event: NormalizedChatEvent) -> NormalizedChatResponse:
         """Process one chat event and return a response."""
-        import asyncio
         import base64
 
         if event.external_thread_id:
@@ -78,68 +183,9 @@ class ChatDispatcher:
             )
 
         # Strict gate: identity_links row required, no env-var fallback, no auto-create.
-        if self._identity is None:
-            logger.error("DISPATCH_NO_IDENTITY platform=%s — failing closed", event.platform)
-            return NormalizedChatResponse(
-                text=(
-                    "MIRA is not configured for multi-tenant access yet. "
-                    "If you believe this is a mistake, ask your admin."
-                ),
-                thread_id=event.external_thread_id,
-            )
-
-        try:
-            mira_user = await asyncio.to_thread(
-                self._identity.lookup_only, event.platform, event.external_user_id
-            )
-        except Exception as exc:
-            logger.error(
-                "IDENTITY_LOOKUP_FAILED platform=%s ext=%s err=%s",
-                event.platform,
-                event.external_user_id,
-                exc,
-            )
-            return NormalizedChatResponse(
-                text="MIRA is temporarily unavailable. Please retry shortly.",
-                thread_id=event.external_thread_id,
-            )
-
-        if mira_user is None:
-            # Admin bypass: ADMIN_TELEGRAM_IDS holders are the operators of the
-            # bot — they should never be gated by their own enrollment system.
-            # Synthesize a MiraUser with the default tenant_id from env so the
-            # rest of the pipeline (engine.process, ChatDispatcher logging) has
-            # the fields it expects.
-            admin_ids = _admin_telegram_ids()
-            if event.platform == "telegram" and str(event.external_user_id) in admin_ids:
-                from shared.identity.service import MiraUser as _MiraUser
-
-                tenant_id = os.getenv("MIRA_TENANT_ID", "")
-                mira_user = _MiraUser(
-                    id=f"admin:{event.external_user_id}",
-                    tenant_id=tenant_id,
-                    display_name="Admin",
-                    email="",
-                )
-                logger.info(
-                    "DISPATCH_ADMIN_BYPASS platform=%s ext=%s tenant=%s",
-                    event.platform,
-                    event.external_user_id,
-                    tenant_id,
-                )
-            else:
-                logger.info(
-                    "DISPATCH_BLOCKED platform=%s ext=%s reason=stranger",
-                    event.platform,
-                    event.external_user_id,
-                )
-                return NormalizedChatResponse(
-                    text=(
-                        "Hi — I'm MIRA, your team's maintenance assistant. "
-                        "I'm invite-only. Ask your admin to send you an enrollment link."
-                    ),
-                    thread_id=event.external_thread_id,
-                )
+        mira_user, denied = await self._resolve_identity(event)
+        if denied is not None:
+            return denied
 
         # Extract pre-downloaded image bytes (set by adapter before dispatch)
         photo_b64 = None

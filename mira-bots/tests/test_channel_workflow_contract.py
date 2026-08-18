@@ -76,9 +76,7 @@ def test_slack_thread_root_is_the_conversation_while_telegram_replies_stay_in_ch
     telegram = build_channel_request(
         event("telegram"), tenant_id=TENANT, actor_id=USER, uploader_id=USER
     )
-    slack = build_channel_request(
-        event("slack"), tenant_id=TENANT, actor_id=USER, uploader_id=USER
-    )
+    slack = build_channel_request(event("slack"), tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
     assert telegram["conversation"]["id"] == "telegram:-10042"
     assert slack["conversation"]["id"] == "slack:C-MAINT:1700000000.001"
@@ -88,9 +86,7 @@ def test_telegram_and_slack_transport_variants_have_equal_semantics() -> None:
     telegram = build_channel_request(
         event("telegram"), tenant_id=TENANT, actor_id=USER, uploader_id=USER
     )
-    slack = build_channel_request(
-        event("slack"), tenant_id=TENANT, actor_id=USER, uploader_id=USER
-    )
+    slack = build_channel_request(event("slack"), tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
     assert semantic_projection(slack) == semantic_projection(telegram)
     assert semantic_projection(telegram)["attachments"][0]["sha256"] == PDF_SHA
@@ -102,6 +98,7 @@ def test_telegram_and_slack_transport_variants_have_equal_semantics() -> None:
         ("tenant_id", "staging", "invalid_tenant_id"),
         ("tenant_id", "", "invalid_tenant_id"),
         ("actor_id", "", "actor_id_required"),
+        ("actor_id", "user-1", "invalid_actor_id"),
         ("uploader_id", "", "uploader_id_required"),
     ],
 )
@@ -116,15 +113,43 @@ def test_missing_event_id_and_attachment_bytes_fail_closed() -> None:
     missing_event = event("telegram")
     missing_event.event_id = ""
     with pytest.raises(ChannelWorkflowContractError, match="event_id_required"):
-        build_channel_request(
-            missing_event, tenant_id=TENANT, actor_id=USER, uploader_id=USER
-        )
+        build_channel_request(missing_event, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
     missing_bytes = event("telegram")
     missing_bytes.attachments[0].data = b""
     with pytest.raises(ChannelWorkflowContractError, match="attachment_bytes_required"):
+        build_channel_request(missing_bytes, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
+
+
+def test_confirmation_carries_only_explicit_corrected_identity_fields() -> None:
+    request = build_channel_request(
+        event("telegram"),
+        tenant_id=TENANT,
+        actor_id=USER,
+        uploader_id=USER,
+        action="confirm_identity",
+        prior_operation_id="44444444-4444-4444-8444-444444444444",
+        confirmed_identity={
+            "manufacturer": "Danfoss",
+            "series": "FC-202",
+            "partNumber": "131H4017",
+        },
+    )
+    assert request["confirmedIdentity"] == {
+        "manufacturer": "Danfoss",
+        "series": "FC-202",
+        "partNumber": "131H4017",
+    }
+
+    with pytest.raises(ChannelWorkflowContractError, match="unknown_identity_field"):
         build_channel_request(
-            missing_bytes, tenant_id=TENANT, actor_id=USER, uploader_id=USER
+            event("telegram"),
+            tenant_id=TENANT,
+            actor_id=USER,
+            uploader_id=USER,
+            action="confirm_identity",
+            prior_operation_id="44444444-4444-4444-8444-444444444444",
+            confirmed_identity={"manufacturer": "Danfoss", "verified": True},
         )
 
 
