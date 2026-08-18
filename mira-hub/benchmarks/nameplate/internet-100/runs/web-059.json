@@ -1,0 +1,164 @@
+{
+  "image": "c03r1_10.jpg",
+  "bytes": 169393,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "MicroLogix 1400",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Memory Module",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "MicroLogix",
+        "1400",
+        "Memory Module",
+        "HFN-LV2",
+        "POWER",
+        "FAN",
+        "FAULT",
+        "RESET",
+        "ESC",
+        "OK",
+        "AC IN",
+        "RELAY OUT",
+        "AC POWER"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "MicroLogix",
+      "1400",
+      "Memory Module",
+      "HFN-LV2",
+      "POWER",
+      "FAN",
+      "FAULT",
+      "RESET",
+      "ESC",
+      "OK",
+      "AC IN",
+      "RELAY OUT",
+      "AC POWER"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "MicroLogix 1400",
+      "catalogNumber": null,
+      "equipmentType": "Memory Module",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "MicroLogix 1400"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Memory Module"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 14,
+        "cropBbox": {
+          "left": 296,
+          "top": 249,
+          "width": 928,
+          "height": 845
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2748
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3327,
+    "total_ms": 5914
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CompactLogix 5380",
+      "catalogNumber": "5380-100",
+      "serialNumber": null,
+      "equipmentType": "Programmable Logic Controller",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "CompactLogix",
+        "5380",
+        "5380-100",
+        "MEMORY MODULE",
+        "AC IN",
+        "AC POWER",
+        "ESC",
+        "OK"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "CompactLogix",
+      "5380",
+      "5380-100",
+      "MEMORY MODULE",
+      "AC IN",
+      "AC POWER",
+      "ESC",
+      "OK"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "CompactLogix 5380",
+      "catalogNumber": "5380-100",
+      "equipmentType": "Programmable Logic Controller",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "CompactLogix 5380"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "5380-100"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2213
+  }
+}

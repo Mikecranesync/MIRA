@@ -1,0 +1,140 @@
+{
+  "image": "c08r1_01.jpg",
+  "bytes": 516330,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SMC",
+      "model": "C95SDB40",
+      "catalogNumber": "C95SDB40-125",
+      "serialNumber": null,
+      "equipmentType": "cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "C95SDB40-125",
+        "MAX. PRESS.",
+        "1.0MPa",
+        "SMC",
+        "CHINA",
+        "G",
+        "MZ"
+      ]
+    },
+    "rawText": [
+      "C95SDB40-125",
+      "MAX. PRESS.",
+      "1.0MPa",
+      "SMC",
+      "CHINA",
+      "G",
+      "MZ"
+    ],
+    "values": {
+      "manufacturer": "SMC",
+      "model": "C95SDB40",
+      "catalogNumber": "C95SDB40-125",
+      "equipmentType": "cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SMC"
+        },
+        {
+          "field": "model",
+          "value": "C95SDB40"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "C95SDB40-125"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 6,
+        "cropBbox": {
+          "left": 416,
+          "top": 902,
+          "width": 876,
+          "height": 270
+        },
+        "imageWidth": 2000,
+        "imageHeight": 2000,
+        "cropRotationDeg": 0,
+        "ms": 2431
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3840,
+    "total_ms": 5817
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SMC",
+      "model": "05SD840-125",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "05SD840-125",
+        "MAX PRESS",
+        "1.0MPa",
+        "SMC",
+        "China"
+      ]
+    },
+    "rawText": [
+      "05SD840-125",
+      "MAX PRESS",
+      "1.0MPa",
+      "SMC",
+      "China"
+    ],
+    "values": {
+      "manufacturer": "SMC",
+      "model": "05SD840-125",
+      "catalogNumber": null,
+      "equipmentType": "Cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SMC"
+        },
+        {
+          "field": "model",
+          "value": "05SD840-125"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1881
+  }
+}

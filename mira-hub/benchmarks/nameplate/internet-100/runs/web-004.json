@@ -1,0 +1,152 @@
+{
+  "image": "c03r1_03.jpg",
+  "bytes": 55101,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2 DP",
+      "catalogNumber": "MC 951 / 128 kB / 5V FLASH",
+      "serialNumber": "95J0C00-0AA0",
+      "equipmentType": "CPU module",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "CPU315-2 DP",
+        "MC 951 / 128 kB / 5V FLASH",
+        "95J0C00-0AA0",
+        "SIMATIC S7-300"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "CPU315-2 DP",
+      "MC 951 / 128 kB / 5V FLASH",
+      "95J0C00-0AA0",
+      "SIMATIC S7-300"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2 DP",
+      "catalogNumber": "MC 951 / 128 kB / 5V FLASH",
+      "equipmentType": "CPU module",
+      "serialNumber": "95J0C00-0AA0",
+      "voltage": "5V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "CPU315-2 DP"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "MC 951 / 128 kB / 5V FLASH"
+        },
+        {
+          "field": "serialNumber",
+          "value": "95J0C00-0AA0"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 23,
+        "cropBbox": {
+          "left": 3,
+          "top": 105,
+          "width": 350,
+          "height": 495
+        },
+        "imageWidth": 452,
+        "imageHeight": 600,
+        "cropRotationDeg": 0,
+        "ms": 978
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1250,
+    "total_ms": 3497
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2 DP",
+      "catalogNumber": "MC 851 / 128 DB 5V FLASH",
+      "serialNumber": "6ES7 951-0CD0-0AA0",
+      "equipmentType": "CPU",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "CPU315-2 DP",
+        "MC 851 / 128 DB 5V FLASH",
+        "6ES7 951-0CD0-0AA0",
+        "SIMATIC",
+        "S7-300"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "CPU315-2 DP",
+      "MC 851 / 128 DB 5V FLASH",
+      "6ES7 951-0CD0-0AA0",
+      "SIMATIC",
+      "S7-300"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2 DP",
+      "catalogNumber": "MC 851 / 128 DB 5V FLASH",
+      "equipmentType": "CPU",
+      "serialNumber": "6ES7 951-0CD0-0AA0",
+      "voltage": "5V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "CPU315-2 DP"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "MC 851 / 128 DB 5V FLASH"
+        },
+        {
+          "field": "serialNumber",
+          "value": "6ES7 951-0CD0-0AA0"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CPU"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2358
+  }
+}

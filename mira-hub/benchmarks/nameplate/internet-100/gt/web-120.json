@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-120",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "scratched", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "ASCO",
+    "model": "Red-Hat II",
+    "catalogNumber": "8210G002HW",
+    "serialNumber": "unknown",
+    "equipment_category": "solenoid_valve",
+    "specs": [
+      {"field": "pipe_size", "value_verbatim": "1/2", "unit": "in", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "0933", "unit": "", "confidence": "high"},
+      {"field": "rebuild_kit_no", "value_verbatim": "302305", "unit": "", "confidence": "medium"},
+      {"field": "hot_water_pressure", "value_verbatim": "HOT WATER 5-125 PSI", "unit": "PSI", "confidence": "medium"},
+      {"field": "watts_60hz", "value_verbatim": "6.1", "unit": "W", "confidence": "high"},
+      {"field": "watts_50hz", "value_verbatim": "8.1", "unit": "W", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "ENCL TYPES 1, 2, 3, 3S, 4 & 4X", "unit": "", "confidence": "low"}
+    ],
+    "marks": ["UL", "cCSAus"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

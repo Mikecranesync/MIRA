@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-023",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "HEIDENHAIN",
+    "model": "LS 486",
+    "catalogNumber": "285 090 07",
+    "serialNumber": "unknown",
+    "equipment_category": "encoder",
+    "specs": [
+      {"field": "measuring_length", "value_verbatim": "ML 170 mm", "unit": "mm", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

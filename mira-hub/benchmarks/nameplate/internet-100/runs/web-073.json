@@ -1,0 +1,200 @@
+{
+  "image": "c09r1_10.jpg",
+  "bytes": 139424,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Twin City Fan & Blower",
+      "model": "WEEPLEN SW CL3 ARR4",
+      "catalogNumber": null,
+      "serialNumber": "20-772326-1",
+      "equipmentType": "Fan",
+      "confidence": 0.95,
+      "rawText": [
+        "SER NO. 20-772326-1",
+        "MFG DATE 09/2020",
+        "TAG NO. 1005132",
+        "CFM 18515",
+        "S.P. 7.120",
+        "RPM 1760",
+        "MOTOR HP/RPM 30 / 1800",
+        "BEARING #1 MODEL NO.",
+        "BEARING #2 MODEL NO.",
+        "MTR SHEAVE.",
+        "FAN SHEAVE",
+        "V-BELT TYPE & NO.",
+        "ROTOR WEIGHT 156",
+        "VIBRATION LIMIT@FAN RPM 0.15 IN./SEC.",
+        "FAN TYPE & MODEL WEEPLEN SW CL3 ARR4"
+      ]
+    },
+    "rawText": [
+      "SER NO. 20-772326-1",
+      "MFG DATE 09/2020",
+      "TAG NO. 1005132",
+      "CFM 18515",
+      "S.P. 7.120",
+      "RPM 1760",
+      "MOTOR HP/RPM 30 / 1800",
+      "BEARING #1 MODEL NO.",
+      "BEARING #2 MODEL NO.",
+      "MTR SHEAVE.",
+      "FAN SHEAVE",
+      "V-BELT TYPE & NO.",
+      "ROTOR WEIGHT 156",
+      "VIBRATION LIMIT@FAN RPM 0.15 IN./SEC.",
+      "FAN TYPE & MODEL WEEPLEN SW CL3 ARR4"
+    ],
+    "values": {
+      "manufacturer": "Twin City Fan & Blower",
+      "model": "WEEPLEN SW CL3 ARR4",
+      "catalogNumber": null,
+      "equipmentType": "Fan",
+      "serialNumber": "20-772326-1",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "WEEPLEN SW CL3 ARR4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "20-772326-1"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Fan"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 61,
+        "cropBbox": {
+          "left": 0,
+          "top": 54,
+          "width": 1000,
+          "height": 696
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2254
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2764,
+    "total_ms": 7106
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Twin City Fan & Blower",
+      "model": "CL3 ARR4",
+      "catalogNumber": null,
+      "serialNumber": "20-772325-1",
+      "equipmentType": "Fan",
+      "confidence": 0.95,
+      "rawText": [
+        "SER NO. 20-772325-1",
+        "MFG DATE 09/2020",
+        "TAG NO.",
+        "1005132",
+        "CFM 18515",
+        "S.P. 7.120",
+        "RPM 1760",
+        "MOTOR HP/RPM 30 / 1800",
+        "BEARING #1 MODEL NO.",
+        "null",
+        "BEARING #2 MODEL NO.",
+        "null",
+        "MTR SHEAVE.",
+        "null",
+        "FAN SHEAVE",
+        "V-BELT TYPE & NO.",
+        "null",
+        "ROTOR WEIGHT 156",
+        "VIBRATION LIMIT@FAN RPM 0.15 IN./SEC.",
+        "FAN TYPE & MODEL",
+        "CL3 ARR4",
+        "Twin City Fan & Blower",
+        "WWW.TWINCITYFAN.COM",
+        "MINNEAPOLIS, MINNESOTA 17310"
+      ]
+    },
+    "rawText": [
+      "SER NO. 20-772325-1",
+      "MFG DATE 09/2020",
+      "TAG NO.",
+      "1005132",
+      "CFM 18515",
+      "S.P. 7.120",
+      "RPM 1760",
+      "MOTOR HP/RPM 30 / 1800",
+      "BEARING #1 MODEL NO.",
+      "null",
+      "BEARING #2 MODEL NO.",
+      "null",
+      "MTR SHEAVE.",
+      "null",
+      "FAN SHEAVE",
+      "V-BELT TYPE & NO.",
+      "null",
+      "ROTOR WEIGHT 156",
+      "VIBRATION LIMIT@FAN RPM 0.15 IN./SEC.",
+      "FAN TYPE & MODEL",
+      "CL3 ARR4",
+      "Twin City Fan & Blower",
+      "WWW.TWINCITYFAN.COM",
+      "MINNEAPOLIS, MINNESOTA 17310"
+    ],
+    "values": {
+      "manufacturer": "Twin City Fan & Blower",
+      "model": "CL3 ARR4",
+      "catalogNumber": null,
+      "equipmentType": "Fan",
+      "serialNumber": "20-772325-1",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Twin City Fan & Blower"
+        },
+        {
+          "field": "model",
+          "value": "CL3 ARR4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "20-772325-1"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Fan"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5994
+  }
+}

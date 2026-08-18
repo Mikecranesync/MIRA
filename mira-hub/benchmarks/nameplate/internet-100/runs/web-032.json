@@ -1,0 +1,124 @@
+{
+  "image": "c01r1_08.jpg",
+  "bytes": 403724,
+  "mime": "image/jpeg",
+  "improved": {
+    "error": "JSON Parse error: Unterminated string"
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "marathon",
+      "model": "H 5617D15718A",
+      "catalogNumber": "K6844A",
+      "serialNumber": "0003",
+      "equipmentType": "Motors",
+      "confidence": 0.95,
+      "rawText": [
+        "marathon",
+        "Motors",
+        "CATALOG NO. K6844A",
+        "MODEL H 5617D15718A",
+        "SERIAL 0003",
+        "FORM PH 3",
+        "INS. B3",
+        "ENCL",
+        "AMB 40°C TYPE TS",
+        "INL IM B14",
+        "LOW VOLTAGE",
+        "HIGH VOLTAGE",
+        "T4 T5 T6 T4 T5 T6",
+        "P7 P8 P7 P8",
+        "P1 P2 P1 P2",
+        "LINE LINE LINE LINE",
+        "TO REVERSE ROTATION, INTERCHANGE",
+        "WARNING FAILURE TO FOLLOW ALL SAFETY INFORMATION CAN RESULT IN SERIOUS PERSONAL INJURY OR DEATH. DISCONNECT ALL POWER BEFORE SERVICING. INSTALL AND GROUND PER LOCAL AND NATIONAL CODES CONSULT QUALIFIED PERSONNEL WITH ANY QUESTIONS.",
+        "CUST NO.",
+        "HP 2-1/2",
+        "VOLTS 230/460-190/380",
+        "R.P.M. 172.8-1425",
+        "S.F.A. 6.4/3.2/2",
+        "S.F. 1.15-1.0",
+        "AVG EFF 86-85.5 86.5 CODE N",
+        "KW 1.49-1.12 P.F 74.5 - 72",
+        "SUITABLE FOR 10.1 VT AND 2.1 CT @ 1.0 SF",
+        "SUITABLE FOR 208V",
+        "HP 2-1/2",
+        "Hz 60-50",
+        "ASSEMBLED IN MEXICO"
+      ]
+    },
+    "rawText": [
+      "marathon",
+      "Motors",
+      "CATALOG NO. K6844A",
+      "MODEL H 5617D15718A",
+      "SERIAL 0003",
+      "FORM PH 3",
+      "INS. B3",
+      "ENCL",
+      "AMB 40°C TYPE TS",
+      "INL IM B14",
+      "LOW VOLTAGE",
+      "HIGH VOLTAGE",
+      "T4 T5 T6 T4 T5 T6",
+      "P7 P8 P7 P8",
+      "P1 P2 P1 P2",
+      "LINE LINE LINE LINE",
+      "TO REVERSE ROTATION, INTERCHANGE",
+      "WARNING FAILURE TO FOLLOW ALL SAFETY INFORMATION CAN RESULT IN SERIOUS PERSONAL INJURY OR DEATH. DISCONNECT ALL POWER BEFORE SERVICING. INSTALL AND GROUND PER LOCAL AND NATIONAL CODES CONSULT QUALIFIED PERSONNEL WITH ANY QUESTIONS.",
+      "CUST NO.",
+      "HP 2-1/2",
+      "VOLTS 230/460-190/380",
+      "R.P.M. 172.8-1425",
+      "S.F.A. 6.4/3.2/2",
+      "S.F. 1.15-1.0",
+      "AVG EFF 86-85.5 86.5 CODE N",
+      "KW 1.49-1.12 P.F 74.5 - 72",
+      "SUITABLE FOR 10.1 VT AND 2.1 CT @ 1.0 SF",
+      "SUITABLE FOR 208V",
+      "HP 2-1/2",
+      "Hz 60-50",
+      "ASSEMBLED IN MEXICO"
+    ],
+    "values": {
+      "manufacturer": "marathon",
+      "model": "H 5617D15718A",
+      "catalogNumber": "K6844A",
+      "equipmentType": "Motors",
+      "serialNumber": "0003",
+      "voltage": "208V",
+      "current": null,
+      "resolution": null,
+      "ambient": "Amb.40°C",
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "marathon"
+        },
+        {
+          "field": "model",
+          "value": "H 5617D15718A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "K6844A"
+        },
+        {
+          "field": "serialNumber",
+          "value": "0003"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motors"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 7885
+  }
+}

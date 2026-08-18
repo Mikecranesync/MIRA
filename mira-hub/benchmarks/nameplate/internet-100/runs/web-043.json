@@ -1,0 +1,168 @@
+{
+  "image": "c01r1_05.jpg",
+  "bytes": 420234,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "WEG",
+      "model": "CC0294 Premium",
+      "catalogNumber": null,
+      "serialNumber": "6207-ZZ",
+      "equipmentType": "Inverter Duty Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "CC0294 Premium",
+        "Inverter Duty Motor",
+        "MODEL 0021EF23E184ATC-W22",
+        "224HR3218 10 23270827",
+        "PH 3 FR 182/ATC",
+        "HP(kW) 2.0(1.5)",
+        "Hz 60",
+        "SF 1.25 PF 0.66",
+        "NEMA NOM 4.44/3.2 DES B DUTY CONT.",
+        "RMS 1170 INs. CL.F ΔT 80 K",
+        "IP55",
+        "ENC| TEFC SFA 8.05/4.03",
+        "USABLE 208V 7.13 A SF 1.15 SFA 8.20",
+        "5kW 50Hz 380V 3.66A 960RPM SF1 EFF 86.5%(IE4) CODE L",
+        "6207-ZZ",
+        "6206-ZZ",
+        "MOBIL POLYREX EM",
+        "ALT 1000 m.a.s.l. 101 lbs",
+        "3PG",
+        "US Listed",
+        "FOR SAFE AREA. MODEL:1BF0XON"
+      ]
+    },
+    "rawText": [
+      "CC0294 Premium",
+      "Inverter Duty Motor",
+      "MODEL 0021EF23E184ATC-W22",
+      "224HR3218 10 23270827",
+      "PH 3 FR 182/ATC",
+      "HP(kW) 2.0(1.5)",
+      "Hz 60",
+      "SF 1.25 PF 0.66",
+      "NEMA NOM 4.44/3.2 DES B DUTY CONT.",
+      "RMS 1170 INs. CL.F ΔT 80 K",
+      "IP55",
+      "ENC| TEFC SFA 8.05/4.03",
+      "USABLE 208V 7.13 A SF 1.15 SFA 8.20",
+      "5kW 50Hz 380V 3.66A 960RPM SF1 EFF 86.5%(IE4) CODE L",
+      "6207-ZZ",
+      "6206-ZZ",
+      "MOBIL POLYREX EM",
+      "ALT 1000 m.a.s.l. 101 lbs",
+      "3PG",
+      "US Listed",
+      "FOR SAFE AREA. MODEL:1BF0XON"
+    ],
+    "values": {
+      "manufacturer": "WEG",
+      "model": "CC0294 Premium",
+      "catalogNumber": null,
+      "equipmentType": "Inverter Duty Motor",
+      "serialNumber": "6207-ZZ",
+      "voltage": "208V",
+      "current": "7.13A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CC0294 Premium"
+        },
+        {
+          "field": "serialNumber",
+          "value": "6207-ZZ"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Inverter Duty Motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 56,
+        "cropBbox": {
+          "left": 211,
+          "top": 260,
+          "width": 1323,
+          "height": 968
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 180,
+        "ms": 2186
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3089,
+    "total_ms": 9872
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "MOBIL POLYREX EM",
+      "model": "6206-Z7",
+      "catalogNumber": null,
+      "serialNumber": "1218964",
+      "equipmentType": "Duty Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "MOBIL POLYREX EM",
+        "6206-Z7",
+        "1218964"
+      ]
+    },
+    "rawText": [
+      "MOBIL POLYREX EM",
+      "6206-Z7",
+      "1218964"
+    ],
+    "values": {
+      "manufacturer": "MOBIL POLYREX EM",
+      "model": "6206-Z7",
+      "catalogNumber": null,
+      "equipmentType": "Duty Motor",
+      "serialNumber": "1218964",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MOBIL POLYREX EM"
+        },
+        {
+          "field": "model",
+          "value": "6206-Z7"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1218964"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2738
+  }
+}

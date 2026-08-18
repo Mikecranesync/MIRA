@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-038",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["small_in_scene", "tiny_text", "scratched", "partially_obstructed", "angled", "low_resolution"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "250 PSI", "unit": "PSI", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Tie-rod pneumatic cylinder photographed whole; the only label is small in scene and heavily torn/worn. Manufacturer logo area is destroyed. Legible fragments only: a partial catalog string '...50-0600' with 'X2', '250 PSI', 'MADE IN CANADA'. Fragments are NOT recorded as identity ground truth because the full strings cannot be read from the photo."
+}

@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-021",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "low_contrast", "faded"],
+  "photo_gt": {
+    "manufacturer": "South Bend Lathe Works",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "1643-30-1045",
+    "equipment_category": "machine_tool",
+    "specs": [
+      {"field": "patent_no", "value_verbatim": "D-118930", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

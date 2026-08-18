@@ -1,0 +1,144 @@
+{
+  "image": "c07r1_11.jpg",
+  "bytes": 119056,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "PEPPERL",
+      "model": "UB300-18GN",
+      "catalogNumber": "3",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "PEPPERL",
+        "Made in G",
+        "UB300-18GN",
+        "Part No. 3",
+        "18-30 VDC"
+      ]
+    },
+    "rawText": [
+      "PEPPERL",
+      "Made in G",
+      "UB300-18GN",
+      "Part No. 3",
+      "18-30 VDC"
+    ],
+    "values": {
+      "manufacturer": "PEPPERL",
+      "model": "UB300-18GN",
+      "catalogNumber": "3",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "18-30VDC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "PEPPERL"
+        },
+        {
+          "field": "model",
+          "value": "UB300-18GN"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 6,
+        "cropBbox": {
+          "left": 82,
+          "top": 0,
+          "width": 565,
+          "height": 620
+        },
+        "imageWidth": 647,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 1663
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2056,
+    "total_ms": 3901
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "PEPPERL",
+      "model": "UB300-18GN",
+      "catalogNumber": "3",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "PEPPERL",
+        "Made in G",
+        "UB300-18GN",
+        "Part No. 3",
+        "18-30 VDC",
+        "1",
+        "2",
+        "4",
+        "3"
+      ]
+    },
+    "rawText": [
+      "PEPPERL",
+      "Made in G",
+      "UB300-18GN",
+      "Part No. 3",
+      "18-30 VDC",
+      "1",
+      "2",
+      "4",
+      "3"
+    ],
+    "values": {
+      "manufacturer": "PEPPERL",
+      "model": "UB300-18GN",
+      "catalogNumber": "3",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "18-30VDC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "PEPPERL"
+        },
+        {
+          "field": "model",
+          "value": "UB300-18GN"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1879
+  }
+}

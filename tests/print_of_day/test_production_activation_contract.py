@@ -21,12 +21,41 @@ def test_production_overlay_pins_staging_proven_profile() -> None:
     assert "mira-bot-slack:" in text
     assert "PRINT_VISION_PROVIDER: ${PRINTSENSE_PROD_PROVIDER:-together}" in text
     assert "PRINT_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}" in text
-    assert "TOGETHERAI_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}" in text
     assert "PRINT_PROVIDER_POLICY: ${PRINTSENSE_PROD_POLICY:-strict}" in text
     assert 'PRINT_ENFORCE_APPROVED_MODELS: "1"' in text
     assert "FACTORYLM_NETWORK_MODE: enabled" in text
     assert 'OCR_REQUIRE_TESSERACT: "1"' in text
     assert 'OCR_EXPECT_TESSERACT: "1"' in text
+
+
+def test_production_overlay_never_touches_the_general_vision_lane() -> None:
+    """2026-08-17 prod incident: this overlay exported TOGETHERAI_VISION_MODEL
+    (the GENERAL vision lane, InferenceRouter) as the heavyweight print-only
+    MiniMax-M3, and — because the activation workflow re-applies the overlay
+    after EVERY deploy — every Telegram equipment/nameplate photo went through
+    the print interpreter and blew the bot's 30s process watchdog.
+
+    The PrintSense carve-out is print-photo vision ONLY, never chat/diagnosis
+    (root CLAUDE.md hard constraint #2). The overlay may set PRINT_* freely;
+    it must never set the general-lane model/provider variables."""
+    text = OVERLAY.read_text(encoding="utf-8")
+    for forbidden in (
+        "TOGETHERAI_VISION_MODEL:",
+        "GROQ_VISION_MODEL:",
+        "VISION_MODEL:",
+        "TOGETHERAI_MODEL:",
+        "GROQ_MODEL:",
+        "CEREBRAS_MODEL:",
+    ):
+        offending = [
+            line
+            for line in text.splitlines()
+            if line.split("#")[0].strip().startswith(forbidden)
+        ]
+        assert not offending, (
+            f"overlay sets general-lane variable {forbidden!r} — the PrintSense "
+            f"carve-out is print-photo vision only, never chat/diagnosis: {offending}"
+        )
 
 
 def test_activation_is_durable_after_normal_vps_deploys() -> None:

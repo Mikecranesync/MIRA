@@ -1,0 +1,145 @@
+{
+  "image": "c09r1_13.jpg",
+  "bytes": 156356,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Copeland",
+      "model": "CRC4-0175-PFV",
+      "catalogNumber": null,
+      "serialNumber": "906 02053H",
+      "equipmentType": "compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL CRC4-0175-PFV",
+        "B/M 230 BS",
+        "40",
+        "L.R.A.54.0PH.1",
+        "VOLTS/HZ.",
+        "208",
+        "230",
+        "MARCA REGISTRADA In Vamous Countries",
+        "MADE IN U.S. OF AMERICA",
+        "SERIAL NO#",
+        "906 02053H"
+      ]
+    },
+    "rawText": [
+      "MODEL CRC4-0175-PFV",
+      "B/M 230 BS",
+      "40",
+      "L.R.A.54.0PH.1",
+      "VOLTS/HZ.",
+      "208",
+      "230",
+      "MARCA REGISTRADA In Vamous Countries",
+      "MADE IN U.S. OF AMERICA",
+      "SERIAL NO#",
+      "906 02053H"
+    ],
+    "values": {
+      "manufacturer": "Copeland",
+      "model": "CRC4-0175-PFV",
+      "catalogNumber": null,
+      "equipmentType": "compressor",
+      "serialNumber": "906 02053H",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CRC4-0175-PFV"
+        },
+        {
+          "field": "serialNumber",
+          "value": "906 02053H"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 14,
+        "cropBbox": {
+          "left": 110,
+          "top": 0,
+          "width": 800,
+          "height": 623
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2141
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2701,
+    "total_ms": 6732
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Coperland",
+      "model": "CRC4-0175-PFV",
+      "catalogNumber": "B/M 230 BS",
+      "serialNumber": "906 02053H",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL CRC4-0175-PFV",
+        "B/M 230 BS",
+        "SERIAL NO# 906 02053H"
+      ]
+    },
+    "rawText": [
+      "MODEL CRC4-0175-PFV",
+      "B/M 230 BS",
+      "SERIAL NO# 906 02053H"
+    ],
+    "values": {
+      "manufacturer": "Coperland",
+      "model": "CRC4-0175-PFV",
+      "catalogNumber": "B/M 230 BS",
+      "equipmentType": null,
+      "serialNumber": "906 02053H",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CRC4-0175-PFV"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "B/M 230 BS"
+        },
+        {
+          "field": "serialNumber",
+          "value": "906 02053H"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2201
+  }
+}

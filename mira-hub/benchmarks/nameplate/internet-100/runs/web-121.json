@@ -1,0 +1,162 @@
+{
+  "image": "c10r1_06.jpg",
+  "bytes": 1837703,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ZHEJIANG SANAI TRANSFORMER CO,LTD",
+      "model": "LZZBJ-11",
+      "catalogNumber": null,
+      "serialNumber": "31074",
+      "equipmentType": "CURRENT MEASURING INSTRUMENT",
+      "confidence": 0.95,
+      "rawText": [
+        "LZZBJ-11",
+        "CURRENT MEASURING INSTRUMENT",
+        "Rated current ratio 15/5 A",
+        "Serial No. 31074",
+        "1S11S2Ø.5 Class 5 VA",
+        "Rated insulation level 12/28/75 KV",
+        "1S thermal current 1.5 KA",
+        "Rated dynamic stability current 3.75 KA",
+        "Frequency 50 Hz",
+        "Standard code IEC60044-1",
+        "Date 2012 Y 11 M"
+      ]
+    },
+    "rawText": [
+      "LZZBJ-11",
+      "CURRENT MEASURING INSTRUMENT",
+      "Rated current ratio 15/5 A",
+      "Serial No. 31074",
+      "1S11S2Ø.5 Class 5 VA",
+      "Rated insulation level 12/28/75 KV",
+      "1S thermal current 1.5 KA",
+      "Rated dynamic stability current 3.75 KA",
+      "Frequency 50 Hz",
+      "Standard code IEC60044-1",
+      "Date 2012 Y 11 M"
+    ],
+    "values": {
+      "manufacturer": "ZHEJIANG SANAI TRANSFORMER CO,LTD",
+      "model": "LZZBJ-11",
+      "catalogNumber": null,
+      "equipmentType": "CURRENT MEASURING INSTRUMENT",
+      "serialNumber": "31074",
+      "voltage": null,
+      "current": "5A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "LZZBJ-11"
+        },
+        {
+          "field": "serialNumber",
+          "value": "31074"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CURRENT MEASURING INSTRUMENT"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 32,
+        "cropBbox": {
+          "left": 1170,
+          "top": 697,
+          "width": 3149,
+          "height": 1679
+        },
+        "imageWidth": 4608,
+        "imageHeight": 2592,
+        "cropRotationDeg": 0,
+        "ms": 1855
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 7915,
+    "total_ms": 11763
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ZHEJIANG SANAI TRANSFORMER CO.,LTD",
+      "model": "LZZBJ-11",
+      "catalogNumber": null,
+      "serialNumber": "31074",
+      "equipmentType": "CURRENT MEASURING INSTRUMENT",
+      "confidence": 0.95,
+      "rawText": [
+        "LZZBJ-11 CURRENT MEASURING INSTRUMENT",
+        "Rated current ratio 15/5 A",
+        "Serial No. 31074",
+        "1S11S2 0.5 Class 5 VA",
+        "Frequency 50 Hz",
+        "Rated insulation level 12/28/75/KV",
+        "Standard code IEC60044-1",
+        "Rated thermal current 1.5 kA",
+        "Date 2012 Y 11 M",
+        "Rated dynamic stability current 3.75 kA"
+      ]
+    },
+    "rawText": [
+      "LZZBJ-11 CURRENT MEASURING INSTRUMENT",
+      "Rated current ratio 15/5 A",
+      "Serial No. 31074",
+      "1S11S2 0.5 Class 5 VA",
+      "Frequency 50 Hz",
+      "Rated insulation level 12/28/75/KV",
+      "Standard code IEC60044-1",
+      "Rated thermal current 1.5 kA",
+      "Date 2012 Y 11 M",
+      "Rated dynamic stability current 3.75 kA"
+    ],
+    "values": {
+      "manufacturer": "ZHEJIANG SANAI TRANSFORMER CO.,LTD",
+      "model": "LZZBJ-11",
+      "catalogNumber": null,
+      "equipmentType": "CURRENT MEASURING INSTRUMENT",
+      "serialNumber": "31074",
+      "voltage": null,
+      "current": "5A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "LZZBJ-11"
+        },
+        {
+          "field": "serialNumber",
+          "value": "31074"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CURRENT MEASURING INSTRUMENT"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3915
+  }
+}

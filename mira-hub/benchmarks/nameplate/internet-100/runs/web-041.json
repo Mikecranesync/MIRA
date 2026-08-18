@@ -1,0 +1,132 @@
+{
+  "image": "c12r1_03.jpg",
+  "bytes": 1217262,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS-SCHUCKERT",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "2002894",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS-SCHUCKERT",
+        "2002894"
+      ]
+    },
+    "rawText": [
+      "SIEMENS-SCHUCKERT",
+      "2002894"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS-SCHUCKERT",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "2002894",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS-SCHUCKERT"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2002894"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 33,
+        "cropBbox": {
+          "left": 241,
+          "top": 343,
+          "width": 2174,
+          "height": 1458
+        },
+        "imageWidth": 3102,
+        "imageHeight": 2432,
+        "cropRotationDeg": 180,
+        "ms": 2337
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4892,
+    "total_ms": 7005
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS-SCHUCKERT",
+      "model": null,
+      "catalogNumber": "200 2894",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS-SCHUCKERT",
+        "200 2894",
+        "P.Nr. 660/47-300",
+        "40000 kW Cosy 0,8 dauern",
+        "44800 kW Cosy 0,8 1 Std.",
+        "30000 kW Cosy 0,8 dauern",
+        "50 Per/As",
+        "220",
+        "220",
+        "220"
+      ]
+    },
+    "rawText": [
+      "SIEMENS-SCHUCKERT",
+      "200 2894",
+      "P.Nr. 660/47-300",
+      "40000 kW Cosy 0,8 dauern",
+      "44800 kW Cosy 0,8 1 Std.",
+      "30000 kW Cosy 0,8 dauern",
+      "50 Per/As",
+      "220",
+      "220",
+      "220"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS-SCHUCKERT",
+      "model": null,
+      "catalogNumber": "200 2894",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS-SCHUCKERT"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "200 2894"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3435
+  }
+}

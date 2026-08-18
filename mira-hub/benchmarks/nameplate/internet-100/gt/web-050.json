@@ -1,0 +1,32 @@
+{
+  "sample_id": "web-050",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "YASKAWA ELECTRIC",
+    "model": "SGMG-75A2AB",
+    "catalogNumber": "unknown",
+    "serialNumber": "B013YC774610003",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "power_w", "value_verbatim": "7500 W", "unit": "W", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "48 N·m", "unit": "N·m", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1500 r/min", "unit": "r/min", "confidence": "high"},
+      {"field": "current", "value_verbatim": "54.7 A", "unit": "A", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "200 V", "unit": "V", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "CONT.", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "ins. F", "unit": "", "confidence": "high"},
+      {"field": "order_number", "value_verbatim": "O/N 3J2447 001 -003", "unit": "", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "DATE 1311", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN JAPAN", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": {
+    "source_url": "https://surplusrecord.com/listing/7500-w-yaskawa-electric-sgmg-75a2ab-ac-servo-motor-1500-rpm-2011-1070253/",
+    "notes": "Yaskawa SGMG-75A2AB is a real Sigma-series 7.5 kW AC servo motor model line; plate reading (7500 W, 1500 r/min, 200 V) is consistent with that family. Photo reading was completed before consulting any documentation."
+  }
+}

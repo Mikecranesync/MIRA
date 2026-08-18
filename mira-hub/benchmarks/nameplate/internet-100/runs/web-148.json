@@ -1,0 +1,244 @@
+{
+  "image": "c08r1_12.jpg",
+  "bytes": 109638,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat 12",
+      "catalogNumber": "8210G22",
+      "serialNumber": "F 608884",
+      "equipmentType": "shutoff valve",
+      "confidence": 0.95,
+      "rawText": [
+        "ASCO",
+        "Red-Hat 12",
+        "LISTED 104R",
+        "SHUTOFF V",
+        "REBUILD KIT NO.",
+        "302284",
+        "AIR, INERT GAS (PSI)",
+        "5-150",
+        "WATER (PSI)",
+        "5-150",
+        "SERIAL NO.",
+        "F 608884",
+        "VALVE CATALOG NO.",
+        "8210G22",
+        "WATTS",
+        "HZ",
+        "WATTS",
+        "HZ",
+        "6.1",
+        "60",
+        "8.1",
+        "50",
+        "www.ascovalve.com",
+        "FLORHAM PARK, N.J., U.S.A."
+      ]
+    },
+    "rawText": [
+      "ASCO",
+      "Red-Hat 12",
+      "LISTED 104R",
+      "SHUTOFF V",
+      "REBUILD KIT NO.",
+      "302284",
+      "AIR, INERT GAS (PSI)",
+      "5-150",
+      "WATER (PSI)",
+      "5-150",
+      "SERIAL NO.",
+      "F 608884",
+      "VALVE CATALOG NO.",
+      "8210G22",
+      "WATTS",
+      "HZ",
+      "WATTS",
+      "HZ",
+      "6.1",
+      "60",
+      "8.1",
+      "50",
+      "www.ascovalve.com",
+      "FLORHAM PARK, N.J., U.S.A."
+    ],
+    "values": {
+      "manufacturer": "ASCO",
+      "model": "Red-Hat 12",
+      "catalogNumber": "8210G22",
+      "equipmentType": "shutoff valve",
+      "serialNumber": "F 608884",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ASCO"
+        },
+        {
+          "field": "model",
+          "value": "Red-Hat 12"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "8210G22"
+        },
+        {
+          "field": "serialNumber",
+          "value": "F 608884"
+        },
+        {
+          "field": "equipmentType",
+          "value": "shutoff valve"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 35,
+        "cropBbox": {
+          "left": 176,
+          "top": 14,
+          "width": 620,
+          "height": 605
+        },
+        "imageWidth": 1024,
+        "imageHeight": 768,
+        "cropRotationDeg": 0,
+        "ms": 2072
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2552,
+    "total_ms": 6784
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ASCO",
+      "model": "Red Hat 12",
+      "catalogNumber": "302284",
+      "serialNumber": "F 608884",
+      "equipmentType": "SHUTOFF VALVE",
+      "confidence": 0.95,
+      "rawText": [
+        "ASCO",
+        "Red Hat 12",
+        "LISTED 104R",
+        "SHUTOFF",
+        "REBUILD KIT NO.",
+        "302284",
+        "AIR, INERT GAS (psi)",
+        "5-150",
+        "WATER (PSI)",
+        "5-150",
+        "SERIAL NO.",
+        "F 608884",
+        "VALVE CATALOG NO.",
+        "8210G22",
+        "WATTS",
+        "HZ",
+        "WATTS",
+        "HZ",
+        "6.1",
+        "60",
+        "8.1",
+        "50",
+        "INCL TYPES",
+        "3, 3.5, 4, 6, 4X",
+        "PIPE",
+        "DATE",
+        "1/2",
+        "0550",
+        "LT. OIL (PSI)",
+        "5-100",
+        "www.ascovalve.com",
+        "FLORHAM PARK, N.J., U.S.A."
+      ]
+    },
+    "rawText": [
+      "ASCO",
+      "Red Hat 12",
+      "LISTED 104R",
+      "SHUTOFF",
+      "REBUILD KIT NO.",
+      "302284",
+      "AIR, INERT GAS (psi)",
+      "5-150",
+      "WATER (PSI)",
+      "5-150",
+      "SERIAL NO.",
+      "F 608884",
+      "VALVE CATALOG NO.",
+      "8210G22",
+      "WATTS",
+      "HZ",
+      "WATTS",
+      "HZ",
+      "6.1",
+      "60",
+      "8.1",
+      "50",
+      "INCL TYPES",
+      "3, 3.5, 4, 6, 4X",
+      "PIPE",
+      "DATE",
+      "1/2",
+      "0550",
+      "LT. OIL (PSI)",
+      "5-100",
+      "www.ascovalve.com",
+      "FLORHAM PARK, N.J., U.S.A."
+    ],
+    "values": {
+      "manufacturer": "ASCO",
+      "model": "Red Hat 12",
+      "catalogNumber": "302284",
+      "equipmentType": "SHUTOFF VALVE",
+      "serialNumber": "F 608884",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ASCO"
+        },
+        {
+          "field": "model",
+          "value": "Red Hat 12"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "302284"
+        },
+        {
+          "field": "serialNumber",
+          "value": "F 608884"
+        },
+        {
+          "field": "equipmentType",
+          "value": "SHUTOFF VALVE"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5035
+  }
+}

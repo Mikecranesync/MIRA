@@ -296,6 +296,10 @@ Before any cross-module refactor, migration, consolidation, new service, depende
 
 No PR bumps a version file and no PR hand-writes a changelog line. `/VERSION` and `.github/workflows/version-gate.yml` were **deleted 2026-08-02 (#3064)** — they were the shared line that put every open PR into conflict with every merge. `.github/workflows/version-tag.yml` derives the next semver from the latest `v*` tag plus the merge commit's **Conventional Commit type** (`feat`→minor, `fix`→patch, `feat!`/`BREAKING CHANGE`→major) and creates the tag, the paired `rollback/<date>-vX.Y.Z` checkpoint, and a GitHub Release. Release notes are generated from merged PRs (`.github/release.yml`); `docs/CHANGELOG.md` is frozen as an archive. So: write a well-formed Conventional Commit title, label the PR, and that's the whole authoring duty. See `docs/versioning.md`.
 
+## Multi-Session Protocol
+
+Multiple sessions work this repo in parallel. **Before claiming, isolating, pushing, or closing out any work, follow `.claude/rules/multi-session-protocol.md`** — durable work claims, actual-overlap checks, worktree/branch isolation, the Claude-implements/Codex-reviews adversarial gate (GREEN is exact-SHA, fail-closed, max 3 rounds), human-gated merge/deploy, bounded continuation, and the required session closeout.
+
 ## Git Workflow
 
 `tools/hooks/git-state-guard.sh` (a `PreToolUse(Bash)` hook) blocks git mutators while the repo is mid-rebase or on a detached `HEAD` — **except** `git rebase --continue`/`--abort`/`--skip`/`--quit`, which are always allowed even mid-rebase, since they're the only way to resolve the wedge from inside a single Bash call. If a rebase gets wedged for a reason `--continue`/`--abort` can't resolve, **stop and ask the user** — don't retry with `MIRA_ALLOW_GIT_WEDGE=1`, `git reset --hard`, or by hand-deleting `.git/rebase-merge`. Those are destructive workarounds for a state a human should look at.

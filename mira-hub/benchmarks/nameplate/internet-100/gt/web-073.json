@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-073",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "glare", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Twin City Fan & Blower",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "20-772325-1-1",
+    "equipment_category": "centrifugal fan",
+    "specs": [
+      {"field": "tag_number", "value_verbatim": "1005132", "unit": "", "confidence": "high"},
+      {"field": "mfg_date", "value_verbatim": "09/2020", "unit": "", "confidence": "high"},
+      {"field": "flow", "value_verbatim": "18515", "unit": "CFM", "confidence": "high"},
+      {"field": "static_pressure", "value_verbatim": "7.120", "unit": "", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1760", "unit": "RPM", "confidence": "high"},
+      {"field": "motor_hp_rpm", "value_verbatim": "30 / 1800", "unit": "", "confidence": "high"},
+      {"field": "rotor_weight", "value_verbatim": "156", "unit": "", "confidence": "high"},
+      {"field": "vibration_limit_at_fan_rpm", "value_verbatim": "0.15 IN./SEC.", "unit": "in./sec", "confidence": "high"},
+      {"field": "fan_type_model", "value_verbatim": "EPLFN SW CL3 ARR4", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["AMCA"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

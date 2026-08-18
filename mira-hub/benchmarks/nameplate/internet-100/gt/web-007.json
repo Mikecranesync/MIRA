@@ -1,0 +1,32 @@
+{
+  "sample_id": "web-007",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "faded", "low_contrast", "dirt", "embossed"],
+  "photo_gt": {
+    "manufacturer": "General Electric",
+    "model": "5K444AK456",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "power_hp", "value_verbatim": "75", "unit": "HP", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "880", "unit": "RPM", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "460", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "CYCLES", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3", "unit": "", "confidence": "medium"},
+      {"field": "current", "value_verbatim": "96", "unit": "A", "confidence": "low"},
+      {"field": "type", "value_verbatim": "K", "unit": "", "confidence": "medium"},
+      {"field": "frame", "value_verbatim": "444T", "unit": "", "confidence": "high"},
+      {"field": "code", "value_verbatim": "G", "unit": "", "confidence": "medium"},
+      {"field": "insulation", "value_verbatim": "CLASS B", "unit": "", "confidence": "medium"},
+      {"field": "ambient", "value_verbatim": "MAX AMBIENT 40 °C", "unit": "°C", "confidence": "medium"},
+      {"field": "duty", "value_verbatim": "CONT", "unit": "", "confidence": "low"},
+      {"field": "bearing", "value_verbatim": "70B603", "unit": "", "confidence": "low"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

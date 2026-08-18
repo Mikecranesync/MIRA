@@ -1,0 +1,157 @@
+{
+  "image": "c02r1_07.jpg",
+  "bytes": 119283,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Yaskawa Electric Corporation",
+      "model": "CIMR-AD4A0072AMA",
+      "catalogNumber": null,
+      "serialNumber": "1D1370334630005",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL: CIMR-AD4A0072AMA",
+        "MAX APPL.MOTOR : 37kW/30kW",
+        "INPUT : AC3PH 380-480V 50/60Hz 71A/58A",
+        "OUTPUT : AC3PH 0-480V 0-400Hz 72A/60A",
+        "MASS : 25kg",
+        "O/N : R00033-463-5",
+        "S/N : 1D1370334630005",
+        "FILE NO : E131457",
+        "IP00",
+        "PRG : 1018"
+      ]
+    },
+    "rawText": [
+      "MODEL: CIMR-AD4A0072AMA",
+      "MAX APPL.MOTOR : 37kW/30kW",
+      "INPUT : AC3PH 380-480V 50/60Hz 71A/58A",
+      "OUTPUT : AC3PH 0-480V 0-400Hz 72A/60A",
+      "MASS : 25kg",
+      "O/N : R00033-463-5",
+      "S/N : 1D1370334630005",
+      "FILE NO : E131457",
+      "IP00",
+      "PRG : 1018"
+    ],
+    "values": {
+      "manufacturer": "Yaskawa Electric Corporation",
+      "model": "CIMR-AD4A0072AMA",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "1D1370334630005",
+      "voltage": "380-480V",
+      "current": "71A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CIMR-AD4A0072AMA"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1D1370334630005"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 25,
+        "cropBbox": {
+          "left": 28,
+          "top": 776,
+          "width": 797,
+          "height": 581
+        },
+        "imageWidth": 900,
+        "imageHeight": 2000,
+        "cropRotationDeg": 0,
+        "ms": 1797
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4602,
+    "total_ms": 8923
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Yaskawa Electric Corporation",
+      "model": "CIMR-AD4A0072AMA",
+      "catalogNumber": null,
+      "serialNumber": "R00033-463-5",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL : CIMR-AD4A0072AMA",
+        "MASS : 25kg",
+        "S/N : R00033-463-5",
+        "MAX APPLI:MOTOR : 37kW/30kW",
+        "INPUT : AC3PH 380-480V 50/60Hz 71A/58A",
+        "OUTPUT : AC3PH 0-480V 0-400Hz 72A/60A",
+        "FILE NO : E131457",
+        "PRG : 1018",
+        "S/N : 1D1370334630005",
+        "IPOO",
+        "ASSEMBLED IN INDIA",
+        "RoHS"
+      ]
+    },
+    "rawText": [
+      "MODEL : CIMR-AD4A0072AMA",
+      "MASS : 25kg",
+      "S/N : R00033-463-5",
+      "MAX APPLI:MOTOR : 37kW/30kW",
+      "INPUT : AC3PH 380-480V 50/60Hz 71A/58A",
+      "OUTPUT : AC3PH 0-480V 0-400Hz 72A/60A",
+      "FILE NO : E131457",
+      "PRG : 1018",
+      "S/N : 1D1370334630005",
+      "IPOO",
+      "ASSEMBLED IN INDIA",
+      "RoHS"
+    ],
+    "values": {
+      "manufacturer": "Yaskawa Electric Corporation",
+      "model": "CIMR-AD4A0072AMA",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "R00033-463-5",
+      "voltage": "380-480V",
+      "current": "71A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "RoHS"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CIMR-AD4A0072AMA"
+        },
+        {
+          "field": "serialNumber",
+          "value": "R00033-463-5"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 4763
+  }
+}

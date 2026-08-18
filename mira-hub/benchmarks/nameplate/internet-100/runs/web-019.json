@@ -1,0 +1,161 @@
+{
+  "image": "c03r1_09.jpg",
+  "bytes": 86824,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "AutomationDirect",
+      "model": "E3C-BC17204T",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "PLC",
+      "confidence": 0.95,
+      "rawText": [
+        "E3C-BC17204T",
+        "AutomationDirect",
+        "UL Listed",
+        "CE",
+        "100-240VAC, 50/60Hz",
+        "12VDC ±10%",
+        "24VDC ±10%",
+        "10A",
+        "USB Programming",
+        "USB Devices",
+        "Ethernet",
+        "PLC/PC"
+      ]
+    },
+    "rawText": [
+      "E3C-BC17204T",
+      "AutomationDirect",
+      "UL Listed",
+      "CE",
+      "100-240VAC, 50/60Hz",
+      "12VDC ±10%",
+      "24VDC ±10%",
+      "10A",
+      "USB Programming",
+      "USB Devices",
+      "Ethernet",
+      "PLC/PC"
+    ],
+    "values": {
+      "manufacturer": "AutomationDirect",
+      "model": "E3C-BC17204T",
+      "catalogNumber": null,
+      "equipmentType": "PLC",
+      "serialNumber": null,
+      "voltage": "100-240VAC",
+      "current": "10A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AutomationDirect"
+        },
+        {
+          "field": "model",
+          "value": "E3C-BC17204T"
+        },
+        {
+          "field": "equipmentType",
+          "value": "PLC"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 16,
+        "cropBbox": {
+          "left": 146,
+          "top": 0,
+          "width": 478,
+          "height": 540
+        },
+        "imageWidth": 720,
+        "imageHeight": 540,
+        "cropRotationDeg": 0,
+        "ms": 1251
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1621,
+    "total_ms": 5454
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "AutomationDirect",
+      "model": "EAT-8C117",
+      "catalogNumber": "EAT-8C117",
+      "serialNumber": null,
+      "equipmentType": "PLC",
+      "confidence": 0.95,
+      "rawText": [
+        "EAT-8C117",
+        "AutomationDirect",
+        "CE",
+        "UL Listed",
+        "MADE IN USA",
+        "USB Programming",
+        "Ethernet",
+        "OC/PC"
+      ]
+    },
+    "rawText": [
+      "EAT-8C117",
+      "AutomationDirect",
+      "CE",
+      "UL Listed",
+      "MADE IN USA",
+      "USB Programming",
+      "Ethernet",
+      "OC/PC"
+    ],
+    "values": {
+      "manufacturer": "AutomationDirect",
+      "model": "EAT-8C117",
+      "catalogNumber": "EAT-8C117",
+      "equipmentType": "PLC",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AutomationDirect"
+        },
+        {
+          "field": "model",
+          "value": "EAT-8C117"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EAT-8C117"
+        }
+      ],
+      "needsReview": [
+        "equipmentType",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1865
+  }
+}

@@ -1,0 +1,244 @@
+{
+  "image": "c01r1_04.jpg",
+  "bytes": 377766,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Baldor",
+      "model": "200200",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR",
+        "INDUSTRIAL MOTOR",
+        "BALDOR ELECTRIC CO",
+        "Ft. Smith, AR. MFG. IN U.S.A.",
+        "SPEC. NO. 200200",
+        "094676128",
+        "HP",
+        "2.00",
+        "VOLTS",
+        "230/460",
+        "AMPS",
+        "7.6/3.8",
+        "R.P.M.",
+        "3450",
+        "SER. F",
+        "56",
+        "50/60",
+        "Hz",
+        "PH",
+        "CLASS",
+        "FRAME",
+        "53",
+        "CODE",
+        "DES",
+        "CLASS",
+        "NEM. NOM. EFF.",
+        "25%",
+        "P.F.",
+        "80",
+        "RATING",
+        "MC-200200",
+        "usable at 208V",
+        "BEARINGS",
+        "DC 5203",
+        "CODE",
+        "5200",
+        "ENCL.",
+        "3N",
+        "FS00177696",
+        "WIPER"
+      ]
+    },
+    "rawText": [
+      "BALDOR",
+      "INDUSTRIAL MOTOR",
+      "BALDOR ELECTRIC CO",
+      "Ft. Smith, AR. MFG. IN U.S.A.",
+      "SPEC. NO. 200200",
+      "094676128",
+      "HP",
+      "2.00",
+      "VOLTS",
+      "230/460",
+      "AMPS",
+      "7.6/3.8",
+      "R.P.M.",
+      "3450",
+      "SER. F",
+      "56",
+      "50/60",
+      "Hz",
+      "PH",
+      "CLASS",
+      "FRAME",
+      "53",
+      "CODE",
+      "DES",
+      "CLASS",
+      "NEM. NOM. EFF.",
+      "25%",
+      "P.F.",
+      "80",
+      "RATING",
+      "MC-200200",
+      "usable at 208V",
+      "BEARINGS",
+      "DC 5203",
+      "CODE",
+      "5200",
+      "ENCL.",
+      "3N",
+      "FS00177696",
+      "WIPER"
+    ],
+    "values": {
+      "manufacturer": "Baldor",
+      "model": "200200",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": null,
+      "voltage": "208V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Baldor"
+        },
+        {
+          "field": "model",
+          "value": "200200"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 13,
+        "cropBbox": {
+          "left": 496,
+          "top": 453,
+          "width": 858,
+          "height": 655
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 0,
+        "ms": 1665
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2713,
+    "total_ms": 11026
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Baldor",
+      "model": "656116",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR",
+        "MOTOR",
+        "656116",
+        "VOLTS",
+        "230",
+        "PHASE",
+        "3",
+        "RPM",
+        "1750",
+        "HP",
+        "1",
+        "CLASS",
+        "B",
+        "NEMA",
+        "EEEE",
+        "UL",
+        "CSA",
+        "WARNING",
+        "MOTOR MUST BE WIRINGED IN ACCORDANCE WITH LOCAL, STATE AND FEDERAL ELECTRICAL CODES. IMPROPER WIRING WILL VOID WARRANTY. DO NOT EXCEED VOLTAGE RATING. DO NOT USE WITH NON-GROUNDED OUTLETS.",
+        "CE",
+        "CAUTION",
+        "AVERTISSEMENT",
+        "AVISO"
+      ]
+    },
+    "rawText": [
+      "BALDOR",
+      "MOTOR",
+      "656116",
+      "VOLTS",
+      "230",
+      "PHASE",
+      "3",
+      "RPM",
+      "1750",
+      "HP",
+      "1",
+      "CLASS",
+      "B",
+      "NEMA",
+      "EEEE",
+      "UL",
+      "CSA",
+      "WARNING",
+      "MOTOR MUST BE WIRINGED IN ACCORDANCE WITH LOCAL, STATE AND FEDERAL ELECTRICAL CODES. IMPROPER WIRING WILL VOID WARRANTY. DO NOT EXCEED VOLTAGE RATING. DO NOT USE WITH NON-GROUNDED OUTLETS.",
+      "CE",
+      "CAUTION",
+      "AVERTISSEMENT",
+      "AVISO"
+    ],
+    "values": {
+      "manufacturer": "Baldor",
+      "model": "656116",
+      "catalogNumber": null,
+      "equipmentType": "Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE, CSA"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Baldor"
+        },
+        {
+          "field": "model",
+          "value": "656116"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5014
+  }
+}

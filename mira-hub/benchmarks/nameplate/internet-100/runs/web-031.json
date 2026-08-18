@@ -1,0 +1,126 @@
+{
+  "image": "c07r1_13.jpg",
+  "bytes": 63820,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Siemens",
+      "model": "CRU1E 4222",
+      "catalogNumber": "3RA21040-4XK",
+      "serialNumber": null,
+      "equipmentType": "Contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "CRU1E 4222",
+        "3RA21040-4XK",
+        "SIEMENS"
+      ]
+    },
+    "rawText": [
+      "CRU1E 4222",
+      "3RA21040-4XK",
+      "SIEMENS"
+    ],
+    "values": {
+      "manufacturer": "Siemens",
+      "model": "CRU1E 4222",
+      "catalogNumber": "3RA21040-4XK",
+      "equipmentType": "Contactor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Siemens"
+        },
+        {
+          "field": "model",
+          "value": "CRU1E 4222"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3RA21040-4XK"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 10,
+        "cropBbox": {
+          "left": 101,
+          "top": 29,
+          "width": 389,
+          "height": 714
+        },
+        "imageWidth": 716,
+        "imageHeight": 807,
+        "cropRotationDeg": 0,
+        "ms": 1860
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3905,
+    "total_ms": 6624
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "CRU1E4222",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "CRU1E4222",
+        "SIEMENS"
+      ]
+    },
+    "rawText": [
+      "CRU1E4222",
+      "SIEMENS"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "CRU1E4222",
+      "catalogNumber": null,
+      "equipmentType": "Contactor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "CRU1E4222"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1493
+  }
+}

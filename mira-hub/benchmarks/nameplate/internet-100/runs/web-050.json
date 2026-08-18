@@ -1,0 +1,150 @@
+{
+  "image": "c04r1_04.webp",
+  "bytes": 56798,
+  "mime": "image/webp",
+  "improved": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "SGMG-75A2AB",
+      "catalogNumber": null,
+      "serialNumber": "B013YC774610003",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE SGMG-75A2AB",
+        "7500 W | 48 N•m | 1500 r/min",
+        "54.7 A | 200 V CONT. ins. F",
+        "O/N 3J2447 001 -003",
+        "S/N B013YC774610003",
+        "DATE 1311",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE SGMG-75A2AB",
+      "7500 W | 48 N•m | 1500 r/min",
+      "54.7 A | 200 V CONT. ins. F",
+      "O/N 3J2447 001 -003",
+      "S/N B013YC774610003",
+      "DATE 1311",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "SGMG-75A2AB",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "B013YC774610003",
+      "voltage": "200V",
+      "current": "54.7A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "SGMG-75A2AB"
+        },
+        {
+          "field": "serialNumber",
+          "value": "B013YC774610003"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 13,
+        "cropBbox": {
+          "left": 796,
+          "top": 175,
+          "width": 498,
+          "height": 331
+        },
+        "imageWidth": 1600,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 2342
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2572,
+    "total_ms": 6022
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "YASKAWА ELECTRIC",
+      "model": "SGMG-75A2AB",
+      "catalogNumber": null,
+      "serialNumber": "B013YC774610003",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE SGMG-75A2AB",
+        "7500 W 48 N·m 1500 r/min",
+        "54.7 A 200 V cont.Ins. F",
+        "O/N 3J2447 001 -003",
+        "S/N B013YC774610003 DATE 1311",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE SGMG-75A2AB",
+      "7500 W 48 N·m 1500 r/min",
+      "54.7 A 200 V cont.Ins. F",
+      "O/N 3J2447 001 -003",
+      "S/N B013YC774610003 DATE 1311",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "YASKAWА ELECTRIC",
+      "model": "SGMG-75A2AB",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "B013YC774610003",
+      "voltage": "200V",
+      "current": "54.7A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "SGMG-75A2AB"
+        },
+        {
+          "field": "serialNumber",
+          "value": "B013YC774610003"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3392
+  }
+}

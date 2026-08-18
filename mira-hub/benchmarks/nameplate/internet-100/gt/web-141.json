@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-141",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "Yaskawa Electric",
+    "model": "SGMGH-44A2A-YR18",
+    "catalogNumber": "unknown",
+    "serialNumber": "B0168F909210001",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "power_w", "value_verbatim": "4400", "unit": "W", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "28.4", "unit": "N·m", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1500", "unit": "r/min", "confidence": "high"},
+      {"field": "current", "value_verbatim": "45", "unit": "A", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "200", "unit": "V", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "CONT", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "F", "unit": "", "confidence": "high"},
+      {"field": "order_number", "value_verbatim": "R16622 527", "unit": "", "confidence": "medium"},
+      {"field": "date", "value_verbatim": "1608", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

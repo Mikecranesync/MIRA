@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-067",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "high_resolution", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Square D",
+    "model": "FY14020A",
+    "catalogNumber": "FY14020A",
+    "serialNumber": "unknown",
+    "equipment_category": "breaker",
+    "specs": [
+      {"field": "current", "value_verbatim": "20", "unit": "A", "confidence": "high"},
+      {"field": "poles", "value_verbatim": "1-POLE UNIT", "unit": "", "confidence": "medium"},
+      {"field": "interrupting_rating_120v", "value_verbatim": "120 AC 18kA AIR", "unit": "kA", "confidence": "medium"},
+      {"field": "interrupting_rating_277v", "value_verbatim": "277 AC 14kA AIR", "unit": "kA", "confidence": "medium"},
+      {"field": "wire_spec", "value_verbatim": "Use 60/75°C Wire #14-#4 AWG Cu/Al", "unit": "", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "Torque to 35 lb-in (4 N·m)", "unit": "lb-in", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "96I34", "unit": "", "confidence": "low"}
+    ],
+    "marks": ["UL", "CSA"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

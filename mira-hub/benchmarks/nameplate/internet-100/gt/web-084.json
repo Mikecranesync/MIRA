@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-084",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "curved_surface", "faded", "scratched"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "CDM2E20-50A-H7C",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "MAX. PRESS 9.9 kgf/cm²", "unit": "kgf/cm²", "confidence": "high"},
+      {"field": "pressure", "value_verbatim": "150 PSI", "unit": "PSI", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

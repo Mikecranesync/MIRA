@@ -1,0 +1,19 @@
+{
+  "sample_id": "web-102",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "rotated_90", "tiny_text", "small_in_scene", "low_resolution"],
+  "photo_gt": {
+    "manufacturer": "SICK",
+    "model": "WT18-P410",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "photoelectric_sensor",
+    "specs": [],
+    "marks": ["CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Small blue photoelectric sensor on a mounting bracket; the label occupies a tiny area of the frame and its text runs vertically (rotated 90 deg). 'WT18-P410' is legible at the top of the label and a CE mark is visible beside the logo block. The remaining label lines (supply voltage and pin assignment list) are present but too small to transcribe with confidence, so no specs are recorded. marks_complete=false because parts of the label area are illegible."
+}

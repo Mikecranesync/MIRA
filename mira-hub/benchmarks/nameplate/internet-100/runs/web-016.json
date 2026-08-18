@@ -1,0 +1,187 @@
+{
+  "image": "c02r1_02.jpg",
+  "bytes": 122518,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22F-4A4P2N103 SERIES A",
+      "catalogNumber": "22F-4A4P2N103",
+      "serialNumber": null,
+      "equipmentType": "AC Drive",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22F-4A4P2N103 SERIES A",
+        "IP20/UL Open type (-rated to 40°C - 101°C Ambient)",
+        "Refer to user manual",
+        "Motor Rating: 0.75kW/1.0 HP",
+        "Input 1 Phase: 200-240V, 48-63Hz",
+        "Input Voltage Range: 180-264",
+        "Amps.: 8.2",
+        "Output: 3 Phase, 0-400Hz",
+        "AC Voltage Range: 4.2-230",
+        "Continous Current: 100A",
+        "Short Circuit Current: 1000A",
+        "Use 75°C Oil Wire",
+        "Torque: 14.7 Nm (13.2 in-lbs)",
+        "MADE IN CHINA",
+        "CAUTION",
+        "HOT surfaces can cause severe burns",
+        "FPN:2.01",
+        "MFG:2011 ON OCT 23",
+        "SN:FAP2N103W440023"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22F-4A4P2N103 SERIES A",
+      "IP20/UL Open type (-rated to 40°C - 101°C Ambient)",
+      "Refer to user manual",
+      "Motor Rating: 0.75kW/1.0 HP",
+      "Input 1 Phase: 200-240V, 48-63Hz",
+      "Input Voltage Range: 180-264",
+      "Amps.: 8.2",
+      "Output: 3 Phase, 0-400Hz",
+      "AC Voltage Range: 4.2-230",
+      "Continous Current: 100A",
+      "Short Circuit Current: 1000A",
+      "Use 75°C Oil Wire",
+      "Torque: 14.7 Nm (13.2 in-lbs)",
+      "MADE IN CHINA",
+      "CAUTION",
+      "HOT surfaces can cause severe burns",
+      "FPN:2.01",
+      "MFG:2011 ON OCT 23",
+      "SN:FAP2N103W440023"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22F-4A4P2N103 SERIES A",
+      "catalogNumber": "22F-4A4P2N103",
+      "equipmentType": "AC Drive",
+      "serialNumber": null,
+      "voltage": "200-240V",
+      "current": "100A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "22F-4A4P2N103 SERIES A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22F-4A4P2N103"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 42,
+        "cropBbox": {
+          "left": 0,
+          "top": 103,
+          "width": 768,
+          "height": 856
+        },
+        "imageWidth": 768,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 2268
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4580,
+    "total_ms": 10000
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22F-4A4P2N103 SERIES A",
+      "catalogNumber": "22F-4A4P2N103",
+      "serialNumber": null,
+      "equipmentType": "Motor Drive",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22F-4A4P2N103 SERIES A",
+        "Refer to user manual",
+        "Motor Rating: 0.75kW/1.0HP",
+        "Input: 3 Phase, 200-240V, 48-63Hz",
+        "Amp: 8.2",
+        "Outputs: 3 Phase, 0-230",
+        "Voltage Range: 0-230",
+        "Continuous Amps: 4.2",
+        "Short Circuit Current: 100A",
+        "Insulation Class: A",
+        "Use 75°C to 105°C",
+        "Torque: 1.47 in-lbs (1.6 Nm)",
+        "MADE IN CHINA",
+        "AB Allen-Bradley",
+        "CAUTION",
+        "HOT surfaces can cause severe burns"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22F-4A4P2N103 SERIES A",
+      "Refer to user manual",
+      "Motor Rating: 0.75kW/1.0HP",
+      "Input: 3 Phase, 200-240V, 48-63Hz",
+      "Amp: 8.2",
+      "Outputs: 3 Phase, 0-230",
+      "Voltage Range: 0-230",
+      "Continuous Amps: 4.2",
+      "Short Circuit Current: 100A",
+      "Insulation Class: A",
+      "Use 75°C to 105°C",
+      "Torque: 1.47 in-lbs (1.6 Nm)",
+      "MADE IN CHINA",
+      "AB Allen-Bradley",
+      "CAUTION",
+      "HOT surfaces can cause severe burns"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22F-4A4P2N103 SERIES A",
+      "catalogNumber": "22F-4A4P2N103",
+      "equipmentType": "Motor Drive",
+      "serialNumber": null,
+      "voltage": "200-240V",
+      "current": "100A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "22F-4A4P2N103 SERIES A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22F-4A4P2N103"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 4646
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-064",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["small_in_scene", "rotated_90", "angled", "low_resolution", "glare"],
+  "photo_gt": {
+    "manufacturer": "Leeson",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

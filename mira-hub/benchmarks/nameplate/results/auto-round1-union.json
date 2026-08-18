@@ -1,0 +1,677 @@
+{
+  "ranAt": "2026-08-16T02:21:09.879Z",
+  "source": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+  "sourceInfo": {
+    "format": "jpeg",
+    "width": 3000,
+    "height": 4000,
+    "exifOrientation": 1,
+    "megapixels": 12,
+    "bytes": 2861578
+  },
+  "detector": {
+    "model": "PP-OCRv5_mobile_det",
+    "nBoxes": 13,
+    "minScore": 0.5,
+    "coldSecs": 2.35,
+    "warmSecs": 2.31,
+    "peakRssMib": 756.7,
+    "polys": [
+      [
+        [
+          1457,
+          2050
+        ],
+        [
+          1913,
+          2050
+        ],
+        [
+          1913,
+          2433
+        ],
+        [
+          1457,
+          2433
+        ]
+      ],
+      [
+        [
+          537,
+          2104
+        ],
+        [
+          588,
+          2104
+        ],
+        [
+          588,
+          2188
+        ],
+        [
+          537,
+          2188
+        ]
+      ],
+      [
+        [
+          570,
+          2044
+        ],
+        [
+          631,
+          2016
+        ],
+        [
+          680,
+          2119
+        ],
+        [
+          620,
+          2146
+        ]
+      ],
+      [
+        [
+          597,
+          1864
+        ],
+        [
+          712,
+          1851
+        ],
+        [
+          737,
+          2048
+        ],
+        [
+          621,
+          2062
+        ]
+      ],
+      [
+        [
+          2186,
+          1804
+        ],
+        [
+          2374,
+          1804
+        ],
+        [
+          2374,
+          2179
+        ],
+        [
+          2186,
+          2179
+        ]
+      ],
+      [
+        [
+          737,
+          1639
+        ],
+        [
+          844,
+          1625
+        ],
+        [
+          877,
+          1880
+        ],
+        [
+          770,
+          1893
+        ]
+      ],
+      [
+        [
+          399,
+          1648
+        ],
+        [
+          506,
+          1615
+        ],
+        [
+          610,
+          1941
+        ],
+        [
+          503,
+          1973
+        ]
+      ],
+      [
+        [
+          385,
+          1603
+        ],
+        [
+          598,
+          2103
+        ],
+        [
+          494,
+          2146
+        ],
+        [
+          281,
+          1645
+        ]
+      ],
+      [
+        [
+          1965,
+          1437
+        ],
+        [
+          2187,
+          1440
+        ],
+        [
+          2172,
+          2438
+        ],
+        [
+          1951,
+          2435
+        ]
+      ],
+      [
+        [
+          625,
+          1387
+        ],
+        [
+          731,
+          1352
+        ],
+        [
+          837,
+          1657
+        ],
+        [
+          731,
+          1693
+        ]
+      ],
+      [
+        [
+          634,
+          1352
+        ],
+        [
+          742,
+          1695
+        ],
+        [
+          636,
+          1727
+        ],
+        [
+          528,
+          1384
+        ]
+      ],
+      [
+        [
+          439,
+          1371
+        ],
+        [
+          541,
+          1371
+        ],
+        [
+          541,
+          1538
+        ],
+        [
+          439,
+          1538
+        ]
+      ],
+      [
+        [
+          1603,
+          1196
+        ],
+        [
+          1799,
+          1184
+        ],
+        [
+          1849,
+          1954
+        ],
+        [
+          1653,
+          1966
+        ]
+      ]
+    ],
+    "scores": [
+      0.7094339779881899,
+      0.6660381411080294,
+      0.60707090718721,
+      0.7083191704442385,
+      0.8758591928778813,
+      0.7029623339530479,
+      0.6361059626066683,
+      0.6195800836828185,
+      0.8979613444291293,
+      0.7117085934046647,
+      0.6636475898730313,
+      0.7636931942348136,
+      0.8075934077162132
+    ]
+  },
+  "clustering": {
+    "strategy": "union_all",
+    "gapPx": 60,
+    "padPx": 40,
+    "clusterSizes": [
+      9,
+      4
+    ]
+  },
+  "autoRect": {
+    "originalSpace": {
+      "left": 241,
+      "top": 1144,
+      "width": 2173,
+      "height": 1334
+    },
+    "rotatedSpace": {
+      "left": 1144,
+      "top": 586,
+      "width": 1334,
+      "height": 2173
+    },
+    "uprightRotationDeg": 270,
+    "iouVsHumanLabel": 0.6800661583577713,
+    "coversHumanSpecRect": true
+  },
+  "crop": {
+    "bytes": 697836,
+    "width": 1334,
+    "height": 2173,
+    "jpegQuality": 95
+  },
+  "reader": "full2 (semantic+ocr)",
+  "reps": [
+    {
+      "rep": 0,
+      "ok": true,
+      "ms": 5143,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM911AC-D",
+        "equipmentType": "HOLLOW ROTARY ACTUATOR",
+        "voltage": "3.87VDC",
+        "current": "1.27A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": "INS.Class A",
+        "marks": "CE, UKCA, UL"
+      },
+      "score": {
+        "fixtureId": "orientalmotor_dgm200r",
+        "variant": "auto_label__full2",
+        "fields": [
+          {
+            "field": "manufacturer",
+            "group": "identity",
+            "expected": "Orientalmotor",
+            "got": "Orientalmotor",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "model",
+            "group": "identity",
+            "expected": "DGM200R-AZAC",
+            "got": "DGM200R-AZAC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "catalogNumber",
+            "group": "identity",
+            "expected": "AZM911AC-D",
+            "got": "AZM911AC-D",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "equipmentType",
+            "group": "identity",
+            "expected": "HOLLOW ROTARY ACTUATOR",
+            "got": "HOLLOW ROTARY ACTUATOR",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "voltage",
+            "group": "spec",
+            "expected": "3.87VDC",
+            "got": "3.87VDC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "current",
+            "group": "spec",
+            "expected": "1.27A",
+            "got": "1.27A",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "resolution",
+            "group": "spec",
+            "expected": "0.01°/STEP",
+            "got": "0.01°/STEP",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "serialNumber",
+            "group": "spec",
+            "expected": "QS8 I119701",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "ambient",
+            "group": "spec",
+            "expected": "Amb.40°C",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "insulation",
+            "group": "spec",
+            "expected": "INS.Class A",
+            "got": "INS.Class A",
+            "verdict": "exact",
+            "hallucinated": false
+          }
+        ],
+        "identity": {
+          "hits": 4,
+          "total": 4,
+          "pct": 100
+        },
+        "spec": {
+          "hits": 4,
+          "total": 6,
+          "pct": 66.7
+        },
+        "marks": {
+          "verdict": "exact",
+          "expected": "UL, CE, UKCA",
+          "got": "CE, UKCA, UL"
+        },
+        "hallucinations": 0,
+        "hallucinatedValues": [],
+        "falsePositives": 0
+      }
+    },
+    {
+      "rep": 1,
+      "ok": true,
+      "ms": 4799,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM911AC-D",
+        "equipmentType": "HOLLOW ROTARY ACTUATOR",
+        "voltage": "3.87VDC",
+        "current": "1.27A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": "INS.Class A",
+        "marks": "CE, UKCA, UL"
+      },
+      "score": {
+        "fixtureId": "orientalmotor_dgm200r",
+        "variant": "auto_label__full2",
+        "fields": [
+          {
+            "field": "manufacturer",
+            "group": "identity",
+            "expected": "Orientalmotor",
+            "got": "Orientalmotor",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "model",
+            "group": "identity",
+            "expected": "DGM200R-AZAC",
+            "got": "DGM200R-AZAC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "catalogNumber",
+            "group": "identity",
+            "expected": "AZM911AC-D",
+            "got": "AZM911AC-D",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "equipmentType",
+            "group": "identity",
+            "expected": "HOLLOW ROTARY ACTUATOR",
+            "got": "HOLLOW ROTARY ACTUATOR",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "voltage",
+            "group": "spec",
+            "expected": "3.87VDC",
+            "got": "3.87VDC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "current",
+            "group": "spec",
+            "expected": "1.27A",
+            "got": "1.27A",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "resolution",
+            "group": "spec",
+            "expected": "0.01°/STEP",
+            "got": "0.01°/STEP",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "serialNumber",
+            "group": "spec",
+            "expected": "QS8 I119701",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "ambient",
+            "group": "spec",
+            "expected": "Amb.40°C",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "insulation",
+            "group": "spec",
+            "expected": "INS.Class A",
+            "got": "INS.Class A",
+            "verdict": "exact",
+            "hallucinated": false
+          }
+        ],
+        "identity": {
+          "hits": 4,
+          "total": 4,
+          "pct": 100
+        },
+        "spec": {
+          "hits": 4,
+          "total": 6,
+          "pct": 66.7
+        },
+        "marks": {
+          "verdict": "exact",
+          "expected": "UL, CE, UKCA",
+          "got": "CE, UKCA, UL"
+        },
+        "hallucinations": 0,
+        "hallucinatedValues": [],
+        "falsePositives": 0
+      }
+    },
+    {
+      "rep": 2,
+      "ok": true,
+      "ms": 4457,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": "AZM911AC-D",
+        "equipmentType": "HOLLOW ROTARY ACTUATOR",
+        "voltage": "3.87VDC",
+        "current": "1.27A",
+        "resolution": "0.01°/STEP",
+        "serialNumber": null,
+        "ambient": null,
+        "insulation": "INS.Class A",
+        "marks": "CE, UKCA"
+      },
+      "score": {
+        "fixtureId": "orientalmotor_dgm200r",
+        "variant": "auto_label__full2",
+        "fields": [
+          {
+            "field": "manufacturer",
+            "group": "identity",
+            "expected": "Orientalmotor",
+            "got": "Orientalmotor",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "model",
+            "group": "identity",
+            "expected": "DGM200R-AZAC",
+            "got": "DGM200R-AZAC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "catalogNumber",
+            "group": "identity",
+            "expected": "AZM911AC-D",
+            "got": "AZM911AC-D",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "equipmentType",
+            "group": "identity",
+            "expected": "HOLLOW ROTARY ACTUATOR",
+            "got": "HOLLOW ROTARY ACTUATOR",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "voltage",
+            "group": "spec",
+            "expected": "3.87VDC",
+            "got": "3.87VDC",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "current",
+            "group": "spec",
+            "expected": "1.27A",
+            "got": "1.27A",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "resolution",
+            "group": "spec",
+            "expected": "0.01°/STEP",
+            "got": "0.01°/STEP",
+            "verdict": "exact",
+            "hallucinated": false
+          },
+          {
+            "field": "serialNumber",
+            "group": "spec",
+            "expected": "QS8 I119701",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "ambient",
+            "group": "spec",
+            "expected": "Amb.40°C",
+            "got": null,
+            "verdict": "missed",
+            "hallucinated": false
+          },
+          {
+            "field": "insulation",
+            "group": "spec",
+            "expected": "INS.Class A",
+            "got": "INS.Class A",
+            "verdict": "exact",
+            "hallucinated": false
+          }
+        ],
+        "identity": {
+          "hits": 4,
+          "total": 4,
+          "pct": 100
+        },
+        "spec": {
+          "hits": 4,
+          "total": 6,
+          "pct": 66.7
+        },
+        "marks": {
+          "verdict": "missed",
+          "expected": "UL, CE, UKCA",
+          "got": "CE, UKCA"
+        },
+        "hallucinations": 0,
+        "hallucinatedValues": [],
+        "falsePositives": 0
+      }
+    }
+  ],
+  "gate": {
+    "current127A": "3/3",
+    "hallucinations": 0,
+    "rohsFabricated": false
+  }
+}

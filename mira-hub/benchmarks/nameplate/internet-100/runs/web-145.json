@@ -1,0 +1,156 @@
+{
+  "image": "c12r1_06.jpg",
+  "bytes": 1770600,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ROSEN FILTER CO",
+      "model": "MODEL",
+      "catalogNumber": null,
+      "serialNumber": "SERIAL",
+      "equipmentType": "TEEL TALE FILTER",
+      "confidence": 0.95,
+      "rawText": [
+        "THE",
+        "ROSEN FILTER CO.",
+        "HAZEL PARK, MICH.",
+        "MODEL",
+        "SERIAL",
+        "TEEL TALE FILTER ©",
+        "U.S. PATENT 8053869",
+        "OTHER PATENTS",
+        "PENDING"
+      ]
+    },
+    "rawText": [
+      "THE",
+      "ROSEN FILTER CO.",
+      "HAZEL PARK, MICH.",
+      "MODEL",
+      "SERIAL",
+      "TEEL TALE FILTER ©",
+      "U.S. PATENT 8053869",
+      "OTHER PATENTS",
+      "PENDING"
+    ],
+    "values": {
+      "manufacturer": "ROSEN FILTER CO",
+      "model": "MODEL",
+      "catalogNumber": null,
+      "equipmentType": "TEEL TALE FILTER",
+      "serialNumber": "SERIAL",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ROSEN FILTER CO"
+        },
+        {
+          "field": "model",
+          "value": "MODEL"
+        },
+        {
+          "field": "serialNumber",
+          "value": "SERIAL"
+        },
+        {
+          "field": "equipmentType",
+          "value": "TEEL TALE FILTER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 10,
+        "cropBbox": {
+          "left": 132,
+          "top": 0,
+          "width": 2874,
+          "height": 2093
+        },
+        "imageWidth": 3840,
+        "imageHeight": 3071,
+        "cropRotationDeg": 0,
+        "ms": 2295
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 10746,
+    "total_ms": 13324
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "THE ROAEN FILTER CO",
+      "model": "MODEL",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "FILTER",
+      "confidence": 0.95,
+      "rawText": [
+        "THE",
+        "ROAEN FILTER CO.",
+        "HAZEL PARK, MICH.",
+        "MODEL",
+        "SERIA",
+        "TEEL TALE FILTER ©",
+        "U.S. PATENT 8053889",
+        "OTHER PATENTS",
+        "PENDING"
+      ]
+    },
+    "rawText": [
+      "THE",
+      "ROAEN FILTER CO.",
+      "HAZEL PARK, MICH.",
+      "MODEL",
+      "SERIA",
+      "TEEL TALE FILTER ©",
+      "U.S. PATENT 8053889",
+      "OTHER PATENTS",
+      "PENDING"
+    ],
+    "values": {
+      "manufacturer": "THE ROAEN FILTER CO",
+      "model": "MODEL",
+      "catalogNumber": null,
+      "equipmentType": "FILTER",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "THE ROAEN FILTER CO"
+        },
+        {
+          "field": "model",
+          "value": "MODEL"
+        },
+        {
+          "field": "equipmentType",
+          "value": "FILTER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2403
+  }
+}

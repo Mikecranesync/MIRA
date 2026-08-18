@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-112",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "YASKAWA ELECTRIC",
+    "model": "USAGED-02AS2K",
+    "catalogNumber": "unknown",
+    "serialNumber": "311449-18-001",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "power_w", "value_verbatim": "W 150", "unit": "W", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "N·m 0.98", "unit": "N·m", "confidence": "high"},
+      {"field": "current", "value_verbatim": "A 3.0", "unit": "A", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "r/min 1500", "unit": "r/min", "confidence": "high"},
+      {"field": "date", "value_verbatim": "DATE 9310", "unit": "", "confidence": "high"},
+      {"field": "label_part_number", "value_verbatim": "N.K7697-1N", "unit": "", "confidence": "medium"},
+      {"field": "origin", "value_verbatim": "JAPAN", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

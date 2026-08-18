@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-098",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "embossed", "faded", "low_contrast", "corrosion"],
+  "photo_gt": {
+    "manufacturer": "Goulds Pumps",
+    "model": "3196",
+    "catalogNumber": "unknown",
+    "serialNumber": "759F010",
+    "equipment_category": "pump",
+    "specs": [
+      {"field": "size", "value_verbatim": "3X4-10", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

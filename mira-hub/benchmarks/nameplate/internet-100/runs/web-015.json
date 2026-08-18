@@ -1,0 +1,164 @@
+{
+  "image": "c07r1_09.jpg",
+  "bytes": 41744,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BANNER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "phot photoelectric specialist",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL",
+        "RSBF",
+        "BANNER",
+        "the photoelectric specialist",
+        "MAXI-BEAM®",
+        "POWER BLOCK: RPBT",
+        "SOURCING OUTPUT",
+        "Sinking Output",
+        "10 TO 30",
+        "VOLTS DC",
+        "OUTPUT",
+        "OFF",
+        "OUTPUT",
+        "ON"
+      ]
+    },
+    "rawText": [
+      "MODEL",
+      "RSBF",
+      "BANNER",
+      "the photoelectric specialist",
+      "MAXI-BEAM®",
+      "POWER BLOCK: RPBT",
+      "SOURCING OUTPUT",
+      "Sinking Output",
+      "10 TO 30",
+      "VOLTS DC",
+      "OUTPUT",
+      "OFF",
+      "OUTPUT",
+      "ON"
+    ],
+    "values": {
+      "manufacturer": "BANNER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "equipmentType": "phot photoelectric specialist",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BANNER"
+        },
+        {
+          "field": "model",
+          "value": "RSBF"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 16,
+        "cropBbox": {
+          "left": 102,
+          "top": 44,
+          "width": 260,
+          "height": 407
+        },
+        "imageWidth": 465,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 1896
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3261,
+    "total_ms": 5202
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "HANNOVER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "POWER BLOCK",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL",
+        "RSBF",
+        "MAXI-BEAM®",
+        "POWER BLOCK: RPBT",
+        "SOURCING OUTPUT",
+        "SINKING OUTPUT",
+        "10 to 30",
+        "VOLTS DC",
+        "OUTPUT",
+        "OFF",
+        "OUTPUT",
+        "ON"
+      ]
+    },
+    "rawText": [
+      "MODEL",
+      "RSBF",
+      "MAXI-BEAM®",
+      "POWER BLOCK: RPBT",
+      "SOURCING OUTPUT",
+      "SINKING OUTPUT",
+      "10 to 30",
+      "VOLTS DC",
+      "OUTPUT",
+      "OFF",
+      "OUTPUT",
+      "ON"
+    ],
+    "values": {
+      "manufacturer": "HANNOVER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "equipmentType": "POWER BLOCK",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "RSBF"
+        },
+        {
+          "field": "equipmentType",
+          "value": "POWER BLOCK"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1852
+  }
+}

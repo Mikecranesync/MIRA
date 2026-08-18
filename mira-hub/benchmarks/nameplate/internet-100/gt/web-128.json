@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-128",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["rotated_90", "angled", "tiny_text", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "QS18VP6LVQ7",
+    "catalogNumber": "QS18VP6LVQ7",
+    "serialNumber": "unknown",
+    "equipment_category": "sensor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "10-30VDC", "unit": "VDC", "confidence": "medium"}
+    ],
+    "marks": ["CE", "UL"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

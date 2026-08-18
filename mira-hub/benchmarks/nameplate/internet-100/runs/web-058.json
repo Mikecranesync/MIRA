@@ -1,0 +1,192 @@
+{
+  "image": "c10r1_11.jpg",
+  "bytes": 838519,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Mielewerke A.G.",
+      "model": "Trommelwaschmaschine",
+      "catalogNumber": "Wa. 700",
+      "serialNumber": null,
+      "equipmentType": "Trommelwaschmaschine",
+      "confidence": 0.95,
+      "rawText": [
+        "Mielewerke A.G. Trommelwaschmaschine",
+        "Type T. Wa. 700",
+        "Nr.",
+        "Drehstrom",
+        "Motor",
+        "2800",
+        "Type",
+        "Mw. 67-2 K",
+        "V 220 / 380 V",
+        "1.6/0.9",
+        "kW",
+        "0.22",
+        "Wattaufnahme",
+        "500",
+        "Hz",
+        "50",
+        "Gütersloh Westf."
+      ]
+    },
+    "rawText": [
+      "Mielewerke A.G. Trommelwaschmaschine",
+      "Type T. Wa. 700",
+      "Nr.",
+      "Drehstrom",
+      "Motor",
+      "2800",
+      "Type",
+      "Mw. 67-2 K",
+      "V 220 / 380 V",
+      "1.6/0.9",
+      "kW",
+      "0.22",
+      "Wattaufnahme",
+      "500",
+      "Hz",
+      "50",
+      "Gütersloh Westf."
+    ],
+    "values": {
+      "manufacturer": "Mielewerke A.G.",
+      "model": "Trommelwaschmaschine",
+      "catalogNumber": "Wa. 700",
+      "equipmentType": "Trommelwaschmaschine",
+      "serialNumber": null,
+      "voltage": "380V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Mielewerke A.G."
+        },
+        {
+          "field": "model",
+          "value": "Trommelwaschmaschine"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "Wa. 700"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Trommelwaschmaschine"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 38,
+        "cropBbox": {
+          "left": 646,
+          "top": 16,
+          "width": 825,
+          "height": 1880
+        },
+        "imageWidth": 1536,
+        "imageHeight": 2048,
+        "cropRotationDeg": 0,
+        "ms": 2064
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4140,
+    "total_ms": 8535
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Mielewerke A.G.",
+      "model": "Trommelwasmaschine Type T. Wa. 700",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Trommelwasmaschine",
+      "confidence": 0.95,
+      "rawText": [
+        "Mielewerke A.G.",
+        "Trommelwasmaschine",
+        "Type T. Wa. 700",
+        "Nr.",
+        "Drehstrom",
+        "Motor",
+        "n",
+        "2800",
+        "Type",
+        "kW",
+        "Hz",
+        "V 220 / 380 V",
+        "A",
+        "15.0/9",
+        "kW",
+        "0.32",
+        "Wattaufnahme",
+        "500",
+        "Gütersloh Westf."
+      ]
+    },
+    "rawText": [
+      "Mielewerke A.G.",
+      "Trommelwasmaschine",
+      "Type T. Wa. 700",
+      "Nr.",
+      "Drehstrom",
+      "Motor",
+      "n",
+      "2800",
+      "Type",
+      "kW",
+      "Hz",
+      "V 220 / 380 V",
+      "A",
+      "15.0/9",
+      "kW",
+      "0.32",
+      "Wattaufnahme",
+      "500",
+      "Gütersloh Westf."
+    ],
+    "values": {
+      "manufacturer": "Mielewerke A.G.",
+      "model": "Trommelwasmaschine Type T. Wa. 700",
+      "catalogNumber": null,
+      "equipmentType": "Trommelwasmaschine",
+      "serialNumber": null,
+      "voltage": "380V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Mielewerke A.G."
+        },
+        {
+          "field": "model",
+          "value": "Trommelwasmaschine Type T. Wa. 700"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Trommelwasmaschine"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3655
+  }
+}

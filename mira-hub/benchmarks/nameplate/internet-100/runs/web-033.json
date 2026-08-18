@@ -1,0 +1,126 @@
+{
+  "image": "c10r1_01.jpg",
+  "bytes": 4534787,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "KER 4V",
+      "catalogNumber": null,
+      "serialNumber": "2501202",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "TYP KER 4V",
+        "Nº",
+        "2501202"
+      ]
+    },
+    "rawText": [
+      "TYP KER 4V",
+      "Nº",
+      "2501202"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "KER 4V",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "2501202",
+      "voltage": "4V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "KER 4V"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2501202"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 808,
+          "top": 1230,
+          "width": 2010,
+          "height": 522
+        },
+        "imageWidth": 3648,
+        "imageHeight": 2736,
+        "cropRotationDeg": 0,
+        "ms": 2922
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 11973,
+    "total_ms": 14358
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ELECTROLUX",
+      "model": "KER 4V 110",
+      "catalogNumber": null,
+      "serialNumber": "2501202",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "ELECTROLUX",
+        "TYP KER 4V 110",
+        "Nº",
+        "2501202"
+      ]
+    },
+    "rawText": [
+      "ELECTROLUX",
+      "TYP KER 4V 110",
+      "Nº",
+      "2501202"
+    ],
+    "values": {
+      "manufacturer": "ELECTROLUX",
+      "model": "KER 4V 110",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "2501202",
+      "voltage": "4V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ELECTROLUX"
+        },
+        {
+          "field": "model",
+          "value": "KER 4V 110"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2501202"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2911
+  }
+}

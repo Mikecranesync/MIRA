@@ -1,0 +1,39 @@
+{
+  "sample_id": "web-087",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "low_contrast", "dirt", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "SEW-EURODRIVE INC. USA",
+    "model": "SAF47DRE80M4/MM07",
+    "catalogNumber": "unknown",
+    "serialNumber": "890107840.13.13.002",
+    "equipment_category": "gearmotor",
+    "specs": [
+      {"field": "frequency", "value_verbatim": "60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "rpm CT280-1700/10-60HZ", "unit": "rpm", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "V 380-500Y", "unit": "V", "confidence": "high"},
+      {"field": "power_hp", "value_verbatim": "HP 1.00", "unit": "HP", "confidence": "high"},
+      {"field": "current", "value_verbatim": "A 1.70", "unit": "A", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "Cos φ0.99", "unit": "", "confidence": "high"},
+      {"field": "output_rpm", "value_verbatim": "Output rpm 8.6-52.34", "unit": "rpm", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3 Phase", "unit": "", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "IP65TEFC", "unit": "", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "IEC60034", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "Ins.Cl. 155(F)", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "Duty CONT-S1", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "Amb. -20...40 °C", "unit": "°C", "confidence": "high"},
+      {"field": "gear_ratio", "value_verbatim": "Ratio 32.48", "unit": "", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "Torque 991 In-lbs", "unit": "in-lbs", "confidence": "high"},
+      {"field": "mounting_position", "value_verbatim": "Mtg Pos M4B", "unit": "", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "Rating 1.40", "unit": "", "confidence": "medium"},
+      {"field": "lubricant", "value_verbatim": "ShellOmalaS2G680", "unit": "", "confidence": "high"},
+      {"field": "inverter_duty", "value_verbatim": "Inverter Duty VPWM", "unit": "", "confidence": "high"},
+      {"field": "inverter_ambient", "value_verbatim": "Amb. 0...40 °C", "unit": "°C", "confidence": "high"}
+    ],
+    "marks": ["CE", "cULus"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

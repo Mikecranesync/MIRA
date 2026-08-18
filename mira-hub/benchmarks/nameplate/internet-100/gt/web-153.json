@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-153",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal"],
+  "photo_gt": {
+    "manufacturer": "Telemecanique",
+    "model": "LC1 D09 01",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "contactor",
+    "specs": [
+      {"field": "terminal_markings", "value_verbatim": "1 L1 / 3 L2 / 5 L3 / 21 NC / 2 T1 / 4 T2 / 6 T3 / 22 NC", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

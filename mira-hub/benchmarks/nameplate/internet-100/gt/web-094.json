@@ -1,0 +1,41 @@
+{
+  "sample_id": "web-094",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "Baldor-Reliance",
+    "model": "Super-E Motor",
+    "catalogNumber": "EJMM3711T",
+    "serialNumber": "F2007245943",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "spec_number", "value_verbatim": "37M031S864G1", "unit": "", "confidence": "high"},
+      {"field": "power_hp", "value_verbatim": "10", "unit": "HP", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "230/460", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "23.2/11.6", "unit": "A", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "3490", "unit": "RPM", "confidence": "high"},
+      {"field": "frame", "value_verbatim": "215JM", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3", "unit": "", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "1.15", "unit": "", "confidence": "high"},
+      {"field": "code", "value_verbatim": "G", "unit": "", "confidence": "high"},
+      {"field": "design", "value_verbatim": "B", "unit": "", "confidence": "high"},
+      {"field": "insulation_class", "value_verbatim": "F", "unit": "", "confidence": "high"},
+      {"field": "nema_nominal_efficiency", "value_verbatim": "90.2", "unit": "%", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "88", "unit": "%", "confidence": "high"},
+      {"field": "rating", "value_verbatim": "40C AMB-CONT", "unit": "", "confidence": "high"},
+      {"field": "cc", "value_verbatim": "010A", "unit": "", "confidence": "high"},
+      {"field": "usable_at_208v_amps", "value_verbatim": "24.9", "unit": "A", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "TEFC", "unit": "", "confidence": "high"},
+      {"field": "bearing_de", "value_verbatim": "6309", "unit": "", "confidence": "high"},
+      {"field": "bearing_ode", "value_verbatim": "6206", "unit": "", "confidence": "high"},
+      {"field": "inverter_rating", "value_verbatim": "VPWM INVERTER READY CT 6-60 Hz (10:1) VT 3-60 Hz (20:1)", "unit": "", "confidence": "medium"},
+      {"field": "usable_at_50hz", "value_verbatim": "50Hz 10HP 190/380V 28.2/14.1A SF1.0", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CSA Energy Verified", "UR", "NEMA Premium"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

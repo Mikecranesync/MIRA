@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-127",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "glare", "faded", "corrosion", "embossed"],
+  "photo_gt": {
+    "manufacturer": "Sears Roebuck's Co",
+    "model": "SIC 61614",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "power_hp", "value_verbatim": "1/4 H.P.", "unit": "HP", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "110 VOLTS", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "4.9", "unit": "A", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 CYCLES", "unit": "Hz", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1725 R.P.M.", "unit": "RPM", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "1 PHASE", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

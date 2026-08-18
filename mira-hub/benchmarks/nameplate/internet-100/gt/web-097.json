@@ -1,0 +1,33 @@
+{
+  "sample_id": "web-097",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Yaskawa Electric Corporation",
+    "model": "CIMR-V7AA43P7",
+    "catalogNumber": "unknown",
+    "serialNumber": "J006YA487510041",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "spec", "value_verbatim": "43P70", "unit": "", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "AC3PH 380-460V", "unit": "V", "confidence": "high"},
+      {"field": "input_frequency", "value_verbatim": "50/60Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "12A", "unit": "A", "confidence": "high"},
+      {"field": "output_voltage", "value_verbatim": "AC3PH 0-460V", "unit": "V", "confidence": "high"},
+      {"field": "output_frequency", "value_verbatim": "0-400Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "8.6A", "unit": "A", "confidence": "high"},
+      {"field": "output_capacity", "value_verbatim": "6.5kVA", "unit": "kVA", "confidence": "high"},
+      {"field": "order_number", "value_verbatim": "R11788-450-41", "unit": "", "confidence": "high"},
+      {"field": "mass", "value_verbatim": "2.1kg", "unit": "kg", "confidence": "high"},
+      {"field": "prg", "value_verbatim": "0032", "unit": "", "confidence": "high"},
+      {"field": "file_no", "value_verbatim": "E131457", "unit": "", "confidence": "high"},
+      {"field": "installation_category", "value_verbatim": "II", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP20", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE", "cUL"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

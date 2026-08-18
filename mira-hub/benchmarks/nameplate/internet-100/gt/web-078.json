@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-078",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "embossed", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "SEW-EURODRIVE, INC. USA",
+    "model": "KA77TDT100LS4BMG4HR-1504",
+    "catalogNumber": "unknown",
+    "serialNumber": "880232912.09 .09.001",
+    "equipment_category": "gearmotor",
+    "specs": [
+      {"field": "input_rpm", "value_verbatim": "1720", "unit": "rpm", "confidence": "high"},
+      {"field": "output_rpm", "value_verbatim": "34", "unit": "rpm", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "5626", "unit": "lb-in", "confidence": "high"},
+      {"field": "gear_ratio", "value_verbatim": "51.18", "unit": "", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "2.4", "unit": "", "confidence": "high"},
+      {"field": "mounting_position", "value_verbatim": "M4", "unit": "", "confidence": "low"},
+      {"field": "lubrication", "value_verbatim": "MOBIL 600XP 220", "unit": "", "confidence": "high"},
+      {"field": "min_ambient", "value_verbatim": "-10 °C", "unit": "°C", "confidence": "high"},
+      {"field": "max_ambient", "value_verbatim": "40 °C", "unit": "°C", "confidence": "high"}
+    ],
+    "marks": ["AGMA"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

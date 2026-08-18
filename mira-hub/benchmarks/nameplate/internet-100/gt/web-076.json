@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-076",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["embossed", "glare", "dirt", "low_contrast", "frontal"],
+  "photo_gt": {
+    "manufacturer": "Copeland",
+    "model": "CRC4-0175-PFV",
+    "catalogNumber": "unknown",
+    "serialNumber": "90G 02053H",
+    "equipment_category": "refrigeration compressor",
+    "specs": [
+      {"field": "bill_of_material", "value_verbatim": "B/M 230 BS", "unit": "", "confidence": "high"},
+      {"field": "locked_rotor_amps", "value_verbatim": "L.R.A. 54.0", "unit": "A", "confidence": "medium"},
+      {"field": "phase", "value_verbatim": "PH. 1", "unit": "", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "208 230", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "protection", "value_verbatim": "THERMALLY PROTECTED", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

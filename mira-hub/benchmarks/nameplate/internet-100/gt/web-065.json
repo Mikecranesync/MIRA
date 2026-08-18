@@ -1,0 +1,22 @@
+{
+  "sample_id": "web-065",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Hitachi",
+    "model": "WJ200",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "400V", "unit": "V", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3PHASE", "unit": "", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "0.75 kW", "unit": "kW", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

@@ -1,0 +1,27 @@
+{
+  "sample_id": "web-052",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "dirt", "corrosion", "faded", "glare", "low_resolution", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "DUNLAP",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "power_hp", "value_verbatim": "1/4 HORSEPOWER", "unit": "HP", "confidence": "medium"},
+      {"field": "motor_type", "value_verbatim": "SPLIT PHASE MOTOR", "unit": "", "confidence": "high"},
+      {"field": "bearing", "value_verbatim": "BRONZE BEARING", "unit": "", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1750 RPM", "unit": "rpm", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "115 VOLTS", "unit": "V", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 CYCLE", "unit": "Hz", "confidence": "low"},
+      {"field": "current", "value_verbatim": "5 AMPS", "unit": "A", "confidence": "high"},
+      {"field": "type", "value_verbatim": "TYPE SAO", "unit": "", "confidence": "low"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

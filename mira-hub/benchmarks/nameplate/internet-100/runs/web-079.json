@@ -1,0 +1,11 @@
+{
+  "image": "c11r1_03.jpg",
+  "bytes": 300387,
+  "mime": "image/jpeg",
+  "improved": {
+    "error": "JSON Parse error: Unterminated string"
+  },
+  "baseline": {
+    "error": "JSON Parse error: Unexpected EOF"
+  }
+}

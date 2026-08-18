@@ -1,0 +1,189 @@
+{
+  "image": "c05r1_12.jpg",
+  "bytes": 113510,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "GRUNDEOS",
+      "model": "MLE90CC-2-56C-D1",
+      "catalogNumber": "6305.2Z.C4",
+      "serialNumber": "4785",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Type: MLE90CC-2-56C-D1",
+        "Serial No: 4785",
+        "P.N.: 85900820 -V03",
+        "P.C.: 0746",
+        "Env.Type: 3R PF: 0.94",
+        "Wgt : 25.5 kg",
+        "Uin : 3~ 208-230 V",
+        "IsfAmp: 4,2",
+        "fin 50/60",
+        "Uout : 0-Uin V",
+        "Pz : 1.5 HP",
+        "Hz fout : 0-120 Hz",
+        "SF 1,00 TEFC",
+        "Tamb : 40 °C CL : F",
+        "Made in Hungary",
+        "6305.2Z.C3",
+        "NDE: 6205.2Z.C3"
+      ]
+    },
+    "rawText": [
+      "Type: MLE90CC-2-56C-D1",
+      "Serial No: 4785",
+      "P.N.: 85900820 -V03",
+      "P.C.: 0746",
+      "Env.Type: 3R PF: 0.94",
+      "Wgt : 25.5 kg",
+      "Uin : 3~ 208-230 V",
+      "IsfAmp: 4,2",
+      "fin 50/60",
+      "Uout : 0-Uin V",
+      "Pz : 1.5 HP",
+      "Hz fout : 0-120 Hz",
+      "SF 1,00 TEFC",
+      "Tamb : 40 °C CL : F",
+      "Made in Hungary",
+      "6305.2Z.C3",
+      "NDE: 6205.2Z.C3"
+    ],
+    "values": {
+      "manufacturer": "GRUNDEOS",
+      "model": "MLE90CC-2-56C-D1",
+      "catalogNumber": "6305.2Z.C4",
+      "equipmentType": null,
+      "serialNumber": "4785",
+      "voltage": "208-230V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "MLE90CC-2-56C-D1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "4785"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "catalogNumber"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 33,
+        "cropBbox": {
+          "left": 66,
+          "top": 200,
+          "width": 913,
+          "height": 550
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2293
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3148,
+    "total_ms": 9845
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "GRUNDFOS",
+      "model": "MLE90CC-2-56C-D1",
+      "catalogNumber": "6306.22.C4",
+      "serialNumber": "4785",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "TYPE: MLE90CC-2-56C-D1",
+        "P.N.: 85500020 -V03",
+        "Env.Type: 3R",
+        "Input",
+        "Uin 3~ 208-230 V",
+        "Isf Amp: 4,2",
+        "fin 50/60",
+        "Serial No. 4785",
+        "P.C.: 0746",
+        "Wgt 25.5 kg",
+        "Output",
+        "V Out: 0-Un",
+        "A Pz 1.5",
+        "Hz fout: 0-120 Hz",
+        "SF 1,00 TEFC",
+        "Tamb 40 °C L F",
+        "NDE: 6205.22.C3",
+        "Made in Hungary",
+        "CE",
+        "US"
+      ]
+    },
+    "rawText": [
+      "TYPE: MLE90CC-2-56C-D1",
+      "P.N.: 85500020 -V03",
+      "Env.Type: 3R",
+      "Input",
+      "Uin 3~ 208-230 V",
+      "Isf Amp: 4,2",
+      "fin 50/60",
+      "Serial No. 4785",
+      "P.C.: 0746",
+      "Wgt 25.5 kg",
+      "Output",
+      "V Out: 0-Un",
+      "A Pz 1.5",
+      "Hz fout: 0-120 Hz",
+      "SF 1,00 TEFC",
+      "Tamb 40 °C L F",
+      "NDE: 6205.22.C3",
+      "Made in Hungary",
+      "CE",
+      "US"
+    ],
+    "values": {
+      "manufacturer": "GRUNDFOS",
+      "model": "MLE90CC-2-56C-D1",
+      "catalogNumber": "6306.22.C4",
+      "equipmentType": null,
+      "serialNumber": "4785",
+      "voltage": "208-230V",
+      "current": null,
+      "resolution": null,
+      "ambient": "Amb.40°C",
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "MLE90CC-2-56C-D1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "4785"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "catalogNumber",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 6276
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "sample_id": "web-132",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text", "dense_table", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Eaton",
+    "model": "MDSX16 (Magnum DSX)",
+    "catalogNumber": "MDSX163WEA",
+    "serialNumber": "unknown",
+    "equipment_category": "breaker",
+    "specs": [
+      {"field": "frame_current", "value_verbatim": "1600 Amp Frame", "unit": "A", "confidence": "high"},
+      {"field": "poles", "value_verbatim": "3 Pole", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50/60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "breaker_type", "value_verbatim": "Current Limiting Low Voltage AC Power Circuit Breaker", "unit": "", "confidence": "high"},
+      {"field": "max_volts_1", "value_verbatim": "635", "unit": "V", "confidence": "medium"},
+      {"field": "inst_trip_at_635V", "value_verbatim": "65,000 A", "unit": "A", "confidence": "medium"},
+      {"field": "inst_trip_at_508V", "value_verbatim": "200,000 A", "unit": "A", "confidence": "medium"},
+      {"field": "inst_trip_at_254V", "value_verbatim": "200,000 A", "unit": "A", "confidence": "medium"},
+      {"field": "short_delay_rating", "value_verbatim": "30,000 A", "unit": "A", "confidence": "medium"},
+      {"field": "trip_unit_power", "value_verbatim": "24 - 48 VDC", "unit": "VDC", "confidence": "medium"},
+      {"field": "trip_unit", "value_verbatim": "Digitrip 520M", "unit": "", "confidence": "high"},
+      {"field": "trip_unit_catalog", "value_verbatim": "5MLSI", "unit": "", "confidence": "high"},
+      {"field": "rating_plug", "value_verbatim": "In=1000 A", "unit": "A", "confidence": "medium"},
+      {"field": "go_number", "value_verbatim": "RC00711472", "unit": "", "confidence": "medium"},
+      {"field": "instruction_book", "value_verbatim": "I.B. 2C12060", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

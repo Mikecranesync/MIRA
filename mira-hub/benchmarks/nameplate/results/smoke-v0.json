@@ -1,0 +1,186 @@
+{
+  "ranAt": "2026-08-15T13:09:37.594Z",
+  "model": "google/gemma-3n-E4B-it",
+  "reps": 1,
+  "summaries": [
+    {
+      "variant": "v0_baseline",
+      "identityHits": 3,
+      "identityTotal": 4,
+      "specHits": 2,
+      "specTotal": 6,
+      "hallucinations": 1,
+      "falsePositives": 0,
+      "missed": 4,
+      "wrong": 1,
+      "calls": 1,
+      "ms": 5005
+    }
+  ],
+  "scores": [
+    {
+      "fixture": "orientalmotor_dgm200r",
+      "runs": [
+        {
+          "variant": "v0_baseline",
+          "score": {
+            "fixtureId": "orientalmotor_dgm200r",
+            "variant": "v0_baseline",
+            "fields": [
+              {
+                "field": "manufacturer",
+                "group": "identity",
+                "expected": "Orientalmotor",
+                "got": "Orientalmotor",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "model",
+                "group": "identity",
+                "expected": "DGM200R-AZAC",
+                "got": "DGM200R-AZAC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "catalogNumber",
+                "group": "identity",
+                "expected": "AZM911AC-D",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "equipmentType",
+                "group": "identity",
+                "expected": "HOLLOW ROTARY ACTUATOR",
+                "got": "Rotary Actuator",
+                "verdict": "normalized",
+                "hallucinated": false
+              },
+              {
+                "field": "voltage",
+                "group": "spec",
+                "expected": "3.87VDC",
+                "got": "3.87VDC",
+                "verdict": "exact",
+                "hallucinated": false
+              },
+              {
+                "field": "current",
+                "group": "spec",
+                "expected": "1.27A",
+                "got": "12A",
+                "verdict": "wrong_numeric",
+                "hallucinated": false,
+                "note": "read 12A for 1.27A"
+              },
+              {
+                "field": "resolution",
+                "group": "spec",
+                "expected": "0.01°/STEP",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "serialNumber",
+                "group": "spec",
+                "expected": "QS8 I119701",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "ambient",
+                "group": "spec",
+                "expected": "Amb.40°C",
+                "got": null,
+                "verdict": "missed",
+                "hallucinated": false
+              },
+              {
+                "field": "insulation",
+                "group": "spec",
+                "expected": "INS.Class A",
+                "got": "INS.Class A",
+                "verdict": "exact",
+                "hallucinated": false
+              }
+            ],
+            "identity": {
+              "hits": 3,
+              "total": 4,
+              "pct": 75
+            },
+            "spec": {
+              "hits": 2,
+              "total": 6,
+              "pct": 33.3
+            },
+            "marks": {
+              "verdict": "false_positive",
+              "expected": "UL, CE, UKCA",
+              "got": "UL, CE, RoHS"
+            },
+            "hallucinations": 1,
+            "hallucinatedValues": [
+              "marks=\"RoHS\"",
+              "forbidden=\"RoHS\""
+            ],
+            "falsePositives": 0
+          }
+        }
+      ]
+    }
+  ],
+  "raw": [
+    {
+      "variant": "v0_baseline",
+      "fixture": "orientalmotor_dgm200r",
+      "rep": 0,
+      "values": {
+        "manufacturer": "Orientalmotor",
+        "model": "DGM200R-AZAC",
+        "catalogNumber": null,
+        "equipmentType": "Rotary Actuator",
+        "serialNumber": null,
+        "voltage": "3.87VDC",
+        "current": "12A",
+        "resolution": null,
+        "ambient": null,
+        "insulation": "INS.Class A",
+        "marks": "UL, CE, RoHS"
+      },
+      "raw": {
+        "candidate": {
+          "manufacturer": "Orientalmotor",
+          "model": "DGM200R-AZAC",
+          "catalogNumber": null,
+          "serialNumber": null,
+          "equipmentType": "Rotary Actuator",
+          "confidence": 0.95,
+          "rawText": [
+            "Orientalmotor",
+            "DGM200R-AZAC",
+            "MODEL",
+            "HOLLOW ROTARY ACTUATORS",
+            "3.87VDC",
+            "12A",
+            "0010YSTEP",
+            "100,000",
+            "Ins. Class A",
+            "GSB111970",
+            "ORIENTALMOTOR CO., LTD.",
+            "MADE IN JAPAN",
+            "UL",
+            "CE",
+            "us",
+            "RoHS"
+          ]
+        }
+      }
+    }
+  ]
+}

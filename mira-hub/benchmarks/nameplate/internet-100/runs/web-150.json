@@ -1,0 +1,236 @@
+{
+  "image": "c10r1_13.jpg",
+  "bytes": 252916,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "AEG",
+      "model": "KANIS",
+      "catalogNumber": "S 6472/2F",
+      "serialNumber": "788/002",
+      "equipmentType": "Mot",
+      "confidence": 0.95,
+      "rawText": [
+        "AEG",
+        "AEG KANIS",
+        "Typ",
+        "S 6472/2F",
+        "Nr.",
+        "788/002",
+        "6 ~ Mot",
+        "Y > 2x1100",
+        "V",
+        "2x1417",
+        "A",
+        "4700",
+        "kW",
+        "cos",
+        "0,92",
+        "NUR UVW",
+        "6000 /min",
+        "100 Hz",
+        "Erregung",
+        "43 V",
+        "425 A",
+        "Iso. - Kl. F",
+        "IP 44",
+        "20,1 t",
+        "VDE 0530 /12.84 Kühlwassermenge 52,2 m³/h",
+        "Made in Germany"
+      ]
+    },
+    "rawText": [
+      "AEG",
+      "AEG KANIS",
+      "Typ",
+      "S 6472/2F",
+      "Nr.",
+      "788/002",
+      "6 ~ Mot",
+      "Y > 2x1100",
+      "V",
+      "2x1417",
+      "A",
+      "4700",
+      "kW",
+      "cos",
+      "0,92",
+      "NUR UVW",
+      "6000 /min",
+      "100 Hz",
+      "Erregung",
+      "43 V",
+      "425 A",
+      "Iso. - Kl. F",
+      "IP 44",
+      "20,1 t",
+      "VDE 0530 /12.84 Kühlwassermenge 52,2 m³/h",
+      "Made in Germany"
+    ],
+    "values": {
+      "manufacturer": "AEG",
+      "model": "KANIS",
+      "catalogNumber": "S 6472/2F",
+      "equipmentType": "Mot",
+      "serialNumber": "788/002",
+      "voltage": "43V",
+      "current": "425A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AEG"
+        },
+        {
+          "field": "model",
+          "value": "KANIS"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "S 6472/2F"
+        },
+        {
+          "field": "serialNumber",
+          "value": "788/002"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Mot"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 37,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1420,
+          "height": 1039
+        },
+        "imageWidth": 1420,
+        "imageHeight": 1039,
+        "cropRotationDeg": 0,
+        "ms": 1881
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2717,
+    "total_ms": 7289
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "AEG",
+      "model": "KANIS",
+      "catalogNumber": "S 6472/2F",
+      "serialNumber": "788/002",
+      "equipmentType": "Mot",
+      "confidence": 0.95,
+      "rawText": [
+        "AEG",
+        "AEG KANIS",
+        "Typ",
+        "S 6472/2F",
+        "Nr.",
+        "788/002",
+        "6 ~ Mot",
+        "Y > 2x1100",
+        "V",
+        "2x1417",
+        "A",
+        "4700",
+        "kW",
+        "cos",
+        "0,92",
+        "NUR UVW",
+        "6000 /min",
+        "100 Hz",
+        "Erregung",
+        "43 V",
+        "425 A",
+        "Iso. - Kl. F",
+        "IP 44",
+        "20,1 t",
+        "VDE 0530 /12.84 Kühlwassermenge 52,2 m³/h",
+        "Made in Germany"
+      ]
+    },
+    "rawText": [
+      "AEG",
+      "AEG KANIS",
+      "Typ",
+      "S 6472/2F",
+      "Nr.",
+      "788/002",
+      "6 ~ Mot",
+      "Y > 2x1100",
+      "V",
+      "2x1417",
+      "A",
+      "4700",
+      "kW",
+      "cos",
+      "0,92",
+      "NUR UVW",
+      "6000 /min",
+      "100 Hz",
+      "Erregung",
+      "43 V",
+      "425 A",
+      "Iso. - Kl. F",
+      "IP 44",
+      "20,1 t",
+      "VDE 0530 /12.84 Kühlwassermenge 52,2 m³/h",
+      "Made in Germany"
+    ],
+    "values": {
+      "manufacturer": "AEG",
+      "model": "KANIS",
+      "catalogNumber": "S 6472/2F",
+      "equipmentType": "Mot",
+      "serialNumber": "788/002",
+      "voltage": "43V",
+      "current": "425A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AEG"
+        },
+        {
+          "field": "model",
+          "value": "KANIS"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "S 6472/2F"
+        },
+        {
+          "field": "serialNumber",
+          "value": "788/002"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Mot"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4578
+  }
+}

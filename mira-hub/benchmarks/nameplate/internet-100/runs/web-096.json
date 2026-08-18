@@ -1,0 +1,182 @@
+{
+  "image": "c10r1_08.jpg",
+  "bytes": 5721406,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "天津兴西牵引电机有限公司",
+      "model": "ZXAM2502A-4",
+      "catalogNumber": null,
+      "serialNumber": "ZX100016-10429",
+      "equipmentType": "牵引三相异步电动机",
+      "confidence": 0.95,
+      "rawText": [
+        "牵引三相异步电动机",
+        "型号: ZXAM2502A-4",
+        "出厂编号: ZX100016-10429",
+        "额定功率: 250 kW",
+        "极数: 4",
+        "物料号: F0140D03",
+        "额定电压: 1146 V",
+        "额定电流: 144 A",
+        "额定频率: 50/60 Hz",
+        "绕组等级: 220。",
+        "防护等级: IP23",
+        "额定转速: 2200 r/min",
+        "最高转速: 4150 r/min",
+        "接法: Y",
+        "工况制: S1",
+        "重量: 640±26 kg",
+        "标准编号: DBC6849-2",
+        "出厂日期: 2020 年 6 月"
+      ]
+    },
+    "rawText": [
+      "牵引三相异步电动机",
+      "型号: ZXAM2502A-4",
+      "出厂编号: ZX100016-10429",
+      "额定功率: 250 kW",
+      "极数: 4",
+      "物料号: F0140D03",
+      "额定电压: 1146 V",
+      "额定电流: 144 A",
+      "额定频率: 50/60 Hz",
+      "绕组等级: 220。",
+      "防护等级: IP23",
+      "额定转速: 2200 r/min",
+      "最高转速: 4150 r/min",
+      "接法: Y",
+      "工况制: S1",
+      "重量: 640±26 kg",
+      "标准编号: DBC6849-2",
+      "出厂日期: 2020 年 6 月"
+    ],
+    "values": {
+      "manufacturer": "天津兴西牵引电机有限公司",
+      "model": "ZXAM2502A-4",
+      "catalogNumber": null,
+      "equipmentType": "牵引三相异步电动机",
+      "serialNumber": "ZX100016-10429",
+      "voltage": "1146V",
+      "current": "144A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "ZXAM2502A-4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "ZX100016-10429"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 14,
+        "cropBbox": {
+          "left": 1285,
+          "top": 825,
+          "width": 2253,
+          "height": 1717
+        },
+        "imageWidth": 4032,
+        "imageHeight": 2688,
+        "cropRotationDeg": 0,
+        "ms": 2346
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 15629,
+    "total_ms": 21233
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ZXTM",
+      "model": "ZXMC004-4",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "三相异步电动机",
+      "confidence": 0.95,
+      "rawText": [
+        "ZXMC004-4",
+        "三相异步电动机",
+        "型号: ZXMC004-4",
+        "编号: ZXW0006-10429",
+        "额定功率: 250",
+        "额定电压: 1146",
+        "额定频率: 50",
+        "额定电流: 1.44",
+        "额定转速: 743",
+        "绝缘等级: H",
+        "防护等级: IP23",
+        "额定进电压: 2200",
+        "最高转速: 4150",
+        "额定进次: 2200",
+        "扭矩: 640*10^3",
+        "整备重量: 100",
+        "制造日期: 2020年6月",
+        "大连兴盛电动机有限公司"
+      ]
+    },
+    "rawText": [
+      "ZXMC004-4",
+      "三相异步电动机",
+      "型号: ZXMC004-4",
+      "编号: ZXW0006-10429",
+      "额定功率: 250",
+      "额定电压: 1146",
+      "额定频率: 50",
+      "额定电流: 1.44",
+      "额定转速: 743",
+      "绝缘等级: H",
+      "防护等级: IP23",
+      "额定进电压: 2200",
+      "最高转速: 4150",
+      "额定进次: 2200",
+      "扭矩: 640*10^3",
+      "整备重量: 100",
+      "制造日期: 2020年6月",
+      "大连兴盛电动机有限公司"
+    ],
+    "values": {
+      "manufacturer": "ZXTM",
+      "model": "ZXMC004-4",
+      "catalogNumber": null,
+      "equipmentType": "三相异步电动机",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "ZXMC004-4"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5023
+  }
+}

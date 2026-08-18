@@ -1,0 +1,162 @@
+{
+  "image": "c10r1_09.jpg",
+  "bytes": 1671681,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "AEG",
+      "model": "VDNW",
+      "catalogNumber": null,
+      "serialNumber": "2660874",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "AEG",
+        "type",
+        "Not Nr",
+        "2660874",
+        "VDNW",
+        "22/6",
+        "220/380",
+        "V",
+        "4,5",
+        "2,58",
+        "1,1 kW",
+        "COS",
+        "0,78"
+      ]
+    },
+    "rawText": [
+      "AEG",
+      "type",
+      "Not Nr",
+      "2660874",
+      "VDNW",
+      "22/6",
+      "220/380",
+      "V",
+      "4,5",
+      "2,58",
+      "1,1 kW",
+      "COS",
+      "0,78"
+    ],
+    "values": {
+      "manufacturer": "AEG",
+      "model": "VDNW",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "2660874",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AEG"
+        },
+        {
+          "field": "model",
+          "value": "VDNW"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2660874"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 9,
+        "cropBbox": {
+          "left": 1054,
+          "top": 792,
+          "width": 1503,
+          "height": 565
+        },
+        "imageWidth": 4000,
+        "imageHeight": 2252,
+        "cropRotationDeg": 0,
+        "ms": 1340
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5049,
+    "total_ms": 7761
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "AEG",
+      "model": "VDNW 2 2 6",
+      "catalogNumber": null,
+      "serialNumber": "Not № 2660874",
+      "equipmentType": "Type",
+      "confidence": 0.95,
+      "rawText": [
+        "AEG",
+        "Not № 2660874",
+        "Type",
+        "VDNW 2 2 6",
+        "√A 220/380 V 4,5 2,58",
+        "1,1 kW cosφ 0,78",
+        "950",
+        "rpm±5%"
+      ]
+    },
+    "rawText": [
+      "AEG",
+      "Not № 2660874",
+      "Type",
+      "VDNW 2 2 6",
+      "√A 220/380 V 4,5 2,58",
+      "1,1 kW cosφ 0,78",
+      "950",
+      "rpm±5%"
+    ],
+    "values": {
+      "manufacturer": "AEG",
+      "model": "VDNW 2 2 6",
+      "catalogNumber": null,
+      "equipmentType": "Type",
+      "serialNumber": "Not № 2660874",
+      "voltage": "380V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "AEG"
+        },
+        {
+          "field": "model",
+          "value": "VDNW 2 2 6"
+        },
+        {
+          "field": "serialNumber",
+          "value": "Not № 2660874"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Type"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3162
+  }
+}

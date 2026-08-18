@@ -1,0 +1,156 @@
+{
+  "image": "c09r1_01.jpg",
+  "bytes": 102353,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Copeland",
+      "model": "ZR40KC-PFV-230",
+      "catalogNumber": "GP3RA-042K",
+      "serialNumber": "GPB010500022",
+      "equipmentType": "compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "914576G",
+        "GP3RA-042K",
+        "COMPRESSOR CODE:",
+        "SERIAL NO: GPB010500022",
+        "MODEL",
+        "ZR40KC-PFV-230",
+        "SERIAL",
+        "01D1020HL"
+      ]
+    },
+    "rawText": [
+      "914576G",
+      "GP3RA-042K",
+      "COMPRESSOR CODE:",
+      "SERIAL NO: GPB010500022",
+      "MODEL",
+      "ZR40KC-PFV-230",
+      "SERIAL",
+      "01D1020HL"
+    ],
+    "values": {
+      "manufacturer": "Copeland",
+      "model": "ZR40KC-PFV-230",
+      "catalogNumber": "GP3RA-042K",
+      "equipmentType": "compressor",
+      "serialNumber": "GPB010500022",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "ZR40KC-PFV-230"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "GP3RA-042K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "GPB010500022"
+        },
+        {
+          "field": "equipmentType",
+          "value": "compressor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 29,
+        "cropBbox": {
+          "left": 120,
+          "top": 135,
+          "width": 590,
+          "height": 473
+        },
+        "imageWidth": 900,
+        "imageHeight": 608,
+        "cropRotationDeg": 0,
+        "ms": 1881
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2275,
+    "total_ms": 4913
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "aland",
+      "model": "ZR40KC-PFV-230",
+      "catalogNumber": "GP3RA-042K",
+      "serialNumber": "GPB01050022",
+      "equipmentType": "compressor",
+      "confidence": 0.95,
+      "rawText": [
+        "914576G",
+        "GP3RA-042K",
+        "COMPRESSOR CODE:",
+        "SERIAL NO: GPB01050022",
+        "ZR40KC-PFV-230",
+        "SERIAL 01D1020HL"
+      ]
+    },
+    "rawText": [
+      "914576G",
+      "GP3RA-042K",
+      "COMPRESSOR CODE:",
+      "SERIAL NO: GPB01050022",
+      "ZR40KC-PFV-230",
+      "SERIAL 01D1020HL"
+    ],
+    "values": {
+      "manufacturer": "aland",
+      "model": "ZR40KC-PFV-230",
+      "catalogNumber": "GP3RA-042K",
+      "equipmentType": "compressor",
+      "serialNumber": "GPB01050022",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "ZR40KC-PFV-230"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "GP3RA-042K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "GPB01050022"
+        },
+        {
+          "field": "equipmentType",
+          "value": "compressor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2557
+  }
+}

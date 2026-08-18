@@ -1,0 +1,114 @@
+{
+  "image": "c08r1_15.jpg",
+  "bytes": 81487,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Hummelty",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Hummelty"
+      ]
+    },
+    "rawText": [
+      "Hummelty"
+    ],
+    "values": {
+      "manufacturer": "Hummelty",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Hummelty"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 349,
+          "top": 189,
+          "width": 373,
+          "height": 293
+        },
+        "imageWidth": 734,
+        "imageHeight": 700,
+        "cropRotationDeg": 0,
+        "ms": 1981
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3406,
+    "total_ms": 4410
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NUMITEK",
+      "model": "NUMITEK",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "hydraulic valve",
+      "confidence": 0.95,
+      "rawText": [
+        "NUMITEK",
+        "NUMITEK",
+        "NUMITEK"
+      ]
+    },
+    "rawText": [
+      "NUMITEK",
+      "NUMITEK",
+      "NUMITEK"
+    ],
+    "values": {
+      "manufacturer": "NUMITEK",
+      "model": "NUMITEK",
+      "catalogNumber": null,
+      "equipmentType": "hydraulic valve",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NUMITEK"
+        },
+        {
+          "field": "model",
+          "value": "NUMITEK"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1353
+  }
+}

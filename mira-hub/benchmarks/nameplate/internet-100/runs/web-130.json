@@ -1,0 +1,162 @@
+{
+  "image": "c11r1_11.jpg",
+  "bytes": 58440,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Rotomotor",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "A.C. Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Rotomotor",
+        "BALL BEARING",
+        "A.C. MOTOR",
+        "FRAME 1130 CYCLES",
+        "60",
+        "TYPE OPEN PHASE 1",
+        "VOLTS 110-120 AMPS 5.9",
+        "RPM 1725 H.P. 1/3",
+        "DUTY CONT RISE 40°C",
+        "ROTOMOTOR COMPANY",
+        "282-272 MOTT ST.",
+        "NEW YORK CITY",
+        "DIVISION OF",
+        "GENERAL DIE & STAMPING CO"
+      ]
+    },
+    "rawText": [
+      "Rotomotor",
+      "BALL BEARING",
+      "A.C. MOTOR",
+      "FRAME 1130 CYCLES",
+      "60",
+      "TYPE OPEN PHASE 1",
+      "VOLTS 110-120 AMPS 5.9",
+      "RPM 1725 H.P. 1/3",
+      "DUTY CONT RISE 40°C",
+      "ROTOMOTOR COMPANY",
+      "282-272 MOTT ST.",
+      "NEW YORK CITY",
+      "DIVISION OF",
+      "GENERAL DIE & STAMPING CO"
+    ],
+    "values": {
+      "manufacturer": "Rotomotor",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "A.C. Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Rotomotor"
+        },
+        {
+          "field": "equipmentType",
+          "value": "A.C. Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 24,
+        "cropBbox": {
+          "left": 68,
+          "top": 132,
+          "width": 382,
+          "height": 443
+        },
+        "imageWidth": 490,
+        "imageHeight": 650,
+        "cropRotationDeg": 0,
+        "ms": 1227
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1432,
+    "total_ms": 4593
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "RotoMotor",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "A.C. Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "ROTOMotor",
+        "BALL BEARING",
+        "A.C. MOTOR",
+        "FRAME 1130 CYCLES 60",
+        "TYPE OPEN PHASE 1",
+        "VOLTS 110-120 AMPS 5.9",
+        "RPM 1725 H.P. 1/3",
+        "DUTY CONT RISE 40°C",
+        "ROTOMOTOR COMPANY",
+        "282-272 MOTT ST.",
+        "NEW YORK CITY",
+        "DIVISION OF",
+        "GENERAL DIE & STAMPING CO"
+      ]
+    },
+    "rawText": [
+      "ROTOMotor",
+      "BALL BEARING",
+      "A.C. MOTOR",
+      "FRAME 1130 CYCLES 60",
+      "TYPE OPEN PHASE 1",
+      "VOLTS 110-120 AMPS 5.9",
+      "RPM 1725 H.P. 1/3",
+      "DUTY CONT RISE 40°C",
+      "ROTOMOTOR COMPANY",
+      "282-272 MOTT ST.",
+      "NEW YORK CITY",
+      "DIVISION OF",
+      "GENERAL DIE & STAMPING CO"
+    ],
+    "values": {
+      "manufacturer": "RotoMotor",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "A.C. Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "RotoMotor"
+        },
+        {
+          "field": "equipmentType",
+          "value": "A.C. Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4583
+  }
+}

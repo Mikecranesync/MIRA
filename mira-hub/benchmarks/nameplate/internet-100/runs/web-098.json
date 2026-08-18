@@ -1,0 +1,131 @@
+{
+  "image": "c05r1_05.jpg",
+  "bytes": 258858,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "GOLDS PUMP",
+      "model": "3X4-10",
+      "catalogNumber": null,
+      "serialNumber": "759F010",
+      "equipmentType": "pump",
+      "confidence": 0.95,
+      "rawText": [
+        "3196",
+        "3X4-10",
+        "759F010"
+      ]
+    },
+    "rawText": [
+      "3196",
+      "3X4-10",
+      "759F010"
+    ],
+    "values": {
+      "manufacturer": "GOLDS PUMP",
+      "model": "3X4-10",
+      "catalogNumber": null,
+      "equipmentType": "pump",
+      "serialNumber": "759F010",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "3X4-10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "759F010"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 473,
+          "top": 399,
+          "width": 376,
+          "height": 319
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2488
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3046,
+    "total_ms": 5089
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Grundfos Pumps",
+      "model": "3X4-10",
+      "catalogNumber": null,
+      "serialNumber": "75 9E 0 10",
+      "equipmentType": "pump",
+      "confidence": 0.95,
+      "rawText": [
+        "Grundfos Pumps",
+        "3X4-10",
+        "75 9E 0 10"
+      ]
+    },
+    "rawText": [
+      "Grundfos Pumps",
+      "3X4-10",
+      "75 9E 0 10"
+    ],
+    "values": {
+      "manufacturer": "Grundfos Pumps",
+      "model": "3X4-10",
+      "catalogNumber": null,
+      "equipmentType": "pump",
+      "serialNumber": "75 9E 0 10",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Grundfos Pumps"
+        },
+        {
+          "field": "model",
+          "value": "3X4-10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "75 9E 0 10"
+        },
+        {
+          "field": "equipmentType",
+          "value": "pump"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1816
+  }
+}

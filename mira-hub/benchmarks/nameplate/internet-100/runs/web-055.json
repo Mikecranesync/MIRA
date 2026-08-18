@@ -1,0 +1,224 @@
+{
+  "image": "c12r1_11.png",
+  "bytes": 1666516,
+  "mime": "image/png",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE",
+      "model": "SA47",
+      "catalogNumber": "DRP90M4",
+      "serialNumber": "03100014621S",
+      "equipmentType": "Inverter duty VPWM",
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE",
+        "Milano / Italy",
+        "SA47 DRP90M4",
+        "40.1910245201.0001X13",
+        "Hz 60",
+        "r/min 1750/75",
+        "kw 0.75 S1",
+        "Cos φ0,76",
+        "Cl.ter. 130(B)",
+        "03100014621S",
+        "i 23,20",
+        "Nm 79",
+        "CLP HC-460-NSF-H1 Olio alim./0,40l",
+        "kg 28.189",
+        "Inverter duty VPWM",
+        "v 277/480 Δ/Y",
+        "A 2,40/1,39",
+        "eff% 85,6 IE3",
+        "IP 55",
+        "IM M1B",
+        "Made in Germany",
+        "188 578 2 TT",
+        "3~IEC60034"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE",
+      "Milano / Italy",
+      "SA47 DRP90M4",
+      "40.1910245201.0001X13",
+      "Hz 60",
+      "r/min 1750/75",
+      "kw 0.75 S1",
+      "Cos φ0,76",
+      "Cl.ter. 130(B)",
+      "03100014621S",
+      "i 23,20",
+      "Nm 79",
+      "CLP HC-460-NSF-H1 Olio alim./0,40l",
+      "kg 28.189",
+      "Inverter duty VPWM",
+      "v 277/480 Δ/Y",
+      "A 2,40/1,39",
+      "eff% 85,6 IE3",
+      "IP 55",
+      "IM M1B",
+      "Made in Germany",
+      "188 578 2 TT",
+      "3~IEC60034"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE",
+      "model": "SA47",
+      "catalogNumber": "DRP90M4",
+      "equipmentType": "Inverter duty VPWM",
+      "serialNumber": "03100014621S",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE"
+        },
+        {
+          "field": "model",
+          "value": "SA47"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "DRP90M4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "03100014621S"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Inverter duty VPWM"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 24,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1387,
+          "height": 674
+        },
+        "imageWidth": 1387,
+        "imageHeight": 674,
+        "cropRotationDeg": 0,
+        "ms": 1463
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5317,
+    "total_ms": 11321
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE",
+      "model": "SA47",
+      "catalogNumber": "DRP90M4",
+      "serialNumber": "03100014621S",
+      "equipmentType": "Inverter duty VPWM",
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE",
+        "Milano / Italy",
+        "SA47 DRP90M4",
+        "40.1910245201.0001X13",
+        "Hz 60",
+        "r/min 1750/75",
+        "kw 0.75 S1",
+        "Cos φ0,76",
+        "Cl.ter. 130(B)",
+        "03100014621S",
+        "i 23,20",
+        "Nm 79",
+        "CLP HC-460-NSF-H1 Olio alim./0,40l",
+        "kg 28.189",
+        "Inverter duty VPWM",
+        "v 277/480 Δ/Y",
+        "A 2,40/1,39",
+        "eff% 85,6 IE3",
+        "IP 55",
+        "IM M1B",
+        "Made in Germany",
+        "188 578 2 TT",
+        "3~IEC60034"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE",
+      "Milano / Italy",
+      "SA47 DRP90M4",
+      "40.1910245201.0001X13",
+      "Hz 60",
+      "r/min 1750/75",
+      "kw 0.75 S1",
+      "Cos φ0,76",
+      "Cl.ter. 130(B)",
+      "03100014621S",
+      "i 23,20",
+      "Nm 79",
+      "CLP HC-460-NSF-H1 Olio alim./0,40l",
+      "kg 28.189",
+      "Inverter duty VPWM",
+      "v 277/480 Δ/Y",
+      "A 2,40/1,39",
+      "eff% 85,6 IE3",
+      "IP 55",
+      "IM M1B",
+      "Made in Germany",
+      "188 578 2 TT",
+      "3~IEC60034"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE",
+      "model": "SA47",
+      "catalogNumber": "DRP90M4",
+      "equipmentType": "Inverter duty VPWM",
+      "serialNumber": "03100014621S",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE"
+        },
+        {
+          "field": "model",
+          "value": "SA47"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "DRP90M4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "03100014621S"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Inverter duty VPWM"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5867
+  }
+}

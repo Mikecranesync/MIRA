@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **68** (11 dynamic) |
-| API routes | **168** (57 dynamic) |
+| API routes | **175** (63 dynamic) |
 
 ## Pages (68)
 
@@ -86,7 +86,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (168)
+## API routes (175)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -171,6 +171,8 @@
 | `/api/equipment-notebooks` | static | `api/equipment-notebooks/route.ts` |
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
+| `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
+| `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
@@ -178,6 +180,11 @@
 | `/api/events` | static | `api/events/route.ts` |
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
+| `/api/files` | static | `api/files/route.ts` |
+| `/api/files/[fileId]` | dynamic | `api/files/[fileId]/route.ts` |
+| `/api/files/[fileId]/links` | dynamic | `api/files/[fileId]/links/route.ts` |
+| `/api/files/[fileId]/links/[linkId]` | dynamic | `api/files/[fileId]/links/[linkId]/route.ts` |
+| `/api/files/[fileId]/relocate` | dynamic | `api/files/[fileId]/relocate/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
 | `/api/hub/status` | static | `api/hub/status/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |

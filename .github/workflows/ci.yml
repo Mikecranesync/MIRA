@@ -482,6 +482,17 @@ jobs:
         # not exercised.
         run: pytest tests/test_gate7_review.py -v
 
+      - name: Codex adversarial-review scripts (behavior locks)
+        # scripts/adversarial-review{,-loop}.sh + adversarial-review-ledger.mjs:
+        # durable cross-restart 3-round budget, validated-record iteration (never
+        # raw comment count), post-cap human-authorized review-only override,
+        # stale-GREEN exit 4, dirty-tree/base-fetch/argument fail-closed paths.
+        # Named explicitly (root tests/ is never collected wholesale here).
+        #
+        # Hermetic: gh/codex/claude are PATH stubs; git runs throwaway repos;
+        # node runs the real ledger/render scripts. No network, no tokens.
+        run: pytest tests/test_adversarial_review_scripts.py -v
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never

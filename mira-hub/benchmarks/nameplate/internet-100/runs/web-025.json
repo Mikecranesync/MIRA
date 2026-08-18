@@ -1,0 +1,248 @@
+{
+  "image": "c06r1_13.jpg",
+  "bytes": 131470,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SQUARE D COMPANY",
+      "model": "SHB H-1",
+      "catalogNumber": "251F",
+      "serialNumber": null,
+      "equipmentType": "DRY TYPE TRANSFORMER",
+      "confidence": 0.95,
+      "rawText": [
+        "SQUARE D COMPANY",
+        "SHB H-1",
+        "PLANT 65",
+        "MADE IN U.S.A.",
+        "LISTED",
+        "933R",
+        "DRY TYPE TRANSFORMER SINGLE PHASE",
+        "2.0K",
+        "1.15C TEMPERATURE RISE",
+        "CAT. NO. 251F",
+        "HIGH VOLTAGE (HV)",
+        "VOLTS",
+        "CONNECT",
+        "LINE",
+        "480(HV)",
+        "H1-H4",
+        "240(HV)",
+        "H1H3-H2H4",
+        "H1-H4",
+        "X2",
+        "X3",
+        "X1I",
+        "240(LV)",
+        "X1-X3",
+        "X1-X4",
+        "120(LV)",
+        "X1X3",
+        "2X4",
+        "X1-X4",
+        "LOW VOLTAGE (LV)",
+        "FOR FIELD CONNECTIONS USE WIRES INSULATED",
+        "FOR A MINIMUM OF 90°C AND SIZED ON THE",
+        "BASIS OF 60°C AMPACITY",
+        "RAINPROOF TYPE 3R ENCLOSURE",
+        "WARNING - HAZARD OF ELECTRIC",
+        "SHOCK OR BURN. TURN OFF POWER",
+        "SUPPLY BEFORE WORKING INSIDE."
+      ]
+    },
+    "rawText": [
+      "SQUARE D COMPANY",
+      "SHB H-1",
+      "PLANT 65",
+      "MADE IN U.S.A.",
+      "LISTED",
+      "933R",
+      "DRY TYPE TRANSFORMER SINGLE PHASE",
+      "2.0K",
+      "1.15C TEMPERATURE RISE",
+      "CAT. NO. 251F",
+      "HIGH VOLTAGE (HV)",
+      "VOLTS",
+      "CONNECT",
+      "LINE",
+      "480(HV)",
+      "H1-H4",
+      "240(HV)",
+      "H1H3-H2H4",
+      "H1-H4",
+      "X2",
+      "X3",
+      "X1I",
+      "240(LV)",
+      "X1-X3",
+      "X1-X4",
+      "120(LV)",
+      "X1X3",
+      "2X4",
+      "X1-X4",
+      "LOW VOLTAGE (LV)",
+      "FOR FIELD CONNECTIONS USE WIRES INSULATED",
+      "FOR A MINIMUM OF 90°C AND SIZED ON THE",
+      "BASIS OF 60°C AMPACITY",
+      "RAINPROOF TYPE 3R ENCLOSURE",
+      "WARNING - HAZARD OF ELECTRIC",
+      "SHOCK OR BURN. TURN OFF POWER",
+      "SUPPLY BEFORE WORKING INSIDE."
+    ],
+    "values": {
+      "manufacturer": "SQUARE D COMPANY",
+      "model": "SHB H-1",
+      "catalogNumber": "251F",
+      "equipmentType": "DRY TYPE TRANSFORMER",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SQUARE D COMPANY"
+        },
+        {
+          "field": "model",
+          "value": "SHB H-1"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "251F"
+        },
+        {
+          "field": "equipmentType",
+          "value": "DRY TYPE TRANSFORMER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 52,
+        "cropBbox": {
+          "left": 28,
+          "top": 66,
+          "width": 904,
+          "height": 772
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 3400
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6712,
+    "total_ms": 12876
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SQUARE D COMPANY",
+      "model": "SHB H-1",
+      "catalogNumber": "251F",
+      "serialNumber": null,
+      "equipmentType": "DRY TYPE TRANSFORMER",
+      "confidence": 0.95,
+      "rawText": [
+        "SQUARE D COMPANY",
+        "SHB H-1",
+        "PLANT 65",
+        "MADE IN U.S.A.",
+        "LISTED",
+        "933R",
+        "DRY TYPE TRANSFORMER SINGLE PHASE",
+        "2.0K",
+        "CAT.NO. 251F",
+        "HIGH VOLTAGE (HV)",
+        "VOLTS",
+        "480(HV)",
+        "240(HV)",
+        "VOLTS",
+        "240(LV)",
+        "120(LV)",
+        "CONNECT",
+        "H1-H4",
+        "H1H3-H2H4",
+        "X1-X4",
+        "X1-X4",
+        "LINE",
+        "H1-H4",
+        "X1-X4",
+        "LOW VOLTAGE (LV)"
+      ]
+    },
+    "rawText": [
+      "SQUARE D COMPANY",
+      "SHB H-1",
+      "PLANT 65",
+      "MADE IN U.S.A.",
+      "LISTED",
+      "933R",
+      "DRY TYPE TRANSFORMER SINGLE PHASE",
+      "2.0K",
+      "CAT.NO. 251F",
+      "HIGH VOLTAGE (HV)",
+      "VOLTS",
+      "480(HV)",
+      "240(HV)",
+      "VOLTS",
+      "240(LV)",
+      "120(LV)",
+      "CONNECT",
+      "H1-H4",
+      "H1H3-H2H4",
+      "X1-X4",
+      "X1-X4",
+      "LINE",
+      "H1-H4",
+      "X1-X4",
+      "LOW VOLTAGE (LV)"
+    ],
+    "values": {
+      "manufacturer": "SQUARE D COMPANY",
+      "model": "SHB H-1",
+      "catalogNumber": "251F",
+      "equipmentType": "DRY TYPE TRANSFORMER",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SQUARE D COMPANY"
+        },
+        {
+          "field": "model",
+          "value": "SHB H-1"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "251F"
+        },
+        {
+          "field": "equipmentType",
+          "value": "DRY TYPE TRANSFORMER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3704
+  }
+}

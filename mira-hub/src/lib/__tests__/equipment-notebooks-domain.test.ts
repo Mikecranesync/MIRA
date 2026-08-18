@@ -114,6 +114,25 @@ describe("attachSource IDOR guard", () => {
     expect(ins?.params?.[3]).toBe(false);
     expect(ins?.params?.[4]).toBe("candidate");
   });
+
+  it("a system candidate re-suggestion can never override a human decision (SQL contract)", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC }] });
+    rowsByMatch.push(
+      { re: /SELECT id FROM equipment_notebooks/, rows: [{ id: NB }] },
+      { re: /INSERT INTO equipment_notebook_sources/, rows: [{}] },
+    );
+    await attachSource(TENANT, NB, DOC, { matchState: "candidate" });
+    const ins = callFor(/INSERT INTO equipment_notebook_sources/);
+    const sql = ins!.sql;
+    // An incoming 'candidate' over a human-ruled row keeps the HUMAN's state
+    // (a rejected row stays rejected — the system cannot resurrect it) ...
+    expect(sql).toMatch(
+      /match_state IN \('user_confirmed', 'rejected'\)[\s\S]*?EXCLUDED\.match_state = 'candidate'[\s\S]*?THEN equipment_notebook_sources\.match_state/,
+    );
+    // ... and keeps the HUMAN's enable/disable toggle (the system cannot
+    // re-enable a source the user explicitly disabled).
+    expect(sql).toContain("THEN equipment_notebook_sources.enabled_by_default");
+  });
 });
 
 describe("validateChatSources", () => {
@@ -131,7 +150,10 @@ describe("validateChatSources", () => {
     const res = await validateChatSources(TENANT, NB, [DOC]);
     expect(res).toEqual({ ok: false, error: "source_not_in_notebook" });
     const membership = callFor(/FROM equipment_notebook_sources/);
-    expect(membership?.sql).toContain("match_state <> 'rejected'");
+    // Positive trust required (Codex P1, 2026-08-16): candidates and disabled
+    // sources are excluded, not merely rejected ones.
+    expect(membership?.sql).toContain("match_state IN ('user_confirmed', 'verified')");
+    expect(membership?.sql).toContain("enabled_by_default = true");
     expect(membership?.sql).toContain("notebook_id = $2");
   });
 

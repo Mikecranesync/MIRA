@@ -1,0 +1,182 @@
+{
+  "image": "c06r1_12.jpg",
+  "bytes": 83601,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Eaton",
+      "model": "WMZS3D16",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "MINIATURE CIRCUIT BREAKER",
+      "confidence": 0.95,
+      "rawText": [
+        "EATON",
+        "www.eaton.com",
+        "WMZS3D16",
+        "UL1077 MINIATURE CIRCUIT BREAKER",
+        "5kA",
+        "277/480VAC",
+        "IEC/EN 60947-2",
+        "Icu = 15kA",
+        "CE",
+        "IEC/EN 60898",
+        "AT70E",
+        "MADE IN SPAIN",
+        "6 86652 599320"
+      ]
+    },
+    "rawText": [
+      "EATON",
+      "www.eaton.com",
+      "WMZS3D16",
+      "UL1077 MINIATURE CIRCUIT BREAKER",
+      "5kA",
+      "277/480VAC",
+      "IEC/EN 60947-2",
+      "Icu = 15kA",
+      "CE",
+      "IEC/EN 60898",
+      "AT70E",
+      "MADE IN SPAIN",
+      "6 86652 599320"
+    ],
+    "values": {
+      "manufacturer": "Eaton",
+      "model": "WMZS3D16",
+      "catalogNumber": null,
+      "equipmentType": "MINIATURE CIRCUIT BREAKER",
+      "serialNumber": null,
+      "voltage": "480VAC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Eaton"
+        },
+        {
+          "field": "model",
+          "value": "WMZS3D16"
+        },
+        {
+          "field": "equipmentType",
+          "value": "MINIATURE CIRCUIT BREAKER"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 20,
+        "cropBbox": {
+          "left": 185,
+          "top": 282,
+          "width": 720,
+          "height": 372
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 3168
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4926,
+    "total_ms": 8113
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Eaton",
+      "model": "WMZS3D16",
+      "catalogNumber": "WMZS3D16",
+      "serialNumber": null,
+      "equipmentType": "Miniature Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "EATON",
+        "www.eaton.com",
+        "WMZS3D16",
+        "UL1077 MINIATURE CIRCUIT BREAKER",
+        "CE",
+        "5kA",
+        "IEC/EN 60947-2",
+        "277/480VAC",
+        "Icu = 15kA",
+        "IEC/EN 60898",
+        "AT70E",
+        "MADE IN SPAIN",
+        "866852 599320",
+        "3K816D",
+        "3 8 6 16 D",
+        "3K816D"
+      ]
+    },
+    "rawText": [
+      "EATON",
+      "www.eaton.com",
+      "WMZS3D16",
+      "UL1077 MINIATURE CIRCUIT BREAKER",
+      "CE",
+      "5kA",
+      "IEC/EN 60947-2",
+      "277/480VAC",
+      "Icu = 15kA",
+      "IEC/EN 60898",
+      "AT70E",
+      "MADE IN SPAIN",
+      "866852 599320",
+      "3K816D",
+      "3 8 6 16 D",
+      "3K816D"
+    ],
+    "values": {
+      "manufacturer": "Eaton",
+      "model": "WMZS3D16",
+      "catalogNumber": "WMZS3D16",
+      "equipmentType": "Miniature Circuit Breaker",
+      "serialNumber": null,
+      "voltage": "480VAC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Eaton"
+        },
+        {
+          "field": "model",
+          "value": "WMZS3D16"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "WMZS3D16"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Miniature Circuit Breaker"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3751
+  }
+}

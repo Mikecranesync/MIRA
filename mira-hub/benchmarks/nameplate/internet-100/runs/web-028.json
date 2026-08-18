@@ -1,0 +1,164 @@
+{
+  "image": "c04r1_07.jpg",
+  "bytes": 50192,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ORIENTAL MOTOR CO.,LTD",
+      "model": "PK243M-01BA",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "STEPPING MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL",
+        "PK243M-01BA",
+        "VEXTA®",
+        "STEPPING MOTOR",
+        "2-PHASE",
+        "0.9°",
+        "DC 0.95A",
+        "4.2Ω",
+        "QY7",
+        "04414",
+        "ORIENTAL MOTOR CO.,LTD.",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "MODEL",
+      "PK243M-01BA",
+      "VEXTA®",
+      "STEPPING MOTOR",
+      "2-PHASE",
+      "0.9°",
+      "DC 0.95A",
+      "4.2Ω",
+      "QY7",
+      "04414",
+      "ORIENTAL MOTOR CO.,LTD.",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "ORIENTAL MOTOR CO.,LTD",
+      "model": "PK243M-01BA",
+      "catalogNumber": null,
+      "equipmentType": "STEPPING MOTOR",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "018A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ORIENTAL MOTOR CO.,LTD"
+        },
+        {
+          "field": "model",
+          "value": "PK243M-01BA"
+        },
+        {
+          "field": "equipmentType",
+          "value": "STEPPING MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 13,
+        "cropBbox": {
+          "left": 0,
+          "top": 11,
+          "width": 454,
+          "height": 469
+        },
+        "imageWidth": 454,
+        "imageHeight": 480,
+        "cropRotationDeg": 0,
+        "ms": 3266
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 8735,
+    "total_ms": 11168
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "VEXTA",
+      "model": "PK243M-01BA",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Stepping Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL",
+        "PK243M-01BA",
+        "VEXTA®",
+        "STEPPING MOTOR",
+        "2-PHASE",
+        "0.9°",
+        "DC 0.95A",
+        "4.2Ω",
+        "QY7",
+        "04414",
+        "ORIENTAL MOTOR CO.,LTD.",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "MODEL",
+      "PK243M-01BA",
+      "VEXTA®",
+      "STEPPING MOTOR",
+      "2-PHASE",
+      "0.9°",
+      "DC 0.95A",
+      "4.2Ω",
+      "QY7",
+      "04414",
+      "ORIENTAL MOTOR CO.,LTD.",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "VEXTA",
+      "model": "PK243M-01BA",
+      "catalogNumber": null,
+      "equipmentType": "Stepping Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "018A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "VEXTA"
+        },
+        {
+          "field": "model",
+          "value": "PK243M-01BA"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Stepping Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2547
+  }
+}

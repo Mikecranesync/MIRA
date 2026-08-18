@@ -1,0 +1,154 @@
+{
+  "image": "c11r1_12.jpg",
+  "bytes": 62445,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Sears Roebuck & Co",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "AC NO 36069 - 482",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SEARS Roebuck & Co",
+        "WORLD'S LARGEST STORE",
+        "AC NO 36069 - 482",
+        "1/4 H.P",
+        "110 VOLTS",
+        "4.9 AMP",
+        "50 CYCLES",
+        "1725 RPM",
+        "1 PHAS",
+        "TYPE",
+        "SIC",
+        "61614"
+      ]
+    },
+    "rawText": [
+      "SEARS Roebuck & Co",
+      "WORLD'S LARGEST STORE",
+      "AC NO 36069 - 482",
+      "1/4 H.P",
+      "110 VOLTS",
+      "4.9 AMP",
+      "50 CYCLES",
+      "1725 RPM",
+      "1 PHAS",
+      "TYPE",
+      "SIC",
+      "61614"
+    ],
+    "values": {
+      "manufacturer": "Sears Roebuck & Co",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "AC NO 36069 - 482",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Sears Roebuck & Co"
+        },
+        {
+          "field": "serialNumber",
+          "value": "AC NO 36069 - 482"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 9,
+        "cropBbox": {
+          "left": 13,
+          "top": 67,
+          "width": 526,
+          "height": 345
+        },
+        "imageWidth": 650,
+        "imageHeight": 487,
+        "cropRotationDeg": 0,
+        "ms": 1044
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1328,
+    "total_ms": 4159
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Sears Roebuck & Co",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "36089-482",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Sears Roebuck & Co",
+        "WORLD'S LARGEST STORE",
+        "A.C. NO 36089-482",
+        "1/4 H.P.",
+        "110 VOLTS",
+        "4.9 AMP",
+        "60 CYCLES",
+        "1725 RPM",
+        "1 PHAS",
+        "TYPE SIC 61614"
+      ]
+    },
+    "rawText": [
+      "Sears Roebuck & Co",
+      "WORLD'S LARGEST STORE",
+      "A.C. NO 36089-482",
+      "1/4 H.P.",
+      "110 VOLTS",
+      "4.9 AMP",
+      "60 CYCLES",
+      "1725 RPM",
+      "1 PHAS",
+      "TYPE SIC 61614"
+    ],
+    "values": {
+      "manufacturer": "Sears Roebuck & Co",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "36089-482",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Sears Roebuck & Co"
+        },
+        {
+          "field": "serialNumber",
+          "value": "36089-482"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3135
+  }
+}

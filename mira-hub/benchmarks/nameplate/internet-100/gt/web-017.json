@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-017",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "partially_obstructed", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Yaskawa Electric",
+    "model": "USAREM-05AE2K",
+    "catalogNumber": "unknown",
+    "serialNumber": "R005FG 582",
+    "equipment_category": "servo_motor",
+    "specs": [
+      {"field": "power_w", "value_verbatim": "500", "unit": "W", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "1.59", "unit": "N·m", "confidence": "high"},
+      {"field": "current", "value_verbatim": "5.3", "unit": "A", "confidence": "medium"},
+      {"field": "speed", "value_verbatim": "3000", "unit": "r/min", "confidence": "high"},
+      {"field": "made_in", "value_verbatim": "JAPAN", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

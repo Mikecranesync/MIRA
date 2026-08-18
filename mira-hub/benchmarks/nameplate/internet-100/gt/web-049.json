@@ -1,0 +1,33 @@
+{
+  "sample_id": "web-049",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "high_resolution", "tiny_text", "dense_table", "dirt"],
+  "photo_gt": {
+    "manufacturer": "ABB",
+    "model": "Ts3N 150",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "breaker",
+    "specs": [
+      {"field": "type", "value_verbatim": "TYPE Ts3 N 150 40°C", "unit": "", "confidence": "high"},
+      {"field": "poles", "value_verbatim": "C.B. 3 POLE UNIT", "unit": "", "confidence": "high"},
+      {"field": "issue_no", "value_verbatim": "ISSUE No. DW-6417", "unit": "", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "600V ~ 50-60 Hz", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "150 A", "unit": "A", "confidence": "high"},
+      {"field": "interrupt_240v", "value_verbatim": "240V ~ 65,000A", "unit": "A", "confidence": "medium"},
+      {"field": "interrupt_480v", "value_verbatim": "480V ~ 25,000A", "unit": "A", "confidence": "medium"},
+      {"field": "interrupt_600vac", "value_verbatim": "600V ~ 14,000A", "unit": "A", "confidence": "medium"},
+      {"field": "interrupt_600vdc", "value_verbatim": "600V = 20,000A", "unit": "A", "confidence": "medium"},
+      {"field": "iec_ue", "value_verbatim": "Ue (V) 230 / 415 / 690 / 750", "unit": "V", "confidence": "medium"},
+      {"field": "iec_icu", "value_verbatim": "Icu (kA) 65 / 35 / 14 / 20", "unit": "kA", "confidence": "medium"},
+      {"field": "ul_file", "value_verbatim": "E93565", "unit": "", "confidence": "medium"},
+      {"field": "csa_file", "value_verbatim": "LR 54280", "unit": "", "confidence": "medium"},
+      {"field": "origin", "value_verbatim": "Made in Italy by ABB SACE", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

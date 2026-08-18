@@ -1,0 +1,190 @@
+{
+  "image": "c11r1_09.jpg",
+  "bytes": 92215,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "EMERSON ELECTRIC MOTORS",
+      "model": "1270",
+      "catalogNumber": null,
+      "serialNumber": "6309-22 J/C3",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "MP 15",
+        "TYPE ULTE",
+        "1270",
+        "CODE 6",
+        "F.S.",
+        "S.F. 1.25",
+        "40°C AMB",
+        "6309-22 J/C3",
+        "6207-22 J/C3",
+        "6408%0W07W 14.10",
+        "MOTURS ELECTRIQUE",
+        "DIVISION DE EAMSON ELECTRIC",
+        "U.S. ELECTRICAL",
+        "DIVISION OF EAMSON ELECTRIC",
+        "MADE IN U.S.A",
+        "SPECIAL FEATUR",
+        "SF AMPS 19.0",
+        "PF 82.0",
+        "KVAR 4.4"
+      ]
+    },
+    "rawText": [
+      "MP 15",
+      "TYPE ULTE",
+      "1270",
+      "CODE 6",
+      "F.S.",
+      "S.F. 1.25",
+      "40°C AMB",
+      "6309-22 J/C3",
+      "6207-22 J/C3",
+      "6408%0W07W 14.10",
+      "MOTURS ELECTRIQUE",
+      "DIVISION DE EAMSON ELECTRIC",
+      "U.S. ELECTRICAL",
+      "DIVISION OF EAMSON ELECTRIC",
+      "MADE IN U.S.A",
+      "SPECIAL FEATUR",
+      "SF AMPS 19.0",
+      "PF 82.0",
+      "KVAR 4.4"
+    ],
+    "values": {
+      "manufacturer": "EMERSON ELECTRIC MOTORS",
+      "model": "1270",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "6309-22 J/C3",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "1270"
+        },
+        {
+          "field": "serialNumber",
+          "value": "6309-22 J/C3"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 23,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 694,
+          "height": 800
+        },
+        "imageWidth": 694,
+        "imageHeight": 800,
+        "cropRotationDeg": 0,
+        "ms": 1700
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2876,
+    "total_ms": 8497
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Emerson Electric",
+      "model": "1270",
+      "catalogNumber": null,
+      "serialNumber": "6309-22 J/C3",
+      "equipmentType": "Motors",
+      "confidence": 0.95,
+      "rawText": [
+        "MP 15",
+        "TYPE ULTE",
+        "1270",
+        "CODE 6",
+        "F.S.",
+        "S.F. 1.25",
+        "40°C AMB",
+        "6309-22 J/C3",
+        "6207-22 J/C3",
+        "6308%0W07W 14.10",
+        "MOTURS ELECTRIQUE",
+        "DIVISION DE EAMSON ELECTRIC",
+        "U.S. ELECTRICAL",
+        "DIVISION OF EAMSON ELECTRIC",
+        "MADE IN U.S.A",
+        "SPECIAL FEATUR",
+        "SF AMPS 19.0",
+        "PF 82.0",
+        "KVAR 4.4"
+      ]
+    },
+    "rawText": [
+      "MP 15",
+      "TYPE ULTE",
+      "1270",
+      "CODE 6",
+      "F.S.",
+      "S.F. 1.25",
+      "40°C AMB",
+      "6309-22 J/C3",
+      "6207-22 J/C3",
+      "6308%0W07W 14.10",
+      "MOTURS ELECTRIQUE",
+      "DIVISION DE EAMSON ELECTRIC",
+      "U.S. ELECTRICAL",
+      "DIVISION OF EAMSON ELECTRIC",
+      "MADE IN U.S.A",
+      "SPECIAL FEATUR",
+      "SF AMPS 19.0",
+      "PF 82.0",
+      "KVAR 4.4"
+    ],
+    "values": {
+      "manufacturer": "Emerson Electric",
+      "model": "1270",
+      "catalogNumber": null,
+      "equipmentType": "Motors",
+      "serialNumber": "6309-22 J/C3",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "1270"
+        },
+        {
+          "field": "serialNumber",
+          "value": "6309-22 J/C3"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3704
+  }
+}

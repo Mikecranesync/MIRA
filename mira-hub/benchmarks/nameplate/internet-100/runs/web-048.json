@@ -1,0 +1,146 @@
+{
+  "image": "c03r1_06.jpg",
+  "bytes": 55654,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "Q37LP21GE",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Q37LP21GE",
+        "ERR.",
+        "SD",
+        "T.PASS",
+        "RUN",
+        "D.LINK",
+        "ING",
+        "L.ERR",
+        "RD",
+        "STATION NO",
+        "x10"
+      ]
+    },
+    "rawText": [
+      "Q37LP21GE",
+      "ERR.",
+      "SD",
+      "T.PASS",
+      "RUN",
+      "D.LINK",
+      "ING",
+      "L.ERR",
+      "RD",
+      "STATION NO",
+      "x10"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "Q37LP21GE",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "Q37LP21GE"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 5,
+        "cropBbox": {
+          "left": 616,
+          "top": 346,
+          "width": 182,
+          "height": 203
+        },
+        "imageWidth": 1200,
+        "imageHeight": 1200,
+        "cropRotationDeg": 180,
+        "ms": 3201
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3414,
+    "total_ms": 5344
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "Q7TLP216E",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Q7TLP216E",
+        "T. PHASE",
+        "FLUX",
+        "SD",
+        "ERL",
+        "STATION NO",
+        "16",
+        "IN",
+        "IN",
+        "MODE",
+        "OUT",
+        "OUT"
+      ]
+    },
+    "rawText": [
+      "Q7TLP216E",
+      "T. PHASE",
+      "FLUX",
+      "SD",
+      "ERL",
+      "STATION NO",
+      "16",
+      "IN",
+      "IN",
+      "MODE",
+      "OUT",
+      "OUT"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "Q7TLP216E",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "Q7TLP216E"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1724
+  }
+}

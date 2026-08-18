@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-118",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "509-B0D",
+    "catalogNumber": "509-B0D",
+    "serialNumber": "unknown",
+    "equipment_category": "motor_starter",
+    "specs": [
+      {"field": "nema_size", "value_verbatim": "NEMA SIZE 1", "unit": "", "confidence": "high"},
+      {"field": "series", "value_verbatim": "B", "unit": "", "confidence": "high"},
+      {"field": "voltage_max", "value_verbatim": "600VAC MAX", "unit": "V", "confidence": "high"},
+      {"field": "current_max_continuous", "value_verbatim": "27 AMP MAX. CONTINUOUS", "unit": "A", "confidence": "low"},
+      {"field": "power_hp_3ph_200v", "value_verbatim": "7-1/2 HP", "unit": "HP", "confidence": "low"},
+      {"field": "power_hp_3ph_230v", "value_verbatim": "7-1/2 HP", "unit": "HP", "confidence": "low"},
+      {"field": "power_hp_3ph_460_575v", "value_verbatim": "10 HP", "unit": "HP", "confidence": "high"},
+      {"field": "power_hp_1ph_115v", "value_verbatim": "2 HP", "unit": "HP", "confidence": "high"},
+      {"field": "power_hp_1ph_230v", "value_verbatim": "3 HP", "unit": "HP", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

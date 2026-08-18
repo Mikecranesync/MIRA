@@ -1,0 +1,142 @@
+{
+  "image": "c06r1_08.jpg",
+  "bytes": 143662,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ACME",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Transformer",
+      "confidence": 0.85,
+      "rawText": [
+        "ACME",
+        "TRANSFORMER"
+      ]
+    },
+    "rawText": [
+      "ACME",
+      "TRANSFORMER"
+    ],
+    "values": {
+      "manufacturer": "ACME",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "Transformer",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ACME"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Transformer"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 5,
+        "cropBbox": {
+          "left": 132,
+          "top": 47,
+          "width": 703,
+          "height": 891
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 180,
+        "ms": 3468
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4009,
+    "total_ms": 5159
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ACME TRANSFORMER",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "71-P-71",
+      "serialNumber": "155",
+      "equipmentType": "TRANSFORMER",
+      "confidence": 0.85,
+      "rawText": [
+        "ACME TRANSFORMER",
+        "TUMBERTON, NORTH. C. INC.",
+        "GENERAL PURPOSE TRANSFORMER",
+        "FOR INDUSTRIAL CONTROL USE",
+        "CATALOG NO 71-P-71",
+        "VOLTS 75 240AM",
+        "A VA WHERE 2 WIRING DES",
+        "ARAN 55",
+        "155"
+      ]
+    },
+    "rawText": [
+      "ACME TRANSFORMER",
+      "TUMBERTON, NORTH. C. INC.",
+      "GENERAL PURPOSE TRANSFORMER",
+      "FOR INDUSTRIAL CONTROL USE",
+      "CATALOG NO 71-P-71",
+      "VOLTS 75 240AM",
+      "A VA WHERE 2 WIRING DES",
+      "ARAN 55",
+      "155"
+    ],
+    "values": {
+      "manufacturer": "ACME TRANSFORMER",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "71-P-71",
+      "equipmentType": "TRANSFORMER",
+      "serialNumber": "155",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ACME TRANSFORMER"
+        },
+        {
+          "field": "model",
+          "value": "GENERAL PURPOSE TRANSFORMER"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "71-P-71"
+        },
+        {
+          "field": "serialNumber",
+          "value": "155"
+        },
+        {
+          "field": "equipmentType",
+          "value": "TRANSFORMER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2749
+  }
+}

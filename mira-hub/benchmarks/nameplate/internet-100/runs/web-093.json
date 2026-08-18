@@ -1,0 +1,180 @@
+{
+  "image": "c02r1_11.jpg",
+  "bytes": 176567,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "DELTA ELECTRONICS, INC.",
+      "model": "VFD004EL43A",
+      "catalogNumber": "004EL43A",
+      "serialNumber": "0190080",
+      "equipmentType": "VFD",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL:VFD004EL43A",
+        "INPUT:3PH 380-480V 50/60Hz 1.9A",
+        "OUTPUT:3PH 0-480V 1.5A 1.2kVA",
+        "0.4kW/0.5HP",
+        "FREQUENCY RANGE : 0.1-600Hz",
+        "Version: 01.04",
+        "AE95",
+        "N2326",
+        "CE",
+        "LISTED 19XK",
+        "GB 12668.3",
+        "MADE IN CHINA",
+        "DELTA ELECTRONICS, INC. 004EL43A0190080"
+      ]
+    },
+    "rawText": [
+      "MODEL:VFD004EL43A",
+      "INPUT:3PH 380-480V 50/60Hz 1.9A",
+      "OUTPUT:3PH 0-480V 1.5A 1.2kVA",
+      "0.4kW/0.5HP",
+      "FREQUENCY RANGE : 0.1-600Hz",
+      "Version: 01.04",
+      "AE95",
+      "N2326",
+      "CE",
+      "LISTED 19XK",
+      "GB 12668.3",
+      "MADE IN CHINA",
+      "DELTA ELECTRONICS, INC. 004EL43A0190080"
+    ],
+    "values": {
+      "manufacturer": "DELTA ELECTRONICS, INC.",
+      "model": "VFD004EL43A",
+      "catalogNumber": "004EL43A",
+      "equipmentType": "VFD",
+      "serialNumber": "0190080",
+      "voltage": "380-480V",
+      "current": "1.9A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "DELTA ELECTRONICS, INC."
+        },
+        {
+          "field": "model",
+          "value": "VFD004EL43A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "004EL43A"
+        },
+        {
+          "field": "serialNumber",
+          "value": "0190080"
+        },
+        {
+          "field": "equipmentType",
+          "value": "VFD"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 17,
+        "cropBbox": {
+          "left": 229,
+          "top": 136,
+          "width": 438,
+          "height": 445
+        },
+        "imageWidth": 1024,
+        "imageHeight": 768,
+        "cropRotationDeg": 0,
+        "ms": 2027
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2556,
+    "total_ms": 6506
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "DELTA ELECTRONICS, INC.",
+      "model": "VFD004EL43A",
+      "catalogNumber": null,
+      "serialNumber": "004EL43A0190080",
+      "equipmentType": "VFD",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL:VFD004EL43A",
+        "INPUT:3PH 380-480V 50 60Hz 1.9A",
+        "OUTPUT:3PH 0-480V 1.5A 1.2kVA",
+        "0.4kW / 0.5HP",
+        "FREQUENCY RANGE : 0.1-600Hz",
+        "Version: 01.04",
+        "GB 12668.3",
+        "CE",
+        "UL US",
+        "LISTED",
+        "1994",
+        "RES. CONT. EQ.",
+        "MADE IN CHINA",
+        "BIAA-15"
+      ]
+    },
+    "rawText": [
+      "MODEL:VFD004EL43A",
+      "INPUT:3PH 380-480V 50 60Hz 1.9A",
+      "OUTPUT:3PH 0-480V 1.5A 1.2kVA",
+      "0.4kW / 0.5HP",
+      "FREQUENCY RANGE : 0.1-600Hz",
+      "Version: 01.04",
+      "GB 12668.3",
+      "CE",
+      "UL US",
+      "LISTED",
+      "1994",
+      "RES. CONT. EQ.",
+      "MADE IN CHINA",
+      "BIAA-15"
+    ],
+    "values": {
+      "manufacturer": "DELTA ELECTRONICS, INC.",
+      "model": "VFD004EL43A",
+      "catalogNumber": null,
+      "equipmentType": "VFD",
+      "serialNumber": "004EL43A0190080",
+      "voltage": "380-480V",
+      "current": "1.9A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "VFD004EL43A"
+        },
+        {
+          "field": "equipmentType",
+          "value": "VFD"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "serialNumber",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 4045
+  }
+}

@@ -8,7 +8,15 @@
 x-printsense-production-env: &printsense-production-env
   PRINT_VISION_PROVIDER: ${PRINTSENSE_PROD_PROVIDER:-together}
   PRINT_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}
-  TOGETHERAI_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}
+  # NOTE: this overlay must set PRINT_* ONLY. It briefly also exported
+  # TOGETHERAI_VISION_MODEL (the GENERAL vision lane), which routed every
+  # Telegram equipment/nameplate photo through the heavyweight print
+  # interpreter and blew the bot's 30s process watchdog on all of them
+  # (found live 2026-08-17, Danfoss FC-202 nameplate). The PrintSense
+  # carve-out is print-photo vision only — never chat/diagnosis (root
+  # CLAUDE.md hard constraint #2). printsense/interpret.py reads
+  # PRINT_VISION_MODEL exclusively, so PrintSense loses nothing; the general
+  # lane falls back to InferenceRouter's fast default (router.py).
   PRINT_PROVIDER_POLICY: ${PRINTSENSE_PROD_POLICY:-strict}
   PRINT_ENFORCE_APPROVED_MODELS: "1"
   FACTORYLM_NETWORK_MODE: enabled

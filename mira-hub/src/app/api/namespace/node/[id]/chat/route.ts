@@ -33,6 +33,7 @@ import {
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
 import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import { linkedDocIdsForNode } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +170,23 @@ context. The documentation below was attached to this part of the namespace.
   stop and instruct the tech to follow site safety procedures before proceeding.`;
 }
 
+/**
+ * Merge the node-stamped pass with the file-link pass, keeping the highest-rank
+ * copy of each distinct passage. Dedupe key is source + page + a content prefix:
+ * the same chunk reached by both paths must be cited once.
+ */
+function mergeChunks(primary: ManualChunk[], extra: ManualChunk[]): ManualChunk[] {
+  const seen = new Set<string>();
+  const out: ManualChunk[] = [];
+  for (const chunk of [...primary, ...extra].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))) {
+    const key = `${chunk.sourceUrl ?? ""}|${chunk.sourcePage ?? ""}|${(chunk.content ?? "").slice(0, 120)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(chunk);
+  }
+  return out;
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 export async function POST(
   req: Request,
@@ -236,6 +254,24 @@ export async function POST(
     });
   }
 
+  // Canonical files (migration 075): documents attached to THIS node through
+  // workspace_file_links. The link derivation IS the membership proof, so these
+  // ids may be retrieved with validatedDocScope — a document ingested once
+  // under another node keeps that node's chunk stamp and would otherwise be
+  // invisible here. This only WIDENS the default node ask: an explicit docId
+  // keeps today's exact behavior, and the node-stamped pass still runs, so
+  // legacy documents are unaffected. Read before (not inside) the retrieval
+  // transaction — nesting withTenantContext would hold two of the pool's five
+  // clients per request. A failure here is non-fatal.
+  let linkedDocIds: string[] = [];
+  if (!docId) {
+    try {
+      linkedDocIds = await linkedDocIdsForNode(ctx.tenantId, id);
+    } catch (err) {
+      console.warn("[api/namespace/node/:id/chat] linked doc lookup skipped", err);
+    }
+  }
+
   // Resolve node context (+ optional document) + scoped chunks in one
   // tenant-scoped (RLS) transaction. Node/doc misses are fatal (404); empty
   // retrieval is not — chat still answers ("no coverage").
@@ -277,9 +313,19 @@ export async function POST(
         unsPath: row.uns_path,
         ...(docId ? { docId } : {}),
       });
+      let allChunks = chunks;
+      if (linkedDocIds.length > 0) {
+        const linkedChunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
+          nodeId: id,
+          unsPath: row.uns_path,
+          docIds: linkedDocIds,
+          validatedDocScope: true,
+        });
+        allChunks = mergeChunks(chunks, linkedChunks);
+      }
       const approvedChunks = approvedAskEnforcementEnabled()
-        ? chunks.filter((chunk) => chunk.verified === true)
-        : chunks;
+        ? allChunks.filter((chunk) => chunk.verified === true)
+        : allChunks;
       return { row, chunks: approvedChunks, filename, missing: false };
     });
     nodeRow = fetched.row;
