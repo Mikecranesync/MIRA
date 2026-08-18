@@ -24,6 +24,11 @@ try:
 except ImportError:
     from crawler.robots_checker import RobotsChecker
 
+try:
+    from mira_crawler.ingest import ingest_ledger as ledger
+except ImportError:  # local-path layout used by the crawler container
+    from ingest import ingest_ledger as ledger
+
 logger = logging.getLogger("mira-crawler.tasks.sitemaps")
 
 # ---------------------------------------------------------------------------
@@ -41,6 +46,51 @@ SITEMAP_URLS: list[str] = [
 ]
 
 _REDIS_LASTMOD_KEY = "mira:sitemaps:lastmod"
+
+#: Ledger namespace for this flow (see ingest/ingest_ledger.py).
+_LEDGER_KIND = "sitemaps"
+
+
+def _reconcile_sitemaps(r) -> dict:
+    """Settle pending sitemap URLs; return {loc: lastmod} for NEW commits only.
+
+    The returned mapping is what may be written to `mira:sitemaps:lastmod` —
+    i.e. a URL's lastmod is recorded as processed only after its document is
+    verified in the corpus.
+    """
+    import json as _json
+
+    try:
+        pending = r.hgetall(ledger.pending_key(_LEDGER_KIND)) or {}
+    except Exception:
+        return {}
+    if not pending:
+        return {}
+
+    recs = {}
+    for item_id, raw in pending.items():
+        try:
+            recs[item_id] = _json.loads(raw)
+        except Exception:
+            continue
+    try:
+        from ingest.store import ingested_source_urls
+    except ImportError:
+        from mira_crawler.ingest.store import ingested_source_urls
+
+    ingested = ingested_source_urls(
+        [rec.get("url", "") for rec in recs.values() if rec.get("url")],
+        os.getenv("MIRA_TENANT_ID", ""),
+    )
+    ledger.reconcile(r, _LEDGER_KIND, ingested_urls=ingested)
+
+    out = {}
+    for item_id, rec in recs.items():
+        if rec.get("url") in ingested:
+            lm = (rec.get("meta") or {}).get("lastmod")
+            if lm:
+                out[rec["url"]] = lm
+    return out
 _FETCH_TIMEOUT = 30
 
 # XML namespace for sitemaps
@@ -209,13 +259,24 @@ def check_sitemaps() -> dict:
                 is_updated = not is_new and lastmod and lastmod != stored
 
                 if is_new or is_updated:
+                    if not ledger.eligible_for_enqueue(r, _LEDGER_KIND, loc):
+                        continue  # committed, dead-lettered, or still in flight
                     try:
                         ingest_url.delay(
                             url=loc,
                             source_type="equipment_manual",
                             # Shared corpus: every URL here came from a sitemap
-                            # in the curated `_SITEMAPS` manifest.
+                            # in the curated `_SITEMAPS` manifest (CU-03/I-2).
                             is_private=False,
+                        )
+                        # PENDING, not done (CU-03b/Gate 7). `lastmod` is
+                        # deliberately NOT written here: persisting it at enqueue
+                        # is what made a refused or failed URL look permanently up
+                        # to date, so it was never retried. It is written by
+                        # _reconcile_sitemaps once the document is verified in the
+                        # corpus.
+                        ledger.mark_pending(
+                            r, _LEDGER_KIND, loc, loc, meta={"lastmod": lastmod}
                         )
                         new_urls += 1
                         logger.debug(
@@ -225,11 +286,10 @@ def check_sitemaps() -> dict:
                     except Exception as exc:
                         logger.warning("Failed to queue URL %s: %s", loc[:80], exc)
 
-                # Always update stored lastmod if we have a date
-                if lastmod:
-                    updated_lastmod[loc] = lastmod
-
-    # 4. Persist updated lastmod to Redis
+    # 4. Settle prior polls against the corpus, then persist lastmod for the
+    #    URLs that actually got ingested. `updated_lastmod` now only ever
+    #    contains commits promoted by the reconciler — never an enqueue.
+    updated_lastmod.update(_reconcile_sitemaps(r))
     if updated_lastmod:
         try:
             r.hset(_REDIS_LASTMOD_KEY, mapping=updated_lastmod)

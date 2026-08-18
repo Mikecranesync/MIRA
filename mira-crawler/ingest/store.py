@@ -273,3 +273,34 @@ def store_chunks(
         manual_id,
     )
     return inserted
+
+def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str]:
+    """Return which of ``source_urls`` actually have rows in knowledge_entries.
+
+    The authority for "was this ingested?" — used by
+    `ingest.ingest_ledger.reconcile` to promote pending items to committed. The
+    corpus is the only definition of success that cannot drift from reality: a
+    Celery ack proves a message was delivered, not that a document landed.
+
+    One batched query, not one per URL. Returns an empty set on any error so a
+    DB blip leaves items pending (retryable) rather than falsely committing or
+    falsely dead-lettering them.
+    """
+    if not source_urls:
+        return set()
+    from sqlalchemy import text
+
+    try:
+        with _engine().connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT DISTINCT source_url FROM knowledge_entries "
+                    "WHERE source_url = ANY(:urls)"
+                    + (" AND tenant_id = :tid" if tenant_id else "")
+                ),
+                ({"urls": list(source_urls), "tid": tenant_id} if tenant_id else {"urls": list(source_urls)}),
+            ).fetchall()
+        return {r[0] for r in rows if r and r[0]}
+    except Exception as e:
+        logger.warning("ingested_source_urls check failed (treating as none): %s", e)
+        return set()

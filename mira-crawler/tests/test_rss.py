@@ -265,6 +265,13 @@ class TestPollRssFeeds:
 
         mock_redis = MagicMock()
         mock_redis.smembers.return_value = set()
+        # The flow now consults the ledger hashes before enqueueing. A bare
+        # MagicMock returns a truthy object from hexists/hgetall, which would
+        # read as "already settled" and queue nothing — configure them empty so
+        # this test still exercises the path it was written for.
+        mock_redis.hexists.return_value = False
+        mock_redis.hget.return_value = None
+        mock_redis.hgetall.return_value = {}
 
         mock_ingest = MagicMock()
 
@@ -345,25 +352,40 @@ class TestPollRssFeeds:
         assert result["feeds_checked"] == len(rss_mod.RSS_FEEDS) - 1
         assert result["new_articles"] == 0
 
-    def test_sadd_called_per_entry_not_at_end(self):
-        """Redis SADD is called once per successfully-queued entry (M2 regression).
+    def test_pending_recorded_per_entry_not_at_end(self):
+        """Per-entry incremental persistence — now into the LEDGER, not a seen-set.
 
-        Previously GUIDs were accumulated and persisted in a single batch at
-        the end of the task; a mid-run crash would lose all dedup state.  The
-        fix persists each GUID immediately after ``ingest_url.delay()`` so the
-        Redis set is updated incrementally.
+        This test previously asserted `SADD` once per entry at enqueue time. Its
+        original intent (M2) was crash-safety: don't batch dedup state to the end
+        of the task, or a mid-run crash loses all of it. That intent is preserved
+        and the assertion is retargeted, because the thing being persisted
+        changed meaning in Gate 7.
 
-        With 1 feed returning 3 entries and all entries new, SADD must be
-        called exactly 3 times — one call per entry, not one call at the end.
+        Marking a GUID **seen** at enqueue was the defect: enqueue proves a broker
+        accepted a message, not that the article was ingested, so curation
+        refusals, 404s and worker crashes all recorded as success. The flow now
+        records PENDING per entry — still incremental, still crash-safe — and a
+        GUID becomes seen only when the reconciler verifies it in the corpus.
         """
+        import json
+
         import tasks.rss as rss_mod
+
+        store: dict[str, dict[str, str]] = {}
 
         mock_redis = MagicMock()
         mock_redis.smembers.return_value = set()
+        mock_redis.hgetall.side_effect = lambda k: dict(store.get(k, {}))
+        mock_redis.hget.side_effect = lambda k, f: store.get(k, {}).get(str(f))
+        mock_redis.hexists.side_effect = lambda k, f: str(f) in store.get(k, {})
+        mock_redis.hset.side_effect = lambda k, f=None, value=None, mapping=None: (
+            store.setdefault(k, {}).update(
+                {str(f): str(value)} if f is not None else {str(a): str(b) for a, b in (mapping or {}).items()}
+            )
+        )
 
         mock_ingest = MagicMock()
 
-        # Only patch the first feed's HTTP response; use a single-feed slice
         with (
             patch.object(rss_mod, "_get_redis", return_value=mock_redis),
             patch.object(rss_mod.httpx, "get", return_value=self._make_http_response(_SAMPLE_RSS)),
@@ -372,14 +394,21 @@ class TestPollRssFeeds:
             rss_mod.poll_rss_feeds()
 
         entries = rss_mod._parse_feed(_SAMPLE_RSS)
-        expected_sadd_calls = len(entries)  # 3 unique GUIDs
+        pending = store.get("mira:rss:pending", {})
 
-        # sadd must be called at least once per unique new entry queued
-        # (feeds returning duplicate GUIDs across runs don't add extra calls)
-        assert mock_redis.sadd.call_count >= expected_sadd_calls
+        assert len(pending) >= len(entries), (
+            "each queued entry must be recorded PENDING individually (incremental, "
+            "so a mid-run crash keeps what was already enqueued)"
+        )
+        for raw in pending.values():
+            rec = json.loads(raw)
+            assert rec["url"], "a pending record must carry the URL the reconciler verifies"
+            assert "first_seen" in rec, "a pending record must be ageable for stale recovery"
 
-        # Each sadd call passes the _REDIS_SEEN_KEY and a single GUID (not a batch)
-        for call in mock_redis.sadd.call_args_list:
-            args = call[0]
-            assert args[0] == rss_mod._REDIS_SEEN_KEY, "SADD key must be _REDIS_SEEN_KEY"
-            assert len(args) == 2, "SADD should pass exactly one GUID per call (incremental)"
+        assert not store.get("mira:rss:committed"), (
+            "enqueue must NOT commit — a GUID becomes seen only once the corpus confirms it"
+        )
+        assert mock_redis.sadd.call_count == 0, (
+            "the legacy enqueue-time seen-set must no longer be written"
+        )
+
