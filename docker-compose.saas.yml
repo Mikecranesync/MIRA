@@ -317,8 +317,8 @@ services:
       # Canonical channel workflow. Hub is root-mounted inside this stack;
       # default OFF until the shared token + UUID tenant are in Doppler.
       - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
-      - HUB_URL=${HUB_URL:-http://mira-hub:3000}
-      - HUB_BASE_PATH=${HUB_BASE_PATH:-}
+      - HUB_URL=http://mira-hub:3000
+      - HUB_BASE_PATH=
       - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
       - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
@@ -423,8 +423,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       # Same canonical Hub boundary as Telegram; Slack owns rendering only.
       - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
-      - HUB_URL=${HUB_URL:-http://mira-hub:3000}
-      - HUB_BASE_PATH=${HUB_BASE_PATH:-}
+      - HUB_URL=http://mira-hub:3000
+      - HUB_BASE_PATH=
       - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
       - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}

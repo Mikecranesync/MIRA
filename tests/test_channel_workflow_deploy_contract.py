@@ -59,8 +59,8 @@ def test_production_hub_telegram_and_slack_share_one_root_path_boundary() -> Non
     for name in ("mira-bot-telegram", "mira-bot-slack"):
         _assert_bot_boundary(
             services[name],
-            expected_url="${HUB_URL:-http://mira-hub:3000}",
-            expected_base_path="${HUB_BASE_PATH:-}",
+            expected_url="http://mira-hub:3000",
+            expected_base_path="",
         )
     _assert_hub_boundary(services["mira-hub"])
 
@@ -69,8 +69,8 @@ def test_vps_staging_hub_and_telegram_share_one_root_path_boundary() -> None:
     services = _services("docker-compose.staging-vps.yml")
     _assert_bot_boundary(
         services["mira-bot-telegram"],
-        expected_url="${HUB_URL:-http://stg-mira-hub:3000}",
-        expected_base_path="${HUB_BASE_PATH:-}",
+        expected_url="http://stg-mira-hub:3000",
+        expected_base_path="",
     )
     _assert_hub_boundary(services["mira-hub"])
 
