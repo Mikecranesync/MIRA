@@ -42,9 +42,7 @@ def _assert_bot_boundary(
     assert env["HUB_URL"] == expected_url
     assert env["HUB_BASE_PATH"] == expected_base_path
     assert env["HUB_INGEST_TOKEN"] == "${HUB_INGEST_TOKEN:-}"
-    assert env["MIRA_CHANNEL_WORKFLOW_POLL_SECONDS"] == (
-        "${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}"
-    )
+    assert env["MIRA_CHANNEL_WORKFLOW_POLL_SECONDS"] == ("${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}")
     assert env["MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS"] == (
         "${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}"
     )
@@ -61,8 +59,8 @@ def test_production_hub_telegram_and_slack_share_one_root_path_boundary() -> Non
     for name in ("mira-bot-telegram", "mira-bot-slack"):
         _assert_bot_boundary(
             services[name],
-            expected_url="http://mira-hub:3000",
-            expected_base_path="",
+            expected_url="${HUB_URL:-http://mira-hub:3000}",
+            expected_base_path="${HUB_BASE_PATH:-}",
         )
     _assert_hub_boundary(services["mira-hub"])
 
@@ -71,8 +69,8 @@ def test_vps_staging_hub_and_telegram_share_one_root_path_boundary() -> None:
     services = _services("docker-compose.staging-vps.yml")
     _assert_bot_boundary(
         services["mira-bot-telegram"],
-        expected_url="http://stg-mira-hub:3000",
-        expected_base_path="",
+        expected_url="${HUB_URL:-http://stg-mira-hub:3000}",
+        expected_base_path="${HUB_BASE_PATH:-}",
     )
     _assert_hub_boundary(services["mira-hub"])
 

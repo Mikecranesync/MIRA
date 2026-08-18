@@ -428,8 +428,8 @@ services:
       # Canonical channel workflow. Root-mounted stg Hub; disabled until the
       # shared service token and a UUID staging tenant are provisioned.
       - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
-      - HUB_URL=http://stg-mira-hub:3000
-      - HUB_BASE_PATH=
+      - HUB_URL=${HUB_URL:-http://stg-mira-hub:3000}
+      - HUB_BASE_PATH=${HUB_BASE_PATH:-}
       - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
       - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
