@@ -88,8 +88,20 @@ async def test_normalize_incoming_photo(adapter):
             "chat": {"id": 789, "type": "private"},
             "date": 1714000002,
             "photo": [
-                {"file_id": "thumb_abc", "file_unique_id": "t1", "width": 90, "height": 60, "file_size": 512},
-                {"file_id": "large_xyz", "file_unique_id": "l1", "width": 800, "height": 600, "file_size": 102400},
+                {
+                    "file_id": "thumb_abc",
+                    "file_unique_id": "t1",
+                    "width": 90,
+                    "height": 60,
+                    "file_size": 512,
+                },
+                {
+                    "file_id": "large_xyz",
+                    "file_unique_id": "l1",
+                    "width": 800,
+                    "height": 600,
+                    "file_size": 102400,
+                },
             ],
             "caption": "Fault panel",
         },
@@ -215,8 +227,9 @@ async def test_render_outgoing_plain_text(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     assert posted_payload["chat_id"] == "789"
     assert posted_payload["parse_mode"] == "MarkdownV2"
     assert "motor overload relay" in posted_payload["text"]
@@ -263,8 +276,9 @@ async def test_render_outgoing_with_blocks(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     text = posted_payload["text"]
     assert "*VFD Fault Diagnosis*" in text
     assert "OC1" in text
@@ -305,8 +319,9 @@ async def test_render_outgoing_suggestion_chips(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     assert "reply_markup" in posted_payload
     keyboard = posted_payload["reply_markup"]["inline_keyboard"]
     assert len(keyboard) == 1

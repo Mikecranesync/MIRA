@@ -546,11 +546,10 @@ class ChannelWorkflowClient:
         disposition = _string(prepared.get("disposition"))
         if not _UUID_RE.fullmatch(operation_id):
             raise ChannelWorkflowProtocolError("invalid_operation_id")
-        if on_progress is not None:
-            await on_progress(operation_id, "prepared")
-
         try:
             if disposition == "execute":
+                if on_progress is not None:
+                    await on_progress(operation_id, "prepared")
                 owner_token = _string(prepared.get("ownerToken"))
                 if not _UUID_RE.fullmatch(owner_token):
                     raise ChannelWorkflowProtocolError("invalid_owner_token")
@@ -566,6 +565,8 @@ class ChannelWorkflowClient:
                     _dict(result, "invalid_terminal_result"), delivery_token=token
                 )
             if disposition == "running":
+                if on_progress is not None:
+                    await on_progress(operation_id, "prepared")
                 return await self._wait_for_delivery(http, request, operation_id, on_progress)
             if disposition == "cancelled":
                 return self._suppressed(operation_id, "cancelled")

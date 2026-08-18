@@ -34,3 +34,17 @@ def test_set_overwrites_and_refreshes(ctx):
     ctx.set_drive_context("slack", "k", "gs10")
     ctx.set_drive_context("slack", "k", "pf525")
     assert ctx.get_drive_context("slack", "k") == "pf525"
+
+
+def test_clear_removes_exact_conversation_and_child_threads_only(ctx):
+    ctx.set_drive_context("slack", "slack:C_1", "parent")
+    ctx.set_drive_context("slack", "slack:C_1:T1", "child")
+    ctx.set_drive_context("slack", "slack:CX1:T1", "other")
+    ctx.set_drive_context("telegram", "slack:C_1:T1", "other-source")
+
+    assert ctx.clear_drive_context("slack", "slack:C_1") is True
+
+    assert ctx.get_drive_context("slack", "slack:C_1") is None
+    assert ctx.get_drive_context("slack", "slack:C_1:T1") is None
+    assert ctx.get_drive_context("slack", "slack:CX1:T1") == "other"
+    assert ctx.get_drive_context("telegram", "slack:C_1:T1") == "other-source"

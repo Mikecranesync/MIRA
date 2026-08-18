@@ -65,7 +65,7 @@ class SlackChatAdapter:
 
     async def render_outgoing(
         self, response: NormalizedChatResponse, event: NormalizedChatEvent
-    ) -> None:
+    ) -> bool:
         """Send response to Slack using Block Kit when blocks are present,
         falling back to plain text when the response has no blocks."""
         payload = render_slack(response)
@@ -84,10 +84,10 @@ class SlackChatAdapter:
                 data = resp.json()
                 error = data.get("error")
                 if data.get("ok"):
-                    return
+                    return True
                 logger.warning("Slack postMessage error: %s", error)
                 if error != "invalid_blocks" or not payload.get("blocks"):
-                    return
+                    return False
 
                 fallback = {
                     "channel": event.external_channel_id,
@@ -106,8 +106,11 @@ class SlackChatAdapter:
                         "Slack postMessage plain-text retry error: %s",
                         retry_data.get("error"),
                     )
+                    return False
+                return True
         except Exception as exc:
             logger.error("render_outgoing failed: %s", exc)
+            return False
 
     async def download_attachment(self, attachment: NormalizedAttachment) -> bytes:
         """Download a Slack file using the bot token."""

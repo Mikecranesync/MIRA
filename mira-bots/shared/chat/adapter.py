@@ -19,8 +19,8 @@ class ChatAdapter(Protocol):
 
     async def render_outgoing(
         self, response: NormalizedChatResponse, event: NormalizedChatEvent
-    ) -> None:
-        """Convert NormalizedChatResponse to platform-specific format and send."""
+    ) -> bool:
+        """Send the response and report whether terminal delivery succeeded."""
         ...
 
     async def download_attachment(self, attachment: NormalizedAttachment) -> bytes:

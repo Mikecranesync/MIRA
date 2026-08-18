@@ -65,3 +65,20 @@ def get_drive_context(source: str, session_key: str, max_age_s: int | None = Non
     if (time.time() - float(updated_at)) > max_age:
         return None
     return pack_id
+
+
+def clear_drive_context(source: str, session_key: str) -> bool:
+    """Delete a conversation key and any thread-qualified child keys."""
+    try:
+        db = _db()
+        db.execute(
+            "DELETE FROM chat_drive_context WHERE source = ? "
+            "AND (session_key = ? OR substr(session_key, 1, length(?) + 1) = ? || ':')",
+            (source, session_key, session_key, session_key),
+        )
+        db.commit()
+        db.close()
+        return True
+    except Exception as exc:
+        logger.warning("drive-context clear failed: %s", exc)
+        return False
