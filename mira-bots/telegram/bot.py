@@ -21,6 +21,7 @@ from admin_commands import (
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import (
+    asset_memory,
     chat_tenant,
     document_spool,
     guardrails,
@@ -1035,6 +1036,19 @@ _PHOTO_RECALL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "what machine are we on?" — an identity question about the asset this chat
+# already identified. Answered from the ledger, never re-derived: once the
+# plate is on file, asking MIRA what it is looking at is a memory read, not a
+# diagnosis. Deliberately narrow — "what is this?" only stands alone (never
+# "what is this fault code?"), so troubleshooting turns still reach the engine.
+_ASSET_IDENTITY_RE = re.compile(
+    r"\b(what|which)\s+(machine|equipment|unit|drive|motor|asset)\b"
+    r"|\bwhat\s+(are|am)\s+(we|i)\s+(working|looking)\s+on\b"
+    r"|\bwhat(?:'s| is)\s+(this|it)\s*\??$"
+    r"|\bremind\s+me\s+what\b",
+    re.IGNORECASE,
+)
+
 _QUESTION_SHAPE_RE = re.compile(
     r"\?|\b(what|which|who|how|tell me|show me|read|remind me|remember)\b", re.IGNORECASE
 )
@@ -1075,7 +1089,7 @@ async def _try_equipment_photo_followup(
         if not _QUESTION_SHAPE_RE.search(text):
             return False
         field_name = _match_equipment_field(text)
-        generic = bool(_PHOTO_RECALL_RE.search(text))
+        generic = bool(_PHOTO_RECALL_RE.search(text) or _ASSET_IDENTITY_RE.search(text))
         if not (field_name or generic):
             return False
 
@@ -1134,8 +1148,13 @@ async def _try_equipment_photo_followup(
                 )
         else:
             lines: list[str] = []
+            # Lead with the machine. A resolved identity line wins; otherwise
+            # the plate itself identifies it ("Danfoss FC-202 · 15 kW").
+            lead = asset_memory.format_asset_lead(fields)
             if identity:
                 lines.append(identity)
+            elif lead:
+                lines.append(lead)
             if fields:
                 lines.append(
                     "Nameplate fields I read: "
@@ -1179,6 +1198,71 @@ async def _try_equipment_photo_followup(
     except Exception as e:  # noqa: BLE001 — this rung must never raise into a turn
         logger.warning("EQUIPMENT_FOLLOWUP_ERROR %s", type(e).__name__)
         return False
+
+
+# --- Persistent machine context on the generic reply path ---------------------
+# The rung above answers questions ABOUT the remembered photo. This pair does
+# the other half: it hands the remembered nameplate to every ordinary
+# troubleshooting turn, so the engine's answer leads with the machine
+# ("Danfoss FC-202 · 15 kW — …") and never asks for a field already on file.
+#
+# Read-only, zero LLM, fail-open. The gate is the cheap local sqlite
+# chat→session lookup: no live workspace means no evidence read and a
+# byte-identical reply. The text transform itself is pure
+# (`shared/asset_memory.py`).
+
+# Turn kinds that are not about the machine (mirrors the engine's
+# `_H4_SKIP_DISPATCH_KINDS` carve-out at the intent layer).
+_ASSET_MEMORY_SKIP_INTENTS = frozenset({"safety", "greeting", "help"})
+
+
+async def _live_workspace_fields(update: Update) -> dict[str, str]:
+    """Nameplate fields this chat's live workspace already holds ({} if none).
+
+    Same guards as the recall rung: TTL-bounded workspace, and the stored
+    tenant must match the tenant THIS turn resolves to (a drifted chat→tenant
+    mapping must never read the old tenant's evidence)."""
+    try:
+        chat_id = str(update.effective_chat.id)
+        ws = print_workspace.get_workspace(chat_id, max_age_s=print_workspace.PRINT_WORKSPACE_TTL_S)
+        if ws is None:
+            return {}
+        if _print_workspace_tenant(update) != ws.tenant_id:
+            return {}
+        store = print_workspace._get_service().store
+        observations = await store.load_observations(ws.session_id, ws.tenant_id, active_only=True)
+        return print_workspace.latest_equipment_fields(observations)
+    except Exception as e:  # noqa: BLE001 — memory is an enhancement, never a blocker
+        logger.warning("ASSET_MEMORY_READ_ERROR %s", type(e).__name__)
+        return {}
+
+
+async def _lead_with_remembered_asset(text: str, reply: str, update: Update) -> str:
+    """Apply the remembered machine to an outgoing engine reply.
+
+    Skipped for the turn kinds that are not about the asset — the same
+    carve-out the H4 enforcer makes. A safety STOP is the highest-stakes
+    message MIRA sends and must not be dressed up with a nameplate header;
+    a greeting or a capability answer isn't about the machine at all."""
+    if not reply or not reply.strip():
+        return reply
+    try:
+        if guardrails.classify_intent(text or "") in _ASSET_MEMORY_SKIP_INTENTS:
+            return reply
+        fields = await _live_workspace_fields(update)
+        if not fields:
+            return reply
+        rewritten = asset_memory.apply_asset_memory(reply, fields)
+        if rewritten != reply:
+            logger.info(
+                "ASSET_MEMORY_APPLIED chat=%s fields=%d",
+                update.effective_chat.id,
+                len(fields),
+            )
+        return rewritten
+    except Exception as e:  # noqa: BLE001 — never eat a delivered answer
+        logger.warning("ASSET_MEMORY_APPLY_ERROR %s", type(e).__name__)
+        return reply
 
 
 # --- Wiring loop (PR-4): photo -> proposed rows; text -> verified-only cited
@@ -1308,6 +1392,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _t0 = _time.monotonic()
         async with typing_action(context, update.effective_chat.id):
             response = await dispatcher.dispatch(normalized)
+        # Persistent machine context: lead with the asset this chat already
+        # identified, and never re-ask for a nameplate field already on file.
+        response.text = await _lead_with_remembered_asset(text, response.text, update)
         await adapter.render_outgoing(response, normalized)
         # Append-only eval log — fail-open. See docs/specs/bot-eval-loop-spec.md.
         await log_turn(
@@ -1387,6 +1474,9 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         async with typing_action(context, update.effective_chat.id):
             response = await dispatcher.dispatch(normalized)
+        # Same persistent machine context as the text path — a voice turn is a
+        # text turn that arrived through Whisper.
+        response.text = await _lead_with_remembered_asset(transcribed, response.text, update)
         await adapter.render_outgoing(response, normalized)
         await _maybe_send_voice(update, context, chat_id, response.text)
     except Exception as exc:
