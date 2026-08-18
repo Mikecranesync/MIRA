@@ -309,13 +309,20 @@ export function createHubWorkflowDependencies(
       answerThroughHub(workspace, question, sourceDocIds, request),
     getPriorOperation: async (tenantId, operationId) => {
       const operation = await operations.get(tenantId, operationId);
+      const resetReplacement =
+        operation?.request.action === "reset"
+          ? await workspaces.findResetReplacement(tenantId, operationId)
+          : null;
       return operation
         ? {
             tenantId: operation.tenantId,
             sessionId: operation.sessionId,
+            conversationId: operation.request.conversation.id,
             channel: operation.channel,
             actorUserId: operation.request.actor.userId,
             uploaderId: operation.request.actor.uploaderId,
+            action: operation.request.action,
+            resetReplacement,
             state: operation.state,
             result: operation.result,
             terminalDeliveryClaimedAt: operation.terminalDeliveryClaimedAt,

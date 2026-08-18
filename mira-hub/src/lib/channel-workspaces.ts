@@ -571,6 +571,14 @@ export class ChannelWorkspaceService {
     });
   }
 
+  /** Resolve the durable workspace generation created by one reset operation. */
+  async findResetReplacement(
+    tenantId: string,
+    resetOperationId: string,
+  ): Promise<ChannelWorkspace | null> {
+    return this.store.findByResetOperation(tenantId, resetOperationId);
+  }
+
   /**
    * Resolve the workspace against which an operation originally started.
    * A reset replay may legitimately reference an abandoned generation only

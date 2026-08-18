@@ -20,7 +20,13 @@
   its schema and `[SN]` claims also fail direct inspection. The CU record carries exact
   dispositions plus 50 Hub, 30 bot, and 11 deployment/schema grounding tests. No code was
   changed to accommodate ungrounded findings; exact-SHA rerun remains required.
-- Fresh local evidence after remediation: Hub 2,003/2,003; deployment/contract/architecture
+- Final standard Codex round on `88d78fbd2` found zero blocker/high and one real medium:
+  active-session equality made an unacknowledged reset result or pre-reset answer
+  unrecoverable. Red-first tests reproduced both. Recovery now uses immutable external
+  conversation provenance, validates reset results against the generation durably linked by
+  `reset_operation_id`, and retains tenant/channel/actor/uploader fences. Focused remediation
+  is 39/39; full Hub is 2,011/2,011 and the production build passes.
+- Fresh local evidence after remediation: Hub 2,011/2,011; deployment/contract/architecture
   40/40; focused security/tenancy/review 273/273; Next build and changed-file lint/format
   green. Collision-isolated bot runs have 2,549 passes and 20 skips. The monolithic runner's
   pre-existing adapter-module collisions and the isolated wiring lazy-import behavior are

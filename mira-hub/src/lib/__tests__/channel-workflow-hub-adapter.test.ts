@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   canonicalFileTargets,
+  createHubWorkflowDependencies,
   parseNotebookChatResponse,
 } from "@/lib/channel-workflow-hub-adapter";
-import type { ChannelWorkspace } from "@/lib/channel-workspaces";
+import type { ChannelOperationService } from "@/lib/channel-operations";
+import { parseChannelWorkflowRequest } from "@/lib/channel-workflow-contract";
+import type {
+  ChannelWorkspace,
+  ChannelWorkspaceService,
+} from "@/lib/channel-workspaces";
 
 const WORKSPACE: ChannelWorkspace = {
   sessionId: "11111111-1111-4111-8111-111111111111",
@@ -86,6 +92,69 @@ describe("canonical Hub workflow adapter", () => {
     const response = Response.json({ error: "source_not_in_notebook" }, { status: 403 });
     await expect(parseNotebookChatResponse(response)).rejects.toThrow(
       "notebook_chat_source_not_in_notebook",
+    );
+  });
+
+  it("loads the durable reset replacement as prior-operation provenance", async () => {
+    const operationId = "77777777-7777-4777-8777-777777777777";
+    const replacement: ChannelWorkspace = {
+      ...WORKSPACE,
+      sessionId: "88888888-8888-4888-8888-888888888888",
+      notebookId: "99999999-9999-4999-8999-999999999999",
+      notebookNodeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      generation: 2,
+      assetId: null,
+      selectedNodeId: null,
+    };
+    const resetRequest = parseChannelWorkflowRequest({
+      contractVersion: "1.0",
+      tenantId: WORKSPACE.tenantId,
+      actor: {
+        userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        externalUserId: "42",
+        uploaderId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+      channel: "telegram",
+      eventId: "reset:1",
+      conversation: { id: WORKSPACE.conversationId },
+      action: "reset",
+      text: "/new",
+      caption: "",
+      attachments: [],
+    });
+    const get = vi.fn(async () => ({
+      tenantId: WORKSPACE.tenantId,
+      sessionId: WORKSPACE.sessionId,
+      channel: "telegram" as const,
+      request: resetRequest,
+      state: "complete" as const,
+      result: { semanticKind: "reset" },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    }));
+    const findResetReplacement = vi.fn(async () => replacement);
+    const dependencies = createHubWorkflowDependencies({
+      request: resetRequest,
+      workspace: WORKSPACE,
+      operationId,
+      ownerToken: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      operationService: { get } as unknown as ChannelOperationService,
+      workspaceService: {
+        findResetReplacement,
+      } as unknown as ChannelWorkspaceService,
+    });
+
+    await expect(
+      dependencies.getPriorOperation(WORKSPACE.tenantId, operationId),
+    ).resolves.toMatchObject({
+      sessionId: WORKSPACE.sessionId,
+      conversationId: WORKSPACE.conversationId,
+      action: "reset",
+      resetReplacement: replacement,
+    });
+    expect(findResetReplacement).toHaveBeenCalledWith(
+      WORKSPACE.tenantId,
+      operationId,
     );
   });
 });

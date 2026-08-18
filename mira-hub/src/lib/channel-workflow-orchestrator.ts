@@ -65,9 +65,12 @@ export interface NotebookAnswerOutcome {
 export interface PriorWorkflowOperation {
   tenantId: string;
   sessionId: string;
+  conversationId: string;
   channel: ChannelWorkflowRequest["channel"];
   actorUserId: string;
   uploaderId: string;
+  action: ChannelWorkflowRequest["action"];
+  resetReplacement: ChannelWorkspace | null;
   state: OperationState;
   result: Record<string, unknown> | null;
   terminalDeliveryClaimedAt: string | null;
@@ -376,6 +379,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function resultConversationMatchesWorkspace(
+  value: Record<string, unknown>,
+  workspace: ChannelWorkspace,
+): boolean {
+  return (
+    value.sessionId === workspace.sessionId &&
+    value.notebookId === workspace.notebookId &&
+    value.generation === workspace.generation &&
+    (value.assetId ?? null) === workspace.assetId &&
+    (value.nodeId ?? null) === workspace.selectedNodeId
+  );
+}
+
+function resultConversationMatchesPrior(
+  value: Record<string, unknown>,
+  prior: PriorWorkflowOperation,
+): boolean {
+  if (prior.action === "reset") {
+    if (prior.state === "failed") {
+      return value.sessionId === prior.sessionId;
+    }
+    return Boolean(
+      prior.resetReplacement &&
+        resultConversationMatchesWorkspace(value, prior.resetReplacement),
+    );
+  }
+  return value.sessionId === prior.sessionId;
+}
+
 function cloneRecoveredResult(
   input: ExecuteChannelWorkflowInput,
   priorOperationId: string,
@@ -391,7 +423,7 @@ function cloneRecoveredResult(
     typeof raw.semanticKind !== "string" ||
     !RECOVERABLE_SEMANTIC_KINDS.has(raw.semanticKind as ChannelWorkflowResult["semanticKind"]) ||
     !isRecord(raw.conversation) ||
-    raw.conversation.sessionId !== prior.sessionId ||
+    !resultConversationMatchesPrior(raw.conversation, prior) ||
     !isRecord(raw.provenance)
   ) {
     return null;
@@ -452,7 +484,7 @@ async function recoverDelivery(
   if (
     !prior ||
     prior.tenantId !== input.request.tenantId ||
-    prior.sessionId !== input.workspace.sessionId ||
+    prior.conversationId !== input.request.conversation.id ||
     prior.channel !== input.request.channel ||
     prior.actorUserId !== input.request.actor.userId ||
     prior.uploaderId !== input.request.actor.uploaderId

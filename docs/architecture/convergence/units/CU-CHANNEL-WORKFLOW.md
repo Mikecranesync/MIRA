@@ -394,9 +394,22 @@ config/contract tests, and 11/11 deployment/schema tests. No production code cha
 response to ungrounded claims. The required exact-SHA Gate 7 rerun follows this recorded
 disposition.
 
+The third and final standard Codex adversarial round reviewed the complete 78-file diff on
+`88d78fbd2ae061db09673aa7619bffa0ff549f2e`: zero blocker/high, one medium, and two
+explicit false positives. The medium was substantiated: recovery still required the prior
+operation's session to be the currently active session, so a reset result—and an older
+unacknowledged answer after a later reset—could never be recovered. Red-first tests failed
+2/18 with `prior_operation_not_found`. Recovery now binds immutable tenant, channel,
+actor/uploader, and external conversation identity instead of active generation. Ordinary
+results remain tied to their original operation session; successful reset results must match
+the complete durable workspace generation linked by `reset_operation_id`; failed resets with
+no replacement remain tied to the original session. Forged reset-workspace metadata and
+cross-tenant, actor, uploader, channel, or external-conversation attempts fail closed. The
+focused remediation slice is 39/39 and the full Hub suite is 2,011/2,011.
+
 Fresh final-tree gates before the review freeze:
 
-- Hub: 208 test files, 2,003/2,003 tests passed;
+- Hub: 208 test files, 2,011/2,011 tests passed;
 - bots: 2,549 passed and 20 intentional environment/provider skips across collision-isolated
   invocations. The monolithic collection still has pre-existing bare-module collisions among
   adapter tests; the untouched Slack relay test also expects three symbols absent on

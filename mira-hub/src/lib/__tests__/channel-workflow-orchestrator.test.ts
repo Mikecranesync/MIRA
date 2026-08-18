@@ -258,9 +258,12 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      conversationId: "telegram:-42",
       channel: "telegram",
       actorUserId: USER,
       uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
       state: "candidate_review",
       result: candidate as unknown as Record<string, unknown>,
       terminalDeliveryClaimedAt: null,
@@ -301,9 +304,12 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      conversationId: "telegram:-42",
       channel: "telegram",
       actorUserId: USER,
       uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
       state: "candidate_review",
       result: {
         identity: DANFOSS_IDENTITY,
@@ -347,9 +353,12 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      conversationId: "telegram:-42",
       channel: "telegram",
       actorUserId: USER,
       uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
       state: "candidate_review",
       result: {
         identity: DANFOSS_IDENTITY,
@@ -408,9 +417,12 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      conversationId: "telegram:-42",
       channel: "telegram",
       actorUserId: USER,
       uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
       state: "complete",
       result: priorResult,
       terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
@@ -450,20 +462,255 @@ describe("channel-neutral canonical workflow", () => {
     expect(deps.intakeFile).not.toHaveBeenCalled();
   });
 
+  it("recovers an old-generation terminal after the same external conversation resets", async () => {
+    const replacement = workspace({
+      sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      notebookId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      notebookNodeId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      generation: 2,
+      assetId: null,
+    });
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      conversationId: "telegram:-42",
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
+      state: "complete",
+      result: {
+        contractVersion: "1.0",
+        operationId: OPERATION,
+        state: "complete",
+        handled: true,
+        semanticKind: "grounded_answer",
+        conversation: {
+          sessionId: SESSION,
+          notebookId: NOTEBOOK,
+          generation: 1,
+          assetId: ASSET,
+          nodeId: null,
+        },
+        answer: { text: "prior answer", citations: [] },
+        provenance: {},
+      },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    } as Awaited<ReturnType<typeof deps.getPriorOperation>>);
+
+    const result = await executeChannelWorkflow(
+      {
+        request: request({
+          action: "recover_delivery",
+          priorOperationId: OPERATION,
+          text: "",
+          caption: "",
+          attachments: [],
+          conversation: { id: "telegram:-42" },
+        }),
+        workspace: replacement,
+        operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        attachments: [],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      semanticKind: "grounded_answer",
+      answer: { text: "prior answer" },
+      conversation: {
+        sessionId: replacement.sessionId,
+        generation: replacement.generation,
+      },
+      provenance: { recoveredFromOperationId: OPERATION },
+    });
+  });
+
+  it("recovers an unacknowledged reset result using its durable replacement workspace", async () => {
+    const replacement = workspace({
+      sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      notebookId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      notebookNodeId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      generation: 2,
+      assetId: null,
+    });
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      conversationId: "telegram:-42",
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      action: "reset",
+      resetReplacement: replacement,
+      state: "complete",
+      result: {
+        contractVersion: "1.0",
+        operationId: OPERATION,
+        state: "complete",
+        handled: true,
+        semanticKind: "reset",
+        conversation: {
+          sessionId: replacement.sessionId,
+          notebookId: replacement.notebookId,
+          generation: replacement.generation,
+          assetId: null,
+          nodeId: null,
+        },
+        provenance: {
+          priorSessionId: SESSION,
+          clearedCanonicalState: true,
+        },
+      },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    } as Awaited<ReturnType<typeof deps.getPriorOperation>>);
+
+    const result = await executeChannelWorkflow(
+      {
+        request: request({
+          action: "recover_delivery",
+          priorOperationId: OPERATION,
+          text: "",
+          caption: "",
+          attachments: [],
+          conversation: { id: "telegram:-42" },
+        }),
+        workspace: replacement,
+        operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        attachments: [],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      semanticKind: "reset",
+      conversation: {
+        sessionId: replacement.sessionId,
+        notebookId: replacement.notebookId,
+        generation: 2,
+      },
+      provenance: {
+        priorSessionId: SESSION,
+        recoveredFromOperationId: OPERATION,
+      },
+    });
+  });
+
+  it("recovers a failed reset result that never created a replacement workspace", async () => {
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      conversationId: "telegram:-42",
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      action: "reset",
+      resetReplacement: null,
+      state: "failed",
+      result: {
+        contractVersion: "1.0",
+        operationId: OPERATION,
+        state: "failed",
+        handled: true,
+        semanticKind: "fallthrough",
+        delegatedRoute: null,
+        conversation: {
+          sessionId: SESSION,
+          notebookId: NOTEBOOK,
+          generation: 1,
+          assetId: ASSET,
+          nodeId: null,
+        },
+        answer: { text: "This workflow could not complete.", citations: [] },
+        provenance: { errorCode: "workspace_reset_race" },
+      },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    });
+
+    const result = await executeChannelWorkflow(
+      {
+        request: request({
+          action: "recover_delivery",
+          priorOperationId: OPERATION,
+          text: "",
+          caption: "",
+          attachments: [],
+          conversation: { id: "telegram:-42" },
+        }),
+        workspace: active,
+        operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        attachments: [],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      state: "failed",
+      semanticKind: "fallthrough",
+      answer: { text: "This workflow could not complete." },
+      provenance: {
+        errorCode: "workspace_reset_race",
+        recoveredFromOperationId: OPERATION,
+      },
+    });
+  });
+
   it.each([
-    ["already acknowledged", "2026-08-18T12:00:01.000Z", USER, SESSION],
-    ["never claimed", null, USER, SESSION],
-    ["different actor", null, "abababab-abab-4bab-8bab-abababababab", SESSION],
-    ["different conversation", null, USER, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+    [
+      "already acknowledged",
+      "2026-08-18T12:00:01.000Z",
+      TENANT,
+      USER,
+      USER,
+      "telegram",
+      "telegram:-42",
+    ],
+    ["never claimed", null, TENANT, USER, USER, "telegram", "telegram:-42"],
+    [
+      "different tenant",
+      null,
+      "abababab-abab-4bab-8bab-abababababab",
+      USER,
+      USER,
+      "telegram",
+      "telegram:-42",
+    ],
+    [
+      "different actor",
+      null,
+      TENANT,
+      "abababab-abab-4bab-8bab-abababababab",
+      USER,
+      "telegram",
+      "telegram:-42",
+    ],
+    [
+      "different uploader",
+      null,
+      TENANT,
+      USER,
+      "abababab-abab-4bab-8bab-abababababab",
+      "telegram",
+      "telegram:-42",
+    ],
+    ["different channel", null, TENANT, USER, USER, "slack", "telegram:-42"],
+    ["different conversation", null, TENANT, USER, USER, "telegram", "telegram:-99"],
   ])(
     "refuses recovery for %s prior terminal state",
-    async (_label, deliveredAt, actorId, sessionId) => {
+    async (_label, deliveredAt, tenantId, actorId, uploaderId, channel, conversationId) => {
       vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
-        tenantId: TENANT,
-        sessionId,
-        channel: "telegram",
+        tenantId,
+        sessionId: SESSION,
+        conversationId,
+        channel,
         actorUserId: actorId,
-        uploaderId: actorId,
+        uploaderId,
+        action: "message",
+        resetReplacement: null,
         state: "complete",
         result: {
           contractVersion: "1.0",
@@ -471,7 +718,7 @@ describe("channel-neutral canonical workflow", () => {
           state: "complete",
           handled: true,
           semanticKind: "grounded_answer",
-          conversation: { sessionId, notebookId: NOTEBOOK, generation: 1 },
+          conversation: { sessionId: SESSION, notebookId: NOTEBOOK, generation: 1 },
           answer: { text: "prior", citations: [] },
           provenance: {},
         },
@@ -495,20 +742,84 @@ describe("channel-neutral canonical workflow", () => {
           deps,
         ),
       ).rejects.toThrow(
-        actorId !== USER || sessionId !== SESSION
+        tenantId !== TENANT ||
+          actorId !== USER ||
+          uploaderId !== USER ||
+          channel !== "telegram" ||
+          conversationId !== "telegram:-42"
           ? "prior_operation_not_found"
           : "prior_operation_not_recoverable",
       );
     },
   );
 
+  it("rejects a reset result that does not match its durable replacement workspace", async () => {
+    const replacement = workspace({
+      sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      notebookId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      notebookNodeId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      generation: 2,
+      assetId: null,
+    });
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      conversationId: "telegram:-42",
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      action: "reset",
+      resetReplacement: replacement,
+      state: "complete",
+      result: {
+        contractVersion: "1.0",
+        operationId: OPERATION,
+        state: "complete",
+        handled: true,
+        semanticKind: "reset",
+        conversation: {
+          sessionId: replacement.sessionId,
+          notebookId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+          generation: replacement.generation,
+          assetId: null,
+          nodeId: null,
+        },
+        provenance: {},
+      },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    });
+
+    await expect(
+      executeChannelWorkflow(
+        {
+          request: request({
+            action: "recover_delivery",
+            priorOperationId: OPERATION,
+            text: "",
+            caption: "",
+            attachments: [],
+            conversation: { id: "telegram:-42" },
+          }),
+          workspace: replacement,
+          operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          attachments: [],
+        },
+        deps,
+      ),
+    ).rejects.toThrow("prior_operation_not_recoverable");
+  });
+
   it("does not recover a delegated fallthrough that never owned a terminal answer", async () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      conversationId: "telegram:-42",
       channel: "telegram",
       actorUserId: USER,
       uploaderId: USER,
+      action: "message",
+      resetReplacement: null,
       state: "complete",
       result: {
         contractVersion: "1.0",
