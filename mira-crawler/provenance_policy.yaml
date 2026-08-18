@@ -70,20 +70,20 @@ origins:
   "dl.mitsubishielectric.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS]
   "download.schneider-electric.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS]
   "evolution.skf.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [rss.RSS_FEEDS]
   "forums.ni.com":
     classification: curated
@@ -116,15 +116,15 @@ origins:
     reason: "local Ollama embedding service, never ingested"
     feeders: [full_ingest_pipeline.OLLAMA_URL, manualslib_scraper._OLLAMA_URL]
   "maintenancephoenix.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [foundational.APIFY_TARGETS, rss.RSS_FEEDS]
   "new.abb.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [rss.RSS_FEEDS, sitemaps.SITEMAP_URLS]
   "patents.google.com":
@@ -134,10 +134,10 @@ origins:
     reason: "patent text — public but not maintenance documentation; ingestible but tenant-scoped, never shared corpus"
     feeders: [patents._GOOGLE_PATENTS_BASE]
   "reliabilityweb.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [foundational.APIFY_TARGETS, rss.RSS_FEEDS]
   "static-data2.manualslib.com":
     classification: blocked
@@ -148,19 +148,19 @@ origins:
   "support.industry.siemens.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS]
   "www.automationworld.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [rss.RSS_FEEDS]
   "www.danfoss.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS, sitemaps.SITEMAP_URLS]
   "www.demagcranes.com":
@@ -169,10 +169,10 @@ origins:
     confirmed_by: "sources.yaml"
     reason: "present in sources.yaml — the pre-existing human curation gate"
   "www.efficientplantmag.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [rss.RSS_FEEDS]
   "www.emerson.com":
     classification: curated
@@ -181,10 +181,10 @@ origins:
     reason: "present in sources.yaml — the pre-existing human curation gate"
     feeders: [foundational.APIFY_TARGETS, sitemaps.SITEMAP_URLS]
   "www.emersonautomationexperts.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [rss.RSS_FEEDS]
   "www.energy.gov":
     classification: curated
@@ -197,10 +197,10 @@ origins:
     confirmed_by: "sources.yaml"
     reason: "present in sources.yaml — the pre-existing human curation gate"
   "www.fluke.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [foundational.APIFY_TARGETS, rss.RSS_FEEDS]
   "www.googleapis.com":
     classification: infrastructure
@@ -221,14 +221,14 @@ origins:
   "www.lenze.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS]
   "www.machinerylubrication.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [rss.RSS_FEEDS]
   "www.magnetekdrives.com":
     classification: curated
@@ -253,10 +253,10 @@ origins:
     reason: "present in sources.yaml — the pre-existing human curation gate"
     feeders: [foundational.DIRECT_TARGETS]
   "www.plantservices.com":
-    classification: curated
-    visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a; needs Mike's confirmation"
-    reason: "public trade press, ingested as rss_article; public but not OEM documentation"
+    classification: private
+    visibility: tenant
+    confirmed_by: "Mike 2026-08-18 — DEMOTED to private: OEM vendors only in the shared corpus for now"
+    reason: "trade press / vendor content marketing, ingested as rss_article. Public and fetchable, but NOT equipment documentation — it must not become citable shared-corpus truth. Ingested tenant-scoped so it stays searchable without grounding a cited answer."
     feeders: [foundational.APIFY_TARGETS, rss.RSS_FEEDS]
   "www.reddit.com":
     classification: private
@@ -267,19 +267,19 @@ origins:
   "www.se.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [sitemaps.SITEMAP_URLS]
   "www.sew-eurodrive.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS]
   "www.siemens.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [sitemaps.SITEMAP_URLS]
   "www.sitemaps.org":
@@ -291,7 +291,7 @@ origins:
   "www.skf.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [foundational.APIFY_TARGETS]
   "www.stle.org":
@@ -307,7 +307,7 @@ origins:
   "www.yaskawa.com":
     classification: curated
     visibility: shared
-    confirmed_by: "PENDING-HUMAN — promoted by CU-03a to reconcile feeder vs gate; needs Mike's confirmation"
+    confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [discover.MANUFACTURER_TARGETS, sitemaps.SITEMAP_URLS]
   "youtube.com":

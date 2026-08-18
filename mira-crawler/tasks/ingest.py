@@ -298,9 +298,41 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # that passed validation is the one opened (Gate 9 TOCTOU finding).
     final_url = url
     if not is_file_url:
-        allowed, gate_reason = shared_corpus_source_allowed(url)
-        if not allowed:
-            logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
+        # The policy has THREE outcomes for a remote origin, and collapsing them
+        # into allow/refuse would make `private` a lie:
+        #
+        #   curated  -> ingest; visibility is the caller's declaration
+        #   private  -> ingest, but FORCE tenant-scoped. The origin is real and
+        #               fetchable, it just may not enter the shared corpus.
+        #   anything else (blocked / infrastructure / unclassified) -> refuse
+        #
+        # Before this, `private` behaved exactly like `blocked` — the URL was
+        # refused outright — so classifying an origin "private, ingestible,
+        # tenant-scoped" silently stopped ingesting it altogether. A policy whose
+        # runtime does not match its stated semantics is worse than no policy.
+        try:
+            from ingest.provenance import classify_origin as _classify
+        except ImportError:  # container layout
+            from mira_crawler.ingest.provenance import classify_origin as _classify
+
+        try:
+            origin_class, gate_reason = _classify(url)
+        except Exception as e:
+            logger.warning("Provenance policy unreadable for %s (%s) — fail closed", url[:80], e)
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
+
+        if origin_class == "private":
+            if not is_private:
+                logger.info(
+                    "Forcing is_private=True for %s — origin classified private: %s",
+                    url[:80], gate_reason,
+                )
+            is_private = True
+        elif origin_class != "curated":
+            logger.warning(
+                "Refusing ingest of %s: origin classified %s — %s",
+                url[:80], origin_class, gate_reason,
+            )
             return {"url": url, "inserted": 0, "error": "uncurated_source"}
 
     # 1. Download (supports http(s):// and file:// schemes)

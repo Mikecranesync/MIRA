@@ -165,3 +165,119 @@ def test_policy_is_the_only_host_list(policy):
         "sources.yaml hosts absent from the canonical policy — the two lists can "
         f"drift again: {missing}"
     )
+
+
+class TestPrivateOriginsAreIngestedNotRefused:
+    """`private` must mean tenant-scoped ingest — never silent non-ingestion.
+
+    Before the owner decision of 2026-08-18 the gate had two outcomes, so a
+    `private` classification behaved exactly like `blocked`: the URL was refused
+    outright. Demoting the trade-press feeds would then have silently stopped
+    ingesting them instead of scoping them, and the policy's own wording
+    ("may be ingested, but tenant-scoped only") would have been false.
+    """
+
+    def _visibility_reaching_insert(self, monkeypatch, url: str, declared: bool = False):
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setenv("MIRA_TENANT_ID", "t")
+        seen: dict = {}
+
+        class _Resp:
+            status_code = 200
+            headers = {"content-type": "application/pdf"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                return False
+
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self, chunk_size):
+                yield b"%PDF-1.4"
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                return False
+
+            def stream(self, m, u):
+                return _Resp()
+
+        with (
+            patch("tasks.ingest.httpx.Client", _Client),
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
+            patch("ingest.chunker.chunk_blocks",
+                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
+            from tasks.ingest import ingest_url
+
+            result = ingest_url.run(url=url, is_private=declared)
+        return seen, result
+
+    def test_private_origin_is_ingested_tenant_scoped(self, monkeypatch):
+        """A demoted trade-press feed still ingests — as private."""
+        seen, result = self._visibility_reaching_insert(
+            monkeypatch, "https://www.plantservices.com/article.pdf", declared=False
+        )
+        assert result.get("error") != "uncurated_source", (
+            "a `private` origin must be INGESTED, not refused — otherwise the "
+            "classification silently means 'blocked'"
+        )
+        assert seen.get("is_private") is True, "a private origin must be forced tenant-scoped"
+
+    def test_curated_origin_keeps_the_declared_visibility(self, monkeypatch):
+        seen, result = self._visibility_reaching_insert(
+            monkeypatch, "https://ibiblio.org/book.pdf", declared=False
+        )
+        assert result.get("error") != "uncurated_source"
+        assert seen.get("is_private") is False
+
+    def test_blocked_origin_is_refused_outright(self, monkeypatch):
+        seen, result = self._visibility_reaching_insert(
+            monkeypatch, "https://www.manualslib.com/m.pdf", declared=False
+        )
+        assert result.get("error") == "uncurated_source"
+        assert seen == {}, "a blocked origin must persist nothing at all"
+
+    def test_the_owner_decision_is_recorded_per_origin(self):
+        """OEM approved, trade press demoted — attributed, not anonymous."""
+        import pathlib
+
+        import yaml
+
+        d = yaml.safe_load(
+            (pathlib.Path(__file__).resolve().parents[1] / "provenance_policy.yaml").read_text()
+        )
+        oem = [h for h, e in d["origins"].items() if "OEM documentation portal" in e["reason"]]
+        press = [h for h, e in d["origins"].items() if "trade press" in e["reason"]]
+        assert len(oem) == 11 and len(press) == 9, f"population changed: {len(oem)} OEM, {len(press)} press"
+        for h in oem:
+            assert d["origins"][h]["classification"] == "curated"
+            assert "Mike" in d["origins"][h]["confirmed_by"]
+        for h in press:
+            assert d["origins"][h]["classification"] == "private", f"{h} must be tenant-scoped"
+            assert "DEMOTED" in d["origins"][h]["confirmed_by"]
+
+    def test_no_origin_remains_pending_human(self):
+        import pathlib
+
+        import yaml
+
+        d = yaml.safe_load(
+            (pathlib.Path(__file__).resolve().parents[1] / "provenance_policy.yaml").read_text()
+        )
+        pending = [h for h, e in d["origins"].items() if str(e.get("confirmed_by", "")).startswith("PENDING")]
+        assert not pending, f"origins still awaiting a human decision: {pending}"
