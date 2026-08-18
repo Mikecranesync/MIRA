@@ -23,10 +23,14 @@ Allowed-directory validation (`tasks/ingest.py::_validated_local_path`) answers
 contents", and passing it must never lower a file's privacy classification.
 
 Scope note: this module currently owns the *local vs remote* half of provenance.
-The remote half — which curated hosts may reach the shared corpus — still lives
-in `tasks/ingest.py::shared_corpus_source_allowed` against `sources.yaml`.
-Unifying the two behind one auditable manifest is tracked separately; see the
-CU-03 unit record. Do not add a second host list here in the meantime.
+The remote half — which origins may reach the shared corpus — is the canonical
+`provenance_policy.yaml`, loaded by `load_policy` below and consulted by
+`tasks/ingest.py::shared_corpus_source_allowed`. The duplicate `sources.yaml`
+host loader that used to live there is gone, so the ingest gate has one truth.
+
+That covers CLASSIFICATION, not ACQUISITION: the feeder manifests still author
+which URLs get fetched (see the policy file's header). Do not add a second
+origin list here.
 """
 
 from __future__ import annotations
