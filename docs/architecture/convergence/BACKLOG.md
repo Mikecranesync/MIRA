@@ -52,7 +52,7 @@
 
 ## CU-04 — factorylm legacy strangulation, phase 1 (statuses + proof, no deletion)
 
-- **Status: IMPLEMENTED 2026-08-18 — PR #3283, awaiting Gate 9 (human GO).** R0 `1ce65139a`. Nine components classified on their own Gate 11 runtime evidence; **no deletion, none authorized**. Registry: 5 new per-component entries (`apps-plc-reader`, `services-diagnosis`, `services-telegram-bot`, `services-llm-router`, `services-plc-modbus`), 4 downgrades, 1 confirmation, plus machine-readable `deletion_safe` / `blocking_evidence` / `clearing_evidence` fields.
+- **Status: ✅ DONE 2026-08-18** — PR #3283 → merge `81f9964e9` → **v3.277.7**; rollback checkpoint `rollback/2026-08-18-v3.277.7`; R1 recorded. R0 `1ce65139a`. Nine components classified on their own Gate 11 runtime evidence; **no deletion, none authorized**. Registry: 5 new per-component entries (`apps-plc-reader`, `services-diagnosis`, `services-telegram-bot`, `services-llm-router`, `services-plc-modbus`), 4 downgrades, 1 confirmation, plus machine-readable `deletion_safe` / `blocking_evidence` / `clearing_evidence` fields.
   **Headline: 1 of 9 is deletion-safe (`simulation`); 8 are not.** Three of the four components the Gate 0 seed already carried as `DELETE_CANDIDATE` (`sim`, `cosmos`, `cookoff`) are imported by CANONICAL code at top level — `workers/plc_simulator_tasks.py` (a Celery task module) imports `sim`, so a deletion unit run against the registry as it stood would have broken Celery worker startup. Inversely, four of the five components nominated as probably-deletable are held by *deployment* and *documentation* references rather than code (compose services, an armed CI lane building `PLC-Reader.exe`, an ops-registry entry_point, a `~/CLAUDE.md` authority declaration) — none of which an in-repo grep can see, which is the point of §Gate 11.
   **Gate 7:** the real lane returned BLOCK on artifacts of its own sanitizer (`_SERIAL_RE` redacts the word "service") — recorded INVALID and filed as **#3305**, which also degrades production cascade input; walked on a substitute panel with the deviation recorded. The panel proved a real defect (F13): `services/telegram_bot`'s clearance had been scoped to the main working tree and missed an unmerged branch importing it — downgraded, and the cross-branch axis then applied to both clearances. **Gate 8:** CI 19 pass / 0 fail on `978a824d1`. Full walk in `units/CU-04.md`.
   **Findings filed rather than absorbed:** #3305 (sanitizer), #3306 (CU-08 premise refuted — see below), #3307 (`services/` wholesale LEGACY but two live CHARLIE services), factorylm#212 (armed+failing build lane), factorylm#213 (dangling antfarm ref). **Recorded gaps:** ALPHA (retired) and the PLC laptop could not be inspected.
@@ -62,7 +62,7 @@
 - Deletion itself is a **separate later unit** per doctrine ("replacement success does not authorize deletion").
 - **Risk:** low now; deletion unit later is medium.
 
-## CU-08 — Simulation estate decision
+## CU-08 — Simulation estate decision  ← **NEXT**
 
 - SimLab stays canonical (CI-gated). Decide: `mira-fault-sim`/`mira-fault-detective` → keep as bench harness (register EXPERIMENTAL) or retire; factorylm sim quartet (`sim`, `simulation`, `cosmos`, `cookoff`) is one coupled deletion unit (15+ cross-imports).
 - **Risk:** low. Human taste decision on the bench harness.
