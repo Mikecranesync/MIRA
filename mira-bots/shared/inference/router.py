@@ -43,8 +43,31 @@ _IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
 )
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
+# Serial numbers. The keyword alternation deliberately includes the bare prefix
+# SER, which means it also matches the "ser" in "service", "series", "serious".
+# That is harmless ONLY because the value branch below refuses to match what
+# follows such a word — see #3305, where the previous pattern paired that prefix
+# with `[:\s#]*` (zero separators allowed) and `[A-Z0-9\-]{4,20}` (no digit
+# required), so "services" parsed as SER + "vices" and every occurrence of the
+# word "service" reached the provider as "[SN]". Because sanitize is default-on
+# for every cascade call, that degraded real technician turns, not just logs:
+# "Check the service manual for the PowerFlex 525" arrived as "Check the [SN]
+# manual for the PowerFlex 525".
+#
+# Two mutually exclusive value branches, and the split is the fix:
+#   1. a REAL separator (`[:.\s#]+`) after the keyword — then the token needs no
+#      digit, so a digit-less "serial number ABCDEFGH" still redacts;
+#   2. NO separator — then the token MUST contain a digit, which keeps "SN12345"
+#      redacted while "services" (value "vices", no digit) does not match.
+# Negative controls live in mira-bots/tests/test_serial_redaction.py; a change
+# here that does not keep every MUST_REDACT case redacted is not a fix.
 _SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
+    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
+    r"(?:"
+    r"[:.\s#]+[A-Z0-9\-]{4,20}"
+    r"|"
+    r"(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    r")\b",
     re.IGNORECASE,
 )
 
