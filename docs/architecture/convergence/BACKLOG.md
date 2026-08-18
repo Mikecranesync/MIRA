@@ -62,10 +62,14 @@
 - Deletion itself is a **separate later unit** per doctrine ("replacement success does not authorize deletion").
 - **Risk:** low now; deletion unit later is medium.
 
-## CU-08 — Simulation estate decision  ← **NEXT**
+## CU-08 — Simulation estate decision  ✅ **DONE**
 
-- SimLab stays canonical (CI-gated). Decide: `mira-fault-sim`/`mira-fault-detective` → keep as bench harness (register EXPERIMENTAL) or retire; factorylm sim quartet (`sim`, `simulation`, `cosmos`, `cookoff`) is one coupled deletion unit (15+ cross-imports).
-- **Risk:** low. Human taste decision on the bench harness.
+- **Status: DECIDED 2026-08-18 — PR #3309, Gate 9 GO by Mike, OPTION A: keep `mira-fault-sim` + `mira-fault-detective` as a bench harness.** R0 `81f9964e9`. No deletion, no status changes; what changed is the stated *basis* for two entries plus `deletion_safe` fields. Deciding evidence: `simlab` does **not** subsume them — `grep -rln "fuse|dropout|debounce" simlab/` matches only `simlab/docs/*/electrical_io_notes.md`, so simlab cannot generate a blown-fuse signature and cannot test the blown-fuse-vs-broken-wire discrimination `mira-fault-detective`'s rules exist to check. **Option A's follow-through is #3311 (wire both test suites into CI) — until that lands, the components are kept for coverage nothing guards.** Also open: #3310 (simlab-gate doc contradiction), #3312 (engine.py HTTP path). Gate 7 walked twice on the real lane (round 1: 2 confirmed + 4 refuted; round 2: no new findings, 2 lane defects filed as #3313). Full walk in `units/CU-08.md`. **Next unit: CU-07.**
+
+- SimLab stays canonical — on maintenance, consumers and its seed lane. ⚠️ **NOT on CI gating:** `simlab-gate` runs on every code PR but does **not** block merge (CU-08 F1, **#3310**); the exclusion is deliberate per `ci.yml:1161-1164`, but the job's own comment and the 2026-06-21 plan both still claim otherwise. Decide: `mira-fault-sim`/`mira-fault-detective` → keep as bench harness or retire.
+- ~~factorylm sim quartet (`sim`, `simulation`, `cosmos`, `cookoff`) is one coupled deletion unit (15+ cross-imports)~~ — **REFUTED by CU-04 (#3306).** Measured cross-coupling is **2**, both `cookoff` → `sim`; `simulation` and `cosmos` have none in either direction. The four are not one deletion unit. All four were reclassified on Gate 11 runtime evidence in CU-04: `simulation` DELETE_CANDIDATE (confirmed, the only one that clears), `sim`/`cosmos`/`cookoff` downgraded to LEGACY because CANONICAL code imports them. **The factorylm half of CU-08 is therefore a sequencing question, not an open classification.**
+- Note `mira-fault-sim` / `mira-fault-detective` are **already registered EXPERIMENTAL** — that half of the original scope line is done; what remains is keep-vs-retire.
+- **Risk:** low. Human taste decision on the bench harness — CU-08 evidences and recommends, it does not decide.
 
 ## CU-07 — FactoryLM Personal SWE-Bench v0
 
