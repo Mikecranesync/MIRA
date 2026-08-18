@@ -52,7 +52,31 @@ jobs:
         with:
           python-version: "3.12"
 
-      # tools/gate7_review.py is pure stdlib — no pip install step is needed.
+      # tools/gate7_review.py is itself pure stdlib, but redact() imports the CANONICAL
+      # PII regexes from mira-bots/shared/inference/router.py, and that module imports
+      # httpx + yaml at module scope. Without them the import fails, _REDACTORS is empty,
+      # and the tool refuses to send anything (correctly — see the preflight below).
+      # Loose pins: this job only needs the module to IMPORT, and the repo already spans
+      # httpx 0.27.*/0.28.* across its requirements files.
+      - name: Install sanitizer import deps
+        run: pip install "httpx>=0.27,<0.29" "PyYAML>=6.0"
+
+      # Fail LOUDLY if the sanitizer cannot load. Without this the job "succeeds" while
+      # producing nothing: the review refuses to send, no report is written, the comment
+      # step skips on hashFiles(), and the PR shows a green check for a review that never
+      # happened. That silent no-op is exactly what the tool's own redact() docstring
+      # warns about ("worse than none, because the report claims redaction happened").
+      # This is TOOL BREAKAGE, not a review verdict — advisory suppresses verdicts, never
+      # a broken lane.
+      - name: Preflight — canonical sanitizer must be importable
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, str(pathlib.Path("mira-bots").resolve()))
+          from shared.inference.router import _IPV4_RE, _MAC_RE, _SERIAL_RE  # noqa: F401
+          print("canonical sanitizer importable — PII redaction will be applied")
+          PY
+
       - name: Run Gate 7 adversarial review
         id: review
         env:
@@ -86,8 +110,11 @@ jobs:
           else
             echo "truncated=false" >> "$GITHUB_OUTPUT"
           fi
+      # Runs even with no report: a cascade failure must be visible on the PR, not a
+      # silently skipped step that leaves the last run's stale advisory as the newest
+      # comment.
       - name: Post advisory report to the PR
-        if: always() && hashFiles('gate7-report.md') != ''
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
@@ -108,7 +135,14 @@ jobs:
             echo
             echo "reviewed_sha: \`${SHA}\`"
             echo
-            cat gate7-report.md
+            if [ -s gate7-report.md ]; then
+              cat gate7-report.md
+            else
+              echo "### ⚠️ No review was produced"
+              echo
+              echo "The provider cascade produced no report for this commit, so **nothing was"
+              echo "reviewed** — this is not a PASS. Run log has the cause."
+            fi
           } > gate7-comment.md
 
           # Sticky comment: update the existing advisory rather than adding one per push.
