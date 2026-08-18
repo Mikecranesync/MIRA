@@ -13,6 +13,7 @@ import {
   semanticFingerprint,
   type Channel,
   type ChannelWorkflowRequest,
+  type OperationProgressStep,
   type OperationState,
 } from "@/lib/channel-workflow-contract";
 
@@ -32,6 +33,7 @@ export interface ChannelOperationRecord {
   requestFingerprint: string;
   request: ChannelWorkflowRequest;
   state: OperationState;
+  progressStep: OperationProgressStep;
   semanticKind: string | null;
   result: Record<string, unknown> | null;
   ownerToken: string | null;
@@ -75,6 +77,13 @@ export interface ChannelOperationStore {
     ownerLeaseExpiresAt: string;
     now: string;
   }): Promise<boolean>;
+  updateProgress(args: {
+    tenantId: string;
+    operationId: string;
+    ownerToken: string;
+    progressStep: OperationProgressStep;
+    ownerLeaseExpiresAt: string;
+  }): Promise<boolean>;
   finalize(args: {
     tenantId: string;
     operationId: string;
@@ -111,6 +120,7 @@ const SELECT_COLS = `
   request_fingerprint,
   request_envelope,
   state,
+  progress_step,
   semantic_kind,
   result,
   owner_token::text AS owner_token,
@@ -151,6 +161,7 @@ function rowToOperation(row: Record<string, unknown>): ChannelOperationRecord {
     requestFingerprint: String(row.request_fingerprint),
     request: request as unknown as ChannelWorkflowRequest,
     state: row.state as OperationState,
+    progressStep: row.progress_step as OperationProgressStep,
     semanticKind: row.semantic_kind == null ? null : String(row.semantic_kind),
     result: jsonObject(row.result),
     ownerToken: row.owner_token == null ? null : String(row.owner_token),
@@ -257,6 +268,29 @@ export const pgChannelOperationStore: ChannelOperationStore = {
           args.ownerToken,
           args.ownerLeaseExpiresAt,
           args.now,
+        ],
+      );
+      return (result.rowCount ?? 0) === 1;
+    });
+  },
+
+  async updateProgress(args) {
+    return withTenantContext(args.tenantId, async (client) => {
+      const result = await client.query(
+        `UPDATE channel_operations
+            SET progress_step = $4,
+                owner_lease_expires_at = $5::timestamptz,
+                updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND operation_id = $2::uuid
+            AND owner_token = $3::uuid
+            AND state = 'running'`,
+        [
+          args.tenantId,
+          args.operationId,
+          args.ownerToken,
+          args.progressStep,
+          args.ownerLeaseExpiresAt,
         ],
       );
       return (result.rowCount ?? 0) === 1;
@@ -523,6 +557,21 @@ export class ChannelOperationService {
     return this.store.finalize(args);
   }
 
+  async updateProgress(
+    tenantId: string,
+    operationId: string,
+    ownerToken: string,
+    progressStep: OperationProgressStep,
+  ): Promise<boolean> {
+    return this.store.updateProgress({
+      tenantId,
+      operationId,
+      ownerToken,
+      progressStep,
+      ownerLeaseExpiresAt: this.expires(this.executionLeaseMs),
+    });
+  }
+
   async claimTerminalDelivery(
     tenantId: string,
     operationId: string,
@@ -579,5 +628,13 @@ export class ChannelOperationService {
 
   async get(tenantId: string, operationId: string): Promise<ChannelOperationRecord | null> {
     return this.store.getById(tenantId, operationId);
+  }
+
+  async findByEvent(
+    tenantId: string,
+    channel: Channel,
+    eventId: string,
+  ): Promise<ChannelOperationRecord | null> {
+    return this.store.getByEvent(tenantId, channel, eventId);
   }
 }

@@ -369,6 +369,32 @@ describe("discovery terminal states", () => {
     expect(ingestTextToNode).toHaveBeenCalledTimes(1);
   });
 
+  it("searches from the complete Danfoss identity without collapsing TYPE or P/N into model", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: true,
+      found: false,
+      candidate: null,
+      validated: false,
+      isDirectPdf: false,
+      oemHost: false,
+      trustedDistributorHost: false,
+      reason: "no official manual found",
+    });
+    const danfoss = {
+      manufacturer: "Danfoss",
+      productFamily: "VLT AQUA Drive",
+      series: "FC-202",
+      typeCode: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      partNumber: "131H4017",
+    };
+    const res = await POST(
+      makeReq({ ...baseBody, identity: danfoss }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect((await res.json()).status).toBe("no_manual_found");
+    expect(discoverManual).toHaveBeenCalledWith(danfoss);
+  });
+
   it("status complete with discovery skipped when discover:false", async () => {
     const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
     const body = await res.json();

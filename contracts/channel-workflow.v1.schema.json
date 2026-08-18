@@ -45,6 +45,7 @@
     },
     "action": { "enum": ["message", "reset", "confirm_identity"] },
     "priorOperationId": { "$ref": "#/$defs/uuid" },
+    "confirmedIdentity": { "$ref": "#/$defs/equipmentIdentity" },
     "text": { "type": "string", "maxLength": 4000 },
     "caption": { "type": "string", "maxLength": 4000 },
     "attachments": {
@@ -76,6 +77,25 @@
         "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
         "sizeBytes": { "type": "integer", "minimum": 0 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "equipmentIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "manufacturer": { "type": ["string", "null"], "maxLength": 500 },
+        "productFamily": { "type": ["string", "null"], "maxLength": 500 },
+        "series": { "type": ["string", "null"], "maxLength": 500 },
+        "model": { "type": ["string", "null"], "maxLength": 500 },
+        "typeCode": { "type": ["string", "null"], "maxLength": 500 },
+        "partNumber": { "type": ["string", "null"], "maxLength": 500 },
+        "catalogNumber": { "type": ["string", "null"], "maxLength": 500 },
+        "serialNumber": { "type": ["string", "null"], "maxLength": 500 },
+        "equipmentType": { "type": ["string", "null"], "maxLength": 500 },
+        "rating": { "type": ["string", "null"], "maxLength": 500 },
+        "input": { "type": ["string", "null"], "maxLength": 500 },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
       }
     }
   }

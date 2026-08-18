@@ -8,6 +8,7 @@
  */
 
 export type EquipmentIdentityCandidate = {
+  imageKind?: "nameplate" | "electrical_print" | "other" | "unknown";
   manufacturer?: string | null;
   productFamily?: string | null;
   series?: string | null;
@@ -30,6 +31,13 @@ export interface NameplateRecognizer {
 /** Clamp/normalize whatever a provider returns into the candidate contract. */
 export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
   const o = (raw ?? {}) as Record<string, unknown>;
+  const rawImageKind = o.imageKind ?? o.image_kind;
+  const imageKind =
+    rawImageKind === "nameplate" ||
+    rawImageKind === "electrical_print" ||
+    rawImageKind === "other"
+      ? rawImageKind
+      : "unknown";
   const str = (v: unknown): string | null => {
     if (typeof v !== "string") return null;
     const t = v.trim();
@@ -40,6 +48,7 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
   };
   const conf = typeof o.confidence === "number" ? Math.min(1, Math.max(0, o.confidence)) : undefined;
   return {
+    imageKind,
     manufacturer: str(o.manufacturer),
     productFamily: str(o.productFamily ?? o.product_family),
     series: str(o.series),
@@ -106,10 +115,14 @@ Rules: do not invent missing serial/model digits; preserve punctuation exactly;
 distinguish model vs catalog vs serial numbers when possible; use null for any
 unreadable field; include a confidence between 0 and 1 for the overall identity.
 Respond ONLY with JSON:
-{"manufacturer": string|null, "productFamily": string|null, "series": string|null,
+{"imageKind": "nameplate"|"electrical_print"|"other",
+ "manufacturer": string|null, "productFamily": string|null, "series": string|null,
  "model": string|null, "typeCode": string|null, "partNumber": string|null,
  "catalogNumber": string|null, "serialNumber": string|null, "equipmentType": string|null,
- "confidence": number, "rawText": string[]}`;
+ "confidence": number, "rawText": string[]}
+Classify the whole image before extracting: use "nameplate" only for a physical
+equipment rating/identity label; use "electrical_print" for schematics, wiring
+diagrams, one-lines, ladder drawings, or drawing title blocks; otherwise "other".`;
 
 /** Shared OpenAI-compatible vision call — Groq and Together speak the same shape. */
 async function openAiCompatVision(

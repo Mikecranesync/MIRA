@@ -18,7 +18,13 @@ export function GET() {
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
   };
 
-  const required = ["NEON_DATABASE_URL", "INGEST_URL"] as const;
+  const required = [
+    "NEON_DATABASE_URL",
+    "INGEST_URL",
+    ...(process.env.MIRA_CHANNEL_WORKFLOW_ENABLED === "true"
+      ? (["HUB_INGEST_TOKEN"] as const)
+      : []),
+  ] as const;
   const missing = required.filter((k) => !process.env[k]);
 
   if (missing.length > 0) {

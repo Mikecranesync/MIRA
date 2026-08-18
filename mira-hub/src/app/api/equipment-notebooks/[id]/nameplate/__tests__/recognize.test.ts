@@ -240,6 +240,7 @@ describe("success", () => {
     const candidate = {
       manufacturer: "Allen-Bradley",
       model: "525",
+      imageKind: "nameplate",
       catalogNumber: "25B-D010N104",
       confidence: 0.82,
       rawText: ["ALLEN-BRADLEY", "POWERFLEX 525"],
@@ -254,6 +255,7 @@ describe("success", () => {
     const body = await res.json();
     expect(body.fileId).toBe(FILE_ID);
     expect(body.candidate).toMatchObject({ manufacturer: "Allen-Bradley", model: "525" });
+    expect(body.imageKind).toBe("nameplate");
     expect(body.confidence).toBe(0.82);
     expect(body.rawObservation).toMatchObject({
       provider: "together-vision",

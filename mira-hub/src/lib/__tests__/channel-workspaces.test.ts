@@ -42,6 +42,7 @@ import {
 import { parseChannelWorkflowRequest } from "@/lib/channel-workflow-contract";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_1 = "22222222-2222-4222-8222-222222222221";
 const SESSION_2 = "22222222-2222-4222-8222-222222222222";
 const NOTEBOOK_1 = "33333333-3333-4333-8333-333333333331";
@@ -63,7 +64,7 @@ function request(context: Record<string, string> = {}) {
   return parseChannelWorkflowRequest({
     contractVersion: "1.0",
     tenantId: TENANT,
-    actor: { userId: "user-1", externalUserId: "42", uploaderId: "user-1" },
+    actor: { userId: USER, externalUserId: "42", uploaderId: USER },
     channel: "telegram",
     eventId: "tg:1",
     conversation: { id: "telegram:-42", ...context },
@@ -123,6 +124,8 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
       equipmentIdentity: null,
       lastFileId: null,
       lastDocId: null,
+      pendingIntent: null,
+      pendingOperationId: null,
       status: input.assetId ? "confirmed" : "awaiting_namespace",
     };
     this.rows.push(row);
@@ -154,6 +157,8 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
       equipmentIdentity: null,
       lastFileId: null,
       lastDocId: null,
+      pendingIntent: null,
+      pendingOperationId: null,
       status: "awaiting_namespace",
     };
     this.rows.push(fresh);
@@ -163,7 +168,16 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
   async updateState(
     tenantId: string,
     sessionId: string,
-    patch: Partial<Pick<ChannelWorkspace, "equipmentIdentity" | "lastFileId" | "lastDocId">>,
+    patch: Partial<
+      Pick<
+        ChannelWorkspace,
+        | "equipmentIdentity"
+        | "lastFileId"
+        | "lastDocId"
+        | "pendingIntent"
+        | "pendingOperationId"
+      >
+    >,
   ) {
     const row = this.rows.find(
       (candidate) => candidate.tenantId === tenantId && candidate.sessionId === sessionId,
@@ -231,6 +245,8 @@ describe("canonical channel conversation workspace", () => {
         },
         lastFileId: "66666666-6666-4666-8666-666666666666",
         lastDocId: "77777777-7777-4777-8777-777777777777",
+        pendingIntent: "manual_discovery",
+        pendingOperationId: "88888888-8888-4888-8888-888888888888",
       }),
     ).toBe(true);
 
@@ -239,6 +255,8 @@ describe("canonical channel conversation workspace", () => {
       equipmentIdentity: { manufacturer: "Danfoss", model: "FC-202" },
       lastFileId: "66666666-6666-4666-8666-666666666666",
       lastDocId: "77777777-7777-4777-8777-777777777777",
+      pendingIntent: "manual_discovery",
+      pendingOperationId: "88888888-8888-4888-8888-888888888888",
     });
   });
 
@@ -250,6 +268,8 @@ describe("canonical channel conversation workspace", () => {
       equipmentIdentity: { manufacturer: "Danfoss", model: "FC-202" },
       lastFileId: "66666666-6666-4666-8666-666666666666",
       lastDocId: "77777777-7777-4777-8777-777777777777",
+      pendingIntent: "manual_discovery",
+      pendingOperationId: "88888888-8888-4888-8888-888888888888",
     });
 
     const fresh = await service.reset(request(), "88888888-8888-4888-8888-888888888888");
@@ -260,6 +280,8 @@ describe("canonical channel conversation workspace", () => {
       equipmentIdentity: null,
       lastFileId: null,
       lastDocId: null,
+      pendingIntent: null,
+      pendingOperationId: null,
       status: "awaiting_namespace",
     });
     expect((await store.findById(TENANT, SESSION_1))?.status).toBe("abandoned");
@@ -286,6 +308,8 @@ function dbRow(workspace: ChannelWorkspace): Record<string, unknown> {
     equipment_identity: workspace.equipmentIdentity,
     last_file_id: workspace.lastFileId,
     last_doc_id: workspace.lastDocId,
+    pending_intent: workspace.pendingIntent,
+    pending_operation_id: workspace.pendingOperationId,
     status: workspace.status,
   };
 }
@@ -304,6 +328,8 @@ function activeWorkspace(overrides: Partial<ChannelWorkspace> = {}): ChannelWork
     equipmentIdentity: null,
     lastFileId: null,
     lastDocId: null,
+    pendingIntent: null,
+    pendingOperationId: null,
     status: "awaiting_namespace",
     ...overrides,
   };
@@ -324,7 +350,7 @@ describe("channel workspace PostgreSQL boundary", () => {
       tenantId: TENANT,
       channel: "telegram",
       conversationId: "telegram:-42",
-      actorId: "user-1",
+      actorId: USER,
       notebookId: NOTEBOOK_1,
       assetId: ASSET,
       nodeId: NODE_1,
@@ -368,11 +394,33 @@ describe("channel workspace PostgreSQL boundary", () => {
         tenantId: TENANT,
         channel: "telegram",
         conversationId: "telegram:-42",
-        actorId: "user-1",
+        actorId: USER,
         notebookId: NOTEBOOK_1,
       }),
     ).rejects.toThrow("workspace_notebook_not_found");
     expect(workspaceHarness.createNotebookTx).not.toHaveBeenCalled();
+  });
+
+  it("tenant-scopes durable pending intent and candidate operation updates", async () => {
+    workspaceHarness.responses.push({
+      match: /UPDATE troubleshooting_sessions[\s\S]*pending_intent/,
+      rows: [],
+      rowCount: 1,
+    });
+
+    expect(
+      await pgChannelWorkspaceStore.updateState(TENANT, SESSION_1, {
+        pendingIntent: "manual_discovery",
+        pendingOperationId: "88888888-8888-4888-8888-888888888888",
+      }),
+    ).toBe(true);
+    expect(workspaceHarness.calls[0].sql).toContain("tenant_id = $1::uuid");
+    expect(workspaceHarness.calls[0].params).toEqual([
+      TENANT,
+      SESSION_1,
+      "manual_discovery",
+      "88888888-8888-4888-8888-888888888888",
+    ]);
   });
 
   it("rotates generation and cancels old work without carrying context forward", async () => {
@@ -382,6 +430,8 @@ describe("channel workspace PostgreSQL boundary", () => {
       equipmentIdentity: { manufacturer: "Danfoss", model: "FC-202" },
       lastFileId: "66666666-6666-4666-8666-666666666666",
       lastDocId: "77777777-7777-4777-8777-777777777777",
+      pendingIntent: "manual_discovery",
+      pendingOperationId: "88888888-8888-4888-8888-888888888888",
       status: "confirmed",
     });
     const fresh = activeWorkspace({
@@ -400,7 +450,7 @@ describe("channel workspace PostgreSQL boundary", () => {
 
     const rotated = await pgChannelWorkspaceStore.rotate({
       current,
-      actorId: "user-1",
+      actorId: USER,
       resetOperationId: "88888888-8888-4888-8888-888888888888",
     });
     expect(rotated).toEqual(fresh);

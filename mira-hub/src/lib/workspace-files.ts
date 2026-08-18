@@ -79,6 +79,7 @@ export const LINK_TARGET_TYPES = [
   "cmms_asset",
   "namespace_node",
   "work_order",
+  "troubleshooting_session",
 ] as const;
 export type LinkTargetType = (typeof LINK_TARGET_TYPES)[number];
 
@@ -404,6 +405,15 @@ export async function validateTargetTx(
     case "work_order": {
       const r = await pool.query(
         `SELECT id FROM work_orders WHERE tenant_id = $1 AND id = $2::uuid`,
+        [tenantId, targetId],
+      );
+      if (r.rows.length === 0) return { ok: false };
+      return { ok: true, nodeId: null };
+    }
+    case "troubleshooting_session": {
+      const r = await c.query(
+        `SELECT id FROM troubleshooting_sessions
+          WHERE tenant_id = $1::uuid AND id = $2::uuid`,
         [tenantId, targetId],
       );
       if (r.rows.length === 0) return { ok: false };

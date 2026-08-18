@@ -24,7 +24,15 @@ ALTER TABLE troubleshooting_sessions
   ADD COLUMN IF NOT EXISTS selected_node_id UUID,
   ADD COLUMN IF NOT EXISTS equipment_identity JSONB,
   ADD COLUMN IF NOT EXISTS last_file_id UUID,
-  ADD COLUMN IF NOT EXISTS last_doc_id UUID;
+  ADD COLUMN IF NOT EXISTS last_doc_id UUID,
+  ADD COLUMN IF NOT EXISTS pending_intent TEXT,
+  ADD COLUMN IF NOT EXISTS pending_operation_id UUID;
+
+ALTER TABLE troubleshooting_sessions
+  DROP CONSTRAINT IF EXISTS troubleshooting_sessions_pending_intent_check;
+ALTER TABLE troubleshooting_sessions
+  ADD CONSTRAINT troubleshooting_sessions_pending_intent_check
+  CHECK (pending_intent IS NULL OR pending_intent IN ('manual_discovery'));
 
 ALTER TABLE troubleshooting_sessions
   DROP CONSTRAINT IF EXISTS troubleshooting_sessions_channel_check;
@@ -36,6 +44,18 @@ ALTER TABLE troubleshooting_sessions
   DROP CONSTRAINT IF EXISTS troubleshooting_sessions_generation_check;
 ALTER TABLE troubleshooting_sessions
   ADD CONSTRAINT troubleshooting_sessions_generation_check CHECK (generation > 0);
+
+-- A canonical File is linked to the active conversation as well as its
+-- notebook/asset. This is the durable answer to "what did I just upload?";
+-- channel-local memory is not part of possession or retrieval truth.
+ALTER TABLE workspace_file_links
+  DROP CONSTRAINT IF EXISTS workspace_file_links_target_type_check;
+ALTER TABLE workspace_file_links
+  ADD CONSTRAINT workspace_file_links_target_type_check
+  CHECK (target_type IN (
+    'equipment_notebook', 'cmms_asset', 'namespace_node', 'work_order',
+    'troubleshooting_session'
+  ));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_troubleshooting_sessions_active_channel_conversation
   ON troubleshooting_sessions (tenant_id, channel, external_conversation_id)
@@ -63,6 +83,11 @@ CREATE TABLE IF NOT EXISTS channel_operations (
       'insufficient_evidence', 'failed', 'cancelled'
     )),
   semantic_kind             TEXT,
+  progress_step             TEXT NOT NULL DEFAULT 'prepared'
+    CHECK (progress_step IN (
+      'prepared', 'recognizing_nameplate', 'discovering_manual',
+      'ingesting_file', 'answering_from_files', 'resetting_workspace'
+    )),
   result                    JSONB,
   owner_token               UUID,
   owner_lease_expires_at    TIMESTAMPTZ,
@@ -121,5 +146,7 @@ COMMIT;
 --   DROP COLUMN IF EXISTS selected_node_id,
 --   DROP COLUMN IF EXISTS equipment_identity,
 --   DROP COLUMN IF EXISTS last_file_id,
---   DROP COLUMN IF EXISTS last_doc_id;
+--   DROP COLUMN IF EXISTS last_doc_id,
+--   DROP COLUMN IF EXISTS pending_intent,
+--   DROP COLUMN IF EXISTS pending_operation_id;
 -- COMMIT;

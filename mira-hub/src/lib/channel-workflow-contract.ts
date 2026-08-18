@@ -20,6 +20,14 @@ export type OperationState =
   | "failed"
   | "cancelled";
 
+export type OperationProgressStep =
+  | "prepared"
+  | "recognizing_nameplate"
+  | "discovering_manual"
+  | "ingesting_file"
+  | "answering_from_files"
+  | "resetting_workspace";
+
 export type AttachmentKind = "image" | "pdf" | "other";
 
 export interface ChannelAttachment {
@@ -50,6 +58,7 @@ export interface ChannelWorkflowRequest {
   };
   action: ChannelAction;
   priorOperationId?: string;
+  confirmedIdentity?: EquipmentIdentity;
   text: string;
   caption: string;
   attachments: ChannelAttachment[];
@@ -134,6 +143,7 @@ const REQUEST_FIELDS = new Set([
   "conversation",
   "action",
   "priorOperationId",
+  "confirmedIdentity",
   "text",
   "caption",
   "attachments",
@@ -148,6 +158,20 @@ const ATTACHMENT_FIELDS = new Set([
   "sizeBytes",
   "sha256",
 ]);
+const IDENTITY_STRING_FIELDS = [
+  "manufacturer",
+  "productFamily",
+  "series",
+  "model",
+  "typeCode",
+  "partNumber",
+  "catalogNumber",
+  "serialNumber",
+  "equipmentType",
+  "rating",
+  "input",
+] as const;
+const IDENTITY_FIELDS = new Set<string>([...IDENTITY_STRING_FIELDS, "confidence"]);
 
 function object(raw: unknown, code: string): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ChannelContractError(code);
@@ -169,6 +193,39 @@ function optionalUuid(raw: unknown, code: string): string | undefined {
   return raw.toLowerCase();
 }
 
+function optionalIdentity(raw: unknown): EquipmentIdentity | undefined {
+  if (raw === undefined) return undefined;
+  const value = object(raw, "invalid_confirmed_identity");
+  rejectUnknown(value, IDENTITY_FIELDS, "unknown_identity_field");
+  const identity: EquipmentIdentity = {};
+  for (const field of IDENTITY_STRING_FIELDS) {
+    const item = value[field];
+    if (item === undefined) continue;
+    if (item === null) {
+      identity[field] = null;
+      continue;
+    }
+    if (typeof item !== "string") throw new ChannelContractError("invalid_identity_field");
+    identity[field] = item.trim().slice(0, 500) || null;
+  }
+  if (value.confidence !== undefined) {
+    if (
+      value.confidence !== null &&
+      (typeof value.confidence !== "number" ||
+        !Number.isFinite(value.confidence) ||
+        value.confidence < 0 ||
+        value.confidence > 1)
+    ) {
+      throw new ChannelContractError("invalid_identity_confidence");
+    }
+    identity.confidence = value.confidence as number | null;
+  }
+  if (Object.keys(identity).length === 0) {
+    throw new ChannelContractError("invalid_confirmed_identity");
+  }
+  return identity;
+}
+
 /** Strict runtime parser. It mirrors contracts/channel-workflow.v1.schema.json. */
 export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowRequest {
   const value = object(raw, "invalid_request");
@@ -183,6 +240,8 @@ export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowReques
   const userId = requiredString(actor.userId, "actor_id_required", 200);
   const externalUserId = requiredString(actor.externalUserId, "external_user_id_required", 200);
   const uploaderId = requiredString(actor.uploaderId, "uploader_id_required", 200);
+  if (!UUID_RE.test(userId)) throw new ChannelContractError("invalid_actor_id");
+  if (!UUID_RE.test(uploaderId)) throw new ChannelContractError("invalid_uploader_id");
 
   if (typeof value.channel !== "string" || !CHANNELS.has(value.channel as Channel)) {
     throw new ChannelContractError("invalid_channel");
@@ -229,11 +288,23 @@ export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowReques
 
   const text = typeof value.text === "string" ? value.text.slice(0, 4000) : "";
   const caption = typeof value.caption === "string" ? value.caption.slice(0, 4000) : "";
+  const priorOperationId = optionalUuid(value.priorOperationId, "invalid_prior_operation_id");
+  const confirmedIdentity = optionalIdentity(value.confirmedIdentity);
+  if (value.action === "confirm_identity" && !priorOperationId) {
+    throw new ChannelContractError("prior_operation_required");
+  }
+  if (confirmedIdentity && value.action !== "confirm_identity") {
+    throw new ChannelContractError("confirmed_identity_requires_confirmation");
+  }
 
   return {
     contractVersion: "1.0",
     tenantId: tenantId.toLowerCase(),
-    actor: { userId, externalUserId, uploaderId },
+    actor: {
+      userId: userId.toLowerCase(),
+      externalUserId,
+      uploaderId: uploaderId.toLowerCase(),
+    },
     channel: value.channel as Channel,
     eventId: requiredString(value.eventId, "event_id_required", 300),
     conversation: {
@@ -244,7 +315,8 @@ export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowReques
       nodeId: optionalUuid(conversation.nodeId, "invalid_node_id"),
     },
     action: value.action as ChannelAction,
-    priorOperationId: optionalUuid(value.priorOperationId, "invalid_prior_operation_id"),
+    priorOperationId,
+    confirmedIdentity,
     text,
     caption,
     attachments,
@@ -294,6 +366,7 @@ export function semanticProjection(request: ChannelWorkflowRequest): Record<stri
     },
     action: request.action,
     ...(request.priorOperationId ? { priorOperationId: request.priorOperationId } : {}),
+    ...(request.confirmedIdentity ? { confirmedIdentity: request.confirmedIdentity } : {}),
     text: request.text,
     caption: request.caption,
     attachments: request.attachments.map((attachment) => ({

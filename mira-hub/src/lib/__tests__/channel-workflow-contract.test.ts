@@ -97,9 +97,47 @@ describe("channel workflow v1 contract", () => {
     });
   });
 
+  it("accepts only explicit equipment fields on an identity confirmation", () => {
+    const parsed = parseChannelWorkflowRequest(
+      request({
+        action: "confirm_identity",
+        priorOperationId: "44444444-4444-4444-8444-444444444444",
+        confirmedIdentity: {
+          manufacturer: "Danfoss",
+          series: "FC-202",
+          typeCode: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+          partNumber: "131H4017",
+        },
+        attachments: [],
+      }),
+    );
+
+    expect(parsed.confirmedIdentity).toEqual({
+      manufacturer: "Danfoss",
+      series: "FC-202",
+      typeCode: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      partNumber: "131H4017",
+    });
+    expect(() =>
+      parseChannelWorkflowRequest(
+        request({
+          action: "confirm_identity",
+          priorOperationId: "44444444-4444-4444-8444-444444444444",
+          confirmedIdentity: { manufacturer: "Danfoss", verified: true },
+          attachments: [],
+        }),
+      ),
+    ).toThrow("unknown_identity_field");
+  });
+
   it.each([
     ["non-UUID tenant", { tenantId: "staging" }, "invalid_tenant_id"],
     ["missing event", { eventId: "" }, "event_id_required"],
+    [
+      "non-canonical actor",
+      { actor: { userId: "user-1", externalUserId: "42", uploaderId: USER } },
+      "invalid_actor_id",
+    ],
     ["missing conversation", { conversation: { id: "" } }, "conversation_id_required"],
     [
       "attachment without a SHA",

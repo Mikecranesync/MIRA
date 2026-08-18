@@ -26,6 +26,8 @@ export type ChannelWorkspaceStatus =
   | "resolved"
   | "abandoned";
 
+export type ChannelPendingIntent = "manual_discovery";
+
 export interface ChannelWorkspace {
   sessionId: string;
   tenantId: string;
@@ -41,6 +43,9 @@ export interface ChannelWorkspace {
   equipmentIdentity: EquipmentIdentity | null;
   lastFileId: string | null;
   lastDocId: string | null;
+  pendingIntent: ChannelPendingIntent | null;
+  /** Candidate-producing operation awaiting a channel-neutral confirmation turn. */
+  pendingOperationId: string | null;
   status: ChannelWorkspaceStatus;
 }
 
@@ -61,7 +66,14 @@ export interface RotateChannelWorkspaceInput {
 }
 
 export type ChannelWorkspaceStatePatch = Partial<
-  Pick<ChannelWorkspace, "equipmentIdentity" | "lastFileId" | "lastDocId">
+  Pick<
+    ChannelWorkspace,
+    | "equipmentIdentity"
+    | "lastFileId"
+    | "lastDocId"
+    | "pendingIntent"
+    | "pendingOperationId"
+  >
 >;
 
 export interface ChannelWorkspaceStore {
@@ -93,6 +105,8 @@ const WORKSPACE_COLS = `
   s.equipment_identity,
   s.last_file_id::text AS last_file_id,
   s.last_doc_id::text AS last_doc_id,
+  s.pending_intent,
+  s.pending_operation_id::text AS pending_operation_id,
   s.status`;
 
 function jsonObject(value: unknown): Record<string, unknown> | null {
@@ -129,6 +143,10 @@ function rowToWorkspace(row: Record<string, unknown>): ChannelWorkspace {
     equipmentIdentity: jsonObject(row.equipment_identity) as EquipmentIdentity | null,
     lastFileId: row.last_file_id == null ? null : String(row.last_file_id),
     lastDocId: row.last_doc_id == null ? null : String(row.last_doc_id),
+    pendingIntent:
+      row.pending_intent === "manual_discovery" ? "manual_discovery" : null,
+    pendingOperationId:
+      row.pending_operation_id == null ? null : String(row.pending_operation_id),
     status: row.status as ChannelWorkspaceStatus,
   };
 }
@@ -368,6 +386,14 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
     if ("lastDocId" in patch) {
       values.push(patch.lastDocId ?? null);
       assignments.push(`last_doc_id = $${values.length}::uuid`);
+    }
+    if ("pendingIntent" in patch) {
+      values.push(patch.pendingIntent ?? null);
+      assignments.push(`pending_intent = $${values.length}`);
+    }
+    if ("pendingOperationId" in patch) {
+      values.push(patch.pendingOperationId ?? null);
+      assignments.push(`pending_operation_id = $${values.length}::uuid`);
     }
     if (assignments.length === 0) return false;
 

@@ -32,6 +32,7 @@ import {
 } from "@/lib/channel-workflow-contract";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_TENANT = "99999999-9999-4999-8999-999999999999";
 const SESSION = "22222222-2222-4222-8222-222222222222";
 const OPERATION = "33333333-3333-4333-8333-333333333333";
@@ -49,7 +50,7 @@ function request(eventId = "tg:100", text = "Find the manual"): ChannelWorkflowR
   return parseChannelWorkflowRequest({
     contractVersion: "1.0",
     tenantId: TENANT,
-    actor: { userId: "user-1", externalUserId: "42", uploaderId: "user-1" },
+    actor: { userId: USER, externalUserId: "42", uploaderId: USER },
     channel: "telegram",
     eventId,
     conversation: { id: "telegram:-42" },
@@ -80,6 +81,7 @@ class MemoryOperationStore implements ChannelOperationStore {
       requestFingerprint: input.requestFingerprint,
       request: input.request,
       state: "queued",
+      progressStep: "prepared",
       semanticKind: null,
       result: null,
       ownerToken: input.ownerToken,
@@ -170,6 +172,25 @@ class MemoryOperationStore implements ChannelOperationStore {
     row.result = structuredClone(args.result);
     row.ownerToken = null;
     row.ownerLeaseExpiresAt = "";
+    return true;
+  }
+
+  async updateProgress(args: {
+    tenantId: string;
+    operationId: string;
+    ownerToken: string;
+    progressStep: ChannelOperationRecord["progressStep"];
+    ownerLeaseExpiresAt: string;
+  }) {
+    const row = [...this.rows.values()].find(
+      (candidate) =>
+        candidate.tenantId === args.tenantId &&
+        candidate.operationId === args.operationId &&
+        candidate.ownerToken === args.ownerToken,
+    );
+    if (!row || row.state !== "running") return false;
+    row.progressStep = args.progressStep;
+    row.ownerLeaseExpiresAt = args.ownerLeaseExpiresAt;
     return true;
   }
 
@@ -328,6 +349,31 @@ describe("channel operation exactly-once lifecycle", () => {
     expect(await ctx.instance.claimTerminalDelivery(TENANT, OPERATION)).toBeNull();
   });
 
+  it("records real progress only for the fenced live executor and renews its lease", async () => {
+    const ctx = service();
+    const prepared = await ctx.instance.prepare(request(), SESSION);
+    await ctx.instance.begin(TENANT, OPERATION, prepared.ownerToken!);
+
+    expect(
+      await (ctx.instance as unknown as {
+        updateProgress: (...args: string[]) => Promise<boolean>;
+      }).updateProgress(TENANT, OPERATION, "wrong-owner", "discovering_manual"),
+    ).toBe(false);
+    expect(
+      await (ctx.instance as unknown as {
+        updateProgress: (...args: string[]) => Promise<boolean>;
+      }).updateProgress(
+        TENANT,
+        OPERATION,
+        prepared.ownerToken!,
+        "discovering_manual",
+      ),
+    ).toBe(true);
+    expect((await ctx.instance.get(TENANT, OPERATION))?.progressStep).toBe(
+      "discovering_manual",
+    );
+  });
+
   it("reclaims an unacknowledged delivery after the lease, never before", async () => {
     const ctx = service();
     const prepared = await ctx.instance.prepare(request(), SESSION);
@@ -385,6 +431,7 @@ describe("channel operation PostgreSQL boundary", () => {
       "utf8",
     );
     expect(migration).toMatch(/UNIQUE \(tenant_id, channel, event_id\)/);
+    expect(migration).toMatch(/progress_step\s+TEXT/);
     expect(migration).toContain("ALTER TABLE channel_operations ENABLE ROW LEVEL SECURITY");
     expect(migration).toMatch(/WITH CHECK \([\s\S]*?app\.tenant_id/);
 
@@ -432,5 +479,30 @@ describe("channel operation PostgreSQL boundary", () => {
     expect(ack.sql).toMatch(/delivery_token = \$3::uuid/);
     expect(ack.sql).toContain("terminal_delivered_at IS NULL");
     expect(ack.params).toEqual([TENANT, OPERATION, DELIVERY_1]);
+  });
+
+  it("tenant- and owner-fences progress while extending the execution lease", async () => {
+    await (pgChannelOperationStore as unknown as {
+      updateProgress: (args: Record<string, string>) => Promise<boolean>;
+    }).updateProgress({
+      tenantId: TENANT,
+      operationId: OPERATION,
+      ownerToken: OWNER_1,
+      progressStep: "ingesting_file",
+      ownerLeaseExpiresAt: "2026-08-18T12:01:00.000Z",
+    });
+
+    const update = sqlHarness.calls[0];
+    expect(update.sql).toMatch(/tenant_id = \$1::uuid/);
+    expect(update.sql).toMatch(/owner_token = \$3::uuid/);
+    expect(update.sql).toContain("state = 'running'");
+    expect(update.sql).toContain("owner_lease_expires_at = $5::timestamptz");
+    expect(update.params).toEqual([
+      TENANT,
+      OPERATION,
+      OWNER_1,
+      "ingesting_file",
+      "2026-08-18T12:01:00.000Z",
+    ]);
   });
 });

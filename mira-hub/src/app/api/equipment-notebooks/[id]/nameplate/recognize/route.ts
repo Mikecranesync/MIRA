@@ -184,6 +184,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       fileId: parked.fileId,
+      imageKind: candidate.imageKind ?? "unknown",
       candidate,
       rawObservation: {
         provider: recognizer.name,

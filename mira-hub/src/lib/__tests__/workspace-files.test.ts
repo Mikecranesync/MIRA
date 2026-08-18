@@ -50,6 +50,7 @@ const NOTEBOOK_ID_2 = "44444444-4444-4444-4444-444444444444";
 const UPLOAD_ID = "55555555-5555-5555-5555-555555555555";
 const LINK_ID = "66666666-6666-6666-6666-666666666666";
 const NODE_ID = "77777777-7777-7777-7777-777777777777";
+const SESSION_ID = "88888888-8888-4888-8888-888888888888";
 
 type Route = { match: RegExp; rows: Record<string, unknown>[] | (() => Record<string, unknown>[]) };
 
@@ -123,11 +124,12 @@ describe("pure helpers", () => {
     expect(inlineRenderAllowed(null)).toBe(false);
   });
 
-  it("isLinkTargetType allowlists exactly the four types", () => {
+  it("isLinkTargetType allowlists the canonical workspace targets", () => {
     expect(isLinkTargetType("equipment_notebook")).toBe(true);
     expect(isLinkTargetType("cmms_asset")).toBe(true);
     expect(isLinkTargetType("namespace_node")).toBe(true);
     expect(isLinkTargetType("work_order")).toBe(true);
+    expect(isLinkTargetType("troubleshooting_session")).toBe(true);
     expect(isLinkTargetType("kg_entity")).toBe(false);
     expect(isLinkTargetType("")).toBe(false);
     expect(isLinkTargetType(null)).toBe(false);
@@ -267,6 +269,21 @@ describe("attachFileToTargets", () => {
     const sqls = poolQuery.mock.calls.map((c) => String(c[0]));
     expect(sqls.some((s) => /cmms_equipment/.test(s) && /tenant_id = \$1/.test(s))).toBe(true);
     expect(sqls.some((s) => /work_orders/.test(s) && /tenant_id = \$1/.test(s))).toBe(true);
+  });
+
+  it("tenant-validates a conversation-session association before linking", async () => {
+    const { calls } = clientFromRoutes([
+      { match: /FROM namespace_direct_uploads/, rows: [{ id: FILE_ID, upload_id: null }] },
+      { match: /FROM troubleshooting_sessions/, rows: [{ id: SESSION_ID }] },
+      { match: /INSERT INTO workspace_file_links/, rows: [{ id: LINK_ID }] },
+    ]);
+    const result = await attachFileToTargets(TENANT, FILE_ID, [
+      { targetType: "troubleshooting_session", targetId: SESSION_ID },
+    ]);
+    expect(result).toMatchObject({ ok: true });
+    const validation = calls.find((call) => /FROM troubleshooting_sessions/.test(call.sql));
+    expect(validation?.sql).toContain("tenant_id = $1::uuid");
+    expect(validation?.params).toEqual([TENANT, SESSION_ID]);
   });
 
   it("idempotent replay: ON CONFLICT upsert returns the existing link id", async () => {

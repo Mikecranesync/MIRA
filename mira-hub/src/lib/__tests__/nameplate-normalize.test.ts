@@ -41,6 +41,14 @@ describe("normalizeCandidate", () => {
     expect(c.serialNumber).toBe("S1");
   });
 
+  it("preserves the shared image classification and rejects unknown labels", () => {
+    expect(normalizeCandidate({ image_kind: "electrical_print" }).imageKind).toBe(
+      "electrical_print",
+    );
+    expect(normalizeCandidate({ imageKind: "nameplate" }).imageKind).toBe("nameplate");
+    expect(normalizeCandidate({ image_kind: "invoice" }).imageKind).toBe("unknown");
+  });
+
   it("preserves Danfoss family, series, full type code, and part number as distinct identity", () => {
     const c = normalizeCandidate({
       manufacturer: "Danfoss",
