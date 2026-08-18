@@ -53,6 +53,8 @@ def render_slack(response: NormalizedChatResponse) -> dict:
             )
         elif block.kind == "paragraph":
             _append_section(blocks, block.data.get("text", ""))
+        elif block.kind == "bullet_list":
+            _append_section(blocks, "\n".join(f"• {i}" for i in block.data.get("items", [])))
         elif block.kind == "key_value":
             pairs = block.data.get("pairs", [])
             fields = [{"type": "mrkdwn", "text": f"*{k}*\n{v}"} for k, v in pairs]
