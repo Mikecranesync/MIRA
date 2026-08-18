@@ -17,10 +17,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const sessionMock = vi.hoisted(() => ({
-  sessionOr401: vi.fn(async () => ({ tenantId: "11111111-1111-4111-8111-111111111111", userId: "u1" })),
+const contextMock = vi.hoisted(() => ({
+  requestContextOr401: vi.fn(async () => ({
+    tenantId: "11111111-1111-4111-8111-111111111111",
+    userId: "22222222-2222-4222-8222-222222222222",
+    authKind: "session",
+    sourceChannel: null,
+  })),
 }));
-vi.mock("@/lib/session", () => sessionMock);
+vi.mock("@/lib/service-request-context", () => contextMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
@@ -70,6 +75,26 @@ beforeEach(() => {
 });
 
 describe("chat boundary", () => {
+  it("accepts service auth through the same tenant-scoped source gate", async () => {
+    contextMock.requestContextOr401.mockResolvedValueOnce({
+      tenantId: "11111111-1111-4111-8111-111111111111",
+      userId: "22222222-2222-4222-8222-222222222222",
+      authKind: "service",
+      sourceChannel: "telegram",
+    });
+    domainMock.validateChatSources.mockResolvedValue({
+      ok: false,
+      error: "notebook_not_found",
+    });
+    const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
+    expect(res.status).toBe(404);
+    expect(domainMock.validateChatSources).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      NB,
+      [DOC_A],
+    );
+  });
+
   it("rejects a doc id that is not in the notebook (sibling/foreign) with 403 and no retrieval", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_in_notebook" });
     const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);

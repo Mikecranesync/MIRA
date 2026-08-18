@@ -25,7 +25,7 @@
  * directly; only auth and request-shape failures use 4xx.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
@@ -165,7 +165,7 @@ async function chunksForDoc(
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 

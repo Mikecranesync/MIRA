@@ -18,7 +18,7 @@
  * The provider is a candidate generator, never an authority (PRD §4.4/§10).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
@@ -48,7 +48,7 @@ function safePhotoName(raw: string | undefined, mime: string): string {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 

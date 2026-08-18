@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/service-request-context", () => ({ requestContextOr401: vi.fn() }));
 vi.mock("@/lib/workspace-files", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/workspace-files")>();
   return {
@@ -34,6 +35,7 @@ import { POST as attachRoute } from "../[fileId]/links/route";
 import { DELETE as detachRoute } from "../[fileId]/links/[linkId]/route";
 import { POST as relocateRoute } from "../[fileId]/relocate/route";
 import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import {
   listFiles,
   getFile,
@@ -85,6 +87,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
   vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+  vi.mocked(requestContextOr401).mockResolvedValue({
+    ...goodSession,
+    authKind: "session",
+    sourceChannel: null,
+  });
 });
 
 describe("GET /api/files — list + filters", () => {
@@ -124,7 +131,7 @@ describe("GET /api/files — list + filters", () => {
   });
 
   it("propagates a 401 from the session helper", async () => {
-    vi.mocked(sessionOr401).mockResolvedValue(
+    vi.mocked(requestContextOr401).mockResolvedValue(
       NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     );
     const res = await listRoute(new Request("https://hub.test/api/files"));

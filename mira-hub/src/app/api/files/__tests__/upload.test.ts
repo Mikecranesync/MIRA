@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/service-request-context", () => ({ requestContextOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/node-knowledge-ingest", () => ({
   ingestPdfToNode: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => {
 });
 
 import { POST } from "../route";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim, syncNotebookSourcesForFile } from "@/lib/workspace-files";
@@ -56,7 +56,12 @@ function upload(name: string, type: string, body = "hello", targets?: unknown) {
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
-  vi.mocked(sessionOr401).mockResolvedValue({ tenantId: TENANT, userId: USER } as never);
+  vi.mocked(requestContextOr401).mockResolvedValue({
+    tenantId: TENANT,
+    userId: USER,
+    authKind: "session",
+    sourceChannel: null,
+  } as never);
   vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: FILE_ID, reused: false, uploadId: null });
   vi.mocked(attachFileToTargets).mockResolvedValue({ ok: true, links: [] } as never);
   vi.mocked(linkFileToUpload).mockResolvedValue(true);
@@ -66,10 +71,25 @@ beforeEach(() => {
 
 describe("POST /api/files", () => {
   it("401s without a session", async () => {
-    vi.mocked(sessionOr401).mockResolvedValue(
+    vi.mocked(requestContextOr401).mockResolvedValue(
       NextResponse.json({ error: "Unauthorized" }, { status: 401 }) as never,
     );
     expect((await POST(upload("a.pdf", "application/pdf"))).status).toBe(401);
+  });
+
+  it("pins browser provenance and accepts service-auth channel provenance", async () => {
+    await POST(upload("browser.bin", "application/octet-stream"));
+    expect(vi.mocked(parkOrReuseFile).mock.calls[0][0].source).toBe("user_upload");
+
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(requestContextOr401).mockResolvedValue({
+      tenantId: TENANT,
+      userId: USER,
+      authKind: "service",
+      sourceChannel: "telegram",
+    } as never);
+    await POST(upload("telegram.bin", "application/octet-stream"));
+    expect(vi.mocked(parkOrReuseFile).mock.calls[0][0].source).toBe("channel:telegram");
   });
 
   it("422s when the file field is missing", async () => {

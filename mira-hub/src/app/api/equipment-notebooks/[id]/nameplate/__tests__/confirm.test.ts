@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/service-request-context", () => ({ requestContextOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock("@/lib/safe-download", () => ({
 }));
 
 import { POST } from "../confirm/route";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState, updateNotebook } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
@@ -154,7 +154,11 @@ function pdfDownload() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.mocked(sessionOr401).mockResolvedValue(session);
+  vi.mocked(requestContextOr401).mockResolvedValue({
+    ...session,
+    authKind: "session",
+    sourceChannel: null,
+  });
   vi.mocked(getNotebook).mockResolvedValue(notebook);
   vi.mocked(getFile).mockResolvedValue({
     file: { id: PHOTO_FILE_ID } as never,
@@ -194,11 +198,24 @@ beforeEach(() => {
 
 describe("auth, tenancy, and request shape", () => {
   it("propagates a 401", async () => {
-    vi.mocked(sessionOr401).mockResolvedValue(
+    vi.mocked(requestContextOr401).mockResolvedValue(
       NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     );
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(401);
+  });
+
+  it("accepts service auth while retaining the tenant-scoped notebook gate", async () => {
+    vi.mocked(requestContextOr401).mockResolvedValue({
+      ...session,
+      authKind: "service",
+      sourceChannel: "slack",
+    });
+    vi.mocked(getNotebook).mockResolvedValue(null);
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(404);
+    expect(getNotebook).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID);
+    expect(getFile).not.toHaveBeenCalled();
   });
 
   it("404s a cross-tenant notebook", async () => {

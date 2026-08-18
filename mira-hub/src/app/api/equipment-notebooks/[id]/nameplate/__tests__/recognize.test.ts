@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/lib/service-request-context", () => ({ requestContextOr401: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
   updateNotebook: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("@/lib/nameplate", () => ({
 vi.mock("@/lib/nameplate/detect", () => ({ resolveRecognitionImage: vi.fn() }));
 
 import { POST } from "../recognize/route";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { getNotebook, updateNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { isRecognizerConfigured, defaultRecognizer } from "@/lib/nameplate";
@@ -73,7 +73,11 @@ function makeReq(opts: { field?: string; name?: string; type?: string; bytes?: n
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(sessionOr401).mockResolvedValue(session);
+  vi.mocked(requestContextOr401).mockResolvedValue({
+    ...session,
+    authKind: "session",
+    sourceChannel: null,
+  });
   vi.mocked(getNotebook).mockResolvedValue(notebook);
   vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: FILE_ID, reused: false, uploadId: null });
   vi.mocked(attachFileToTargets).mockResolvedValue({
@@ -92,11 +96,26 @@ beforeEach(() => {
 
 describe("auth + tenancy", () => {
   it("propagates a 401", async () => {
-    vi.mocked(sessionOr401).mockResolvedValue(
+    vi.mocked(requestContextOr401).mockResolvedValue(
       NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     );
     const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(401);
+  });
+
+  it("accepts a canonical service context without changing tenant ownership checks", async () => {
+    vi.mocked(requestContextOr401).mockResolvedValue({
+      ...session,
+      authKind: "service",
+      sourceChannel: "telegram",
+    });
+    vi.mocked(isRecognizerConfigured).mockReturnValue(false);
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(503);
+    expect(getNotebook).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID);
+    expect(parkOrReuseFile).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT_ID, createdBy: session.userId }),
+    );
   });
 
   it("404s a notebook that belongs to another tenant, without parking anything", async () => {
