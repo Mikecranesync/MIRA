@@ -16,6 +16,7 @@ const harness = vi.hoisted(() => ({
   },
   workspaces: {
     resolve: vi.fn(),
+    resolveForExecution: vi.fn(),
     reset: vi.fn(),
     updateState: vi.fn(),
   },
@@ -24,9 +25,9 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/service-request-context", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/service-request-context")>(
-    "@/lib/service-request-context",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/lib/service-request-context")
+  >("@/lib/service-request-context");
   return { ...actual, requestContextOr401: harness.context };
 });
 
@@ -155,7 +156,10 @@ function serviceContext(overrides: Record<string, unknown> = {}) {
 
 function multipart(bytes = PDF, filename = "VLT User Manual.pdf") {
   const form = new FormData();
-  form.append("attachment:pdf:1", new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }));
+  form.append(
+    "attachment:pdf:1",
+    new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }),
+  );
   return form;
 }
 
@@ -187,6 +191,7 @@ beforeEach(() => {
   harness.operations.ackTerminalDelivery.mockResolvedValue(true);
   harness.operations.updateProgress.mockResolvedValue(true);
   harness.workspaces.resolve.mockResolvedValue(workspace);
+  harness.workspaces.resolveForExecution.mockResolvedValue(workspace);
   harness.createDependencies.mockReturnValue({ progress: vi.fn() });
   harness.execute.mockResolvedValue({
     contractVersion: "1.0",
@@ -247,7 +252,9 @@ describe("POST /api/channel-workflow/operations", () => {
   });
 
   it("resolves a duplicate event before workspace lookup, including after reset", async () => {
-    harness.operations.findByEvent.mockResolvedValue(operation({ state: "complete" }));
+    harness.operations.findByEvent.mockResolvedValue(
+      operation({ state: "complete" }),
+    );
     harness.operations.prepare.mockResolvedValue({
       operationId: OPERATION,
       sessionId: SESSION,
@@ -266,7 +273,10 @@ describe("POST /api/channel-workflow/operations", () => {
     );
     expect(response.status).toBe(200);
     expect(harness.workspaces.resolve).not.toHaveBeenCalled();
-    expect(harness.operations.prepare).toHaveBeenCalledWith(expect.anything(), SESSION);
+    expect(harness.operations.prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      SESSION,
+    );
   });
 
   it("denies a request whose tenant or actor differs from authenticated service identity", async () => {
@@ -274,7 +284,9 @@ describe("POST /api/channel-workflow/operations", () => {
       new Request("https://hub.test/api/channel-workflow/operations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rawRequest({ tenantId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" })),
+        body: JSON.stringify(
+          rawRequest({ tenantId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+        ),
       }),
     );
     expect(response.status).toBe(403);
@@ -285,11 +297,14 @@ describe("POST /api/channel-workflow/operations", () => {
 describe("POST /api/channel-workflow/operations/:id/execute", () => {
   it("verifies exact attachment bytes, executes once, finalizes, and leases one terminal delivery", async () => {
     const response = await executeOperation(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`, {
-        method: "POST",
-        headers: { "X-Mira-Owner-Token": OWNER },
-        body: multipart(),
-      }),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`,
+        {
+          method: "POST",
+          headers: { "X-Mira-Owner-Token": OWNER },
+          body: multipart(),
+        },
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(response.status).toBe(200);
@@ -299,9 +314,16 @@ describe("POST /api/channel-workflow/operations/:id/execute", () => {
       deliveryToken: DELIVERY,
       result: { semanticKind: "file_intake" },
     });
-    expect(harness.operations.begin).toHaveBeenCalledWith(TENANT, OPERATION, OWNER);
+    expect(harness.operations.begin).toHaveBeenCalledWith(
+      TENANT,
+      OPERATION,
+      OWNER,
+    );
     expect(harness.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ operationId: OPERATION, attachments: [expect.objectContaining({ bytes: PDF })] }),
+      expect.objectContaining({
+        operationId: OPERATION,
+        attachments: [expect.objectContaining({ bytes: PDF })],
+      }),
       expect.anything(),
     );
     expect(harness.operations.finalize).toHaveBeenCalledTimes(1);
@@ -309,11 +331,14 @@ describe("POST /api/channel-workflow/operations/:id/execute", () => {
 
   it("rejects a byte/hash mismatch before claiming execution", async () => {
     const response = await executeOperation(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`, {
-        method: "POST",
-        headers: { "X-Mira-Owner-Token": OWNER },
-        body: multipart(Buffer.from("%PDF-mutated")),
-      }),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`,
+        {
+          method: "POST",
+          headers: { "X-Mira-Owner-Token": OWNER },
+          body: multipart(Buffer.from("%PDF-mutated")),
+        },
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(response.status).toBe(422);
@@ -324,26 +349,78 @@ describe("POST /api/channel-workflow/operations/:id/execute", () => {
   it("allows at most one live executor for a duplicate delivery attempt", async () => {
     harness.operations.begin.mockResolvedValue(false);
     const response = await executeOperation(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`, {
-        method: "POST",
-        headers: { "X-Mira-Owner-Token": OWNER },
-        body: multipart(),
-      }),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`,
+        {
+          method: "POST",
+          headers: { "X-Mira-Owner-Token": OWNER },
+          body: multipart(),
+        },
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(response.status).toBe(409);
     expect(harness.execute).not.toHaveBeenCalled();
     expect(harness.operations.finalize).not.toHaveBeenCalled();
   });
+
+  it("uses reset-aware workspace recovery after rotation committed before finalization", async () => {
+    const resetRequest = rawRequest({
+      action: "reset",
+      text: "",
+      caption: "",
+      attachments: [],
+    });
+    harness.operations.get.mockResolvedValue(
+      operation({ request: resetRequest }),
+    );
+    harness.execute.mockResolvedValue({
+      contractVersion: "1.0",
+      operationId: OPERATION,
+      state: "complete",
+      handled: true,
+      semanticKind: "reset",
+      delegatedRoute: null,
+      conversation: { sessionId: SESSION, notebookId: NOTEBOOK, generation: 2 },
+      provenance: { clearedCanonicalState: true },
+    });
+
+    const response = await executeOperation(
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/execute`,
+        {
+          method: "POST",
+          headers: { "X-Mira-Owner-Token": OWNER },
+        },
+      ),
+      { params: Promise.resolve({ id: OPERATION }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.workspaces.resolveForExecution).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "reset",
+        conversation: expect.objectContaining({ sessionId: SESSION }),
+      }),
+      OPERATION,
+    );
+    expect(harness.workspaces.resolve).not.toHaveBeenCalled();
+  });
 });
 
 describe("terminal delivery claim", () => {
   it("exposes durable progress without bypassing terminal-delivery ownership", async () => {
     harness.operations.get.mockResolvedValueOnce(
-      operation({ state: "running", progressStep: "ingesting_file", result: { secret: "terminal" } }),
+      operation({
+        state: "running",
+        progressStep: "ingesting_file",
+        result: { secret: "terminal" },
+      }),
     );
     const response = await operationStatus(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}`),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}`,
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(response.status).toBe(200);
@@ -352,23 +429,54 @@ describe("terminal delivery claim", () => {
       state: "running",
       progressStep: "ingesting_file",
       terminalDelivered: false,
+      terminalDeliveryState: "not_terminal",
+      resultAvailable: false,
+    });
+  });
+
+  it("makes an uncertain one-shot delivery claim observable without reissuing it", async () => {
+    harness.operations.get.mockResolvedValueOnce(
+      operation({
+        state: "complete",
+        result: { semanticKind: "grounded_answer" },
+        deliveryToken: DELIVERY,
+        terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      }),
+    );
+
+    const response = await operationStatus(
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}`,
+      ),
+      { params: Promise.resolve({ id: OPERATION }) },
+    );
+
+    expect(await response.json()).toMatchObject({
+      terminalDelivered: false,
+      terminalDeliveryState: "claimed_unacknowledged",
+      resultAvailable: true,
     });
   });
 
   it("claims and acknowledges exactly one authenticated delivery token", async () => {
     const claimed = await claimDelivery(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}/delivery`),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/delivery`,
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(claimed.status).toBe(200);
     expect(await claimed.json()).toMatchObject({ deliveryToken: DELIVERY });
 
     const acked = await ackDelivery(
-      new Request(`https://hub.test/api/channel-workflow/operations/${OPERATION}/delivery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deliveryToken: DELIVERY }),
-      }),
+      new Request(
+        `https://hub.test/api/channel-workflow/operations/${OPERATION}/delivery`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deliveryToken: DELIVERY }),
+        },
+      ),
       { params: Promise.resolve({ id: OPERATION }) },
     );
     expect(acked.status).toBe(200);

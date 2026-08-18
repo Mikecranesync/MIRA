@@ -12,25 +12,33 @@ const workspaceHarness = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_tenantId: string, fn: (client: unknown) => unknown) =>
-    fn({
-      query: async (sql: string, params: unknown[] = []) => {
-        workspaceHarness.calls.push({ sql, params });
-        const index = workspaceHarness.responses.findIndex((entry) => entry.match.test(sql));
-        if (index < 0) return { rows: [], rowCount: 0 };
-        const [entry] = workspaceHarness.responses.splice(index, 1);
-        return { rows: entry.rows, rowCount: entry.rowCount ?? entry.rows.length };
-      },
-    }),
+  withTenantContext: vi.fn(
+    async (_tenantId: string, fn: (client: unknown) => unknown) =>
+      fn({
+        query: async (sql: string, params: unknown[] = []) => {
+          workspaceHarness.calls.push({ sql, params });
+          const index = workspaceHarness.responses.findIndex((entry) =>
+            entry.match.test(sql),
+          );
+          if (index < 0) return { rows: [], rowCount: 0 };
+          const [entry] = workspaceHarness.responses.splice(index, 1);
+          return {
+            rows: entry.rows,
+            rowCount: entry.rowCount ?? entry.rows.length,
+          };
+        },
+      }),
   ),
 }));
 
 vi.mock("@/lib/equipment-notebooks", () => ({
-  createNotebookTx: (...args: unknown[]) => workspaceHarness.createNotebookTx(...args),
+  createNotebookTx: (...args: unknown[]) =>
+    workspaceHarness.createNotebookTx(...args),
 }));
 
 vi.mock("@/lib/workspace-files", () => ({
-  validateTargetTx: (...args: unknown[]) => workspaceHarness.validateTargetTx(...args),
+  validateTargetTx: (...args: unknown[]) =>
+    workspaceHarness.validateTargetTx(...args),
 }));
 
 import {
@@ -55,9 +63,15 @@ beforeEach(() => {
   workspaceHarness.calls.length = 0;
   workspaceHarness.responses.length = 0;
   workspaceHarness.createNotebookTx.mockReset();
-  workspaceHarness.createNotebookTx.mockResolvedValue({ id: NOTEBOOK_2, nodeId: NODE_2 });
+  workspaceHarness.createNotebookTx.mockResolvedValue({
+    id: NOTEBOOK_2,
+    nodeId: NODE_2,
+  });
   workspaceHarness.validateTargetTx.mockReset();
-  workspaceHarness.validateTargetTx.mockResolvedValue({ ok: true, nodeId: null });
+  workspaceHarness.validateTargetTx.mockResolvedValue({
+    ok: true,
+    nodeId: null,
+  });
 });
 
 function request(context: Record<string, string> = {}) {
@@ -79,6 +93,7 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
   rows: ChannelWorkspace[] = [];
   creates = 0;
   resets = 0;
+  resetResults = new Map<string, ChannelWorkspace>();
   cancelled: Array<{ sessionId: string; exceptOperationId: string }> = [];
 
   async findActive(tenantId: string, channel: string, conversationId: string) {
@@ -95,8 +110,15 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
 
   async findById(tenantId: string, sessionId: string) {
     return (
-      this.rows.find((row) => row.tenantId === tenantId && row.sessionId === sessionId) ?? null
+      this.rows.find(
+        (row) => row.tenantId === tenantId && row.sessionId === sessionId,
+      ) ?? null
     );
+  }
+
+  async findByResetOperation(tenantId: string, resetOperationId: string) {
+    const row = this.resetResults.get(resetOperationId);
+    return row?.tenantId === tenantId ? structuredClone(row) : null;
   }
 
   async create(input: {
@@ -108,7 +130,11 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
     assetId?: string;
     nodeId?: string;
   }) {
-    const raced = await this.findActive(input.tenantId, input.channel, input.conversationId);
+    const raced = await this.findActive(
+      input.tenantId,
+      input.channel,
+      input.conversationId,
+    );
     if (raced) return raced;
     this.creates += 1;
     const row: ChannelWorkspace = {
@@ -137,8 +163,12 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
     actorId: string;
     resetOperationId: string;
   }) {
+    const replay = this.resetResults.get(input.resetOperationId);
+    if (replay) return structuredClone(replay);
     this.resets += 1;
-    const current = this.rows.find((row) => row.sessionId === input.current.sessionId)!;
+    const current = this.rows.find(
+      (row) => row.sessionId === input.current.sessionId,
+    )!;
     current.status = "abandoned";
     this.cancelled.push({
       sessionId: current.sessionId,
@@ -162,6 +192,7 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
       status: "awaiting_namespace",
     };
     this.rows.push(fresh);
+    this.resetResults.set(input.resetOperationId, fresh);
     return fresh;
   }
 
@@ -180,9 +211,11 @@ class MemoryWorkspaceStore implements ChannelWorkspaceStore {
     >,
   ) {
     const row = this.rows.find(
-      (candidate) => candidate.tenantId === tenantId && candidate.sessionId === sessionId,
+      (candidate) =>
+        candidate.tenantId === tenantId && candidate.sessionId === sessionId,
     );
-    if (!row || !["awaiting_namespace", "confirmed"].includes(row.status)) return false;
+    if (!row || !["awaiting_namespace", "confirmed"].includes(row.status))
+      return false;
     Object.assign(row, patch);
     return true;
   }
@@ -217,18 +250,18 @@ describe("canonical channel conversation workspace", () => {
 
   it("fails closed for a supplied foreign/missing session instead of creating around it", async () => {
     const service = new ChannelWorkspaceService(new MemoryWorkspaceStore());
-    await expect(service.resolve(request({ sessionId: SESSION_2 }))).rejects.toThrow(
-      "workspace_not_found",
-    );
+    await expect(
+      service.resolve(request({ sessionId: SESSION_2 })),
+    ).rejects.toThrow("workspace_not_found");
   });
 
   it("rejects context that conflicts with the active canonical workspace", async () => {
     const store = new MemoryWorkspaceStore();
     const service = new ChannelWorkspaceService(store);
     await service.resolve(request({ notebookId: NOTEBOOK_1 }));
-    await expect(service.resolve(request({ notebookId: NOTEBOOK_2 }))).rejects.toThrow(
-      "workspace_context_conflict",
-    );
+    await expect(
+      service.resolve(request({ notebookId: NOTEBOOK_2 })),
+    ).rejects.toThrow("workspace_context_conflict");
   });
 
   it("persists recognized identity and exact File/document ids on the active session", async () => {
@@ -272,7 +305,10 @@ describe("canonical channel conversation workspace", () => {
       pendingOperationId: "88888888-8888-4888-8888-888888888888",
     });
 
-    const fresh = await service.reset(request(), "88888888-8888-4888-8888-888888888888");
+    const fresh = await service.reset(
+      request(),
+      "88888888-8888-4888-8888-888888888888",
+    );
     expect(fresh).toMatchObject({
       sessionId: SESSION_2,
       generation: 2,
@@ -291,6 +327,21 @@ describe("canonical channel conversation workspace", () => {
         exceptOperationId: "88888888-8888-4888-8888-888888888888",
       },
     ]);
+  });
+
+  it("recovers the same reset generation after rotation committed before operation finalization", async () => {
+    const store = new MemoryWorkspaceStore();
+    const service = new ChannelWorkspaceService(store);
+    const old = await service.resolve(request());
+    const resetOperationId = "88888888-8888-4888-8888-888888888888";
+    const resetRequest = request({ sessionId: old.sessionId });
+
+    const first = await service.reset(resetRequest, resetOperationId);
+    const replay = await service.reset(resetRequest, resetOperationId);
+
+    expect(replay).toEqual(first);
+    expect(store.resets).toBe(1);
+    expect(store.rows).toHaveLength(2);
   });
 });
 
@@ -314,7 +365,9 @@ function dbRow(workspace: ChannelWorkspace): Record<string, unknown> {
   };
 }
 
-function activeWorkspace(overrides: Partial<ChannelWorkspace> = {}): ChannelWorkspace {
+function activeWorkspace(
+  overrides: Partial<ChannelWorkspace> = {},
+): ChannelWorkspace {
   return {
     sessionId: SESSION_1,
     tenantId: TENANT,
@@ -337,12 +390,22 @@ function activeWorkspace(overrides: Partial<ChannelWorkspace> = {}): ChannelWork
 
 describe("channel workspace PostgreSQL boundary", () => {
   it("serializes creation and tenant-validates every supplied context id", async () => {
-    const expected = activeWorkspace({ assetId: ASSET, selectedNodeId: NODE_1, status: "confirmed" });
+    const expected = activeWorkspace({
+      assetId: ASSET,
+      selectedNodeId: NODE_1,
+      status: "confirmed",
+    });
     workspaceHarness.responses.push(
       { match: /external_conversation_id = \$3[\s\S]*status IN/, rows: [] },
-      { match: /FROM equipment_notebooks[\s\S]*id = \$2::uuid/, rows: [{ id: NOTEBOOK_1, node_id: NODE_1 }] },
+      {
+        match: /FROM equipment_notebooks[\s\S]*id = \$2::uuid/,
+        rows: [{ id: NOTEBOOK_1, node_id: NODE_1 }],
+      },
       { match: /COALESCE\(MAX\(generation\)/, rows: [{ generation: 1 }] },
-      { match: /INSERT INTO troubleshooting_sessions/, rows: [{ session_id: SESSION_1 }] },
+      {
+        match: /INSERT INTO troubleshooting_sessions/,
+        rows: [{ session_id: SESSION_1 }],
+      },
       { match: /s\.id = \$2::uuid/, rows: [dbRow(expected)] },
     );
 
@@ -442,9 +505,16 @@ describe("channel workspace PostgreSQL boundary", () => {
     });
     workspaceHarness.responses.push(
       { match: /s\.id = \$2::uuid/, rows: [dbRow(current)] },
-      { match: /UPDATE troubleshooting_sessions[\s\S]*status = 'abandoned'/, rows: [], rowCount: 1 },
+      {
+        match: /UPDATE troubleshooting_sessions[\s\S]*status = 'abandoned'/,
+        rows: [],
+        rowCount: 1,
+      },
       { match: /UPDATE channel_operations/, rows: [], rowCount: 1 },
-      { match: /INSERT INTO troubleshooting_sessions/, rows: [{ session_id: SESSION_2 }] },
+      {
+        match: /INSERT INTO troubleshooting_sessions/,
+        rows: [{ session_id: SESSION_2 }],
+      },
       { match: /s\.id = \$2::uuid/, rows: [dbRow(fresh)] },
     );
 
@@ -471,5 +541,34 @@ describe("channel workspace PostgreSQL boundary", () => {
     expect(inserts[0].params[1]).toBeNull();
     expect(inserts[0].params[7]).toBe(2);
     expect(inserts[0].params[9]).toBeNull();
+    expect(inserts[0].params[10]).toBe("88888888-8888-4888-8888-888888888888");
+  });
+
+  it("returns the reset generation already linked to an operation without rotating again", async () => {
+    const current = activeWorkspace({ status: "abandoned" });
+    const fresh = activeWorkspace({
+      sessionId: SESSION_2,
+      generation: 2,
+      notebookId: NOTEBOOK_2,
+      notebookNodeId: NODE_2,
+    });
+    workspaceHarness.responses.push({
+      match: /reset_operation_id = \$2::uuid/,
+      rows: [dbRow(fresh)],
+    });
+
+    const recovered = await pgChannelWorkspaceStore.rotate({
+      current,
+      actorId: USER,
+      resetOperationId: "88888888-8888-4888-8888-888888888888",
+    });
+
+    expect(recovered).toEqual(fresh);
+    expect(workspaceHarness.createNotebookTx).not.toHaveBeenCalled();
+    expect(
+      workspaceHarness.calls.some((call) =>
+        /UPDATE troubleshooting_sessions/.test(call.sql),
+      ),
+    ).toBe(false);
   });
 });

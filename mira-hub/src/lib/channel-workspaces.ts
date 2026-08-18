@@ -17,14 +17,15 @@ import type {
 } from "@/lib/channel-workflow-contract";
 import { validateTargetTx } from "@/lib/workspace-files";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTIVE_STATUSES = new Set<ChannelWorkspaceStatus>(["awaiting_namespace", "confirmed"]);
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ACTIVE_STATUSES = new Set<ChannelWorkspaceStatus>([
+  "awaiting_namespace",
+  "confirmed",
+]);
 
 export type ChannelWorkspaceStatus =
-  | "awaiting_namespace"
-  | "confirmed"
-  | "resolved"
-  | "abandoned";
+  "awaiting_namespace" | "confirmed" | "resolved" | "abandoned";
 
 export type ChannelPendingIntent = "manual_discovery";
 
@@ -82,7 +83,14 @@ export interface ChannelWorkspaceStore {
     channel: Channel,
     conversationId: string,
   ): Promise<ChannelWorkspace | null>;
-  findById(tenantId: string, sessionId: string): Promise<ChannelWorkspace | null>;
+  findById(
+    tenantId: string,
+    sessionId: string,
+  ): Promise<ChannelWorkspace | null>;
+  findByResetOperation(
+    tenantId: string,
+    resetOperationId: string,
+  ): Promise<ChannelWorkspace | null>;
   create(input: CreateChannelWorkspaceInput): Promise<ChannelWorkspace>;
   rotate(input: RotateChannelWorkspaceInput): Promise<ChannelWorkspace>;
   updateState(
@@ -127,7 +135,11 @@ function jsonObject(value: unknown): Record<string, unknown> | null {
 }
 
 function rowToWorkspace(row: Record<string, unknown>): ChannelWorkspace {
-  if (!row.notebook_id || !row.notebook_node_id || !row.external_conversation_id) {
+  if (
+    !row.notebook_id ||
+    !row.notebook_node_id ||
+    !row.external_conversation_id
+  ) {
     throw new Error("invalid_channel_workspace");
   }
   return {
@@ -138,15 +150,20 @@ function rowToWorkspace(row: Record<string, unknown>): ChannelWorkspace {
     generation: Number(row.generation),
     notebookId: String(row.notebook_id),
     notebookNodeId: String(row.notebook_node_id),
-    selectedNodeId: row.selected_node_id == null ? null : String(row.selected_node_id),
+    selectedNodeId:
+      row.selected_node_id == null ? null : String(row.selected_node_id),
     assetId: row.asset_id == null ? null : String(row.asset_id),
-    equipmentIdentity: jsonObject(row.equipment_identity) as EquipmentIdentity | null,
+    equipmentIdentity: jsonObject(
+      row.equipment_identity,
+    ) as EquipmentIdentity | null,
     lastFileId: row.last_file_id == null ? null : String(row.last_file_id),
     lastDocId: row.last_doc_id == null ? null : String(row.last_doc_id),
     pendingIntent:
       row.pending_intent === "manual_discovery" ? "manual_discovery" : null,
     pendingOperationId:
-      row.pending_operation_id == null ? null : String(row.pending_operation_id),
+      row.pending_operation_id == null
+        ? null
+        : String(row.pending_operation_id),
     status: row.status as ChannelWorkspaceStatus,
   };
 }
@@ -190,6 +207,24 @@ async function findByIdTx(
   return result.rows[0] ? rowToWorkspace(result.rows[0]) : null;
 }
 
+async function findByResetOperationTx(
+  c: PoolClient,
+  tenantId: string,
+  resetOperationId: string,
+): Promise<ChannelWorkspace | null> {
+  const result = await c.query(
+    `SELECT ${WORKSPACE_COLS}
+       FROM troubleshooting_sessions s
+       JOIN equipment_notebooks n
+         ON n.tenant_id = s.tenant_id AND n.id = s.notebook_id
+      WHERE s.tenant_id = $1::uuid
+        AND s.reset_operation_id = $2::uuid
+      LIMIT 1`,
+    [tenantId, resetOperationId],
+  );
+  return result.rows[0] ? rowToWorkspace(result.rows[0]) : null;
+}
+
 async function lockConversationTx(
   c: PoolClient,
   tenantId: string,
@@ -213,7 +248,10 @@ async function validateNotebookTx(
     [tenantId, notebookId],
   );
   if (!result.rows[0]) throw new Error("workspace_notebook_not_found");
-  return { id: String(result.rows[0].id), nodeId: String(result.rows[0].node_id) };
+  return {
+    id: String(result.rows[0].id),
+    nodeId: String(result.rows[0].node_id),
+  };
 }
 
 async function validateOptionalContextTx(
@@ -221,11 +259,21 @@ async function validateOptionalContextTx(
   input: Pick<CreateChannelWorkspaceInput, "tenantId" | "assetId" | "nodeId">,
 ): Promise<void> {
   if (input.assetId) {
-    const asset = await validateTargetTx(c, input.tenantId, "cmms_asset", input.assetId);
+    const asset = await validateTargetTx(
+      c,
+      input.tenantId,
+      "cmms_asset",
+      input.assetId,
+    );
     if (!asset.ok) throw new Error("workspace_asset_not_found");
   }
   if (input.nodeId) {
-    const node = await validateTargetTx(c, input.tenantId, "namespace_node", input.nodeId);
+    const node = await validateTargetTx(
+      c,
+      input.tenantId,
+      "namespace_node",
+      input.nodeId,
+    );
     if (!node.ok) throw new Error("workspace_node_not_found");
   }
 }
@@ -256,16 +304,17 @@ async function insertWorkspaceTx(
   input: CreateChannelWorkspaceInput,
   generation: number,
   notebook: { id: string; nodeId: string },
+  resetOperationId: string | null = null,
 ): Promise<ChannelWorkspace> {
   const confirmed = Boolean(input.assetId);
   const result = await c.query(
     `INSERT INTO troubleshooting_sessions
        (tenant_id, asset_id, technician_user_id, channel, status,
         confirmed_at, metadata, external_conversation_id, generation,
-        notebook_id, selected_node_id)
+        notebook_id, selected_node_id, reset_operation_id)
      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5,
              CASE WHEN $5 = 'confirmed' THEN now() ELSE NULL END,
-             $6::jsonb, $7, $8, $9::uuid, $10::uuid)
+             $6::jsonb, $7, $8, $9::uuid, $10::uuid, $11::uuid)
      RETURNING id::text AS session_id`,
     [
       input.tenantId,
@@ -278,9 +327,14 @@ async function insertWorkspaceTx(
       generation,
       notebook.id,
       input.nodeId ?? null,
+      resetOperationId,
     ],
   );
-  const workspace = await findByIdTx(c, input.tenantId, String(result.rows[0].session_id));
+  const workspace = await findByIdTx(
+    c,
+    input.tenantId,
+    String(result.rows[0].session_id),
+  );
   if (!workspace) throw new Error("workspace_create_failed");
   return workspace;
 }
@@ -293,13 +347,31 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
   },
 
   async findById(tenantId, sessionId) {
-    return withTenantContext(tenantId, (c) => findByIdTx(c, tenantId, sessionId));
+    return withTenantContext(tenantId, (c) =>
+      findByIdTx(c, tenantId, sessionId),
+    );
+  },
+
+  async findByResetOperation(tenantId, resetOperationId) {
+    return withTenantContext(tenantId, (c) =>
+      findByResetOperationTx(c, tenantId, resetOperationId),
+    );
   },
 
   async create(input) {
     return withTenantContext(input.tenantId, async (c) => {
-      await lockConversationTx(c, input.tenantId, input.channel, input.conversationId);
-      const raced = await findActiveTx(c, input.tenantId, input.channel, input.conversationId);
+      await lockConversationTx(
+        c,
+        input.tenantId,
+        input.channel,
+        input.conversationId,
+      );
+      const raced = await findActiveTx(
+        c,
+        input.tenantId,
+        input.channel,
+        input.conversationId,
+      );
       if (raced) return raced;
 
       await validateOptionalContextTx(c, input);
@@ -322,8 +394,32 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
   async rotate(input) {
     const { current } = input;
     return withTenantContext(current.tenantId, async (c) => {
-      await lockConversationTx(c, current.tenantId, current.channel, current.conversationId);
-      const persisted = await findByIdTx(c, current.tenantId, current.sessionId);
+      await lockConversationTx(
+        c,
+        current.tenantId,
+        current.channel,
+        current.conversationId,
+      );
+      const replay = await findByResetOperationTx(
+        c,
+        current.tenantId,
+        input.resetOperationId,
+      );
+      if (replay) {
+        if (
+          replay.channel !== current.channel ||
+          replay.conversationId !== current.conversationId ||
+          !ACTIVE_STATUSES.has(replay.status)
+        ) {
+          throw new Error("workspace_reset_operation_conflict");
+        }
+        return replay;
+      }
+      const persisted = await findByIdTx(
+        c,
+        current.tenantId,
+        current.sessionId,
+      );
       if (
         !persisted ||
         !ACTIVE_STATUSES.has(persisted.status) ||
@@ -341,7 +437,8 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
             AND status IN ('awaiting_namespace', 'confirmed')`,
         [current.tenantId, current.sessionId],
       );
-      if ((abandoned.rowCount ?? 0) !== 1) throw new Error("workspace_reset_race");
+      if ((abandoned.rowCount ?? 0) !== 1)
+        throw new Error("workspace_reset_race");
 
       await c.query(
         `UPDATE channel_operations
@@ -368,6 +465,7 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
         },
         current.generation + 1,
         { id: notebook.id, nodeId: notebook.nodeId },
+        input.resetOperationId,
       );
     });
   },
@@ -376,7 +474,11 @@ export const pgChannelWorkspaceStore: ChannelWorkspaceStore = {
     const assignments: string[] = [];
     const values: unknown[] = [tenantId, sessionId];
     if ("equipmentIdentity" in patch) {
-      values.push(patch.equipmentIdentity ? JSON.stringify(patch.equipmentIdentity) : null);
+      values.push(
+        patch.equipmentIdentity
+          ? JSON.stringify(patch.equipmentIdentity)
+          : null,
+      );
       assignments.push(`equipment_identity = $${values.length}::jsonb`);
     }
     if ("lastFileId" in patch) {
@@ -431,12 +533,17 @@ function assertContextMatches(
 }
 
 export class ChannelWorkspaceService {
-  constructor(private readonly store: ChannelWorkspaceStore = pgChannelWorkspaceStore) {}
+  constructor(
+    private readonly store: ChannelWorkspaceStore = pgChannelWorkspaceStore,
+  ) {}
 
   async resolve(request: ChannelWorkflowRequest): Promise<ChannelWorkspace> {
     let workspace: ChannelWorkspace | null;
     if (request.conversation.sessionId) {
-      workspace = await this.store.findById(request.tenantId, request.conversation.sessionId);
+      workspace = await this.store.findById(
+        request.tenantId,
+        request.conversation.sessionId,
+      );
       if (!workspace || !ACTIVE_STATUSES.has(workspace.status)) {
         throw new Error("workspace_not_found");
       }
@@ -464,11 +571,70 @@ export class ChannelWorkspaceService {
     });
   }
 
+  /**
+   * Resolve the workspace against which an operation originally started.
+   * A reset replay may legitimately reference an abandoned generation only
+   * when that exact operation already owns the active replacement generation.
+   */
+  async resolveForExecution(
+    request: ChannelWorkflowRequest,
+    operationId: string,
+  ): Promise<ChannelWorkspace> {
+    if (request.action !== "reset" || !request.conversation.sessionId) {
+      return this.resolve(request);
+    }
+    const current = await this.store.findById(
+      request.tenantId,
+      request.conversation.sessionId,
+    );
+    if (!current) throw new Error("workspace_not_found");
+    assertContextMatches(current, request);
+    if (ACTIVE_STATUSES.has(current.status)) return current;
+
+    const replacement = await this.store.findByResetOperation(
+      request.tenantId,
+      operationId,
+    );
+    if (
+      !replacement ||
+      !ACTIVE_STATUSES.has(replacement.status) ||
+      replacement.channel !== current.channel ||
+      replacement.conversationId !== current.conversationId
+    ) {
+      throw new Error("workspace_not_found");
+    }
+    return current;
+  }
+
   async reset(
     request: ChannelWorkflowRequest,
     resetOperationId: string,
   ): Promise<ChannelWorkspace> {
-    const current = await this.resolve(request);
+    const replay = await this.store.findByResetOperation(
+      request.tenantId,
+      resetOperationId,
+    );
+    if (replay) {
+      if (
+        !ACTIVE_STATUSES.has(replay.status) ||
+        replay.channel !== request.channel ||
+        replay.conversationId !== request.conversation.id
+      ) {
+        throw new Error("workspace_reset_operation_conflict");
+      }
+      return replay;
+    }
+
+    const current = request.conversation.sessionId
+      ? await this.store.findById(
+          request.tenantId,
+          request.conversation.sessionId,
+        )
+      : await this.resolve(request);
+    if (!current || !ACTIVE_STATUSES.has(current.status)) {
+      throw new Error("workspace_not_found");
+    }
+    assertContextMatches(current, request);
     return this.store.rotate({
       current,
       actorId: request.actor.userId,

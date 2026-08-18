@@ -26,7 +26,10 @@ ALTER TABLE troubleshooting_sessions
   ADD COLUMN IF NOT EXISTS last_file_id UUID,
   ADD COLUMN IF NOT EXISTS last_doc_id UUID,
   ADD COLUMN IF NOT EXISTS pending_intent TEXT,
-  ADD COLUMN IF NOT EXISTS pending_operation_id UUID;
+  ADD COLUMN IF NOT EXISTS pending_operation_id UUID,
+  -- Idempotency witness for reset crash recovery. The replacement generation
+  -- is durably linked before the operation can be finalized.
+  ADD COLUMN IF NOT EXISTS reset_operation_id UUID;
 
 ALTER TABLE troubleshooting_sessions
   DROP CONSTRAINT IF EXISTS troubleshooting_sessions_pending_intent_check;
@@ -66,6 +69,10 @@ CREATE INDEX IF NOT EXISTS idx_troubleshooting_sessions_channel_conversation_his
   ON troubleshooting_sessions
      (tenant_id, channel, external_conversation_id, generation DESC)
   WHERE external_conversation_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_troubleshooting_sessions_reset_operation
+  ON troubleshooting_sessions (tenant_id, reset_operation_id)
+  WHERE reset_operation_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS channel_operations (
   operation_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -43,6 +43,11 @@
 - Produces: `NormalizedChatResponse.operation_id`, `.operation_state`, `.semantic_kind`, `.citations`, `.provenance`, `.terminal_delivery_token`, and `.suppress_delivery`
 - Consumes: existing `NormalizedChatEvent` and `NormalizedAttachment`
 
+Attachment processing is atomic by contract: zero attachments, one image, or one-or-more
+PDFs. Mixed kinds, multiple images, unsupported kinds, and attachments on reset or
+confirmation are rejected before operation allocation; no accepted envelope member may be
+silently ignored.
+
 - [ ] **Step 1: Add the literal regression fixture and failing TypeScript contract tests**
 
 The fixture must contain the ten observed failures verbatim, the full Telegram sequence,
@@ -210,7 +215,8 @@ can never be reclaimed, and `cancelled` operations can neither finalize nor clai
 With a transaction-shaped fake client, assert one active workspace per
 tenant/channel/conversation, supplied notebook/asset/node IDs are tenant-validated, reset
 abandons the old session, cancels its running operations except the reset operation, creates
-a larger generation, and returns a notebook with no prior source/identity state.
+a larger generation, links that replacement to the unique reset operation for crash-safe
+replay, and returns a notebook with no prior source/identity state.
 
 - [ ] **Step 3: Run both suites RED**
 

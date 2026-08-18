@@ -24,9 +24,13 @@
       "additionalProperties": false,
       "required": ["userId", "externalUserId", "uploaderId"],
       "properties": {
-        "userId": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "externalUserId": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "uploaderId": { "type": "string", "minLength": 1, "maxLength": 200 }
+        "userId": { "$ref": "#/$defs/uuid" },
+        "externalUserId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "uploaderId": { "$ref": "#/$defs/uuid" }
       }
     },
     "channel": { "enum": ["telegram", "slack", "hub", "mobile"] },
@@ -51,9 +55,40 @@
     "attachments": {
       "type": "array",
       "maxItems": 10,
-      "items": { "$ref": "#/$defs/attachment" }
+      "items": { "$ref": "#/$defs/attachment" },
+      "oneOf": [
+        { "maxItems": 0 },
+        {
+          "minItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/attachment" },
+              { "properties": { "kind": { "const": "pdf" } } }
+            ]
+          }
+        },
+        {
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/attachment" },
+              { "properties": { "kind": { "const": "image" } } }
+            ]
+          }
+        }
+      ]
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "action": { "enum": ["reset", "confirm_identity"] } },
+        "required": ["action"]
+      },
+      "then": { "properties": { "attachments": { "maxItems": 0 } } }
+    }
+  ],
   "$defs": {
     "uuid": {
       "type": "string",
@@ -72,7 +107,7 @@
       ],
       "properties": {
         "attachmentId": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "kind": { "enum": ["image", "pdf", "other"] },
+        "kind": { "enum": ["image", "pdf"] },
         "mimeType": { "type": "string", "minLength": 1, "maxLength": 200 },
         "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
         "sizeBytes": { "type": "integer", "minimum": 0 },

@@ -246,6 +246,20 @@ def build_channel_request(
             }
         )
 
+    attachment_kinds = {item["kind"] for item in attachments}
+    if "other" in attachment_kinds:
+        raise ChannelWorkflowContractError("unsupported_attachment_kind")
+    if len(attachment_kinds) > 1:
+        raise ChannelWorkflowContractError("mixed_attachment_kinds_not_supported")
+    if "image" in attachment_kinds and len(attachments) > 1:
+        raise ChannelWorkflowContractError("multiple_image_attachments_not_supported")
+    if action != "message" and attachments:
+        raise ChannelWorkflowContractError("attachments_not_allowed_for_action")
+
+    text = event.text if event.text is not None else ""
+    if not isinstance(text, str) or len(text) > 4000:
+        raise ChannelWorkflowContractError("invalid_text")
+
     request: dict[str, Any] = {
         "contractVersion": "1.0",
         "tenantId": tenant,
@@ -258,8 +272,8 @@ def build_channel_request(
         "eventId": event_id,
         "conversation": conversation,
         "action": action,
-        "text": str(event.text or "")[:4000],
-        "caption": str(event.text or "")[:4000] if event.attachments else "",
+        "text": text,
+        "caption": text if event.attachments else "",
         "attachments": attachments,
     }
     if prior_operation_id:

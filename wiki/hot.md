@@ -1,3 +1,43 @@
+# Hot Cache — 2026-08-18 — CHARLIE — channel-neutral manual/Files workflow (draft PR #3300)
+
+## Just Finished
+
+- Implemented #3299 on `fix/channel-neutral-manual-workflow` from R0
+  `b2b1fca6923ceb1bdb45defee82791fef2a1d7bd`; draft PR #3300 is the review boundary.
+- Hub now owns one tenant-scoped operation/workspace path for nameplate identity, official
+  manual discovery, canonical Files, notebook association, retrieval, citations, reset,
+  and at-most-once terminal delivery. Telegram and Slack are feature-gated thin clients.
+- The literal Danfoss FC-202 floor incident is durable at
+  `tests/fixtures/channel_workflow/danfoss_fc202_telegram.json`.
+- Adversarial round 1 on `099e4416d` found reset crash recovery, mixed-attachment discard,
+  and schema drift; all three were reproduced red and fixed. Its delivery-lease suggestion
+  was rejected because retry after an uncertain Telegram send can duplicate a terminal
+  answer; the one-shot claim remains and uncertain delivery is now observable.
+- Fresh local evidence after remediation: Hub 1,993/1,993; deployment/security/review
+  harness 148/148; Next build and changed-file lint/format green. Bot suite has 2,499 pass,
+  20 skips, and the same two untouched wiring lazy-import test failures reproduced on an
+  isolated `origin/main` worktree.
+
+## Machine State
+
+- **Charlie:** branch pushed to draft PR #3300; unrelated untracked
+  `docs/prd/2026-08-03-cited-technician-turn.md` remains untouched.
+- **VPS/production:** unchanged. No migration, deploy, backfill, or secret mutation ran.
+
+## Blocked
+
+- Live Danfoss proof requires Mike's separate GO plus staging token/UUID identity/provider
+  configuration and migration 078. Treat it as `PENDING-HUMAN`, never fixture proof.
+
+## Next (any machine)
+
+- Use PR #3300's immutable review ledger as the authority: the latest head must have a GREEN
+  adversarial pass, xhigh Gate 7 disposition, and settled CI before requesting Mike's GO.
+- With GO, stage first and capture real Telegram plus Hub/mobile operation IDs, route,
+  identity, official URL, File/document links, citations, timing, and one terminal response.
+
+---
+
 # Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
 
 `feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).

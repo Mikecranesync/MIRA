@@ -128,10 +128,15 @@ export class ChannelContractError extends Error {
   }
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const CHANNELS = new Set<Channel>(["telegram", "slack", "hub", "mobile"]);
-const ACTIONS = new Set<ChannelAction>(["message", "reset", "confirm_identity"]);
+const ACTIONS = new Set<ChannelAction>([
+  "message",
+  "reset",
+  "confirm_identity",
+]);
 const KINDS = new Set<AttachmentKind>(["image", "pdf", "other"]);
 
 const REQUEST_FIELDS = new Set([
@@ -149,7 +154,13 @@ const REQUEST_FIELDS = new Set([
   "attachments",
 ]);
 const ACTOR_FIELDS = new Set(["userId", "externalUserId", "uploaderId"]);
-const CONVERSATION_FIELDS = new Set(["id", "sessionId", "notebookId", "assetId", "nodeId"]);
+const CONVERSATION_FIELDS = new Set([
+  "id",
+  "sessionId",
+  "notebookId",
+  "assetId",
+  "nodeId",
+]);
 const ATTACHMENT_FIELDS = new Set([
   "attachmentId",
   "kind",
@@ -171,32 +182,44 @@ const IDENTITY_STRING_FIELDS = [
   "rating",
   "input",
 ] as const;
-const IDENTITY_FIELDS = new Set<string>([...IDENTITY_STRING_FIELDS, "confidence"]);
+const IDENTITY_FIELDS = new Set<string>([
+  ...IDENTITY_STRING_FIELDS,
+  "confidence",
+]);
 
 function object(raw: unknown, code: string): Record<string, unknown> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ChannelContractError(code);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new ChannelContractError(code);
   return raw as Record<string, unknown>;
 }
 
-function rejectUnknown(value: Record<string, unknown>, allowed: Set<string>, code: string): void {
-  if (Object.keys(value).some((key) => !allowed.has(key))) throw new ChannelContractError(code);
+function rejectUnknown(
+  value: Record<string, unknown>,
+  allowed: Set<string>,
+  code: string,
+): void {
+  if (Object.keys(value).some((key) => !allowed.has(key)))
+    throw new ChannelContractError(code);
 }
 
 function requiredString(raw: unknown, code: string, max = 500): string {
-  if (typeof raw !== "string" || !raw.trim()) throw new ChannelContractError(code);
+  if (typeof raw !== "string" || !raw.trim())
+    throw new ChannelContractError(code);
   const normalized = raw.trim();
   if (normalized.length > max) throw new ChannelContractError(code);
   return normalized;
 }
 
 function contractText(raw: unknown, code: string): string {
-  if (typeof raw !== "string" || raw.length > 4000) throw new ChannelContractError(code);
+  if (typeof raw !== "string" || raw.length > 4000)
+    throw new ChannelContractError(code);
   return raw;
 }
 
 function optionalUuid(raw: unknown, code: string): string | undefined {
   if (raw === undefined) return undefined;
-  if (typeof raw !== "string" || !UUID_RE.test(raw)) throw new ChannelContractError(code);
+  if (typeof raw !== "string" || !UUID_RE.test(raw))
+    throw new ChannelContractError(code);
   return raw.toLowerCase();
 }
 
@@ -212,9 +235,11 @@ function optionalIdentity(raw: unknown): EquipmentIdentity | undefined {
       identity[field] = null;
       continue;
     }
-    if (typeof item !== "string") throw new ChannelContractError("invalid_identity_field");
+    if (typeof item !== "string")
+      throw new ChannelContractError("invalid_identity_field");
     const normalized = item.trim();
-    if (normalized.length > 500) throw new ChannelContractError("invalid_identity_field");
+    if (normalized.length > 500)
+      throw new ChannelContractError("invalid_identity_field");
     identity[field] = normalized || null;
   }
   if (value.confidence !== undefined) {
@@ -236,68 +261,132 @@ function optionalIdentity(raw: unknown): EquipmentIdentity | undefined {
 }
 
 /** Strict runtime parser. It mirrors contracts/channel-workflow.v1.schema.json. */
-export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowRequest {
+export function parseChannelWorkflowRequest(
+  raw: unknown,
+): ChannelWorkflowRequest {
   const value = object(raw, "invalid_request");
   rejectUnknown(value, REQUEST_FIELDS, "unknown_request_field");
-  if (value.contractVersion !== "1.0") throw new ChannelContractError("unsupported_contract_version");
+  if (value.contractVersion !== "1.0")
+    throw new ChannelContractError("unsupported_contract_version");
 
   const tenantId = requiredString(value.tenantId, "invalid_tenant_id");
-  if (!UUID_RE.test(tenantId)) throw new ChannelContractError("invalid_tenant_id");
+  if (!UUID_RE.test(tenantId))
+    throw new ChannelContractError("invalid_tenant_id");
 
   const actor = object(value.actor, "invalid_actor");
   rejectUnknown(actor, ACTOR_FIELDS, "unknown_actor_field");
   const userId = requiredString(actor.userId, "actor_id_required", 200);
-  const externalUserId = requiredString(actor.externalUserId, "external_user_id_required", 200);
-  const uploaderId = requiredString(actor.uploaderId, "uploader_id_required", 200);
+  const externalUserId = requiredString(
+    actor.externalUserId,
+    "external_user_id_required",
+    200,
+  );
+  const uploaderId = requiredString(
+    actor.uploaderId,
+    "uploader_id_required",
+    200,
+  );
   if (!UUID_RE.test(userId)) throw new ChannelContractError("invalid_actor_id");
-  if (!UUID_RE.test(uploaderId)) throw new ChannelContractError("invalid_uploader_id");
+  if (!UUID_RE.test(uploaderId))
+    throw new ChannelContractError("invalid_uploader_id");
 
-  if (typeof value.channel !== "string" || !CHANNELS.has(value.channel as Channel)) {
+  if (
+    typeof value.channel !== "string" ||
+    !CHANNELS.has(value.channel as Channel)
+  ) {
     throw new ChannelContractError("invalid_channel");
   }
-  if (typeof value.action !== "string" || !ACTIONS.has(value.action as ChannelAction)) {
+  if (
+    typeof value.action !== "string" ||
+    !ACTIONS.has(value.action as ChannelAction)
+  ) {
     throw new ChannelContractError("invalid_action");
   }
 
   const conversation = object(value.conversation, "invalid_conversation");
-  rejectUnknown(conversation, CONVERSATION_FIELDS, "unknown_conversation_field");
-  const conversationId = requiredString(conversation.id, "conversation_id_required");
+  rejectUnknown(
+    conversation,
+    CONVERSATION_FIELDS,
+    "unknown_conversation_field",
+  );
+  const conversationId = requiredString(
+    conversation.id,
+    "conversation_id_required",
+  );
 
   if (!Array.isArray(value.attachments) || value.attachments.length > 10) {
     throw new ChannelContractError("invalid_attachments");
   }
-  const attachments = value.attachments.map((rawAttachment): ChannelAttachment => {
-    const attachment = object(rawAttachment, "invalid_attachment");
-    rejectUnknown(attachment, ATTACHMENT_FIELDS, "unknown_attachment_field");
-    const attachmentId = requiredString(attachment.attachmentId, "attachment_id_required", 200);
-    if (typeof attachment.kind !== "string" || !KINDS.has(attachment.kind as AttachmentKind)) {
-      throw new ChannelContractError("invalid_attachment_kind");
-    }
-    const mimeType = requiredString(attachment.mimeType, "attachment_mime_required", 200);
-    const filename = requiredString(attachment.filename, "attachment_filename_required", 255);
-    if (
-      typeof attachment.sizeBytes !== "number" ||
-      !Number.isSafeInteger(attachment.sizeBytes) ||
-      attachment.sizeBytes < 0
-    ) {
-      throw new ChannelContractError("invalid_attachment_size");
-    }
-    if (typeof attachment.sha256 !== "string" || !SHA256_RE.test(attachment.sha256)) {
-      throw new ChannelContractError("invalid_attachment_sha256");
-    }
-    return {
-      attachmentId,
-      kind: attachment.kind as AttachmentKind,
-      mimeType,
-      filename,
-      sizeBytes: attachment.sizeBytes,
-      sha256: attachment.sha256,
-    };
-  });
+  const attachments = value.attachments.map(
+    (rawAttachment): ChannelAttachment => {
+      const attachment = object(rawAttachment, "invalid_attachment");
+      rejectUnknown(attachment, ATTACHMENT_FIELDS, "unknown_attachment_field");
+      const attachmentId = requiredString(
+        attachment.attachmentId,
+        "attachment_id_required",
+        200,
+      );
+      if (
+        typeof attachment.kind !== "string" ||
+        !KINDS.has(attachment.kind as AttachmentKind)
+      ) {
+        throw new ChannelContractError("invalid_attachment_kind");
+      }
+      const mimeType = requiredString(
+        attachment.mimeType,
+        "attachment_mime_required",
+        200,
+      );
+      const filename = requiredString(
+        attachment.filename,
+        "attachment_filename_required",
+        255,
+      );
+      if (
+        typeof attachment.sizeBytes !== "number" ||
+        !Number.isSafeInteger(attachment.sizeBytes) ||
+        attachment.sizeBytes < 0
+      ) {
+        throw new ChannelContractError("invalid_attachment_size");
+      }
+      if (
+        typeof attachment.sha256 !== "string" ||
+        !SHA256_RE.test(attachment.sha256)
+      ) {
+        throw new ChannelContractError("invalid_attachment_sha256");
+      }
+      return {
+        attachmentId,
+        kind: attachment.kind as AttachmentKind,
+        mimeType,
+        filename,
+        sizeBytes: attachment.sizeBytes,
+        sha256: attachment.sha256,
+      };
+    },
+  );
+  const attachmentKinds = new Set(
+    attachments.map((attachment) => attachment.kind),
+  );
+  if (attachmentKinds.has("other")) {
+    throw new ChannelContractError("unsupported_attachment_kind");
+  }
+  if (attachmentKinds.size > 1) {
+    throw new ChannelContractError("mixed_attachment_kinds_not_supported");
+  }
+  if (attachmentKinds.has("image") && attachments.length > 1) {
+    throw new ChannelContractError("multiple_image_attachments_not_supported");
+  }
+  if (value.action !== "message" && attachments.length > 0) {
+    throw new ChannelContractError("attachments_not_allowed_for_action");
+  }
 
   const text = contractText(value.text, "invalid_text");
   const caption = contractText(value.caption, "invalid_caption");
-  const priorOperationId = optionalUuid(value.priorOperationId, "invalid_prior_operation_id");
+  const priorOperationId = optionalUuid(
+    value.priorOperationId,
+    "invalid_prior_operation_id",
+  );
   const confirmedIdentity = optionalIdentity(value.confirmedIdentity);
   if (value.action === "confirm_identity" && !priorOperationId) {
     throw new ChannelContractError("prior_operation_required");
@@ -359,7 +448,9 @@ export function semanticFingerprint(request: ChannelWorkflowRequest): string {
  * Cross-client semantic comparison. Removes only transport identity; tenant,
  * canonical actor/uploader, context, user content, and byte identity remain.
  */
-export function semanticProjection(request: ChannelWorkflowRequest): Record<string, unknown> {
+export function semanticProjection(
+  request: ChannelWorkflowRequest,
+): Record<string, unknown> {
   return {
     contractVersion: request.contractVersion,
     tenantId: request.tenantId,
@@ -368,14 +459,26 @@ export function semanticProjection(request: ChannelWorkflowRequest): Record<stri
       uploaderId: request.actor.uploaderId,
     },
     conversation: {
-      ...(request.conversation.sessionId ? { sessionId: request.conversation.sessionId } : {}),
-      ...(request.conversation.notebookId ? { notebookId: request.conversation.notebookId } : {}),
-      ...(request.conversation.assetId ? { assetId: request.conversation.assetId } : {}),
-      ...(request.conversation.nodeId ? { nodeId: request.conversation.nodeId } : {}),
+      ...(request.conversation.sessionId
+        ? { sessionId: request.conversation.sessionId }
+        : {}),
+      ...(request.conversation.notebookId
+        ? { notebookId: request.conversation.notebookId }
+        : {}),
+      ...(request.conversation.assetId
+        ? { assetId: request.conversation.assetId }
+        : {}),
+      ...(request.conversation.nodeId
+        ? { nodeId: request.conversation.nodeId }
+        : {}),
     },
     action: request.action,
-    ...(request.priorOperationId ? { priorOperationId: request.priorOperationId } : {}),
-    ...(request.confirmedIdentity ? { confirmedIdentity: request.confirmedIdentity } : {}),
+    ...(request.priorOperationId
+      ? { priorOperationId: request.priorOperationId }
+      : {}),
+    ...(request.confirmedIdentity
+      ? { confirmedIdentity: request.confirmedIdentity }
+      : {}),
     text: request.text,
     caption: request.caption,
     attachments: request.attachments.map((attachment) => ({

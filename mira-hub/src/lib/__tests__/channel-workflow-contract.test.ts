@@ -14,7 +14,9 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
 const SHA = "a".repeat(64);
 
-function request(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function request(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     contractVersion: "1.0",
     tenantId: TENANT,
@@ -139,7 +141,11 @@ describe("channel workflow v1 contract", () => {
       { actor: { userId: "user-1", externalUserId: "42", uploaderId: USER } },
       "invalid_actor_id",
     ],
-    ["missing conversation", { conversation: { id: "" } }, "conversation_id_required"],
+    [
+      "missing conversation",
+      { conversation: { id: "" } },
+      "conversation_id_required",
+    ],
     [
       "attachment without a SHA",
       {
@@ -157,24 +163,118 @@ describe("channel workflow v1 contract", () => {
       "invalid_attachment_sha256",
     ],
   ])("rejects %s", (_label, override, code) => {
-    expect(() => parseChannelWorkflowRequest(request(override))).toThrow(code as string);
+    expect(() => parseChannelWorkflowRequest(request(override))).toThrow(
+      code as string,
+    );
   });
 
   it("rejects unknown top-level and attachment properties instead of silently widening trust", () => {
-    expect(() => parseChannelWorkflowRequest(request({ approved: true }))).toThrow(
-      "unknown_request_field",
-    );
+    expect(() =>
+      parseChannelWorkflowRequest(request({ approved: true })),
+    ).toThrow("unknown_request_field");
     const bad = request();
     (bad.attachments as Array<Record<string, unknown>>)[0].verified = true;
-    expect(() => parseChannelWorkflowRequest(bad)).toThrow("unknown_attachment_field");
+    expect(() => parseChannelWorkflowRequest(bad)).toThrow(
+      "unknown_attachment_field",
+    );
   });
+
+  it.each([
+    [
+      "mixed PDF and image attachments",
+      [
+        {
+          attachmentId: "photo-largest",
+          kind: "image",
+          mimeType: "image/jpeg",
+          filename: "danfoss-fc202.jpg",
+          sizeBytes: 128,
+          sha256: SHA,
+        },
+        {
+          attachmentId: "manual",
+          kind: "pdf",
+          mimeType: "application/pdf",
+          filename: "VLT User Manual.pdf",
+          sizeBytes: 256,
+          sha256: "b".repeat(64),
+        },
+      ],
+      "mixed_attachment_kinds_not_supported",
+    ],
+    [
+      "multiple images",
+      [
+        {
+          attachmentId: "front",
+          kind: "image",
+          mimeType: "image/jpeg",
+          filename: "front.jpg",
+          sizeBytes: 128,
+          sha256: SHA,
+        },
+        {
+          attachmentId: "back",
+          kind: "image",
+          mimeType: "image/jpeg",
+          filename: "back.jpg",
+          sizeBytes: 128,
+          sha256: "b".repeat(64),
+        },
+      ],
+      "multiple_image_attachments_not_supported",
+    ],
+    [
+      "an unsupported attachment kind",
+      [
+        {
+          attachmentId: "archive",
+          kind: "other",
+          mimeType: "application/zip",
+          filename: "files.zip",
+          sizeBytes: 128,
+          sha256: SHA,
+        },
+      ],
+      "unsupported_attachment_kind",
+    ],
+  ])(
+    "rejects %s before allocating an operation",
+    (_label, attachments, code) => {
+      expect(() =>
+        parseChannelWorkflowRequest(request({ attachments })),
+      ).toThrow(code);
+    },
+  );
+
+  it.each(["reset", "confirm_identity"])(
+    "rejects attachments on the %s action instead of silently ignoring them",
+    (action) => {
+      expect(() =>
+        parseChannelWorkflowRequest(
+          request({
+            action,
+            ...(action === "confirm_identity"
+              ? { priorOperationId: "44444444-4444-4444-8444-444444444444" }
+              : {}),
+          }),
+        ),
+      ).toThrow("attachments_not_allowed_for_action");
+    },
+  );
 
   it.each([
     ["event ID", { eventId: "e".repeat(301) }],
     ["conversation ID", { conversation: { id: "c".repeat(501) } }],
     [
       "external user ID",
-      { actor: { userId: USER, externalUserId: "u".repeat(201), uploaderId: USER } },
+      {
+        actor: {
+          userId: USER,
+          externalUserId: "u".repeat(201),
+          uploaderId: USER,
+        },
+      },
     ],
     [
       "attachment filename",
@@ -201,12 +301,19 @@ describe("channel workflow v1 contract", () => {
       },
     ],
     ["text", { text: "t".repeat(4001) }],
-  ])("rejects an overlong %s instead of silently truncating it", (_label, override) => {
-    expect(() => parseChannelWorkflowRequest(request(override))).toThrow(ChannelContractError);
-  });
+  ])(
+    "rejects an overlong %s instead of silently truncating it",
+    (_label, override) => {
+      expect(() => parseChannelWorkflowRequest(request(override))).toThrow(
+        ChannelContractError,
+      );
+    },
+  );
 
   it("rejects non-string text instead of changing its meaning to empty text", () => {
-    expect(() => parseChannelWorkflowRequest(request({ text: 42 }))).toThrow("invalid_text");
+    expect(() => parseChannelWorkflowRequest(request({ text: 42 }))).toThrow(
+      "invalid_text",
+    );
   });
 
   it("produces the same semantic projection for Telegram, Slack, Hub, and mobile", () => {
@@ -251,13 +358,18 @@ describe("channel workflow v1 contract", () => {
       const raw = request({
         channel: t.channel,
         eventId: t.eventId,
-        actor: { userId: USER, externalUserId: t.externalUserId, uploaderId: USER },
+        actor: {
+          userId: USER,
+          externalUserId: t.externalUserId,
+          uploaderId: USER,
+        },
         conversation: {
           id: t.conversationId,
           assetId: "33333333-3333-4333-8333-333333333333",
         },
       });
-      (raw.attachments as Array<Record<string, unknown>>)[0].attachmentId = t.attachmentId;
+      (raw.attachments as Array<Record<string, unknown>>)[0].attachmentId =
+        t.attachmentId;
       return semanticProjection(parseChannelWorkflowRequest(raw));
     });
 
@@ -278,7 +390,11 @@ describe("channel workflow v1 contract", () => {
       semanticFingerprint(parsed),
     );
     expect(
-      semanticFingerprint(parseChannelWorkflowRequest(request({ eventId: "telegram-update-9002" }))),
+      semanticFingerprint(
+        parseChannelWorkflowRequest(
+          request({ eventId: "telegram-update-9002" }),
+        ),
+      ),
     ).not.toBe(semanticFingerprint(parsed));
   });
 });

@@ -142,10 +142,68 @@ def test_builder_rejects_values_outside_the_wire_contract() -> None:
             build_channel_request(incoming, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
 
-def test_builder_rejects_overlong_confirmed_identity_instead_of_truncating() -> None:
-    with pytest.raises(ChannelWorkflowContractError, match="invalid_identity_field"):
+@pytest.mark.parametrize(
+    ("kinds", "message"),
+    [
+        (["image", "pdf"], "mixed_attachment_kinds_not_supported"),
+        (["image", "image"], "multiple_image_attachments_not_supported"),
+        (["other"], "unsupported_attachment_kind"),
+    ],
+)
+def test_builder_rejects_attachment_sets_the_hub_cannot_process_atomically(
+    kinds: list[str], message: str
+) -> None:
+    incoming = event("telegram")
+    incoming.attachments = [
+        NormalizedAttachment(
+            kind=kind,  # type: ignore[arg-type]
+            mime_type=(
+                "application/pdf"
+                if kind == "pdf"
+                else "image/jpeg"
+                if kind == "image"
+                else "application/zip"
+            ),
+            filename=f"attachment-{index}.{'pdf' if kind == 'pdf' else 'jpg'}",
+            url="transport-only",
+            data=PDF_BYTES,
+        )
+        for index, kind in enumerate(kinds)
+    ]
+
+    with pytest.raises(ChannelWorkflowContractError, match=message):
+        build_channel_request(incoming, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
+
+
+def test_builder_rejects_overlong_text_instead_of_silently_truncating_it() -> None:
+    incoming = event("telegram")
+    incoming.text = "x" * 4001
+
+    with pytest.raises(ChannelWorkflowContractError, match="invalid_text"):
+        build_channel_request(incoming, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
+
+
+@pytest.mark.parametrize("action", ["reset", "confirm_identity"])
+def test_builder_rejects_attachments_for_non_message_actions(action: str) -> None:
+    with pytest.raises(ChannelWorkflowContractError, match="attachments_not_allowed_for_action"):
         build_channel_request(
             event("telegram"),
+            tenant_id=TENANT,
+            actor_id=USER,
+            uploader_id=USER,
+            action=action,
+            prior_operation_id=(
+                "44444444-4444-4444-8444-444444444444" if action == "confirm_identity" else ""
+            ),
+        )
+
+
+def test_builder_rejects_overlong_confirmed_identity_instead_of_truncating() -> None:
+    incoming = event("telegram")
+    incoming.attachments = []
+    with pytest.raises(ChannelWorkflowContractError, match="invalid_identity_field"):
+        build_channel_request(
+            incoming,
             tenant_id=TENANT,
             actor_id=USER,
             uploader_id=USER,
@@ -156,8 +214,10 @@ def test_builder_rejects_overlong_confirmed_identity_instead_of_truncating() -> 
 
 
 def test_confirmation_carries_only_explicit_corrected_identity_fields() -> None:
+    incoming = event("telegram")
+    incoming.attachments = []
     request = build_channel_request(
-        event("telegram"),
+        incoming,
         tenant_id=TENANT,
         actor_id=USER,
         uploader_id=USER,
@@ -176,8 +236,10 @@ def test_confirmation_carries_only_explicit_corrected_identity_fields() -> None:
     }
 
     with pytest.raises(ChannelWorkflowContractError, match="unknown_identity_field"):
+        invalid = event("telegram")
+        invalid.attachments = []
         build_channel_request(
-            event("telegram"),
+            invalid,
             tenant_id=TENANT,
             actor_id=USER,
             uploader_id=USER,

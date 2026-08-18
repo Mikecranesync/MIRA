@@ -1,6 +1,6 @@
 # Convergence Unit — Channel-neutral equipment-document workflow
 
-**Issue / work claim:** #3299 · **Status:** IMPLEMENTED — exact-SHA review and draft PR pending; no merge or deploy authorization
+**Issue / work claim:** #3299 · **Draft PR:** #3300 · **Status:** DRAFT REVIEW — no merge or deploy authorization
 **Doctrine:** `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`
 **Production incident:** Mike's Danfoss VLT AQUA Drive FC-202 Telegram floor test
 
@@ -318,11 +318,38 @@ final audit produced these concrete red states before their fixes:
   21/21 operation/route tests green after replacing it with a durable one-shot claim. Only
   execution ownership remains reclaimable.
 
+Adversarial review round 1 on `099e4416d03930c66637f721150ef3d6244d2b0a` reported two
+high, one medium, and one low finding. Independent disposition and red-first remediation:
+
+- **F1 high — not adopted because it violates the acceptance invariant.** Reclaiming an
+  unacknowledged transport send cannot distinguish “never sent” from “sent, then crashed
+  before ACK”; Telegram supplies no downstream idempotency key. A delivery lease would
+  therefore reintroduce the exact duplicate terminal answer this unit must prevent. The
+  durable one-shot claim remains. The status door now exposes `claimed_unacknowledged`
+  plus `resultAvailable` so the retained canonical result and delivery ambiguity are
+  observable without automatically sending a possible duplicate.
+- **F2 high — fixed.** A reset replacement session now carries a unique tenant-scoped
+  `reset_operation_id`. If rotation commits before operation finalization, reset-aware
+  execution resolution finds the abandoned predecessor, reuses the exact recorded
+  replacement generation, and finalizes without creating another notebook. The recovery
+  tests were red with `workspace_not_found` before the fix.
+- **F3 medium — fixed and widened to the complete silent-discard class.** The published,
+  TypeScript, and Python contracts accept zero attachments, one image, or one-or-more PDFs.
+  Mixed image/PDF sets, multiple images, `other` attachments, and attachments on reset or
+  confirmation fail before operation allocation. The previous Hub/bot policy tests were
+  red before the fix.
+- **F4 low — fixed.** Published actor `userId` and `uploaderId` now reference the same UUID
+  definition enforced by both runtime normalizers. A Draft 2020-12 validation probe proves
+  canonical UUIDs pass while non-UUID actors and mixed attachments fail.
+
 Fresh final-tree gates before the review freeze:
 
-- Hub: 208 test files, 1,984/1,984 tests passed;
-- bots: 2,495 passed, 20 intentional environment/provider skips;
-- deployment/security/review harness: 145/145 passed;
+- Hub: 208 test files, 1,993/1,993 tests passed;
+- bots: 2,499 passed, 20 intentional environment/provider skips, plus two failures in the
+  untouched `TestWriteProposedRowsRLS` test class reproduced identically on a detached
+  `origin/main` worktree (the test dereferences the intentionally lazy `_schematic` before
+  calling `_load_schematic`); both source and test files are byte-identical to main;
+- deployment/security/review harness: 148/148 passed;
 - production Next.js build: passed and enumerated all four channel-workflow routes;
 - migration order: 078 is explicitly after 019 and 073; dependency checks passed;
 - changed-file ESLint, Ruff check, and Ruff format: passed;
