@@ -1,0 +1,4 @@
+Gate 7: PR #3283 · effort=xhigh · triggers=['security boundaries', 'cross-repository contract']
+Gate 7: sending 34,373/34,373 diff chars to a third-party provider (redacted: IP/MAC/SN)
+Gate 7: BLOCK — written to docs/architecture/convergence/units/evidence/CU-04/gate7-round1.md
+EXIT=0

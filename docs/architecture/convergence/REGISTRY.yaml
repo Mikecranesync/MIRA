@@ -980,7 +980,95 @@ apps:
   dependencies:
     - antfarm
     - remoteme-jarvis-node
-  known_drift: ["plc-reader dormant since 2026-03"]
+  known_drift: ["plc-reader dormant since 2026-03 BUT still has an armed CI build lane — see apps-plc-reader (CU-04)"]
+
+# ── CU-04: per-component entries for the nine nominated components ──────────
+# The parent `apps` / `services` entries above are directory-granularity and
+# carry a single wholesale status. CU-04 gives each nominated component its own
+# entry so a status can be asserted (or refused) on that component's OWN
+# Gate 11 evidence. Statuses below are runtime-proven, not inherited.
+
+apps-plc-reader:
+  repo: factorylm
+  path: apps/plc-reader/
+  tags: ["type:presentation", "domain:telemetry"]
+  purpose: "NiceGUI live PLC tag browser; packaged as a standalone Windows executable."
+  language: python
+  status: LEGACY
+  declared_state: "DUPLICATE_CAPABILITIES.md:26 calls it 'LEGACY (dormant)'"
+  deletion_safe: false
+  blocking_evidence:
+    - ".github/workflows/build-executables.yml:7 — push-to-main path trigger on 'apps/plc-reader/**' is ARMED"
+    - ".github/workflows/build-executables.yml:35 — PyInstaller bundles it: --add-data '../../apps/plc-reader;plc_reader' -> PLC-Reader.exe artifact"
+    - "_BUILDS/plc-reader/ holds the live build spec (PLC-Reader.spec, build_windows.bat, requirements.txt)"
+  known_drift: ["'dormant' understates it: an armed deployment lane exists. Last 2 runs FAILED (2026-03-07, 2026-03-02); none since. Gate 11 requires zero deployment references — the lane must be retired before deletion (CU-04)"]
+
+services-diagnosis:
+  repo: factorylm
+  path: services/diagnosis/
+  tags: ["type:engine", "domain:diagnostics"]
+  purpose: "FastAPI PLC-to-LLM diagnosis bridge; frozen 2026-03 predecessor of the MIRA Supervisor."
+  language: python
+  status: LEGACY
+  declared_state: "DUPLICATE_CAPABILITIES.md:11 proposes 'LEGACY -> DELETE_CANDIDATE'"
+  deletion_safe: false
+  blocking_evidence:
+    - "factorylm/docker-compose.yml:44-58 — defined compose service 'diagnosis' (container factorylm-diagnosis, :8200, build context ./services/diagnosis, CMD uvicorn main:app). TRACKED and re-verifiable from any clone; this blocker stands on its own."
+    - "docker-compose.yml:56 — depends_on plc-modbus; it is wired into a multi-service stack, not standalone"
+    - "CHARLIE-LOCAL, corroborating only: /Users/charlienode/CLAUDE.md declares the SCADA stack incl. 'Diagnosis :8200' with start + health commands. The home directory is not a git repo, so a deletion unit on another node cannot re-verify this — the tracked compose service above is the decisive evidence."
+  known_drift: ["ZERO Python imports (it is not even a package: only main.py + a JS skill + docs), so an import-graph check alone would clear it. The compose service and the CLAUDE.md declaration are what block deletion (CU-04)"]
+
+services-telegram-bot:
+  repo: factorylm
+  path: services/telegram_bot/
+  tags: ["type:adapter", "domain:diagnostics"]
+  purpose: "Frozen 2026-03 Telegram handler; predecessor of mira-bots/telegram/bot.py."
+  language: python
+  status: LEGACY
+  declared_state: "DUPLICATE_CAPABILITIES.md:12 — 329 lines vs mira-bots/telegram/bot.py 2,805 lines / 175 commits"
+  deletion_safe: false
+  blocking_evidence:
+    - "origin/feat/telegram-ship-phase1:tests/test_telegram_bot_e2e.py:22-23 — 'from services.telegram_bot.prompts import build_system_prompt' and 'from services.telegram_bot.work_orders import WorkOrderStore'. The branch is UNMERGED into origin/main and is checked out on BRAVO."
+  clearing_evidence:
+    - "on origin/main: ZERO external Python imports. The one apparent inbound ref, services/troubleshoot/adapters/__main__.py:2 'from adapters.telegram_bot import main', resolves to services/troubleshoot/adapters/telegram_bot.py — a DIFFERENT 6,119-byte file, not this package"
+    - "ZERO references in any *.yml / *.yaml / *.sh / *.toml / *.md across the factorylm repo"
+    - "/Users/charlienode/CLAUDE.md:42 declares services/telegram/ — a DIFFERENT directory — as production. It does NOT declare this component authoritative"
+    - "no process on CHARLIE or BRAVO; no launchd job on either node; no crontab entry"
+  known_drift:
+    - "DOWNGRADED DELETE_CANDIDATE -> LEGACY by CU-04 Gate 7 round 1. The clearance had been scoped to origin/main and missed unmerged refs; the adversarial reviewer found the branch import. A scan of ALL 65 origin refs now bounds it to exactly ONE external importer, the file above."
+    - "WEAKER IN KIND than the runtime blockers on the other six: no process, container, CI lane or doc authority — a single unmerged, 5-months-stale (tip 2026-03-08) test file. Resolvable by merging or abandoning feat/telegram-ship-phase1, after which this becomes deletion-safe."
+    - "CLUSTER.md's CHARLIE Telegram-poller claim points at services/troubleshoot/, not this component, and is itself refuted — issue #3284 (CU-04)"
+
+services-llm-router:
+  repo: factorylm
+  path: services/llm-router/
+  tags: ["type:infra", "domain:platform"]
+  purpose: "Skeleton LLM router (redis_logger only, no routing logic); superseded by mira-bots/shared/inference/router.py."
+  language: python
+  status: LEGACY
+  declared_state: "DUPLICATE_CAPABILITIES.md:13 proposes 'LEGACY -> DELETE_CANDIDATE'"
+  deletion_safe: false
+  blocking_evidence:
+    - "factorylm/docker-compose.yml:51 — the LIVE-defined diagnosis service is configured with LLM_ROUTER_URL: 'http://llm-router:8100'"
+    - "services/diagnosis/main.py:236 — code path documents 'Tries llm-router first (budget + circuit breaker + multi-provider)'"
+  known_drift: ["the compose env points at an llm-router service that docker-compose.yml never DEFINES — a dangling deployment reference. Deleting the component requires removing that configuration too, so it is not a zero-reference deletion (CU-04)"]
+
+services-plc-modbus:
+  repo: factorylm
+  path: services/plc-modbus/
+  tags: ["type:infra", "domain:telemetry"]
+  purpose: "Modbus TCP/RTU PLC driver service (FastAPI backend, :8001)."
+  language: python
+  status: LEGACY
+  declared_state: "DUPLICATE_CAPABILITIES.md:25 — 'LEGACY (dormant 5+ mo); do not revive without review'"
+  deletion_safe: false
+  blocking_evidence:
+    - "factorylm/docker-compose.yml:26-41 — defined compose service (container factorylm-plc, :8001, healthcheck) "
+    - "docker-compose.yml:52,70,109 — THREE peer services consume it by URL (PLC_MODBUS_URL, PLC_API_URL, FACTORYLM_PLC_MODBUS_URL); :56,76,114 declare depends_on"
+    - "factorylm/docs/ops/registry.yaml:67-69 — registered with entry_point 'services/plc-modbus/backend/main.py' (TRACKED, re-verifiable from any clone)"
+    - "factorylm/README.md:363 — the repo QUICKSTART tells a new developer to run it: 'cd services/plc-modbus && PLC_USE_MOCK=true uvicorn backend.main:app --reload' (TRACKED). This is the doc-authority blocker in re-verifiable form."
+    - "CHARLIE-LOCAL, not re-verifiable elsewhere: /Users/charlienode/CLAUDE.md:43,76 declares it AUTHORITATIVE ('PLC Modbus driver (162 tests)') with the same run command. The home directory is not a git repo, so a deletion unit on another node cannot check this — it is listed for completeness, and the two TRACKED blockers above stand without it."
+  known_drift: ["four independent Gate 11 blockers, three of them re-verifiable from a fresh clone. 1,561 of its 1,619 .py files are a committed .venv/; real source is ~43 files (CU-04)"]
 
 services:
   repo: factorylm
@@ -1000,7 +1088,9 @@ services:
   dependencies:
     - core
     - workers
-  known_drift: ["diagnosis/telegram_bot/llm-router are frozen 2026-03 predecessors of mira-bots (CU-04); plc-modbus dormant"]
+  known_drift:
+    - "diagnosis/telegram_bot/llm-router are frozen 2026-03 predecessors of mira-bots; plc-modbus dormant. Per-component statuses now live in services-diagnosis / services-telegram-bot / services-llm-router / services-plc-modbus (CU-04)"
+    - "CU-04 FINDING — the wholesale LEGACY status on this directory is WRONG: services/ contains two LIVE CHARLIE services. `com.factorylm.brain-ingest` runs `uvicorn services.brain.ingest:app --host 0.0.0.0 --port 8500` (PID 1497, up since 2026-07-28) and `com.factorylm.brain-mcp` runs `python3 -m services.mcp.brain_server`. Recorded, not silently repaired — needs its own unit."
 
 docs:
   repo: factorylm
@@ -1028,6 +1118,14 @@ simulation:
   observed_total_loc: 39782
   observed_files: 186
   status: DELETE_CANDIDATE
+  deletion_safe: true
+  clearing_evidence:
+    - "ZERO inbound Python imports repo-wide: `grep -rn '^ *from simulation[. ]|^ *import simulation\\b' --include='*.py'` over factorylm, excluding .venv/node_modules/.git and the component itself, returns EMPTY"
+    - "ZERO external importers across ALL 65 origin refs, not just origin/main — the cross-branch axis that demoted services-telegram-bot at Gate 7 round 1 was applied here too, and this component survives it"
+    - "it has no __init__.py, so a consumer would have to import its modules by bare name after a sys.path insert (the shape core/pipeline.py uses for cookoff). Checked: no external file imports vfd_simulator, motulator or modbus_simulator — every such import is inside simulation/motulator/examples/, i.e. the vendored fork's own examples"
+    - "not built, mounted or referenced by any compose service. The neighbouring `modbus-sim` service uses image oitc/modbus-server:latest and mounts infra/scada/modbus/server_config.json — it does NOT build from simulation/"
+    - "the three references other sweeps attributed to it (cosmos/live_test.py:88, cosmos/loop_test.py:12, live_test.py:85) are prose strings and comments containing the word 'simulation', not imports"
+    - "no compose service, no CI path trigger, no launchd job, no process on CHARLIE or BRAVO"
   key_components:
     - "vfd_simulator.py"
     - "motulator"
@@ -1035,7 +1133,10 @@ simulation:
   dependencies:
     - collectors
     - diagnosis
-  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+  known_drift:
+    - "CU-04 CONFIRMED this DELETE_CANDIDATE on runtime evidence, and it survived Gate 7 round 1 — the ONLY one of the nine nominated components that clears. The 'coupled deletion unit' framing is refuted: simulation has no coupling to sim/cosmos/cookoff in either direction."
+    - "ROLLBACK NOTE for the future deletion unit: most of its 186 files are simulation/motulator/, a vendored copy of the Mikecranesync/motulator fork (a pure fork, 0 custom commits per .planning/org/tiers/tier3-metadata/motulator.yaml). Deleting this directory deletes that copy; it is recoverable from the separate fork repo, but the deletion unit should say so rather than discover it."
+    - "docs/v0-resurrection-status-report.md:27 names sim/ and simulation/ as implementing PLC/Modbus connectivity. Read in context it is a historical status snapshot, not an authority declaration of the kind that blocks plc-modbus — but the deletion unit should retire the line rather than leave a doc pointing at a deleted directory."
 
 workers:
   repo: factorylm
@@ -1181,7 +1282,12 @@ cookoff:
   observed_source_loc: 2238
   observed_total_loc: 3834
   observed_files: 16
-  status: DELETE_CANDIDATE
+  status: LEGACY
+  deletion_safe: false
+  blocking_evidence:
+    - "core/pipeline.py:195 — 'from cookoff.diagnosis_engine import diagnose', preceded by a DELIBERATE sys.path.insert(REPO_ROOT); core is CANONICAL"
+    - "core/pipeline.py:374 — 'from cookoff.diagnosis_engine import format_plc_registers'"
+    - "services/media/telegram_media_handler.py:332,338 — 'from cookoff.diagnosis_engine import diagnose' / 'import read_live_plc'"
   key_components:
     - "diagnosis_engine.py"
     - "modbus_server"
@@ -1189,7 +1295,7 @@ cookoff:
     - "EVIDENCE.md"
   dependencies:
     - diagnosis
-  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+  known_drift: ["DOWNGRADED DELETE_CANDIDATE -> LEGACY by CU-04. Imports are function-level (lazy), so deletion breaks at CALL time rather than import time — a quieter failure, not a safer one."]
 
 recovery:
   repo: factorylm
@@ -1234,7 +1340,12 @@ sim:
   observed_source_loc: 1467
   observed_total_loc: 1467
   observed_files: 6
-  status: DELETE_CANDIDATE
+  status: LEGACY
+  deletion_safe: false
+  blocking_evidence:
+    - "workers/plc_simulator_tasks.py:24-25 — TOP-LEVEL, unguarded 'from sim.factoryio_bridge import post_to_matrix' and 'from sim.plc_simulator import PLCSimulator', in a module that registers Celery tasks (imports workers.celery_app). Deleting sim breaks Celery worker startup at import time."
+    - "scripts/build_training_data.py:22 — 'from sim.plc_simulator import PLCSimulator'"
+    - "cookoff/visual_test_loop.py:56-57 — the ONLY quartet cross-import that exists"
   key_components:
     - "plc_simulator.py"
     - "sorting_controller"
@@ -1243,7 +1354,7 @@ sim:
     - collectors
     - diagnosis
     - analytics
-  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+  known_drift: ["DOWNGRADED DELETE_CANDIDATE -> LEGACY by CU-04. The Gate 0 seed marked it deletion-ready without a runtime check; CANONICAL `workers` imports it at top level, so Gate 11's 'zero imports' is not met."]
 
 cosmos:
   repo: factorylm
@@ -1254,13 +1365,19 @@ cosmos:
   observed_source_loc: 1203
   observed_total_loc: 1203
   observed_files: 9
-  status: DELETE_CANDIDATE
+  status: LEGACY
+  deletion_safe: false
+  blocking_evidence:
+    - "services/plc_monitor/monitor.py:9-10 — TOP-LEVEL 'from cosmos.client import CosmosClient' + 'from cosmos.models import CosmosInsight'"
+    - "services/plc_monitor/telegram_alerter.py:7 — 'from cosmos.models import CosmosInsight'"
+    - "services/matrix/demo_ui.py:27, services/video/quality_validator.py:96, video/cosmos_analyzer.py:25 — further inbound imports"
+    - "scripts/smoke_test.py:26 and tests/unit/test_cosmos_agent.py:9-10 — CANONICAL scripts/ and tests/ import it"
   key_components:
     - "models.py"
     - "agent"
     - "client"
     - "watcher"
-  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+  known_drift: ["DOWNGRADED DELETE_CANDIDATE -> LEGACY by CU-04. Most-imported of the quartet (13+ external inbound refs), several unguarded and at top level."]
 
 diagnosis:
   repo: factorylm
