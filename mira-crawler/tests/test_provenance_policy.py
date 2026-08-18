@@ -178,7 +178,7 @@ class TestPrivateOriginsAreIngestedNotRefused:
     """
 
     def _visibility_reaching_insert(self, monkeypatch, url: str, declared: bool = False):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         monkeypatch.setenv("MIRA_TENANT_ID", "t")
         seen: dict = {}
@@ -281,3 +281,118 @@ class TestPrivateOriginsAreIngestedNotRefused:
         )
         pending = [h for h, e in d["origins"].items() if str(e.get("confirmed_by", "")).startswith("PENDING")]
         assert not pending, f"origins still awaiting a human decision: {pending}"
+
+
+class TestPrivateRedirectChains:
+    """Codex adversarial review F2 — a private origin that redirects.
+
+    Hop zero accepted `private` and forced tenant scope, but the redirect loop
+    still asked `shared_corpus_source_allowed`, which permits only `curated`.
+    So a trade-press article bouncing to its canonical host was accepted, then
+    refused mid-chain — the exact contradiction the policy's own wording rules
+    out ("may be ingested, but tenant-scoped only"). The demotion of the 9 press
+    feeds would have silently stopped ingesting any of them that redirect.
+
+    Visibility is a FLOOR across the whole chain: provenance is the weakest link,
+    not the first one.
+    """
+
+    def _run_chain(self, monkeypatch, start: str, hops: dict):
+        from unittest.mock import patch
+
+        monkeypatch.setenv("MIRA_TENANT_ID", "t")
+        requested: list[str] = []
+        seen: dict = {}
+
+        class _Resp:
+            def __init__(self, u):
+                requested.append(u)
+                self.status_code, self.headers = hops[u]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                return False
+
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self, chunk_size):
+                yield b"%PDF-1.4"
+
+        class _Client:
+            def __init__(self, *a, **k):
+                assert k.get("follow_redirects") is False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *e):
+                return False
+
+            def stream(self, m, u):
+                return _Resp(u)
+
+        with (
+            patch("tasks.ingest.httpx.Client", _Client),
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
+            patch("ingest.chunker.chunk_blocks",
+                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
+            from tasks.ingest import ingest_url
+
+            result = ingest_url.run(url=start, is_private=False)
+        return result, requested, seen
+
+    def test_private_to_private_redirect_is_followed_and_stays_private(self, monkeypatch):
+        a = "https://www.plantservices.com/article"
+        b = "https://www.machinerylubrication.com/canonical"
+        result, requested, seen = self._run_chain(
+            monkeypatch, a,
+            {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
+        )
+        assert result.get("error") is None, f"private redirect must be followed, got {result}"
+        assert requested == [a, b], "both hops must be requested"
+        assert seen.get("is_private") is True
+
+    def test_curated_to_private_redirect_downgrades_the_whole_chain(self, monkeypatch):
+        """Started curated, landed private -> the WRITE is private."""
+        a = "https://ibiblio.org/book.pdf"
+        b = "https://www.plantservices.com/article"
+        result, requested, seen = self._run_chain(
+            monkeypatch, a,
+            {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
+        )
+        assert result.get("error") is None
+        assert requested == [a, b]
+        assert seen.get("is_private") is True, (
+            "a curated source that redirects into a private origin must not be "
+            "written shared — the floor is the weakest hop"
+        )
+
+    def test_private_to_blocked_redirect_is_refused_before_the_request(self, monkeypatch):
+        a = "https://www.plantservices.com/article"
+        b = "https://www.manualslib.com/doc"
+        result, requested, seen = self._run_chain(
+            monkeypatch, a,
+            {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
+        )
+        assert result.get("error") == "uncurated_redirect"
+        assert b not in requested, "a blocked hop must be refused BEFORE it is fetched"
+        assert seen == {}
+
+    def test_private_to_unclassified_redirect_is_refused(self, monkeypatch):
+        a = "https://www.plantservices.com/article"
+        b = "https://never-classified.invalid/doc"
+        result, requested, seen = self._run_chain(
+            monkeypatch, a,
+            {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
+        )
+        assert result.get("error") == "uncurated_redirect"
+        assert b not in requested
+        assert seen == {}

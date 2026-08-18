@@ -9,6 +9,21 @@
 # crawler is configured to fetch and the gate is configured to refuse. Two lists
 # that disagree is not a gate; it is a coin flip.
 #
+# WHAT THIS POLICY DOES AND DOES NOT GOVERN  (Codex adversarial review F1)
+# It is the single authority for CLASSIFICATION — may an origin reach the shared
+# corpus, be ingested tenant-scoped, or not at all. `tasks/ingest.py` consults it
+# and nothing else; the duplicate sources.yaml host loader that used to live
+# there has been removed, so the ingest gate now has exactly one truth.
+#
+# It is NOT yet the authority for ACQUISITION — which URLs get fetched.
+# RSS_FEEDS, SITEMAP_URLS, MANUFACTURER_TARGETS, DIRECT_TARGETS and APIFY_TARGETS
+# still author their own lists, and crawler/manufacturer.py + crawler/curriculum.py
+# still read sources.yaml to decide what to crawl. Adding a curated entry here
+# does NOT make a crawler discover it. The consistency test proves the two agree;
+# it does not make one derive from the other. Closing that gap means feeders
+# deriving their targets from this file, which is a larger change than CU-03a
+# claimed and is tracked separately rather than smuggled in.
+#
 # HOW IT IS ENFORCED
 # `ingest/provenance.py` reads this file; `tasks/ingest.py::shared_corpus_source_allowed`
 # consults it. `tests/test_provenance_policy.py` re-derives every configured

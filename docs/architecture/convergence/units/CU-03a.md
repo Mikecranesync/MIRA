@@ -61,3 +61,25 @@ silently — and "fix it by widening the gate" is the failure mode this unit exi
 - [ ] Classify all configured origins
 - [ ] Consistency test
 - [ ] Gate 7 adversarial review
+
+
+## Scope correction after Codex adversarial review (F1)
+
+The reviewer challenged the claim that this unit makes one policy answer for "both the feeders and
+the gate". That was **stronger than what shipped**, and the correction is recorded rather than the
+claim quietly softened:
+
+**What the policy now governs — classification.** May an origin reach the shared corpus, be
+ingested tenant-scoped, or not at all. `tasks/ingest.py` consults the policy and nothing else; the
+duplicate `sources.yaml` host loader that lived alongside it is **deleted**, so the ingest gate has
+exactly one truth. That was a real second source and it is gone.
+
+**What it does not govern — acquisition.** `RSS_FEEDS`, `SITEMAP_URLS`, `MANUFACTURER_TARGETS`,
+`DIRECT_TARGETS` and `APIFY_TARGETS` still author their own URL lists, and
+`crawler/manufacturer.py` + `crawler/curriculum.py` still read `sources.yaml` to decide what to
+crawl. Adding a curated entry to the policy does **not** make a crawler discover it. The
+consistency test proves the two agree; it does not make one derive from the other.
+
+Making feeders derive their targets from the policy is a larger change than this unit claimed, and
+it would alter what the crawler fetches — a behaviour change well beyond a classification gate.
+It is recorded here as the remaining half rather than absorbed silently.
