@@ -4,9 +4,20 @@ import type { ChannelOperationRecord } from "@/lib/channel-operations";
 import type { ChannelWorkflowRequest } from "@/lib/channel-workflow-contract";
 import type { RequestContext } from "@/lib/service-request-context";
 
+export type ChannelWorkflowToggle = "enabled" | "disabled" | "invalid";
+
+export function parseChannelWorkflowToggle(
+  rawValue = process.env.MIRA_CHANNEL_WORKFLOW_ENABLED,
+): ChannelWorkflowToggle {
+  const normalized = (rawValue ?? "0").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return "enabled";
+  if (["", "0", "false", "no", "off"].includes(normalized)) return "disabled";
+  return "invalid";
+}
+
 export function channelWorkflowAvailable(): boolean {
   return (
-    process.env.MIRA_CHANNEL_WORKFLOW_ENABLED === "true" &&
+    parseChannelWorkflowToggle() === "enabled" &&
     Boolean(process.env.NEON_DATABASE_URL) &&
     Boolean((process.env.HUB_INGEST_TOKEN ?? "").trim())
   );

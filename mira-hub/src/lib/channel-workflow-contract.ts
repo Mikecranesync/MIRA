@@ -184,7 +184,14 @@ function rejectUnknown(value: Record<string, unknown>, allowed: Set<string>, cod
 
 function requiredString(raw: unknown, code: string, max = 500): string {
   if (typeof raw !== "string" || !raw.trim()) throw new ChannelContractError(code);
-  return raw.trim().slice(0, max);
+  const normalized = raw.trim();
+  if (normalized.length > max) throw new ChannelContractError(code);
+  return normalized;
+}
+
+function contractText(raw: unknown, code: string): string {
+  if (typeof raw !== "string" || raw.length > 4000) throw new ChannelContractError(code);
+  return raw;
 }
 
 function optionalUuid(raw: unknown, code: string): string | undefined {
@@ -206,7 +213,9 @@ function optionalIdentity(raw: unknown): EquipmentIdentity | undefined {
       continue;
     }
     if (typeof item !== "string") throw new ChannelContractError("invalid_identity_field");
-    identity[field] = item.trim().slice(0, 500) || null;
+    const normalized = item.trim();
+    if (normalized.length > 500) throw new ChannelContractError("invalid_identity_field");
+    identity[field] = normalized || null;
   }
   if (value.confidence !== undefined) {
     if (
@@ -286,8 +295,8 @@ export function parseChannelWorkflowRequest(raw: unknown): ChannelWorkflowReques
     };
   });
 
-  const text = typeof value.text === "string" ? value.text.slice(0, 4000) : "";
-  const caption = typeof value.caption === "string" ? value.caption.slice(0, 4000) : "";
+  const text = contractText(value.text, "invalid_text");
+  const caption = contractText(value.caption, "invalid_caption");
   const priorOperationId = optionalUuid(value.priorOperationId, "invalid_prior_operation_id");
   const confirmedIdentity = optionalIdentity(value.confirmedIdentity);
   if (value.action === "confirm_identity" && !priorOperationId) {

@@ -129,11 +129,13 @@ def validate_channel_workflow_config(
     )
 
 
-def _required(value: str, code: str) -> str:
-    value = str(value or "").strip()
-    if not value:
+def _required(value: str, code: str, max_length: int | None = None) -> str:
+    if not isinstance(value, str):
         raise ChannelWorkflowContractError(code)
-    return value
+    normalized = value.strip()
+    if not normalized or (max_length is not None and len(normalized) > max_length):
+        raise ChannelWorkflowContractError(code)
+    return normalized
 
 
 def _uuid(value: str, code: str) -> str:
@@ -145,15 +147,15 @@ def _uuid(value: str, code: str) -> str:
 
 def _conversation_id(event: NormalizedChatEvent) -> str:
     channel = str(event.platform)
-    external_channel = _required(event.external_channel_id, "conversation_id_required")
+    external_channel = _required(event.external_channel_id, "conversation_id_required", 500)
     if channel == "slack":
-        thread = _required(event.external_thread_id, "conversation_thread_required")
-        return f"slack:{external_channel}:{thread}"
+        thread = _required(event.external_thread_id, "conversation_thread_required", 500)
+        return _required(f"slack:{external_channel}:{thread}", "conversation_id_required", 500)
     if channel == "telegram":
         # Telegram reply_to_message_id is not a conversation boundary. Treating
         # each reply as a new workspace caused document and photo amnesia.
-        return f"telegram:{external_channel}"
-    return f"{channel}:{external_channel}"
+        return _required(f"telegram:{external_channel}", "conversation_id_required", 500)
+    return _required(f"{channel}:{external_channel}", "conversation_id_required", 500)
 
 
 def _confirmed_identity(value: dict[str, Any]) -> dict[str, Any]:
@@ -172,7 +174,10 @@ def _confirmed_identity(value: dict[str, Any]) -> dict[str, Any]:
         elif item is None:
             normalized[key] = None
         elif isinstance(item, str):
-            normalized[key] = item.strip()[:500] or None
+            text = item.strip()
+            if len(text) > 500:
+                raise ChannelWorkflowContractError("invalid_identity_field")
+            normalized[key] = text or None
         else:
             raise ChannelWorkflowContractError("invalid_identity_field")
     return normalized
@@ -202,10 +207,10 @@ def build_channel_request(
         raise ChannelWorkflowContractError("invalid_action")
 
     tenant = _uuid(tenant_id, "invalid_tenant_id")
-    actor = _uuid(_required(actor_id, "actor_id_required"), "invalid_actor_id")
-    uploader = _uuid(_required(uploader_id, "uploader_id_required"), "invalid_uploader_id")
-    external_user = _required(event.external_user_id, "external_user_id_required")
-    event_id = _required(event.event_id, "event_id_required")
+    actor = _uuid(_required(actor_id, "actor_id_required", 200), "invalid_actor_id")
+    uploader = _uuid(_required(uploader_id, "uploader_id_required", 200), "invalid_uploader_id")
+    external_user = _required(event.external_user_id, "external_user_id_required", 200)
+    event_id = _required(event.event_id, "event_id_required", 300)
 
     conversation: dict[str, str] = {"id": _conversation_id(event)}
     allowed_context = {
@@ -221,6 +226,8 @@ def build_channel_request(
             conversation[key] = _uuid(value, allowed_context[key])
 
     attachments: list[dict[str, Any]] = []
+    if len(event.attachments) > 10:
+        raise ChannelWorkflowContractError("invalid_attachments")
     for index, attachment in enumerate(event.attachments):
         if not attachment.data:
             raise ChannelWorkflowContractError("attachment_bytes_required")
@@ -232,8 +239,8 @@ def build_channel_request(
             {
                 "attachmentId": f"attachment-{index}",
                 "kind": kind,
-                "mimeType": _required(attachment.mime_type, "attachment_mime_required"),
-                "filename": _required(attachment.filename, "attachment_filename_required"),
+                "mimeType": _required(attachment.mime_type, "attachment_mime_required", 200),
+                "filename": _required(attachment.filename, "attachment_filename_required", 255),
                 "sizeBytes": len(raw),
                 "sha256": hashlib.sha256(raw).hexdigest(),
             }
@@ -457,6 +464,7 @@ class ChannelWorkflowClient:
     ) -> None:
         self.settings = settings
         self.enabled = settings.enabled
+        self.tenant_id = settings.tenant_id
         self._http = http_client
 
     @classmethod
@@ -500,16 +508,32 @@ class ChannelWorkflowClient:
     ) -> NormalizedChatResponse:
         if not self.enabled:
             raise ChannelWorkflowConfigError("channel workflow is disabled")
-        request = build_channel_request(
-            event,
-            tenant_id=event.tenant_id,
-            actor_id=actor_id,
-            uploader_id=uploader_id,
-            action=action,
-            context=context,
-            prior_operation_id=prior_operation_id,
-            confirmed_identity=confirmed_identity,
-        )
+        if (
+            not isinstance(event.tenant_id, str)
+            or event.tenant_id.strip().lower() != self.tenant_id
+        ):
+            return _workflow_failure(
+                "",
+                "failed",
+                "This account is not enrolled for the configured MIRA tenant; no request was sent.",
+            )
+        try:
+            request = build_channel_request(
+                event,
+                tenant_id=event.tenant_id,
+                actor_id=actor_id,
+                uploader_id=uploader_id,
+                action=action,
+                context=context,
+                prior_operation_id=prior_operation_id,
+                confirmed_identity=confirmed_identity,
+            )
+        except ChannelWorkflowContractError:
+            return _workflow_failure(
+                "",
+                "failed",
+                "This request could not be safely normalized; no request was sent.",
+            )
 
         async def run(http: httpx.AsyncClient) -> NormalizedChatResponse:
             return await self._prepare_execute(http, request, event, on_progress)

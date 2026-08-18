@@ -87,7 +87,7 @@ class MemoryOperationStore implements ChannelOperationStore {
       ownerToken: input.ownerToken,
       ownerLeaseExpiresAt: input.ownerLeaseExpiresAt,
       deliveryToken: null,
-      deliveryLeaseExpiresAt: null,
+      terminalDeliveryClaimedAt: null,
       terminalDeliveredAt: null,
     };
     this.rows.set(key, record);
@@ -198,8 +198,6 @@ class MemoryOperationStore implements ChannelOperationStore {
     tenantId: string;
     operationId: string;
     deliveryToken: string;
-    deliveryLeaseExpiresAt: string;
-    now: string;
   }) {
     const row = [...this.rows.values()].find(
       (candidate) =>
@@ -209,9 +207,9 @@ class MemoryOperationStore implements ChannelOperationStore {
       return null;
     }
     if (row.terminalDeliveredAt) return null;
-    if (row.deliveryToken && (row.deliveryLeaseExpiresAt ?? "") > args.now) return null;
+    if (row.deliveryToken) return null;
     row.deliveryToken = args.deliveryToken;
-    row.deliveryLeaseExpiresAt = args.deliveryLeaseExpiresAt;
+    row.terminalDeliveryClaimedAt = "claimed";
     return structuredClone(row);
   }
 
@@ -225,7 +223,6 @@ class MemoryOperationStore implements ChannelOperationStore {
     if (!row || row.terminalDeliveredAt) return false;
     row.terminalDeliveredAt = "delivered";
     row.deliveryToken = null;
-    row.deliveryLeaseExpiresAt = null;
     return true;
   }
 
@@ -263,7 +260,6 @@ function service(store = new MemoryOperationStore()) {
       now: () => now,
       randomId: () => ids.shift() ?? "66666666-6666-4666-8666-666666666666",
       executionLeaseMs: 60_000,
-      deliveryLeaseMs: 30_000,
     }),
   };
 }
@@ -374,7 +370,7 @@ describe("channel operation exactly-once lifecycle", () => {
     );
   });
 
-  it("reclaims an unacknowledged delivery after the lease, never before", async () => {
+  it("never reclaims a terminal delivery after its one-shot claim", async () => {
     const ctx = service();
     const prepared = await ctx.instance.prepare(request(), SESSION);
     await ctx.instance.begin(TENANT, OPERATION, prepared.ownerToken!);
@@ -392,8 +388,7 @@ describe("channel operation exactly-once lifecycle", () => {
     ctx.setNow("2026-08-18T12:00:29.000Z");
     expect(await ctx.instance.claimTerminalDelivery(TENANT, OPERATION)).toBeNull();
     ctx.setNow("2026-08-18T12:00:31.000Z");
-    const reclaimed = await ctx.instance.claimTerminalDelivery(TENANT, OPERATION);
-    expect(reclaimed?.deliveryToken).toBe(DELIVERY_1);
+    expect(await ctx.instance.claimTerminalDelivery(TENANT, OPERATION)).toBeNull();
   });
 
   it("cancellation revokes execution and terminal delivery", async () => {
@@ -479,6 +474,18 @@ describe("channel operation PostgreSQL boundary", () => {
     expect(ack.sql).toMatch(/delivery_token = \$3::uuid/);
     expect(ack.sql).toContain("terminal_delivered_at IS NULL");
     expect(ack.params).toEqual([TENANT, OPERATION, DELIVERY_1]);
+  });
+
+  it("persists terminal delivery as a one-shot claim rather than an expiring retry lease", async () => {
+    await pgChannelOperationStore.claimDelivery({
+      tenantId: TENANT,
+      operationId: OPERATION,
+      deliveryToken: DELIVERY_1,
+    });
+
+    const claim = sqlHarness.calls[0];
+    expect(claim.sql).toContain("delivery_token IS NULL");
+    expect(claim.sql).toContain("terminal_delivery_claimed_at = now()");
   });
 
   it("tenant- and owner-fences progress while extending the execution lease", async () => {

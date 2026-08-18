@@ -162,6 +162,7 @@ async def test_canonical_workflow_uses_resolved_identity_and_bypasses_engine(fak
     )
     workflow = MagicMock()
     workflow.enabled = True
+    workflow.tenant_id = tenant
     workflow.prepare_execute = AsyncMock(
         return_value=NormalizedChatResponse(
             text="Canonical answer",
@@ -188,7 +189,28 @@ async def test_canonical_workflow_uses_resolved_identity_and_bypasses_engine(fak
     )
     assert incoming.tenant_id == tenant
     assert incoming.user_id == user
+    identity.lookup_only.assert_called_once_with("telegram", "555", tenant)
     fake_engine.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_canonical_workflow_never_uses_the_legacy_admin_identity_bypass(
+    fake_engine, monkeypatch
+):
+    tenant = "11111111-1111-4111-8111-111111111111"
+    monkeypatch.setenv("ADMIN_TELEGRAM_IDS", "8445149012")
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(return_value=None)
+    workflow = MagicMock(enabled=True, tenant_id=tenant)
+    workflow.prepare_execute = AsyncMock()
+    disp = ChatDispatcher(fake_engine, identity_service=identity, channel_workflow_client=workflow)
+
+    response = await disp.try_channel_workflow(_event("8445149012", "find the manual"))
+
+    assert response is not None
+    assert "invite" in response.text.lower()
+    identity.lookup_only.assert_called_once_with("telegram", "8445149012", tenant)
+    workflow.prepare_execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -205,6 +227,7 @@ async def test_disabled_or_delegated_workflow_falls_through_without_duplicate_de
     disabled.prepare_execute.assert_not_called()
 
     delegated = MagicMock(enabled=True)
+    delegated.tenant_id = tenant
     delegated.prepare_execute = AsyncMock(
         return_value=NormalizedChatResponse(text="", workflow_handled=False)
     )
@@ -212,6 +235,7 @@ async def test_disabled_or_delegated_workflow_falls_through_without_duplicate_de
     assert await disp.try_channel_workflow(_event("555", "diagnose")) is None
 
     replay = MagicMock(enabled=True)
+    replay.tenant_id = tenant
     replay.prepare_execute = AsyncMock(
         return_value=NormalizedChatResponse(text="", workflow_handled=True, suppress_delivery=True)
     )

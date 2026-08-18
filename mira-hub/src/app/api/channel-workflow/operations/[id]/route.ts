@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Progress-only read. Terminal content remains behind the delivery lease. */
+/** Progress-only read. Terminal content remains behind the one-shot delivery claim. */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },

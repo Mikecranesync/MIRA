@@ -310,7 +310,12 @@ export function createHubWorkflowDependencies(
     getPriorOperation: async (tenantId, operationId) => {
       const operation = await operations.get(tenantId, operationId);
       return operation
-        ? { tenantId: operation.tenantId, state: operation.state, result: operation.result }
+        ? {
+            tenantId: operation.tenantId,
+            sessionId: operation.sessionId,
+            state: operation.state,
+            result: operation.result,
+          }
         : null;
     },
   };

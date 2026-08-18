@@ -1,6 +1,6 @@
 # Convergence Unit — Channel-neutral equipment-document workflow
 
-**Issue / work claim:** #3299 · **Status:** ACTIVE — implementation branch only; no merge or deploy authorization
+**Issue / work claim:** #3299 · **Status:** IMPLEMENTED — exact-SHA review and draft PR pending; no merge or deploy authorization
 **Doctrine:** `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`
 **Production incident:** Mike's Danfoss VLT AQUA Drive FC-202 Telegram floor test
 
@@ -28,7 +28,9 @@ observed implementation is split across competing paths:
   photo observations, and the Hub notebook. `/new` clears only part of those layers.
 - Telegram photo work uses in-process tasks and timeout/progress messages without first
   creating a durable operation. Slack replay protection is an in-memory set. A replay or
-  restart can therefore repeat work and terminal delivery.
+  restart can therefore repeat work and terminal delivery. The replacement uses an
+  execution lease for recoverable work, but a one-shot terminal claim so an uncertain
+  client ACK can never cause the same answer to be rendered again.
 
 The complete incident narrative and literal Danfoss identity are locked in
 `tests/fixtures/channel_workflow/danfoss_fc202_telegram.json`; they are not allowed to exist
@@ -42,7 +44,7 @@ thin client
   -> Hub service-auth boundary
   -> tenant-scoped durable operation + canonical conversation workspace
   -> canonical nameplate / manual / Files / notebook-chat services
-  -> semantic result + citations + delivery lease
+  -> semantic result + citations + one-shot delivery claim
   -> Telegram / Slack / Hub / mobile rendering only
 ```
 
@@ -139,7 +141,7 @@ Yes. Telegram has no durable event claim before launching work; Slack's `seen_ev
 process-local and periodically cleared. The generic `workflow_runs` helper cannot fix this:
 its documented conflict behavior resets the row to `running` and intentionally re-executes
 the body. This unit adds an RLS-scoped channel operation with a request fingerprint, owner
-lease, terminal result, terminal-delivery lease, and acknowledgement.
+lease, terminal result, one-shot terminal-delivery claim, and acknowledgement.
 
 ### 9. Does `/new` clear every canonical workspace?
 
@@ -169,7 +171,7 @@ conversation ID, optional session/notebook/asset/node context, text/caption, att
 metadata plus hashes, action, and optional prior operation. The result contains the durable
 operation/session/notebook IDs, lifecycle state, semantic kind, recognized identity,
 canonical File/document IDs, manual candidate/applicability state, grounded answer,
-citations/provenance, and terminal-delivery lease.
+citations/provenance, and terminal-delivery claim.
 
 ### Durable operation
 
@@ -183,7 +185,8 @@ is a UUID-tenant/RLS customer-data boundary and an exactly-once executor:
 - one owner token may execute while its lease is live;
 - a crashed owner can be recovered only after lease expiry;
 - result finalization is token-fenced;
-- one terminal delivery lease is issued at a time and becomes final only after client ACK;
+- one terminal delivery claim is issued for the life of the operation; ACK records a
+  successful render, while an unacknowledged claim is never reissued;
 - reset cancels prior running operations so an old turn cannot deliver into a new session.
 
 ### Canonical conversation workspace
@@ -259,7 +262,8 @@ deployment, or secret mutation is in scope.
 ## Contracts/invariants
 
 1. A source event creates at most one operation and executes at most once per live lease.
-2. A terminal result is rendered at most once after an acknowledged delivery lease.
+2. A terminal result is claimable at most once; client ACK records successful rendering but
+   an uncertain or failed ACK never makes the result claimable again.
 3. Tenant is checked in service auth, operation/workspace SQL, File linkage, source
    validation, retrieval, and delivery ACK; foreign IDs are indistinguishable from missing.
 4. A File is never claimed indexed or citable until ingestion and source synchronization
@@ -292,6 +296,48 @@ Pre-change baselines at R0:
 The implementation plan requires red-first tests for all ten user acceptance gates, plus
 mutations that remove the route guard, notebook association, event uniqueness, delivery
 ACK fence, reset generation, trust-state filter, and tenant predicate.
+
+## Deterministic verification — 2026-08-18
+
+The implementation was driven red-first. In addition to the original acceptance tests, the
+final audit produced these concrete red states before their fixes:
+
+- cross-conversation identity confirmation resolved when it should reject (1 failed / 9
+  passed), then 10/10 green after binding the prior operation to the canonical session and
+  `candidate_review` state;
+- `MIRA_CHANNEL_WORKFLOW_ENABLED=1` passed deployment health but the operation route returned
+  503 (1 failed / 8 passed), then 25/25 across health, routes, orchestrator, and Hub adapter
+  after sharing one toggle parser;
+- the Hub parser silently truncated seven overlong/type-invalid contract fields and the bot
+  builder accepted two invalid boundary groups, then Hub 18/18 and bot 13/13 green after
+  failing closed instead of collapsing event, conversation, identity, or filename values;
+- tenant-ambiguous identity, canonical admin bypass, and client tenant mismatch produced four
+  failures in a 33-test slice, then 33/33 green after tenant-scoped identity lookup, ambiguous
+  lookup denial, canonical enrollment enforcement, and a pre-HTTP tenant fence;
+- an expired terminal-delivery lease was reclaimable (two negative controls failed), then
+  21/21 operation/route tests green after replacing it with a durable one-shot claim. Only
+  execution ownership remains reclaimable.
+
+Fresh final-tree gates before the review freeze:
+
+- Hub: 208 test files, 1,984/1,984 tests passed;
+- bots: 2,495 passed, 20 intentional environment/provider skips;
+- deployment/security/review harness: 145/145 passed;
+- production Next.js build: passed and enumerated all four channel-workflow routes;
+- migration order: 078 is explicitly after 019 and 073; dependency checks passed;
+- changed-file ESLint, Ruff check, and Ruff format: passed;
+- Hub, SaaS, staging, staging-VPS, and standalone bot Compose models: parsed with inert
+  placeholder values for required variables; no secret values were read or changed.
+
+Repository-wide diagnostics retain only exact baseline populations outside this change:
+Hub TypeScript has 17 errors in six untouched files, Hub ESLint has five errors in three
+untouched visual files, Pyright has one error and 84 warnings with no changed-file finding,
+and full-bot Ruff has 15 errors in eight untouched files. Each reported Ruff/TypeScript/
+ESLint file is byte-identical to `origin/main`; changed-file gates are clean. These are not
+count-only comparisons and no baseline file is modified here.
+
+Live Danfoss proof is intentionally not claimed. Migration/configuration/provider activation
+and a real Telegram plus Hub/mobile replay remain `PENDING-HUMAN` under the promotion plan.
 
 ## R0 SHA/checkpoint
 

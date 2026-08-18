@@ -202,8 +202,8 @@ expect(await ackTerminalDelivery(firstDelivery.token)).toBe(true);
 expect(afterAck).toBeNull();
 ```
 
-Also prove expired execution/delivery leases can be reclaimed and `cancelled` operations can
-neither finalize nor claim delivery.
+Also prove an expired execution lease can be reclaimed, a one-shot terminal delivery claim
+can never be reclaimed, and `cancelled` operations can neither finalize nor claim delivery.
 
 - [ ] **Step 2: Write failing workspace tests**
 
@@ -225,7 +225,7 @@ Expected: FAIL because the service modules and migration-backed store do not exi
 
 The migration must create `channel_operations` with UUID `tenant_id`, `request_fingerprint`,
 the normalized request envelope (durable uploader/channel/conversation/attachment
-provenance), owner/lease fields, terminal result JSON, delivery lease/ACK fields, unique
+provenance), owner/lease fields, terminal result JSON, one-shot delivery claim/ACK fields, unique
 `(tenant_id, channel, event_id)`, status CHECK, indexes, RLS honoring both tenant setting
 names, and `factorylm_app` grants. Extend `troubleshooting_sessions` with:
 
@@ -254,8 +254,9 @@ transaction; no orphan notebook survives a race.
 - [ ] **Step 6: Implement the operation store and lease service**
 
 Use `INSERT ... ON CONFLICT DO NOTHING RETURNING` followed by a tenant-scoped read. Begin,
-finalize, reclaim, delivery claim, and ACK are compare-and-swap `UPDATE ... WHERE` statements
-that include tenant, operation ID, state, token, and lease predicates. Never use the
+finalize, execution reclaim, delivery claim, and ACK are compare-and-swap `UPDATE ... WHERE`
+statements that include tenant, operation ID, state, and token predicates; execution
+ownership also includes lease predicates. Never use the
 fail-open `runWorkflow` wrapper for execution ownership.
 
 - [ ] **Step 7: Run GREEN, migration order, and mutation checks**
@@ -407,7 +408,8 @@ Use strict fakes that mirror full route response shapes. Prove:
    carries the answer and page/file citation.
 3. A candidate/unofficial/inapplicable manual never enters the selected source set.
 4. A foreign notebook/File/doc produces the same not-found result as missing.
-5. Duplicate prepare/execute calls invoke orchestration once and expose one delivery lease.
+5. Duplicate prepare/execute calls invoke orchestration once and expose one one-shot
+   delivery claim.
 6. Reset prevents every old identity/File/doc/notebook source from influencing the next
    generation and cancels an old running operation.
 7. A fixture electrical print yields `handled=false`, `delegatedRoute="printsense"`, and no
@@ -435,8 +437,9 @@ Prepare accepts JSON only, validates service context equals request tenant, reso
 workspace, fingerprints the request, and returns `execute`, `running`, or terminal replay.
 Execute requires the operation owner token, recomputes request and actual-byte SHA hashes,
 then runs synchronously under the durable operation. It updates real lifecycle steps
-(`recognizing`, `discovering`, `ingesting`, `answering`) and returns a terminal delivery
-lease only after fenced finalization. ACK marks that lease delivered.
+(`recognizing`, `discovering`, `ingesting`, `answering`) and returns a one-shot terminal
+delivery claim only after fenced finalization. ACK records successful rendering without
+making an uncertain claim eligible for retransmission.
 
 - [ ] **Step 6: Implement the canonical decision ladder**
 

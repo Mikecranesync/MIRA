@@ -121,6 +121,40 @@ def test_missing_event_id_and_attachment_bytes_fail_closed() -> None:
         build_channel_request(missing_bytes, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
 
+def test_builder_rejects_values_outside_the_wire_contract() -> None:
+    overlong_event = event("telegram")
+    overlong_event.event_id = "e" * 301
+    overlong_user = event("telegram")
+    overlong_user.external_user_id = "u" * 201
+    overlong_filename = event("telegram")
+    overlong_filename.attachments[0].filename = "f" * 256
+    too_many_attachments = event("telegram")
+    too_many_attachments.attachments = too_many_attachments.attachments * 11
+
+    cases = [
+        (overlong_event, "event_id_required"),
+        (overlong_user, "external_user_id_required"),
+        (overlong_filename, "attachment_filename_required"),
+        (too_many_attachments, "invalid_attachments"),
+    ]
+    for incoming, message in cases:
+        with pytest.raises(ChannelWorkflowContractError, match=message):
+            build_channel_request(incoming, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
+
+
+def test_builder_rejects_overlong_confirmed_identity_instead_of_truncating() -> None:
+    with pytest.raises(ChannelWorkflowContractError, match="invalid_identity_field"):
+        build_channel_request(
+            event("telegram"),
+            tenant_id=TENANT,
+            actor_id=USER,
+            uploader_id=USER,
+            action="confirm_identity",
+            prior_operation_id="44444444-4444-4444-8444-444444444444",
+            confirmed_identity={"manufacturer": "m" * 501},
+        )
+
+
 def test_confirmation_carries_only_explicit_corrected_identity_fields() -> None:
     request = build_channel_request(
         event("telegram"),

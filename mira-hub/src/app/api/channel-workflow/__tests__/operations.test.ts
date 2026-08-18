@@ -133,7 +133,7 @@ function operation(overrides: Record<string, unknown> = {}) {
     ownerToken: OWNER,
     ownerLeaseExpiresAt: "2026-08-18T06:00:00.000Z",
     deliveryToken: null,
-    deliveryLeaseExpiresAt: null,
+    terminalDeliveryClaimedAt: null,
     terminalDeliveredAt: null,
     ...overrides,
   };
@@ -210,6 +210,20 @@ beforeEach(() => {
 });
 
 describe("POST /api/channel-workflow/operations", () => {
+  it("accepts the same enabled toggle vocabulary as deployment health", async () => {
+    process.env.MIRA_CHANNEL_WORKFLOW_ENABLED = "1";
+
+    const response = await prepareOperation(
+      new Request("https://hub.test/api/channel-workflow/operations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rawRequest()),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+  });
+
   it("allocates one operation against the canonical conversation workspace", async () => {
     const response = await prepareOperation(
       new Request("https://hub.test/api/channel-workflow/operations", {
@@ -323,7 +337,7 @@ describe("POST /api/channel-workflow/operations/:id/execute", () => {
   });
 });
 
-describe("terminal delivery lease", () => {
+describe("terminal delivery claim", () => {
   it("exposes durable progress without bypassing terminal-delivery ownership", async () => {
     harness.operations.get.mockResolvedValueOnce(
       operation({ state: "running", progressStep: "ingesting_file", result: { secret: "terminal" } }),

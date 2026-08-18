@@ -257,6 +257,7 @@ describe("channel-neutral canonical workflow", () => {
     );
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
+      sessionId: SESSION,
       state: "candidate_review",
       result: candidate as unknown as Record<string, unknown>,
     });
@@ -294,6 +295,7 @@ describe("channel-neutral canonical workflow", () => {
     active.pendingOperationId = OPERATION;
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
+      sessionId: SESSION,
       state: "candidate_review",
       result: {
         identity: DANFOSS_IDENTITY,
@@ -328,6 +330,32 @@ describe("channel-neutral canonical workflow", () => {
       expect.anything(),
     );
     expect(active.equipmentIdentity).toEqual(corrected);
+  });
+
+  it("rejects a candidate operation from another conversation workspace", async () => {
+    active.pendingOperationId = OPERATION;
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      state: "candidate_review",
+      result: {
+        identity: DANFOSS_IDENTITY,
+        provenance: { nameplateFileId: PHOTO_FILE },
+      },
+    });
+
+    await expect(
+      executeChannelWorkflow(
+        {
+          request: request({ text: "Yes, confirm it", caption: "" }),
+          workspace: active,
+          operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          attachments: [],
+        },
+        deps,
+      ),
+    ).rejects.toThrow("prior_operation_not_found");
+    expect(deps.confirmIdentity).not.toHaveBeenCalled();
   });
 
   it("reuses persisted identity on the model-number follow-up without another image inference", async () => {

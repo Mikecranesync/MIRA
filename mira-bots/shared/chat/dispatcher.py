@@ -44,7 +44,13 @@ class ChatDispatcher:
         # {chat_id: [monotonic_timestamp, ...]} — pruned on every check
         self._rate_windows: dict[str, list[float]] = {}
 
-    async def _resolve_identity(self, event: NormalizedChatEvent):
+    async def _resolve_identity(
+        self,
+        event: NormalizedChatEvent,
+        *,
+        tenant_id: str = "",
+        allow_admin_bypass: bool = True,
+    ):
         import asyncio
 
         if self._identity is None:
@@ -58,7 +64,10 @@ class ChatDispatcher:
             )
         try:
             mira_user = await asyncio.to_thread(
-                self._identity.lookup_only, event.platform, event.external_user_id
+                self._identity.lookup_only,
+                event.platform,
+                event.external_user_id,
+                tenant_id,
             )
         except Exception as exc:
             logger.error(
@@ -74,7 +83,11 @@ class ChatDispatcher:
 
         if mira_user is None:
             admin_ids = _admin_telegram_ids()
-            if event.platform == "telegram" and str(event.external_user_id) in admin_ids:
+            if (
+                allow_admin_bypass
+                and event.platform == "telegram"
+                and str(event.external_user_id) in admin_ids
+            ):
                 from shared.identity.service import MiraUser as _MiraUser
 
                 tenant_id = os.getenv("MIRA_TENANT_ID", "")
@@ -119,7 +132,11 @@ class ChatDispatcher:
 
         if self._channel_workflow is None or not self._channel_workflow.enabled:
             return None
-        mira_user, denied = await self._resolve_identity(event)
+        mira_user, denied = await self._resolve_identity(
+            event,
+            tenant_id=self._channel_workflow.tenant_id,
+            allow_admin_bypass=False,
+        )
         if denied is not None:
             return denied
         event.tenant_id = mira_user.tenant_id

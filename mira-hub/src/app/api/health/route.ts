@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { parseChannelWorkflowToggle } from "@/lib/channel-workflow-http";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -18,17 +20,9 @@ export function GET() {
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
   };
 
-  const rawWorkflowToggle = (process.env.MIRA_CHANNEL_WORKFLOW_ENABLED ?? "0")
-    .trim()
-    .toLowerCase();
-  const enabledValues = new Set(["1", "true", "yes", "on"]);
-  const disabledValues = new Set(["", "0", "false", "no", "off"]);
-  const invalid =
-    enabledValues.has(rawWorkflowToggle) ||
-    disabledValues.has(rawWorkflowToggle)
-      ? []
-      : ["MIRA_CHANNEL_WORKFLOW_ENABLED"];
-  const workflowEnabled = enabledValues.has(rawWorkflowToggle);
+  const workflowToggle = parseChannelWorkflowToggle();
+  const invalid = workflowToggle === "invalid" ? ["MIRA_CHANNEL_WORKFLOW_ENABLED"] : [];
+  const workflowEnabled = workflowToggle === "enabled";
   const required = [
     "NEON_DATABASE_URL",
     "INGEST_URL",

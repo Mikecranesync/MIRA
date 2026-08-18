@@ -325,6 +325,28 @@ async def test_running_timeout_is_honest_and_never_promises_later_delivery() -> 
     assert response.terminal_delivery_token == ""
 
 
+@pytest.mark.asyncio
+async def test_client_rejects_identity_from_another_deployment_tenant_before_http() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500)
+
+    incoming = event()
+    incoming.tenant_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        response = await ChannelWorkflowClient(settings(), http_client=http).prepare_execute(
+            incoming, actor_id=USER, uploader_id=USER
+        )
+
+    assert calls == 0
+    assert response.workflow_handled is True
+    assert response.operation_state == "failed"
+    assert response.provenance == {"clientBoundaryFailure": True}
+
+
 def test_enabled_configuration_fails_before_runtime_without_every_boundary() -> None:
     base = {
         "MIRA_CHANNEL_WORKFLOW_ENABLED": "1",

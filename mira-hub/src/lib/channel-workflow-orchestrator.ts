@@ -63,6 +63,7 @@ export interface NotebookAnswerOutcome {
 
 export interface PriorWorkflowOperation {
   tenantId: string;
+  sessionId: string;
   state: string;
   result: Record<string, unknown> | null;
 }
@@ -291,7 +292,13 @@ async function confirmCandidate(
     priorOperationId,
   );
   const candidate = priorResultIdentity(prior?.result ?? null);
-  if (!prior || prior.tenantId !== input.request.tenantId || !candidate) {
+  if (
+    !prior ||
+    prior.tenantId !== input.request.tenantId ||
+    prior.sessionId !== input.workspace.sessionId ||
+    prior.state !== "candidate_review" ||
+    !candidate
+  ) {
     throw new Error("prior_operation_not_found");
   }
   await requireProgress(deps, "discovering_manual");

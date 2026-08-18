@@ -39,7 +39,7 @@ export interface ChannelOperationRecord {
   ownerToken: string | null;
   ownerLeaseExpiresAt: string | null;
   deliveryToken: string | null;
-  deliveryLeaseExpiresAt: string | null;
+  terminalDeliveryClaimedAt: string | null;
   terminalDeliveredAt: string | null;
 }
 
@@ -96,8 +96,6 @@ export interface ChannelOperationStore {
     tenantId: string;
     operationId: string;
     deliveryToken: string;
-    deliveryLeaseExpiresAt: string;
-    now: string;
   }): Promise<ChannelOperationRecord | null>;
   ackDelivery(args: {
     tenantId: string;
@@ -126,7 +124,7 @@ const SELECT_COLS = `
   owner_token::text AS owner_token,
   owner_lease_expires_at,
   delivery_token::text AS delivery_token,
-  delivery_lease_expires_at,
+  terminal_delivery_claimed_at,
   terminal_delivered_at`;
 
 function jsonObject(value: unknown): Record<string, unknown> | null {
@@ -167,7 +165,7 @@ function rowToOperation(row: Record<string, unknown>): ChannelOperationRecord {
     ownerToken: row.owner_token == null ? null : String(row.owner_token),
     ownerLeaseExpiresAt: iso(row.owner_lease_expires_at),
     deliveryToken: row.delivery_token == null ? null : String(row.delivery_token),
-    deliveryLeaseExpiresAt: iso(row.delivery_lease_expires_at),
+    terminalDeliveryClaimedAt: iso(row.terminal_delivery_claimed_at),
     terminalDeliveredAt: iso(row.terminal_delivered_at),
   };
 }
@@ -330,21 +328,15 @@ export const pgChannelOperationStore: ChannelOperationStore = {
       const result = await client.query(
         `UPDATE channel_operations
             SET delivery_token = $3::uuid,
-                delivery_lease_expires_at = $4::timestamptz,
+                terminal_delivery_claimed_at = now(),
                 updated_at = now()
           WHERE tenant_id = $1::uuid
             AND operation_id = $2::uuid
             AND state IN ('complete', 'candidate_review', 'insufficient_evidence', 'failed')
             AND terminal_delivered_at IS NULL
-            AND (delivery_token IS NULL OR delivery_lease_expires_at <= $5::timestamptz)
+            AND delivery_token IS NULL
         RETURNING ${SELECT_COLS}`,
-        [
-          args.tenantId,
-          args.operationId,
-          args.deliveryToken,
-          args.deliveryLeaseExpiresAt,
-          args.now,
-        ],
+        [args.tenantId, args.operationId, args.deliveryToken],
       );
       return result.rows[0] ? rowToOperation(result.rows[0]) : null;
     });
@@ -356,7 +348,6 @@ export const pgChannelOperationStore: ChannelOperationStore = {
         `UPDATE channel_operations
             SET terminal_delivered_at = now(),
                 delivery_token = NULL,
-                delivery_lease_expires_at = NULL,
                 updated_at = now()
           WHERE tenant_id = $1::uuid
             AND operation_id = $2::uuid
@@ -402,14 +393,12 @@ export interface ChannelOperationServiceOptions {
   now?: () => Date;
   randomId?: () => string;
   executionLeaseMs?: number;
-  deliveryLeaseMs?: number;
 }
 
 export class ChannelOperationService {
   private readonly now: () => Date;
   private readonly randomId: () => string;
   private readonly executionLeaseMs: number;
-  private readonly deliveryLeaseMs: number;
 
   constructor(
     private readonly store: ChannelOperationStore = pgChannelOperationStore,
@@ -418,7 +407,6 @@ export class ChannelOperationService {
     this.now = opts.now ?? (() => new Date());
     this.randomId = opts.randomId ?? randomUUID;
     this.executionLeaseMs = opts.executionLeaseMs ?? 5 * 60_000;
-    this.deliveryLeaseMs = opts.deliveryLeaseMs ?? 2 * 60_000;
   }
 
   private expires(ms: number): string {
@@ -581,15 +569,12 @@ export class ChannelOperationService {
     semanticKind: string | null;
     result: Record<string, unknown> | null;
   } | null> {
-    const now = this.now().toISOString();
     const current = await this.store.getById(tenantId, operationId);
     if (
       !current ||
       !TERMINAL_STATES.has(current.state) ||
       current.terminalDeliveredAt ||
-      (current.deliveryToken !== null &&
-        current.deliveryLeaseExpiresAt !== null &&
-        current.deliveryLeaseExpiresAt > now)
+      current.deliveryToken !== null
     ) {
       return null;
     }
@@ -598,8 +583,6 @@ export class ChannelOperationService {
       tenantId,
       operationId,
       deliveryToken,
-      deliveryLeaseExpiresAt: this.expires(this.deliveryLeaseMs),
-      now,
     });
     if (!row) return null;
     return {

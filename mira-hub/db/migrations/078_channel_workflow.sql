@@ -91,9 +91,9 @@ CREATE TABLE IF NOT EXISTS channel_operations (
   result                    JSONB,
   owner_token               UUID,
   owner_lease_expires_at    TIMESTAMPTZ,
-  delivery_token            UUID,
-  delivery_lease_expires_at TIMESTAMPTZ,
-  terminal_delivered_at     TIMESTAMPTZ,
+  delivery_token                UUID,
+  terminal_delivery_claimed_at TIMESTAMPTZ,
+  terminal_delivered_at         TIMESTAMPTZ,
   started_at                TIMESTAMPTZ,
   finished_at               TIMESTAMPTZ,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -107,9 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_channel_operations_session_recent
 CREATE INDEX IF NOT EXISTS idx_channel_operations_running_lease
   ON channel_operations (owner_lease_expires_at)
   WHERE state IN ('queued', 'running');
-CREATE INDEX IF NOT EXISTS idx_channel_operations_delivery_lease
-  ON channel_operations (delivery_lease_expires_at)
+CREATE INDEX IF NOT EXISTS idx_channel_operations_pending_delivery
+  ON channel_operations (terminal_delivery_claimed_at)
   WHERE terminal_delivered_at IS NULL
+    AND terminal_delivery_claimed_at IS NOT NULL
     AND state IN ('complete', 'candidate_review', 'insufficient_evidence', 'failed');
 
 ALTER TABLE channel_operations ENABLE ROW LEVEL SECURITY;
@@ -128,7 +129,7 @@ CREATE POLICY channel_operations_tenant_isolation ON channel_operations
 GRANT SELECT, INSERT, UPDATE, DELETE ON channel_operations TO factorylm_app;
 
 COMMENT ON TABLE channel_operations IS
-  'RLS-scoped exactly-once channel workflow operations, semantic results, and terminal-delivery leases (#3299).';
+  'RLS-scoped exactly-once channel workflow operations, semantic results, and one-shot terminal-delivery claims (#3299).';
 COMMENT ON COLUMN channel_operations.request_envelope IS
   'Normalized v1 provenance: actor/uploader, source channel/event/conversation, attachment MIME/name/size/SHA, and user intent.';
 
