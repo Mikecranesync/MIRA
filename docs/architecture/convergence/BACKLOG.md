@@ -43,7 +43,7 @@
 - **Consequence to state honestly:** without a second vendor, "independent" means **fresh context, isolated worktree, and a brief to disprove** — not vendor independence. CU-11's unit record must say so rather than implying a cross-vendor check we are not performing.
 - **Status: DONE 2026-08-16** — PR #3262 → merge `39a793cb9` → **v3.275.0**; rollback checkpoint `rollback/2026-08-16-v3.275.0`. R0 `1ad196837`. Delivered `tools/gate7_review.py` + `/gate7-review` + the `gate7-adversarial-reviewer` agent role, and amended the §Gate 7 doctrine to drop the un-wireable provider. Walked its own gate three rounds and fixed 4 real self-findings. Full record in `units/CU-11.md`. **CU-03 is now unblocked** — it is the first unit that can walk Gate 7 on the real lane. **Next unit: CU-03** (first unit to walk Gate 7 on the real lane; CU-06 already ✅ DONE via #3258).
 
-## CU-03 — knowledge_entries write-path hardening (I-1..I-3)
+## CU-03 — knowledge_entries write-path hardening (I-1..I-3) ✅ DONE
 
 - `store.py::insert_chunk` gains a required `is_private` parameter (no silent default); `ingest_url` validates against `sources.yaml` before shared-corpus writes; audit `learning_ingester.py` visibility.
 - Behavior-lock first: tenant-scoping tests asserting today's exact write shapes (OEM public, uploads private) before touching the code.
