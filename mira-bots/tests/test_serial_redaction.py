@@ -49,6 +49,8 @@ MUST_REDACT = [
     ("SERIAL#77321", "hash separator"),
     ("Serial Number: 8891-KX", "full keyword + colon"),
     ("sn 4001", "short bare form"),
+    ("SERIAL-ABCD", "hyphen separator, digit-less — Gate 7 caught this regression"),
+    ("SN-ABCD1234", "hyphen separator with digits"),
 ]
 
 # --- Ordinary maintenance language. NONE of these may be touched. -----------
@@ -80,6 +82,39 @@ def test_real_serials_are_redacted(text: str, why: str) -> None:
 def test_ordinary_language_is_left_alone(text: str, why: str) -> None:
     out = _SERIAL_RE.sub("[SN]", text)
     assert out == text, f"over-redacted ({why}): {text!r} -> {out!r}"
+
+
+# --- Known, pre-existing limitations. Pinned so they are decisions, not surprises.
+KNOWN_OVER_REDACTION = [
+    ("Serial number unknown at this time", "branch 1 needs no digit"),
+    ("SERIAL service is scheduled for tomorrow.", "keyword + separator + ordinary word"),
+]
+
+
+@pytest.mark.parametrize(
+    "text,why", KNOWN_OVER_REDACTION, ids=[w for _, w in KNOWN_OVER_REDACTION]
+)
+def test_known_pre_existing_over_redaction_is_unchanged(text: str, why: str) -> None:
+    """A keyword followed by a separator redacts the next token even without a digit.
+
+    This is NOT introduced by #3305 — the pre-fix pattern did the same. It is
+    pinned rather than fixed because narrowing it means requiring a digit
+    everywhere, which would stop redacting genuinely digit-less serials
+    ("serial number ABCDEFGH"). For a PII control, leaking is the worse failure,
+    so the trade-off is taken deliberately.
+
+    If a future change makes these strings survive, that is a real decision to
+    make consciously — update this test and say why, don't delete it.
+    """
+    assert _SERIAL_RE.sub("[SN]", text) != text, (
+        f"over-redaction unexpectedly stopped ({why}) — if intentional, confirm "
+        "digit-less serials like 'serial number ABCDEFGH' are still redacted"
+    )
+
+
+def test_short_tokens_are_not_redacted_pre_existing() -> None:
+    """`{4,20}` means a 3-character serial is not redacted. Pre-existing, pinned."""
+    assert _SERIAL_RE.sub("[SN]", "SN: ABC") == "SN: ABC"
 
 
 def test_the_exact_3305_regression() -> None:

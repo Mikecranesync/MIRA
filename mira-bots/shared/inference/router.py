@@ -55,16 +55,30 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 # manual for the PowerFlex 525".
 #
 # Two mutually exclusive value branches, and the split is the fix:
-#   1. a REAL separator (`[:.\s#]+`) after the keyword — then the token needs no
+#   1. a REAL separator (`[:.\s#-]+`) after the keyword — then the token needs no
 #      digit, so a digit-less "serial number ABCDEFGH" still redacts;
 #   2. NO separator — then the token MUST contain a digit, which keeps "SN12345"
 #      redacted while "services" (value "vices", no digit) does not match.
+#
+# The hyphen belongs in the separator class, not only in the token class: Gate 7
+# round 1 on this very change caught that omitting it silently regressed
+# "SERIAL-ABCD" (digit-less, hyphen-separated), which the pre-#3305 pattern DID
+# redact. The period is likewise a separator, which fixes a pre-existing false
+# negative — "Serial No. 4477-A" was never redacted before.
+#
+# KNOWN, PRE-EXISTING over-redaction, unchanged by #3305 and deliberately not
+# "fixed" here: branch 1 requires no digit, so "Serial number unknown" redacts
+# the following word. Narrowing it would mean requiring a digit everywhere,
+# which would stop redacting genuinely digit-less serials — for a PII control,
+# leaking is the worse failure. Pinned by a test so the trade-off is a decision
+# rather than a surprise.
+#
 # Negative controls live in mira-bots/tests/test_serial_redaction.py; a change
 # here that does not keep every MUST_REDACT case redacted is not a fix.
 _SERIAL_RE = re.compile(
     r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
     r"(?:"
-    r"[:.\s#]+[A-Z0-9\-]{4,20}"
+    r"[:.\s#-]+[A-Z0-9\-]{4,20}"
     r"|"
     r"(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r")\b",
