@@ -1,0 +1,148 @@
+name: Gate 7 Adversarial Review (advisory)
+
+# ADVISORY ONLY — this workflow cannot fail a build or block a merge. It exists to
+# measure the lane before it is trusted as a gate: how often Gate 7 says BLOCK, how
+# often that BLOCK is real, and how often the reviewed diff was truncated.
+#
+# Why advisory first: the developer-side Codex lane on PR #3300 produced FALSE_POSITIVE
+# 0 -> 3 -> 2 across its three rounds, so by round 3 most findings were not real. Wiring
+# an unmeasured reviewer as a required check would strand good PRs. Promote to blocking
+# only after the false-positive rate is known and the truncation problem below is solved.
+#
+# Lane choice: this is `tools/gate7_review.py` (free Groq->Cerebras->Together cascade),
+# NOT `scripts/adversarial-review.sh`. Per docs/adversarial-review-workflow.md, Gate 7 is
+# the CI-side lane; the Codex script is developer-side and depends on local ChatGPT auth.
+# Owner decision 2026-08-16: no OpenAI credentials in the repo or CI.
+#
+# KNOWN LIMITATION — read before promoting to a gate: the reviewed diff is capped
+# (default 40k chars). tools/gate7_review.py's own --paths help records that a truncated
+# diff makes the reviewer hallucinate findings at the cut (CU-03 rounds 3-5). PR #3300 was
+# 80 files / +12,714 lines, far past the cap. As a BLOCKING check that would fail the
+# largest, riskiest PRs on invented findings. This workflow reports truncation loudly so
+# the size threshold can be chosen from data rather than guessed.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: gate7-advisory-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate7:
+    name: Gate 7 adversarial review (advisory)
+    # Fork PRs receive no secrets, so the cascade cannot run. Skip explicitly — a skipped
+    # job is honest, a failed one would look like the reviewer found something.
+    # Deliberately NOT pull_request_target: that runs with secrets in the base-repo
+    # context and is the standard way review workflows get exploited on public repos.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # tools/gate7_review.py is pure stdlib — no pip install step is needed.
+      - name: Run Gate 7 adversarial review
+        id: review
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHERAI_API_KEY: ${{ secrets.TOGETHERAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed via env, not interpolated into the script body — inline
+          # `${{ github.* }}` in `run:` is a script-injection vector.
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          python tools/gate7_review.py "${PR}" -o gate7-report.md 2>&1 | tee gate7-run.log
+          code="${PIPESTATUS[0]}"
+          set -e
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+
+          # Verdict comes from the RENDERED header (`**Verdict:**`), which is
+          # verdict_of()'s structural result — a high-severity finding forces BLOCK even
+          # if the model text says PASS. Do NOT parse the `## VERDICT` heading: that lives
+          # inside the embedded `## Raw review` section and is the model's *stated*
+          # verdict, which bypasses the override this tool exists to apply.
+          verdict="$(sed -n 's/^\*\*Verdict:\*\* \([A-Z]*\).*/\1/p' gate7-report.md | head -1)"
+          echo "verdict=${verdict:-NONE}" >> "$GITHUB_OUTPUT"
+
+          # "sending X/Y diff chars" — X < Y means the diff was cut and findings near the
+          # cut are unreliable.
+          sent="$(sed -n 's/.*sending \([0-9,]*\)\/\([0-9,]*\) diff chars.*/\1 \2/p' gate7-run.log | head -1)"
+          if [ -n "$sent" ] && [ "$(echo "$sent" | cut -d' ' -f1)" != "$(echo "$sent" | cut -d' ' -f2)" ]; then
+            echo "truncated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "truncated=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Post advisory report to the PR
+        if: always() && hashFiles('gate7-report.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          TRUNCATED: ${{ steps.review.outputs.truncated }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          {
+            echo "[GATE7-ADVISORY]"
+            echo
+            echo "> **Advisory only — this check cannot block the merge.** Gate 7 is being"
+            echo "> measured before it is trusted as a gate. Treat findings as input, not a verdict."
+            if [ "$TRUNCATED" = "true" ]; then
+              echo ">"
+              echo "> ⚠️ **The reviewed diff was TRUNCATED.** Findings near the cut are unreliable"
+              echo "> (see \`--paths\` in tools/gate7_review.py). Weigh this review accordingly."
+            fi
+            echo
+            echo "reviewed_sha: \`${SHA}\`"
+            echo
+            cat gate7-report.md
+          } > gate7-comment.md
+
+          # Sticky comment: update the existing advisory rather than adding one per push.
+          id="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                 --jq '[.[] | select(.body | startswith("[GATE7-ADVISORY]"))] | last | .id // empty')"
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" \
+              -F body=@gate7-comment.md >/dev/null
+            echo "updated existing advisory comment ${id}"
+          else
+            gh pr comment "${PR}" --body-file gate7-comment.md
+          fi
+
+      - name: Record outcome (advisory — never fails)
+        if: always()
+        env:
+          CODE: ${{ steps.review.outputs.code }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          TRUNCATED: ${{ steps.review.outputs.truncated }}
+        run: |
+          {
+            echo "### Gate 7 advisory result"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| verdict | \`${VERDICT:-NONE}\` |"
+            echo "| exit code | \`${CODE}\` |"
+            echo "| diff truncated | \`${TRUNCATED}\` |"
+            echo
+            case "${CODE}" in
+              0) echo "Review produced. Exit 0 covers **both** PASS and BLOCK — the verdict above is authoritative, not the exit code." ;;
+              2) echo "⚠️ The provider cascade failed; **no review was produced**. When this becomes a gate, decide whether an outage should block merges." ;;
+              *) echo "⚠️ Tooling/usage error (exit ${CODE}). No verdict." ;;
+            esac
+            echo
+            echo "_Advisory: this job does not fail the build._"
+          } >> "$GITHUB_STEP_SUMMARY"
