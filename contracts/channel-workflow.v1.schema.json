@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/contracts/channel-workflow.v1.schema.json",
+  "title": "FactoryLM MIRA Channel Workflow Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "tenantId",
+    "actor",
+    "channel",
+    "eventId",
+    "conversation",
+    "action",
+    "text",
+    "caption",
+    "attachments"
+  ],
+  "properties": {
+    "contractVersion": { "const": "1.0" },
+    "tenantId": { "$ref": "#/$defs/uuid" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "externalUserId", "uploaderId"],
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "externalUserId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "uploaderId": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "channel": { "enum": ["telegram", "slack", "hub", "mobile"] },
+    "eventId": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "notebookId": { "$ref": "#/$defs/uuid" },
+        "assetId": { "$ref": "#/$defs/uuid" },
+        "nodeId": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "action": { "enum": ["message", "reset", "confirm_identity"] },
+    "priorOperationId": { "$ref": "#/$defs/uuid" },
+    "text": { "type": "string", "maxLength": 4000 },
+    "caption": { "type": "string", "maxLength": 4000 },
+    "attachments": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/attachment" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachmentId",
+        "kind",
+        "mimeType",
+        "filename",
+        "sizeBytes",
+        "sha256"
+      ],
+      "properties": {
+        "attachmentId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "enum": ["image", "pdf", "other"] },
+        "mimeType": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
