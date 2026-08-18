@@ -49,42 +49,6 @@ _TRANSIENT = (
 # curation, not per-chunk review"). An uncurated URL must be refused, not
 # quietly shared.
 
-_CURATED_HOSTS: frozenset[str] | None = None
-
-
-def _curated_hosts() -> frozenset[str]:
-    """Hosts of every url in sources.yaml (cached). Raises if unreadable."""
-    global _CURATED_HOSTS  # noqa: PLW0603
-    if _CURATED_HOSTS is not None:
-        return _CURATED_HOSTS
-
-    from urllib.parse import urlparse
-
-    import yaml
-
-    manifest = Path(__file__).resolve().parents[1] / "sources.yaml"
-    data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
-
-    hosts: set[str] = set()
-
-    def _walk(node) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if key == "url" and isinstance(value, str):
-                    host = urlparse(value).hostname
-                    if host:
-                        hosts.add(host.lower())
-                else:
-                    _walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                _walk(item)
-
-    _walk(data)
-    _CURATED_HOSTS = frozenset(hosts)
-    return _CURATED_HOSTS
-
-
 MAX_REDIRECT_HOPS = 5
 
 
@@ -183,19 +147,22 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
         # Hop-0 contract (Gate 9 round 2): only http/https/file are ever
         # eligible — ftp://curated-host must fail at the GATE, not in transport.
         return False, f"unsupported scheme {scheme!r} — http/https/file only"
+    # CANONICAL POLICY (CU-03a / Gate 6). One list decides this, for both the
+    # gate and the feeders — `mira-crawler/provenance_policy.yaml`, read through
+    # ingest.provenance. Previously this consulted sources.yaml directly while
+    # 17 feeder manifests kept their own origins, 31 of which the gate refused.
+    # An origin with no policy entry classifies `unclassified` and is REFUSED,
+    # so the consistency test's finding is a production behaviour, not a
+    # CI-only warning.
     try:
-        hosts = _curated_hosts()
+        from ingest.provenance import shared_corpus_allowed as _policy_allows
+    except ImportError:  # container layout
+        from mira_crawler.ingest.provenance import shared_corpus_allowed as _policy_allows
+
+    try:
+        return _policy_allows(url)
     except Exception as e:
-        return False, f"sources.yaml unreadable ({e}) — fail closed"
-
-    from urllib.parse import urlparse
-
-    host = (urlparse(url).hostname or "").lower()
-    if not host:
-        return False, "no host in url"
-    if host in hosts or any(host.endswith("." + h) for h in hosts):
-        return True, "curated host"
-    return False, f"host {host} not in sources.yaml"
+        return False, f"provenance policy unreadable ({e}) — fail closed"
 
 
 @app.task(
@@ -268,6 +235,14 @@ def ingest_url(self, url: str, manufacturer: str = "",
 
     is_file_url = _up(url).scheme.lower() == "file"
 
+    # Bound unconditionally: the redirect loop below also classifies hops, and a
+    # name bound inside an `if` branch is a NameError waiting for the first
+    # caller that skips it.
+    try:
+        from ingest.provenance import classify_origin as _classify
+    except ImportError:  # container layout
+        from mira_crawler.ingest.provenance import classify_origin as _classify
+
     # Visibility floor: a local file has no public provenance, so no caller
     # declaration can put it in the shared corpus. Passing the containment
     # check means "we may read this path", never "everyone may read it" —
@@ -295,9 +270,36 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # that passed validation is the one opened (Gate 9 TOCTOU finding).
     final_url = url
     if not is_file_url:
-        allowed, gate_reason = shared_corpus_source_allowed(url)
-        if not allowed:
-            logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
+        # The policy has THREE outcomes for a remote origin, and collapsing them
+        # into allow/refuse would make `private` a lie:
+        #
+        #   curated  -> ingest; visibility is the caller's declaration
+        #   private  -> ingest, but FORCE tenant-scoped. The origin is real and
+        #               fetchable, it just may not enter the shared corpus.
+        #   anything else (blocked / infrastructure / unclassified) -> refuse
+        #
+        # Before this, `private` behaved exactly like `blocked` — the URL was
+        # refused outright — so classifying an origin "private, ingestible,
+        # tenant-scoped" silently stopped ingesting it altogether. A policy whose
+        # runtime does not match its stated semantics is worse than no policy.
+        try:
+            origin_class, gate_reason = _classify(url)
+        except Exception as e:
+            logger.warning("Provenance policy unreadable for %s (%s) — fail closed", url[:80], e)
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
+
+        if origin_class == "private":
+            if not is_private:
+                logger.info(
+                    "Forcing is_private=True for %s — origin classified private: %s",
+                    url[:80], gate_reason,
+                )
+            is_private = True
+        elif origin_class != "curated":
+            logger.warning(
+                "Refusing ingest of %s: origin classified %s — %s",
+                url[:80], origin_class, gate_reason,
+            )
             return {"url": url, "inserted": 0, "error": "uncurated_source"}
 
     # 1. Download (supports http(s):// and file:// schemes)
@@ -351,9 +353,30 @@ def ingest_url(self, url: str, manufacturer: str = "",
                             nxt = str(httpx.URL(current).join(location))
                             if _up(nxt).scheme.lower() not in ("http", "https"):
                                 raise _UncuratedHop(f"non-http redirect target {nxt[:80]}")
-                            hop_ok, hop_reason = shared_corpus_source_allowed(nxt)
-                            if not hop_ok:
-                                raise _UncuratedHop(f"{nxt[:80]}: {hop_reason}")
+                            # Classify the hop the SAME way hop zero is
+                            # classified (Codex adversarial review F2).
+                            # shared_corpus_source_allowed permits only
+                            # `curated`, so a private origin that redirects —
+                            # a trade-press article bouncing to its canonical
+                            # host — was accepted at hop zero then refused
+                            # mid-chain, contradicting the policy's promise that
+                            # private sources ARE ingestible.
+                            #
+                            # Visibility is a FLOOR across the whole chain: if
+                            # any hop is private the write is private, even when
+                            # it started curated. Provenance is the weakest link,
+                            # not the first one.
+                            hop_class, hop_reason = _classify(nxt)
+                            if hop_class == "private":
+                                if not is_private:
+                                    logger.info(
+                                        "Redirect hop %s is private — forcing "
+                                        "tenant-scoped for the chain: %s",
+                                        nxt[:80], hop_reason,
+                                    )
+                                is_private = True
+                            elif hop_class != "curated":
+                                raise _UncuratedHop(f"{nxt[:80]}: {hop_class}: {hop_reason}")
                             current = nxt
                             continue
                         resp.raise_for_status()

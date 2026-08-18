@@ -436,7 +436,7 @@ jobs:
         # celery: tasks/ingest.py + tasks/_shared.py import celery_app at module
         # level; not in this job's requirements files. Pinned to the versions
         # mira-crawler/requirements-celery.txt ships (Gate 7 round-9 finding).
-        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py tests/test_oem_trust.py tests/test_ingest.py -q)
+        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py tests/test_oem_trust.py tests/test_ingest.py tests/test_provenance_policy.py tests/test_ingest_lifecycle.py -q)
 
       - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
         # CORRECTED 2026-07-30. The first version of this comment claimed
