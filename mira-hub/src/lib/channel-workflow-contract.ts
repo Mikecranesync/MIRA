@@ -10,7 +10,8 @@
 import { createHash } from "node:crypto";
 
 export type Channel = "telegram" | "slack" | "hub" | "mobile";
-export type ChannelAction = "message" | "reset" | "confirm_identity";
+export type ChannelAction =
+  "message" | "reset" | "confirm_identity" | "recover_delivery";
 export type OperationState =
   | "queued"
   | "running"
@@ -136,6 +137,7 @@ const ACTIONS = new Set<ChannelAction>([
   "message",
   "reset",
   "confirm_identity",
+  "recover_delivery",
 ]);
 const KINDS = new Set<AttachmentKind>(["image", "pdf", "other"]);
 
@@ -388,8 +390,19 @@ export function parseChannelWorkflowRequest(
     "invalid_prior_operation_id",
   );
   const confirmedIdentity = optionalIdentity(value.confirmedIdentity);
-  if (value.action === "confirm_identity" && !priorOperationId) {
+  if (
+    (value.action === "confirm_identity" ||
+      value.action === "recover_delivery") &&
+    !priorOperationId
+  ) {
     throw new ChannelContractError("prior_operation_required");
+  }
+  if (
+    priorOperationId &&
+    value.action !== "confirm_identity" &&
+    value.action !== "recover_delivery"
+  ) {
+    throw new ChannelContractError("prior_operation_requires_action");
   }
   if (confirmedIdentity && value.action !== "confirm_identity") {
     throw new ChannelContractError("confirmed_identity_requires_confirmation");

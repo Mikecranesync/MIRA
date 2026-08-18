@@ -313,8 +313,13 @@ export function createHubWorkflowDependencies(
         ? {
             tenantId: operation.tenantId,
             sessionId: operation.sessionId,
+            channel: operation.channel,
+            actorUserId: operation.request.actor.userId,
+            uploaderId: operation.request.actor.uploaderId,
             state: operation.state,
             result: operation.result,
+            terminalDeliveryClaimedAt: operation.terminalDeliveryClaimedAt,
+            terminalDeliveredAt: operation.terminalDeliveredAt,
           }
         : null;
     },

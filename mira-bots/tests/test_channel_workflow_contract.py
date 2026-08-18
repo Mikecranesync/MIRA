@@ -183,7 +183,7 @@ def test_builder_rejects_overlong_text_instead_of_silently_truncating_it() -> No
         build_channel_request(incoming, tenant_id=TENANT, actor_id=USER, uploader_id=USER)
 
 
-@pytest.mark.parametrize("action", ["reset", "confirm_identity"])
+@pytest.mark.parametrize("action", ["reset", "confirm_identity", "recover_delivery"])
 def test_builder_rejects_attachments_for_non_message_actions(action: str) -> None:
     with pytest.raises(ChannelWorkflowContractError, match="attachments_not_allowed_for_action"):
         build_channel_request(
@@ -193,8 +193,51 @@ def test_builder_rejects_attachments_for_non_message_actions(action: str) -> Non
             uploader_id=USER,
             action=action,
             prior_operation_id=(
-                "44444444-4444-4444-8444-444444444444" if action == "confirm_identity" else ""
+                "44444444-4444-4444-8444-444444444444"
+                if action in {"confirm_identity", "recover_delivery"}
+                else ""
             ),
+        )
+
+
+def test_delivery_recovery_requires_an_explicit_prior_operation() -> None:
+    incoming = event("telegram")
+    incoming.attachments = []
+    prior_operation_id = "44444444-4444-4444-8444-444444444444"
+
+    request = build_channel_request(
+        incoming,
+        tenant_id=TENANT,
+        actor_id=USER,
+        uploader_id=USER,
+        action="recover_delivery",
+        prior_operation_id=prior_operation_id,
+    )
+
+    assert request["action"] == "recover_delivery"
+    assert request["priorOperationId"] == prior_operation_id
+    with pytest.raises(ChannelWorkflowContractError, match="prior_operation_required"):
+        build_channel_request(
+            incoming,
+            tenant_id=TENANT,
+            actor_id=USER,
+            uploader_id=USER,
+            action="recover_delivery",
+        )
+
+
+@pytest.mark.parametrize("action", ["message", "reset"])
+def test_builder_rejects_a_prior_operation_on_actions_that_ignore_it(action: str) -> None:
+    incoming = event("telegram")
+    incoming.attachments = []
+    with pytest.raises(ChannelWorkflowContractError, match="prior_operation_requires_action"):
+        build_channel_request(
+            incoming,
+            tenant_id=TENANT,
+            actor_id=USER,
+            uploader_id=USER,
+            action=action,
+            prior_operation_id="44444444-4444-4444-8444-444444444444",
         )
 
 

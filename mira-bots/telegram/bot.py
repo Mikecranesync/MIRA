@@ -261,6 +261,10 @@ _CHANNEL_PROGRESS = {
     "answering_from_files": "answering from verified Files",
     "resetting_workspace": "resetting the canonical workspace",
 }
+_CHANNEL_OPERATION_ID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 async def _try_canonical_workflow(
@@ -321,6 +325,19 @@ async def _try_canonical_workflow(
             "CHANNEL_TERMINAL_UNACKED operation=%s channel=telegram",
             response.operation_id,
         )
+        if progress_message is not None and response.operation_id:
+            try:
+                await progress_message.edit_text(
+                    "MIRA could not confirm delivery of the terminal response. "
+                    f"Use /recover {response.operation_id} to recover it; this may repeat "
+                    "an answer Telegram already accepted."
+                )
+            except Exception as exc:
+                logger.warning(
+                    "channel recovery prompt failed operation=%s: %s",
+                    response.operation_id,
+                    exc,
+                )
     return response
 
 
@@ -348,6 +365,31 @@ async def channel_workflow_callback(update: Update, context: ContextTypes.DEFAUL
         action="confirm_identity",
         prior_operation_id=prior_operation_id,
     )
+
+
+async def recover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Explicitly recover one known claimed-but-unacknowledged Hub result."""
+
+    args = context.args or []
+    if len(args) != 1 or not _CHANNEL_OPERATION_ID_RE.fullmatch(args[0]):
+        await update.message.reply_text(
+            "Usage: /recover <operation-id>. This may repeat an answer whose delivery "
+            "could not be confirmed."
+        )
+        return
+    if not _channel_workflow_client.enabled:
+        await update.message.reply_text("Canonical response recovery is not configured.")
+        return
+    normalized = await adapter.normalize_incoming(update.to_dict())
+    normalized.text = "Recover terminal response; possible duplicate accepted"
+    response = await _try_canonical_workflow(
+        update,
+        normalized,
+        action="recover_delivery",
+        prior_operation_id=args[0].lower(),
+    )
+    if response is None:
+        await update.message.reply_text("Canonical response recovery is not configured.")
 
 
 def _resize_for_vision(image_bytes: bytes) -> bytes:
@@ -2701,6 +2743,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
         "/new \u2014 Fresh start (clear conversation state)\n"
         "/reset \u2014 Reset conversation state (alias for /new)\n"
+        "/recover <operation-id> \u2014 Recover an unacknowledged response (may repeat it)\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
         "Send a photo to identify equipment.\n"
@@ -2939,6 +2982,7 @@ def main():
     app.add_handler(CommandHandler("drive", drive_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("reset", reset_command))
+    app.add_handler(CommandHandler("recover", recover_command))
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))

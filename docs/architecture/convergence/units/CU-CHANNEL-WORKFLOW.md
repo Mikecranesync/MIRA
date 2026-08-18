@@ -29,8 +29,9 @@ observed implementation is split across competing paths:
 - Telegram photo work uses in-process tasks and timeout/progress messages without first
   creating a durable operation. Slack replay protection is an in-memory set. A replay or
   restart can therefore repeat work and terminal delivery. The replacement uses an
-  execution lease for recoverable work, but a one-shot terminal claim so an uncertain
-  client ACK can never cause the same answer to be rendered again.
+  execution lease for recoverable work and a one-shot terminal claim. Automatic replay can
+  never resend an uncertain delivery; an explicit same-user recovery event is the only path
+  that may create a new operation marked as a possible duplicate.
 
 The complete incident narrative and literal Danfoss identity are locked in
 `tests/fixtures/channel_workflow/danfoss_fc202_telegram.json`; they are not allowed to exist
@@ -45,6 +46,7 @@ thin client
   -> tenant-scoped durable operation + canonical conversation workspace
   -> canonical nameplate / manual / Files / notebook-chat services
   -> semantic result + citations + one-shot delivery claim
+     (or explicit user-authorized recovery into a new idempotent operation)
   -> Telegram / Slack / Hub / mobile rendering only
 ```
 
@@ -187,6 +189,10 @@ is a UUID-tenant/RLS customer-data boundary and an exactly-once executor:
 - result finalization is token-fenced;
 - one terminal delivery claim is issued for the life of the operation; ACK records a
   successful render, while an unacknowledged claim is never reissued;
+- a known claimed-but-unacknowledged result can be recovered only through a new explicit
+  `recover_delivery` event from the same tenant, canonical actor/uploader, channel, and live
+  conversation session; the copied result receives a new operation ID, drops any old
+  delivery token, and records `userAuthorizedPossibleDuplicate=true`;
 - reset cancels prior running operations so an old turn cannot deliver into a new session.
 
 ### Canonical conversation workspace
@@ -223,6 +229,12 @@ shared Python client, render returned blocks/citations/buttons, and ACK delivery
 not choose manuals, decide possession, attach Files, or perform grounding. When the Hub
 returns an explicit `printsense` delegation for a non-nameplate image, the existing print
 path remains the temporary branch-by-abstraction fallback.
+
+If a progress message exposed an operation ID but terminal rendering could not be
+acknowledged, Telegram `/recover <operation-id>` and the Slack recovery button on the
+original progress message submit the same canonical `recover_delivery` action. The clients
+cannot read or reconstruct the stored result and cannot recover another actor, tenant,
+channel, or reset generation.
 
 ### Deployment boundary
 
@@ -263,7 +275,8 @@ deployment, or secret mutation is in scope.
 
 1. A source event creates at most one operation and executes at most once per live lease.
 2. A terminal result is claimable at most once; client ACK records successful rendering but
-   an uncertain or failed ACK never makes the result claimable again.
+   an uncertain or failed ACK never makes the result automatically claimable again. A user
+   may explicitly accept possible duplication through a new idempotent recovery event.
 3. Tenant is checked in service auth, operation/workspace SQL, File linkage, source
    validation, retrieval, and delivery ACK; foreign IDs are indistinguishable from missing.
 4. A File is never claimed indexed or citable until ingestion and source synchronization
@@ -321,13 +334,18 @@ final audit produced these concrete red states before their fixes:
 Adversarial review round 1 on `099e4416d03930c66637f721150ef3d6244d2b0a` reported two
 high, one medium, and one low finding. Independent disposition and red-first remediation:
 
-- **F1 high — not adopted because it violates the acceptance invariant.** Reclaiming an
-  unacknowledged transport send cannot distinguish “never sent” from “sent, then crashed
-  before ACK”; Telegram supplies no downstream idempotency key. A delivery lease would
-  therefore reintroduce the exact duplicate terminal answer this unit must prevent. The
-  durable one-shot claim remains. The status door now exposes `claimed_unacknowledged`
-  plus `resultAvailable` so the retained canonical result and delivery ambiguity are
-  observable without automatically sending a possible duplicate.
+- **F1 high — automatic lease rejected; explicit recovery implemented after round 2.**
+  Reclaiming an unacknowledged transport send cannot distinguish “never sent” from “sent,
+  then crashed before ACK”; Telegram supplies no downstream idempotency key. The durable
+  one-shot claim therefore remains, and automatic replay stays suppressed. Round 2
+  confirmed the remaining availability gap, so red-first tests added an explicit
+  `recover_delivery` action. It creates a new event-fenced operation only for the same
+  tenant, canonical actor/uploader, channel, and current session when the named terminal
+  was claimed but not acknowledged. The copied semantic result gets a new operation ID,
+  no old token, and `userAuthorizedPossibleDuplicate=true`. Already-ACKed, never-claimed,
+  cross-actor, cross-session, and delegated-fallthrough controls fail closed. Telegram
+  `/recover` and Slack's original-thread recovery button transport the action without
+  owning result logic.
 - **F2 high — fixed.** A reset replacement session now carries a unique tenant-scoped
   `reset_operation_id`. If rotation commits before operation finalization, reset-aware
   execution resolution finds the abandoned predecessor, reuses the exact recorded
@@ -342,14 +360,21 @@ high, one medium, and one low finding. Independent disposition and red-first rem
   definition enforced by both runtime normalizers. A Draft 2020-12 validation probe proves
   canonical UUIDs pass while non-UUID actors and mixed attachments fail.
 
+Adversarial round 2 on `ce34f50f57128d732171c6b96185678144cac627` found no blocker
+and one remaining high: the user had no authorized way to recover a known unacknowledged
+claim. The recovery action above is the direct remediation; exact-SHA re-review remains a
+final gate before this unit can be called review-complete.
+
 Fresh final-tree gates before the review freeze:
 
-- Hub: 208 test files, 1,993/1,993 tests passed;
-- bots: 2,499 passed, 20 intentional environment/provider skips, plus two failures in the
-  untouched `TestWriteProposedRowsRLS` test class reproduced identically on a detached
-  `origin/main` worktree (the test dereferences the intentionally lazy `_schematic` before
-  calling `_load_schematic`); both source and test files are byte-identical to main;
-- deployment/security/review harness: 148/148 passed;
+- Hub: 208 test files, 2,003/2,003 tests passed;
+- bots: 2,549 passed and 20 intentional environment/provider skips across collision-isolated
+  invocations. The monolithic collection still has pre-existing bare-module collisions among
+  adapter tests; the untouched Slack relay test also expects three symbols absent on
+  `origin/main`. The two isolated lazy-`_schematic` RLS failures recorded earlier reproduce on
+  a detached `origin/main` tree and pass in the ordered split suite after initialization;
+- deployment/contract/architecture: 40/40 passed; focused security, tenancy, and review
+  harnesses: 273/273 passed;
 - production Next.js build: passed and enumerated all four channel-workflow routes;
 - migration order: 078 is explicitly after 019 and 073; dependency checks passed;
 - changed-file ESLint, Ruff check, and Ruff format: passed;

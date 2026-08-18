@@ -133,6 +133,50 @@ describe("channel workflow v1 contract", () => {
     ).toThrow("unknown_identity_field");
   });
 
+  it("accepts an explicit delivery recovery only when it names the prior operation", () => {
+    const priorOperationId = "44444444-4444-4444-8444-444444444444";
+    const parsed = parseChannelWorkflowRequest(
+      request({
+        action: "recover_delivery",
+        priorOperationId,
+        text: "Recover the unacknowledged response",
+        caption: "",
+        attachments: [],
+      }),
+    );
+
+    expect(parsed).toMatchObject({
+      action: "recover_delivery",
+      priorOperationId,
+      attachments: [],
+    });
+    expect(() =>
+      parseChannelWorkflowRequest(
+        request({
+          action: "recover_delivery",
+          text: "Recover the unacknowledged response",
+          caption: "",
+          attachments: [],
+        }),
+      ),
+    ).toThrow("prior_operation_required");
+  });
+
+  it.each(["message", "reset"])(
+    "rejects a prior operation on the %s action instead of silently ignoring it",
+    (action) => {
+      expect(() =>
+        parseChannelWorkflowRequest(
+          request({
+            action,
+            priorOperationId: "44444444-4444-4444-8444-444444444444",
+            attachments: [],
+          }),
+        ),
+      ).toThrow("prior_operation_requires_action");
+    },
+  );
+
   it.each([
     ["non-UUID tenant", { tenantId: "staging" }, "invalid_tenant_id"],
     ["missing event", { eventId: "" }, "event_id_required"],
@@ -247,14 +291,14 @@ describe("channel workflow v1 contract", () => {
     },
   );
 
-  it.each(["reset", "confirm_identity"])(
+  it.each(["reset", "confirm_identity", "recover_delivery"])(
     "rejects attachments on the %s action instead of silently ignoring them",
     (action) => {
       expect(() =>
         parseChannelWorkflowRequest(
           request({
             action,
-            ...(action === "confirm_identity"
+            ...(action === "confirm_identity" || action === "recover_delivery"
               ? { priorOperationId: "44444444-4444-4444-8444-444444444444" }
               : {}),
           }),

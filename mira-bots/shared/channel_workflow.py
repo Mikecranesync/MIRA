@@ -26,7 +26,7 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _CHANNELS = frozenset({"telegram", "slack", "hub", "mobile"})
-_ACTIONS = frozenset({"message", "reset", "confirm_identity"})
+_ACTIONS = frozenset({"message", "reset", "confirm_identity", "recover_delivery"})
 _IDENTITY_FIELDS = frozenset(
     {
         "manufacturer",
@@ -278,8 +278,10 @@ def build_channel_request(
     }
     if prior_operation_id:
         request["priorOperationId"] = _uuid(prior_operation_id, "invalid_prior_operation_id")
-    if action == "confirm_identity" and not prior_operation_id:
+    if action in {"confirm_identity", "recover_delivery"} and not prior_operation_id:
         raise ChannelWorkflowContractError("prior_operation_required")
+    if prior_operation_id and action not in {"confirm_identity", "recover_delivery"}:
+        raise ChannelWorkflowContractError("prior_operation_requires_action")
     if confirmed_identity is not None:
         if action != "confirm_identity":
             raise ChannelWorkflowContractError("confirmed_identity_requires_confirmation")

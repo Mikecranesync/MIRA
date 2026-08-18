@@ -370,6 +370,138 @@ async def test_slack_confirmation_action_reuses_candidate_operation(tmp_path):
     assert seen["prior_operation_id"] == prior
 
 
+@pytest.mark.asyncio
+async def test_slack_recovery_action_authorizes_one_canonical_recovery(tmp_path):
+    bot = import_slack_bot()
+    from shared.chat.types import NormalizedChatEvent, NormalizedChatResponse
+
+    prior = "33333333-3333-4333-8333-333333333333"
+    seen = {}
+
+    class FakeAdapter:
+        async def normalize_incoming(self, raw_event):
+            return NormalizedChatEvent(
+                event_id=raw_event["client_msg_id"],
+                platform="slack",
+                tenant_id="adapter-hint",
+                user_id="",
+                external_user_id=raw_event["user"],
+                external_channel_id=raw_event["channel"],
+                external_thread_id=raw_event["thread_ts"],
+                text="Recover terminal response",
+            )
+
+        async def render_outgoing(self, _response, _event):
+            return True
+
+    class FakeDispatcher:
+        async def try_channel_workflow(self, event, **kwargs):
+            seen.update(kwargs)
+            seen["event"] = event
+            return NormalizedChatResponse(
+                text="recovered",
+                operation_id="44444444-4444-4444-8444-444444444444",
+                operation_state="complete",
+                semantic_kind="grounded_answer",
+                terminal_delivery_token="55555555-5555-4555-8555-555555555555",
+                workflow_handled=True,
+            )
+
+        async def ack_channel_delivery(self, _response):
+            return True
+
+    runtime = bot.SlackRuntime(
+        settings=bot.SlackSettings(
+            bot_token="xoxb-test-secret",
+            app_token="xapp-test-secret",
+            db_path=str(tmp_path / "mira.db"),
+        ),
+        engine=object(),
+        adapter=FakeAdapter(),
+        dispatcher=FakeDispatcher(),
+        fast_paths=AsyncMock(),
+    )
+
+    await runtime.recover_delivery(
+        {
+            "client_msg_id": "recovery-1",
+            "channel": "C1",
+            "thread_ts": "1710000000.1",
+            "ts": "1710000000.2",
+            "user": "U1",
+        },
+        prior,
+    )
+
+    assert seen["action"] == "recover_delivery"
+    assert seen["prior_operation_id"] == prior
+
+
+@pytest.mark.asyncio
+async def test_slack_unacknowledged_terminal_offers_recovery_in_the_original_thread(tmp_path):
+    bot = import_slack_bot()
+    from shared.chat.types import NormalizedChatEvent, NormalizedChatResponse
+
+    operation_id = "33333333-3333-4333-8333-333333333333"
+    updates = []
+
+    class FakeAdapter:
+        async def render_outgoing(self, _response, _event):
+            return False
+
+    class FakeDispatcher:
+        async def try_channel_workflow(self, _event, **kwargs):
+            await kwargs["on_progress"](operation_id, "prepared")
+            return NormalizedChatResponse(
+                text="answer whose delivery is uncertain",
+                operation_id=operation_id,
+                operation_state="complete",
+                semantic_kind="grounded_answer",
+                terminal_delivery_token="44444444-4444-4444-8444-444444444444",
+                workflow_handled=True,
+            )
+
+        async def ack_channel_delivery(self, _response):
+            raise AssertionError("an unrendered terminal cannot be acknowledged")
+
+    async def say(**_kwargs):
+        return {"ts": "progress-message-ts"}
+
+    client = types.SimpleNamespace(
+        chat_update=AsyncMock(side_effect=lambda **kw: updates.append(kw))
+    )
+    runtime = bot.SlackRuntime(
+        settings=bot.SlackSettings(
+            bot_token="xoxb-test-secret",
+            app_token="xapp-test-secret",
+            db_path=str(tmp_path / "mira.db"),
+        ),
+        engine=object(),
+        adapter=FakeAdapter(),
+        dispatcher=FakeDispatcher(),
+        fast_paths=AsyncMock(),
+    )
+    incoming = NormalizedChatEvent(
+        event_id="event-1",
+        platform="slack",
+        tenant_id="adapter-hint",
+        user_id="",
+        external_user_id="U1",
+        external_channel_id="C1",
+        external_thread_id="1710000000.1",
+        text="question",
+    )
+
+    await runtime._run_canonical(incoming, say=say, client=client)
+
+    recovery_update = updates[-1]
+    assert recovery_update["channel"] == "C1"
+    assert recovery_update["ts"] == "progress-message-ts"
+    button = recovery_update["blocks"][1]["elements"][0]
+    assert button["action_id"] == "channel_workflow_recover"
+    assert button["value"] == operation_id
+
+
 def test_slack_legacy_reset_clears_engine_drive_and_session_state(tmp_path, monkeypatch):
     bot = import_slack_bot()
     from shared.chat.types import NormalizedChatEvent

@@ -314,6 +314,70 @@ async def test_telegram_confirmation_button_reuses_candidate_operation(monkeypat
     )
 
 
+@pytest.mark.asyncio
+async def test_telegram_recover_command_authorizes_one_canonical_recovery(monkeypatch):
+    monkeypatch.setattr(bot._channel_workflow_client, "enabled", True)
+    event = normalized(text="Recover terminal response")
+    response = canonical_response("grounded_answer")
+    monkeypatch.setattr(bot.adapter, "normalize_incoming", AsyncMock(return_value=event))
+    monkeypatch.setattr(bot.adapter, "render_outgoing", AsyncMock(return_value=True))
+    attempt = AsyncMock(return_value=response)
+    monkeypatch.setattr(bot.dispatcher, "try_channel_workflow", attempt)
+    monkeypatch.setattr(bot.dispatcher, "ack_channel_delivery", AsyncMock(return_value=True))
+    update = fake_update(text=f"/recover {OPERATION}")
+
+    await bot.recover_command(update, types.SimpleNamespace(args=[OPERATION]))
+
+    attempt.assert_awaited_once_with(
+        event,
+        action="recover_delivery",
+        context=None,
+        prior_operation_id=OPERATION,
+        confirmed_identity=None,
+        on_progress=ANY,
+    )
+    bot.dispatcher.ack_channel_delivery.assert_awaited_once_with(response)
+
+
+@pytest.mark.asyncio
+async def test_telegram_recover_command_requires_a_single_operation_id(monkeypatch):
+    attempt = AsyncMock()
+    monkeypatch.setattr(bot.dispatcher, "try_channel_workflow", attempt)
+    update = fake_update(text="/recover")
+
+    await bot.recover_command(update, types.SimpleNamespace(args=[]))
+
+    update.message.reply_text.assert_awaited_once()
+    attempt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_telegram_unacknowledged_terminal_leaves_recovery_instructions(monkeypatch):
+    monkeypatch.setattr(bot._channel_workflow_client, "enabled", True)
+    event = normalized(text="question")
+    response = canonical_response("grounded_answer")
+
+    async def attempt(incoming, **kwargs):
+        await kwargs["on_progress"](OPERATION, "prepared")
+        return response
+
+    update = fake_update(text="question")
+    progress_message = types.SimpleNamespace(edit_text=AsyncMock())
+    update.message.reply_text = AsyncMock(return_value=progress_message)
+    monkeypatch.setattr(bot.adapter, "normalize_incoming", AsyncMock(return_value=event))
+    monkeypatch.setattr(bot.adapter, "render_outgoing", AsyncMock(return_value=False))
+    monkeypatch.setattr(bot.dispatcher, "try_channel_workflow", AsyncMock(side_effect=attempt))
+    ack = AsyncMock()
+    monkeypatch.setattr(bot.dispatcher, "ack_channel_delivery", ack)
+
+    await bot._try_canonical_workflow(update, event)
+
+    recovery_text = progress_message.edit_text.await_args_list[-1].args[0]
+    assert f"/recover {OPERATION}" in recovery_text
+    assert "may repeat" in recovery_text
+    ack.assert_not_awaited()
+
+
 def test_telegram_legacy_reset_clears_every_known_local_workspace(monkeypatch):
     calls: list[tuple] = []
     task = MagicMock()

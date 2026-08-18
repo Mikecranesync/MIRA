@@ -247,6 +247,43 @@ class SlackRuntime:
                 "CHANNEL_TERMINAL_UNACKED operation=%s channel=slack",
                 response.operation_id,
             )
+            if progress_ts and client is not None and response.operation_id:
+                recovery_text = (
+                    "MIRA could not confirm delivery of the terminal response. "
+                    "Recovering it may repeat an answer that Slack already accepted."
+                )
+                try:
+                    await client.chat_update(
+                        channel=normalized.external_channel_id,
+                        ts=progress_ts,
+                        text=recovery_text,
+                        blocks=[
+                            {
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": recovery_text},
+                            },
+                            {
+                                "type": "actions",
+                                "elements": [
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Recover response",
+                                        },
+                                        "action_id": "channel_workflow_recover",
+                                        "value": response.operation_id,
+                                    }
+                                ],
+                            },
+                        ],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "channel recovery prompt failed operation=%s: %s",
+                        response.operation_id,
+                        exc,
+                    )
         return response
 
     def clear_legacy_conversation(self, normalized: Any) -> None:
@@ -283,6 +320,26 @@ class SlackRuntime:
             say=say,
             client=client,
             action="confirm_identity",
+            prior_operation_id=prior_operation_id,
+        )
+
+    async def recover_delivery(
+        self,
+        event: dict,
+        prior_operation_id: str,
+        *,
+        say: Any = None,
+        client: Any = None,
+    ):
+        """Transport an explicit possible-duplicate recovery to the Hub."""
+
+        normalized = await self.adapter.normalize_incoming(event)
+        normalized.text = "Recover terminal response; possible duplicate accepted"
+        return await self._run_canonical(
+            normalized,
+            say=say,
+            client=client,
+            action="recover_delivery",
             prior_operation_id=prior_operation_id,
         )
 
@@ -511,6 +568,29 @@ def create_app(runtime: SlackRuntime):
                 "channel": channel_id,
                 "user": user_id,
                 "text": "Confirm identity",
+            },
+            str(action.get("value", "")),
+            say=say,
+            client=client,
+        )
+
+    @app.action("channel_workflow_recover")
+    async def recover_delivery_action(ack, body, action, say, client):
+        await ack()
+        channel_id = str((body.get("channel") or {}).get("id", ""))
+        user_id = str((body.get("user") or {}).get("id", ""))
+        message = body.get("message") or {}
+        message_ts = str(message.get("ts", ""))
+        thread_ts = str(message.get("thread_ts") or message_ts)
+        action_ts = str(body.get("action_ts") or body.get("trigger_id") or message_ts)
+        await runtime.recover_delivery(
+            {
+                "client_msg_id": f"recovery:{action_ts}",
+                "ts": action_ts,
+                "thread_ts": thread_ts,
+                "channel": channel_id,
+                "user": user_id,
+                "text": "Recover terminal response; possible duplicate accepted",
             },
             str(action.get("value", "")),
             say=say,

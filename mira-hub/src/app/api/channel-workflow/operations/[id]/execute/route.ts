@@ -53,6 +53,7 @@ function stableFailureCode(err: unknown): string {
     "operation_lease_lost",
     "prior_operation_required",
     "prior_operation_not_found",
+    "prior_operation_not_recoverable",
     "attachment_envelope_mismatch",
     "service_auth_not_configured",
     "workspace_context_conflict",

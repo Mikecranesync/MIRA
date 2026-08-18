@@ -258,8 +258,13 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
       state: "candidate_review",
       result: candidate as unknown as Record<string, unknown>,
+      terminalDeliveryClaimedAt: null,
+      terminalDeliveredAt: null,
     });
 
     const result = await executeChannelWorkflow(
@@ -296,6 +301,9 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: SESSION,
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
       state: "candidate_review",
       result: {
         identity: DANFOSS_IDENTITY,
@@ -305,6 +313,8 @@ describe("channel-neutral canonical workflow", () => {
           rawObservation: { provider: "fixture" },
         },
       },
+      terminalDeliveryClaimedAt: null,
+      terminalDeliveredAt: null,
     });
     const corrected = { ...DANFOSS_IDENTITY, serialNumber: "02334H073-CORRECTED" };
 
@@ -337,11 +347,16 @@ describe("channel-neutral canonical workflow", () => {
     vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
       tenantId: TENANT,
       sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
       state: "candidate_review",
       result: {
         identity: DANFOSS_IDENTITY,
         provenance: { nameplateFileId: PHOTO_FILE },
       },
+      terminalDeliveryClaimedAt: null,
+      terminalDeliveredAt: null,
     });
 
     await expect(
@@ -356,6 +371,175 @@ describe("channel-neutral canonical workflow", () => {
       ),
     ).rejects.toThrow("prior_operation_not_found");
     expect(deps.confirmIdentity).not.toHaveBeenCalled();
+  });
+
+  it("recovers a claimed-but-unacknowledged terminal result through a new operation", async () => {
+    const recoveryOperation = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const priorResult = {
+      contractVersion: "1.0",
+      operationId: OPERATION,
+      state: "complete",
+      handled: true,
+      semanticKind: "grounded_answer",
+      delegatedRoute: null,
+      conversation: {
+        sessionId: SESSION,
+        notebookId: NOTEBOOK,
+        generation: 1,
+        assetId: ASSET,
+        nodeId: null,
+      },
+      answer: {
+        text: "Set parameter 1-90 to Motor thermal protection [1].",
+        citations: [
+          {
+            citationId: "1",
+            docId: PDF_DOC,
+            fileId: PDF_FILE,
+            sourceTitle: "VLT User Manual.pdf",
+            page: 72,
+            quote: "Motor thermal protection",
+          },
+        ],
+      },
+      provenance: { retrievalScope: [PDF_DOC] },
+      deliveryToken: "must-not-be-copied",
+    };
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      state: "complete",
+      result: priorResult,
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    } as Awaited<ReturnType<typeof deps.getPriorOperation>>);
+    const recoveryRequest = {
+      ...request({ text: "", caption: "", attachments: [] }),
+      action: "recover_delivery",
+      priorOperationId: OPERATION,
+    } as unknown as ChannelWorkflowRequest;
+
+    const result = await executeChannelWorkflow(
+      {
+        request: recoveryRequest,
+        workspace: active,
+        operationId: recoveryOperation,
+        attachments: [],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      operationId: recoveryOperation,
+      state: "complete",
+      semanticKind: "grounded_answer",
+      conversation: { sessionId: SESSION, notebookId: NOTEBOOK },
+      answer: priorResult.answer,
+      provenance: {
+        retrievalScope: [PDF_DOC],
+        recoveredFromOperationId: OPERATION,
+        userAuthorizedPossibleDuplicate: true,
+      },
+    });
+    expect(result.deliveryToken).toBeUndefined();
+    expect(deps.answerNotebook).not.toHaveBeenCalled();
+    expect(deps.recognizeNameplate).not.toHaveBeenCalled();
+    expect(deps.intakeFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["already acknowledged", "2026-08-18T12:00:01.000Z", USER, SESSION],
+    ["never claimed", null, USER, SESSION],
+    ["different actor", null, "abababab-abab-4bab-8bab-abababababab", SESSION],
+    ["different conversation", null, USER, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+  ])(
+    "refuses recovery for %s prior terminal state",
+    async (_label, deliveredAt, actorId, sessionId) => {
+      vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+        tenantId: TENANT,
+        sessionId,
+        channel: "telegram",
+        actorUserId: actorId,
+        uploaderId: actorId,
+        state: "complete",
+        result: {
+          contractVersion: "1.0",
+          operationId: OPERATION,
+          state: "complete",
+          handled: true,
+          semanticKind: "grounded_answer",
+          conversation: { sessionId, notebookId: NOTEBOOK, generation: 1 },
+          answer: { text: "prior", citations: [] },
+          provenance: {},
+        },
+        terminalDeliveryClaimedAt: _label === "never claimed" ? null : "2026-08-18T12:00:00.000Z",
+        terminalDeliveredAt: deliveredAt,
+      } as Awaited<ReturnType<typeof deps.getPriorOperation>>);
+      const recoveryRequest = {
+        ...request({ text: "", caption: "", attachments: [] }),
+        action: "recover_delivery",
+        priorOperationId: OPERATION,
+      } as unknown as ChannelWorkflowRequest;
+
+      await expect(
+        executeChannelWorkflow(
+          {
+            request: recoveryRequest,
+            workspace: active,
+            operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            attachments: [],
+          },
+          deps,
+        ),
+      ).rejects.toThrow(
+        actorId !== USER || sessionId !== SESSION
+          ? "prior_operation_not_found"
+          : "prior_operation_not_recoverable",
+      );
+    },
+  );
+
+  it("does not recover a delegated fallthrough that never owned a terminal answer", async () => {
+    vi.mocked(deps.getPriorOperation).mockResolvedValueOnce({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      channel: "telegram",
+      actorUserId: USER,
+      uploaderId: USER,
+      state: "complete",
+      result: {
+        contractVersion: "1.0",
+        operationId: OPERATION,
+        state: "complete",
+        handled: false,
+        semanticKind: "fallthrough",
+        delegatedRoute: "printsense",
+        conversation: { sessionId: SESSION, notebookId: NOTEBOOK, generation: 1 },
+        provenance: {},
+      },
+      terminalDeliveryClaimedAt: "2026-08-18T12:00:00.000Z",
+      terminalDeliveredAt: null,
+    });
+    const recoveryRequest = {
+      ...request({ text: "", caption: "", attachments: [] }),
+      action: "recover_delivery",
+      priorOperationId: OPERATION,
+    } as unknown as ChannelWorkflowRequest;
+
+    await expect(
+      executeChannelWorkflow(
+        {
+          request: recoveryRequest,
+          workspace: active,
+          operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          attachments: [],
+        },
+        deps,
+      ),
+    ).rejects.toThrow("prior_operation_not_recoverable");
   });
 
   it("reuses persisted identity on the model-number follow-up without another image inference", async () => {

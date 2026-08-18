@@ -44,9 +44,9 @@
 - Consumes: existing `NormalizedChatEvent` and `NormalizedAttachment`
 
 Attachment processing is atomic by contract: zero attachments, one image, or one-or-more
-PDFs. Mixed kinds, multiple images, unsupported kinds, and attachments on reset or
-confirmation are rejected before operation allocation; no accepted envelope member may be
-silently ignored.
+PDFs. Mixed kinds, multiple images, unsupported kinds, and attachments on reset,
+confirmation, or delivery recovery are rejected before operation allocation; no accepted
+envelope member may be silently ignored.
 
 - [ ] **Step 1: Add the literal regression fixture and failing TypeScript contract tests**
 
@@ -107,7 +107,7 @@ Use this request/result vocabulary exactly:
 
 ```ts
 export type Channel = "telegram" | "slack" | "hub" | "mobile";
-export type ChannelAction = "message" | "reset" | "confirm_identity";
+export type ChannelAction = "message" | "reset" | "confirm_identity" | "recover_delivery";
 export type OperationState =
   | "queued" | "running" | "complete" | "candidate_review"
   | "insufficient_evidence" | "failed" | "cancelled";
@@ -209,6 +209,10 @@ expect(afterAck).toBeNull();
 
 Also prove an expired execution lease can be reclaimed, a one-shot terminal delivery claim
 can never be reclaimed, and `cancelled` operations can neither finalize nor claim delivery.
+Prove separately that an explicit `recover_delivery` event creates a new idempotent operation
+only for the same tenant, actor, channel, and live conversation when the named terminal was
+claimed but never acknowledged. It must mark the result as a user-authorized possible
+duplicate; automatic replay must remain suppressed.
 
 - [ ] **Step 2: Write failing workspace tests**
 
@@ -456,6 +460,8 @@ reset
   -> rotate workspace and cancel prior operations
 confirm_identity
   -> invoke existing nameplate confirm handler
+recover_delivery
+  -> copy one same-actor/session claimed-but-unacknowledged terminal into a new operation
 PDF
   -> invoke existing Files handler with notebook + asset/node targets
 image
@@ -541,7 +547,8 @@ When disabled, no new request is made. Do not read secrets into logs or exceptio
 
 Map semantic results into platform-neutral blocks: identity key/value pairs, honest manual
 candidate/verified state, canonical File/document operation IDs, answer paragraph, one block
-per citation, and a `confirm_identity` button whose value is the prior operation UUID. Do not
+per citation, and a `confirm_identity` button whose value is the prior operation UUID. Provide
+the explicit `recover_delivery` transport action for a known unacknowledged operation; do not
 recompute identity, trust, possession, applicability, or citations in Python.
 
 - [ ] **Step 6: Run GREEN and timeout/replay mutations**
@@ -584,13 +591,16 @@ Use realistic update doubles from the existing suites. Assert the Danfoss photo/
 reaches the canonical gateway before local drive pack or PrintSense, the PDF is awaited (no
 `create_task`) and returns durable IDs, a duplicate update renders one final, confirmation
 callback posts `confirm_identity`, and `/new` rotates Hub state then clears engine,
-PrintSense, Telegram-local drive context, shared drive context, and session memory.
+PrintSense, Telegram-local drive context, shared drive context, and session memory. Assert
+`/recover <operation-id>` posts `recover_delivery` without reading the prior result locally.
 
 - [ ] **Step 2: Add red Slack ordering/intake/reset tests**
 
 Assert Slack downloads attachment bytes then calls canonical gateway before `pdf_handler` or
 fast paths, uses `client_msg_id`/`ts` idempotency, renders and ACKs once, confirmation action
 posts `confirm_identity`, and `/mira-reset` rotates the Hub workspace plus all legacy caches.
+Assert the recovery button on an unacknowledged progress message uses the same recovery
+action in the original Slack thread.
 
 - [ ] **Step 3: Run adapter suites RED separately**
 

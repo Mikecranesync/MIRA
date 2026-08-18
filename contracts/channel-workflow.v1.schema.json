@@ -47,7 +47,9 @@
         "nodeId": { "$ref": "#/$defs/uuid" }
       }
     },
-    "action": { "enum": ["message", "reset", "confirm_identity"] },
+    "action": {
+      "enum": ["message", "reset", "confirm_identity", "recover_delivery"]
+    },
     "priorOperationId": { "$ref": "#/$defs/uuid" },
     "confirmedIdentity": { "$ref": "#/$defs/equipmentIdentity" },
     "text": { "type": "string", "maxLength": 4000 },
@@ -83,10 +85,37 @@
   "allOf": [
     {
       "if": {
-        "properties": { "action": { "enum": ["reset", "confirm_identity"] } },
+        "properties": {
+          "action": {
+            "enum": ["reset", "confirm_identity", "recover_delivery"]
+          }
+        },
         "required": ["action"]
       },
       "then": { "properties": { "attachments": { "maxItems": 0 } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": { "enum": ["confirm_identity", "recover_delivery"] }
+        },
+        "required": ["action"]
+      },
+      "then": { "required": ["priorOperationId"] }
+    },
+    {
+      "if": { "required": ["confirmedIdentity"] },
+      "then": {
+        "properties": { "action": { "const": "confirm_identity" } }
+      }
+    },
+    {
+      "if": { "required": ["priorOperationId"] },
+      "then": {
+        "properties": {
+          "action": { "enum": ["confirm_identity", "recover_delivery"] }
+        }
+      }
     }
   ],
   "$defs": {

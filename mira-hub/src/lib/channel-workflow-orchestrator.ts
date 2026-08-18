@@ -19,6 +19,7 @@ import type {
   ChannelWorkflowResult,
   EquipmentIdentity,
   OperationProgressStep,
+  OperationState,
 } from "@/lib/channel-workflow-contract";
 import type {
   ChannelWorkspace,
@@ -64,8 +65,13 @@ export interface NotebookAnswerOutcome {
 export interface PriorWorkflowOperation {
   tenantId: string;
   sessionId: string;
-  state: string;
+  channel: ChannelWorkflowRequest["channel"];
+  actorUserId: string;
+  uploaderId: string;
+  state: OperationState;
   result: Record<string, unknown> | null;
+  terminalDeliveryClaimedAt: string | null;
+  terminalDeliveredAt: string | null;
 }
 
 export interface ChannelWorkflowDependencies {
@@ -352,6 +358,119 @@ async function confirmCandidate(
   });
 }
 
+const RECOVERABLE_TERMINAL_STATES = new Set<OperationState>([
+  "complete",
+  "candidate_review",
+  "insufficient_evidence",
+  "failed",
+]);
+const RECOVERABLE_SEMANTIC_KINDS = new Set<ChannelWorkflowResult["semanticKind"]>([
+  "nameplate_manual",
+  "file_intake",
+  "grounded_answer",
+  "reset",
+  "fallthrough",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function cloneRecoveredResult(
+  input: ExecuteChannelWorkflowInput,
+  priorOperationId: string,
+  prior: PriorWorkflowOperation,
+): ChannelWorkflowResult | null {
+  const raw = prior.result;
+  if (
+    !raw ||
+    raw.contractVersion !== "1.0" ||
+    raw.operationId !== priorOperationId ||
+    raw.state !== prior.state ||
+    raw.handled !== true ||
+    typeof raw.semanticKind !== "string" ||
+    !RECOVERABLE_SEMANTIC_KINDS.has(raw.semanticKind as ChannelWorkflowResult["semanticKind"]) ||
+    !isRecord(raw.conversation) ||
+    raw.conversation.sessionId !== prior.sessionId ||
+    !isRecord(raw.provenance)
+  ) {
+    return null;
+  }
+  if (
+    raw.delegatedRoute !== undefined &&
+    raw.delegatedRoute !== null &&
+    raw.delegatedRoute !== "printsense" &&
+    raw.delegatedRoute !== "legacy_diagnostics"
+  ) {
+    return null;
+  }
+  if (
+    (raw.identity !== undefined && raw.identity !== null && !isRecord(raw.identity)) ||
+    (raw.files !== undefined && !Array.isArray(raw.files)) ||
+    (raw.manual !== undefined && raw.manual !== null && !isRecord(raw.manual)) ||
+    (raw.answer !== undefined && raw.answer !== null && !isRecord(raw.answer))
+  ) {
+    return null;
+  }
+
+  const recovered: ChannelWorkflowResult = {
+    contractVersion: "1.0",
+    operationId: input.operationId,
+    state: prior.state,
+    handled: true,
+    semanticKind: raw.semanticKind as ChannelWorkflowResult["semanticKind"],
+    delegatedRoute: raw.delegatedRoute as ChannelWorkflowResult["delegatedRoute"],
+    conversation: conversation(input.workspace),
+    provenance: {
+      ...raw.provenance,
+      recoveredFromOperationId: priorOperationId,
+      userAuthorizedPossibleDuplicate: true,
+    },
+  };
+  if (raw.identity !== undefined) {
+    recovered.identity = raw.identity as ChannelWorkflowResult["identity"];
+  }
+  if (raw.files !== undefined) {
+    recovered.files = raw.files as ChannelWorkflowResult["files"];
+  }
+  if (raw.manual !== undefined) {
+    recovered.manual = raw.manual as ChannelWorkflowResult["manual"];
+  }
+  if (raw.answer !== undefined) {
+    recovered.answer = raw.answer as ChannelWorkflowResult["answer"];
+  }
+  return recovered;
+}
+
+async function recoverDelivery(
+  input: ExecuteChannelWorkflowInput,
+  deps: ChannelWorkflowDependencies,
+  priorOperationId: string | null | undefined,
+): Promise<ChannelWorkflowResult> {
+  if (!priorOperationId) throw new Error("prior_operation_required");
+  const prior = await deps.getPriorOperation(input.request.tenantId, priorOperationId);
+  if (
+    !prior ||
+    prior.tenantId !== input.request.tenantId ||
+    prior.sessionId !== input.workspace.sessionId ||
+    prior.channel !== input.request.channel ||
+    prior.actorUserId !== input.request.actor.userId ||
+    prior.uploaderId !== input.request.actor.uploaderId
+  ) {
+    throw new Error("prior_operation_not_found");
+  }
+  if (
+    !RECOVERABLE_TERMINAL_STATES.has(prior.state) ||
+    !prior.terminalDeliveryClaimedAt ||
+    prior.terminalDeliveredAt
+  ) {
+    throw new Error("prior_operation_not_recoverable");
+  }
+  const recovered = cloneRecoveredResult(input, priorOperationId, prior);
+  if (!recovered) throw new Error("prior_operation_not_recoverable");
+  return recovered;
+}
+
 async function intakePdfs(
   input: ExecuteChannelWorkflowInput,
   deps: ChannelWorkflowDependencies,
@@ -480,6 +599,10 @@ export async function executeChannelWorkflow(
 
   if (request.action === "confirm_identity") {
     return confirmCandidate(input, deps, request.priorOperationId);
+  }
+
+  if (request.action === "recover_delivery") {
+    return recoverDelivery(input, deps, request.priorOperationId);
   }
 
   const messageText = `${request.text}\n${request.caption}`;

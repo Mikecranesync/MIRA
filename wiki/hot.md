@@ -10,13 +10,16 @@
 - The literal Danfoss FC-202 floor incident is durable at
   `tests/fixtures/channel_workflow/danfoss_fc202_telegram.json`.
 - Adversarial round 1 on `099e4416d` found reset crash recovery, mixed-attachment discard,
-  and schema drift; all three were reproduced red and fixed. Its delivery-lease suggestion
-  was rejected because retry after an uncertain Telegram send can duplicate a terminal
-  answer; the one-shot claim remains and uncertain delivery is now observable.
-- Fresh local evidence after remediation: Hub 1,993/1,993; deployment/security/review
-  harness 148/148; Next build and changed-file lint/format green. Bot suite has 2,499 pass,
-  20 skips, and the same two untouched wiring lazy-import test failures reproduced on an
-  isolated `origin/main` worktree.
+  and schema drift; all three were reproduced red and fixed. Round 2 on `ce34f50f5` found
+  the remaining delivery-availability gap. Automatic retry remains forbidden, but an
+  explicit same-user/session `recover_delivery` event now creates a new idempotent operation
+  marked as a possible duplicate. Telegram `/recover <operation-id>` and Slack's
+  original-thread recovery button are thin transports over that Hub decision.
+- Fresh local evidence after remediation: Hub 2,003/2,003; deployment/contract/architecture
+  40/40; focused security/tenancy/review 273/273; Next build and changed-file lint/format
+  green. Collision-isolated bot runs have 2,549 passes and 20 skips. The monolithic runner's
+  pre-existing adapter-module collisions and the isolated wiring lazy-import behavior are
+  grounded against unchanged `origin/main` files.
 
 ## Machine State
 

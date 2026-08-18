@@ -48,6 +48,30 @@ def test_published_schema_accepts_canonical_actor_uuids() -> None:
     assert _schema_accepts_actor_id("uploaderId", actor["uploaderId"])  # type: ignore[index]
 
 
+def test_published_schema_declares_user_authorized_delivery_recovery() -> None:
+    assert "recover_delivery" in SCHEMA["properties"]["action"]["enum"]
+    non_message_actions = SCHEMA["allOf"][0]["if"]["properties"]["action"]["enum"]
+    assert "recover_delivery" in non_message_actions
+    recovery_rule = SCHEMA["allOf"][1]
+    assert "recover_delivery" in recovery_rule["if"]["properties"]["action"]["enum"]
+    assert recovery_rule["then"]["required"] == ["priorOperationId"]
+
+
+def test_published_schema_limits_corrected_identity_to_confirmation() -> None:
+    identity_rule = SCHEMA["allOf"][2]
+    assert identity_rule["if"]["required"] == ["confirmedIdentity"]
+    assert identity_rule["then"]["properties"]["action"] == {"const": "confirm_identity"}
+
+
+def test_published_schema_limits_prior_operation_to_consuming_actions() -> None:
+    prior_rule = SCHEMA["allOf"][3]
+    assert prior_rule["if"]["required"] == ["priorOperationId"]
+    assert prior_rule["then"]["properties"]["action"]["enum"] == [
+        "confirm_identity",
+        "recover_delivery",
+    ]
+
+
 @pytest.mark.parametrize("field", ["userId", "uploaderId"])
 def test_published_schema_rejects_noncanonical_actor_ids(field: str) -> None:
     assert not _schema_accepts_actor_id(field, "user-123")
