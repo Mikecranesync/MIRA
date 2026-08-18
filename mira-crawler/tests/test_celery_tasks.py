@@ -110,7 +110,7 @@ class TestIngestUrl:
         import tasks.ingest as mod
         importlib.reload(mod)
 
-        result = mod.ingest_url("https://example.com/test.pdf")
+        result = mod.ingest_url("https://ibiblio.org/test.pdf")
         assert result["error"] == "no_tenant_id"
 
     @patch.dict("os.environ", {"MIRA_TENANT_ID": "test-tenant"})
@@ -132,7 +132,7 @@ class TestIngestUrl:
             patch("ingest.quality.quality_gate", return_value=(True, "")),
         ):
             from tasks.ingest import ingest_url
-            result = ingest_url("https://example.com/manual.pdf", "ABB", "ACS580")
+            result = ingest_url("https://ibiblio.org/manual.pdf", "ABB", "ACS580")
 
         assert result["inserted"] == 5
         assert result["skipped"] == 0
@@ -154,7 +154,7 @@ class TestIngestUrl:
             patch("ingest.store.insert_chunk") as mock_insert,
         ):
             from tasks.ingest import ingest_url
-            result = ingest_url("https://example.com/page.html")
+            result = ingest_url("https://ibiblio.org/page.html")
 
         assert result["inserted"] == 0
         assert result["skipped"] == 3
@@ -173,7 +173,7 @@ class TestIngestUrl:
             patch("ingest.converter.extract_from_html", return_value=[]),
         ):
             from tasks.ingest import ingest_url
-            result = ingest_url("https://example.com/empty.html")
+            result = ingest_url("https://ibiblio.org/empty.html")
 
         assert result["error"] == "no_content"
 
@@ -193,7 +193,7 @@ class TestIngestUrl:
             patch("ingest.store.insert_chunk") as mock_insert,
         ):
             from tasks.ingest import ingest_url
-            result = ingest_url("https://example.com/manual.pdf")
+            result = ingest_url("https://ibiblio.org/manual.pdf")
 
         assert result["inserted"] == 0
         mock_insert.assert_not_called()

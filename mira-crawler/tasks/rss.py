@@ -231,7 +231,14 @@ def poll_rss_feeds() -> dict:
             if not ledger.eligible_for_enqueue(r, _LEDGER_KIND, entry["guid"]):
                 continue  # committed, dead-lettered, or still in flight
             try:
-                ingest_url.delay(url=entry["url"], source_type="rss_article")
+                ingest_url.delay(
+                    url=entry["url"],
+                    source_type="rss_article",
+                    is_private=False,  # public syndicated article (CU-03/I-2)
+                )
+                # PENDING, not seen (CU-03b/Gate 7). The `r.sadd(_REDIS_SEEN_KEY, ...)`
+                # that stood here marked the GUID processed at ENQUEUE, which is
+                # what let curation refusals and crashes look like successes.
                 ledger.mark_pending(r, _LEDGER_KIND, entry["guid"], entry["url"])
                 seen_guids.add(entry["guid"])  # within-run dedup only
                 new_articles += 1

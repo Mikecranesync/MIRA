@@ -323,6 +323,9 @@ def scrape_pdf_direct(
                 tenant_id=_TENANT_ID,
                 ollama_url=_OLLAMA_URL,
                 embed_model=_EMBED_MODEL,
+                is_private=False,  # declaration only — ingest/store.py enforces the
+# canonical policy at the write boundary (ManualsLib is blocked there,
+# so this value cannot publish it). Gate 9 round 1, F1.
             )
             result["chunks_ingested"] = n
             logger.info("Ingested %d chunks from %s", n, pdf_url)
@@ -497,6 +500,9 @@ def scrape_manual(
                 tenant_id=_TENANT_ID,
                 ollama_url=_OLLAMA_URL,
                 embed_model=_EMBED_MODEL,
+                is_private=False,  # declaration only — ingest/store.py enforces the
+# canonical policy at the write boundary (ManualsLib is blocked there,
+# so this value cannot publish it). Gate 9 round 1, F1.
             )
             result["chunks_ingested"] = n
             logger.info("  Ingested %d chunks from %s", n, canonical_url)

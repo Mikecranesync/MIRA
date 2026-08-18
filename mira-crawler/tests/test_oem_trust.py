@@ -61,8 +61,11 @@ def captured(monkeypatch) -> dict:
         model_number="",
         image_embedding=None,
         verified=False,
+        is_private=False,
     ):
-        box.update({"tenant_id": tenant_id, "verified": verified})
+        box.update(
+            {"tenant_id": tenant_id, "verified": verified, "is_private": is_private}
+        )
         return len(valid)
 
     monkeypatch.setattr(base_crawler, "store_chunks", _fake_store)
@@ -85,6 +88,7 @@ def test_manufacturer_crawl_writes_shared_pool_verified(tmp_path, captured) -> N
     assert stored == 1
     assert captured["tenant_id"] == SHARED
     assert captured["verified"] is True
+    assert captured["is_private"] is False  # OEM crawl -> shared corpus, never per-tenant
 
 
 def test_curriculum_crawl_is_unchanged(tmp_path, captured) -> None:
@@ -95,6 +99,7 @@ def test_curriculum_crawl_is_unchanged(tmp_path, captured) -> None:
     assert stored == 1
     assert captured["tenant_id"] == GARAGE
     assert captured["verified"] is False
+    assert captured["is_private"] is False  # public crawl content stays shared-visible
 
 
 def test_base_crawler_defaults_to_untrusted() -> None:

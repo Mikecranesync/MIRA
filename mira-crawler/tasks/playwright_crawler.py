@@ -272,6 +272,7 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
                             tenant_id=tenant_id,
                             ollama_url=ollama_url,
                             embed_model=embed_model,
+                            is_private=False,  # public web content -> shared corpus
                         )
                     except Exception as exc:
                         logger.warning("Inline ingest failed for %s: %s", url[:80], exc)
@@ -289,7 +290,11 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
                     # Queue PDFs for dedicated ingest
                     if _is_pdf_url(link):
                         try:
-                            ingest_url.delay(url=link, source_type="equipment_manual")
+                            ingest_url.delay(
+                                url=link,
+                                source_type="equipment_manual",
+                                is_private=False,  # publicly-reachable OEM page
+                            )
                             urls_queued += 1
                         except Exception as exc:
                             logger.warning("Failed to queue PDF %s: %s", link[:80], exc)
@@ -384,7 +389,11 @@ def discover_js_urls(start_url: str) -> dict:
 
             if _is_pdf_url(link):
                 try:
-                    ingest_url.delay(url=link, source_type="equipment_manual")
+                    ingest_url.delay(
+                                url=link,
+                                source_type="equipment_manual",
+                                is_private=False,  # publicly-reachable OEM page
+                            )
                     pdfs_queued += 1
                 except Exception as exc:
                     logger.warning("Failed to queue PDF %s: %s", link[:80], exc)
@@ -473,6 +482,7 @@ def render_and_ingest_page(url: str) -> dict:
             tenant_id=tenant_id,
             ollama_url=ollama_url,
             embed_model=embed_model,
+            is_private=False,  # public web content -> shared corpus
         )
         return {"ingested": True, "chunks_inserted": inserted}
     except Exception as exc:

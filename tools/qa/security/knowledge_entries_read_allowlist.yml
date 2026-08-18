@@ -567,18 +567,24 @@ approved:
       FROM knowledge_entries
              WHERE tenant_id = $1
                AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
+  # Re-keyed 158 -> 159 by the Gate 9 F1 fix
+  # (provenance enforcement added above these queries). Query unchanged;
+  # the hash moves because it is computed over surrounding context.
   "tools/vendor_coverage_ingest.py:159":
     approved_classification: TENANT-ONLY
-    query_sha256: "556af3c70732659f596c49c9ed9b0ed078d8f9e5107a1af0ac4f8a099fcaa0e7"
-    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
+    query_sha256: "dc7597273ce3997e8aa503f35c1ee4be54ae946540d6d69efe6d4f4afa7e96f1"
+    reason: "count_vendor_chunks pre/post-crawl coverage count on the shared system tenant's own rows — TENANT-ONLY is the point (pure-tenant carve-out). Re-keyed in CU-03 (ruff import cleanup shifted lines; stale 'quota count' reason also corrected)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
                         AND manufacturer ILIKE :pat
+  # Re-keyed 174 -> 175 by the Gate 9 F1 fix
+  # (provenance enforcement added above these queries). Query unchanged;
+  # the hash moves because it is computed over surrounding context.
   "tools/vendor_coverage_ingest.py:175":
     approved_classification: TENANT-ONLY
-    query_sha256: "f3943db031dbea0771cd0e09edf47d5dc0ec861d4d78495e6ff16e30103d0dd9"
-    reason: "TODO: justify this read pattern"
+    query_sha256: "3f1b1236bb9570661265ebf736493b53728abab63ba068ca6111527f01e03bbd"
+    reason: "entry_exists content-prefix dedup on the shared system tenant's own rows — cross-tenant matches would wrongly skip inserts (pure-tenant carve-out). Re-keyed in CU-03"
     query_snippet: |
       SELECT 1 FROM knowledge_entries
                       WHERE tenant_id = :tid AND LEFT(content, 200) = :prefix
@@ -865,8 +871,23 @@ approved:
       # --- Trigger.dev Cloud task-run history is NOT in the repo ---
   "mira-crawler/tasks/freshness.py:130":
     approved_classification: TENANT-ONLY
-    query_sha256: "26293fd4b846c25c627c544fbcd4cb7117d3311e6b82933e6d52be7d47c09a01"
-    reason: "TODO: justify this read pattern"
+    # Hash migrated 2026-08-17 (CU-03) — an EXPLICIT migration shipped with the
+    # change that altered this query, per the rule's "never silently refresh
+    # approvals". Prior hash: 26293fd4b846c25c…
+    # RE-READ before re-approving, as the checker instructs: this is a
+    # stale-content maintenance sweep over ONE tenant's own rows to queue
+    # recrawls. Scanning the tenant's own corpus is the point — the shared OEM
+    # corpus must not be swept on another tenant's TTL schedule. Still
+    # TENANT-ONLY under the pure-tenant carve-out, and still not a retrieval
+    # surface: nothing here reaches a technician answer.
+    # WHAT CHANGED: the SELECT list gained `is_private` so a recrawl carries the
+    # existing row's visibility forward. The WHERE clause — the part this
+    # checker classifies on — is UNCHANGED.
+    # Re-migrated within CU-03 after the Gate 7 round-2 fix: the NULL-handling
+    # comment sits inside this query's context window, so the hash moved again.
+    # The SQL is unchanged from the previous migration below.
+    query_sha256: "b00114a524720af053ad1a419c97f85f9f15ec902ac4c989b9048e417e7862c2"
+    reason: "Stale-content maintenance sweep over ONE tenant's own rows to queue recrawls (pure-tenant carve-out). Not a retrieval surface. SELECTs is_private so the recrawl preserves visibility rather than inheriting a default."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = :tenant_id
@@ -904,7 +925,13 @@ approved:
                       WHERE tenant_id = :tid
                         AND created_at > NOW() - INTERVAL ':hours hours'
   # CU-03b (Gate 7): the reconciliation probe that makes "seen" mean ingested.
-  "mira-crawler/ingest/store.py:280":
+  # Re-keyed 280 -> 297 when Gate 7 (#3296) merged into #3268: store.py grew
+  # above this query. The QUERY is unchanged; the hash moves because it is
+  # computed over surrounding context.
+  # Re-keyed 297 -> 319 by the Gate 9 F1 fix
+  # (provenance enforcement added above these queries). Query unchanged;
+  # the hash moves because it is computed over surrounding context.
+  "mira-crawler/ingest/store.py:319":
     approved_classification: TENANT-ONLY
     query_sha256: "4355dfa79b46268581eb1d03737ac3cf155cea656dbe921c75e21f8e40329042"
     reason: "Existence probe, not a retrieval surface — returns only which source_urls already have rows, never content, and feeds ingest_ledger.reconcile so a GUID/lastmod is marked processed only after the document is really in the corpus. Scoped to the ingesting tenant (MIRA_TENANT_ID): reconciliation must not observe another tenant's rows, and the shared OEM corpus is irrelevant to whether THIS crawler's enqueue succeeded. Legit TENANT-ONLY under the pure-tenant carve-out."
@@ -913,8 +940,8 @@ approved:
       WHERE source_url = ANY(:urls) AND tenant_id = :tid
   "mira-crawler/ingest/store.py:50":
     approved_classification: TENANT-ONLY
-    query_sha256: "755bbe16d50c8cce1f9cee02b83c326ee34f21db3e97ba0b597d7842875b8abd"
-    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
+    query_sha256: "30b997e0aa28eca658019752f85d1b4311b761cef0af144359f9283704373c73"
+    reason: "chunk_exists dedup guard — counts the tenant's OWN rows for the same source_url+chunk_index; cross-tenant matches would wrongly skip inserts, so TENANT-ONLY is the point (pure-tenant carve-out). Re-keyed in CU-03: the hash context window extends into insert_chunk's signature, which gained the required is_private param."
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                           WHERE tenant_id = :tid

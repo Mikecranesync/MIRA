@@ -424,6 +424,20 @@ jobs:
           pytest tests/test_manufacturer_alias_consistency.py -v
           (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
+      - name: knowledge_entries write-path visibility locks (CU-03)
+        # Offline: is_private is a required explicit decision at every store-layer
+        # call site; ingest_url's sources.yaml curation gate; learning_ingester
+        # writes private. test_oem_trust.py is the BACKLOG-required OEM/public
+        # write-shape lock (Gate 9 round-3 finding: it was outside the focused
+        # slice and red); test_ingest.py carries the POSIX symlink-walk TOCTOU
+        # locks, which only EXECUTE here (skipped on Windows dev boxes). Wired
+        # here because mira-crawler/tests/ is enumerated per-file, never
+        # collected wholesale (see the checker-tests note below).
+        # celery: tasks/ingest.py + tasks/_shared.py import celery_app at module
+        # level; not in this job's requirements files. Pinned to the versions
+        # mira-crawler/requirements-celery.txt ships (Gate 7 round-9 finding).
+        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py tests/test_oem_trust.py tests/test_ingest.py tests/test_provenance_policy.py tests/test_ingest_lifecycle.py -q)
+
       - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
         # CORRECTED 2026-07-30. The first version of this comment claimed
         # tests/ignition/ "was run by NO workflow" — that was FALSE, and the

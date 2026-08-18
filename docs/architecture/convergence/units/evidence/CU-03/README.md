@@ -1,0 +1,43 @@
+# CU-03 — Gate 7 evidence (intact, verbatim)
+
+Full outputs of every real-lane Gate 7 round for PR #3268, preserved unmodified per
+doctrine §Gate 7 ("full outputs are preserved intact as unit evidence — summaries do
+not satisfy the evidence requirement", amendment of 2026-08-16). Dispositions live in
+`../CU-03.md`; nothing here is edited.
+
+| File | Round | Scope | Result |
+|---|---|---|---|
+| `round-1-crash.log` | 1 | full diff | lane crashed (Windows subprocess encoding fails-open — fixed in-branch) |
+| `round-2-crash.log` | 2 | full diff | lane crashed (cp1252 report write — fixed in-branch) |
+| `round-3-full-diff.md` | 3 | full diff (truncated at 40k) | BLOCK — 1 real [high] (`file://` carve-out), fixed |
+| `round-4-full-diff.md` | 4 | full diff (truncated) | BLOCK — 0 surviving after triage |
+| `round-5-full-diff.md` | 5 | full diff (truncated) | BLOCK — reviewer's NOT-REVIEWED notes admit findings concern truncated code |
+| `round-6-group{A,B,C}-*.md` | 6 | `--paths` groups (untruncated) | BLOCK ×3 — 0 surviving |
+| `round-7-group{A,B,C}-*.md` | 7 | `--paths` groups | BLOCK ×3 — 2 cheap hardenings taken, 0 surviving |
+| `round-8-group{A,B,C}-*.md` | 8 | `--paths` groups + verbatim-quote rule | BLOCK ×3 — 0 surviving |
+| `round-9-group{A,B,C}-review.md` | 9.1 | `--paths` groups | BLOCK ×3 (9 findings) |
+| `round-9-group{A,B,C}-rebuttal.md` | 9.2 | author rebuttals, verbatim quoted evidence | — |
+| `round-9-group{A,B}-adjudication-1-scope-limited.md` | 9.3 | adjudication, scope missing referenced files | SUSTAINED correctly — quotes not visible in scoped diff (the mechanism judging on evidence) |
+| `round-9-group{A,B}-adjudication-2-PASS.md` | 9.4 | adjudication, evidence-complete scope (`--diff-cap 48000`) | **PASS ×2** (A: 2/2 refuted; B: 4 refuted + 1 medium sustained, non-blocking) |
+| `round-9-groupC-adjudication-PASS.md` | 9.3 | adjudication | **PASS** (high refuted; 1 medium sustained, non-blocking) |
+| `round-10-groupA-crawler-prod.md` | 10.1 | A (receipts-bound, High reasoning) | BLOCK — 3 findings |
+| `round-10-groupA-rebuttal.md` | 10.2 | author rebuttal | — |
+| `round-10-groupA-adjudication-1-quote-missed.md` | 10.3 | adjudication run 1 | BLOCK — F1/F3 REFUTED; F2 sustained on "quote not present" (the quote IS at `+` lines of the diff — grep-provable) |
+| `round-10-groupA-adjudication-2.md` | 10.4 | adjudication run 2, byte-anchored rebuttal | BLOCK — ALL sustained, contradicting run 1 — **adjudicator variance; stopped per no-re-roll; DISPUTED → Gate 9** |
+| `round-10-groupB-crawler-tests.md` + rebuttal + adjudication | 10 | B | review BLOCK ×4 → adjudication **PASS (4/4 refuted)** |
+| `round-10-groupC-rest.md` + rebuttal + adjudication | 10 | C (code prefixes) | review BLOCK ×5 → adjudication BLOCK: 3 refuted, **1 real high sustained** (truncated-view-only receipt hash) → fixed (dual-hash receipts) |
+| `round-10-groupD-docs-attempt1-malformed.md` | 10 | D (docs) | findings unparseable (no `severity:` keyword) — preserved; re-run below |
+| `round-10-groupD-docs.md` + rebuttal + adjudication | 10 | D (docs; adjudicated on FULL untruncated diff) | review BLOCK (scope artifact) → adjudication **PASS** |
+| `round-11-groupC-rest.md` + rebuttal + adjudication | 11 | C fresh review after the receipts fix | BLOCK ×3 → adjudication **PASS** (2 highs refuted; 1 medium sustained = recorded Windows-dev residual) |
+
+Rounds 1–9 groups: A = `mira-crawler/{tasks,ingest,crawler,main.py}` · B =
+`mira-crawler/tests/` · C = `tools/ mira-bots/ mira-hub/ tests/ .github/ docs/`.
+**Correction (Gate 9 round 3):** that union did NOT cover `.claude/commands/gate7-review.md`
+or `mira-core/scripts/ingest_equipment_photos.py` — the earlier "covered by another
+group" claim here was false, and the two crash logs above were gitignored (`*.log`) and
+absent from the PR until force-added on 2026-08-16. Round 10 adds `.claude/` and
+`mira-core/` to group C so the union covers every file, and every round-10 report embeds
+Run receipts (head SHA, scope, exclusions, chars sent/total, sha256 of the exact reviewed
+diff bytes, requested reasoning_effort) so coverage is provable from the committed files.
+The round-9 adjudicated "PASS" rows above are preserved as history but **VOID** — see
+`../CU-03.md` § "Gate 9 round 3".

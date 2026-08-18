@@ -1136,12 +1136,6 @@ _KE_INSERT_ALLOWLIST: dict[str, str] = {
     "tools/seeds/gs11-field-guide-knowledge.sql":
         "OEM seed; omits the column so rows take the DB default false (correct for "
         "shared corpus). Explicit is_private false preferred on next touch.",
-    "mira-hub/scripts/verify-node-subtree-retrieval.ts":
-        "verification script writing node_attachment probe rows; default-false today. "
-        "Flagged for the CU-03 visibility audit — do not silently bless.",
-    "mira-hub/tests/e2e/folder-brain-proof.spec.ts":
-        "e2e fixture rows (cleaned up in-test); default-false today. Flagged for the "
-        "CU-03 visibility audit.",
     "mira-hub/src/lib/__tests__/node-knowledge-ingest-batching.test.ts":
         "not a writer — asserts on mock-captured SQL via .includes('INSERT INTO "
         "knowledge_entries'); the real writer (node-knowledge-ingest.ts) pins true.",
@@ -1248,6 +1242,281 @@ def test_ke_insert_checker_catches_violations():
     }
     for label, src in good_cases.items():
         assert scan_knowledge_entries_insert("good.py", src) == [], f"false positive: {label}"
+
+
+# ---------------------------------------------------------------------------
+# Contract 15: every ingest_url dispatch declares its corpus visibility
+# ---------------------------------------------------------------------------
+# `tasks.ingest.ingest_url` takes `is_private` with a default of True, because a
+# Celery signature is a wire contract and in-flight messages from the previous
+# release carry no such kwarg. That default is the right FLOOR for an unknown
+# caller and the wrong answer for a known one: a feeder that forgets it either
+# privatizes public OEM content or, before the floor existed, shared a private
+# document.
+#
+# Contract 13 fences the WRITE boundary (`insert_chunk`). This fences the TASK
+# boundary above it. They are different populations: a dispatch site never calls
+# insert_chunk directly, so Contract 13 cannot see it.
+#
+# KNOWN BOUNDARY, stated rather than implied (Gate 7): no static scan can
+# follow fully dynamic dispatch — `getattr(mod, name).delay(...)`, a task looked
+# up from a registry dict, or a `Signature` built at runtime. There are zero
+# such sites in this repo today, and the contract fails CLOSED on every partial
+# form it CAN see (non-literal `kwargs=`, positional `args=`), so the gap is a
+# ceiling on coverage, not a hole that silently passes. Truly dynamic dispatch
+# is a review question, not a lint question.
+#
+# The scan is AST-only BY CONSTRUCTION. `ast.parse` discards comments entirely,
+# and a docstring is a Constant node rather than a keyword — so no comment,
+# docstring, or adjacent prose can satisfy this contract. That property is
+# asserted below rather than assumed, because a sibling guard in this repo
+# (`tools/qa/security/check_knowledge_entries_filters.py`) classifies from raw
+# surrounding TEXT and can therefore be flipped by a docstring.
+
+_INGEST_URL_TARGET = "ingest_url"
+
+
+def _ingest_url_dispatch_names(tree: ast.AST) -> set[str]:
+    """Local names bound to ingest_url, including `import ... as` aliases."""
+    names = {_INGEST_URL_TARGET}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == _INGEST_URL_TARGET and alias.asname:
+                    names.add(alias.asname)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[-1] == _INGEST_URL_TARGET and alias.asname:
+                    names.add(alias.asname)
+    return names
+
+
+def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
+    """Return dispatch sites that omit an explicit `is_private=` keyword."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    names = _ingest_url_dispatch_names(tree)
+    missing: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            called = func.id
+        elif isinstance(func, ast.Attribute):
+            # `ingest_url.delay(...)` / `.apply_async(...)` dispatch on the task
+            # object; anything else attribute-shaped falls back to the attr name.
+            called = (
+                func.value.id
+                if func.attr in {"delay", "apply_async"} and isinstance(func.value, ast.Name)
+                else func.attr
+            )
+        else:
+            continue
+        if called == "send_task":
+            # celery_app.send_task("tasks.ingest.ingest_url", ...) dispatches by
+            # NAME, bypassing every symbol-based check (Gate 7 finding).
+            first = node.args[0] if node.args else None
+            named = (
+                isinstance(first, ast.Constant) and first.value == _INGEST_URL_TASK_NAME
+            )
+            if not named:
+                continue
+        elif called not in names:
+            continue
+
+        declared = any(kw.arg == "is_private" for kw in node.keywords)
+
+        # Celery passes task arguments two other ways, and both must fail
+        # CLOSED rather than be assumed compliant (Gate 7 findings):
+        #
+        #   apply_async(kwargs={...})  — a dict LITERAL. Read its keys; still
+        #       executable syntax, never prose. If `kwargs=` is anything else
+        #       (a variable, a call, a comprehension) the scan cannot see
+        #       inside it, so it stays undeclared and the site is flagged.
+        #
+        #   send_task(..., args=[...]) — positional. `is_private` is
+        #       KEYWORD-ONLY, so a positional dispatch can never set it: such a
+        #       site always silently takes the default and is always flagged.
+        if not declared:
+            for kw in node.keywords:
+                if kw.arg == "kwargs":
+                    if isinstance(kw.value, ast.Dict):
+                        declared = any(
+                            isinstance(k, ast.Constant) and k.value == "is_private"
+                            for k in kw.value.keys
+                        )
+                    # non-literal kwargs -> unverifiable -> stays undeclared
+                    break
+        if not declared:
+            missing.append(
+                f"{rel_path}:{node.lineno} dispatches {called} without an explicit "
+                "is_private — it inherits the fail-closed default (private) and "
+                "silently drops public content out of the shared corpus "
+                "(.claude/rules/knowledge-entries-tenant-scoping.md)"
+            )
+    return missing
+
+
+_INGEST_URL_TASK_NAME = "tasks.ingest.ingest_url"
+_INGEST_URL_SCAN_SKIP = {
+    "node_modules", ".git", "__pycache__", ".venv", "venv", ".next",
+    "dist", "build", "out", ".claude", ".codegraph",
+}
+
+
+def _ingest_url_dispatch_files() -> list[Path]:
+    """Every repo .py file, not just mira-crawler/tasks/ (Gate 7 finding).
+
+    A helper that wraps the dispatch (``def queue_ingest(): ingest_url.delay(...)``)
+    is itself a dispatch site, and it need not live under tasks/. Scoping the
+    scan to one directory would let the wrapper escape the contract.
+    Nested git worktrees are skipped: a linked worktree has `.git` as a FILE,
+    which no directory-name filter can express.
+    """
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _INGEST_URL_SCAN_SKIP
+            and not (Path(dirpath) / d / ".git").is_file()
+        ]
+        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
+    return sorted(out)
+
+
+# Files whose omission of is_private IS the assertion. Narrow and named — NOT a
+# blanket tests/ exemption, because a dispatch helper could legitimately live in
+# a test-support module and must still be fenced.
+_INGEST_URL_DISPATCH_ALLOWLIST: dict[str, str] = {
+    "mira-crawler/tests/test_celery_tasks.py": (
+        "exercises ingest_url's default-visibility behaviour directly; declaring "
+        "is_private at these call sites would defeat the thing under test"
+    ),
+}
+
+
+def test_ingest_url_dispatches_declare_visibility():
+    """No production feeder may queue an ingest without stating is_private."""
+    offenders: list[str] = []
+    for path in _ingest_url_dispatch_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        if rel in _INGEST_URL_DISPATCH_ALLOWLIST or rel == "tests/test_architecture.py":
+            continue
+        offenders.extend(
+            scan_ingest_url_dispatches(rel, path.read_text(encoding="utf-8", errors="replace"))
+        )
+    assert not offenders, "\n".join(offenders)
+
+
+def test_ingest_url_dispatch_allowlist_is_honest():
+    """Every exemption still exists and still omits is_private.
+
+    Without this, an entry outlives its reason and quietly exempts a file that
+    has since grown a real production dispatch.
+    """
+    for rel in _INGEST_URL_DISPATCH_ALLOWLIST:
+        path = _ROOT / rel
+        assert path.exists(), f"allowlisted {rel} no longer exists — drop the entry"
+        found = scan_ingest_url_dispatches(rel, path.read_text(encoding="utf-8", errors="replace"))
+        assert found, (
+            f"allowlisted {rel} now declares is_private everywhere — remove its "
+            "exemption so the contract covers it"
+        )
+
+
+def test_ingest_url_scanner_sees_the_known_population():
+    """Honesty check: a scan that silently collects nothing passes vacuously."""
+    seen = 0
+    for path in _ingest_url_dispatch_files():
+        src = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        names = _ingest_url_dispatch_names(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                f = node.func
+                nm = (
+                    f.id
+                    if isinstance(f, ast.Name)
+                    else (
+                        f.value.id
+                        if isinstance(f, ast.Attribute)
+                        and f.attr in {"delay", "apply_async"}
+                        and isinstance(f.value, ast.Name)
+                        else None
+                    )
+                )
+                if nm in names:
+                    seen += 1
+    assert seen >= 8, f"scanner sees only {seen} ingest_url dispatch sites — expected the known population"
+
+
+def test_ingest_url_scanner_catches_violations():
+    bad = {
+        "plain kwarg dispatch": 'ingest_url.delay(url=u, source_type="manual")\n',
+        "direct call": 'ingest_url(url=u)\n',
+        "apply_async": 'ingest_url.apply_async(kwargs={"url": u})\n',
+        "apply_async dict without the key": 'ingest_url.apply_async(kwargs={"url": u, "source_type": "m"})\n',
+        "send_task by name": 'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u})\n',
+        "send_task positional args (cannot set a keyword-only param)":
+            'app.send_task("tasks.ingest.ingest_url", args=[u, "m", "", "manual"])\n',
+        "apply_async with a non-literal kwargs dict":
+            'ingest_url.apply_async(kwargs=payload)\n',
+        "apply_async kwargs built by a call":
+            'ingest_url.apply_async(kwargs=dict(url=u))\n',
+        "helper wrapper": 'def queue(u):\n    ingest_url.delay(url=u)\n',
+        "import alias": (
+            "from tasks.ingest import ingest_url as iu\n"
+            'iu.delay(url=u, source_type="manual")\n'
+        ),
+    }
+    for label, src in bad.items():
+        assert scan_ingest_url_dispatches("bad.py", src), f"checker missed: {label}"
+
+    good = {
+        "explicit false": 'ingest_url.delay(url=u, is_private=False)\n',
+        "explicit true": 'ingest_url.delay(url=u, is_private=True)\n',
+        "threaded variable": 'ingest_url.delay(url=u, is_private=entry["is_private"])\n',
+        "aliased + explicit": (
+            "from tasks.ingest import ingest_url as iu\n"
+            "iu.delay(url=u, is_private=False)\n"
+        ),
+        "apply_async kwargs dict carrying the key":
+            'ingest_url.apply_async(kwargs={"url": u, "is_private": False})\n',
+        "send_task by name WITH the key":
+            'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u, "is_private": False})\n',
+        "send_task for an unrelated task": 'app.send_task("tasks.other.thing", kwargs={"url": u})\n',
+    }
+    for label, src in good.items():
+        assert scan_ingest_url_dispatches("good.py", src) == [], f"false positive: {label}"
+
+
+def test_ingest_url_contract_cannot_be_satisfied_by_prose():
+    """A comment, a docstring, or a neighbouring string must NOT satisfy it.
+
+    This is the property that separates an AST contract from a text-matching
+    one. `check_knowledge_entries_filters.py` classifies from raw surrounding
+    text and can be flipped by a docstring; this must not be.
+    """
+    prose_only = {
+        "trailing comment": 'ingest_url.delay(url=u)  # is_private=False\n',
+        "preceding comment": '# is_private=False\ningest_url.delay(url=u)\n',
+        "docstring above": '"""We pass is_private=False here."""\ningest_url.delay(url=u)\n',
+        "unrelated string arg": 'ingest_url.delay(url=u, source_type="is_private=False")\n',
+        "later real call": 'ingest_url.delay(url=u)\nother(is_private=False)\n',
+        "kwargs dict with the name only as a VALUE":
+            'ingest_url.apply_async(kwargs={"url": u, "note": "is_private"})\n',
+    }
+    for label, src in prose_only.items():
+        assert scan_ingest_url_dispatches("prose.py", src), (
+            f"prose satisfied the contract — text-matching regression: {label}"
+        )
 
 
 # ---------------------------------------------------------------------------

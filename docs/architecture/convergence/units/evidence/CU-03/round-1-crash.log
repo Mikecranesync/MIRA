@@ -1,0 +1,27 @@
+Exception in thread Thread-3 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Users\hharp\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\hharp\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hharp\AppData\Local\Python\pythoncore-3.14-64\Lib\subprocess.py", line 1613, in _readerthread
+    buffer.append(fh.read())
+                  ~~~~~~~^^
+  File "C:\Users\hharp\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x8f in position 3786: character maps to <undefined>
+Gate 7: PR #3268 · effort=xhigh · triggers=['tenant scoping', 'security boundaries', 'cross-repository contract', 'concurrency/idempotency/state', 'broad multi-module (8 top-level dirs)', 'forced by --xhigh']
+Traceback (most recent call last):
+  File "C:\Users\hharp\Documents\GitHub\MIRA\.claude\worktrees\cu-03\tools\gate7_review.py", line 527, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "C:\Users\hharp\Documents\GitHub\MIRA\.claude\worktrees\cu-03\tools\gate7_review.py", line 482, in main
+    title, body, diff = redact(title), redact(body), redact(diff)
+                                                     ~~~~~~^^^^^^
+  File "C:\Users\hharp\Documents\GitHub\MIRA\.claude\worktrees\cu-03\tools\gate7_review.py", line 219, in redact
+    text = pattern.sub(repl, text)
+TypeError: expected string or bytes-like object, got 'NoneType'
+LANE_EXIT=1

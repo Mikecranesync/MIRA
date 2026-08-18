@@ -343,6 +343,20 @@ Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.
 > *different vendor and model from the implementing agent, on a fresh context, briefed to
 > disprove.* It is not a second human, and the reviewer does not run the tests. A unit
 > record that implies more than that has drifted.
+>
+> **Amended 2026-08-16 (CU-03 Gate 9 round 2, owner-directed calibration).** A Gate 7
+> **BLOCK has no Gate 9 waiver.** It is resolved only by (a) fixing the finding at the
+> root and re-running, or (b) the **adjudication step**: the author files a per-finding
+> rebuttal quoting verbatim evidence; a fresh lane call
+> (`py tools/gate7_review.py <PR> --adjudicate <prior-report> --rebuttal <file>`)
+> rules each finding **SUSTAINED or REFUTED** strictly on that evidence, and the
+> round's verdict is computed **structurally** from the rulings — any sustained high ⇒
+> BLOCK, and an unruled finding cannot pass. A fabricated finding cannot survive
+> confrontation with quoted evidence; a real one cannot be refuted by it. **Both
+> phases' full outputs are preserved intact as unit evidence** (summaries do not
+> satisfy the evidence requirement). For diffs past the reviewer's char cap, review
+> per file group (`--paths`) — every group needs its own PASS and every excluded file
+> must be covered by another group.
 
 Escalate automatically to **xhigh** for:
 

@@ -163,6 +163,9 @@ class BaseCrawler:
             ),
             manufacturer=manufacturer,
             verified=self.oem_trusted,
+            # Crawlers ingest public web/OEM content -> shared corpus. Trust
+            # (verified) is decided above; visibility is never per-tenant here.
+            is_private=False,
         )
 
         # Mark as indexed

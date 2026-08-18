@@ -13,13 +13,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
+import pathlib
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import create_engine, text
@@ -188,9 +188,40 @@ def insert_chunk(
     model_number: str,
     source_url: str,
     source_type: str = "equipment_manual",
+    *,
+    is_private: bool,
 ) -> bool:
-    """Insert a single knowledge chunk. Returns True on success."""
+    """Insert a single knowledge chunk. Returns True on success.
+
+    is_private is REQUIRED (CU-03, I-1): the caller states the visibility
+    decision explicitly — see .claude/rules/knowledge-entries-tenant-scoping.md.
+    """
     if entry_exists(content):
+        return False
+
+    # Provenance enforcement (Gate 9 round 1, F1). This module has its OWN
+    # insert_chunk — the duplicate writer tracked in #3275 — so it does NOT
+    # pass through mira-crawler/ingest/store.py where the boundary is fenced.
+    # Without this, a depth-2 Apify crawl returning an off-domain or
+    # policy-blocked URL would still publish it to the shared corpus. Every
+    # dataset item's own URL is classified here, independently.
+    try:
+        import sys
+
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "mira-crawler"))
+        from ingest.provenance import enforce_visibility
+
+        allowed, forced_private, reason = enforce_visibility(source_url, False)
+        if not allowed:
+            print(f"  REFUSED (provenance): {source_url[:80]} — {reason}")
+            return False
+        if forced_private:
+            print(f"  NOT SHARED (provenance): {source_url[:80]} — {reason}")
+            return False
+    except ImportError:
+        # Fail CLOSED: without the policy we cannot prove an origin is
+        # shareable, and this writer only ever writes shared rows.
+        print("  REFUSED: provenance policy unavailable — refusing a shared write")
         return False
     engine = _neon_engine()
     with engine.connect() as conn:
@@ -201,7 +232,7 @@ def insert_chunk(
                    content, embedding, is_private, source_url, chunk_type, created_at)
                 VALUES
                   (:id, :tid, :src, :mfr, :model,
-                   :content, cast(:emb AS vector), false, :url, 'manual_text', NOW())
+                   :content, cast(:emb AS vector), :is_private, :url, 'manual_text', NOW())
             """),
             {
                 "id": str(uuid.uuid4()),
@@ -211,6 +242,7 @@ def insert_chunk(
                 "model": model_number,
                 "content": content,
                 "emb": str(embedding),
+                "is_private": is_private,
                 "url": source_url,
             },
         )
@@ -459,6 +491,9 @@ def ingest_vendor(vendor: VendorTarget, dry_run: bool = False) -> None:
                 manufacturer=vendor.manufacturer_normalized,
                 model_number=model_number,
                 source_url=url,
+                is_private=False,  # declaration only — ingest/store.py enforces the
+# canonical policy at the write boundary (Apify-crawled pages is unclassified at crawl time there,
+# so this value cannot publish it). Gate 9 round 1, F1.
             ):
                 written += 1
             else:
@@ -517,9 +552,9 @@ def write_report(vendors: list[VendorTarget], dry_run: bool) -> None:
     lines = [
         "# Vendor KB Coverage — v1 Demo Ship-Blocker #3",
         "",
-        f"**Date:** 2026-04-15  ",
+        "**Date:** 2026-04-15  ",
         f"**Tenant:** {SHARED_TENANT_ID}  ",
-        f"**Total KB entries (pre-run):** 61,644  ",
+        "**Total KB entries (pre-run):** 61,644  ",
         f"**Dry-run:** {'YES' if dry_run else 'NO'}",
         "",
         "## Coverage Matrix",

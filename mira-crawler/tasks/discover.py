@@ -151,6 +151,10 @@ def discover_manufacturer(self, manufacturer: str, start_url: str,
             manufacturer=manufacturer,
             model="",
             source_type="equipment_manual",
+            # Shared corpus: manufacturer-site discovery over publicly-published
+            # OEM documents. The sources.yaml gate in ingest_url still has to
+            # authorize the host; this states the feeder's intent.
+            is_private=False,
         )
 
     return {"manufacturer": manufacturer, "urls_found": len(pdf_urls)}

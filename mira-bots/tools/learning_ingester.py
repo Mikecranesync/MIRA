@@ -183,9 +183,17 @@ class LearningIngester:
                         "(id, tenant_id, source_type, manufacturer, model_number, "
                         " equipment_type, content, embedding, source_url, source_page, "
                         " metadata, is_private, verified, chunk_type, created_at) "
+                        # is_private=true, verified=false (CU-03, I-3 audit +
+                        # Gate 9): rows are distilled from PRODUCTION
+                        # conversations — never more visible than their source
+                        # (knowledge-entries-tenant-scoping.md). And a bare
+                        # feedback='good' row carries no actor identity, role,
+                        # or tenant provenance, so it cannot ground
+                        # verified=true — promotion to verified requires a
+                        # real approval gate that records WHO approved.
                         "VALUES (:id, :tid, 'approved_faq', '', '', '', :content, "
                         "        cast(:emb AS vector), :url, 0, cast(:meta AS jsonb), "
-                        "        false, true, 'faq', now())"
+                        "        true, false, 'faq', now())"
                     ),
                     {
                         "id": str(uuid.uuid4()),

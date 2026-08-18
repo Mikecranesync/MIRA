@@ -42,6 +42,128 @@ _TRANSIENT = (
     OSError,
 )
 
+# ── Shared-corpus curation gate (CU-03, finding I-2) ─────────────────────────
+# ingest_url writes to the shared corpus (is_private=false). Sharing is only
+# legitimate for curated sources: the human gate is sources.yaml membership
+# (.claude/rules/oem-crawler-trusted.md — "the human gate is sources.yaml
+# curation, not per-chunk review"). An uncurated URL must be refused, not
+# quietly shared.
+
+MAX_REDIRECT_HOPS = 5
+
+
+class _UncuratedHop(Exception):
+    """A redirect hop failed the curation gate (reason in str)."""
+
+
+def _allowed_base() -> Path:
+    """The one operator-controlled ingest dir (resolved). Trusted config —
+    the dir itself may be a symlinked mount; everything BELOW it is not."""
+    return Path(
+        os.getenv(
+            "INGEST_LOCAL_ALLOWED_DIR",
+            os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
+        )
+    ).resolve()
+
+
+def _read_validated(local_path: Path) -> bytes:
+    """Open the validated path with symlink resolution refused for EVERY
+    component below the allowed base, on platforms that support dir_fd
+    (POSIX — the production platform; crawler workers run in Linux
+    containers). The walk starts from a directory fd of the resolved base
+    and opens each component with O_NOFOLLOW, so neither a final-component
+    nor a parent-component symlink swapped in after validation can redirect
+    the read outside the base (Gate 7/9 TOCTOU findings, both rounds).
+    Any component outside the base, or any symlink below it, raises and the
+    caller refuses the ingest (fail closed). On Windows dev boxes dir_fd
+    and O_NOFOLLOW do not exist and the plain open of the resolved path
+    remains — that residual is recorded in units/CU-03.md; production does
+    not run there."""
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        return local_path.read_bytes()
+    base = _allowed_base()
+    rel = local_path.relative_to(base)  # ValueError -> caller refuses
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(str(base), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in rel.parts[:-1]:
+            next_fd = os.open(part, dir_flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        file_fd = os.open(rel.parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+    finally:
+        os.close(fd)
+    with os.fdopen(file_fd, "rb") as fh:
+        return fh.read()
+
+
+def _validated_local_path(url: str) -> Path | None:
+    """Resolve a file:// URL and return the path ONLY if it is contained in
+    the operator ingest dir; None otherwise (fail closed on any error).
+
+    The caller must open THIS returned resolved path via _read_validated —
+    never re-parse the URL. That closes the validate-one-path/open-another
+    bug (Gate 9 round 1); _read_validated then refuses symlinks on every
+    component below the allowed base via a dir_fd walk on POSIX (the
+    production platform), closing both the final-component and the
+    parent-component swap (Gate 9 round 2). The remaining residual
+    (Windows dev boxes only) is recorded in units/CU-03.md.
+    """
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname
+
+    try:
+        local = Path(url2pathname(urlparse(url).path)).resolve()
+        base = _allowed_base()
+        if local.is_relative_to(base):
+            return local
+        return None
+    except Exception:
+        return None
+
+
+def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
+    """May this URL land in the shared corpus? Returns (allowed, reason).
+
+    file:// is allowed ONLY under the operator ingest dir (Gate 7 finding:
+    an unrestricted carve-out is an arbitrary-local-file-read door into the
+    shared corpus). The dir is INGEST_LOCAL_ALLOWED_DIR, defaulting to the
+    Drive-inbox sync dest (tasks/gdrive.py) — the one legitimate file://
+    producer. Paths are resolved first, so ../ cannot escape. http(s)
+    requires the host to be a sources.yaml host (or a subdomain of one).
+    Any resolution/manifest failure fails CLOSED — an unvalidatable shared
+    write is a refused write.
+    """
+    from urllib.parse import urlparse as _up
+
+    scheme = _up(url).scheme.lower()
+    if scheme == "file":
+        local = _validated_local_path(url)
+        if local is not None:
+            return True, "operator-initiated local ingest (allowed dir)"
+        return False, "file:// path outside the allowed dir (or unresolvable) — fail closed"
+    if scheme not in ("http", "https"):
+        # Hop-0 contract (Gate 9 round 2): only http/https/file are ever
+        # eligible — ftp://curated-host must fail at the GATE, not in transport.
+        return False, f"unsupported scheme {scheme!r} — http/https/file only"
+    # CANONICAL POLICY (CU-03a / Gate 6). One list decides this, for both the
+    # gate and the feeders — `mira-crawler/provenance_policy.yaml`, read through
+    # ingest.provenance. Previously this consulted sources.yaml directly while
+    # 17 feeder manifests kept their own origins, 31 of which the gate refused.
+    # An origin with no policy entry classifies `unclassified` and is REFUSED,
+    # so the consistency test's finding is a production behaviour, not a
+    # CI-only warning.
+    try:
+        from ingest.provenance import shared_corpus_allowed as _policy_allows
+    except ImportError:  # container layout
+        from mira_crawler.ingest.provenance import shared_corpus_allowed as _policy_allows
+
+    try:
+        return _policy_allows(url)
+    except Exception as e:
+        return False, f"provenance policy unreadable ({e}) — fail closed"
+
 
 @app.task(
     bind=True,
@@ -56,17 +178,50 @@ _TRANSIENT = (
     retry_jitter=True,
 )
 def ingest_url(self, url: str, manufacturer: str = "",
-               model: str = "", source_type: str = "equipment_manual"):
+               model: str = "", source_type: str = "equipment_manual",
+               *, is_private: bool = True):
     """Download, extract, chunk, embed, and store one document.
 
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
+
+    ``is_private`` is the corpus visibility this ingest writes. The curation
+    gate below decides whether a source is *allowed* to be shared; this
+    argument is the calling feeder declaring what it *intends*. Both must agree
+    before a row reaches the shared corpus — authorization and intent are
+    different questions, and a feeder that never states its intent is exactly
+    how a private document ends up shared.
+
+    **Why this has a default when `insert_chunk`'s is required.** That is an
+    in-process call; this is a Celery task signature, i.e. a wire contract. At
+    deploy time the queue still holds messages enqueued by the previous
+    release, carrying no ``is_private`` kwarg — a required parameter would make
+    those drain as ``TypeError``. So it takes a default, and the default is the
+    **safe direction: private**. Re-sharing a wrongly-privatized row is a
+    recrawl; un-sharing a leaked one is an incident.
+
+    It is **keyword-only** (Gate 7 finding): a positional 5th argument could
+    otherwise set corpus visibility by accident, and a static contract that
+    scans keywords would not see it. Celery dispatch is keyword-based, so this
+    costs nothing.
+
+    **Any URL whose parsed scheme is ``file`` is forced private**, regardless of
+    what the caller declares, of letter case, and of slash count — ``file://x``
+    and ``file:/x`` alike. Local files reach this task from ``tasks/gdrive.py``
+    (a Google Drive mirror) and from operator drops: non-public provenance by
+    construction.
+
+    The containment check in ``_validated_local_path`` answers "may we read this
+    path"; it cannot answer "may every tenant read its contents". Those are
+    different questions, and **being inside the allowed directory never lowers a
+    file's privacy classification** — it only decides whether it may be ingested
+    at all.
     """
     from ingest.chunker import chunk_blocks
     from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
     from ingest.embedder import embed_text
     from ingest.store import chunk_exists, insert_chunk
 
-    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    tenant_id = os.getenv("MIRA_TENANT_ID", "").strip()
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 
@@ -74,16 +229,93 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
+    # Parse the URL ONCE and derive every local-file decision from that single
+    # answer. Two different recognizers is how the bypass below happened.
+    from urllib.parse import urlparse as _up
+
+    is_file_url = _up(url).scheme.lower() == "file"
+
+    # Bound unconditionally: the redirect loop below also classifies hops, and a
+    # name bound inside an `if` branch is a NameError waiting for the first
+    # caller that skips it.
+    try:
+        from ingest.provenance import classify_origin as _classify
+    except ImportError:  # container layout
+        from mira_crawler.ingest.provenance import classify_origin as _classify
+
+    # Visibility floor: a local file has no public provenance, so no caller
+    # declaration can put it in the shared corpus. Passing the containment
+    # check means "we may read this path", never "everyone may read it" —
+    # allowed-directory validation gates INGESTION, never privacy.
+    #
+    # This keys on the PARSED SCHEME, not on a `startswith("file://")` string
+    # test. That string test was the bypass: `file:/allowed/path/doc.pdf` (one
+    # slash — an empty authority, which RFC 8089 permits and `urlparse`
+    # resolves to scheme "file") took the local branch at `is_file_url` below
+    # while sliding past the prefix check, so a caller-supplied
+    # `is_private=False` survived all the way to `insert_chunk`. Same URL, two
+    # recognizers, opposite answers.
+    if not is_private and is_file_url:
+        logger.warning(
+            "Forcing is_private=True for local-file ingest %s — a local file has "
+            "no public provenance and cannot enter the shared corpus",
+            url[:120],
+        )
+        is_private = True
+
+    # 0. Curation gate (I-2) — BEFORE any network access. This task writes
+    # shared rows; an uncurated source must be refused, not shared. To ingest
+    # a new OEM domain, add it to sources.yaml (minutes, auditable forever).
+    # file:// is validated inside its branch below so the SAME resolved path
+    # that passed validation is the one opened (Gate 9 TOCTOU finding).
+    final_url = url
+    if not is_file_url:
+        # The policy has THREE outcomes for a remote origin, and collapsing them
+        # into allow/refuse would make `private` a lie:
+        #
+        #   curated  -> ingest; visibility is the caller's declaration
+        #   private  -> ingest, but FORCE tenant-scoped. The origin is real and
+        #               fetchable, it just may not enter the shared corpus.
+        #   anything else (blocked / infrastructure / unclassified) -> refuse
+        #
+        # Before this, `private` behaved exactly like `blocked` — the URL was
+        # refused outright — so classifying an origin "private, ingestible,
+        # tenant-scoped" silently stopped ingesting it altogether. A policy whose
+        # runtime does not match its stated semantics is worse than no policy.
+        try:
+            origin_class, gate_reason = _classify(url)
+        except Exception as e:
+            logger.warning("Provenance policy unreadable for %s (%s) — fail closed", url[:80], e)
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
+
+        if origin_class == "private":
+            if not is_private:
+                logger.info(
+                    "Forcing is_private=True for %s — origin classified private: %s",
+                    url[:80], gate_reason,
+                )
+            is_private = True
+        elif origin_class != "curated":
+            logger.warning(
+                "Refusing ingest of %s: origin classified %s — %s",
+                url[:80], origin_class, gate_reason,
+            )
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
+
     # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
 
-    if url.startswith("file://"):
-        from urllib.parse import urlparse as _urlparse
-        from urllib.request import url2pathname
-
-        local_path = Path(url2pathname(_urlparse(url).path))
+    if is_file_url:
+        local_path = _validated_local_path(url)
+        if local_path is None:
+            logger.warning(
+                "Refusing shared-corpus ingest of %s: file:// outside allowed dir", url[:80]
+            )
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
         try:
-            data = local_path.read_bytes()
+            # Open the exact resolved path validation returned — never a
+            # re-parse of the URL; O_NOFOLLOW on POSIX (see _read_validated).
+            data = _read_validated(local_path)
             content_type = (
                 "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
             )
@@ -97,65 +329,98 @@ def ingest_url(self, url: str, manufacturer: str = "",
             logger.warning("Local file read failed for %s: %s", url[:80], exc)
             return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
     else:
-        # Pre-flight size check for PDFs — avoids OOM on very large files
-        if is_pdf_url:
-            try:
-                head = httpx.head(
-                    url,
-                    timeout=10,
-                    follow_redirects=True,
-                    headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
-                )
-                content_length = int(head.headers.get("content-length", 0))
-                if content_length > MAX_PDF_BYTES:
-                    logger.warning(
-                        "Skipping %s — too large (%d MB > %d MB limit)",
-                        url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
-                    )
-                    return {"url": url, "inserted": 0, "error": "file_too_large"}
-            except Exception:
-                pass
-
         # Stream download to a tempfile so a misbehaving server (no
         # Content-Length, chunked-encoding bomb, etc.) can't OOM the worker.
-        # Abort mid-stream if we cross the size cap.
+        # Abort mid-stream if we cross the size cap. Redirects are followed
+        # MANUALLY: every hop is scheme-checked and curation-gated BEFORE its
+        # request is sent (Gate 9 finding: follow_redirects=True let a curated
+        # host bounce the crawler to an uncurated/internal target). The final
+        # validated URL becomes the provenance/dedup key.
         tmp = tempfile.NamedTemporaryFile(prefix="mira-ingest-", suffix=".bin", delete=False)
         tmp_path = Path(tmp.name)
         downloaded = 0
         try:
             with httpx.Client(
                 timeout=DOWNLOAD_TIMEOUT,
-                follow_redirects=True,
+                follow_redirects=False,
                 headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
             ) as client:
-                with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    content_type = resp.headers.get("content-type", "")
-                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
-                        downloaded += len(chunk)
-                        if downloaded > MAX_PDF_BYTES and (
-                            "application/pdf" in content_type or is_pdf_url
-                        ):
-                            tmp.close()
-                            tmp_path.unlink(missing_ok=True)
-                            logger.warning(
-                                "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
-                                url[:80], MAX_PDF_BYTES // 1024 // 1024,
-                            )
-                            return {"url": url, "inserted": 0, "error": "file_too_large"}
-                        tmp.write(chunk)
+                current = url
+                for _hop in range(MAX_REDIRECT_HOPS + 1):
+                    with client.stream("GET", current) as resp:
+                        if resp.status_code in (301, 302, 303, 307, 308):
+                            location = resp.headers.get("location", "")
+                            nxt = str(httpx.URL(current).join(location))
+                            if _up(nxt).scheme.lower() not in ("http", "https"):
+                                raise _UncuratedHop(f"non-http redirect target {nxt[:80]}")
+                            # Classify the hop the SAME way hop zero is
+                            # classified (Codex adversarial review F2).
+                            # shared_corpus_source_allowed permits only
+                            # `curated`, so a private origin that redirects —
+                            # a trade-press article bouncing to its canonical
+                            # host — was accepted at hop zero then refused
+                            # mid-chain, contradicting the policy's promise that
+                            # private sources ARE ingestible.
+                            #
+                            # Visibility is a FLOOR across the whole chain: if
+                            # any hop is private the write is private, even when
+                            # it started curated. Provenance is the weakest link,
+                            # not the first one.
+                            hop_class, hop_reason = _classify(nxt)
+                            if hop_class == "private":
+                                if not is_private:
+                                    logger.info(
+                                        "Redirect hop %s is private — forcing "
+                                        "tenant-scoped for the chain: %s",
+                                        nxt[:80], hop_reason,
+                                    )
+                                is_private = True
+                            elif hop_class != "curated":
+                                raise _UncuratedHop(f"{nxt[:80]}: {hop_class}: {hop_reason}")
+                            current = nxt
+                            continue
+                        resp.raise_for_status()
+                        content_type = resp.headers.get("content-type", "")
+                        for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                            downloaded += len(chunk)
+                            if downloaded > MAX_PDF_BYTES and (
+                                "application/pdf" in content_type or is_pdf_url
+                            ):
+                                tmp.close()
+                                tmp_path.unlink(missing_ok=True)
+                                logger.warning(
+                                    "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
+                                    url[:80], MAX_PDF_BYTES // 1024 // 1024,
+                                )
+                                return {"url": url, "inserted": 0, "error": "file_too_large"}
+                            tmp.write(chunk)
+                        final_url = current
+                        break
+                else:
+                    raise _UncuratedHop(f"more than {MAX_REDIRECT_HOPS} redirect hops")
             tmp.close()
             data = tmp_path.read_bytes()
+        except _UncuratedHop as exc:
+            tmp.close()
+            tmp_path.unlink(missing_ok=True)
+            logger.warning("Refusing redirected ingest of %s: %s", url[:80], exc)
+            return {"url": url, "inserted": 0, "error": "uncurated_redirect"}
         except _TRANSIENT as exc:
             tmp.close()
             tmp_path.unlink(missing_ok=True)
             logger.warning("Download failed for %s: %s — Celery will retry", url[:80], exc)
             raise  # autoretry_for handles the retry
         finally:
+            # Close before unlink: on Windows an unlink of an open file raises
+            # WinError 32, which would mask the original exception.
+            try:
+                tmp.close()
+            except Exception:
+                pass
             tmp_path.unlink(missing_ok=True)
 
     # 3. Extract text blocks
-    is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
+    is_pdf = final_url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:
         blocks = extract_from_pdf_with_fallback(data)
     else:
@@ -168,7 +433,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # 4. Chunk
     chunks = chunk_blocks(
         blocks,
-        source_url=url,
+        source_url=final_url,
         max_chars=2000,
         min_chars=80,
         overlap=200,
@@ -196,7 +461,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
             chunk_idx = chunk.get("chunk_index", i)
 
             # Dedup
-            if chunk_exists(tenant_id, url, chunk_idx):
+            if chunk_exists(tenant_id, final_url, chunk_idx):
                 skipped += 1
                 continue
 
@@ -229,7 +494,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 tenant_id=tenant_id,
                 content=chunk["text"],
                 embedding=embedding,
-                source_url=url,
+                source_url=final_url,
                 source_type=source_type,
                 manufacturer=manufacturer,
                 model_number=model,
@@ -237,6 +502,12 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 section=chunk.get("section", ""),
                 chunk_index=chunk_idx,
                 chunk_type=chunk.get("chunk_type", "text"),
+                # Visibility is the caller's declaration (defaulting private),
+                # after the file:// floor above. The sources.yaml gate decides
+                # whether sharing is AUTHORIZED; this says whether it was
+                # INTENDED. Unverified either way — trust stays with the OEM
+                # crawler class, not this task.
+                is_private=is_private,
             )
             if entry_id:
                 inserted += 1
@@ -320,6 +591,17 @@ def ingest_all_pending():
                 manufacturer=manufacturer,
                 model=model,
                 source_type="manual",
+                # FAIL CLOSED (Gate 7 finding). This queue is assembled by
+                # `mira-core db.neon.get_pending_urls` from several upstream
+                # tables (`source_fingerprints` and friends); no column on
+                # those rows records who submitted a URL or whether it is
+                # public. "They are OEM manuals" was an assumption, not a
+                # fact — and this whole unit exists because a feeder must
+                # declare only what it can establish. It cannot, so it takes
+                # the private floor. #3268's sources.yaml gate still refuses
+                # uncurated hosts independently. Restoring shared status for
+                # this path needs recoverable provenance first — filed.
+                is_private=True,
             )
             queued += 1
 

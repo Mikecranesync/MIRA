@@ -75,8 +75,17 @@ def insert_chunk(
     chunk_type: str = "text",
     image_embedding: list[float] | None = None,
     verified: bool = False,
+    *,
+    is_private: bool,
 ) -> str:
-    """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
+    """Insert a single chunk into knowledge_entries. Returns entry ID or empty string.
+
+    is_private is REQUIRED (CU-03, finding I-1): the caller must make an
+    explicit visibility decision. Shared OEM/public-crawl content passes
+    False; a customer's own document passes True — never rely on a default
+    (the #1833 leak shape). Write law:
+    .claude/rules/knowledge-entries-tenant-scoping.md.
+    """
     from sqlalchemy import text
 
     from .manufacturer_normalize import normalize_manufacturer
@@ -85,6 +94,28 @@ def insert_chunk(
     # the knowledge_entries.manufacturer column (which the Hub KB catalog
     # GROUPs BY) stays canonical regardless of which caller wrote it (#1596).
     manufacturer = normalize_manufacturer(manufacturer).canonical
+
+    # ── Provenance enforcement at the write boundary (Gate 9 round 1, F1) ──
+    # Every storage route passes through here, which is the point: enforcing in
+    # tasks/ingest.py only meant reddit/patents/youtube/manualslib_scraper and
+    # the Apify coverage tool published policy-private and policy-BLOCKED
+    # sources to the shared corpus with a hardcoded is_private=False. Patching
+    # those five callers would not have been the fix — the sixth would
+    # reintroduce it.
+    #
+    # This can make a row more private than the caller asked, or refuse it
+    # outright. It can never grant sharing the caller did not request.
+    try:
+        from .provenance import enforce_visibility
+    except ImportError:  # pragma: no cover — flat-path layout
+        from provenance import enforce_visibility  # type: ignore[no-redef]
+
+    allowed, is_private, prov_reason = enforce_visibility(source_url, is_private)
+    if not allowed:
+        logger.warning(
+            "Refusing knowledge_entries write for %s — %s", (source_url or "<no url>")[:100], prov_reason
+        )
+        return ""
 
     entry_id = str(uuid.uuid4())
     metadata = {
@@ -108,7 +139,7 @@ def insert_chunk(
                     VALUES
                         (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                          :content, cast(:embedding AS vector), :source_url, :source_page,
-                         cast(:metadata AS jsonb), false, :verified, :chunk_type,
+                         cast(:metadata AS jsonb), :is_private, :verified, :chunk_type,
                          cast(:image_embedding AS vector))
                     ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
                     WHERE (metadata->>'chunk_index') IS NOT NULL
@@ -126,6 +157,7 @@ def insert_chunk(
                     "source_page": page_num,
                     "metadata": json.dumps(metadata),
                     "chunk_type": chunk_type,
+                    "is_private": is_private,
                     "verified": verified,
                     "image_embedding": img_emb_val,
                 },
@@ -144,6 +176,8 @@ def store_chunks(
     model_number: str = "",
     image_embedding: list[float] | None = None,
     verified: bool = False,
+    *,
+    is_private: bool,
 ) -> int:
     """Store a batch of (chunk, embedding) pairs into NeonDB.
 
@@ -153,6 +187,10 @@ def store_chunks(
     verified: when True the chunk is written as trusted (citable while
     MIRA_ENFORCE_APPROVED_RETRIEVAL is on). Only OEM-trusted crawlers pass
     True — see .claude/rules/oem-crawler-trusted.md.
+    is_private: REQUIRED (CU-03, I-1) — the caller's explicit visibility
+    decision, threaded to every insert_chunk. False = shared corpus;
+    True = the owning tenant only. Visibility is orthogonal to trust
+    (verified).
 
     UNS+KG flywheel (spec §4.4): when manufacturer+model are known, this
     upserts an `equipment` and a `manual` entity, links the chunk row to
@@ -223,6 +261,7 @@ def store_chunks(
             chunk_type=chunk.get("chunk_type", "text"),
             image_embedding=image_embedding,
             verified=verified,
+            is_private=is_private,
         )
         if not entry_id:
             continue

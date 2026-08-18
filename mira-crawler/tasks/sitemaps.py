@@ -262,12 +262,19 @@ def check_sitemaps() -> dict:
                     if not ledger.eligible_for_enqueue(r, _LEDGER_KIND, loc):
                         continue  # committed, dead-lettered, or still in flight
                     try:
-                        ingest_url.delay(url=loc, source_type="equipment_manual")
-                        # PENDING, not done. `lastmod` is deliberately NOT written
-                        # here: persisting it at enqueue is what made a refused or
-                        # failed URL look permanently up to date, so it was never
-                        # retried. It is written by _reconcile_sitemaps once the
-                        # document is verified present in the corpus.
+                        ingest_url.delay(
+                            url=loc,
+                            source_type="equipment_manual",
+                            # Shared corpus: every URL here came from a sitemap
+                            # in the curated `_SITEMAPS` manifest (CU-03/I-2).
+                            is_private=False,
+                        )
+                        # PENDING, not done (CU-03b/Gate 7). `lastmod` is
+                        # deliberately NOT written here: persisting it at enqueue
+                        # is what made a refused or failed URL look permanently up
+                        # to date, so it was never retried. It is written by
+                        # _reconcile_sitemaps once the document is verified in the
+                        # corpus.
                         ledger.mark_pending(
                             r, _LEDGER_KIND, loc, loc, meta={"lastmod": lastmod}
                         )

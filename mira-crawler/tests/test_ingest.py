@@ -1,7 +1,11 @@
 """Tests for the ingest_url Celery task — particularly scheme handling (M8)."""
 from __future__ import annotations
 
+import os
+import shutil
 from unittest.mock import patch
+
+import pytest
 
 
 class TestIngestUrlFileScheme:
@@ -17,6 +21,7 @@ class TestIngestUrlFileScheme:
 
         monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(tmp_path))
         monkeypatch.setenv("EMBED_MODEL", "nomic-embed-text:latest")
 
         fake_blocks = [
@@ -51,6 +56,8 @@ class TestIngestUrlFileScheme:
         """ingest_url returns a local_read_failed error for non-existent file:// paths."""
         monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        # Inside the allowed dir so the curation gate passes and the READ fails.
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", "/nonexistent")
         monkeypatch.setenv("EMBED_MODEL", "nomic-embed-text:latest")
 
         from tasks.ingest import ingest_url
@@ -91,13 +98,43 @@ class TestIngestUrlFileScheme:
             }
         ]
 
-        mock_resp = type("R", (), {
-            "content": b"%PDF-1.4",
-            "headers": {"content-type": "application/pdf"},
-            "raise_for_status": lambda self: None,
-        })()
+        # The download path streams via httpx.Client (OOM hardening) — mock
+        # the streaming client, not httpx.get (the old mock silently missed
+        # and this test hit the real network; pre-existing red fixed in CU-03).
+        class _FakeStreamResp:
+            status_code = 200
+            headers = {"content-type": "application/pdf"}
 
-        with patch("tasks.ingest.httpx.get", return_value=mock_resp), \
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self, chunk_size):
+                yield b"%PDF-1.4"
+
+        class _FakeStreamCtx:
+            def __enter__(self):
+                return _FakeStreamResp()
+
+            def __exit__(self, *exc):
+                return False
+
+        class _FakeClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def stream(self, method, url):
+                return _FakeStreamCtx()
+
+        fake_head = type("H", (), {"headers": {"content-length": "100"}})()
+
+        with patch("tasks.ingest.httpx.Client", _FakeClient), \
+             patch("tasks.ingest.httpx.head", return_value=fake_head), \
              patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks), \
              patch("ingest.chunker.chunk_blocks", return_value=fake_chunks), \
              patch("ingest.embedder.embed_text", return_value=[0.1] * 768), \
@@ -111,3 +148,80 @@ class TestIngestUrlFileScheme:
             )
 
         assert mock_insert.called
+
+
+_POSIX_ONLY = pytest.mark.skipif(
+    os.name != "posix",
+    reason="dir_fd/O_NOFOLLOW are POSIX-only; the Windows-dev plain-open "
+    "residual is recorded in units/CU-03.md (production is Linux)",
+)
+
+
+class TestReadValidatedSymlinkWalk:
+    """_read_validated must refuse a symlink swapped into ANY path component
+    below the allowed base after validation (Gate 9 round-2 finding: the
+    final-component-only O_NOFOLLOW left the parent-component swap open)."""
+
+    @_POSIX_ONLY
+    def test_parent_component_symlink_swap_is_refused(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        (base / "real").mkdir(parents=True)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "doc.pdf").write_bytes(b"%PDF-1.4 attacker payload")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+
+        (base / "real" / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+        validated = (base / "real" / "doc.pdf").resolve()
+
+        # Post-validation swap: the PARENT directory becomes a symlink out of base.
+        shutil.rmtree(base / "real")
+        (base / "real").symlink_to(outside)
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(OSError):
+            _read_validated(validated)
+
+    @_POSIX_ONLY
+    def test_final_component_symlink_swap_is_refused(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        base.mkdir()
+        outside = tmp_path / "secret.pdf"
+        outside.write_bytes(b"%PDF-1.4 attacker payload")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+
+        (base / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+        validated = (base / "doc.pdf").resolve()
+
+        (base / "doc.pdf").unlink()
+        (base / "doc.pdf").symlink_to(outside)
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(OSError):
+            _read_validated(validated)
+
+    @_POSIX_ONLY
+    def test_honest_nested_file_within_base_still_reads(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        (base / "sub").mkdir(parents=True)
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        (base / "sub" / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+
+        from tasks.ingest import _read_validated
+
+        assert _read_validated((base / "sub" / "doc.pdf").resolve()) == b"%PDF-1.4 legit"
+
+    @_POSIX_ONLY
+    def test_path_outside_base_is_refused_even_at_read_time(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        base.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        stray = tmp_path / "stray.pdf"
+        stray.write_bytes(b"%PDF-1.4")
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(ValueError):
+            _read_validated(stray.resolve())
