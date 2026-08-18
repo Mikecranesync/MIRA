@@ -1024,15 +1024,20 @@ services-telegram-bot:
   tags: ["type:adapter", "domain:diagnostics"]
   purpose: "Frozen 2026-03 Telegram handler; predecessor of mira-bots/telegram/bot.py."
   language: python
-  status: DELETE_CANDIDATE
+  status: LEGACY
   declared_state: "DUPLICATE_CAPABILITIES.md:12 — 329 lines vs mira-bots/telegram/bot.py 2,805 lines / 175 commits"
-  deletion_safe: true
-  blocking_evidence: []
+  deletion_safe: false
+  blocking_evidence:
+    - "origin/feat/telegram-ship-phase1:tests/test_telegram_bot_e2e.py:22-23 — 'from services.telegram_bot.prompts import build_system_prompt' and 'from services.telegram_bot.work_orders import WorkOrderStore'. The branch is UNMERGED into origin/main and is checked out on BRAVO."
   clearing_evidence:
-    - "ZERO external Python imports. The one apparent inbound ref, services/troubleshoot/adapters/__main__.py:2 'from adapters.telegram_bot import main', resolves to services/troubleshoot/adapters/telegram_bot.py — a DIFFERENT 6,119-byte file, not this package"
-    - "ZERO references in any *.yml / *.yaml / *.sh / *.toml across the factorylm repo"
+    - "on origin/main: ZERO external Python imports. The one apparent inbound ref, services/troubleshoot/adapters/__main__.py:2 'from adapters.telegram_bot import main', resolves to services/troubleshoot/adapters/telegram_bot.py — a DIFFERENT 6,119-byte file, not this package"
+    - "ZERO references in any *.yml / *.yaml / *.sh / *.toml / *.md across the factorylm repo"
+    - "/Users/charlienode/CLAUDE.md:42 declares services/telegram/ — a DIFFERENT directory — as production. It does NOT declare this component authoritative"
     - "no process on CHARLIE or BRAVO; no launchd job on either node; no crontab entry"
-  known_drift: ["CLUSTER.md's CHARLIE Telegram-poller claim points at services/troubleshoot/, not this component, and is itself refuted — issue #3284 (CU-04)"]
+  known_drift:
+    - "DOWNGRADED DELETE_CANDIDATE -> LEGACY by CU-04 Gate 7 round 1. The clearance had been scoped to origin/main and missed unmerged refs; the adversarial reviewer found the branch import. A scan of ALL 65 origin refs now bounds it to exactly ONE external importer, the file above."
+    - "WEAKER IN KIND than the runtime blockers on the other six: no process, container, CI lane or doc authority — a single unmerged, 5-months-stale (tip 2026-03-08) test file. Resolvable by merging or abandoning feat/telegram-ship-phase1, after which this becomes deletion-safe."
+    - "CLUSTER.md's CHARLIE Telegram-poller claim points at services/troubleshoot/, not this component, and is itself refuted — issue #3284 (CU-04)"
 
 services-llm-router:
   repo: factorylm
@@ -1115,6 +1120,9 @@ simulation:
   deletion_safe: true
   clearing_evidence:
     - "ZERO inbound Python imports repo-wide: `grep -rn '^ *from simulation[. ]|^ *import simulation\\b' --include='*.py'` over factorylm, excluding .venv/node_modules/.git and the component itself, returns EMPTY"
+    - "ZERO external importers across ALL 65 origin refs, not just origin/main — the cross-branch axis that demoted services-telegram-bot at Gate 7 round 1 was applied here too, and this component survives it"
+    - "it has no __init__.py, so a consumer would have to import its modules by bare name after a sys.path insert (the shape core/pipeline.py uses for cookoff). Checked: no external file imports vfd_simulator, motulator or modbus_simulator — every such import is inside simulation/motulator/examples/, i.e. the vendored fork's own examples"
+    - "not built, mounted or referenced by any compose service. The neighbouring `modbus-sim` service uses image oitc/modbus-server:latest and mounts infra/scada/modbus/server_config.json — it does NOT build from simulation/"
     - "the three references other sweeps attributed to it (cosmos/live_test.py:88, cosmos/loop_test.py:12, live_test.py:85) are prose strings and comments containing the word 'simulation', not imports"
     - "no compose service, no CI path trigger, no launchd job, no process on CHARLIE or BRAVO"
   key_components:
@@ -1124,7 +1132,10 @@ simulation:
   dependencies:
     - collectors
     - diagnosis
-  known_drift: ["CU-04 CONFIRMED this DELETE_CANDIDATE on runtime evidence — the only one of the four sim dirs that survives the check. The 'coupled deletion unit' framing is refuted: simulation has no coupling to sim/cosmos/cookoff in either direction."]
+  known_drift:
+    - "CU-04 CONFIRMED this DELETE_CANDIDATE on runtime evidence, and it survived Gate 7 round 1 — the ONLY one of the nine nominated components that clears. The 'coupled deletion unit' framing is refuted: simulation has no coupling to sim/cosmos/cookoff in either direction."
+    - "ROLLBACK NOTE for the future deletion unit: most of its 186 files are simulation/motulator/, a vendored copy of the Mikecranesync/motulator fork (a pure fork, 0 custom commits per .planning/org/tiers/tier3-metadata/motulator.yaml). Deleting this directory deletes that copy; it is recoverable from the separate fork repo, but the deletion unit should say so rather than discover it."
+    - "docs/v0-resurrection-status-report.md:27 names sim/ and simulation/ as implementing PLC/Modbus connectivity. Read in context it is a historical status snapshot, not an authority declaration of the kind that blocks plc-modbus — but the deletion unit should retire the line rather than leave a doc pointing at a deleted directory."
 
 workers:
   repo: factorylm
