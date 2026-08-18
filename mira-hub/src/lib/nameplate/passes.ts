@@ -25,11 +25,20 @@
  * throws only if EVERY pass fails.
  */
 
-import { togetherVisionModel } from "./index";
+import { togetherVisionModel, type EquipmentIdentityCandidate } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
 
-export const IDENTITY_FIELDS = ["manufacturer", "model", "catalogNumber", "equipmentType"] as const;
+export const IDENTITY_FIELDS = [
+  "manufacturer",
+  "productFamily",
+  "series",
+  "model",
+  "typeCode",
+  "partNumber",
+  "catalogNumber",
+  "equipmentType",
+] as const;
 export const SPEC_FIELDS = [
   "voltage",
   "current",
@@ -300,9 +309,9 @@ function idCapture(m: RegExpMatchArray | null): { value: string; raw: string } |
 /** Labelled part / catalog number: `Motor P/N AZM911AC-D`, `Catalog: 2080-LC20-20QWB`,
  * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`. */
 export function parseCatalogNumber(lines: string[]): { value: string; raw: string } | null {
+  const part = parsePartNumber(lines);
+  if (part) return part;
   const patterns = [
-    new RegExp(`P\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
-    new RegExp(`\\bPART\\s*(?:NO\\.?|NUMBER)?[:.#\\s]*${ID_TOKEN}`, "i"),
     new RegExp(`\\bCAT(?:ALOG|\\.)?\\s*(?:NO\\.?|NUMBER)?[:.#\\s]*${ID_TOKEN}`, "i"),
     // Siemens data-matrix labels prefix the orderable article number with `1P`
     // (ISO/IEC 15434 data identifier). Line-anchored so a `1P` inside some
@@ -316,12 +325,27 @@ export function parseCatalogNumber(lines: string[]): { value: string; raw: strin
   return null;
 }
 
-/** Labelled model: `MODEL DGM200R-AZAC`, `Model: Micro820`, `M/N EA7-T8C`,
- * `TYPE 5K444AK456`. TYPE is last AND requires a token of >=4 chars: on real
- * plates TYPE also labels short classifier codes ("TYPE PTC", ABB "T53"
- * fragments) where the model's own fuller assignment was right — measured on
- * the internet-100 replay (web-049, web-109). */
-export function parseModel(lines: string[]): { value: string; raw: string } | null {
+/** Explicit P/N or PART number, distinct from the legacy catalog field. */
+export function parsePartNumber(lines: string[]): { value: string; raw: string } | null {
+  const patterns = [
+    new RegExp(`P\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
+    new RegExp(`\\bPART\\s*(?:NO\\.?|NUMBER)?[:.#\\s]*${ID_TOKEN}`, "i"),
+  ];
+  for (const re of patterns) {
+    const hit = idCapture(firstMatch(lines, re));
+    if (hit) return { ...hit, value: hit.value.toUpperCase() };
+  }
+  return null;
+}
+
+/** Full manufacturer TYPE code (often longer and more specific than model). */
+export function parseTypeCode(lines: string[]): { value: string; raw: string } | null {
+  const hit = idCapture(firstMatch(lines, new RegExp(`\\bTYPE[:.#\\s]+${ID_TOKEN}`, "i")));
+  return hit && hit.value.length >= 4 ? hit : null;
+}
+
+/** MODEL/MOD/M-N anchors only; deliberately excludes TYPE. */
+export function parseExplicitModel(lines: string[]): { value: string; raw: string } | null {
   const patterns = [
     new RegExp(`\\bMODEL[:.#\\s]*${ID_TOKEN}`, "i"),
     new RegExp(`\\bMOD\\.\\s*${ID_TOKEN}`, "i"),
@@ -331,9 +355,16 @@ export function parseModel(lines: string[]): { value: string; raw: string } | nu
     const hit = idCapture(firstMatch(lines, re));
     if (hit) return hit;
   }
-  const type = idCapture(firstMatch(lines, new RegExp(`\\bTYPE[:.#\\s]+${ID_TOKEN}`, "i")));
-  if (type && type.value.length >= 4) return type;
   return null;
+}
+
+/** Labelled model: `MODEL DGM200R-AZAC`, `Model: Micro820`, `M/N EA7-T8C`,
+ * `TYPE 5K444AK456`. TYPE is last AND requires a token of >=4 chars: on real
+ * plates TYPE also labels short classifier codes ("TYPE PTC", ABB "T53"
+ * fragments) where the model's own fuller assignment was right — measured on
+ * the internet-100 replay (web-049, web-109). */
+export function parseModel(lines: string[]): { value: string; raw: string } | null {
+  return parseExplicitModel(lines) ?? parseTypeCode(lines);
 }
 
 /** Labelled serial / lot: `S/N 12345`, `SER.NO. X`, `SERIAL: ABC-9`, `LOT QS8`,
@@ -362,15 +393,24 @@ export function parseSerial(lines: string[]): { value: string; raw: string } | n
  * failure was correctly-read strings slotted into unanchored identity fields:
  * frame sizes as models, bearing numbers as serials).
  */
-const KEYWORD_ONLY: Record<"model" | "catalogNumber" | "serialNumber", RegExp> = {
+type AnchoredIdentityField =
+  | "model"
+  | "typeCode"
+  | "partNumber"
+  | "catalogNumber"
+  | "serialNumber";
+
+const KEYWORD_ONLY: Record<AnchoredIdentityField, RegExp> = {
   model: /^(?:MODEL|M\s*\/\s*N)[:.#\s]*$/i,
+  typeCode: /^TYPE[:.#\s]*$/i,
+  partNumber: /^(?:P\s*\/\s*N|PART\s*(?:NO\.?|NUMBER)?)[:.#\s]*$/i,
   catalogNumber: /^(?:P\s*\/\s*N|PART\s*(?:NO\.?|NUMBER)?|CAT(?:ALOG|\.)?\s*(?:NO\.?|NUMBER)?#?|1P)[:.#\s]*$/i,
   serialNumber: /^(?:S\s*\/\s*N|SN|SER\.?\s*NO\.?|SERIAL(?:\s*NO\.?|\s*NUMBER)?|LOT(?:\s*NO\.?)?)[:.#\s]*$/i,
 };
 
 /** Does this line look like an identifier value (not prose, not a heading)? */
-function looksLikeIdValue(field: "model" | "catalogNumber" | "serialNumber", line: string): boolean {
-  if (KEYWORD_ONLY.model.test(line) || KEYWORD_ONLY.catalogNumber.test(line) || KEYWORD_ONLY.serialNumber.test(line)) {
+function looksLikeIdValue(field: AnchoredIdentityField, line: string): boolean {
+  if (Object.values(KEYWORD_ONLY).some((keyword) => keyword.test(line))) {
     return false;
   }
   if (field === "serialNumber") {
@@ -397,12 +437,20 @@ function looksLikeIdValue(field: "model" | "catalogNumber" | "serialNumber", lin
  *                   print order reliably).
  */
 export function anchoredValueFor(
-  field: "model" | "catalogNumber" | "serialNumber",
+  field: AnchoredIdentityField,
   lines: string[],
 ): { value: string; raw: string } | null {
   const clean = lines.map((l) => String(l ?? "").trim()).filter(Boolean);
   const sameLine =
-    field === "model" ? parseModel(clean) : field === "catalogNumber" ? parseCatalogNumber(clean) : parseSerial(clean);
+    field === "model"
+      ? parseModel(clean)
+      : field === "typeCode"
+        ? parseTypeCode(clean)
+        : field === "partNumber"
+          ? parsePartNumber(clean)
+          : field === "catalogNumber"
+            ? parseCatalogNumber(clean)
+            : parseSerial(clean);
   if (sameLine) return sameLine;
 
   const keyword = KEYWORD_ONLY[field];
@@ -503,6 +551,8 @@ export function coerceSpecValue(field: NameplateField, value: string): string | 
 export type DeterministicFields = {
   manufacturer: { value: string; raw: string } | null;
   model: { value: string; raw: string } | null;
+  typeCode: { value: string; raw: string } | null;
+  partNumber: { value: string; raw: string } | null;
   catalogNumber: { value: string; raw: string } | null;
   serialNumber: { value: string; raw: string } | null;
   voltage: Measurement | null;
@@ -518,7 +568,11 @@ export function parseNameplateLines(lines: string[]): DeterministicFields {
   const clean = lines.map((l) => String(l ?? "").trim()).filter(Boolean);
   return {
     manufacturer: parseManufacturer(clean),
-    model: parseModel(clean),
+    // TYPE is not silently promoted into model here. A VFD's full type code
+    // and its model/series are distinct retrieval keys (Danfoss FC-202).
+    model: parseExplicitModel(clean),
+    typeCode: parseTypeCode(clean),
+    partNumber: parsePartNumber(clean),
     catalogNumber: parseCatalogNumber(clean),
     serialNumber: parseSerial(clean),
     voltage: parseVoltage(clean),
@@ -527,6 +581,29 @@ export function parseNameplateLines(lines: string[]): DeterministicFields {
     ambient: parseAmbient(clean),
     insulation: parseInsulation(clean),
     marks: parseMarks(clean),
+  };
+}
+
+/**
+ * Reconcile provider semantics with deterministic printed anchors. The
+ * provider supplies family/series/model; TYPE and P/N keep their own fields
+ * and must never overwrite the shorter model/series.
+ */
+export function reconcileIdentityCandidate(
+  candidate: EquipmentIdentityCandidate,
+  lines: string[],
+): EquipmentIdentityCandidate {
+  const det = parseNameplateLines(lines);
+  const fallbackTypeAsModel = candidate.model ? null : parseModel(lines);
+  return {
+    ...candidate,
+    model: det.model?.value ?? candidate.model ?? fallbackTypeAsModel?.value ?? null,
+    typeCode: det.typeCode?.value ?? candidate.typeCode ?? null,
+    partNumber: det.partNumber?.value ?? candidate.partNumber ?? null,
+    catalogNumber:
+      det.catalogNumber?.value ?? candidate.catalogNumber ?? candidate.partNumber ?? null,
+    serialNumber: det.serialNumber?.value ?? candidate.serialNumber ?? null,
+    rawText: candidate.rawText ?? lines,
   };
 }
 
@@ -548,14 +625,16 @@ An industrial plate usually carries MORE THAN ONE identifier: a MODEL, and separ
 Copy each one VERBATIM, character for character, including hyphens and slashes. Do not merge them, do not normalize them, do not shorten them.
 - ${ANTI_HALLUCINATION}
 Respond ONLY with JSON:
-{"model": string|null, "partNumber": string|null, "partNumberLabel": string|null, "serial": string|null, "identifierLines": string[]}`;
+{"model": string|null, "typeCode": string|null, "partNumber": string|null, "partNumberLabel": string|null, "serial": string|null, "identifierLines": string[]}`;
 
 export const SEMANTIC_PROMPT = `You are reading an industrial equipment NAMEPLATE photograph.
 Extract ONLY text that is visible in the image.
 Rules: do not invent missing serial/model digits; preserve punctuation exactly; copy numbers digit for digit including decimal points; distinguish model vs catalog vs serial numbers when possible; use null for any unreadable field.
 - ${ANTI_HALLUCINATION}
 Respond ONLY with JSON:
-{"manufacturer": string|null, "model": string|null, "catalogNumber": string|null,
+{"manufacturer": string|null, "productFamily": string|null, "series": string|null,
+ "model": string|null, "typeCode": string|null, "partNumber": string|null,
+ "catalogNumber": string|null,
  "serialNumber": string|null, "equipmentType": string|null, "voltage": string|null,
  "current": string|null, "resolution": string|null, "ambient": string|null,
  "insulation": string|null, "marks": string[],
@@ -853,6 +932,8 @@ export async function runMultiPass(
       };
       add("manufacturer", det.manufacturer?.value ?? null, det.manufacturer?.raw ?? null);
       add("model", det.model?.value ?? null, det.model?.raw ?? null);
+      add("typeCode", det.typeCode?.value ?? null, det.typeCode?.raw ?? null);
+      add("partNumber", det.partNumber?.value ?? null, det.partNumber?.raw ?? null);
       add("catalogNumber", det.catalogNumber?.value ?? null, det.catalogNumber?.raw ?? null);
       add("serialNumber", det.serialNumber?.value ?? null, det.serialNumber?.raw ?? null);
       add("voltage", det.voltage?.text ?? null, det.voltage?.raw ?? null, det.voltage?.repaired);
@@ -892,7 +973,11 @@ export async function runMultiPass(
         : [];
       const pairs: [NameplateField, string | null][] = [
         ["manufacturer", str(o.manufacturer)],
+        ["productFamily", str(o.productFamily ?? o.product_family)],
+        ["series", str(o.series)],
         ["model", str(o.model)],
+        ["typeCode", str(o.typeCode ?? o.type_code)],
+        ["partNumber", str(o.partNumber ?? o.part_number)],
         ["catalogNumber", str(o.catalogNumber ?? o.catalog_number)],
         ["serialNumber", str(o.serialNumber ?? o.serial_number)],
         ["equipmentType", str(o.equipmentType ?? o.equipment_type)],
@@ -919,9 +1004,10 @@ export async function runMultiPass(
       }
     }
     if (p.name.startsWith("identifier")) {
-      bump(["model", "catalogNumber", "serialNumber"]);
+      bump(["model", "typeCode", "partNumber", "catalogNumber", "serialNumber"]);
       const o = p.parsed;
       const model = str(o.model);
+      const typeCode = str(o.typeCode ?? o.type_code);
       const partNumber = str(o.partNumber ?? o.part_number);
       // A plate with ONE identifier makes the identifier pass report it twice,
       // once as model and once as part number — inventing a catalog number for
@@ -932,6 +1018,8 @@ export async function runMultiPass(
           : null;
       const pairs: [NameplateField, string | null][] = [
         ["model", model],
+        ["typeCode", typeCode],
+        ["partNumber", distinctPart],
         ["catalogNumber", distinctPart],
         ["serialNumber", str(o.serial)],
       ];

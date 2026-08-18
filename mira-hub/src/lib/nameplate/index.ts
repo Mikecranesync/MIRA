@@ -9,7 +9,11 @@
 
 export type EquipmentIdentityCandidate = {
   manufacturer?: string | null;
+  productFamily?: string | null;
+  series?: string | null;
   model?: string | null;
+  typeCode?: string | null;
+  partNumber?: string | null;
   catalogNumber?: string | null;
   serialNumber?: string | null;
   equipmentType?: string | null;
@@ -37,7 +41,11 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
   const conf = typeof o.confidence === "number" ? Math.min(1, Math.max(0, o.confidence)) : undefined;
   return {
     manufacturer: str(o.manufacturer),
+    productFamily: str(o.productFamily ?? o.product_family),
+    series: str(o.series),
     model: str(o.model),
+    typeCode: str(o.typeCode ?? o.type_code),
+    partNumber: str(o.partNumber ?? o.part_number),
     catalogNumber: str(o.catalogNumber ?? o.catalog_number),
     serialNumber: str(o.serialNumber ?? o.serial_number),
     equipmentType: str(o.equipmentType ?? o.equipment_type),
@@ -98,8 +106,9 @@ Rules: do not invent missing serial/model digits; preserve punctuation exactly;
 distinguish model vs catalog vs serial numbers when possible; use null for any
 unreadable field; include a confidence between 0 and 1 for the overall identity.
 Respond ONLY with JSON:
-{"manufacturer": string|null, "model": string|null, "catalogNumber": string|null,
- "serialNumber": string|null, "equipmentType": string|null,
+{"manufacturer": string|null, "productFamily": string|null, "series": string|null,
+ "model": string|null, "typeCode": string|null, "partNumber": string|null,
+ "catalogNumber": string|null, "serialNumber": string|null, "equipmentType": string|null,
  "confidence": number, "rawText": string[]}`;
 
 /** Shared OpenAI-compatible vision call — Groq and Together speak the same shape. */

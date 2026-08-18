@@ -41,6 +41,29 @@ describe("normalizeCandidate", () => {
     expect(c.serialNumber).toBe("S1");
   });
 
+  it("preserves Danfoss family, series, full type code, and part number as distinct identity", () => {
+    const c = normalizeCandidate({
+      manufacturer: "Danfoss",
+      product_family: "VLT AQUA Drive",
+      series: "FC-202",
+      model: "FC-202",
+      type_code: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      part_number: "131H4017",
+      catalog_number: "131H4017",
+      serial_number: "02334H073",
+    });
+    expect(c).toMatchObject({
+      manufacturer: "Danfoss",
+      productFamily: "VLT AQUA Drive",
+      series: "FC-202",
+      model: "FC-202",
+      typeCode: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      partNumber: "131H4017",
+      catalogNumber: "131H4017",
+      serialNumber: "02334H073",
+    });
+  });
+
   it("caps pathological field lengths and rawText size", () => {
     const c = normalizeCandidate({
       manufacturer: "x".repeat(500),

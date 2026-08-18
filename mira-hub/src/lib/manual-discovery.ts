@@ -16,7 +16,11 @@
 
 export interface DiscoveryIdentity {
   manufacturer?: string | null;
+  productFamily?: string | null;
+  series?: string | null;
   model?: string | null;
+  typeCode?: string | null;
+  partNumber?: string | null;
   catalogNumber?: string | null;
 }
 
@@ -90,8 +94,10 @@ function str(v: unknown): string | null {
  */
 export async function discoverManual(identity: DiscoveryIdentity): Promise<DiscoveryResult> {
   const manufacturer = str(identity.manufacturer);
-  const model = str(identity.model);
-  const catalogNumber = str(identity.catalogNumber);
+  const typeCode = str(identity.typeCode);
+  const productFamily = str(identity.productFamily);
+  const model = str(identity.model) ?? str(identity.series) ?? typeCode;
+  const catalogNumber = str(identity.catalogNumber) ?? str(identity.partNumber);
   if (!manufacturer || !(model || catalogNumber)) {
     return notFound("manufacturer and model are required to search for a manual");
   }
@@ -109,6 +115,8 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
         manufacturer,
         model: model ?? catalogNumber,
         ...(catalogNumber ? { catalog_number: catalogNumber } : {}),
+        ...(typeCode ? { type_code: typeCode } : {}),
+        ...(productFamily ? { product_family: productFamily } : {}),
       }),
       signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
     });

@@ -84,6 +84,8 @@ export interface NameplateFact {
 /** Identity fields: permissive, because discovery independently validates. */
 export const IDENTITY_FIELDS = new Set([
   "manufacturer",
+  "typeCode",
+  "partNumber",
   "model",
   "catalogNumber",
   "serialNumber",
@@ -332,7 +334,13 @@ export function toFact(obs: ObservationInput): NameplateFact {
   //  - value matches the plate's anchored value  -> observed (promotable)
   //  - plate anchors a DIFFERENT value           -> conflicting (human chooses)
   //  - no anchored line exists for this field    -> candidate (confirm first)
-  if (field === "model" || field === "catalogNumber" || field === "serialNumber") {
+  if (
+    field === "model" ||
+    field === "typeCode" ||
+    field === "partNumber" ||
+    field === "catalogNumber" ||
+    field === "serialNumber"
+  ) {
     const anchor = anchoredValueFor(field, rawText);
     if (anchor) {
       const a = normalizeForEvidence(anchor.value);
@@ -351,7 +359,7 @@ export function toFact(obs: ObservationInput): NameplateFact {
       ...base,
       status: "candidate",
       reason:
-        "no printed label anchor (MODEL / CAT / P/N / SER ...) supports this assignment — the string is on the plate but the field is the model's guess; confirm before trusting",
+        "no printed label anchor (MODEL / TYPE / CAT / P/N / SER ...) supports this assignment — the string is on the plate but the field is the model's guess; confirm before trusting",
     };
   }
 

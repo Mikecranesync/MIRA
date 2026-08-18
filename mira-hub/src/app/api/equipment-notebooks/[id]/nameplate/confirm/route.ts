@@ -55,7 +55,11 @@ export type ConfirmStatus =
 
 const IDENTITY_FIELDS = [
   "manufacturer",
+  "productFamily",
+  "series",
   "model",
+  "typeCode",
+  "partNumber",
   "catalogNumber",
   "serialNumber",
   "equipmentType",
@@ -70,7 +74,11 @@ type Identity = Partial<Record<IdentityField, string>>;
 
 const IDENTITY_LABELS: Record<IdentityField, string> = {
   manufacturer: "Manufacturer",
+  productFamily: "Product family",
+  series: "Series",
   model: "Model",
+  typeCode: "Full type code",
+  partNumber: "Part number",
   catalogNumber: "Catalog number",
   serialNumber: "Serial number",
   equipmentType: "Equipment type",
