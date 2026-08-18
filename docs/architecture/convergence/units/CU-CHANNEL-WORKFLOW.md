@@ -365,6 +365,35 @@ and one remaining high: the user had no authorized way to recover a known unackn
 claim. The recovery action above is the direct remediation; exact-SHA re-review remains a
 final gate before this unit can be called review-complete.
 
+Gate 7 xhigh round 1 on `87924498e8e7124be7cff24e3196b8c6ad1e1240` returned BLOCK
+with two high, one medium, and one low claim. All four were independently grounded as false
+positives rather than patched around:
+
+- **Empty-token authentication bypass — false.** Empty compose interpolation keeps the
+  feature deployable while it is off. Enabling the bot workflow without a non-empty token
+  raises `ChannelWorkflowConfigError` before Telegram polling or Slack Socket Mode starts.
+  Hub service auth returns `service_auth_not_configured`/503 when the token is empty;
+  `/api/uploads/folder` independently returns `service_disabled`/503; and Hub health is
+  unhealthy when the feature is enabled without the token.
+- **Tenant-agnostic operation — false.** The bot startup validator requires a canonical UUID;
+  Hub service headers require UUID tenant and user identities; the published and runtime
+  request contracts require UUIDs; and authorization binds tenant, actor, uploader, and
+  source channel before operation preparation. The staging `staging` placeholder can exist
+  only while the feature is off; turning it on fails startup validation.
+- **Recovery plus corrected identity passes the schema — false.** Draft 2020-12 validation
+  applies every `allOf` branch, so `confirmedIdentity` forces `confirm_identity` and a
+  `recover_delivery` envelope containing it is invalid. The TypeScript and Python runtimes
+  reject the same combination. A direct Draft 2020-12 probe accepted the valid recovery and
+  rejected missing-prior, message-with-prior, recovery-with-identity, and
+  recovery-with-attachment mutations.
+- **A bracketed `[SN]` schema property — false.** No such property exists in the schema,
+  runtimes, or regression fixture; the canonical field is `serialNumber`.
+
+The focused grounding rerun was 50/50 Hub auth/health/operation/contract tests, 30/30 bot
+config/contract tests, and 11/11 deployment/schema tests. No production code changed in
+response to ungrounded claims. The required exact-SHA Gate 7 rerun follows this recorded
+disposition.
+
 Fresh final-tree gates before the review freeze:
 
 - Hub: 208 test files, 2,003/2,003 tests passed;

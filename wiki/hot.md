@@ -15,6 +15,11 @@
   explicit same-user/session `recover_delivery` event now creates a new idempotent operation
   marked as a possible duplicate. Telegram `/recover <operation-id>` and Slack's
   original-thread recovery button are thin transports over that Hub decision.
+- Gate 7 xhigh round 1 on `87924498e` returned BLOCK, but its two high claims (empty-token
+  auth bypass and tenant-agnostic operations) contradict the fail-closed runtime validators;
+  its schema and `[SN]` claims also fail direct inspection. The CU record carries exact
+  dispositions plus 50 Hub, 30 bot, and 11 deployment/schema grounding tests. No code was
+  changed to accommodate ungrounded findings; exact-SHA rerun remains required.
 - Fresh local evidence after remediation: Hub 2,003/2,003; deployment/contract/architecture
   40/40; focused security/tenancy/review 273/273; Next build and changed-file lint/format
   green. Collision-isolated bot runs have 2,549 passes and 20 skips. The monolithic runner's
