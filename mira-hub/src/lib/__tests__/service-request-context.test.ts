@@ -105,12 +105,13 @@ describe("requestContextOr401", () => {
   });
 
   it("rejects missing or malformed service tenant and actor IDs", async () => {
-    for (const headers of [
+    const malformedHeaders: Array<Record<string, string>> = [
       { "X-Mira-User-Id": USER },
       { "X-Mira-Tenant-Id": "tenant-slug", "X-Mira-User-Id": USER },
       { "X-Mira-Tenant-Id": TENANT },
       { "X-Mira-Tenant-Id": TENANT, "X-Mira-User-Id": "telegram:42" },
-    ]) {
+    ];
+    for (const headers of malformedHeaders) {
       const result = await requestContextOr401(
         request({ Authorization: `Bearer ${TOKEN}`, ...headers }),
       );

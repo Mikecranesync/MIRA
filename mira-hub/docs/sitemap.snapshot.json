@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 68,
-    "apiRoutes": 175
+    "apiRoutes": 179
   },
   "pages": [
     "/admin",
@@ -118,6 +118,10 @@
     "/api/auth/slack/callback",
     "/api/auth/status",
     "/api/auth/telegram",
+    "/api/channel-workflow/operations",
+    "/api/channel-workflow/operations/[id]",
+    "/api/channel-workflow/operations/[id]/delivery",
+    "/api/channel-workflow/operations/[id]/execute",
     "/api/channels",
     "/api/cmms/deep-link",
     "/api/cmms/health",

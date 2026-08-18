@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **68** (11 dynamic) |
-| API routes | **175** (63 dynamic) |
+| API routes | **179** (66 dynamic) |
 
 ## Pages (68)
 
@@ -86,7 +86,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (175)
+## API routes (179)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -133,6 +133,10 @@
 | `/api/auth/slack/callback` | static | `api/auth/slack/callback/route.ts` |
 | `/api/auth/status` | static | `api/auth/status/route.ts` |
 | `/api/auth/telegram` | static | `api/auth/telegram/route.ts` |
+| `/api/channel-workflow/operations` | static | `api/channel-workflow/operations/route.ts` |
+| `/api/channel-workflow/operations/[id]` | dynamic | `api/channel-workflow/operations/[id]/route.ts` |
+| `/api/channel-workflow/operations/[id]/delivery` | dynamic | `api/channel-workflow/operations/[id]/delivery/route.ts` |
+| `/api/channel-workflow/operations/[id]/execute` | dynamic | `api/channel-workflow/operations/[id]/execute/route.ts` |
 | `/api/channels` | static | `api/channels/route.ts` |
 | `/api/cmms/deep-link` | static | `api/cmms/deep-link/route.ts` |
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |

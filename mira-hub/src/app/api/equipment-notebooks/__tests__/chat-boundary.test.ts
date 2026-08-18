@@ -21,8 +21,8 @@ const contextMock = vi.hoisted(() => ({
   requestContextOr401: vi.fn(async () => ({
     tenantId: "11111111-1111-4111-8111-111111111111",
     userId: "22222222-2222-4222-8222-222222222222",
-    authKind: "session",
-    sourceChannel: null,
+    authKind: "session" as "session" | "service",
+    sourceChannel: null as "telegram" | "slack" | "hub" | "mobile" | null,
   })),
 }));
 vi.mock("@/lib/service-request-context", () => contextMock);
