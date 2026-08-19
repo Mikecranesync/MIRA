@@ -82,6 +82,36 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z]", "", text.lower())
 
 
+def _agrees(claimed: str, truth: str) -> bool:
+    """Does `claimed` LEAD with the fault's real name?
+
+    The claim must open with the true name, on a word boundary. Three
+    comparisons were tried; only this one is both sound and quiet.
+
+    1. **Substring, either direction** — the original. Accepted three shapes of
+       wrong, because each contains the true name (Codex #3332 F2):
+
+           F004 = Not UnderVoltage            (negation)
+           F004 = OverVoltage / UnderVoltage  (names two faults, one wrong)
+           F013 = Ground Faultlessness        (superstring)
+
+    2. **Strict equality** — rejected all three, but flagged a correct claim:
+       `F004=UnderVoltage sample present` in a checklist row, where the capture
+       swallowed adjacent prose. A guard that fails on correct text is the
+       false-positive problem that already forced the matcher to narrow once.
+
+    3. **Word-prefix equality** (this one) — accept if ANY leading run of words
+       in the claim normalises to the true name. `UnderVoltage sample present`
+       agrees at one word; `Under Voltage` agrees at two; `Not UnderVoltage`
+       never does, because the correct name is not what the claim leads with.
+    """
+    t = _normalise(truth)
+    if not t:
+        return False
+    words = claimed.split()
+    return any(_normalise(" ".join(words[:k])) == t for k in range(1, len(words) + 1))
+
+
 def _docs() -> list[Path]:
     return sorted(p for p in (_ROOT / "docs").rglob("*.md") if p.is_file())
 
@@ -113,10 +143,8 @@ def test_no_doc_contradicts_the_shipped_fault_table():
                 truth = names.get(code)
                 if truth is None:
                     continue  # not a code the pack knows; out of scope
-                if _normalise(truth) in _normalise(claimed) or _normalise(claimed) in _normalise(
-                    truth
-                ):
-                    continue  # agrees
+                if _agrees(claimed, truth):
+                    continue
                 violations.append(
                     f"{rel}:{lineno} claims {code} = {claimed!r}; the shipped pack says {truth!r}"
                 )
@@ -142,7 +170,7 @@ def test_the_guard_catches_the_defect_it_was_written_for():
 
     code, claimed = hits[0]
     assert code == "F004"
-    assert _normalise(names[code]) not in _normalise(claimed), (
+    assert not _agrees(claimed, names[code]), (
         "the comparison would have accepted the wrong definition"
     )
 
@@ -180,7 +208,7 @@ def test_the_retraction_exemption_does_not_swallow_a_real_reintroduction():
                 code = f"F{int(m.group(1)):03d}"
                 claimed = m.group(2).strip()
                 truth = names.get(code)
-                if truth and _normalise(truth) not in _normalise(claimed):
+                if truth and not _agrees(claimed, truth):
                     out.append(f"{code}={claimed}")
         return out
 
@@ -189,3 +217,28 @@ def test_the_retraction_exemption_does_not_swallow_a_real_reintroduction():
 
     assert scan(quoted) == [], "a retraction quoting the wrong text must stay legal"
     assert scan(reintroduced), "the reintroduced defect slipped through — false green"
+
+
+@pytest.mark.parametrize(
+    ("claimed", "truth", "agrees"),
+    [
+        # agreement, including harmless formatting variation
+        ("Ground Fault", "Ground Fault", True),
+        ("ground fault", "Ground Fault", True),
+        ("Under Voltage", "UnderVoltage", True),
+        ("UnderVoltage fault", "UnderVoltage", True),  # trailing prose after the name
+        ("UnderVoltage sample present", "UnderVoltage", True),  # real checklist row in docs/audits/
+        # the three shapes the substring comparison wrongly accepted (#3332 F2)
+        ("Not UnderVoltage", "UnderVoltage", False),  # negation
+        ("OverVoltage / UnderVoltage", "UnderVoltage", False),  # names two faults
+        ("Ground Faultlessness", "Ground Fault", False),  # superstring
+        # plainly different
+        ("ground fault", "UnderVoltage", False),
+    ],
+)
+def test_agreement_is_equality_not_substring(claimed, truth, agrees):
+    """A claim must NAME the fault, not merely contain its name.
+
+    Every False row here passed as agreement before #3332 F2.
+    """
+    assert _agrees(claimed, truth) is agrees
