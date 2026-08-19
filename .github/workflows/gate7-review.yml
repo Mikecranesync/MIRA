@@ -46,6 +46,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # Check out the BASE commit, NOT the PR head. The reviewer and the sanitizer it
+          # imports then come from already-merged, trusted code, so a PR that edits
+          # tools/gate7_review.py (or anything it imports) cannot have its version
+          # executed with these API keys in the environment. Gate 7's own review of this
+          # workflow raised that exposure; this is the structural fix.
+          #
+          # The PR is still reviewed in full: gate7_review.py obtains the diff through
+          # `gh pr diff`, which reads the GitHub API, not the working tree.
+          #
+          # Consequence, accepted: a PR that improves gate7_review.py is reviewed by the
+          # BASE version of the tool, not its own. Honest limitation — the workflow file
+          # itself still comes from the PR head (GitHub's behaviour for `pull_request`),
+          # so this narrows the exposure to repo code, it does not eliminate it.
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v6
@@ -146,12 +160,27 @@ jobs:
           } > gate7-comment.md
 
           # Sticky comment: update the existing advisory rather than adding one per push.
-          id="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-                 --jq '[.[] | select(.body | startswith("[GATE7-ADVISORY]"))] | last | .id // empty')"
-          if [ -n "$id" ]; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" \
+          #
+          # Target the FIRST advisory comment, not the last (Gate 7 finding F5: two
+          # overlapping runs both read an id, then both write). Picking the oldest makes
+          # concurrent runs converge on the SAME target — last write wins, no duplicates.
+          # Picking the newest lets them diverge. The only remaining window is two runs
+          # that both observe zero comments; the cleanup below repairs that, and the
+          # job-level `concurrency` already cancels overlapping runs for a PR.
+          ids="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate \
+                   --jq '.[] | select(.body | startswith("[GATE7-ADVISORY]")) | .id')"
+          target="$(printf '%s\n' "$ids" | head -1)"
+
+          if [ -n "$target" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${target}" \
               -F body=@gate7-comment.md >/dev/null
-            echo "updated existing advisory comment ${id}"
+            echo "updated advisory comment ${target}"
+            # Self-heal: if an earlier race produced extras, collapse back to one.
+            printf '%s\n' "$ids" | tail -n +2 | while read -r dup; do
+              [ -n "$dup" ] || continue
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/comments/${dup}" >/dev/null \
+                && echo "removed duplicate advisory comment ${dup}"
+            done
           else
             gh pr comment "${PR}" --body-file gate7-comment.md
           fi
