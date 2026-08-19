@@ -80,6 +80,23 @@ _CONTRADICTION_RE = re.compile(
 )
 
 
+# How far past the captured name to keep reading. The capture stops at the
+# first comma, colon, or parenthesis (its class is letters/space//-), which is
+# exactly where "F004 = UnderVoltage, not OverVoltage" hides its contradiction —
+# the capture is a clean "UnderVoltage" and the refutation sits just outside it
+# (Codex #3332 round 3). So the claim's tail is inspected too, bounded by a real
+# claim terminator: a table-cell pipe, a sentence end, or a semicolon.
+_CLAIM_END_RE = re.compile(r"\||;|\.\s|\.$")
+_TAIL_CHARS = 90
+
+
+def _claim_tail(line: str, end: int) -> str:
+    """Text after the captured name, up to the end of the same claim."""
+    rest = line[end : end + _TAIL_CHARS]
+    stop = _CLAIM_END_RE.search(rest)
+    return rest[: stop.start()] if stop else rest
+
+
 def _pack_fault_names() -> dict[str, str]:
     """`{"F004": "UnderVoltage", ...}` from the shipped pack."""
     pack = json.loads(_PACK.read_text(encoding="utf-8"))
@@ -91,7 +108,12 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z]", "", text.lower())
 
 
-def _agrees(claimed: str, truth: str, all_names: "tuple[str, ...] | None" = None) -> bool:
+def _agrees(
+    claimed: str,
+    truth: str,
+    all_names: "tuple[str, ...] | None" = None,
+    tail: str = "",
+) -> bool:
     """Does `claimed` LEAD with the fault's real name?
 
     The claim must open with the true name, on a word boundary. Three
@@ -131,7 +153,7 @@ def _agrees(claimed: str, truth: str, all_names: "tuple[str, ...] | None" = None
     for k in range(1, len(words) + 1):
         if _normalise(" ".join(words[:k])) != t:
             continue
-        remainder = " ".join(words[k:])
+        remainder = (" ".join(words[k:]) + " " + tail).strip()
         if not remainder:
             return True
         rn = _normalise(remainder)
@@ -177,10 +199,12 @@ def test_no_doc_contradicts_the_shipped_fault_table():
                 truth = names.get(code)
                 if truth is None:
                     continue  # not a code the pack knows; out of scope
-                if _agrees(claimed, truth, tuple(names.values())):
+                tail = _claim_tail(line, m.end())
+                if _agrees(claimed, truth, tuple(names.values()), tail=tail):
                     continue
+                shown = (claimed + tail).strip()
                 violations.append(
-                    f"{rel}:{lineno} claims {code} = {claimed!r}; the shipped pack says {truth!r}"
+                    f"{rel}:{lineno} claims {code} = {shown!r}; the shipped pack says {truth!r}"
                 )
 
     assert not violations, (
@@ -284,3 +308,42 @@ def test_agreement_is_equality_not_substring(claimed, truth, agrees):
     Every False row here passed as agreement before #3332 F2.
     """
     assert _agrees(claimed, truth, tuple(_pack_fault_names().values())) is agrees
+
+
+@pytest.mark.parametrize(
+    ("line", "expect_violation"),
+    [
+        # punctuation-hidden contradictions (Codex #3332 round 3). The capture
+        # class stops at a comma/colon/paren, so each of these presents a clean
+        # correct name and refutes it just outside the capture.
+        ("F004 = UnderVoltage, not OverVoltage", True),
+        ("F004 = UnderVoltage (actually OverVoltage)", True),
+        ("F013 = Ground Fault: not Ground Fault", True),
+        ("F004 = UnderVoltage / OverVoltage", True),  # round 2, still caught
+        # legitimate claims that must stay quiet
+        ("F013 = Ground Fault", False),
+        ("F004 = Under Voltage", False),
+        ("F122 = I/O Board Fail", False),  # the one pack name containing "/"
+        ("F013 = Ground Fault (see manual p.161)", False),  # benign parenthetical
+        # real line from docs/audits/ — correct claim, checklist prose after it
+        ("| `/x` | HTTP 200; F004=UnderVoltage sample present; IMPORT HELD |", False),
+    ],
+)
+def test_scanner_sees_past_punctuation(line, expect_violation):
+    """Exercises the SCANNER path, not just `_agrees` in isolation.
+
+    The round-3 defect lived in the boundary between the two: `_agrees` was
+    correct, and never saw the contradicting text because the capture ended at a
+    comma. Testing the helper alone would not have caught it.
+    """
+    names = _pack_fault_names()
+    all_names = tuple(names.values())
+    violations = []
+    for m in _CLAIM_RE.finditer(line):
+        code = f"F{int(m.group(1)):03d}"
+        truth = names.get(code)
+        if truth is None:
+            continue
+        if not _agrees(m.group(2).strip(), truth, all_names, tail=_claim_tail(line, m.end())):
+            violations.append(code)
+    assert bool(violations) is expect_violation
