@@ -20,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from gate7_review import (  # noqa: E402
     BROAD_MODULE_THRESHOLD,
+    kind_block,
+    pr_kind,
+    settled_block,
     filter_diff_paths,
     MAX_DIFF_CHARS,
     Finding,
@@ -649,3 +652,81 @@ def test_cascade_records_provider_default_when_reasoning_unsupported(monkeypatch
     assert text == "ok"
     assert "reasoning_effort" not in sent_payloads[0]
     assert "provider default" in attempts[-1]
+
+
+# ---------------------------------------------------------------------------
+# #3313 — rounds must accumulate, and a docs PR is not a code PR.
+#
+# Both defects were observed on CU-08: round 2 re-raised two findings whose
+# written refutations sat at chars 27,364-30,480 of the 40,000 actually SENT
+# (the "it was truncated" hypothesis was tested and proved false), and three of
+# five round-2 findings were the unit's own documented findings quoted back.
+# ---------------------------------------------------------------------------
+
+_PRIOR_REPORT = """## VERDICT
+BLOCK
+
+## FINDINGS
+- **[severity: high] Unexpected fields in REGISTRY.yaml may break schema validation** — text
+- **[severity: medium] known_drift may trigger unintended gate failures** — text
+"""
+
+
+def test_pr_kind_classifies_documentation_code_and_mixed():
+    assert pr_kind(["docs/a.md", "README.md"]) == "documentation"
+    assert pr_kind(["mira-bots/shared/engine.py"]) == "code"
+    assert pr_kind(["a.py", "docs/b.md"]) == "mixed"
+    # an empty path list must not claim "documentation" — fail toward code review
+    assert pr_kind([]) == "code"
+
+
+def test_kind_block_is_empty_for_a_code_pr():
+    """Round-1 code review must be byte-identical to the pre-#3313 brief."""
+    assert kind_block("code") == ""
+
+
+def test_kind_block_warns_a_docs_reviewer_about_documented_problems():
+    block = kind_block("documentation")
+    assert "DOCUMENTS a problem is not a problem this PR INTRODUCES" in block
+    # and it must still ask for real defects, or it would just suppress findings
+    assert "FALSE" in block and "contradictory" in block
+
+
+def test_settled_block_is_empty_without_prior_rounds():
+    """No prior rounds -> no added text, so round 1 is unchanged."""
+    assert settled_block([]) == ""
+    assert settled_block(["## FINDINGS\n(none)"]) == ""
+
+
+def test_settled_block_lists_prior_findings_and_forbids_re_raising():
+    block = settled_block([_PRIOR_REPORT])
+    assert "do not re-raise" in block.lower()
+    assert "Unexpected fields in REGISTRY.yaml" in block
+    assert "known_drift may trigger" in block
+    assert "[round 1]" in block
+    # it must leave a legitimate door open, not gag the reviewer
+    assert "NEW evidence" in block
+
+
+def test_settled_block_numbers_rounds_in_order():
+    block = settled_block([_PRIOR_REPORT, _PRIOR_REPORT])
+    assert "[round 1]" in block and "[round 2]" in block
+
+
+def test_build_prompt_carries_settled_and_kind_into_the_brief():
+    settled = settled_block([_PRIOR_REPORT])
+    prompt = build_prompt("t", "b", "diff", "high", [], settled=settled, kind="documentation")
+    assert "do not re-raise" in prompt.lower()
+    assert "DOCUMENTS a problem" in prompt
+    assert "Unexpected fields in REGISTRY.yaml" in prompt
+
+
+def test_build_prompt_default_is_unchanged_for_a_code_round_one():
+    """Negative control: the #3313 additions must be inert by default.
+
+    If this ever fails, a code PR's round-1 brief has silently changed shape and
+    the comparison against every prior recorded review is no longer like-for-like.
+    """
+    prompt = build_prompt("t", "b", "diff", "high", [])
+    assert "SETTLED FROM EARLIER ROUNDS" not in prompt
+    assert "WHAT KIND OF CHANGE THIS IS" not in prompt
