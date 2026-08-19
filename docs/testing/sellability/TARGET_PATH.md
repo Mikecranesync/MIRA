@@ -94,10 +94,16 @@ Telegram re-run would measure `main` and prove nothing about it.
 | refuse | 7 | 7 / 7 — 100% | 7 / 7 — 100% |
 | **overall** | 25 | **19 / 25 — 76%** | **25 / 25 — 100%** |
 
-Repeatability 25/25. Retrieval latency p50 1.49 s, max 2.65 s. Baseline was run
+Repeatability 25/25. Retrieval latency p50 1.23 s, max 2.65 s. Baseline was run
 against the clean `main` checkout with `product_present` verified absent.
 
-Every fault case reaches `structured_fault` **at rank 1** after the fix.
+Every fault case reaches `structured_fault` **at rank 1** after the fix — and
+that clause is now *verified*, not assumed. The first scorer accepted any
+structured row at any rank, so it could have printed 8/8 while the evidence was
+the wrong code, the wrong machine, or buried at rank 7 (Codex #3337 F2). It now
+requires rank 1 **and** the expected code **and** the asked-for model, and
+`tests/sellability/test_scoring.py` proves it fails for each of those reasons
+separately. The 8/8 held under the stricter rule.
 
 ---
 

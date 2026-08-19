@@ -28,7 +28,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F004 structured_fault at rank 1"
     },
     {
       "id": "f-02",
@@ -41,7 +41,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F013 structured_fault at rank 1"
     },
     {
       "id": "f-03",
@@ -54,7 +54,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F004 structured_fault at rank 1"
     },
     {
       "id": "f-04",
@@ -67,7 +67,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F007 structured_fault at rank 1"
     },
     {
       "id": "f-05",
@@ -80,7 +80,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F005 structured_fault at rank 1"
     },
     {
       "id": "f-06",
@@ -93,7 +93,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F013 structured_fault at rank 1"
     },
     {
       "id": "f-07",
@@ -106,7 +106,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F013 structured_fault at rank 1"
     },
     {
       "id": "f-08",
@@ -119,7 +119,7 @@
         true,
         true
       ],
-      "note": "structured_fault at rank 1"
+      "note": "F004 structured_fault at rank 1"
     },
     {
       "id": "e-01",

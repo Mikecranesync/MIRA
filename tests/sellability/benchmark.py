@@ -111,9 +111,26 @@ def _score(case, rows: list[dict]) -> tuple[bool, str]:
     structured = [i for i, s in enumerate(streams) if "structured_fault" in s]
 
     if family == "fault":
+        # A structured row is not enough — it must be the RIGHT one, FIRST.
+        #
+        # The first version accepted any `structured_fault` stream at any rank,
+        # so an unrelated F013 row (or another vendor's F004) sitting at rank 7
+        # scored a pass, and the report could claim "8/8 at rank 1" without ever
+        # checking either clause (Codex #3337 F2). A benchmark that cannot fail
+        # for the right reason is not evidence, and this one is cited in a
+        # go/no-go decision.
         if not structured:
             return False, "no structured fault row — falls through to prose ranking"
-        return True, f"structured_fault at rank {structured[0] + 1}"
+        if structured[0] != 0:
+            return False, f"structured row present but at rank {structured[0] + 1}, not 1"
+        row = rows[0]
+        blob = str(row.get("content") or "")
+        if expect and expect.upper() not in blob.upper():
+            return False, f"rank-1 structured row is not {expect}"
+        model = str(row.get("model_number") or "")
+        if "525" not in model and "525" not in blob:
+            return False, f"rank-1 structured row is for {model!r}, not the asked-for model"
+        return True, f"{expect} structured_fault at rank 1"
 
     if family == "evidence":
         want = (expect or "").lower().replace(" ", "")

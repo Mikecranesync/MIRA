@@ -80,6 +80,39 @@ _FAULT_CONTEXT_RE = re.compile(
 # somewhere in the message. Empirically all real phrasings put the trigger within
 # 3 tokens ("drive is showing F0004", "warning A501", "getting F4 on my drive").
 _FAULT_PROXIMITY = 3
+
+# A drive manual is full of identifiers that share a fault code's SHAPE but are
+# not faults: parameters (P031), terminals (T1), enclosure ratings (IP20), panel
+# labels (A1). These matter only on the product-licensed path — a context word
+# ("fault P031") still admits anything — where the first version of that signal
+# extracted all four (Codex #3337 F1). A bogus code is worse than a miss: it
+# queries `fault_codes` and, on a hit, promotes an unrelated machine's fault as
+# authoritative structured evidence.
+#
+# Denylist, not a whitelist of fault prefixes. The fault space is open-ended
+# (377 codes across ~20 prefixes in the live table, growing with every vendor),
+# so a whitelist would silently drop real codes as the corpus grows. The
+# non-fault space is small and stable. Verified against the live table: ZERO of
+# the 377 codes use a bare P, T, or IP prefix.
+_NON_FAULT_PREFIXES = frozenset({"P", "T", "IP"})
+# ...and a nearby noun that names what the identifier IS. This catches the case
+# a prefix rule cannot: "panel A1" shares its prefix with real alarm codes (A501).
+_NON_FAULT_NOUN_RE = re.compile(
+    r"\b(parameter|param|terminal|panel|enclosure|rating|port|pin|slot|cabinet|"
+    r"connector|jumper|dip|switch)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_non_fault_identifier(tok: str, i: int, tokens: list[str]) -> bool:
+    """Is this code-shaped token a parameter/terminal/rating rather than a fault?"""
+    prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
+    if prefix and prefix.group(0).upper() in _NON_FAULT_PREFIXES:
+        return True
+    lo = max(0, i - _FAULT_PROXIMITY)
+    return any(_NON_FAULT_NOUN_RE.search(t) for t in tokens[lo : i + _FAULT_PROXIMITY + 1])
+
+
 # Leading alphabetic prefix of a candidate code (e.g. "F" of "F0004", "OC" of "OC1").
 _CODE_ALPHA_PREFIX_RE = re.compile(r"^[A-Za-z]+")
 
@@ -366,6 +399,10 @@ def _extract_fault_codes(query_text: str) -> list[str]:
             return True
         return any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
 
+    def _product_licensed_only(i: int) -> bool:
+        """True when ONLY the product signal admits this token, not a context word."""
+        return not any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
+
     codes: set[str] = set()
     for i, raw in enumerate(tokens):
         if not _near_context(i):
@@ -379,6 +416,21 @@ def _extract_fault_codes(query_text: str) -> list[str]:
         if _FAULT_CODE_RE.fullmatch(tok):
             prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
             if prefix and len(prefix.group(0)) <= 2:
+                # A product name says "this query is about equipment"; it does
+                # NOT say a code-shaped token is a FAULT. A drive manual is full
+                # of identifiers sharing the shape — parameters (P031),
+                # terminals (T1), enclosure ratings (IP20), panel labels (A1) —
+                # and the first version of the product signal extracted all four
+                # (Codex #3337 F1). A bogus code here is worse than a miss: it
+                # queries `fault_codes` and, on a hit, promotes an unrelated
+                # machine's fault as authoritative structured evidence.
+                #
+                # So when ONLY the product licenses this token, its prefix must
+                # also be one the fault tables actually use. A context word
+                # ("fault P031") still admits anything, exactly as before — this
+                # narrows only the path this change opened.
+                if _product_licensed_only(i) and _is_non_fault_identifier(tok, i, tokens):
+                    continue
                 codes.add(up)
                 continue
 

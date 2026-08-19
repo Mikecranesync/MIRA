@@ -145,3 +145,42 @@ def test_product_token_exclusion_is_case_insensitive():
     matched — `GS10 showing CE10` still returned both until this was handled."""
     assert "GS10" not in _extract_fault_codes("GS10 showing CE10")
     assert "gs10" not in [c.lower() for c in _extract_fault_codes("gs10 showing ce10")]
+
+
+NON_FAULT_IDENTIFIERS = [
+    # a drive manual is full of code-shaped tokens that are not faults.
+    # The first version of the product-licensing signal extracted all of these
+    # (Codex #3337 F1) — a bogus code queries `fault_codes` and, on a hit,
+    # promotes an unrelated machine's fault as authoritative evidence.
+    "PowerFlex 525 parameter P031 controls motor voltage",
+    "Check terminal T1 on the PowerFlex 525",
+    "PowerFlex 525 IP20 enclosure",
+    "PowerFlex 525 is installed at panel A1",
+    "What is P041 on the PowerFlex 525?",
+]
+
+
+@pytest.mark.parametrize(
+    "query", NON_FAULT_IDENTIFIERS, ids=[q[:38] for q in NON_FAULT_IDENTIFIERS]
+)
+def test_parameters_terminals_and_ratings_are_not_fault_codes(query):
+    assert _extract_fault_codes(query) == [], (
+        f"{query!r} produced a fault code; P/T/IP identifiers and panel labels "
+        "share a fault code's shape but are not faults"
+    )
+
+
+def test_a_context_word_still_admits_anything():
+    """The narrowing applies ONLY to the product-licensed path.
+
+    "fault P031" is an explicit statement that P031 is a fault, and the pre-existing
+    context-word behaviour is deliberately unchanged.
+    """
+    assert _extract_fault_codes("fault P031 on the PowerFlex 525") == ["P031"]
+
+
+def test_real_alarm_codes_survive_the_narrowing():
+    """`A501` is a real alarm; `panel A1` is not. Both share the A prefix, so a
+    prefix rule alone cannot separate them — the nearby noun does."""
+    assert _extract_fault_codes("PowerFlex 525 alarm A501") == ["A501"]
+    assert _extract_fault_codes("PowerFlex 525 is installed at panel A1") == []
