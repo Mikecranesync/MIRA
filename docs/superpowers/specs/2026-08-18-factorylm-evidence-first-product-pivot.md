@@ -27,19 +27,28 @@ recording, baselines, healthy-vs-faulted diffing, evidence artifacts, first-out 
 | Nameplate → exact-asset identification | **Built, dark** — `mira-bots/ask_api/nameplate_detect.py` | `NAMEPLATE_DETECT_ENABLED=0`; manual-discovery arc policy-blocked by **ADR-0036 (PROPOSED, not accepted)** |
 | Live machine state into the technician turn | **Built** — `engine.py:510` `FAULT_DETECTIVE_URL` | `MIRA_LIVE_DATA_ENABLED` defaults **`0`** (CU-08 F2) |
 
-**Six evidence-first capabilities. Six default-off flags.** That is not a coincidence, and it is not
-a criticism of the engineers — each was shipped dark for a defensible reason. But it means the
-honest product statement today is:
+**Five default-off flags across six rows** — the `machine_run` schema row is the one entry with no
+flag of its own, because a table cannot be switched off. That is not a coincidence, and it is not a
+criticism of the engineers: each was shipped dark for a defensible reason. But it means the honest
+product statement today is:
 
 > FactoryLM has built most of an evidence-first system and has not yet proven any of it on a real
 > machine, because the parts that would prove it are switched off and, in several cases, untested
 > in CI.
 
+**Precision matters here, and this PRD got it wrong in an earlier revision.** "Deployed" means the
+code and the worker container are present — `mira-historian-worker` is in `docker-compose.saas.yml`
+and starts. It does **not** mean the run-diff path executes: `tasks/historize_runs.py:149-153`
+immediately returns `{"status": "disabled"}` unless `MIRA_RUN_DIFF_ENABLED == "1"`, and the prod
+compose default is `0`. So production runs the worker and produces **no** runs, baselines, or diffs.
+Reserve "runs in production" for an enabled path with runtime proof — which is exactly what Slice 1
+exists to obtain. (Found by the Codex adversarial lane, F2.)
+
 **Two issues in the tracker are stale and must not be worked as written.** #2341 ("Run recorder +
 baseline learner + run-diff engine") states *"❌ No `machine_run` / `run_step` / `run_baseline` /
 `run_diff` entities… no baseline learning, no run-diff engine."* All four tables and the engine
 shipped after it was filed. #2338's scorecard inherits the same staleness. Anyone who picks up
-#2341 as written will rebuild something that already runs in production.
+#2341 as written will rebuild code that is already written, merged, and deployed.
 
 This PRD therefore does **not** propose an Incident Evidence Workbench built from scratch. It
 proposes **turning the existing evidence spine on, proving it, and adding the one layer that is
@@ -262,7 +271,7 @@ one is rejected regardless of its other merits.**
   a test file is not coverage — `mira-crawler/tests/` is enumerated per-file (`ci.yml:906`) and the
   three run-engine suites are not named (#3089).
 - **R7.2** — Each default-off flag this PRD depends on MUST have a documented enablement criterion
-  and an owner. Six such flags exist today (§0); shipping a seventh dark flag is a regression.
+  and an owner. Five such flags exist today (§0); shipping a sixth dark flag is a regression.
 - **R7.3** — Guards MUST carry negative controls proving they can fail. Precedent: CU-03's first
   SELECT-column test passed against a deliberately broken query.
 
@@ -484,8 +493,12 @@ pick one.
 
 ## 10. Boundaries of this document
 
-**What was changed:** this file only. No code, no migration, no configuration, no flag, no issue
-mutation, no deployment, no industrial-system access.
+**What was changed:** three files — this specification (new), plus a six-line cross-reference
+pointer added to `docs/prd/2026-08-01-mira-factorylm-machine-evidence-handoff.md` and
+`docs/prd/2026-08-03-mira-answer-integrity-and-validation-engine.md`. Neither existing PRD is
+otherwise modified. No code, no migration, no configuration, no flag, no issue mutation, no
+deployment, no industrial-system access. (An earlier revision said "this file only", which was
+wrong — found by the Codex adversarial lane, F3.)
 
 **Facts vs judgement.** §0, §3 and the stale-issue findings are repository facts, each carrying a
 file:line, migration, or issue reference, verified by hand against `03d123c4b`. §2's verdict, §5's
