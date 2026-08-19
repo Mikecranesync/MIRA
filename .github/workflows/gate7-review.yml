@@ -24,9 +24,19 @@ name: Gate 7 Adversarial Review (advisory)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # The adjudication phase is triggered by the author filing a rebuttal, not by a push.
+  # A rebuttal answers ONE specific report by its structural finding ids (F1..Fn); a new
+  # push produces a new report whose ids mean different things, so re-adjudicating on
+  # push would rule on findings the rebuttal never addressed. Comment-triggered keeps
+  # the two in step, and matches the "PR as durable mailbox" model in
+  # docs/adversarial-review-workflow.md.
+  issue_comment:
+    types: [created]
 
 concurrency:
-  group: gate7-advisory-${{ github.event.pull_request.number }}
+  # issue_comment carries no pull_request object; fall back to the issue number so both
+  # event types land in the same per-PR group instead of an empty one.
+  group: gate7-advisory-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 permissions:
@@ -40,7 +50,9 @@ jobs:
     # job is honest, a failed one would look like the reviewer found something.
     # Deliberately NOT pull_request_target: that runs with secrets in the base-repo
     # context and is the standard way review workflows get exploited on public repos.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -206,6 +218,202 @@ jobs:
               2) echo "⚠️ The provider cascade failed; **no review was produced**. When this becomes a gate, decide whether an outage should block merges." ;;
               *) echo "⚠️ Tooling/usage error (exit ${CODE}). No verdict." ;;
             esac
+            echo
+            echo "_Advisory: this job does not fail the build._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  adjudicate:
+    name: Gate 7 adjudication (advisory)
+    # Phase 2. The author answers the review per finding id, citing verbatim evidence;
+    # a second model rules SUSTAINED/REFUTED/DUPLICATE on each. The verdict is then
+    # computed STRUCTURALLY from those rulings — a high SUSTAINED blocks, the model's
+    # own opinion of the outcome is never read.
+    #
+    # Why this phase exists at all: measured over two rounds on this PR, only 1 of 5
+    # `high` findings was genuine. The raw critic is not safe to gate on. Adjudication
+    # is what converts it into something that could be.
+    #
+    # Gated on author_association, not on the content: the rebuttal itself is untrusted
+    # data (the tool treats it as such), but *triggering* this job spends provider quota,
+    # so only people who can already push may start it.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '[GATE7-REBUTTAL]') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Default checkout for issue_comment is the default branch — already the trusted
+      # code we want. Stated explicitly so it is not "fixed" into a PR-head checkout
+      # later: this job runs with provider keys in scope.
+      #
+      # Consequence for `[evidence: path:a-b]` citations: they resolve against the
+      # DEFAULT BRANCH, not the PR head. That is the correct split — the diff already
+      # carries the PR's own changes, so citations exist to prove things about existing
+      # repository code, which is exactly what the diff cannot settle.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install sanitizer import deps
+        run: pip install "httpx>=0.27,<0.29" "PyYAML>=6.0"
+
+      - name: Preflight — canonical sanitizer must be importable
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, str(pathlib.Path("mira-bots").resolve()))
+          from shared.inference.router import _IPV4_RE, _MAC_RE, _SERIAL_RE  # noqa: F401
+          print("canonical sanitizer importable — PII redaction will be applied")
+          PY
+
+      - name: Assemble prior report + rebuttal
+        id: inputs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          # The prior report is the sticky advisory comment; the rebuttal is the comment
+          # that triggered this run (read by id from the API, never from the event body,
+          # so it cannot be spoofed by the payload).
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
+            --jq .body > rebuttal.md
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("[GATE7-ADVISORY]"))] | first | .body // empty' \
+            > advisory.md
+
+          if [ ! -s advisory.md ]; then
+            echo "status=no-report" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Strip the advisory preamble; the tool parses findings from the report proper.
+          sed -n '/^# Gate 7 adversarial review/,$p' advisory.md > prior.md
+
+          # Staleness: a rebuttal answers the findings of ONE reviewed commit. If the PR
+          # has moved on, the ids no longer denote the same defects and the adjudication
+          # would be ruling on the wrong change.
+          reviewed="$(sed -n 's/^reviewed_sha: `\(.*\)`/\1/p' advisory.md | head -1)"
+          head="$(gh pr view "${PR}" --json headRefOid -q .headRefOid)"
+          echo "reviewed=${reviewed}" >> "$GITHUB_OUTPUT"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+          if [ -n "$reviewed" ] && [ "$reviewed" != "$head" ]; then
+            echo "status=stale" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run adjudication
+        id: adj
+        if: steps.inputs.outputs.status == 'ok'
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHERAI_API_KEY: ${{ secrets.TOGETHERAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set +e
+          python tools/gate7_review.py "${PR}" \
+            --adjudicate prior.md --rebuttal rebuttal.md -o gate7-adjudication.md 2>&1 \
+            | tee adj-run.log
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set -e
+          # Structural verdict from the rendered header — never the `## VERDICT` heading,
+          # which lives inside the embedded raw section and is the model's *stated*
+          # verdict rather than the computed one.
+          echo "verdict=$(sed -n 's/^\*\*Verdict:\*\* \([A-Z]*\).*/\1/p' gate7-adjudication.md \
+            | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Post adjudication to the PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          STATUS: ${{ steps.inputs.outputs.status }}
+          VERDICT: ${{ steps.adj.outputs.verdict }}
+          CODE: ${{ steps.adj.outputs.code }}
+          REVIEWED: ${{ steps.inputs.outputs.reviewed }}
+          HEAD_SHA: ${{ steps.inputs.outputs.head }}
+        run: |
+          {
+            echo "[GATE7-ADJUDICATION]"
+            echo
+            echo "> **Advisory only — this check cannot block the merge.**"
+            echo
+            case "$STATUS" in
+              no-report)
+                echo "### No prior review to adjudicate"
+                echo
+                echo "No \`[GATE7-ADVISORY]\` report was found on this PR. A rebuttal rules on the"
+                echo "findings of a specific report; there is nothing to rule on yet."
+                ;;
+              stale)
+                echo "### ⚠️ Rebuttal is stale — not adjudicated"
+                echo
+                echo "The review answered by this rebuttal covered \`${REVIEWED}\`, but the PR head is"
+                echo "now \`${HEAD_SHA}\`. Finding ids (\`F1..Fn\`) are positional within one report, so"
+                echo "ruling them against a different commit would judge the wrong defects."
+                echo
+                echo "Push, let the review re-run, then re-file the rebuttal against the new report."
+                ;;
+              *)
+                if [ -s gate7-adjudication.md ]; then
+                  cat gate7-adjudication.md
+                else
+                  echo "### ⚠️ No adjudication was produced"
+                  echo
+                  echo "The provider cascade returned nothing (exit \`${CODE}\`). **This is not a PASS** —"
+                  echo "nothing was ruled on."
+                fi
+                ;;
+            esac
+          } > adj-comment.md
+
+          ids="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate \
+                   --jq '.[] | select(.body | startswith("[GATE7-ADJUDICATION]")) | .id')"
+          target="$(printf '%s\n' "$ids" | head -1)"
+          if [ -n "$target" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${target}" \
+              -F body=@adj-comment.md >/dev/null
+            printf '%s\n' "$ids" | tail -n +2 | while read -r dup; do
+              [ -n "$dup" ] && gh api --method DELETE \
+                "repos/${GITHUB_REPOSITORY}/issues/comments/${dup}" >/dev/null || true
+            done
+          else
+            gh pr comment "${PR}" --body-file adj-comment.md
+          fi
+
+      - name: Record outcome (advisory — never fails)
+        if: always()
+        env:
+          STATUS: ${{ steps.inputs.outputs.status }}
+          VERDICT: ${{ steps.adj.outputs.verdict }}
+          CODE: ${{ steps.adj.outputs.code }}
+          OVERRIDE: ${{ contains(github.event.issue.labels.*.name, 'gate7-override') }}
+        run: |
+          {
+            echo "### Gate 7 adjudication (advisory)"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| input status | \`${STATUS}\` |"
+            echo "| structural verdict | \`${VERDICT:-NONE}\` |"
+            echo "| exit code | \`${CODE:-n/a}\` |"
+            echo "| \`gate7-override\` label | \`${OVERRIDE}\` |"
+            echo
+            echo "When this lane becomes blocking, the intended semantics are:"
+            echo "PASS ⇒ allowed · BLOCK/UNKNOWN ⇒ blocked · cascade failure ⇒ blocked"
+            echo "(an outage must never read as PASS) · \`gate7-override\` ⇒ allowed **and recorded**,"
+            echo "because some findings are unrefutable-and-false and one of those must not"
+            echo "strand a PR forever."
             echo
             echo "_Advisory: this job does not fail the build._"
           } >> "$GITHUB_STEP_SUMMARY"
