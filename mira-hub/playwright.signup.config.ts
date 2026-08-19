@@ -16,6 +16,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testMatch: ["**/signup-flow.spec.ts"],
+  // Same settle gate as playwright.smoke.config.ts (#3082). smoke-test.yml runs
+  // BOTH configs against the same prod origins in the same job, so gating only
+  // the smoke config would leave this step exposed and the job just as red.
+  globalSetup: "./tests/e2e/prod-settle.globalSetup.ts",
   fullyParallel: false,
   retries: 1,
   workers: 1,
