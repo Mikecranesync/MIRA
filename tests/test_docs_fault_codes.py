@@ -70,6 +70,15 @@ _CLAIM_RE = re.compile(
 
 _DRIVE_MENTION_RE = re.compile(r"powerflex\s*525", re.IGNORECASE)
 
+# Words that turn "X" into "X, except not X". A bare "/" counts: it is how the
+# compound contradictions in Codex round 2 were written. Safe to treat as a
+# marker because it is only ever inspected in the text AFTER the correct name,
+# and the one pack name containing a slash ("I/O Board Fail") is consumed whole
+# by the prefix match, leaving an empty remainder.
+_CONTRADICTION_RE = re.compile(
+    r"(?:/|\bor\b|\bbut\b|\bnot\b|\bactually\b|\brather\b|\binstead\b)", re.IGNORECASE
+)
+
 
 def _pack_fault_names() -> dict[str, str]:
     """`{"F004": "UnderVoltage", ...}` from the shipped pack."""
@@ -82,7 +91,7 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z]", "", text.lower())
 
 
-def _agrees(claimed: str, truth: str) -> bool:
+def _agrees(claimed: str, truth: str, all_names: "tuple[str, ...] | None" = None) -> bool:
     """Does `claimed` LEAD with the fault's real name?
 
     The claim must open with the true name, on a word boundary. Three
@@ -100,16 +109,41 @@ def _agrees(claimed: str, truth: str) -> bool:
        swallowed adjacent prose. A guard that fails on correct text is the
        false-positive problem that already forced the matcher to narrow once.
 
-    3. **Word-prefix equality** (this one) — accept if ANY leading run of words
-       in the claim normalises to the true name. `UnderVoltage sample present`
-       agrees at one word; `Under Voltage` agrees at two; `Not UnderVoltage`
-       never does, because the correct name is not what the claim leads with.
+    3. **Word-prefix equality** — accept if any leading run of words normalises
+       to the true name. Rejected all of the above and stopped flagging the
+       checklist row, but a prefix says nothing about what FOLLOWS it, so
+       `F004 = UnderVoltage / OverVoltage` and `F004 = UnderVoltage but actually
+       OverVoltage` both passed (Codex #3332 round 2).
+
+    4. **Word-prefix, then inspect the remainder** (this one) — the claim must
+       lead with the true name AND the text after it must not contradict:
+       no OTHER fault name from the pack, and no contradiction marker. The pack
+       itself is the authority for "another fault name", so this needs no
+       hand-maintained list of wrong answers.
+
+    `all_names` is every fault name in the pack. Passing it is what lets the
+    remainder check work; without it this degrades to case 3.
     """
     t = _normalise(truth)
     if not t:
         return False
     words = claimed.split()
-    return any(_normalise(" ".join(words[:k])) == t for k in range(1, len(words) + 1))
+    for k in range(1, len(words) + 1):
+        if _normalise(" ".join(words[:k])) != t:
+            continue
+        remainder = " ".join(words[k:])
+        if not remainder:
+            return True
+        rn = _normalise(remainder)
+        # another fault name after the correct one => the claim names two faults
+        for other in all_names or ():
+            on = _normalise(other)
+            if on and on != t and on in rn:
+                return False
+        if _CONTRADICTION_RE.search(remainder):
+            return False
+        return True
+    return False
 
 
 def _docs() -> list[Path]:
@@ -143,7 +177,7 @@ def test_no_doc_contradicts_the_shipped_fault_table():
                 truth = names.get(code)
                 if truth is None:
                     continue  # not a code the pack knows; out of scope
-                if _agrees(claimed, truth):
+                if _agrees(claimed, truth, tuple(names.values())):
                     continue
                 violations.append(
                     f"{rel}:{lineno} claims {code} = {claimed!r}; the shipped pack says {truth!r}"
@@ -170,7 +204,7 @@ def test_the_guard_catches_the_defect_it_was_written_for():
 
     code, claimed = hits[0]
     assert code == "F004"
-    assert not _agrees(claimed, names[code]), (
+    assert not _agrees(claimed, names[code], tuple(names.values())), (
         "the comparison would have accepted the wrong definition"
     )
 
@@ -208,7 +242,7 @@ def test_the_retraction_exemption_does_not_swallow_a_real_reintroduction():
                 code = f"F{int(m.group(1)):03d}"
                 claimed = m.group(2).strip()
                 truth = names.get(code)
-                if truth and not _agrees(claimed, truth):
+                if truth and not _agrees(claimed, truth, tuple(names.values())):
                     out.append(f"{code}={claimed}")
         return out
 
@@ -232,6 +266,14 @@ def test_the_retraction_exemption_does_not_swallow_a_real_reintroduction():
         ("Not UnderVoltage", "UnderVoltage", False),  # negation
         ("OverVoltage / UnderVoltage", "UnderVoltage", False),  # names two faults
         ("Ground Faultlessness", "Ground Fault", False),  # superstring
+        # compound contradictions — correct name FIRST, wrong one after
+        # (Codex #3332 round 2; word-prefix matching alone accepted all three)
+        ("UnderVoltage / OverVoltage", "UnderVoltage", False),
+        ("UnderVoltage but actually OverVoltage", "UnderVoltage", False),
+        ("Ground Fault / OverVoltage", "Ground Fault", False),
+        # the one pack name containing "/" must not trip the contradiction
+        # marker — the prefix consumes it whole, leaving an empty remainder
+        ("I/O Board Fail", "I/O Board Fail", True),
         # plainly different
         ("ground fault", "UnderVoltage", False),
     ],
@@ -241,4 +283,4 @@ def test_agreement_is_equality_not_substring(claimed, truth, agrees):
 
     Every False row here passed as agreement before #3332 F2.
     """
-    assert _agrees(claimed, truth) is agrees
+    assert _agrees(claimed, truth, tuple(_pack_fault_names().values())) is agrees
