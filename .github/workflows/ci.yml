@@ -424,7 +424,7 @@ jobs:
           pytest tests/test_manufacturer_alias_consistency.py -v
           (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
-      - name: knowledge_entries write-path visibility locks (CU-03)
+      - name: knowledge_entries write-path visibility locks (CU-03) + #3177 model-number tagging locks
         # Offline: is_private is a required explicit decision at every store-layer
         # call site; ingest_url's sources.yaml curation gate; learning_ingester
         # writes private. test_oem_trust.py is the BACKLOG-required OEM/public
@@ -436,7 +436,17 @@ jobs:
         # celery: tasks/ingest.py + tasks/_shared.py import celery_app at module
         # level; not in this job's requirements files. Pinned to the versions
         # mira-crawler/requirements-celery.txt ships (Gate 7 round-9 finding).
-        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py tests/test_oem_trust.py tests/test_ingest.py tests/test_provenance_policy.py tests/test_ingest_lifecycle.py -q)
+        # test_model_number_tagging.py: the ONLY semantic detector for #3177.
+        # Contract 16 in tests/test_architecture.py is a STATIC population
+        # lock that explicitly blesses model_number="" (see its "explicit
+        # empty (no model exists)" good-case), so base_crawler.py regressing
+        # to model_number="" leaves the whole Architecture Check green. This
+        # file is what goes red. Same dependency closure as test_oem_trust.py
+        # / test_write_path_visibility.py (both import crawler.base_crawler),
+        # already installed above — and it inherits their coupling to this
+        # requirements file: if it ever drops httpx/pdfplumber/bs4, this suite
+        # goes red for a reason unrelated to #3177.
+        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_model_number_tagging.py tests/test_store_verified.py tests/test_oem_trust.py tests/test_ingest.py tests/test_provenance_policy.py tests/test_ingest_lifecycle.py -q)
 
       - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
         # CORRECTED 2026-07-30. The first version of this comment claimed
