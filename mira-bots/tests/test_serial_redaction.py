@@ -212,6 +212,7 @@ _MIRRORS = [
     "evals/langfuse_setup.py",              # standalone evals copy
     "mira-pipeline/ignition_audit.py",      # LIVE Ignition chat audit rows
     "mira-sidecar/llm/sanitize.py",         # legacy (removed from prod 2026-05-20)
+    "factorylm_ai/flywheel/redact.py",      # SFT/DPO export — corrupts the TRAINING CORPUS
 ]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
