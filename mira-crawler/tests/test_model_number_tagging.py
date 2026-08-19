@@ -218,3 +218,238 @@ class TestKgDensificationFollowsTheModelTag:
         assert kg["equipment"] == []
         assert kg["link"] == []
         assert kg["fault"] == []
+
+
+# ---------------------------------------------------------------------------
+# The declared model must survive the write path VERBATIM — no normalizer.
+# ---------------------------------------------------------------------------
+
+
+class TestDeclaredModelIsNeverMangled:
+    """`sources.yaml`'s `equipment_id` is provenance, not a hint.
+
+    A mechanical "de-hyphenate the model" rule at this boundary would have to
+    turn "PowerFlex-525" into "PowerFlex 525" while leaving "750-8202" alone —
+    and nothing in the source entry distinguishes them, so the rule would be a
+    guess about vendor naming. `ingest/manufacturer_normalize.py` sets the
+    precedent for this boundary ("we do NOT impose a canonical of our own"):
+    a curated alias map with identity passthrough, never a transform.
+    """
+
+    @pytest.mark.parametrize(
+        "declared",
+        ["750-8202", "PowerFlex 525", "SINAMICS G120 CU240", "GS10"],
+    )
+    def test_equipment_id_reaches_model_number_unchanged(
+        self, tmp_path, captured, declared
+    ):
+        crawler = ManufacturerCrawler(_make_config(tmp_path))
+        crawler.process(
+            "https://cdn.example.com/manual.pdf", b"%PDF-", _entry(declared)
+        )
+        assert captured["model_number"] == declared
+
+    def test_the_wago_part_number_keeps_its_hyphen_in_sources_yaml(self):
+        """The negative case, pinned at the source of truth.
+
+        750-8202 is a WAGO catalog number — the hyphen is part of the part
+        number, not a separator anyone may normalize away.
+        """
+        sources = yaml.safe_load(
+            (Path(__file__).resolve().parents[1] / "sources.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        ids = [
+            entry["equipment_id"]
+            for tier in sources["tiers"].values()
+            for entry in (tier or {}).values()
+            if isinstance(entry, dict) and "equipment_id" in entry
+        ]
+        assert "750-8202" in ids, (
+            "the WAGO part number must stay hyphenated — de-hyphenating it "
+            "would invent a model that does not exist"
+        )
+
+
+# ---------------------------------------------------------------------------
+# KG: the natural key and the uns_path must agree.
+# ---------------------------------------------------------------------------
+
+
+class _Result:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeKgDb:
+    """In-memory stand-in for kg_entities: UNIQUE (tenant_id, entity_type, name)."""
+
+    def __init__(self):
+        self.rows: list[dict] = []
+
+    def execute(self, stmt, params=None):
+        sql = " ".join(str(stmt).split())
+        if "pg_constraint" in sql:
+            return _Result([(1,)])
+        if sql.startswith("SELECT name FROM kg_entities"):
+            hits = [
+                r
+                for r in self.rows
+                if r["tenant_id"] == params["tenant_id"]
+                and r["entity_type"] == params["entity_type"]
+                and r["uns_path"] == params["uns_path"]
+            ]
+            return _Result([(hits[0]["name"],)] if hits else [])
+        if "INSERT INTO kg_entities" in sql:
+            key = (params["tenant_id"], params["entity_type"], params["name"])
+            for r in self.rows:
+                if (r["tenant_id"], r["entity_type"], r["name"]) == key:
+                    return _Result([(r["id"],)])  # ON CONFLICT DO UPDATE RETURNING id
+            row = dict(params, id=f"ent-{len(self.rows) + 1}")
+            self.rows.append(row)
+            return _Result([(row["id"],)])
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+
+def _upsert_equipment(db, manufacturer: str, model: str) -> str | None:
+    from ingest import kg_writer
+    from ingest.uns import equipment_unassigned_path
+
+    return kg_writer.upsert_entity(
+        tenant_id="t1",
+        entity_type="equipment",
+        name=model,
+        uns_path=equipment_unassigned_path(manufacturer, model),
+        conn=db,
+    )
+
+
+class TestKgEntityAddressIdempotence:
+    """#3177 consequence: base_crawler now reaches the KG branch, so a second
+    spelling of one model would mint a SECOND node at an occupied uns_path.
+
+    `uns.slug()` collapses every non-alphanumeric run, so "PowerFlex 525" and
+    "PowerFlex-525" address the same node while the natural key
+    (tenant_id, entity_type, name) sees two. `upsert_entity` reconciles them.
+    """
+
+    @pytest.fixture
+    def db(self, monkeypatch):
+        from ingest import kg_writer
+
+        monkeypatch.setattr(kg_writer, "_HAS_NAMED_CONSTRAINT", None)
+        return _FakeKgDb()
+
+    def test_the_two_spellings_really_do_share_one_address(self):
+        from ingest.uns import equipment_unassigned_path
+
+        assert equipment_unassigned_path(
+            "Rockwell Automation", "PowerFlex-525"
+        ) == equipment_unassigned_path("Rockwell Automation", "PowerFlex 525")
+
+    def test_second_spelling_reuses_the_node_already_at_that_address(self, db):
+        first = _upsert_equipment(db, "Rockwell Automation", "PowerFlex 525")
+        second = _upsert_equipment(db, "Rockwell Automation", "PowerFlex-525")
+
+        assert second == first, "a second spelling must not mint a second node"
+        assert len(db.rows) == 1
+        assert db.rows[0]["name"] == "PowerFlex 525", (
+            "the incumbent spelling is kept — the writer does not impose a "
+            "canonical of its own"
+        )
+
+    def test_first_writer_wins_regardless_of_which_spelling_arrives_first(self, db):
+        first = _upsert_equipment(db, "Rockwell Automation", "PowerFlex-525")
+        second = _upsert_equipment(db, "Rockwell Automation", "PowerFlex 525")
+
+        assert second == first
+        assert len(db.rows) == 1
+        assert db.rows[0]["name"] == "PowerFlex-525"
+
+    def test_a_hyphenated_part_number_is_stored_verbatim(self, db):
+        """Negative case: 750-8202 must be unharmed."""
+        from ingest.uns import equipment_unassigned_path
+
+        assert _upsert_equipment(db, "WAGO", "750-8202") is not None
+        assert db.rows[0]["name"] == "750-8202"
+        assert db.rows[0]["uns_path"] == equipment_unassigned_path("WAGO", "750-8202")
+
+    def test_distinct_part_numbers_stay_distinct(self, db):
+        """Reconciliation keys on the ADDRESS, so it cannot merge two models."""
+        a = _upsert_equipment(db, "WAGO", "750-8202")
+        b = _upsert_equipment(db, "WAGO", "750-8203")
+
+        assert a != b
+        assert len(db.rows) == 2
+        assert {r["name"] for r in db.rows} == {"750-8202", "750-8203"}
+
+    def test_the_bare_kb_root_is_never_reconciled(self, db):
+        """Migration 007 made the root the column DEFAULT — a triage bucket,
+        not an address. Collapsing onto it would merge unrelated orphans."""
+        from ingest import kg_writer
+        from ingest.uns import kb_root
+
+        a = kg_writer.upsert_entity(
+            tenant_id="t1",
+            entity_type="equipment",
+            name="orphan a",
+            uns_path=kb_root(),
+            conn=db,
+        )
+        b = kg_writer.upsert_entity(
+            tenant_id="t1",
+            entity_type="equipment",
+            name="orphan b",
+            uns_path=kb_root(),
+            conn=db,
+        )
+        assert a != b
+        assert len(db.rows) == 2
+
+    def test_reconciliation_is_scoped_to_the_tenant(self, db):
+        from ingest import kg_writer
+        from ingest.uns import equipment_unassigned_path
+
+        path = equipment_unassigned_path("Rockwell Automation", "PowerFlex 525")
+        a = kg_writer.upsert_entity(
+            tenant_id="t1",
+            entity_type="equipment",
+            name="PowerFlex 525",
+            uns_path=path,
+            conn=db,
+        )
+        b = kg_writer.upsert_entity(
+            tenant_id="t2",
+            entity_type="equipment",
+            name="PowerFlex-525",
+            uns_path=path,
+            conn=db,
+        )
+        assert a != b
+        assert len(db.rows) == 2
+
+    def test_a_different_entity_type_at_the_same_path_is_not_reconciled(self, db):
+        from ingest import kg_writer
+        from ingest.uns import equipment_unassigned_path
+
+        path = equipment_unassigned_path("Rockwell Automation", "PowerFlex 525")
+        a = kg_writer.upsert_entity(
+            tenant_id="t1",
+            entity_type="equipment",
+            name="PowerFlex 525",
+            uns_path=path,
+            conn=db,
+        )
+        b = kg_writer.upsert_entity(
+            tenant_id="t1",
+            entity_type="component",
+            name="PowerFlex-525",
+            uns_path=path,
+            conn=db,
+        )
+        assert a != b
+        assert len(db.rows) == 2

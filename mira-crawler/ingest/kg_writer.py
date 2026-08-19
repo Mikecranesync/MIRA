@@ -36,6 +36,7 @@ from .uns import (
     equipment_unassigned_path,
     fault_code_path,
     is_valid_path,
+    kb_root,
     manual_path,
 )
 
@@ -105,6 +106,47 @@ def _get_conn(conn=None) -> Generator:
 # ---------------------------------------------------------------------------
 
 
+def _name_at_path(c, tenant_id: str, entity_type: str, uns_path: str) -> str | None:
+    """The name already registered at this (tenant, type, uns_path), if any.
+
+    See `upsert_entity`'s docstring: `uns.slug()` is separator-insensitive, so
+    two spellings of one model share one address. Reusing the incumbent name
+    makes the natural key agree with the address instead of minting a second
+    node there.
+
+    The bare KB root is excluded: migration 007 made it the column DEFAULT for
+    every row written before uns_path existed, so it is a triage bucket rather
+    than an address, and collapsing onto it would be wrong.
+
+    Returns None on any failure — a reconciliation that cannot run must not
+    stop the write (the pre-#3177 behavior is the fallback).
+    """
+    from sqlalchemy import text  # noqa: PLC0415
+
+    if uns_path == kb_root():
+        return None
+    try:
+        row = c.execute(
+            text(
+                "SELECT name FROM kg_entities"
+                " WHERE tenant_id = :tenant_id"
+                "   AND entity_type = :entity_type"
+                "   AND uns_path = cast(:uns_path AS ltree)"
+                " ORDER BY created_at"
+                " LIMIT 1"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "entity_type": entity_type,
+                "uns_path": uns_path,
+            },
+        ).first()
+    except Exception as e:  # pragma: no cover - defensive, logged
+        logger.warning("uns_path reconciliation failed for %s: %s", uns_path, e)
+        return None
+    return row[0] if row else None
+
+
 def upsert_entity(
     tenant_id: str,
     entity_type: str,
@@ -120,6 +162,18 @@ def upsert_entity(
     Idempotent: re-calling with the same (tenant_id, entity_type, name)
     returns the original id. Properties are merged on conflict — existing
     keys win unless this call provides a non-NULL replacement.
+
+    Idempotent on the ADDRESS too (#3177): the natural key is
+    (tenant_id, entity_type, name) but the address is `uns_path`, which
+    `uns.slug()` mints by collapsing every run of non-alphanumerics — so
+    "PowerFlex 525" and "PowerFlex-525" are two *names* for one *address*
+    (both slug to `powerflex_525`). Inserting under the second spelling
+    would mint a second node at an already-occupied uns_path. Before
+    inserting, this reuses the name already registered at this address, so
+    the two keys agree. Whichever spelling was ingested first is kept — we
+    do NOT impose a canonical of our own (same posture as
+    `manufacturer_normalize.normalize_manufacturer`, which passes unknown
+    vendors through untouched).
     """
     from sqlalchemy import text
 
@@ -149,6 +203,7 @@ def upsert_entity(
                 conflict_target = "ON CONSTRAINT kg_entities_tenant_type_name_uq"
             else:
                 conflict_target = "(tenant_id, entity_type, name)"
+            name = _name_at_path(c, tenant_id, entity_type, uns_path) or name
             row = c.execute(
                 text(f"""
                     INSERT INTO kg_entities
