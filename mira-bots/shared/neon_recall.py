@@ -301,20 +301,69 @@ def _extract_fault_codes(query_text: str) -> list[str]:
          VFD code, so "RE-DO"/"CO-OP" are rejected while "E-OC" passes.
       3. Alpha-only VFD codes (OC, GF, OCA): must be in ``_VFD_ALPHA_CODES``.
 
-    Trade-off (documented): a bare code with no nearby context word no longer
-    extracts; real technician messages carry context ("fault F0004", "showing
-    F0004"). Staging fault-recall eval gates this.
+    Licensing signal — EITHER of two, then shape rules decide:
+
+      (a) a fault-context word within ``_FAULT_PROXIMITY`` tokens, or
+      (b) a recognised PRODUCT NAME anywhere in the query (#3334).
+
+    (b) exists because the trade-off this function used to document was
+    empirically false. It said "real technician messages carry context ('fault
+    F0004', 'showing F0004')". A 100-question live probe against the staging bot
+    measured the opposite: **7 of 10 realistic fault phrasings carried no context
+    word at all** and therefore extracted nothing —
+
+        "Got an F013 on a PowerFlex 525. What causes it?"      -> []
+        "PowerFlex 525 F005 — what is it?"                     -> []
+        "We keep getting F004 on that PowerFlex."              -> []
+
+    and the consequence was not a slightly worse ranking. The structured
+    ``fault_codes`` lookup in stage 2 is the ONLY deterministic, authoritative
+    answer path, and it is keyed entirely on this function's output. When it
+    fires the answer is rank 1 (`retrieval_streams=['structured_fault']`); when
+    it does not, the query falls through to prose ranking, where the PowerFlex
+    520-series **spare-parts catalog** (front covers, finger guards, EMC cores)
+    outranks the fault table. MIRA then correctly refuses to answer a fault
+    question from finger-guard rows and tells the technician no documentation
+    exists — for a fault whose row is sitting in the corpus. Full evidence:
+    ``docs/testing/probe-100/FINDINGS.md``.
+
+    A product name is a STRONGER disambiguator than a context word, not a weaker
+    one: "F013" beside "PowerFlex 525" is unambiguous in a way "F013" beside
+    "drive" is not. Nothing about the shape rules is relaxed, so the tokens (b)
+    newly admits are still filtered by them — "BAY-12" (3-char prefix), "RE-DO"
+    (not a known compound), "525" and "820" (no alpha prefix) remain rejected
+    even when a product name is present.
     """
     if not query_text:
         return []
 
     tokens = _normalise_fault_query(query_text).split()
     context_positions = [i for i, tok in enumerate(tokens) if _FAULT_CONTEXT_RE.search(tok)]
-    if not context_positions:
-        # No fault-context word anywhere → nothing is a fault code.
+    # A named product licenses extraction on its own, and licenses it for the
+    # WHOLE query — the product may sit anywhere ("Got an F013 on a PowerFlex
+    # 525"), so proximity would re-break the phrasings this exists to fix.
+    products = _extract_product_names(query_text)
+    product_present = bool(products)
+
+    # ...but the product's OWN tokens are never fault codes. "GS10" is a model
+    # whose shape is indistinguishable from a code (2-char alpha prefix + digits),
+    # so without this "gs10" alone extracts itself and fires a bogus structured
+    # lookup. That over-extraction PRE-DATES the product-licensing signal — the
+    # context-word gate already admitted it via "GS10 showing CE10" -> both — it
+    # is simply reachable more often now, so it is fixed here rather than left.
+    # Lowercased: _normalise_fault_query preserves case, so an upper-case model
+    # ("GS10") would never match the lower-cased candidate token.
+    product_tokens: set[str] = set()
+    for name in products:
+        product_tokens.update(t.lower() for t in _normalise_fault_query(name).split())
+
+    if not context_positions and not product_present:
+        # Neither signal → nothing here is a fault code.
         return []
 
     def _near_context(i: int) -> bool:
+        if product_present:
+            return True
         return any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
 
     codes: set[str] = set()
@@ -322,6 +371,8 @@ def _extract_fault_codes(query_text: str) -> list[str]:
         if not _near_context(i):
             continue
         tok = raw.strip(".,!?:;()\"'")  # keep internal/leading dash
+        if tok.lower() in product_tokens:
+            continue  # this token names the equipment, not a fault on it
         up = tok.upper()
 
         # Shape 1: alphanumeric code with a short (≤2) alpha prefix.
