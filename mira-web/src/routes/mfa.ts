@@ -30,7 +30,7 @@
  * humans. Not implemented here; tracked as follow-up.
  */
 import { Hono } from "hono";
-import { requireActive, type MiraTokenPayload } from "../lib/auth.js";
+import { requirePaid, type MiraTokenPayload } from "../lib/auth.js";
 import {
   generateSecret,
   generateRecoveryCodes,
@@ -52,7 +52,7 @@ import { recordAuditEvent, requestMetadata } from "../lib/audit.js";
 
 export const mfa = new Hono();
 
-mfa.get("/status", requireActive, async (c) => {
+mfa.get("/status", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const state = await getMfaState(user.sub);
   return c.json({
@@ -62,7 +62,7 @@ mfa.get("/status", requireActive, async (c) => {
   });
 });
 
-mfa.post("/setup", requireActive, async (c) => {
+mfa.post("/setup", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const tenant = await findTenantById(user.sub);
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
@@ -103,7 +103,7 @@ mfa.post("/setup", requireActive, async (c) => {
   });
 });
 
-mfa.post("/enable", requireActive, async (c) => {
+mfa.post("/enable", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const body = (await c.req.json().catch(() => null)) as
     | { code?: string }
@@ -151,7 +151,7 @@ mfa.post("/enable", requireActive, async (c) => {
   return c.json({ ok: true });
 });
 
-mfa.post("/disable", requireActive, async (c) => {
+mfa.post("/disable", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const body = (await c.req.json().catch(() => null)) as
     | { code?: string; recovery_code?: string }

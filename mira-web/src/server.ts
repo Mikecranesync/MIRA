@@ -18,8 +18,8 @@
  *   GET  /api/checkout            → Stripe Checkout redirect ($97/mo)
  *   POST /api/stripe/webhook      → Stripe webhook handler
  *   GET  /api/billing-portal      → Stripe Customer Portal redirect
- *   GET  /api/me                  → User profile + quota (active only)
- *   GET  /api/quota               → Daily query quota status (active only)
+ *   GET  /api/me                  → User profile + quota (any paid tier)
+ *   GET  /api/quota               → Daily query quota status (any paid tier)
  *   POST /api/ingest/manual       → Proxy PDF upload to mira-mcp (active only)
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
@@ -45,7 +45,7 @@ import {
   auditMagicLink,
 } from "./lib/magic-link.js";
 import { sendMagicLinkEmail } from "./lib/mailer.js";
-import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
+import { signToken, requireAuth, requireActive, requirePaid, type MiraTokenPayload } from "./lib/auth.js";
 import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
   createWorkOrder,
@@ -256,7 +256,7 @@ app.route("/api/auth/mfa", mfa);         // setup / enable / disable / status
 
 // Account deletion (Tier 1 #8) — CCPA "right to be forgotten" answer.
 // Soft delete now, hard purge after 30 days.
-app.delete("/api/v1/account", requireActive, async (c) => {
+app.delete("/api/v1/account", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const tenant = await findTenantById(user.sub);
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
@@ -1488,12 +1488,12 @@ app.get("/api/cmms/login", requireActive, async (c) => {
 // Authenticated routes
 // ---------------------------------------------------------------------------
 
-// User profile (active subscribers only)
-app.get("/api/me", requireActive, async (c) => {
+// User profile (any paying tier — account plane, not a product route)
+app.get("/api/me", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const tenant = await findTenantById(user.sub);
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
-  const quota = await getQuota(user.sub, "active");
+  const quota = await getQuota(user.sub, c.get("tier") as string);
   const provisioning = {
     atlas: tenant.atlas_provisioning_status,
     demo: tenant.demo_seed_status,
@@ -1510,7 +1510,7 @@ app.get("/api/me", requireActive, async (c) => {
   return c.json({
     tenantId: user.sub,
     email: user.email,
-    tier: "active",
+    tier: c.get("tier") as string,
     quota,
     provisioning,
     inbox: { slug: tenant.inbox_slug, address: inboxAddress },
@@ -1593,10 +1593,10 @@ app.post("/api/admin/hub-provisioning/reconcile", async (c) => {
   }
 });
 
-// Query quota (active subscribers only)
-app.get("/api/quota", requireActive, async (c) => {
+// Query quota (any paying tier — account plane, not a product route)
+app.get("/api/quota", requirePaid, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
-  const quota = await getQuota(user.sub, "active");
+  const quota = await getQuota(user.sub, c.get("tier") as string);
   return c.json(quota);
 });
 

@@ -89,18 +89,34 @@ export async function requireAuth(c: Context, next: Next) {
 }
 
 /**
- * Hono middleware — requireAuth + verify tenant tier is 'active' in NeonDB.
- * Returns 403 if tier is not active. Use for product routes (chat, CMMS).
- * Use requireAuth (not requireActive) for routes any authenticated user needs
- * (e.g., billing portal).
+ * Entitlement allowlists — explicit sets, never a negation. A tier that is
+ * not listed here gets NO access, so a future product tier added to the
+ * Stripe webhook stays denied until someone deliberately entitles it.
+ *
+ * Census of every value ever written to plg_tenants.tier:
+ *   "pending"             — signed up, unpaid            -> never entitled
+ *   "active"              — paid CMMS / full suite       -> both gates
+ *   "churned"             — cancelled and/or soft-deleted-> never entitled
+ *   "drive_commander_pro" — paid Drive Commander Pro     -> paid gate only
+ */
+export const CMMS_TIERS: ReadonlySet<string> = new Set(["active"]);
+export const PAID_TIERS: ReadonlySet<string> = new Set([
+  "active",
+  "drive_commander_pro",
+]);
+
+/**
+ * Shared gate body for requireActive / requirePaid.
  *
  * Reads JWT from Authorization header or `mira_session` cookie (lowest
  * precedence). ?token= query auth was removed (#890 P0.1).
  */
-export async function requireActive(c: Context, next: Next) {
+async function gateOnTiers(
+  c: Context,
+  next: Next,
+  allowed: ReadonlySet<string>
+) {
   const header = c.req.header("Authorization");
-  // P0.1 (#890): no ?token= query auth — tokens in URLs leak via logs,
-  // referrers, and browser history. Header or cookie only.
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
   const raw = header ? header.replace("Bearer ", "") : cookie;
 
@@ -114,23 +130,48 @@ export async function requireActive(c: Context, next: Next) {
   }
 
   const tenant = await findTenantById(payload.sub);
-  if (!tenant || tenant.tier !== "active") {
+
+  // Soft-deleted accounts (within the 30-day grace window) lose access
+  // regardless of tier. Checked BEFORE the tier allowlist: the Stripe
+  // Drive Commander branch rewrites a churned tenant's tier on re-purchase
+  // without clearing deleted_at, so a tier-first order would resurrect an
+  // account whose data the purge worker still destroys on schedule.
+  // 410 Gone is terminal — clients should not retry.
+  if (tenant?.deleted_at) {
+    return c.json({ error: "Account deleted" }, 410);
+  }
+
+  if (!tenant || !allowed.has(tenant.tier)) {
     return c.json(
       { error: "Subscription required", tier: tenant?.tier || "unknown" },
       403
     );
   }
 
-  // Soft-deleted accounts (within 30-day grace window) lose product access
-  // immediately even though the tenant row still exists for audit + Stripe
-  // reconciliation. 410 Gone is the precise status — clients should treat
-  // it as terminal and not retry.
-  if ((tenant as { deleted_at?: string | null }).deleted_at) {
-    return c.json({ error: "Account deleted" }, 410);
-  }
-
   c.set("user", payload);
+  c.set("tier", tenant.tier);
   await next();
+}
+
+/**
+ * Hono middleware — requireAuth + verify tenant tier is 'active' in NeonDB.
+ * Returns 403 if tier is not active. Use for CMMS / full-suite product
+ * routes (CMMS SSO, MIRA chat, manual ingest, MIRA Connect).
+ * Use requireAuth (not requireActive) for routes any authenticated user
+ * needs (e.g., billing portal).
+ */
+export async function requireActive(c: Context, next: Next) {
+  return gateOnTiers(c, next, CMMS_TIERS);
+}
+
+/**
+ * Hono middleware — account-plane gate: any paying identity, whichever
+ * product they bought. Use for routes that belong to the customer rather
+ * than to a product (profile, quota, MFA, account deletion). Does NOT
+ * grant access to CMMS / chat / ingest / Connect.
+ */
+export async function requirePaid(c: Context, next: Next) {
+  return gateOnTiers(c, next, PAID_TIERS);
 }
 
 /**

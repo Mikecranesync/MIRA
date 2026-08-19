@@ -40,6 +40,7 @@ export interface Tenant {
   provisioning_last_error: string | null;
   inbox_slug: string | null;
   created_at: string;
+  deleted_at: string | null;
 }
 
 // 8-char [a-z0-9] slug, e.g. "k7m3xp9q". Used in kb+<slug>@inbox.factorylm.com.
@@ -77,7 +78,8 @@ export async function findTenantByEmail(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, inbox_slug, created_at
+           provisioning_last_error, inbox_slug, created_at,
+           deleted_at
     FROM plg_tenants WHERE email = ${email} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -93,7 +95,8 @@ export async function findTenantById(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, inbox_slug, created_at
+           provisioning_last_error, inbox_slug, created_at,
+           deleted_at
     FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -109,7 +112,8 @@ export async function findTenantByStripeCustomerId(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, inbox_slug, created_at
+           provisioning_last_error, inbox_slug, created_at,
+           deleted_at
     FROM plg_tenants WHERE stripe_customer_id = ${stripeCustomerId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -125,7 +129,8 @@ export async function findTenantByInboxSlug(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, inbox_slug, created_at
+           provisioning_last_error, inbox_slug, created_at,
+           deleted_at
     FROM plg_tenants WHERE inbox_slug = ${slug} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
