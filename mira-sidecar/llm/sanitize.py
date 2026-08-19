@@ -21,11 +21,16 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 # mirrors kept the vulnerable pattern, so "service" stayed redacted in traces
 # and audit rows after the provider path was fixed.
 _SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
-    r"(?:"
-    r"[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"\b(?:"
+    # (1) keyword WITH an abbreviation word (No./Num./Number) — only then may a
+    #     period follow, because that period is an abbreviation mark
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)\.?[:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r"|"
-    r"[.:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    # (2) keyword + a real separator that is NOT a period — digit optional
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)?[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"|"
+    # (3) keyword + NO separator at all — digit required
+    r"(?:S/?N|SER(?:IAL)?)(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r")\b",
     re.IGNORECASE,
 )

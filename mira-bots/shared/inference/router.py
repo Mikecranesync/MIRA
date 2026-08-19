@@ -64,14 +64,22 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 # "SERIAL-ABCD" (digit-less, hyphen-separated), which the pre-#3305 pattern DID
 # redact.
 #
-# The period gets its own branch, and the digit requirement there is the whole
-# point. A period after a keyword is ambiguous: "Serial No. 4477-A" is an
-# abbreviation, but "Record the serial. PowerFlex 525 fault F004" is a SENTENCE
-# BREAK — and an earlier revision of this fix, which treated the period as an
-# ordinary separator, swallowed the first word of the next sentence and turned
-# that into "Record the [SN] 525 fault F004". That reached the staging gate as a
-# groundedness-1 hard fail on the PowerFlex case. Requiring a digit in branch B
-# separates the two: "4477-A" qualifies, "PowerFlex" does not.
+# A period after a keyword is ambiguous: "Serial No. 4477-A" is an abbreviation,
+# but "Record the serial. PowerFlex525 fault F004" is a SENTENCE BREAK. Two
+# earlier revisions of this fix got this wrong in two different ways:
+#   1. treating "." as an ordinary separator swallowed the next sentence's first
+#      word -> "Record the [SN] 525 fault F004"; caught by the staging gate as a
+#      groundedness-1 hard fail on the PowerFlex case.
+#   2. allowing "." whenever the next token contained a digit still ate the
+#      COMPACT model spelling -> "serial. PowerFlex525" matched; caught by the
+#      Codex adversarial lane on PR #3314 (F1).
+# The discriminator is not the token, it is the KEYWORD: a period is an
+# abbreviation mark only when it follows No./Num./Number (branch 1). A bare
+# "serial." is a full stop and gets no period branch at all.
+#
+# Known, unchanged from before #3305: "Note the serial. ABC12345 was the old
+# unit." is left alone. English cannot disambiguate it and the pre-#3305 pattern
+# did not redact it either, so this is preserved behaviour, not a new hole.
 #
 # KNOWN, PRE-EXISTING over-redaction, unchanged by #3305 and deliberately not
 # "fixed" here: branch 1 requires no digit, so "Serial number unknown" redacts
@@ -83,11 +91,16 @@ _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 # Negative controls live in mira-bots/tests/test_serial_redaction.py; a change
 # here that does not keep every MUST_REDACT case redacted is not a fix.
 _SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
-    r"(?:"
-    r"[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"\b(?:"
+    # (1) keyword WITH an abbreviation word (No./Num./Number) — only then may a
+    #     period follow, because that period is an abbreviation mark
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)\.?[:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r"|"
-    r"[.:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    # (2) keyword + a real separator that is NOT a period — digit optional
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)?[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"|"
+    # (3) keyword + NO separator at all — digit required
+    r"(?:S/?N|SER(?:IAL)?)(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r")\b",
     re.IGNORECASE,
 )

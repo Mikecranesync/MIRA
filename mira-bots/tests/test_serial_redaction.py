@@ -51,7 +51,7 @@ MUST_REDACT = [
     ("sn 4001", "short bare form"),
     ("SERIAL-ABCD", "hyphen separator, digit-less — Gate 7 caught this regression"),
     ("SN-ABCD1234", "hyphen separator with digits"),
-    ("SN. ABCD1234", "period separator, digits present"),
+    ("Serial No. 8891-KX", "abbreviation period — the ONLY period form that redacts"),
 ]
 
 # --- Ordinary maintenance language. NONE of these may be touched. -----------
@@ -76,6 +76,11 @@ MUST_NOT_REDACT = [
     # gate as a groundedness-1 hard fail on the PowerFlex case below.
     ("Check the serial. Replace the unit if damaged.", "sentence break, next word is not serial-shaped"),
     ("Record the serial. PowerFlex 525 fault F004 indicates a ground fault.", "the staging-gate regression"),
+    # Codex adversarial lane, PR #3314 F1: the COMPACT model spelling. The
+    # digit-in-token rule alone did not catch this — "PowerFlex525" contains a
+    # digit, so a bare "serial." still consumed it.
+    ("Record the serial. PowerFlex525 fault F004 indicates a ground fault.", "compact model spelling (Codex F1)"),
+    ("Note the serial. ABC12345 was the old unit.", "bare 'serial.' is a full stop — unchanged from pre-#3305"),
     ("See the service manual. F0004 is an overcurrent trip.", "sentence break after service"),
     ("the drive series. Check parameter P047 next.", "sentence break after series"),
     ("PowerFlex 525 F004 ground fault on the output", "no keyword at all"),
