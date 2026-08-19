@@ -36,12 +36,16 @@ product statement today is:
 > machine, because the parts that would prove it are switched off and, in several cases, untested
 > in CI.
 
-**Precision matters here, and this PRD got it wrong in an earlier revision.** "Deployed" here means the code and the worker container are *declared in the
-production compose file* — `mira-historian-worker` is present in `docker-compose.saas.yml`. This
-audit did **not** observe it running; a stopped, failed, or never-deployed worker looks identical
-from the repository (Codex round 2, F3). It certainly does **not** mean the run-diff path executes: `tasks/historize_runs.py:149-153`
-immediately returns `{"status": "disabled"}` unless `MIRA_RUN_DIFF_ENABLED == "1"`, and the prod
-compose default is `0`. So production runs the worker and produces **no** runs, baselines, or diffs.
+**Precision matters here, and this PRD got it wrong twice.** What the repository proves is
+static: `docker-compose.saas.yml` **declares** a `mira-historian-worker` service, and
+`tasks/historize_runs.py:149-153` immediately returns `{"status": "disabled"}` unless
+`MIRA_RUN_DIFF_ENABLED == "1"`, which the same compose defaults to `0` at line 983.
+
+So the accurate statement is conditional: **if that configuration is deployed and running with
+its default flag value, the run-diff task returns disabled and produces no runs, baselines, or
+diffs.** This audit did not observe the container at all — a stopped, failed, profile-excluded,
+or never-deployed worker yields identical static evidence. (Codex rounds 2 and 3, F2/F1/F3.)
+
 Reserve "runs in production" for an enabled path with runtime proof — which is exactly what Slice 1
 exists to obtain. (Found by the Codex adversarial lane, F2.)
 
