@@ -48,11 +48,16 @@ on:
     types: [created]
 
 concurrency:
-  # Neither event carries a pull_request object: workflow_run has the triggering run,
-  # issue_comment has the issue. Key on whichever is present so both land in the same
-  # per-PR group rather than colliding in an empty one.
+  # Neither event carries a pull_request object, so key on something STABLE PER PR:
+  # workflow_run gives the head branch, issue_comment gives the issue number.
+  #
+  # Not `workflow_run.id` — that is unique per run, so every run would land in its own
+  # group and `cancel-in-progress` would never cancel anything. Gate 7 caught exactly that
+  # defect in this file, and it was not cosmetic: overlapping runs are what open the
+  # window where two jobs both see no advisory comment and each create one, which is the
+  # duplicate-comment race the sticky logic below exists to prevent.
   group: >-
-    gate7-advisory-${{ github.event.workflow_run.id || github.event.issue.number }}
+    gate7-advisory-${{ github.event.workflow_run.head_branch || github.event.issue.number }}
   cancel-in-progress: true
 
 permissions:
