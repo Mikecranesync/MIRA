@@ -78,7 +78,16 @@ capabilities:
       the single most actionable gap in this registry.
     ci_jobs: []
     required_checks: []
-    evidence: []
+    evidence:
+      - path: docs/architecture/convergence/units/evidence/capability-closure/run-diff-pilot-2026-08-19.md
+        note: >-
+          First reviewed run-diff artifact. The real engine driven offline via
+          InMemoryRunStore — no production, staging, PLC or DB access. Segments 7
+          runs, learns 2 baselines from the normal ones, writes 10 diffs scoring
+          a faulted run. Proves the core is functional and its output legible;
+          does NOT prove behaviour on real tag noise, at volume, or through
+          NeonRunStore. Raised two questions worth answering before this reaches
+          a technician - see the artifact's reviewer notes.
     rollback: >-
       Set MIRA_RUN_DIFF_ENABLED=0 in Doppler factorylm/prd and redeploy the
       historian worker. No schema change to revert; migration 038 tables are
@@ -89,12 +98,12 @@ capabilities:
       test_historize_runs_integration.py) run in no CI job — mira-crawler/tests/
       is enumerated per-file at ci.yml:906 and none is named (#3089 class) — and
       no run-diff artifact has been reviewed. "Enabled" is not "proven".
-    acknowledged_rules:
-      - "production_no_evidence"
+    acknowledged_rules: []
     promotion_criteria:
-      - "Enumerate the three suites in a named CI job."
-      - "Produce and review one real run-diff artifact from production or a bench asset."
-      - "Record that artifact under evidence[] and drop the acknowledgement."
+      - "DONE 2026-08-19 - produce and review a run-diff artifact (see evidence)."
+      - "Enumerate the three run-engine suites (test_run_baseline, test_machine_memory, test_historize_runs_integration) in a named CI job - they still run nowhere."
+      - "Answer the two artifact questions: why anomalous_runs=0 while critical diffs are written, and whether a window-average baseline should be labelled as such in any UI."
+      - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
     review_by: "2026-09-19"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
