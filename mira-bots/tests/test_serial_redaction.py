@@ -190,3 +190,78 @@ def test_negative_control_the_guard_can_actually_fail() -> None:
     # And the current pattern must not.
     still_bad = [t for t, _ in MUST_NOT_REDACT if _SERIAL_RE.sub("[SN]", t) != t]
     assert not still_bad, f"current pattern still over-redacts: {still_bad}"
+
+# ---------------------------------------------------------------------------
+# Mirror-sync guard. Found by the Codex adversarial lane on PR #3314 (F1):
+# the router was fixed and FOUR inlined copies of the vulnerable pattern were
+# not, so "service" stayed redacted in Langfuse traces, eval traces, and the
+# live Ignition audit rows after the provider path was clean.
+#
+# The copies are deliberate — each module documents that it inlines the
+# patterns to stay dependency-light — so the fix is not to centralize them but
+# to make drift impossible to SHIP. This test is that guard.
+# ---------------------------------------------------------------------------
+
+_MIRRORS = [
+    "mira-bots/shared/langfuse_setup.py",   # agent-trace scrub
+    "evals/langfuse_setup.py",              # standalone evals copy
+    "mira-pipeline/ignition_audit.py",      # LIVE Ignition chat audit rows
+    "mira-sidecar/llm/sanitize.py",         # legacy (removed from prod 2026-05-20)
+]
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _extract_serial_pattern(source: str) -> str:
+    """Pull the _SERIAL_RE raw-string body out of a module's source text."""
+    import re as _re
+
+    m = _re.search(r"_SERIAL_RE = re\.compile\((.*?)re\.IGNORECASE", source, _re.S)
+    assert m, "no _SERIAL_RE block found"
+    # concatenate the adjacent raw string literals, strip r"" wrappers
+    parts = _re.findall(r'r"((?:[^"\\]|\\.)*)"', m.group(1))
+    return "".join(parts)
+
+
+@pytest.mark.parametrize("rel", _MIRRORS)
+def test_every_serial_mirror_matches_the_canonical_pattern(rel: str) -> None:
+    """Each inlined copy must be byte-identical to the router's pattern."""
+    path = _REPO_ROOT / rel
+    if not path.exists():  # pragma: no cover - module may be deleted later
+        pytest.skip(f"{rel} not present")
+    mirrored = _extract_serial_pattern(path.read_text(encoding="utf-8"))
+    assert mirrored == _SERIAL_RE.pattern, (
+        f"{rel} has drifted from mira-bots/shared/inference/router.py::_SERIAL_RE.\n"
+        f"  canonical: {_SERIAL_RE.pattern!r}\n"
+        f"  mirrored : {mirrored!r}\n"
+        "Update the mirror. #3305 is exactly what drift here costs."
+    )
+
+
+@pytest.mark.parametrize("rel", _MIRRORS)
+def test_every_mirror_leaves_the_word_service_alone(rel: str) -> None:
+    """Behavioural control — the guard above compares text, this one compares effect."""
+    import re as _re
+
+    path = _REPO_ROOT / rel
+    if not path.exists():  # pragma: no cover
+        pytest.skip(f"{rel} not present")
+    rx = _re.compile(_extract_serial_pattern(path.read_text(encoding="utf-8")), _re.IGNORECASE)
+    sentence = "Check the service manual for the PowerFlex 525"
+    assert rx.sub("[SN]", sentence) == sentence, f"{rel} still redacts the word 'service'"
+    assert "[SN]" in rx.sub("[SN]", "S/N ABC12345"), f"{rel} stopped redacting real serials"
+
+
+def test_the_mirror_guard_can_actually_fail() -> None:
+    """Negative control: the extractor must reject the pre-#3305 pattern."""
+    pre_3305 = (
+        "_SERIAL_RE = re.compile(\n"
+        '    r"\\b(?:S/?N|SER(?:IAL)?(?:\\s*(?:NO|NUM|NUMBER)?)?)[:\\s#]*[A-Z0-9\\-]{4,20}\\b",\n'
+        "    re.IGNORECASE,\n"
+        ")\n"
+    )
+    extracted = _extract_serial_pattern(pre_3305)
+    assert extracted != _SERIAL_RE.pattern, (
+        "the extractor no longer distinguishes the vulnerable pattern from the "
+        "canonical one — the mirror guard has stopped guarding"
+    )

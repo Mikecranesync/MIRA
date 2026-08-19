@@ -30,8 +30,18 @@ _IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
 )
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
+# MIRROR of mira-bots/shared/inference/router.py::_SERIAL_RE. Kept byte-identical
+# and enforced by tests/test_serial_redaction.py::test_every_serial_mirror_matches_the_canonical_pattern.
+# Do NOT edit here alone — #3305 was fixed in the router first and these four
+# mirrors kept the vulnerable pattern, so "service" stayed redacted in traces
+# and audit rows after the provider path was fixed.
 _SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
+    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)"
+    r"(?:"
+    r"[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"|"
+    r"[.:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    r")\b",
     re.IGNORECASE,
 )
 
