@@ -14,6 +14,7 @@ Contracts:
 from __future__ import annotations
 
 import ast
+import functools
 import importlib.util
 import json
 import os
@@ -1292,11 +1293,25 @@ def _ingest_url_dispatch_names(tree: ast.AST) -> set[str]:
 
 
 def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
-    """Return dispatch sites that omit an explicit `is_private=` keyword."""
+    """Return dispatch sites that omit an explicit `is_private=` keyword.
+
+    The string API is deliberately unchanged: the teeth tests
+    (`test_ingest_url_scanner_catches_violations`,
+    `test_ingest_url_contract_cannot_be_satisfied_by_prose`,
+    `test_ingest_url_dispatch_allowlist_is_honest`) feed it synthetic
+    source, and those are the reason a green Contract 15 means anything.
+    The repo-wide scan goes through `_scan_ingest_url_tree` against the
+    shared parsed-tree cache instead of re-reading and re-parsing the tree.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
+    return _scan_ingest_url_tree(rel_path, tree)
+
+
+def _scan_ingest_url_tree(rel_path: str, tree: ast.AST) -> list[str]:
+    """Tree core of `scan_ingest_url_dispatches` — same rules, no re-parse."""
     names = _ingest_url_dispatch_names(tree)
     missing: list[str] = []
     for node in ast.walk(tree):
@@ -1361,18 +1376,28 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
 
 
 _INGEST_URL_TASK_NAME = "tasks.ingest.ingest_url"
-_INGEST_URL_SCAN_SKIP = {
+_REPO_PY_SCAN_SKIP = {
     "node_modules", ".git", "__pycache__", ".venv", "venv", ".next",
     "dist", "build", "out", ".claude", ".codegraph",
 }
 
 
-def _ingest_url_dispatch_files() -> list[Path]:
-    """Every repo .py file, not just mira-crawler/tasks/ (Gate 7 finding).
+@functools.lru_cache(maxsize=1)
+def _repo_py_files() -> tuple[Path, ...]:
+    """Every repo .py file, walked ONCE per pytest process.
 
-    A helper that wraps the dispatch (``def queue_ingest(): ingest_url.delay(...)``)
-    is itself a dispatch site, and it need not live under tasks/. Scoping the
-    scan to one directory would let the wrapper escape the contract.
+    Not just mira-crawler/tasks/ or mira-crawler/ingest/ (Gate 7 finding): a
+    helper that wraps the dispatch or the call (``def queue_ingest():
+    ingest_url.delay(...)``) is itself a call site, and it need not live under
+    the module it wraps. Scoping either scan to one directory would let the
+    wrapper escape the contract.
+
+    Contracts 15 and 16 need the IDENTICAL population — same suffix, same skip
+    set, same nested-worktree rule — and each used to walk it twice: four full
+    walk+read+parse passes per run, 33.3s of a 36.0s full-file run (measured
+    2026-08-19). One shared cache serves both, which is why the skip set is
+    now shared BY CONSTRUCTION rather than by an alias.
+
     Nested git worktrees are skipped: a linked worktree has `.git` as a FILE,
     which no directory-name filter can express.
     """
@@ -1381,11 +1406,59 @@ def _ingest_url_dispatch_files() -> list[Path]:
         dirnames[:] = [
             d
             for d in dirnames
-            if d not in _INGEST_URL_SCAN_SKIP
+            if d not in _REPO_PY_SCAN_SKIP
             and not (Path(dirpath) / d / ".git").is_file()
         ]
         out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
-    return sorted(out)
+    return tuple(sorted(out))
+
+
+@functools.lru_cache(maxsize=1)
+def _repo_py_trees() -> tuple[tuple[str, ast.AST], ...]:
+    """(rel_posix, parsed tree) for every repo .py file — parsed ONCE.
+
+    Files that fail to parse are dropped, matching every existing scanner's
+    ``except SyntaxError: continue``. `test_repo_py_cache_sees_the_tree` is the
+    vacuity guard: a cache that returned nothing would make every AST contract
+    below pass over an empty population.
+
+    Cache-correctness constraints, stated so a future change is deliberate:
+
+      * `architecture-check` runs `pytest tests/test_architecture.py -v` with
+        NO `-n`, so this process-local cache is shared by every test in the
+        run. If `-n auto` is ever added, each xdist worker builds its own —
+        still correct, just less shared, and each worker then holds its own
+        ~1.9k parsed ASTs (17.6 MB of source, several times that as AST
+        objects). Note it and decide deliberately; do not make this a global.
+      * No test in this file writes a .py file into the repo tree, so the
+        cache cannot go stale mid-run. A future test that does must call
+        `_repo_py_trees.cache_clear()`.
+      * `maxsize=1` on a zero-arg function is deliberate: the cache key is
+        "the repo". A parameterised version would silently rebuild.
+    """
+    out: list[tuple[str, ast.AST]] = []
+    for path in _repo_py_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        out.append((path.relative_to(_ROOT).as_posix(), tree))
+    return tuple(out)
+
+
+def test_repo_py_cache_sees_the_tree():
+    """A cache that returns nothing makes every AST contract pass vacuously."""
+    files = _repo_py_files()
+    trees = _repo_py_trees()
+    assert len(files) > 1000, f"repo .py discovery collapsed to {len(files)} files"
+    assert len(trees) >= len(files) - 20, (
+        f"{len(files) - len(trees)} files failed to parse — a scan that skips "
+        "them is a scan that cannot fail on them"
+    )
+    rels = {rel for rel, _ in trees}
+    assert "mira-crawler/crawler/base_crawler.py" in rels
+    assert "mira-crawler/ingest/store.py" in rels
+    assert not any(rel.startswith(("node_modules/", ".git/")) for rel in rels)
 
 
 # Files whose omission of is_private IS the assertion. Narrow and named — NOT a
@@ -1402,13 +1475,10 @@ _INGEST_URL_DISPATCH_ALLOWLIST: dict[str, str] = {
 def test_ingest_url_dispatches_declare_visibility():
     """No production feeder may queue an ingest without stating is_private."""
     offenders: list[str] = []
-    for path in _ingest_url_dispatch_files():
-        rel = path.relative_to(_ROOT).as_posix()
+    for rel, tree in _repo_py_trees():
         if rel in _INGEST_URL_DISPATCH_ALLOWLIST or rel == "tests/test_architecture.py":
             continue
-        offenders.extend(
-            scan_ingest_url_dispatches(rel, path.read_text(encoding="utf-8", errors="replace"))
-        )
+        offenders.extend(_scan_ingest_url_tree(rel, tree))
     assert not offenders, "\n".join(offenders)
 
 
@@ -1431,12 +1501,7 @@ def test_ingest_url_dispatch_allowlist_is_honest():
 def test_ingest_url_scanner_sees_the_known_population():
     """Honesty check: a scan that silently collects nothing passes vacuously."""
     seen = 0
-    for path in _ingest_url_dispatch_files():
-        src = path.read_text(encoding="utf-8", errors="replace")
-        try:
-            tree = ast.parse(src)
-        except SyntaxError:
-            continue
+    for _rel, tree in _repo_py_trees():
         names = _ingest_url_dispatch_names(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -1677,10 +1742,22 @@ def test_registry_tags_checker_catches_violations():
 # dependencies installed and imports `ingest.store` at module level, so a
 # crawler dependency break takes it down with it; the Architecture Check job
 # installs pytest + pyyaml and parses text. Keep both.
+#
+# STATED BOUNDARY: this contract CANNOT tell `model_number=equipment_id` from
+# `model_number=""` — the "explicit empty (no model exists)" good-case below is
+# a deliberate PASS, because genuinely model-less callers exist. So restoring
+# the #3177 defect shape in `crawler/base_crawler.py` keeps every test here
+# GREEN (verified by mutation, 2026-08-19: `-k store_chunks` → 6 passed with
+# `model_number=""` in place). The semantic owner is
+# `mira-crawler/tests/test_model_number_tagging.py`, whose
+# `test_declared_equipment_id_reaches_model_number` drives the real
+# `ManufacturerCrawler.process()` and fails `assert '' == 'GS10'`. It is run in
+# the gated `test-unit` job; `test_model_number_semantic_owner_is_wired_into_ci`
+# below fails if it stops being run.
 
 _STORE_CHUNKS_TARGET = "store_chunks"
 _STORE_CHUNKS_DEF_REL = "mira-crawler/ingest/store.py"
-_STORE_CHUNKS_SCAN_SKIP = _INGEST_URL_SCAN_SKIP
+_MODEL_NUMBER_SEMANTIC_OWNER = "mira-crawler/tests/test_model_number_tagging.py"
 
 
 def _store_chunks_call_names(tree: ast.AST) -> set[str]:
@@ -1718,11 +1795,25 @@ def _store_chunks_calls(tree: ast.AST, names: set[str]) -> list[ast.Call]:
 
 
 def scan_store_chunks_calls(rel_path: str, source: str) -> list[str]:
-    """Return store_chunks call sites that omit an explicit `model_number=`."""
+    """Return store_chunks call sites that omit an explicit `model_number=`.
+
+    The string API is deliberately unchanged: the teeth tests
+    (`test_store_chunks_checker_catches_violations`,
+    `test_store_chunks_contract_cannot_be_satisfied_by_prose`,
+    `test_store_chunks_allowlist_is_honest`) feed it synthetic source, and
+    those are the reason a green Contract 16 means anything. The repo-wide
+    scan goes through `_scan_store_chunks_tree` against the shared
+    parsed-tree cache instead of re-reading and re-parsing the tree.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
+    return _scan_store_chunks_tree(rel_path, tree)
+
+
+def _scan_store_chunks_tree(rel_path: str, tree: ast.AST) -> list[str]:
+    """Tree core of `scan_store_chunks_calls` — same rules, no re-parse."""
     names = _store_chunks_call_names(tree)
     missing: list[str] = []
     for node in _store_chunks_calls(tree, names):
@@ -1743,24 +1834,6 @@ def scan_store_chunks_calls(rel_path: str, source: str) -> list[str]:
             "_product_search's suffix-exclude regex then discards at query time)."
         )
     return missing
-
-
-def _store_chunks_call_files() -> list[Path]:
-    """Every repo .py file — a wrapper around the call is itself a call site.
-
-    Nested git worktrees are skipped: a linked worktree has `.git` as a FILE,
-    which no directory-name filter can express.
-    """
-    out: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(_ROOT):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if d not in _STORE_CHUNKS_SCAN_SKIP
-            and not (Path(dirpath) / d / ".git").is_file()
-        ]
-        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
-    return sorted(out)
 
 
 # Files whose omission of model_number IS the assertion. Narrow and named — the
@@ -1795,15 +1868,12 @@ def store_chunks_kwonly_without_default(source: str) -> set[str]:
 def test_store_chunks_callers_declare_model_number():
     """Lock A: no caller may rely on a defaulted model_number (#3177)."""
     offenders: list[str] = []
-    for path in _store_chunks_call_files():
-        rel = path.relative_to(_ROOT).as_posix()
+    for rel, tree in _repo_py_trees():
         # The self-skip is belt-and-braces, not load-bearing: this file's bad
         # fixtures are string Constants, invisible to an AST walk.
         if rel in _STORE_CHUNKS_ALLOWLIST or rel == "tests/test_architecture.py":
             continue
-        offenders.extend(
-            scan_store_chunks_calls(rel, path.read_text(encoding="utf-8", errors="replace"))
-        )
+        offenders.extend(_scan_store_chunks_tree(rel, tree))
     assert not offenders, "\n".join(offenders) + (
         "\n\nEither pass the caller's model decision, or add an allowlist entry "
         "with a reason in Contract 16."
@@ -1826,6 +1896,25 @@ def test_store_chunks_signature_keeps_model_number_required():
     )
 
 
+def test_model_number_semantic_owner_is_wired_into_ci():
+    """Contract 16 is a STATIC population lock: it blesses model_number="" by
+    design, so base_crawler regressing to "" leaves it green (verified by
+    mutation, 2026-08-19). The only detector that goes red is the behavior-lock
+    suite — which is a guard only while a gating job actually runs it.
+
+    Scope, stated so it is not over-read: this proves the FILENAME is present in
+    ci.yml. It does not prove the step runs, that its job is in the required
+    gate, or that the file is not `--ignore`d. It is a tripwire against silent
+    deletion, not a proof of enforcement — do not let it justify weakening the
+    locks it points at."""
+    ci = (_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert Path(_MODEL_NUMBER_SEMANTIC_OWNER).name in ci, (
+        f"{_MODEL_NUMBER_SEMANTIC_OWNER} is named in no CI workflow. Contract 16 "
+        'cannot distinguish model_number=equipment_id from model_number="" — '
+        "that file is the only thing that can. Re-wire it into the test-unit job."
+    )
+
+
 def test_store_chunks_allowlist_is_honest():
     """Every exemption still exists and still omits model_number."""
     for rel, reason in _STORE_CHUNKS_ALLOWLIST.items():
@@ -1842,12 +1931,7 @@ def test_store_chunks_allowlist_is_honest():
 def test_store_chunks_scanner_sees_the_known_population():
     """Honesty check: a scan that silently collects nothing passes vacuously."""
     seen = 0
-    for path in _store_chunks_call_files():
-        src = path.read_text(encoding="utf-8", errors="replace")
-        try:
-            tree = ast.parse(src)
-        except SyntaxError:
-            continue
+    for _rel, tree in _repo_py_trees():
         seen += len(_store_chunks_calls(tree, _store_chunks_call_names(tree)))
     assert seen >= 10, (
         f"scanner sees only {seen} store_chunks call sites — expected the known "
