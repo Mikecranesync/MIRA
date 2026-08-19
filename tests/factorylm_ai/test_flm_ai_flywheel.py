@@ -681,3 +681,27 @@ def test_dpo_export_redacts_pii_in_prompt_and_both_completions(tmp_path: Path) -
     assert "192.168.4.28" not in blob and "[IP]" in blob
     assert "00:1B:44:11:3A:B7" not in blob and "[MAC]" in blob
     assert "X4J-99201" not in blob and "[SN]" in blob
+
+
+def test_redact_leaves_the_word_service_alone_3305():
+    """#3305 at the training-corpus seam — the highest-consequence mirror.
+
+    redact_record()/redact_text() run over SFT and DPO exports, so a stale
+    pattern here does not corrupt one live turn; it bakes the corruption
+    permanently into fine-tuning data. Found by the Codex adversarial lane on
+    PR #3314 round 2 (F1), after the router and four other mirrors were already
+    fixed and this fifth copy was missed.
+    """
+    from factorylm_ai.flywheel.redact import redact_text
+
+    sentence = "Check the service manual for the PowerFlex 525"
+    assert redact_text(sentence) == sentence
+
+
+def test_redact_still_strips_real_serials_3305():
+    """Paired positive control — narrowing must not become under-redaction."""
+    from factorylm_ai.flywheel.redact import redact_text
+
+    out = redact_text("S/N ABC12345 on the nameplate")
+    assert "[SN]" in out
+    assert "ABC12345" not in out

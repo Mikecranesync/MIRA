@@ -43,8 +43,67 @@ _IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
 )
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
+# Serial numbers. The keyword alternation deliberately includes the bare prefix
+# SER, which means it also matches the "ser" in "service", "series", "serious".
+# That is harmless ONLY because the value branch below refuses to match what
+# follows such a word — see #3305, where the previous pattern paired that prefix
+# with `[:\s#]*` (zero separators allowed) and `[A-Z0-9\-]{4,20}` (no digit
+# required), so "services" parsed as SER + "vices" and every occurrence of the
+# word "service" reached the provider as "[SN]". Because sanitize is default-on
+# for every cascade call, that degraded real technician turns, not just logs:
+# "Check the service manual for the PowerFlex 525" arrived as "Check the [SN]
+# manual for the PowerFlex 525".
+#
+# Two mutually exclusive value branches, and the split is the fix:
+#   A. a real separator that is NOT a period (`[:\s#-]+`) — the token then needs
+#      no digit, so a digit-less "serial number ABCDEFGH" still redacts;
+#   B. a period, or no separator at all — the token MUST then contain a digit.
+#
+# The hyphen belongs in the separator class, not only in the token class: Gate 7
+# round 1 on this change caught that omitting it silently regressed
+# "SERIAL-ABCD" (digit-less, hyphen-separated), which the pre-#3305 pattern DID
+# redact.
+#
+# A period after a keyword is ambiguous: "Serial No. 4477-A" is an abbreviation,
+# but "Record the serial. PowerFlex525 fault F004" is a SENTENCE BREAK. Two
+# earlier revisions of this fix got this wrong in two different ways:
+#   1. treating "." as an ordinary separator swallowed the next sentence's first
+#      word -> "Record the [SN] 525 fault F004"; caught by the staging gate as a
+#      groundedness-1 hard fail on the PowerFlex case.
+#   2. allowing "." whenever the next token contained a digit still ate the
+#      COMPACT model spelling -> "serial. PowerFlex525" matched; caught by the
+#      Codex adversarial lane on PR #3314 (F1).
+# The discriminator is not the token, it is the KEYWORD: a period is an
+# abbreviation mark only when it follows No./Num./Number (branch 1). A bare
+# "serial." is a full stop and gets no period branch at all.
+#
+# Known, unchanged from before #3305: "Note the serial. ABC12345 was the old
+# unit." is left alone. English cannot disambiguate it and the pre-#3305 pattern
+# did not redact it either, so this is preserved behaviour, not a new hole.
+#
+# KNOWN, PRE-EXISTING over-redaction, unchanged by #3305 and deliberately not
+# "fixed" here: branch 1 requires no digit, so "Serial number unknown" redacts
+# the following word. Narrowing it would mean requiring a digit everywhere,
+# which would stop redacting genuinely digit-less serials — for a PII control,
+# leaking is the worse failure. Pinned by a test so the trade-off is a decision
+# rather than a surprise.
+#
+# Negative controls live in mira-bots/tests/test_serial_redaction.py; a change
+# here that does not keep every MUST_REDACT case redacted is not a fix.
 _SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
+    r"\b(?:"
+    # (1) keyword WITH an abbreviation word (No./Num./Number) — only then may a
+    #     period follow, because that period is an abbreviation mark
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)\.?[:\s#-]*(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    r"|"
+    # (2) keyword + a real separator that is NOT a period — digit optional
+    r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)?[:\s#-]+[A-Z0-9\-]{4,20}"
+    r"|"
+    # (3) keyword + NO separator at all — digit required, and the keyword must be
+    #     the FULL form. Accepting the bare "SER" prefix here matched every
+    #     ser-word containing a digit: "service-2", "series500", "server2".
+    r"(?:S/?N|SERIAL)(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    r")\b",
     re.IGNORECASE,
 )
 
