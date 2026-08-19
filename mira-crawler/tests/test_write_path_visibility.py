@@ -405,16 +405,40 @@ class TestCallerPopulationExplicit:
     MODEL_TARGETS = {"store_chunks"}
     #: Test files whose `pytest.raises(TypeError)` cases deliberately omit a
     #: required kwarg — the omission IS the assertion, so scanning them would
-    #: flag the very tests that prove the requirement. Keep this list to files
-    #: that assert a required-kwarg contract; it is not a general escape hatch.
-    REQUIRED_KWARG_TEST_FILES = {
-        "mira-crawler/tests/test_write_path_visibility.py",
-        "mira-crawler/tests/test_model_number_tagging.py",
+    #: flag the very tests that prove the requirement. Keep each list to files
+    #: that assert THAT kwarg's required-ness; it is not a general escape hatch.
+    #:
+    #: PER-SCAN, not shared: a file whose `pytest.raises(TypeError)` omits
+    #: model_number is NOT thereby exempt from the is_private lock. One flat
+    #: set consumed by `_call_sites_missing` for BOTH scans silently widened
+    #: the is_private exemption when #3177 added its behavior-lock file. That
+    #: was latent, not an active hole — every store_chunks call in that file
+    #: does pass is_private, so both sets return the same [] today — but a
+    #: future is_private-omitting call there could never have been flagged.
+    REQUIRED_KWARG_TEST_FILES: dict[str, frozenset[str]] = {
+        "is_private": frozenset(
+            {
+                "mira-crawler/tests/test_write_path_visibility.py",
+            }
+        ),
+        "model_number": frozenset(
+            {
+                "mira-crawler/tests/test_write_path_visibility.py",
+                "mira-crawler/tests/test_model_number_tagging.py",
+            }
+        ),
     }
     PRUNE_DIRS = {
         ".git", "node_modules", ".venv", "venv", "__pycache__", ".next",
         "dist", "build", ".claude", "plc",  # plc/ holds dual Py2 sources
     }
+
+    @classmethod
+    def _is_exempt(cls, rel_posix: str, required_kw: str) -> bool:
+        """Whether `rel_posix` is exempt from the `required_kw` scan.
+
+        Pure and total: an unknown kwarg exempts nothing (fail-closed)."""
+        return rel_posix in cls.REQUIRED_KWARG_TEST_FILES.get(required_kw, frozenset())
 
     @classmethod
     def _scan_tree(
@@ -483,10 +507,11 @@ class TestCallerPopulationExplicit:
             py_files.extend(Path(root) / f for f in files if f.endswith(".py"))
         for path in py_files:
             rel = path.relative_to(REPO_ROOT)
-            if rel.as_posix() in self.REQUIRED_KWARG_TEST_FILES:
+            if self._is_exempt(rel.as_posix(), required_kw):
                 # These files' pytest.raises(TypeError) cases deliberately omit
-                # the required kwarg — that omission IS the assertion. Exempt
-                # only the test files that assert the requirement itself.
+                # THIS required kwarg — that omission IS the assertion. Exempt
+                # only the test files that assert this requirement itself; the
+                # exemption does not carry across to the other scan.
                 continue
             # ingest/store.py is deliberately NOT exempt: its internal
             # store_chunks -> insert_chunk call must pass is_private too.
@@ -499,6 +524,23 @@ class TestCallerPopulationExplicit:
 
     def _call_sites_missing_is_private(self) -> list[str]:
         return self._call_sites_missing("is_private", None)
+
+    def test_exemptions_are_per_scan_not_shared(self) -> None:
+        """A model_number exemption must not silently exempt is_private.
+
+        Regression: REQUIRED_KWARG_TEST_FILES was one flat set consumed by
+        _call_sites_missing for BOTH scans, so adding #3177's behavior-lock
+        file also removed it from the pre-existing is_private call-site lock."""
+        mn = "mira-crawler/tests/test_model_number_tagging.py"
+        wpv = "mira-crawler/tests/test_write_path_visibility.py"
+        assert self._is_exempt(mn, "model_number")
+        assert not self._is_exempt(mn, "is_private"), (
+            "the #3177 behavior-lock file passes is_private at every call site "
+            "and must stay inside the is_private lock"
+        )
+        assert self._is_exempt(wpv, "is_private") and self._is_exempt(wpv, "model_number")
+        assert not self._is_exempt("mira-crawler/ingest/store.py", "is_private")
+        assert not self._is_exempt(mn, "verified"), "unknown kwarg must fail closed"
 
     def test_scanner_catches_import_alias(self) -> None:
         import ast
