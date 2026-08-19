@@ -6,6 +6,18 @@
 --   doppler run --project factorylm --config stg -- sh -c \
 --     'psql "$NEON_DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
 --        -f docs/testing/sql/2026-08-18-phase0-candidate-set-baseline.sql'
+--
+-- POPULATION CAVEAT (added 2026-08-19). This file is the one-off FORENSIC superset for a
+-- human with psql -- it is deliberately NOT the Phase 5 delta instrument, and it is NOT
+-- uniformly scoped: only P0.6 carries `is_private = false` (the shared OEM corpus, which is
+-- what `_product_search` reads for a tenant-less caller). P0.0-P0.5 and P0.7-P0.9 aggregate
+-- the HYBRID corpus (shared OEM + private per-tenant uploads).
+--
+-- => NEVER compare a number from this file against a number from
+--    tools/corpus_baseline_probe.py, which IS uniformly `is_private = false`. Use the probe
+--    for before/after deltas; use this file for provenance and per-model distributions only.
+--    Rationale + the rule: .claude/rules/knowledge-entries-tenant-scoping.md and
+--    docs/testing/2026-08-18-3177-corpus-baseline.md section 1.2.
 
 BEGIN;
 SET TRANSACTION READ ONLY;

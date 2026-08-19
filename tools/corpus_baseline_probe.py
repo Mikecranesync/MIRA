@@ -7,6 +7,22 @@ WHAT IT MEASURES
     set. Plus the ``_product_search`` candidate-set counts and the PowerFlex 525
     control-group gate the PRD stops on.
 
+POPULATION (one, for every query)
+    The **shared OEM corpus** -- ``is_private = false``, no tenant predicate. That is
+    both the population ``_product_search`` reads for a tenant-less caller and the one
+    ``.claude/rules/knowledge-entries-tenant-scoping.md`` prescribes for an aggregate
+    over the shared corpus (never ``tenant_id = $caller``, which reintroduces #1761).
+    Mixing scopes across the tables would give a Phase 5 delta an inconsistent
+    denominator, so the scope is defined once in ``SHARED_CORPUS``.
+
+PREDICATE PROVENANCE
+    The candidate-set predicates are **imported** from
+    ``mira-bots/shared/neon_recall.py`` (``_model_suffix_exclude_regex``,
+    ``_approval_filter_sql``), never re-implemented here -- see
+    ``production_predicates()``. Because the approval filter is env-dependent
+    (``MIRA_ENFORCE_APPROVED_RETRIEVAL``, default false), every run prints which mode
+    produced its numbers; candidate counts are not comparable across gate states.
+
 WHY IT EXISTS
     ``mira-crawler/crawler/base_crawler.py::process()`` read the source entry's model
     into ``equipment_id`` but omitted it from the ``store_chunks(...)`` call, so
@@ -42,8 +58,11 @@ Raw psql query set (a superset, for a human with psql):
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import sys
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 # --------------------------------------------------------------------------
@@ -134,6 +153,64 @@ def assert_not_production(url: str, requested_env: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Production predicates (imported, never re-implemented)
+# --------------------------------------------------------------------------
+
+
+@functools.cache
+def production_predicates() -> tuple[Callable[[str], str], str, bool]:
+    r"""Return ``_product_search``'s own predicate helpers, imported from production.
+
+    Returns ``(model_suffix_exclude_regex, approval_filter_sql, approval_gate_on)``.
+
+    This probe is designated the Phase 5 before/after instrument, so a *copy* of a
+    production predicate is a latent lie: the copy and the original drift and the delta
+    silently stops measuring what it claims to. Two predicates were re-implemented here
+    and both had already diverged or were env-dependent:
+
+    * ``_model_suffix_exclude_regex`` escapes POSIX ERE metacharacters
+      (``re.sub(r"([\.^$*+?()\[\]{}|])", ...)``) before building
+      ``(^|[^0-9A-Za-z]){name}[0-9A-Za-z]``. The local copy interpolated the RAW tag --
+      harmless for ``GS10``/``PowerFlex 525``, wrong for any model containing a
+      metacharacter.
+    * ``_approval_filter_sql()`` appends ``" AND verified = true"`` when
+      ``MIRA_ENFORCE_APPROVED_RETRIEVAL`` is true (default false). It was omitted
+      entirely, so the "candidates" column matched production only by coincidence of
+      today's flag value.
+
+    `neon_recall`'s module-level imports are stdlib-only (its DB imports are lazy), so
+    this costs nothing at import time. The ``sys.path`` insert is scoped to this call and
+    undone in ``finally`` -- a module-scope insert would leave ``mira-bots/`` on the path
+    for the whole process and let ``shared`` shadow inside a pytest session (the #3089
+    failure mode; same reasoning as ``tools/gate7_review.py::_load_pii_redactors``).
+
+    Fails CLOSED: if the import breaks there is no local fallback, because a fallback is
+    exactly the divergence this function exists to remove.
+    """
+    root = str(Path(__file__).resolve().parents[1] / "mira-bots")
+    sys.path.insert(0, root)
+    try:
+        from shared.neon_recall import (  # noqa: PLC0415 - scoped on purpose
+            _approval_filter_sql,
+            _model_suffix_exclude_regex,
+            approval_gate_enabled,
+        )
+    except ImportError as exc:  # pragma: no cover - the canonical module must exist
+        raise RuntimeError(
+            "cannot import mira-bots/shared/neon_recall.py, which owns the predicates "
+            "this probe mirrors. Refusing to fall back to a local copy: a copy is the "
+            "drift this probe must not have. Run from a full checkout."
+        ) from exc
+    finally:
+        try:
+            sys.path.remove(root)
+        except ValueError:  # pragma: no cover
+            pass
+
+    return _model_suffix_exclude_regex, _approval_filter_sql(), approval_gate_enabled()
+
+
+# --------------------------------------------------------------------------
 # Pinned probe definitions
 # --------------------------------------------------------------------------
 
@@ -163,41 +240,44 @@ DEFAULT_MANUFACTURERS = ("AutomationDirect", "Rockwell Automation", "Allen-Bradl
 # (label, model tag) -- the treatment and the PRD's control group.
 DEFAULT_PRODUCTS = (("GS10", "GS10"), ("PowerFlex 525", "PowerFlex 525"))
 
-Q_TAGGING_HEALTH = """
+# ONE population for every table below: the SHARED OEM CORPUS (`is_private = false`).
+#
+# Previously only Q_PRODUCT's `candidates` column carried `is_private = false` while the
+# three aggregates carried no tenant predicate at all -- so a Phase 5 delta would have
+# compared a shared-corpus numerator against a HYBRID (shared OEM + private per-tenant
+# upload) denominator. `.claude/rules/knowledge-entries-tenant-scoping.md`: an aggregate
+# scoped to the shared corpus adds `is_private = false` and NEVER `tenant_id = $caller`
+# (the latter reintroduces #1761, the ~0-row OEM corpus).
+#
+# `is_private = false` is also exactly what `_product_search` builds for a tenant-less
+# caller (`neon_recall.py`: `tenant_filter = "is_private = false"` when `tenant_id` is
+# None), which is the right population for this probe: #3177 is a defect in the OEM
+# crawler write path, and the probe has no caller tenant to stand in for.
+SHARED_CORPUS = "is_private = false"
+
+Q_TAGGING_HEALTH = f"""
 SELECT manufacturer,
        count(*)                                                               AS total_rows,
        count(*) FILTER (WHERE model_number IS NULL OR btrim(model_number)='') AS blank_model,
        count(DISTINCT nullif(btrim(model_number),''))                         AS distinct_models,
        count(*) FILTER (WHERE embedding IS NOT NULL)                          AS embedded_rows
 FROM knowledge_entries
-WHERE manufacturer = ANY(%(mfrs)s)
+WHERE {SHARED_CORPUS}
+  AND manufacturer = ANY(%(mfrs)s)
 GROUP BY manufacturer
 ORDER BY total_rows DESC
 """
 
-Q_FAULT_CLEAR = """
+Q_FAULT_CLEAR = f"""
 SELECT manufacturer,
        count(*) FILTER (WHERE content ILIKE ANY(%(pats)s)) AS fault_clear_rows
 FROM knowledge_entries
-WHERE manufacturer = ANY(%(mfrs)s)
+WHERE {SHARED_CORPUS}
+  AND manufacturer = ANY(%(mfrs)s)
 GROUP BY manufacturer
 """
 
-# Mirrors neon_recall._product_search's candidate predicates: public + embedded +
-# model-tag match, minus the suffix-exclude that discards filename-derived tags
-# like 'GS10USERMANUAL'.
-Q_PRODUCT = """
-SELECT count(*) FILTER (WHERE model_number ILIKE %(like)s)                    AS tagged_rows,
-       count(*) FILTER (WHERE content ILIKE %(like)s)                         AS content_rows,
-       count(*) FILTER (WHERE is_private = false AND embedding IS NOT NULL
-                          AND model_number ILIKE %(like)s
-                          AND NOT (model_number ~* %(excl)s))                 AS candidates,
-       count(*) FILTER (WHERE model_number ILIKE %(like)s
-                          AND content ILIKE ANY(%(pats)s))                    AS fault_clear_rows
-FROM knowledge_entries
-"""
-
-Q_CORPUS = """
+Q_CORPUS = f"""
 SELECT count(*)                                                               AS total_rows,
        count(*) FILTER (WHERE model_number IS NULL OR btrim(model_number)='') AS blank_model,
        count(*) FILTER (WHERE (model_number IS NULL OR btrim(model_number)='')
@@ -205,14 +285,44 @@ SELECT count(*)                                                               AS
        count(*) FILTER (WHERE model_number IS NOT NULL AND btrim(model_number)<>''
                           AND equipment_entity_id IS NOT NULL)                AS tagged_with_fk
 FROM knowledge_entries
+WHERE {SHARED_CORPUS}
 """
 
-ALL_QUERIES = (
-    ("tagging health", Q_TAGGING_HEALTH),
-    ("fault-clear phrase probe", Q_FAULT_CLEAR),
-    ("per-product candidate set", Q_PRODUCT),
-    ("corpus-wide blast radius", Q_CORPUS),
-)
+
+def q_product(approval_filter_sql: str) -> str:
+    """Mirror `_product_search`'s candidate predicates for the shared OEM corpus.
+
+    `candidates` = embedded + model-tag match + the suffix-exclude that discards
+    filename-derived tags like 'GS10USERMANUAL' + the approval filter, all on the
+    `is_private = false` population -- i.e. every predicate inside `_product_search`'s
+    CTE `WHERE`, for a tenant-less caller.
+
+    `approval_filter_sql` is `neon_recall._approval_filter_sql()` verbatim: the empty
+    string, or `" AND verified = true"` when `MIRA_ENFORCE_APPROVED_RETRIEVAL` is true.
+    It is passed in (not read here) so the caller can print which mode produced the
+    numbers -- a candidate count is not comparable across gate states.
+    """
+    return f"""
+SELECT count(*) FILTER (WHERE model_number ILIKE %(like)s)                    AS tagged_rows,
+       count(*) FILTER (WHERE content ILIKE %(like)s)                         AS content_rows,
+       count(*) FILTER (WHERE embedding IS NOT NULL
+                          AND model_number ILIKE %(like)s
+                          AND NOT (model_number ~* %(excl)s){approval_filter_sql}) AS candidates,
+       count(*) FILTER (WHERE model_number ILIKE %(like)s
+                          AND content ILIKE ANY(%(pats)s))                    AS fault_clear_rows
+FROM knowledge_entries
+WHERE {SHARED_CORPUS}
+"""
+
+
+def all_queries(approval_filter_sql: str) -> tuple[tuple[str, str], ...]:
+    """Every statement this probe runs, in report order."""
+    return (
+        ("tagging health", Q_TAGGING_HEALTH),
+        ("fault-clear phrase probe", Q_FAULT_CLEAR),
+        ("per-product candidate set", q_product(approval_filter_sql)),
+        ("corpus-wide blast radius", Q_CORPUS),
+    )
 
 
 def assert_read_only(sql: str) -> None:
@@ -256,8 +366,18 @@ def build_report(
     phrases: tuple[str, ...],
     products: tuple[tuple[str, str], ...],
 ) -> str:
+    exclude_regex, approval_sql, gate_on = production_predicates()
     pats = [f"%{p}%" for p in phrases]
     out: list[str] = []
+
+    # Stated, not implied: a delta is only meaningful between runs sharing BOTH.
+    out.append(
+        "**Population:** shared OEM corpus (`is_private = false`) for every table "
+        "below - the population `_product_search` reads for a tenant-less caller. "
+        "**Approval gate** (`MIRA_ENFORCE_APPROVED_RETRIEVAL`): "
+        f"**{'ON' if gate_on else 'off'}** "
+        f"(candidate predicate suffix: `{approval_sql.strip() or 'none'}`).\n"
+    )
 
     cur.execute(Q_TAGGING_HEALTH, {"mfrs": mfrs})
     health = {row[0]: row for row in cur.fetchall()}
@@ -283,10 +403,11 @@ def build_report(
     rows = []
     for label, tag in products:
         cur.execute(
-            Q_PRODUCT,
+            q_product(approval_sql),
             {
                 "like": f"%{tag}%",
-                "excl": f"(^|[^0-9A-Za-z]){tag}[0-9A-Za-z]",
+                # Production's own escaped builder -- never a re-implementation.
+                "excl": exclude_regex(tag),
                 "pats": pats,
             },
         )
@@ -367,13 +488,20 @@ def main(argv: list[str] | None = None) -> int:
     phrases = PHRASE_SETS[args.phrase_set]
     mfrs = [m.strip() for m in args.manufacturers.split(",") if m.strip()]
 
+    _, approval_sql, gate_on = production_predicates()
+
     if args.print_sql:
         print("# dry run -- no connection opened")
         print(f"# env={args.env}  phrase_set={args.phrase_set} ({len(phrases)} phrases)")
         print(f"# manufacturers: {mfrs}")
         print(f"# phrases: {list(phrases)}")
         print(f"# products: {[p[0] for p in DEFAULT_PRODUCTS]}")
-        for label, sql in ALL_QUERIES:
+        print(f"# population: {SHARED_CORPUS} (shared OEM corpus, every query)")
+        print(
+            f"# MIRA_ENFORCE_APPROVED_RETRIEVAL={'true' if gate_on else 'false'} "
+            f"-> approval filter: {approval_sql.strip() or '(none)'}"
+        )
+        for label, sql in all_queries(approval_sql):
             assert_read_only(sql)
             print(f"\n-- {label} (read-only assertion: OK)\n{sql.strip()}")
         return 0
@@ -393,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"REFUSED (production guard): {exc}", file=sys.stderr)
         return 3
 
-    for _, sql in ALL_QUERIES:
+    for _, sql in all_queries(approval_sql):
         assert_read_only(sql)
 
     # Neon from Windows: channel_binding negotiation fails (root CLAUDE.md gotcha).
@@ -409,7 +537,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    print(f"<!-- probe: env={args.env} host={host} phrase_set={args.phrase_set} -->")
+    print(
+        f"<!-- probe: env={args.env} host={host} phrase_set={args.phrase_set} "
+        f"population={SHARED_CORPUS} approval_gate={'on' if gate_on else 'off'} -->"
+    )
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
             cur.execute("SET TRANSACTION READ ONLY")

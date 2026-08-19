@@ -5,6 +5,17 @@
 > (`SET TRANSACTION READ ONLY`, `ROLLBACK`). Production was **not** queried.
 > **PRD:** `docs/plans/2026-08-17-corpus-candidate-set-repair-prd.md` §7 Phase 0.
 > **Query set:** `docs/testing/sql/2026-08-18-phase0-candidate-set-baseline.sql` (re-runnable).
+>
+> **POPULATION CAVEAT (added 2026-08-19).** Every figure below except the `_product_search`
+> candidate counts (`P0.6`) was measured over the **hybrid** corpus (shared OEM + private
+> per-tenant uploads) — the query set carries no `is_private` predicate outside `P0.6`. The
+> canonical baseline's instrument, `tools/corpus_baseline_probe.py`, is now uniformly scoped
+> to the shared OEM corpus (`is_private = false`), so **numbers here are not interchangeable
+> with numbers from the probe.** See `docs/testing/2026-08-18-3177-corpus-baseline.md`
+> §1.1–§1.2 for what the correction changes and
+> `.claude/rules/knowledge-entries-tenant-scoping.md` for the law. The *qualitative* findings
+> below (control-group gate, the two issue-text corrections, the single-`source_url`
+> provenance) do not depend on the population; the counts do.
 
 Corpus at measurement time: **84,332** `knowledge_entries` rows.
 
