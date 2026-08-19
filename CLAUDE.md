@@ -288,6 +288,10 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 ---
 
+## Capability closure — "merged" is not "done"
+
+A capability is done when it is **connected** to a real consumer, **tested** by a named CI job, **enabled** somewhere real, and **proven** with evidence — or explicitly blocked/deferred/retired in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` (validated by the gated `capability-closure` CI job). Before calling anything done, or when adding any `*_ENABLED` flag, use the `finish-capability` skill. Note the repository alone cannot tell you a flag's real state — a compose `${VAR:-0}` fallback looks identical to a live default; read Doppler. #3328 is what that costs.
+
 ## Architecture changes
 
 Before any cross-module refactor, migration, consolidation, new service, dependency-direction change, canonical identity change, or legacy deletion, read and follow `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`. Query the Architecture Registry (`docs/architecture/convergence/REGISTRY.yaml`) before planning. No architecture-affecting implementation may begin without an R0 known-good rollback point. Follow the gated workflow and independent adversarial-review requirements. Gate 0 outputs (drift, duplicates, ownership, backlog): `docs/architecture/convergence/GATE0_SUMMARY.md`.

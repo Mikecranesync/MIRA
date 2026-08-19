@@ -1,0 +1,276 @@
+# Capability Closure Registry
+#
+# "Merged" is not "done". A capability is done when it is CONNECTED to a real
+# consumer, EXERCISED by a named CI job, ENABLED somewhere real, and PROVEN with
+# runtime evidence — or when a documented decision explicitly blocks, defers, or
+# retires it.
+#
+# Validated by `tools/capability_closure.py` (CI job: capability-closure).
+# Scope note: this is the LIFECYCLE registry for gated product capabilities. It
+# is deliberately distinct from:
+#   - docs/architecture/convergence/REGISTRY.yaml  — module/directory ownership
+#   - docs/env-vars.md                             — what each variable MEANS
+#   - factorylm_ai/capability_codes.py             — provider capability codes
+#   - printsense/providers/capabilities.json       — vision-provider matrix
+# Do not restate those here; reference them.
+#
+# ---------------------------------------------------------------------------
+# HOW `environments:` IS SOURCED, AND WHY THAT MATTERS
+# ---------------------------------------------------------------------------
+# Values are OBSERVED from Doppler (`doppler secrets --project factorylm
+# --config <env>`), which is the deploy-time source of truth: deploy-vps.yml
+# runs `doppler run ... -- docker compose up`. They are a snapshot, stamped with
+# `observed_on`. They are NOT re-read by the validator, because secret state is
+# environment truth, not repository truth.
+#
+# The 2026-08-19 inventory found the repository CANNOT tell you this on its own,
+# and that reading only the repository gives the WRONG answer: code defaults say
+# `MIRA_RUN_DIFF_ENABLED` is off, `docker-compose.saas.yml:983` says
+# `${MIRA_RUN_DIFF_ENABLED:-0}`, and Doppler prd says `1`. The last one wins.
+# An earlier audit (PR #3318) read the first two and concluded, wrongly, that
+# six capabilities were "shipped dark". Corrected in the same change as this file.
+#
+# ---------------------------------------------------------------------------
+# STATES
+#   implemented_unconnected  code exists, nothing consumes it
+#   connected_ci_missing     a consumer exists, no named CI job runs its tests
+#   deployed_disabled        shipped, off in every environment
+#   staging_enabled          on in staging only
+#   production_enabled       on in production
+#   blocked | deferred | retired   an explicit decision
+# ---------------------------------------------------------------------------
+
+meta:
+  observed_on: "2026-08-19"
+  observed_by: "capability-closure inventory (Doppler read, dev/stg/prd)"
+  doppler_project: factorylm
+  note: >-
+    Flag values are a point-in-time observation. Re-run the Doppler read before
+    treating any `environments:` value as current. The validator checks
+    repository-side invariants only.
+
+capabilities:
+  # =========================================================================
+  - id: run_diff_engine
+    purpose: >-
+      Segment machine runs from tag_events, learn per-tag per-phase baselines,
+      diff an observed run against them, and emit typed A0-A12 anomalies.
+    customer_outcome: >-
+      A technician can be shown what changed between a normal run and the run
+      that failed, rather than a snapshot judged against hardcoded thresholds.
+    feature_flag: MIRA_RUN_DIFF_ENABLED
+    entrypoints:
+      - "mira-crawler/run_engine/            # segmentation, baseline, diff, anomaly_rules"
+      - mira-crawler/tasks/historize_runs.py:149
+    consumers:
+      - "mira-historian-worker               # docker-compose.saas.yml:966"
+      - "mira-historian-beat                 # docker-compose.saas.yml:1000"
+    schema:
+      - "mira-hub/db/migrations/038_machine_runs.sql"
+    environments:
+      dev: unset
+      staging: unset
+      production: "1"                       # Doppler factorylm/prd, observed 2026-08-19
+    state: production_enabled
+    owner: null
+    owner_missing: >-
+      No owner recorded. It is enabled in production and nobody is named for it —
+      the single most actionable gap in this registry.
+    ci_jobs: []
+    required_checks: []
+    evidence: []
+    rollback: >-
+      Set MIRA_RUN_DIFF_ENABLED=0 in Doppler factorylm/prd and redeploy the
+      historian worker. No schema change to revert; migration 038 tables are
+      append-only and harmless when the task early-returns.
+    blocker: >-
+      Enabled in production but UNPROVEN: its three test suites
+      (mira-crawler/tests/test_run_baseline.py, test_machine_memory.py,
+      test_historize_runs_integration.py) run in no CI job — mira-crawler/tests/
+      is enumerated per-file at ci.yml:906 and none is named (#3089 class) — and
+      no run-diff artifact has been reviewed. "Enabled" is not "proven".
+    acknowledged_rules:
+      - "production_no_evidence"
+    promotion_criteria:
+      - "Enumerate the three suites in a named CI job."
+      - "Produce and review one real run-diff artifact from production or a bench asset."
+      - "Record that artifact under evidence[] and drop the acknowledgement."
+    review_by: "2026-09-19"
+    notes: >-
+      Issue #2341 still describes this engine as not existing. It shipped and is
+      enabled. Commented there 2026-08-18; the issue text remains stale.
+
+  # =========================================================================
+  - id: approved_context_retrieval
+    purpose: >-
+      Restrict retrieval to rows marked verified, so unapproved crawler or
+      upload content cannot be cited as grounded evidence.
+    customer_outcome: >-
+      A cited source is one a human approved, not merely one that exists.
+    feature_flag: MIRA_ENFORCE_APPROVED_RETRIEVAL
+    entrypoints:
+      - mira-bots/shared/neon_recall.py:136
+    consumers:
+      - "mira-bot-telegram"
+      - "mira-bot-slack"
+      - "mira-ask"
+      - "mira-pipeline"
+    environments:
+      dev: unset
+      staging: unset
+      production: "true"                    # Doppler factorylm/prd, observed 2026-08-19
+    state: production_enabled
+    owner: null
+    owner_missing: "No owner recorded for a security-relevant control."
+    ci_jobs: []
+    required_checks: []
+    evidence: []
+    rollback: >-
+      Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd. Note the
+      flag currently has no runtime effect — see blocker.
+    blocker: >-
+      P0 #3328 — CONFIGURED ON, ENFORCED OFF. The flag is 'true' in Doppler prd
+      and appears in ZERO docker-compose files, so it is never forwarded into a
+      container; neon_recall.py:136 reads its "false" default. The registry
+      records the INTENT (production: "true") deliberately, so the
+      enabled_but_unplumbed rule fires and stays visible until #3328 is fixed.
+    acknowledged_rules:
+      - "enabled_but_unplumbed"
+      - "production_no_evidence"
+    promotion_criteria:
+      - "Fix #3328 — forward the variable in each consuming service's environment block."
+      - "Confirm the intended enforcement direction before it takes effect; turning it genuinely on changes retrieval for any tenant with unverified rows."
+      - "Add a test asserting the gate is reachable from a container-shaped environment."
+    review_by: "2026-09-05"
+
+  # =========================================================================
+  - id: technician_context_contract
+    purpose: >-
+      Assemble one typed, trust-labelled TechnicianContext per turn and carry its
+      manifest into decision_traces for audit.
+    customer_outcome: >-
+      Every answer can be traced to the evidence it was built from, with each
+      item's trust level explicit.
+    feature_flag: MIRA_CONTEXT_CONTRACT
+    entrypoints:
+      - "materialized_evidence/context_contract.py"
+      - "mira-bots/shared/technician_context.py"
+    consumers:
+      - "mira-bot-telegram                   # docker-compose.saas.yml:922"
+      - "stg-mira-bot-telegram               # docker-compose.staging-vps.yml:431"
+    environments:
+      dev: unset
+      staging: "1"                          # Doppler factorylm/stg, observed 2026-08-19
+      production: unset
+    state: staging_enabled
+    owner: null
+    owner_missing: >-
+      ADR-0033, which governs this contract, is itself status Proposed and
+      awaiting Mike — so ownership is pending that decision, not merely unassigned.
+    ci_jobs:
+      - test-eval-offline          # runs tests/test_context_contract.py
+    required_checks: []
+    evidence: []
+    rollback: "Unset MIRA_CONTEXT_CONTRACT in Doppler factorylm/stg."
+    blocker: >-
+      ADR-0033 is Proposed, not accepted. Production enablement should not
+      precede that decision.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "ADR-0033 accepted or explicitly re-scoped."
+      - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
+    review_by: "2026-09-19"
+
+  # =========================================================================
+  - id: live_machine_state
+    purpose: >-
+      Inject the latest mira-fault-detective diagnosis into the technician turn
+      as a [LIVE EQUIPMENT STATUS] block.
+    customer_outcome: "An answer that reflects what the machine is doing right now."
+    feature_flag: MIRA_LIVE_DATA_ENABLED
+    entrypoints:
+      - mira-bots/shared/engine.py:510
+    consumers: []
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "Bench-scoped; no production owner needed while it stays off."
+    ci_jobs:
+      - test-eval-offline          # tests/test_live_data_enrichment.py
+    required_checks: []
+    evidence: []
+    rollback: "n/a — off in every environment."
+    reason: >-
+      Superseded in practice by the FactoryLM overlay, which takes precedence and
+      dedups this block (engine.py:5633). Nothing runs mira-fault-detective
+      outside docker-compose.fault-detective.yml, a bench harness. Kept per CU-08
+      Gate 9 Option A because it is the only consumer that renders the bench
+      harness output to a technician.
+    promotion_criteria:
+      - "Do not enable in production. Revisit only if #3312 decides to keep rather than remove the path, AND a non-bench producer exists."
+    review_by: "2026-11-19"
+    notes: "Gate 11 API-consumer edge: mira-fault-detective is not deletion-safe while this exists."
+
+  # =========================================================================
+  - id: nameplate_identification
+    purpose: "Identify the exact asset from a nameplate photo (OCR + vision)."
+    customer_outcome: "The technician photographs a drive and MIRA knows which one it is."
+    feature_flag: NAMEPLATE_DETECT_ENABLED
+    entrypoints:
+      - "mira-bots/ask_api/nameplate_detect.py"
+    consumers:
+      - "mira-bot-telegram                   # docker-compose.saas.yml:807"
+      - "mira-ask                            # docker-compose.saas.yml:525"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "Blocked on an owner decision (ADR-0036), not on assignment."
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - path: docs/eval/2026-07-16-scout-capability-boundary.md
+        note: >-
+          Adjacent eval context. The internet-100 benchmark (commit c83002b7c)
+          measured 96.7% crop production and 66.4% identity accuracy on 152 real
+          photos and concluded NO-GO on unsupervised identity promotion.
+    rollback: "n/a — off in every environment."
+    reason: >-
+      Two independent blocks: ADR-0036 is PROPOSED and not accepted (external
+      Serper egress unapproved), and the measured 66.4% identity accuracy is
+      below the bar to ASSERT an identity. 66.4% is good enough to PROPOSE an
+      identity for technician confirmation, not to promote one unsupervised.
+    promotion_criteria:
+      - "ADR-0036 accepted, or the manual-discovery arc re-implemented without external egress."
+      - "A confirmation-gated flow so identity is proposed, never asserted."
+      - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
+    review_by: "2026-10-19"
+
+# ---------------------------------------------------------------------------
+# Gate flags deliberately NOT tracked as product capabilities. Each needs a
+# reason: `--discover` fails when a gate flag is in neither list, so a new flag
+# cannot stay anonymous.
+# ---------------------------------------------------------------------------
+ignored_flags:
+  - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
+  - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface
+  - JOURNEY_SWARM_ENABLED           # test-harness driver (technician-journey swarm)
+  - MIRA_CITATION_ENFORCE           # default-ON guard; kill-switch, not a rollout gate
+  - MIRA_CTX_SIGNALS_ENABLED        # additive prompt-context experiment
+  - MIRA_INTERLOCK_CONTEXT_ENABLED  # additive prompt-context experiment
+  - MIRA_KG_CONTEXT_ENABLED         # additive prompt-context experiment
+  - MIRA_MANUAL_SENSE_WEB_ENABLED   # PrintSense manual-sense web lookup
+  - MIRA_RETRIEVAL_HYBRID_ENABLED   # default-ON retrieval mode
+  - MIRA_UNS_GATE_ENABLED           # default-ON product invariant (the UNS gate itself)
+  - MIRA_UNS_GATE_MAX_ATTEMPTS      # tuning value, not a boolean gate
+  - PRINT_AUTOEVAL_ENABLED          # PrintSense eval lane
+  - PRINT_RECALL_ENABLED            # PrintSense recall lane; eval-time, not a product capability
+  - QUALITY_GATE_ENABLED            # default-ON
+  - QUALITY_GATE_JUDGE              # dev/eval-time judge toggle, not a product capability
+  - QUALITY_GATE_MAX_CHARS          # tuning value
+  - SYNTHETIC_DOGFOOD_ENABLED       # internal dogfood worker, not customer-facing
