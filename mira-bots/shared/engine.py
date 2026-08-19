@@ -506,6 +506,22 @@ _MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
 # HTTP API and injects a [LIVE EQUIPMENT STATUS] block. Best-effort: any miss
 # (flag off, service down, timeout, bad payload) returns "" and the flow is
 # byte-for-byte unchanged. Same wrap-don't-rewrite pattern as the KG block.
+#
+# STATUS — decided by CU-08 Gate 9 (Option A, 2026-08-18), tracked in #3312:
+# KEEP AND DOCUMENT. This path is superseded in practice — when the FactoryLM
+# overlay is present it takes precedence and the legacy block is deduped away
+# (see the dedup below and wiki/hot.md) — and its test mocks the HTTP call, so
+# CI never touches a real service. It is retained, not deleted, because:
+#   1. mira-fault-detective is kept as a bench harness for the fuse-vs-wire,
+#      chatter, and sensor/vision-disagreement coverage simlab cannot produce;
+#   2. this is the only consumer that renders that harness's output to a
+#      technician, so deleting it would strand the bench demo;
+#   3. it is a Gate 11 API-consumer edge on mira-fault-detective — that component
+#      is NOT deletion-safe while these three vars exist.
+# DO NOT enable MIRA_LIVE_DATA_ENABLED in production expecting current data:
+# nothing runs mira-fault-detective outside docker-compose.fault-detective.yml,
+# which is a BENCH HARNESS, not a customer architecture
+# (.claude/rules/fieldbus-readonly.md).
 _LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
 _FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
 _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
