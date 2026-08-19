@@ -22,8 +22,22 @@ name: Gate 7 Adversarial Review (advisory)
 # the size threshold can be chosen from data rather than guessed.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # NOT `pull_request`. On that event GitHub runs the workflow file FROM THE PR HEAD, so a
+  # pull request could rewrite this file and run anything it liked with the provider keys
+  # in scope — the exposure Gate 7 raised against this very lane.
+  #
+  # `workflow_run` always executes the DEFAULT BRANCH's copy, so what runs with secrets is
+  # fixed by main, not by the PR. gate7-trigger.yml is the secret-free half that fires on
+  # pull_request and only records which PR to review.
+  #
+  # Environment-scoped secrets were considered and rejected: GROQ_API_KEY and
+  # CEREBRAS_API_KEY also exist as REPO-level secrets for deepeval-ci,
+  # unseen-generalization-lane and code-review, so a modified workflow could reference
+  # them directly and never declare the environment. Scoping this lane's copy would have
+  # mitigated nothing.
+  workflow_run:
+    workflows: ["Gate 7 Trigger"]
+    types: [completed]
   # The adjudication phase is triggered by the author filing a rebuttal, not by a push.
   # A rebuttal answers ONE specific report by its structural finding ids (F1..Fn); a new
   # push produces a new report whose ids mean different things, so re-adjudicating on
@@ -34,45 +48,82 @@ on:
     types: [created]
 
 concurrency:
-  # issue_comment carries no pull_request object; fall back to the issue number so both
-  # event types land in the same per-PR group instead of an empty one.
-  group: gate7-advisory-${{ github.event.pull_request.number || github.event.issue.number }}
+  # Neither event carries a pull_request object: workflow_run has the triggering run,
+  # issue_comment has the issue. Key on whichever is present so both land in the same
+  # per-PR group rather than colliding in an empty one.
+  group: >-
+    gate7-advisory-${{ github.event.workflow_run.id || github.event.issue.number }}
   cancel-in-progress: true
 
 permissions:
   contents: read
   pull-requests: write
+  # workflow_run runs are not attached to the PR, so the result would be invisible there.
+  # A commit status on the head SHA puts it back on the PR — and is what a branch
+  # protection rule would key on if this lane is ever promoted to required.
+  statuses: write
+  # Needed to download the trigger run's artifact across runs.
+  actions: read
 
 jobs:
   gate7:
     name: Gate 7 adversarial review (advisory)
     # Fork PRs receive no secrets, so the cascade cannot run. Skip explicitly — a skipped
     # job is honest, a failed one would look like the reviewer found something.
-    # Deliberately NOT pull_request_target: that runs with secrets in the base-repo
-    # context and is the standard way review workflows get exploited on public repos.
+    # Deliberately NOT pull_request_target either: that also runs with secrets against
+    # untrusted head content and is the standard way review workflows get exploited.
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # No `ref:` — a workflow_run checkout defaults to the DEFAULT BRANCH, which is the
+      # trusted code we want while provider keys are in scope. The reviewer, and the
+      # sanitizer it imports, therefore always come from main.
+      #
+      # The PR is still reviewed in full: gate7_review.py obtains the diff through
+      # `gh pr diff`, which reads the GitHub API, not the working tree.
+      #
+      # Accepted consequence: a PR that improves gate7_review.py is reviewed by main's
+      # version of the tool, not its own.
       - uses: actions/checkout@v6
         with:
-          # Check out the BASE commit, NOT the PR head. The reviewer and the sanitizer it
-          # imports then come from already-merged, trusted code, so a PR that edits
-          # tools/gate7_review.py (or anything it imports) cannot have its version
-          # executed with these API keys in the environment. Gate 7's own review of this
-          # workflow raised that exposure; this is the structural fix.
-          #
-          # The PR is still reviewed in full: gate7_review.py obtains the diff through
-          # `gh pr diff`, which reads the GitHub API, not the working tree.
-          #
-          # Consequence, accepted: a PR that improves gate7_review.py is reviewed by the
-          # BASE version of the tool, not its own. Honest limitation — the workflow file
-          # itself still comes from the PR head (GitHub's behaviour for `pull_request`),
-          # so this narrows the exposure to repo code, it does not eliminate it.
-          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
+
+      - name: Fetch PR context from the trigger run
+        uses: actions/download-artifact@v4
+        with:
+          name: gate7-pr-context
+          path: gate7-ctx
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate PR context
+        id: ctx
+        env:
+          # The SHA is taken from the workflow_run EVENT, not the artifact. The artifact
+          # is written by the PR-head-controlled trigger workflow, so it is untrusted;
+          # the event field is set by GitHub and cannot be forged by a PR.
+          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr="$(tr -dc '0-9' < gate7-ctx/pr-number)"
+          if [ -z "$pr" ]; then
+            echo "::error::no usable PR number in the trigger artifact"; exit 1
+          fi
+          # Cross-check the artifact's claim against the authoritative event value, and
+          # confirm the PR really does point at this commit before reviewing anything.
+          api_sha="$(gh pr view "$pr" --json headRefOid -q .headRefOid)"
+          if [ "$api_sha" != "$EVENT_SHA" ]; then
+            echo "::error::PR #${pr} head ${api_sha} != trigger run sha ${EVENT_SHA}"
+            exit 1
+          fi
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+          echo "sha=${EVENT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "reviewing PR #${pr} @ ${EVENT_SHA}"
 
       - uses: actions/setup-python@v6
         with:
@@ -112,7 +163,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Passed via env, not interpolated into the script body — inline
           # `${{ github.* }}` in `run:` is a script-injection vector.
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ steps.ctx.outputs.pr }}
         run: |
           set +e
           python tools/gate7_review.py "${PR}" -o gate7-report.md 2>&1 | tee gate7-run.log
@@ -143,10 +194,10 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ steps.ctx.outputs.pr }}
           VERDICT: ${{ steps.review.outputs.verdict }}
           TRUNCATED: ${{ steps.review.outputs.truncated }}
-          SHA: ${{ github.event.pull_request.head.sha }}
+          SHA: ${{ steps.ctx.outputs.sha }}
         run: |
           {
             echo "[GATE7-ADVISORY]"
@@ -196,6 +247,29 @@ jobs:
           else
             gh pr comment "${PR}" --body-file gate7-comment.md
           fi
+
+      # A workflow_run run is not attached to the PR, so without this the result would be
+      # invisible on the PR page. The status is always `success` while the lane is
+      # advisory — the verdict lives in its description and in the sticky comment. This is
+      # also the hook a branch protection rule would key on at promotion time; flipping to
+      # blocking then means emitting `failure` here, not restructuring the workflow.
+      - name: Publish commit status on the reviewed SHA
+        if: always() && steps.ctx.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.ctx.outputs.sha }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          TRUNCATED: ${{ steps.review.outputs.truncated }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          desc="advisory — verdict ${VERDICT:-NONE}"
+          [ "$TRUNCATED" = "true" ] && desc="${desc} (diff TRUNCATED — findings unreliable)"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state=success \
+            -f context='Gate 7 adversarial review (advisory)' \
+            -f description="${desc:0:139}" \
+            -f target_url="${RUN_URL}" >/dev/null
+          echo "status published on ${SHA}: ${desc}"
 
       - name: Record outcome (advisory — never fails)
         if: always()
