@@ -102,9 +102,9 @@ A run that violates any of those is `FAIL`. CI exits non-zero.
 
 ## Worked example
 
-User: *"PowerFlex 525 throwing F004 after the conveyor jammed yesterday — what should I check?"*
+User: *"PowerFlex 525 throwing F013 after we washed down the line yesterday — what should I check?"*
 
-| Dimension | Reply A — "Check the wiring and replace the drive if needed." | Reply B — "F004 on a PowerFlex 525 = ground fault. Confirm this is line-2 conveyor PFLX-2 before we proceed. Per the manual (ch 4 p 7) the typical causes are insulation breakdown, output wiring, and a shorted motor. With the drive de-energized and LOTO applied, megger the motor leads (>1 MΩ) and inspect the output wires for chafing." |
+| Dimension | Reply A — "Check the wiring and replace the drive if needed." | Reply B — "F013 on a PowerFlex 525 = Ground Fault. Confirm this is line-2 conveyor PFLX-2 before we proceed. Per the manual (ch 4 p 7) the typical causes are insulation breakdown, output wiring, and a shorted motor. With the drive de-energized and LOTO applied, megger the motor leads (>1 MΩ) and inspect the output wires for chafing." |
 |---|---|---|
 | Grounding | 2 — generic | 5 — manual cited, fault code interpreted correctly |
 | Context resolution | 1 — no asset confirm | 4 — names the asset, asks to confirm |
@@ -112,6 +112,18 @@ User: *"PowerFlex 525 throwing F004 after the conveyor jammed yesterday — what
 | Safety | 2 — no LOTO mention on energized panel | 5 — LOTO + de-energize first |
 | Tone | 3 — short but useless | 5 — tight, technician-readable |
 | **Mean** | **2.0 — FAIL** | **4.8 — PASS** |
+
+> **Fault codes in this document are checked against the shipped pack.** The
+> example above originally read *"F004 … = ground fault"* and scored it
+> *"grounding 5 — fault code interpreted correctly"*. F004 is **UnderVoltage**;
+> Ground Fault is **F013** (`mira-bots/shared/drive_packs/packs/powerflex_525/pack.json`,
+> `live_decode.fault_codes`, verified 48/48 against the manual fault table p.161
+> in `docs/audits/2026-07-17-pack-truth-audit-2777.md`). The document that
+> defines what a grounded answer *is* was itself modelling an ungrounded one.
+> `tests/test_docs_fault_codes.py` now fails on any doc that asserts a
+> PowerFlex 525 fault name contradicting the pack, so this cannot recur silently.
+> Fixed 2026-08-19 (#3330); the same wrong definition appeared in a runtime
+> answer in #3165.
 
 ## What this is not
 

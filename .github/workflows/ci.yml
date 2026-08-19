@@ -510,6 +510,16 @@ jobs:
         # Prints the scored rubric table; exits non-zero if the flywheel regresses.
         run: python tools/flywheel_benchmark.py
 
+      - name: Docs may not contradict the shipped fault table
+        # #3330. docs/specs/mira-answer-quality-standard.md — the document that
+        # DEFINES a grounded answer — called PowerFlex 525 F004 a ground fault
+        # and scored that "grounding 5 — fault code interpreted correctly".
+        # F004 is UnderVoltage; Ground Fault is F013. The same wrong definition
+        # reached a runtime answer in #3165, so this is the second occurrence.
+        # Ground truth is the shipped pack, which is what the product answers
+        # from. Hermetic — reads the pack and docs/, no network, no DB.
+        run: pytest tests/test_docs_fault_codes.py -v
+
       - name: Migration drift detector (pure core)
         # Guards tools/migration_drift.py — the fail-loud check that no env
         # silently misses a repo migration (W3). Hermetic, no DB.
