@@ -682,6 +682,7 @@ def test_dpo_export_redacts_pii_in_prompt_and_both_completions(tmp_path: Path) -
     assert "00:1B:44:11:3A:B7" not in blob and "[MAC]" in blob
     assert "X4J-99201" not in blob and "[SN]" in blob
 
+
 def test_redact_leaves_the_word_service_alone_3305():
     """#3305 at the training-corpus seam — the highest-consequence mirror.
 
@@ -704,4 +705,3 @@ def test_redact_still_strips_real_serials_3305():
     out = redact_text("S/N ABC12345 on the nameplate")
     assert "[SN]" in out
     assert "ABC12345" not in out
-
