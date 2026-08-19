@@ -25,6 +25,12 @@ that plainly in the unit record rather than implying more.
 Exit codes: 0 = review produced (PASS or BLOCK — read the verdict), 2 = the
 whole cascade failed (advisory: fall back to a substitute panel and record the
 deviation, exactly as CU-P1 and CU-02 did), 1 = usage/fetch error.
+
+For gating, two opt-in codes keep "blocked" distinguishable from "unreviewable",
+which a single failure code would conflate:
+  3 (--fail-on-block)      = reviewed, and the structural verdict was not PASS.
+  4 (--require-full-diff)  = refused; the diff exceeds the cap, so no gate-quality
+                             review is possible. Route to --paths groups or a human.
 """
 
 from __future__ import annotations
@@ -888,6 +894,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         "repo, so a citation can point at evidence but never fabricate it.",
     )
     p.add_argument(
+        "--require-full-diff",
+        action="store_true",
+        help="exit 4 instead of reviewing when the diff exceeds the char cap. For "
+        "GATING: a truncated review is not merely less complete, it is actively "
+        "misleading — this tool's own round 2 reported two high-severity findings "
+        "about code that sat twenty lines past the cut, and _truncation_notice() "
+        "records that a reviewer reading a fragment 'treats every absence as a "
+        "defect'. Blocking a merge on that would fail the largest, riskiest PRs on "
+        "invented findings. Exit 4 says 'this change is too large to gate on' — "
+        "distinct from 3 (reviewed and blocked), so a gate can route it to "
+        "--paths group review or human review instead of pretending either a pass "
+        "or a failure.",
+    )
+    p.add_argument(
         "--fail-on-block",
         action="store_true",
         help="exit 3 when the verdict is not PASS (BLOCK or UNKNOWN). For CI "
@@ -958,6 +978,21 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"(redacted: IP/MAC/SN)" + (" — TRUNCATED" if len(diff) > MAX_DIFF_CHARS else ""),
         file=sys.stderr,
     )
+    # Refuse BEFORE spending a cascade call: the result could not be gated on anyway,
+    # and a truncated review's findings are worse than absent (see --require-full-diff).
+    if a.require_full_diff and len(diff) > MAX_DIFF_CHARS:
+        print(
+            f"Gate 7: REFUSING — {len(diff):,} diff chars exceeds the {MAX_DIFF_CHARS:,} "
+            "cap and --require-full-diff is set. A truncated review manufactures "
+            "findings at the cut; it is not gate-quality evidence.",
+            file=sys.stderr,
+        )
+        print(
+            "Re-run per file group with --paths (each group needs its own PASS), raise "
+            "--diff-cap, or route this change to human review.",
+            file=sys.stderr,
+        )
+        return 4
     receipts = receipts_block(head_sha, a.paths, excluded, diff, "high")
 
     if a.adjudicate:

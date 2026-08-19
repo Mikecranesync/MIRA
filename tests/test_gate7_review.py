@@ -798,3 +798,56 @@ def test_adjudication_prompt_includes_cited_evidence_section():
     assert "EXCERPT_MARKER" in with_ev
     assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" in with_ev
     assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" not in without
+
+
+# --- --require-full-diff (gate safety on large PRs) -----------------------------
+# A truncated review is not merely less complete, it is misleading: this tool's own
+# round 2 reported two high findings about code twenty lines past the cut. Exit 4
+# says "too large to gate on", distinct from 3 ("reviewed and blocked"), so a gate
+# can route it to group review rather than pretending a pass or a failure.
+
+
+def _stub_pr(monkeypatch, diff_text):
+    """Stub fetch_pr so the guard can be exercised without network or a real PR."""
+    import gate7_review
+
+    monkeypatch.setattr(
+        gate7_review, "fetch_pr", lambda n: ("t", "b", ["a.py"], diff_text, "deadbeef")
+    )
+
+
+def test_require_full_diff_refuses_oversized_diff_with_exit_4(monkeypatch, capsys):
+    import gate7_review
+
+    _stub_pr(monkeypatch, "x" * (gate7_review.MAX_DIFF_CHARS + 1))
+    # If the guard leaks past, this would raise rather than silently pass the test.
+    monkeypatch.setattr(
+        gate7_review,
+        "call_cascade",
+        lambda *a, **k: pytest.fail("cascade must not be called on a refused diff"),
+    )
+    assert gate7_review.main(["1", "--require-full-diff"]) == 4
+    assert "REFUSING" in capsys.readouterr().err
+
+
+def test_require_full_diff_allows_diff_at_the_cap(monkeypatch):
+    """Boundary: exactly at the cap is NOT truncated, so it must not be refused."""
+    import gate7_review
+
+    _stub_pr(monkeypatch, "x" * gate7_review.MAX_DIFF_CHARS)
+    monkeypatch.setattr(
+        gate7_review, "call_cascade", lambda *a, **k: (None, None, ["stub"])
+    )
+    # 2 = cascade stubbed dead; the point is it got PAST the guard rather than 4.
+    assert gate7_review.main(["1", "--require-full-diff"]) == 2
+
+
+def test_oversized_diff_without_the_flag_still_reviews(monkeypatch):
+    """The guard is opt-in — default behaviour (truncate + notice) is unchanged."""
+    import gate7_review
+
+    _stub_pr(monkeypatch, "x" * (gate7_review.MAX_DIFF_CHARS + 1))
+    monkeypatch.setattr(
+        gate7_review, "call_cascade", lambda *a, **k: (None, None, ["stub"])
+    )
+    assert gate7_review.main(["1"]) == 2
