@@ -36,9 +36,10 @@ product statement today is:
 > machine, because the parts that would prove it are switched off and, in several cases, untested
 > in CI.
 
-**Precision matters here, and this PRD got it wrong in an earlier revision.** "Deployed" means the
-code and the worker container are present — `mira-historian-worker` is in `docker-compose.saas.yml`
-and starts. It does **not** mean the run-diff path executes: `tasks/historize_runs.py:149-153`
+**Precision matters here, and this PRD got it wrong in an earlier revision.** "Deployed" here means the code and the worker container are *declared in the
+production compose file* — `mira-historian-worker` is present in `docker-compose.saas.yml`. This
+audit did **not** observe it running; a stopped, failed, or never-deployed worker looks identical
+from the repository (Codex round 2, F3). It certainly does **not** mean the run-diff path executes: `tasks/historize_runs.py:149-153`
 immediately returns `{"status": "disabled"}` unless `MIRA_RUN_DIFF_ENABLED == "1"`, and the prod
 compose default is `0`. So production runs the worker and produces **no** runs, baselines, or diffs.
 Reserve "runs in production" for an enabled path with runtime proof — which is exactly what Slice 1
@@ -222,8 +223,13 @@ one is rejected regardless of its other merits.**
   `supports`, `contradicts`, `inconclusive`.
 - **R3.2** — Hypothesis status vocabulary MUST include `supported`, `contradicted`, `unresolved`,
   `unverified` — and `unresolved` MUST be a terminal, reportable outcome, not a placeholder.
-- **R3.3** ⛔ — The system MUST NOT declare a root cause when no hypothesis is `supported` and ≥2
-  remain `unresolved`. *Verification:* Case D (§7) — the acceptance test for the whole pivot.
+- **R3.3** ⛔ — The system MUST NOT declare a root cause unless at least one hypothesis is
+  `supported`. The bar is the presence of support, **not** the absence of alternatives — an
+  earlier revision said "no hypothesis `supported` **and** ≥2 remain `unresolved`", which would
+  have permitted declaring a lone `unresolved` hypothesis the root cause once the others were
+  contradicted or never created. Found by the Codex adversarial lane (round 2, F1).
+  *Verification:* Case D (§7) is one fixture of this rule, not its definition — add a second
+  fixture with exactly one surviving unresolved hypothesis and zero supported.
 - **R3.4** — Contradicting evidence MUST be shown to the technician, not suppressed for readability.
 
 ### R4 — Timelines are multi-source and honest about time
@@ -394,6 +400,7 @@ matches its way to a persuasive answer fails visibly.
 | **B — prox double trigger** | raw prox transitions twice in a short interval; conditioned bit retriggers; PLC withdraws enable; DC-link stays below fault; drive reports only the consequence | sensor/sequence **supported**; regenerative **contradicted** |
 | **C — track-lock permissive loss** | pin/track-position feedback drops for one scan **before** drive status changes; enable withdrawn; sensor order and DC-link normal | upstream mechanical-permissive chain **supported** |
 | **D — insufficient evidence** | HMI alarm + technician description only; no raw tags, no drive buffer, no synchronized timeline | **no root cause declared**; ≥2 hypotheses `unresolved`; ranked evidence-collection plan |
+| **D2 — lone survivor** | every hypothesis contradicted except one, which has **no supporting evidence** — only absence of contradiction | **no root cause declared.** R3.3's bar is the presence of support, not the absence of alternatives. This is the fixture that catches an implementation reading "last one standing" as "proven" |
 
 **Case D is the acceptance test for the pivot itself.** Cases A–C prove the system can reason; Case
 D proves it can decline. Any build that converts D into a confident diagnosis has failed regardless
@@ -466,7 +473,7 @@ collectively building toward.
 
 | Document | Relationship |
 |---|---|
-| `docs/prd/2026-08-01-mira-factorylm-machine-evidence-handoff.md` | **Phase-1 foundation.** Read-only machine evidence into `TechnicianContext`. Its scope is deliberately narrower; this PRD does not modify it. **Unchanged by this PRD** |
+| `docs/prd/2026-08-01-mira-factorylm-machine-evidence-handoff.md` | **Phase-1 foundation.** Read-only machine evidence into `TechnicianContext`. Its **requirements and scope are unchanged**; this PR adds only a six-line cross-reference pointer to it |
 | `docs/prd/2026-08-03-mira-answer-integrity-and-validation-engine.md` | **Consumer.** Its "every fix paired with a check that would have caught it" discipline is exactly R7.3 |
 | `docs/prd/2026-08-03-cited-technician-turn.md` | **Consumer.** The turn format that renders evidence, uncertainty, and next safe action. ⚠️ **Not on `origin/main`** at the time of writing — it exists only as an untracked local file on CHARLIE and belongs to another session, so this PRD adds no pointer to it. Re-link once it lands (PR #3090 is the related contract slice) |
 | `docs/prd/2026-07-30-mira-unification-program.md` | One conversational policy; specialists below it as typed-evidence producers. This PRD's producers are that shape. ⚠️ ADR-0033 remains **Proposed** |
