@@ -26,8 +26,28 @@ from collections import defaultdict
 from pathlib import Path
 
 _SOURCE_RE = re.compile(r"\[source:\s*([^\]]+)\]", re.I)
-_FAULT_CLAIM_RE = re.compile(
-    r"\bF0*(\d{1,3})\b\s*(?:=|is|means)?\s*([A-Za-z][A-Za-z /-]{2,28})", re.I
+
+# A DEFINITION, not any prose following a code. The first version made the
+# connector optional, so "F004 plus other characters" and "F013 with extra
+# characters" — both fragments of a disambiguation menu — were counted as fault
+# claims, and the report said `var-f013` made "3 distinct claims" when only one
+# reply defined anything at all. An overstated number in a committed report is
+# worse than a missing column, so the connector is now required and the claimed
+# name is matched against the shipped fault table rather than free text.
+_FAULT_CLAIM_RE = re.compile(r"\bF0*(\d{1,3})\b\s*(?:=|\bis\b|\bmeans\b|\bindicates\b)\s*", re.I)
+_KNOWN_FAULT_NAMES = (
+    "undervoltage",
+    "under voltage",
+    "overvoltage",
+    "over voltage",
+    "ground fault",
+    "motor overload",
+    "overload",
+    "heatsink",
+    "overcurrent",
+    "power loss",
+    "motor stalled",
+    "i/o board",
 )
 
 
@@ -42,11 +62,24 @@ def _citations(text: str) -> frozenset[str]:
 
 
 def _fault_claims(text: str) -> frozenset[str]:
+    """Fault DEFINITIONS asserted in the reply, e.g. {"f004=undervoltage"}.
+
+    Requires an explicit connector AND a name from the shipped fault table, so
+    a disambiguation menu ("2. F004 plus other characters") is not a claim.
+    """
     out = set()
-    for code, name in _FAULT_CLAIM_RE.findall(text):
-        name = name.strip().lower()
-        if name and name not in {"is", "on", "the", "a"}:
-            out.add(f"f{int(code):03d}={name[:24]}")
+    low = text.lower()
+    for m in _FAULT_CLAIM_RE.finditer(text):
+        code = int(m.group(1))
+        window = low[m.end() : m.end() + 34].lstrip()
+        for article in ("a ", "an ", "the "):  # "F013 indicates A ground fault"
+            if window.startswith(article):
+                window = window[len(article) :]
+                break
+        for name in _KNOWN_FAULT_NAMES:
+            if window.startswith(name):
+                out.add(f"f{code:03d}={name}")
+                break
     return frozenset(out)
 
 
