@@ -1623,3 +1623,307 @@ def test_registry_tags_checker_catches_violations():
     commented = "mod-a: # note\n  path: a/\n"
     entries, tag_lines, _ = scan_registry_tags(commented)
     assert entries == 1 and tag_lines == 0, "trailing-comment key evaded the entry count"
+
+
+# ---------------------------------------------------------------------------
+# Contract 16: every store_chunks caller states its model_number
+# ---------------------------------------------------------------------------
+# `ingest/store.py::store_chunks` used to take `model_number: str = ""`.
+# `crawler/base_crawler.py` read the source entry's declared model into a local
+# named `equipment_id` and then never passed it, so the default won. That one
+# omitted kwarg broke three systems, not one (#3177):
+#
+#   1. the chunk row landed with a blank model_number, and
+#      `neon_recall._product_search` filters `model_number ILIKE :pat` — so the
+#      product-scoped retrieval stream could not see the chunk at all;
+#   2. store.py's KG guard `if kg_writer is not None and manufacturer and
+#      model_number:` evaluated False, so no equipment/manual entity was ever
+#      registered;
+#   3. the `equipment_entity_id` link and the fault-code extractor nest inside
+#      that guard, so neither ran.
+#
+# The fix made `model_number` keyword-only with no default. This contract keeps
+# it that way with two independent locks, because either alone goes slack:
+#
+#   Lock A (call sites) — every store_chunks call passes an explicit
+#       `model_number=`. Catches a NEW caller that forgets.
+#   Lock B (signature) — `model_number` is still keyword-only WITHOUT a default.
+#       Catches someone re-adding `model_number: str = ""` while every existing
+#       caller keeps passing it: Lock A would stay green straight through the
+#       regression that caused #3177.
+#
+# Contract 13 fences the WRITE boundary (`insert_chunk`) and Contract 15 the
+# Celery TASK boundary; this fences the store ORCHESTRATOR between them. They
+# are different populations — a store_chunks caller never calls insert_chunk
+# directly, so Contract 13 cannot see it.
+#
+# KNOWN BOUNDARY, stated rather than implied: a call-site scan sees calls.
+# `store_chunks` passed as a first-class value (`run.step("store", store_chunks,
+# chunks)`) or wrapped in `functools.partial` is a call by another name and is
+# invisible here. There are zero such real sites today — the only occurrence of
+# that shape in the repo is prose inside `mira-bots/shared/workflow.py`'s module
+# docstring — and Lock B makes such a call fail at runtime with TypeError
+# regardless. The gap is a ceiling on coverage, not a hole that silently passes.
+#
+# The scan is AST-only BY CONSTRUCTION: `ast.parse` discards comments, and a
+# docstring is a Constant node rather than a keyword. So no comment, docstring,
+# or adjacent prose can satisfy this contract — and, in the other direction,
+# prose cannot fabricate a phantom violation either. Both directions are
+# asserted below rather than assumed.
+#
+# Twin guard: `mira-crawler/tests/test_write_path_visibility.py` runs the same
+# call-site lock inside the crawler's own suite, where it can ALSO assert the
+# runtime TypeError. This copy exists because that one needs the crawler's
+# dependencies installed and imports `ingest.store` at module level, so a
+# crawler dependency break takes it down with it; the Architecture Check job
+# installs pytest + pyyaml and parses text. Keep both.
+
+_STORE_CHUNKS_TARGET = "store_chunks"
+_STORE_CHUNKS_DEF_REL = "mira-crawler/ingest/store.py"
+_STORE_CHUNKS_SCAN_SKIP = _INGEST_URL_SCAN_SKIP
+
+
+def _store_chunks_call_names(tree: ast.AST) -> set[str]:
+    """Local names bound to store_chunks, including `import ... as` aliases."""
+    names = {_STORE_CHUNKS_TARGET}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == _STORE_CHUNKS_TARGET and alias.asname:
+                    names.add(alias.asname)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[-1] == _STORE_CHUNKS_TARGET and alias.asname:
+                    names.add(alias.asname)
+    return names
+
+
+def _store_chunks_calls(tree: ast.AST, names: set[str]) -> list[ast.Call]:
+    """Every Call node that resolves to store_chunks, however qualified."""
+    found: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            called = func.id
+        elif isinstance(func, ast.Attribute):
+            # `store.store_chunks(...)` / `ingest.store.store_chunks(...)`
+            called = func.attr
+        else:
+            continue
+        if called in names:
+            found.append(node)
+    return found
+
+
+def scan_store_chunks_calls(rel_path: str, source: str) -> list[str]:
+    """Return store_chunks call sites that omit an explicit `model_number=`."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    names = _store_chunks_call_names(tree)
+    missing: list[str] = []
+    for node in _store_chunks_calls(tree, names):
+        # `**payload` forwarding has `kw.arg is None`, so it never counts as a
+        # decision: the model choice must be visible AT the call site.
+        if any(kw.arg == "model_number" for kw in node.keywords):
+            continue
+        missing.append(
+            f"{rel_path}:{node.lineno} calls store_chunks without an explicit "
+            "model_number — the row lands with a blank model and (1) becomes "
+            "invisible to neon_recall._product_search's `model_number ILIKE :pat` "
+            "filter, (2) fails ingest/store.py's `manufacturer and model_number` "
+            "KG guard so no equipment/manual entity is registered, and (3) nested "
+            "under that, skips equipment_entity_id linking and fault-code "
+            "extraction (#3177). Pass the caller's declared model, or an explicit "
+            'empty string when there genuinely is none — never a filename-derived '
+            "guess (chunker._extract_equipment_id yields 'GS10USERMANUAL', which "
+            "_product_search's suffix-exclude regex then discards at query time)."
+        )
+    return missing
+
+
+def _store_chunks_call_files() -> list[Path]:
+    """Every repo .py file — a wrapper around the call is itself a call site.
+
+    Nested git worktrees are skipped: a linked worktree has `.git` as a FILE,
+    which no directory-name filter can express.
+    """
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _STORE_CHUNKS_SCAN_SKIP
+            and not (Path(dirpath) / d / ".git").is_file()
+        ]
+        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
+    return sorted(out)
+
+
+# Files whose omission of model_number IS the assertion. Narrow and named — the
+# omission sits inside `pytest.raises(TypeError)`, so declaring model_number
+# there would delete the test.
+_STORE_CHUNKS_ALLOWLIST: dict[str, str] = {
+    "mira-crawler/tests/test_model_number_tagging.py": (
+        "TestStoreChunksRequiresModel omits model_number inside "
+        "pytest.raises(TypeError) — the omission IS the assertion"
+    ),
+    "mira-crawler/tests/test_write_path_visibility.py": (
+        "test_is_private_is_required omits the required kwargs inside "
+        "pytest.raises(TypeError); this file also hosts the crawler-local "
+        "twin of this contract"
+    ),
+}
+
+
+def store_chunks_kwonly_without_default(source: str) -> set[str]:
+    """Keyword-only params of store_chunks that carry NO default."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == _STORE_CHUNKS_TARGET:
+            return {
+                arg.arg
+                for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults)
+                if default is None
+            }
+    return set()
+
+
+def test_store_chunks_callers_declare_model_number():
+    """Lock A: no caller may rely on a defaulted model_number (#3177)."""
+    offenders: list[str] = []
+    for path in _store_chunks_call_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        # The self-skip is belt-and-braces, not load-bearing: this file's bad
+        # fixtures are string Constants, invisible to an AST walk.
+        if rel in _STORE_CHUNKS_ALLOWLIST or rel == "tests/test_architecture.py":
+            continue
+        offenders.extend(
+            scan_store_chunks_calls(rel, path.read_text(encoding="utf-8", errors="replace"))
+        )
+    assert not offenders, "\n".join(offenders) + (
+        "\n\nEither pass the caller's model decision, or add an allowlist entry "
+        "with a reason in Contract 16."
+    )
+
+
+def test_store_chunks_signature_keeps_model_number_required():
+    """Lock B: re-adding a default would let Lock A pass through the bug."""
+    src = (_ROOT / _STORE_CHUNKS_DEF_REL).read_text(encoding="utf-8", errors="replace")
+    kwonly = store_chunks_kwonly_without_default(src)
+    assert "model_number" in kwonly, (
+        f"{_STORE_CHUNKS_DEF_REL}::store_chunks no longer requires model_number "
+        "as a keyword-only argument without a default — that default IS the "
+        "#3177 defect shape, and every existing caller passing it explicitly "
+        "would hide the regression from Contract 16's call-site lock."
+    )
+    assert "is_private" in kwonly, (
+        f"{_STORE_CHUNKS_DEF_REL}::store_chunks no longer requires is_private "
+        "(CU-03 I-1) — the same mechanism, checked here because it is free."
+    )
+
+
+def test_store_chunks_allowlist_is_honest():
+    """Every exemption still exists and still omits model_number."""
+    for rel, reason in _STORE_CHUNKS_ALLOWLIST.items():
+        path = _ROOT / rel
+        assert path.exists(), f"allowlisted {rel} no longer exists — drop the entry"
+        assert len(reason) >= 30, f"allowlist entry for {rel} needs a real reason"
+        found = scan_store_chunks_calls(rel, path.read_text(encoding="utf-8", errors="replace"))
+        assert found, (
+            f"allowlisted {rel} now declares model_number everywhere — remove its "
+            "exemption so the contract covers it"
+        )
+
+
+def test_store_chunks_scanner_sees_the_known_population():
+    """Honesty check: a scan that silently collects nothing passes vacuously."""
+    seen = 0
+    for path in _store_chunks_call_files():
+        src = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        seen += len(_store_chunks_calls(tree, _store_chunks_call_names(tree)))
+    assert seen >= 10, (
+        f"scanner sees only {seen} store_chunks call sites — expected the known "
+        "population (4 production + the crawler's own tests)"
+    )
+
+
+def test_store_chunks_checker_catches_violations():
+    """The guard must FAIL on the known bad shapes, so a green run means something."""
+    bad = {
+        "bare call": "store_chunks(pairs, tenant_id='t')\n",
+        "is_private but no model": "store_chunks(pairs, tenant_id='t', is_private=False)\n",
+        "module-qualified": "store.store_chunks(pairs, tenant_id='t', is_private=False)\n",
+        "dotted module path": "ingest.store.store_chunks(pairs, tenant_id='t')\n",
+        "kwargs forwarding is not a decision": "store_chunks(pairs, **payload)\n",
+        "import alias": (
+            "from ingest.store import store_chunks as sc\nsc(pairs, tenant_id='t')\n"
+        ),
+        "helper wrapper": "def land(p):\n    store_chunks(p, tenant_id='t')\n",
+    }
+    for label, src in bad.items():
+        assert scan_store_chunks_calls("bad.py", src), f"checker missed: {label}"
+
+    good = {
+        "explicit model": (
+            "store_chunks(pairs, tenant_id='t', model_number='GS10', is_private=False)\n"
+        ),
+        "explicit empty (no model exists)": (
+            "store_chunks(pairs, tenant_id='t', model_number='', is_private=False)\n"
+        ),
+        "threaded variable": (
+            "store_chunks(pairs, tenant_id='t', model_number=entry['model'], is_private=False)\n"
+        ),
+        "explicit alongside forwarding": "store_chunks(pairs, model_number=m, **payload)\n",
+        "aliased + explicit": (
+            "from ingest.store import store_chunks as sc\nsc(pairs, model_number=m)\n"
+        ),
+        "unrelated function": "insert_chunk(tenant_id='t', content='x', is_private=False)\n",
+    }
+    for label, src in good.items():
+        assert scan_store_chunks_calls("good.py", src) == [], f"false positive: {label}"
+
+    # Lock B's parser needs teeth of its own.
+    assert store_chunks_kwonly_without_default(
+        "def store_chunks(pairs, *, model_number: str = '', is_private: bool):\n    pass\n"
+    ) == {"is_private"}, "a defaulted model_number was not detected"
+    assert store_chunks_kwonly_without_default("def other(x):\n    pass\n") == set()
+
+
+def test_store_chunks_contract_cannot_be_satisfied_by_prose():
+    """A comment or docstring must neither satisfy the contract nor fabricate one.
+
+    The first direction is what separates an AST contract from a text-matching
+    one. The second is not hypothetical: `mira-bots/shared/workflow.py`'s module
+    docstring contains `run.step("store", store_chunks, chunks)`, which a regex
+    guard would report as a phantom violation in a file that never calls it.
+    """
+    prose_only = {
+        "trailing comment": "store_chunks(p, tenant_id='t')  # model_number=''\n",
+        "preceding comment": "# model_number='GS10'\nstore_chunks(p)\n",
+        "docstring above": '"""We pass model_number here."""\nstore_chunks(p)\n',
+        "unrelated string arg": "store_chunks(p, source_type='model_number=GS10')\n",
+        "later real call": "store_chunks(p)\nother(model_number='x')\n",
+    }
+    for label, src in prose_only.items():
+        assert scan_store_chunks_calls("prose.py", src), (
+            f"prose satisfied the contract — text-matching regression: {label}"
+        )
+
+    not_a_call_site = {
+        "store_chunks named inside a docstring": (
+            '"""    await run.step("store", store_chunks, chunks)\n"""\n'
+        ),
+        "store_chunks in a comment only": "# store_chunks(p, tenant_id='t')\n",
+    }
+    for label, src in not_a_call_site.items():
+        assert scan_store_chunks_calls("prose.py", src) == [], (
+            f"prose fabricated a phantom call site: {label}"
+        )
