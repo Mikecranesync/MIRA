@@ -649,3 +649,169 @@ def test_cascade_records_provider_default_when_reasoning_unsupported(monkeypatch
     assert text == "ok"
     assert "reasoning_effort" not in sent_payloads[0]
     assert "provider default" in attempts[-1]
+
+
+# --- DUPLICATE rulings (dedupe) -------------------------------------------------
+# Measured on PR #3316: the reviewer emitted the same defect three times at `high`,
+# one instance stating in its own text "Same evidence as the first finding". One
+# defect must be judged once — and a defect REFUTED under one id must not resurrect
+# under its twin.
+
+
+def test_parse_rulings_extracts_duplicate_with_target():
+    from gate7_review import parse_rulings
+
+    text = "- **[ruling: DUPLICATE] [id: F3] [of: F1]** — restates F1\n"
+    assert parse_rulings(text) == [("DUPLICATE:F1", "F3")]
+
+
+def test_parse_rulings_drops_duplicate_without_target():
+    """A DUPLICATE with no primary is malformed: dropping it leaves the finding
+    unruled, which the bijection check turns into UNKNOWN rather than a pass."""
+    from gate7_review import parse_rulings
+
+    assert parse_rulings("- **[ruling: DUPLICATE] [id: F3]** — of what?\n") == []
+
+
+def test_duplicate_inherits_refuted_primary_and_passes():
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("high", "root", ""), Finding("high", "restatement", "")]
+    rulings = [("REFUTED", "F1"), ("DUPLICATE:F1", "F2")]
+    assert adjudication_verdict(rulings, prior) == "PASS"
+
+
+def test_duplicate_inherits_sustained_primary_and_blocks():
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("high", "root", ""), Finding("high", "restatement", "")]
+    rulings = [("SUSTAINED", "F1"), ("DUPLICATE:F1", "F2")]
+    assert adjudication_verdict(rulings, prior) == "BLOCK"
+
+
+def test_duplicate_cannot_launder_a_high_into_a_refuted_low():
+    """The guard that stops DUPLICATE becoming a severity-laundering channel:
+    collapsing a high into a refuted low would erase a blocking finding."""
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("low", "minor", ""), Finding("high", "serious", "")]
+    rulings = [("REFUTED", "F1"), ("DUPLICATE:F1", "F2")]
+    assert adjudication_verdict(rulings, prior) == "UNKNOWN"
+
+
+def test_duplicate_chain_is_unknown():
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("high", "a", ""), Finding("high", "b", ""), Finding("high", "c", "")]
+    rulings = [("SUSTAINED", "F1"), ("DUPLICATE:F1", "F2"), ("DUPLICATE:F2", "F3")]
+    assert adjudication_verdict(rulings, prior) == "UNKNOWN"
+
+
+def test_duplicate_self_reference_is_unknown():
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("high", "a", "")]
+    assert adjudication_verdict([("DUPLICATE:F1", "F1")], prior) == "UNKNOWN"
+
+
+def test_duplicate_unknown_target_is_unknown():
+    from gate7_review import Finding, adjudication_verdict
+
+    prior = [Finding("high", "a", ""), Finding("high", "b", "")]
+    rulings = [("SUSTAINED", "F1"), ("DUPLICATE:F9", "F2")]
+    assert adjudication_verdict(rulings, prior) == "UNKNOWN"
+
+
+# --- author-cited repository evidence -------------------------------------------
+# The reviewer is briefed on the whole repo; the adjudicator could previously only
+# verify quotes present in the DIFF. Any false finding whose disproof lived outside
+# the diff was unrefutable by construction. The author cites a LOCATION; the tool
+# reads the bytes, so a citation can point at evidence but never fabricate it.
+
+
+def test_cited_evidence_is_read_from_disk_not_from_the_rebuttal(tmp_path):
+    from gate7_review import collect_cited_evidence
+
+    (tmp_path / "mod.py").write_text("line1\nSECRET_PATTERNS = [1]\nline3\n")
+    block, warns = collect_cited_evidence("see [evidence: mod.py:2-2]", tmp_path)
+    assert "SECRET_PATTERNS" in block
+    assert warns == []
+
+
+def test_cited_evidence_ignores_author_supplied_text(tmp_path):
+    """The rebuttal's own prose must not reach the evidence block — only the file."""
+    from gate7_review import collect_cited_evidence
+
+    (tmp_path / "mod.py").write_text("real content\n")
+    block, _ = collect_cited_evidence("I claim FABRICATED_PROOF [evidence: mod.py:1-1]", tmp_path)
+    assert "real content" in block
+    assert "FABRICATED_PROOF" not in block
+
+
+def test_cited_evidence_refuses_path_traversal(tmp_path):
+    from gate7_review import collect_cited_evidence
+
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "outside.txt").write_text("secret\n")
+    block, warns = collect_cited_evidence("[evidence: ../outside.txt:1-1]", tmp_path / "repo")
+    assert block == ""
+    assert any("outside the repository" in w for w in warns)
+
+
+def test_cited_evidence_rejects_oversized_range(tmp_path):
+    from gate7_review import MAX_EVIDENCE_LINES, collect_cited_evidence
+
+    (tmp_path / "big.py").write_text("x\n" * 5000)
+    block, warns = collect_cited_evidence(
+        f"[evidence: big.py:1-{MAX_EVIDENCE_LINES + 1}]", tmp_path
+    )
+    assert block == ""
+    assert any("oversized" in w for w in warns)
+
+
+def test_cited_evidence_missing_file_warns_but_does_not_abort(tmp_path):
+    """A bad citation must not be a way to dodge a ruling."""
+    from gate7_review import collect_cited_evidence
+
+    block, warns = collect_cited_evidence("[evidence: nope.py:1-2]", tmp_path)
+    assert block == ""
+    assert any("not a file" in w for w in warns)
+
+
+def test_cited_evidence_is_redacted_before_egress(tmp_path):
+    from gate7_review import collect_cited_evidence
+
+    (tmp_path / "cfg.py").write_text("HOST = '192.168.1.10'\n")
+    block, _ = collect_cited_evidence("[evidence: cfg.py:1-1]", tmp_path)
+    assert "192.168.1.10" not in block
+    assert "[IP]" in block
+
+
+def test_adjudication_prompt_includes_cited_evidence_section():
+    from gate7_review import Finding, build_adjudication_prompt
+
+    prior = [Finding("high", "a", "")]
+    with_ev = build_adjudication_prompt("prior", "reb", "diff", prior, "EXCERPT_MARKER")
+    without = build_adjudication_prompt("prior", "reb", "diff", prior)
+    # Assert on the section DELIMITER, not the name: the brief always explains the
+    # section ("when present"), so the name alone is not evidence the block exists.
+    assert "EXCERPT_MARKER" in with_ev
+    assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" in with_ev
+    assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" not in without
+
+
+def test_parse_rulings_accepts_plus_bullets():
+    """CommonMark allows -, * and + as list markers. A ruling on a `+` line was
+    silently dropped, which breaks the bijection and forces UNKNOWN — fail-closed,
+    but it discards a real ruling over a formatting choice. Found by Gate 7's review
+    of #3319."""
+    from gate7_review import parse_rulings
+
+    assert parse_rulings("+ **[ruling: REFUTED] [id: F1]** — ok") == [("REFUTED", "F1")]
+
+
+def test_parse_findings_accepts_plus_bullets():
+    from gate7_review import parse_findings
+
+    out = parse_findings("+ **[severity: high] Title** — detail")
+    assert [(f.severity, f.title) for f in out] == [("high", "Title")]
