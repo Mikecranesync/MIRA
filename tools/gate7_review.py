@@ -351,13 +351,13 @@ class Review:
 
 
 _FINDING_RE = re.compile(
-    r"^\s*[-*]\s*\*\*\[severity:\s*(high|medium|low)\]\s*(.+?)\*\*\s*(?:[—–-]\s*)?(.*)$",
+    r"^\s*[-*+]\s*\*\*\[severity:\s*(high|medium|low)\]\s*(.+?)\*\*\s*(?:[—–-]\s*)?(.*)$",
     re.I,
 )
 
 
 _RULING_RE = re.compile(
-    r"^\s*[-*]\s*\*\*\[ruling:\s*(SUSTAINED|REFUTED|DUPLICATE)\]\s*\[id:\s*(F\d+)\]"
+    r"^\s*[-*+]\s*\*\*\[ruling:\s*(SUSTAINED|REFUTED|DUPLICATE)\]\s*\[id:\s*(F\d+)\]"
     r"(?:\s*\[of:\s*(F\d+)\])?\*\*",
     re.IGNORECASE,
 )

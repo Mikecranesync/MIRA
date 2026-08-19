@@ -798,3 +798,20 @@ def test_adjudication_prompt_includes_cited_evidence_section():
     assert "EXCERPT_MARKER" in with_ev
     assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" in with_ev
     assert "--- BEGIN AUTHOR-CITED REPOSITORY EVIDENCE" not in without
+
+
+def test_parse_rulings_accepts_plus_bullets():
+    """CommonMark allows -, * and + as list markers. A ruling on a `+` line was
+    silently dropped, which breaks the bijection and forces UNKNOWN — fail-closed,
+    but it discards a real ruling over a formatting choice. Found by Gate 7's review
+    of #3319."""
+    from gate7_review import parse_rulings
+
+    assert parse_rulings("+ **[ruling: REFUTED] [id: F1]** — ok") == [("REFUTED", "F1")]
+
+
+def test_parse_findings_accepts_plus_bullets():
+    from gate7_review import parse_findings
+
+    out = parse_findings("+ **[severity: high] Title** — detail")
+    assert [(f.severity, f.title) for f in out] == [("high", "Title")]
