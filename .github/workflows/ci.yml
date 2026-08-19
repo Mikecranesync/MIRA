@@ -926,11 +926,46 @@ jobs:
         working-directory: mira-fault-sim
         run: pytest tests/ -q
 
+  docs-fault-codes:
+    name: Docs vs Shipped Fault Table
+    runs-on: ubuntu-latest
+    # NO `code == 'true'` condition, for the reason this job exists. The `code`
+    # filter excludes `docs/**` and `**/*.md`, so a DOCS-ONLY PR skips
+    # `test-unit` — and a docs-only PR is exactly the shape that reintroduces a
+    # wrong fault definition. Living inside `test-unit`, this guard would have
+    # been skipped on every PR it was written to catch. Caught by the Codex
+    # adversarial lane on #3332 (F1) before it merged.
+    #
+    # #3330: docs/specs/mira-answer-quality-standard.md — the document that
+    # DEFINES what a grounded answer is — called PowerFlex 525 F004 a ground
+    # fault and scored it "grounding 5 — fault code interpreted correctly".
+    # F004 is UnderVoltage; Ground Fault is F013. The same wrong definition
+    # reached a runtime answer in #3165, so this is the second occurrence.
+    #
+    # Ground truth is the shipped pack (live_decode.fault_codes), which is what
+    # the product actually answers from. Hermetic: reads the pack and docs/, no
+    # network, no DB, ~1s.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install pytest pyyaml
+      - run: pytest tests/test_docs_fault_codes.py -v
+
   capability-closure:
     name: Capability Closure Registry
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    # NO `code == 'true'` condition — deliberately. The registry it validates
+    # lives at docs/architecture/convergence/CAPABILITY_CLOSURE.yaml, and the
+    # `code` filter excludes `docs/**`. Gating this job on `code` meant a PR
+    # that edited ONLY the registry skipped the registry's own validator — the
+    # single change most in need of checking. Found by the Codex adversarial
+    # lane on #3332 (F1) against the identical defect in the fault-code guard
+    # below; the same reasoning applies here, so both are unconditional now.
+    # This job is hermetic (no network, no DB) and takes seconds, so running it
+    # on every PR costs nothing.
     # "Merged" is not "done". This validates
     # docs/architecture/convergence/CAPABILITY_CLOSURE.yaml against the
     # repository: every gated capability must carry an owner (or a named
@@ -1277,6 +1312,7 @@ jobs:
       - sast-semgrep
       - sast-bandit
       - capability-closure
+      - docs-fault-codes
     steps:
       - name: Evaluate gate (fail-closed)
         env:
@@ -1294,6 +1330,8 @@ jobs:
           LICENSE_RESULT: ${{ needs.license-check.result }}
           SEMGREP_RESULT: ${{ needs.sast-semgrep.result }}
           BANDIT_RESULT: ${{ needs.sast-bandit.result }}
+          CAPABILITY_RESULT: ${{ needs.capability-closure.result }}
+          DOCS_FAULT_CODES_RESULT: ${{ needs.docs-fault-codes.result }}
         run: |
           fail=0
 
@@ -1326,6 +1364,16 @@ jobs:
           require_success license-check         "$LICENSE_RESULT"
           require_success sast-semgrep          "$SEMGREP_RESULT"
           require_success sast-bandit           "$BANDIT_RESULT"
+          # Both added 2026-08-19. capability-closure was listed in `needs` by
+          # #3329 but its RESULT was never read here — and this job is
+          # `if: always()`, so a needed job failing does not skip it. The
+          # registry validator therefore ran on every PR and could not fail one:
+          # precisely the "a check that runs but cannot fail the merge is not a
+          # guard" trap documented a few hundred lines up in this same file.
+          # Being in `needs` makes a job *wait*; only require_success makes it
+          # *gate*.
+          require_success capability-closure    "$CAPABILITY_RESULT"
+          require_success docs-fault-codes      "$DOCS_FAULT_CODES_RESULT"
 
           # test-unit: the only gated job allowed to skip, and ONLY on a genuine
           # docs-only PR (changes succeeded AND code did not change).
