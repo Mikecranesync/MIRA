@@ -105,12 +105,27 @@ _NON_FAULT_NOUN_RE = re.compile(
 
 
 def _is_non_fault_identifier(tok: str, i: int, tokens: list[str]) -> bool:
-    """Is this code-shaped token a parameter/terminal/rating rather than a fault?"""
+    """Is this code-shaped token a parameter/terminal/rating rather than a fault?
+
+    The noun must IMMEDIATELY precede the candidate, because that is the only
+    position in which it labels it. A symmetric proximity veto was tried first
+    and suppressed genuine faults (Codex #3337 round 2 F1) —
+
+        "PowerFlex 525 panel has F004"     -> [] (wrong; F004 is a real fault)
+        "PowerFlex 525 F004 at terminal block" -> [] (wrong)
+
+    — because "panel"/"terminal" merely appeared nearby while labelling something
+    else. English puts the label directly before the identifier it names
+    ("panel A1", "parameter P031", "terminal T1"), so distance-1 is both
+    sufficient for the real cases and unable to swallow a fault mentioned in the
+    same sentence.
+    """
     prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
     if prefix and prefix.group(0).upper() in _NON_FAULT_PREFIXES:
         return True
-    lo = max(0, i - _FAULT_PROXIMITY)
-    return any(_NON_FAULT_NOUN_RE.search(t) for t in tokens[lo : i + _FAULT_PROXIMITY + 1])
+    if i == 0:
+        return False
+    return bool(_NON_FAULT_NOUN_RE.search(tokens[i - 1]))
 
 
 # Leading alphabetic prefix of a candidate code (e.g. "F" of "F0004", "OC" of "OC1").

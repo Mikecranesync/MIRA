@@ -184,3 +184,26 @@ def test_real_alarm_codes_survive_the_narrowing():
     prefix rule alone cannot separate them — the nearby noun does."""
     assert _extract_fault_codes("PowerFlex 525 alarm A501") == ["A501"]
     assert _extract_fault_codes("PowerFlex 525 is installed at panel A1") == []
+
+
+FAULT_NEAR_NON_FAULT_NOUN = [
+    # A non-fault noun near a REAL fault must not suppress it. A symmetric
+    # 3-token veto did exactly that (Codex #3337 round 2 F1) — the noun labels
+    # something else, and the fault is still a fault.
+    ("PowerFlex 525 panel has F004", "F004"),
+    ("PowerFlex 525 cabinet has F013 again", "F013"),
+    ("PowerFlex 525 switch indicates F007", "F007"),
+    ("PowerFlex 525 F004 at terminal block", "F004"),
+]
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    FAULT_NEAR_NON_FAULT_NOUN,
+    ids=[q[:38] for q, _ in FAULT_NEAR_NON_FAULT_NOUN],
+)
+def test_a_nearby_non_fault_noun_does_not_suppress_a_real_fault(query, code):
+    assert code in _extract_fault_codes(query), (
+        f"{query!r}: the noun labels something else; only an IMMEDIATELY preceding "
+        "noun identifies the token it names"
+    )

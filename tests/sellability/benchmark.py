@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -44,6 +45,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "mira-bots"))
+
+# Expected equipment identity for every case. Kept out of the case tuples so the
+# scorer compares against a declared value rather than a hard-coded "525" — the
+# substring form passed an F004 row from the WRONG MANUFACTURER (Codex #3337
+# round 2 F2).
+EXPECT_MODEL = "PowerFlex 525"
+EXPECT_MANUFACTURER = "Allen-Bradley"
 
 # (id, family, question, expect) — expect is a fault code, a model string, or None
 CASES: list[tuple[str, str, str, str | None]] = [
@@ -125,11 +133,21 @@ def _score(case, rows: list[dict]) -> tuple[bool, str]:
             return False, f"structured row present but at rank {structured[0] + 1}, not 1"
         row = rows[0]
         blob = str(row.get("content") or "")
-        if expect and expect.upper() not in blob.upper():
+        # EXACT code, on a word boundary. `expect in blob` passed an F0040 row
+        # for an F004 question — prefix collision (Codex #3337 round 2 F2).
+        if expect and not re.search(rf"\b{re.escape(expect)}\b", blob, re.I):
             return False, f"rank-1 structured row is not {expect}"
-        model = str(row.get("model_number") or "")
-        if "525" not in model and "525" not in blob:
-            return False, f"rank-1 structured row is for {model!r}, not the asked-for model"
+        # Model AND manufacturer, both declared rather than hard-coded. A
+        # substring `525` check accepted "Model 5250", and vendor was unchecked,
+        # so a WrongCo F004 row scored a pass.
+        ident = f"{row.get('model_number') or ''} {row.get('manufacturer') or ''} {blob}"
+        if not re.search(rf"\b{re.escape(EXPECT_MODEL)}\b", ident, re.I):
+            return False, f"rank-1 row is not {EXPECT_MODEL} (got {row.get('model_number')!r})"
+        if not re.search(re.escape(EXPECT_MANUFACTURER), ident, re.I):
+            return (
+                False,
+                f"rank-1 row vendor is {row.get('manufacturer')!r}, not {EXPECT_MANUFACTURER}",
+            )
         return True, f"{expect} structured_fault at rank 1"
 
     if family == "evidence":

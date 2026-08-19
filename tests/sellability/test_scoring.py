@@ -54,7 +54,7 @@ def test_correct_code_for_another_model_fails():
         CASE, [_row("FAULT CODE F004 — Undervoltage", model="PowerFlex 750")] + _prose()
     )
     assert not ok
-    assert "not the asked-for model" in why
+    assert "not PowerFlex 525" in why
 
 
 def test_correct_row_below_rank_one_fails():
@@ -78,3 +78,26 @@ def test_refuse_family_fails_when_a_structured_row_is_asserted():
     assert not ok
     ok2, _ = _score(case, _prose())
     assert ok2, "refusing correctly is a pass, not a miss"
+
+
+def test_prefix_collision_fails():
+    """`F0040` is not `F004` — substring matching passed it (round 2 F2)."""
+    rows = [_row("FAULT CODE F0040 — Something", model="Model 5250")] + _prose()
+    ok, why = _score(CASE, rows)
+    assert not ok, why
+
+
+def test_wrong_manufacturer_fails():
+    """Right code, right model string, WRONG vendor — vendor was unchecked."""
+    row = _row("FAULT CODE F004 — Undervoltage")
+    row["manufacturer"] = "WrongCo"
+    ok, why = _score(CASE, [row] + _prose())
+    assert not ok
+    assert "vendor" in why
+
+
+def test_code_only_in_unrelated_prose_fails():
+    """The code must be in the structured row, not merely mentioned somewhere."""
+    rows = [_row("Replacement finger guard for power terminals")] + _prose()
+    ok, why = _score(CASE, rows)
+    assert not ok
