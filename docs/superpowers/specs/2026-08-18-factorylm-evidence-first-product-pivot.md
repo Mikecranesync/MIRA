@@ -11,6 +11,43 @@
 
 ---
 
+## ⚠️ CORRECTION 2026-08-19 — §0's central claim was WRONG
+
+**§0 below says six evidence-first capabilities are "built and switched off". That is false for
+three of them, and the method that produced it was unsound.**
+
+I read code defaults and compose fallbacks and never read Doppler. But `deploy-vps.yml` runs
+`doppler run --project factorylm --config prd -- docker compose up`, so Doppler supplies the value
+that `${VAR:-0}` falls back from. Reading the repository alone gives the wrong answer, and Doppler
+was readable the whole time.
+
+Observed 2026-08-19 via `doppler secrets --project factorylm --config <env>`:
+
+| Capability | §0 claimed | Actually |
+|---|---|---|
+| run-diff engine | disabled | **`MIRA_RUN_DIFF_ENABLED='1'` in prd — enabled in production** |
+| approved-retrieval-only | disabled | **`MIRA_ENFORCE_APPROVED_RETRIEVAL='true'` in prd** — but forwarded by no compose file, so enforced OFF (**P0 #3328**) |
+| TechnicianContext | disabled | **`MIRA_CONTEXT_CONTRACT='1'` in staging** |
+| nameplate, live machine state | disabled | confirmed unset in dev/staging/prd |
+
+**What survives:** the *conclusion* that these capabilities are unproven. The run engine is enabled
+in production and its three test suites run in no CI job; nobody has reviewed a single run-diff.
+"Enabled" was never the same as "proven", and that distinction is the PRD's real point.
+
+**What does not survive:** "six default-off flags" as the headline, and any plan premised on
+*turning things on*. Slice 1 must be rewritten — the run engine does not need enabling, it needs
+**evidence**.
+
+**What is worse than the original claim:** #3328. A control set to `true` that reaches no container
+is not a disabled capability; it is a decision that silently did not take effect, and nothing
+reported the disagreement.
+
+The verified inventory now lives in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`, is
+validated by the gated `capability-closure` CI job, and records where each value was observed and
+when. Treat that file, not §0, as current.
+
+---
+
 ## 0. Read this first — the finding that changes the plan
 
 The brief that commissioned this PRD assumed FactoryLM must *build* an evidence-first system: run

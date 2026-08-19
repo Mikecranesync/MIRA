@@ -926,6 +926,47 @@ jobs:
         working-directory: mira-fault-sim
         run: pytest tests/ -q
 
+  capability-closure:
+    name: Capability Closure Registry
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    # "Merged" is not "done". This validates
+    # docs/architecture/convergence/CAPABILITY_CLOSURE.yaml against the
+    # repository: every gated capability must carry an owner (or a named
+    # blocker), an environment state, a decision if it is off everywhere, real
+    # CI job ids, existing evidence paths, and an unexpired review date.
+    #
+    # Its flagship rule is enabled_but_unplumbed (#3328): a flag recorded as
+    # enabled in an environment must be forwarded by some compose file, or the
+    # container reads its code default and the capability is configured ON and
+    # enforced OFF. That is how the approved-context retrieval gate came to be
+    # 'true' in Doppler prd and inert in production.
+    #
+    # --discover fails when a gate flag exists in code but appears in neither
+    # `capabilities:` nor `ignored_flags:`, so a new flag cannot stay anonymous.
+    #
+    # PURE-OFFLINE and deterministic: reads repo files only, no network, no
+    # Doppler, no DB. Sub-second.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pyyaml + pytest
+        run: pip install pyyaml pytest
+
+      - name: Validate the capability-closure registry
+        run: python tools/capability_closure.py
+
+      - name: Every gate flag in code is accounted for
+        run: python tools/capability_closure.py --discover
+
+      - name: Validator rule tests (incl. negative fixtures)
+        run: pytest tests/test_capability_closure.py -q
+
   drive-pack-extract-tests:
     name: Drive Pack Extract Tests
     runs-on: ubuntu-latest
@@ -1207,7 +1248,7 @@ jobs:
   # Gated (must pass to merge): actionlint, migration-order-check,
   #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
   #   architecture-check, license-check, sast-semgrep, sast-bandit,
-  #   precommit-hook-tests.
+  #   precommit-hook-tests, capability-closure.
   # Intentionally NOT in the gate yet (stay visible; promote once reliable):
   #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
   #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
@@ -1235,6 +1276,7 @@ jobs:
       - license-check
       - sast-semgrep
       - sast-bandit
+      - capability-closure
     steps:
       - name: Evaluate gate (fail-closed)
         env:
