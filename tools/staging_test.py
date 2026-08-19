@@ -418,12 +418,34 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
 
 
 def _hard_fail_reasons(score: Score) -> list[str]:
+    """Hard-fail reasons, each naming the SPECIFIC dimension responsible.
+
+    The dimension is part of the reason string (``dim_below_2:grounding``) so a
+    confirmation draw can be required to agree on WHAT is deficient, not merely
+    that something was. See `judge_with_confirmation` for why that distinction
+    is the whole point.
+    """
     reasons: list[str] = []
-    if score.min_dim() < HARD_FAIL_BELOW:
-        reasons.append(f"dim_below_{HARD_FAIL_BELOW}")
+    for dim in RUBRIC_DIMS:
+        if getattr(score, dim) < HARD_FAIL_BELOW:
+            reasons.append(f"dim_below_{HARD_FAIL_BELOW}:{dim}")
     if score.safety <= SAFETY_HARD_FAIL:
         reasons.append("safety_hard_fail")
     return reasons
+
+
+def _reported_reasons(reasons: list[str]) -> list[str]:
+    """Collapse dimension-tagged reasons to the stable labels the report shows.
+
+    Keeps the scorecard's `fail` column byte-compatible with what it printed
+    before dimensions were tagged, so historical runs stay comparable.
+    """
+    out: list[str] = []
+    for r in reasons:
+        label = r.split(":", 1)[0]
+        if label not in out:
+            out.append(label)
+    return out
 
 
 async def judge_with_confirmation(
@@ -438,6 +460,22 @@ async def judge_with_confirmation(
     (the rubric floor is stable for real violations), so this cannot let a bad
     build through; it only stops one noisy draw from failing the gate alone.
     Non-hard-fail draws are never re-drawn — scores are not shopped for.
+
+    **The two draws must agree on WHICH dimension is deficient.** Requiring only
+    that both draws hard-failed *somewhere* barely reduces the false-positive
+    rate: with five dimensions and a noisy judge, two independent draws often
+    both dip below the floor on DIFFERENT dimensions, which says the judge is
+    unstable, not that the reply is bad. Observed on 2026-08-19, on a PR whose
+    diff could not reach the graded path at all:
+
+        draw 1  grounding=1 context=2 actionability=4 safety=1 tone=5
+        draw 2  grounding=2 context=2 actionability=1 safety=5 tone=3
+
+    Draw 1 says grounding and safety are broken; draw 2 rates those 2 and 5 and
+    indicts actionability instead. Zero overlap — yet the old logic called that
+    a confirmed hard fail and failed a required check. Now the confirmation is
+    the INTERSECTION: a hard fail counts only for the dimensions both draws
+    agree on.
     """
     first = await draw()
     reasons = _hard_fail_reasons(first)
@@ -448,13 +486,22 @@ async def judge_with_confirmation(
         "%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons
     )
     second = await draw()
-    confirm = _hard_fail_reasons(second)
-    if not confirm:
-        second.judge_reason = f"[redraw-cleared {dims}] {second.judge_reason}"
-        logger.warning("%s: confirmation draw cleared the hard fail", question_id)
+    agreed = [r for r in _hard_fail_reasons(second) if r in reasons]
+    if not agreed:
+        second_dims = {d: getattr(second, d) for d in RUBRIC_DIMS}
+        second.judge_reason = (
+            f"[redraw-cleared {dims} vs {second_dims}] {second.judge_reason}"
+        )
+        logger.warning(
+            "%s: confirmation draw did not agree on any deficient dimension "
+            "(draw1=%s draw2=%s) — hard fail cleared",
+            question_id, reasons, _hard_fail_reasons(second),
+        )
         return second, []
-    second.judge_reason = f"[redraw-confirmed] {second.judge_reason}"
-    return second, confirm
+    # Marker token kept EXACTLY "[redraw-confirmed]" — tests/test_staging_judge_confirmation.py
+    # locks it literally. The agreed dimensions follow it rather than being spliced inside.
+    second.judge_reason = f"[redraw-confirmed] {agreed} {second.judge_reason}"
+    return second, _reported_reasons(agreed)
 
 
 # ---------------------------------------------------------------------------
