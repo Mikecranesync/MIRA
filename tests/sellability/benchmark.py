@@ -140,14 +140,18 @@ def _score(case, rows: list[dict]) -> tuple[bool, str]:
         # Model AND manufacturer, both declared rather than hard-coded. A
         # substring `525` check accepted "Model 5250", and vendor was unchecked,
         # so a WrongCo F004 row scored a pass.
-        ident = f"{row.get('model_number') or ''} {row.get('manufacturer') or ''} {blob}"
-        if not re.search(rf"\b{re.escape(EXPECT_MODEL)}\b", ident, re.I):
-            return False, f"rank-1 row is not {EXPECT_MODEL} (got {row.get('model_number')!r})"
-        if not re.search(re.escape(EXPECT_MANUFACTURER), ident, re.I):
-            return (
-                False,
-                f"rank-1 row vendor is {row.get('manufacturer')!r}, not {EXPECT_MANUFACTURER}",
-            )
+        # The IDENTITY FIELDS only — never the rendered content. Concatenating
+        # content into the check let a row with model_number='PowerFlex 750' and
+        # manufacturer='WrongCo' pass because its prose happened to mention
+        # "Allen-Bradley PowerFlex 525" (Codex #3337 round 3 F2). Content is what
+        # we are verifying; it cannot also be the verifier. Fails closed when a
+        # field is absent.
+        model = str(row.get("model_number") or "")
+        vendor = str(row.get("manufacturer") or "")
+        if not re.search(rf"\b{re.escape(EXPECT_MODEL)}\b", model, re.I):
+            return False, f"rank-1 row is not {EXPECT_MODEL} (got {model!r})"
+        if not re.search(re.escape(EXPECT_MANUFACTURER), vendor, re.I):
+            return False, f"rank-1 row vendor is {vendor!r}, not {EXPECT_MANUFACTURER}"
         return True, f"{expect} structured_fault at rank 1"
 
     if family == "evidence":

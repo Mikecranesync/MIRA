@@ -101,3 +101,20 @@ def test_code_only_in_unrelated_prose_fails():
     rows = [_row("Replacement finger guard for power terminals")] + _prose()
     ok, why = _score(CASE, rows)
     assert not ok
+
+
+def test_content_cannot_satisfy_the_identity_check():
+    """Round 3 F2: prose mentioning the right identity must not rescue wrong fields."""
+    row = _row("FAULT CODE F004 — Undervoltage. See Allen-Bradley PowerFlex 525 manual.")
+    row["model_number"] = "PowerFlex 750"
+    row["manufacturer"] = "WrongCo"
+    ok, why = _score(CASE, [row] + _prose())
+    assert not ok, why
+
+
+def test_missing_identity_fields_fail_closed():
+    row = _row("FAULT CODE F004 — Undervoltage")
+    row["model_number"] = None
+    row["manufacturer"] = None
+    ok, _ = _score(CASE, [row] + _prose())
+    assert not ok

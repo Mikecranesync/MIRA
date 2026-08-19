@@ -1071,8 +1071,24 @@ def recall_knowledge(
             structured_fault_results: list[dict] = []
             if fault_codes:
                 # Try structured fault_codes table first (deterministic, fast)
+                # Scope the lookup to the machine the technician named. The
+                # `model` parameter has existed on recall_fault_code since it was
+                # written and was never passed, so ANY extracted code searched
+                # the whole table and a hit for a DIFFERENT machine was promoted
+                # as rank-1 authoritative evidence.
+                #
+                # This is the structural half of the extractor narrowing above
+                # (Codex #3337, raised in all three rounds). Tightening the
+                # regex reduces how often a non-fault identifier is extracted;
+                # this makes it not matter, because "A1" can now only resolve
+                # against the PowerFlex 525's own rows. Defence in depth: the
+                # heuristic will always have edges, the scope constraint does not.
+                #
+                # No product named => None => unconstrained, exactly as before.
+                _fc_model = _extract_product_names(query_text)
+                _fc_model = _fc_model[0] if _fc_model else None
                 for fc in fault_codes[:3]:
-                    fc_rows = recall_fault_code(fc, tenant_id)
+                    fc_rows = recall_fault_code(fc, tenant_id, model=_fc_model)
                     for row in fc_rows:
                         # Format structured data as a pseudo-chunk for prompt injection
                         content = (
