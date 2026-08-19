@@ -44,8 +44,10 @@ _SERIAL_RE = re.compile(
     # (2) keyword + a real separator that is NOT a period — digit optional
     r"(?:S/?N|SER(?:IAL)?)\s*(?:NO|NUM|NUMBER)?[:\s#-]+[A-Z0-9\-]{4,20}"
     r"|"
-    # (3) keyword + NO separator at all — digit required
-    r"(?:S/?N|SER(?:IAL)?)(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
+    # (3) keyword + NO separator at all — digit required, and the keyword must be
+    #     the FULL form. Accepting the bare "SER" prefix here matched every
+    #     ser-word containing a digit: "service-2", "series500", "server2".
+    r"(?:S/?N|SERIAL)(?=[A-Z0-9\-]*[0-9])[A-Z0-9\-]{4,20}"
     r")\b",
     re.IGNORECASE,
 )
