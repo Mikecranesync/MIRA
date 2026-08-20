@@ -1,7 +1,12 @@
 # Convergence Unit — CU-03a: canonical provenance policy (CU-03 Gate 6)
 
-**Status:** ✅ **DONE** — PR **#3297** merged as `969909ce6` **into the CU-03 branch**, and
-reached `main` inside the CU-03 merge `dde2efcfc` → **v3.277.5**. **Blocks nothing.**
+**Unit status: ⚠️ PARTIAL** — **code ✅ RELEASED**, **governance ⚠️ INCOMPLETE**.
+PR **#3297** merged as `969909ce6` **into the CU-03 branch**, and reached `main` inside the CU-03
+merge `dde2efcfc` → **v3.277.5**. **Blocks nothing.** But this unit had no Gate 9 decision of its
+own — it rides CU-03's, and CU-03's is **not independently evidenced** (#3343). Per
+`.claude/rules/multi-session-protocol.md` §7 an incomplete required gate is reported PARTIAL, not
+dressed as done, so the inheritance runs both ways: it inherits the release *and* the open
+authorization record.
 **Owner/session:** `01UKYdhFE6hvQYAAJ9iVPfPM` · **Base:** `origin/cu-03-knowledge-entries-write-path`
 **Topology: STACKED — and the dependency is measured, not assumed.** The stacked topology is
 also why this unit has **no release of its own** — see §R1 for the exact ref proof.
@@ -120,7 +125,7 @@ ancestor of `fc00074c6` — which the same lane reviewed **GREEN: 0 BLOCKER / 0 
 verdict of its own on a merged head**; its review evidence is the dry-run above plus its inclusion
 in the reviewed CU-03 head. State it that way rather than claiming an independent GREEN.
 
-## R1 — post-merge record ✅
+## R1 — post-merge record (Gate 10) ✅ *recorded — but see the unit status: it inherits CU-03's unresolved Gate 9*
 
 **This unit has no standalone release. It reached `main` inside the CU-03 merge.** Recorded
 precisely, because the stacked topology is exactly the thing a reader will get wrong:
