@@ -36,6 +36,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from .events import TurnEnvelope, envelope_from_completed_text
 from .router import InferenceRouter
 
 #: Selects the active provider. Default is today's behavior, byte-for-byte.
@@ -71,6 +72,10 @@ class TurnResult:
     usage: dict = field(default_factory=dict)
     tool_calls: tuple[ToolCall, ...] = ()
     finish_reason: str = "stop"
+    #: The P0003 conversation-event view of this same turn. Providers that cannot
+    #: stream emit one ASSISTANT_TEXT + USAGE + FINAL; they must NOT fabricate
+    #: deltas from a completed string (see events.py).
+    events: TurnEnvelope = field(default_factory=TurnEnvelope)
 
     @property
     def ok(self) -> bool:
@@ -162,25 +167,80 @@ class CascadeProvider(InferenceProvider):
         # ("", last_error) when the last one returned empty content. Both are
         # "no usable text" — surfaced as finish_reason="empty" rather than an
         # exception, matching the router's own non-raising contract.
+        provider_name = usage.get("provider") or self.name
         return TurnResult(
             text=text,
-            provider=usage.get("provider") or self.name,
+            provider=provider_name,
             usage=usage,
             finish_reason="stop" if text else "empty",
+            # Coarse-but-honest: the cascade hands back a finished string, so the
+            # envelope carries one ASSISTANT_TEXT (or a recoverable error when the
+            # cascade was exhausted) plus usage. stream_was_incremental stays False.
+            events=envelope_from_completed_text(
+                text,
+                usage=usage or None,
+                error=None if text else "cascade_exhausted",
+            ),
         )
 
 
-def get_provider(name: str | None = None) -> InferenceProvider:
+def turn_telemetry(turn: TurnResult) -> dict:
+    """Project a TurnResult onto the per-turn telemetry fields (migration 078).
+
+    ADR-0037 makes per-turn spend telemetry a PRECONDITION for Cloud Gold traffic.
+    This is the one place a provider result becomes those columns, so the runtime
+    and the trace writer cannot drift apart.
+
+    Deliberately narrow — counts, identity and status only. The provider's `usage`
+    dict is read by explicit key, so if a provider ever returns prompt text or a
+    credential in it, nothing here carries that to the database.
+
+    `status` distinguishes the three real outcomes so a spend query can tell them
+    apart: a served turn, an exhausted cascade, and a turn that never ran.
+    """
+    u = turn.usage or {}
+    return {
+        "provider": turn.provider,
+        "model_used": u.get("model"),
+        "input_tokens": u.get("input_tokens"),
+        # The free cascade does not report cache hits; Cloud Gold will
+        # (usage.input_tokens_details.cached_tokens, verified 2026-08-19).
+        "cached_input_tokens": u.get("cached_input_tokens"),
+        "output_tokens": u.get("output_tokens"),
+        "tool_call_count": len(turn.tool_calls),
+        "status": "ok" if turn.text else "empty",
+        # Which edition served the turn and why. Explicit so ADR-0037's
+        # "Cloud Gold is never silently selected" is auditable per row.
+        "route_reason": f"{turn.provider}:{os.getenv(PROVIDER_ENV) or DEFAULT_PROVIDER}",
+    }
+
+
+def get_provider(
+    name: str | None = None,
+    *,
+    router: InferenceRouter | None = None,
+) -> InferenceProvider:
     """Return the configured provider. Defaults to today's behavior.
 
     Selection order: explicit argument, then ``MIRA_INFERENCE_PROVIDER``, then
     ``cascade``. An unknown name raises rather than silently falling back — a
     deployment that asked for Cloud Gold and quietly got the free cascade would
     be a spend/quality bug that hides itself.
+
+    ``router`` is the caller's already-constructed :class:`InferenceRouter`. It
+    MUST be threaded through rather than letting the cascade build its own,
+    because the runtime's router carries per-process state the callers depend on
+    — the session→model cache (``last_model_for``, which the decision trace reads),
+    the hourly provider budget counters, and the enabled/backend flags. A second
+    router would silently fork all of that.
+
+    This parameter is what makes provider selection real on the runtime path: a
+    caller that holds a router can still honor ``MIRA_INFERENCE_PROVIDER`` instead
+    of hardcoding one edition.
     """
     requested = (name or os.getenv(PROVIDER_ENV) or DEFAULT_PROVIDER).strip().lower()
     if requested == "cascade":
-        return CascadeProvider()
+        return CascadeProvider(router=router)
     raise ValueError(
         f"unknown inference provider {requested!r} "
         f"(available: 'cascade'; Cloud Gold is not implemented yet — see ADR-0037)"

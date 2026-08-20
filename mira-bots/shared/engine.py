@@ -2161,6 +2161,7 @@ class Supervisor:
         dispatch_kind: str = "",
         citation_evidence: dict | None = None,
         context_manifest: dict | None = None,
+        turn_usage: dict | None = None,
         *,
         route: str | None = None,
         model: str | None = None,
@@ -2187,6 +2188,11 @@ class Supervisor:
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
             "_citation_evidence": citation_evidence,
+            # MIRA-1000 P0003 — this turn's provider/token/route/status snapshot,
+            # carried per-turn (never read off the shared RAGWorker after an
+            # await, #1704) out to _schedule_decision_trace. None on turns that
+            # never reached a provider.
+            "_turn_usage": turn_usage,
             # WS1 — {"manifest": <TechnicianContext.to_dict()>, "sha256": ...}
             # for the turn's prompt block, carried out to _schedule_decision_trace
             # so the audit row stores the SAME object the prompt was built from
@@ -2499,6 +2505,7 @@ class Supervisor:
         try:
             import asyncio
 
+            from .decision_trace import trace_usage_kwargs as _trace_usage_kwargs
             from .decision_trace import write_trace
 
             state = self._load_state(chat_id)
@@ -2551,6 +2558,11 @@ class Supervisor:
                 # WS1/G6 — the context object the prompt block was rendered
                 # from, carried on the result rather than re-derived here.
                 context_manifest=result.get("_context_manifest"),
+                # ADR-0037 / migration 078 — the provider/token/route/status this
+                # turn actually incurred. Empty dict on turns that never reached a
+                # provider, which writes NULLs rather than zeros so "no call" stays
+                # distinguishable from "a call that cost nothing".
+                **_trace_usage_kwargs(result.get("_turn_usage")),
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)
@@ -4503,6 +4515,7 @@ class Supervisor:
             state["state"],
             citation_evidence=self._evidence_from_parsed(parsed),
             context_manifest=parsed.get("_context_manifest"),
+            turn_usage=parsed.get("_turn_usage"),
         )
 
     # ------------------------------------------------------------------
@@ -5697,6 +5710,8 @@ class Supervisor:
             parsed["_sources"] = state.pop("_rag_sources", None) or []
             parsed["_last_chunks"] = state.pop("_rag_last_chunks", None) or []
             parsed["_no_kb"] = state.pop("_rag_no_kb", False)
+            # P0003 — same #1704 discipline for the spend telemetry.
+            parsed["_turn_usage"] = state.pop("_rag_turn_usage", None)
             # WS1/G6 — the context manifest the decision trace records. Start
             # from the prior-decision manifest (built before the RAG call), then
             # re-manifest to INCLUDE this turn's retrieval (MANUAL_CHUNK) family
@@ -5859,6 +5874,7 @@ class Supervisor:
             state["state"],
             citation_evidence=self._evidence_from_parsed(parsed),
             context_manifest=parsed.get("_context_manifest"),
+            turn_usage=parsed.get("_turn_usage"),
         )
 
     # ------------------------------------------------------------------
