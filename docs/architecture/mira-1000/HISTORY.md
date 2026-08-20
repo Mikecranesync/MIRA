@@ -109,9 +109,17 @@ stated in the docstring and locked by a test, rather than silently dropped. An u
 provider name **raises** instead of falling back, so a deployment that asked for Cloud Gold
 can never quietly get the free cascade.
 
-**Evidence.** 16 contract tests pass. Three mutations were applied and all were caught:
-changing the `max_tokens` default, disabling PII sanitization, and fabricating a tool call
-on the cascade. `ruff` clean.
+**Evidence.** Full `mira-bots` suite, both passes run to completion (~30 min each):
+**baseline 56 failed / 2467 passed / 17 skipped → after 56 failed / 2483 passed / 17
+skipped**. Exactly **+16 passed, failure count identical** — zero regressions across the
+whole suite. Three mutations were applied and all were caught: changing the `max_tokens`
+default, disabling PII sanitization, and fabricating a tool call on the cascade. `ruff`
+clean; zero existing importers of the new module.
+
+The 56 failures are **pre-existing and unrelated** — they reproduce byte-identically with
+this branch's files excluded. Separately, three adapter tests (`test_gchat_adapter`,
+`test_slack_relay`, `test_teams_adapter`) fail *collection* on a pre-existing `sys.path`
+module-shadowing issue; they were excluded from both passes equally.
 
 **Honest closure (section 28).** BUILT yes · TESTED yes · ENABLED yes (default = today's
 behavior) · **CONNECTED no** · **PROVEN no** · OBSERVABLE no. Nothing calls the seam in
