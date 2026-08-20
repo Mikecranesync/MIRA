@@ -134,7 +134,7 @@ precisely, because the stacked topology is exactly the thing a reader will get w
 | Release tag | **none of its own.** No tag points at `969909ce6`; the *earliest* version tag containing it is **`v3.277.5`**, which resolves to the CU-03 merge SHA, not to this commit |
 | Rollback checkpoint | **none of its own** — reverting this unit means reverting CU-03: `git revert -m 1 dde2efcfc` |
 | Gate 7 | dry-run 0/0/2 MEDIUM (both fixed); GREEN inherited at `fc00074c6` — see §Gate 7 record |
-| Gate 9 (human GO) | **CU-03's GO covers it** — @Mikecranesync's merge of #3268, 2026-08-18. There was no separate GO for #3297 |
+| Gate 9 (human GO) | ⚠️ **inherits CU-03's unresolved Gate 9.** There was no separate GO for #3297, and CU-03's own GO is not independently evidenced — no `APPROVED` review, no GO comment, written trail ending on NO-GO (`units/CU-03.md` §Human approval requirement, **#3343**) |
 
 ```
 $ git tag --points-at 969909ce6
