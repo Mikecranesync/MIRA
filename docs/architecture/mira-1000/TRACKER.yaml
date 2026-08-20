@@ -2,6 +2,7 @@ schema_version: 1
 architecture_id: MIRA-1000
 name: "MIRA CLOUD GOLD — The Divergence"
 created: "2026-08-19"
+last_updated: "2026-08-20"
 baseline:
   branch: main
   sha: "5dfcbb8940bc2e724cf2b9b111f1837182f20688"
@@ -16,6 +17,23 @@ decision:
     connectivity: "no cloud inference required"
     role: "privacy/offline deployment line converging toward Gold"
   divergence_boundary: "InferenceProvider"
+  product_surfaces:
+    factorylm_hub:
+      role: "desktop configuration, governance, knowledge, integrations, permissions, telemetry, evals, and control plane"
+      primary_technician_chat: false
+    mira_native:
+      codebase: "mira-mobile"
+      role: "primary technician-facing MIRA interface"
+      target_ux: "minimal conversation-first ChatGPT/Claude-style shell"
+      disposition: "reuse and refactor; do not create a third native/chat client"
+    notebook:
+      role: "persistent machine/incident/research context primitive"
+      mandatory_for_general_mira_chat: false
+    alternate_clients:
+      - telegram
+      - slack
+      - ignition
+      - future_channels
   shared_contracts:
     - identity_and_scope
     - conversation
@@ -42,8 +60,11 @@ rules:
   - "No generic autonomous OT write tool under MIRA-1000."
   - "Gold quality is established before model-cost routing."
   - "On-Prem gaps are measured against the same behavioral contract."
+  - "FactoryLM Hub is the control plane; MIRA is the technician product."
+  - "Reuse mira-mobile for the primary MIRA interface; do not create a third client merely for a new shell."
+  - "Conversation is the primary technician interaction; existing browse/workflow screens become secondary surfaces and tools where appropriate."
 
-active_prompt: P0001
+active_prompt: P0003
 
 prompts:
   P0000:
@@ -56,70 +77,61 @@ prompts:
 
   P0001:
     title: "Discovery and convergence map"
-    state: COMPLETE
+    state: REVIEW
     file: "prompts/P0001-discovery-convergence.md"
     owner: null
-    child_pr: null
-    acceptance:
-      - "Map current runtime to target architecture with file/route/table/flag evidence."
-      - "Identify existing components to keep/wrap/replace."
-      - "Identify active overlapping PR/session ownership."
-      - "Record cloud/on-prem shared boundaries."
-      - "Recommend the smallest non-duplicative P0002 implementation slice."
-    completed: "2026-08-19"
-    artifact: "CURRENT_TO_TARGET_MAP.md"
-    paid_inference_spent_usd: 0.00
-    result: |
-      Seam recommendation: InferenceProvider ABOVE InferenceRouter (not a 4th
-      cascade provider). 13 client surfaces already converge on
-      Supervisor.process(); 26 MCP tools already exist; the OpenAI SDK and
-      OPENAI_API_KEY plumbing already ship. Four real gaps: no tools in the
-      provider contract, no token streaming anywhere (current SSE is a single
-      whole-reply chunk), api_usage missing 9 of the fields section 23 requires,
-      and two unresolved doctrine conflicts (see blockers).
+    child_pr: 3340
+    result:
+      artifact: "CURRENT_TO_TARGET_MAP.md"
+      code_changed: false
+      summary: "Shared runtime/tools already exist; gaps are provider/tool/streaming contracts, telemetry, and adoption/convergence."
 
   P0002:
-    title: "Cloud Gold provider seam"
-    state: PARTIAL
-    authorized: true
-    authorized_by: "owner, 2026-08-19"
-    file: "prompts/P0002-provider-seam.md"
-    paid_inference_spent_usd: 0.00
+    title: "Provider seam and Cloud Gold doctrine carve-out"
+    state: REVIEW
+    file: null
+    prompt_source_pr: 3340
+    owner: null
+    child_pr: 3341
     closure:
       built: true
-      connected: false      # the seam has no production caller yet - by design
-      tested: true          # 16 contract tests, 3 mutations caught
-      enabled: true         # default selection is today's cascade
-      observable: false     # telemetry gap unchanged (see blockers.cost_telemetry)
-      proven: false         # no real turn flows through it yet
-    result: |
-      InferenceProvider seam introduced ABOVE InferenceRouter, with
-      CascadeProvider wrapping today's cascade byte-for-byte. ADR-0037 ratified
-      the doctrine conflict and both rules were amended in place. NOT COMPLETE:
-      nothing calls the seam in production yet, so it is BUILT+TESTED but not
-      CONNECTED or PROVEN. Wiring the first caller is P0003.
-    owner: null
-    child_pr: null
-    result: null
+      tested: true
+      enabled: true
+      connected: false
+      proven: false
+      observable: false
+      state: PARTIAL
+    result:
+      seam: "InferenceProvider above InferenceRouter"
+      default_provider: "CascadeProvider"
+      adr: "ADR-0037"
 
   P0003:
-    title: "Deterministic retrieval and context tools"
-    state: PLANNED
-    file: null
+    title: "First connected caller, cost telemetry, and conversation event contract"
+    state: ACTIVE
+    file: "prompts/P0003-first-caller-telemetry-conversation-contract.md"
     owner: null
     child_pr: null
-    result: null
+    depends_on:
+      - 3340
+      - 3341
+    acceptance:
+      - "A real MIRA runtime request flows through InferenceProvider using the existing Cascade provider."
+      - "Durable tenant/user/conversation/request/provider/model/token/cost/route/status telemetry exists or a canonical existing ledger is extended."
+      - "Provider-independent conversation/event contract supports future text deltas, citations, tools, approvals, attachments, usage, final/error events."
+      - "Current Cascade behavior and security invariants are preserved."
+      - "No paid OpenAI runtime traffic and no broad UI rewrite in this slice."
 
   P0004:
-    title: "Unified conversation, evidence, and client runtime"
+    title: "Conversation-first native MIRA shell convergence"
     state: PLANNED
     file: null
     owner: null
     child_pr: null
-    result: null
+    intent: "Refactor existing mira-mobile shell; preserve native foundations and move Chat/MIRA to the root experience."
 
   P0005:
-    title: "Delegated business tools and approvals"
+    title: "Deterministic FactoryLM tools in conversational runtime"
     state: PLANNED
     file: null
     owner: null
@@ -127,7 +139,7 @@ prompts:
     result: null
 
   P0006:
-    title: "Gold conversational and industrial parity evals"
+    title: "Delegated business tools and approvals"
     state: PLANNED
     file: null
     owner: null
@@ -135,7 +147,7 @@ prompts:
     result: null
 
   P0007:
-    title: "Prompt caching, Flex/Batch, and model routing"
+    title: "Gold conversational and industrial parity evals"
     state: PLANNED
     file: null
     owner: null
@@ -143,6 +155,14 @@ prompts:
     result: null
 
   P0008:
+    title: "Prompt caching, Flex/Batch, and model routing"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0009:
     title: "On-Prem provider parity"
     state: PLANNED
     file: null
@@ -163,36 +183,37 @@ cost_architecture:
     service_tier: batch
   guardrail: "Optimize cost per successful trustworthy outcome, never by bypassing FactoryLM evidence/policy."
 
-blockers:
-  doctrine_adr:
-    severity: high
-    summary: >
-      Cloud Gold puts a PAID frontier model on the chat/diagnosis path. Root
-      CLAUDE.md Hard Constraint #2 names the cloud cascade as Groq+Cerebras+Together
-      (free-tier) and limits the paid carve-out to PrintSynth print-vision,
-      "never chat/diagnosis". Separately, .claude/rules/zero-token-architecture.md
-      Hard Rule 1 permits metered paid inference ONLY as a budget-declared
-      acceptance test, never as a product runtime. Both need an ADR and owner
-      ratification before Cloud Gold chat code ships.
-    raised_by: P0001
-    status: RESOLVED
-    resolved_by: "ADR-0037 (docs/adr/0037-cloud-gold-paid-inference-edition.md)"
-    resolved_on: "2026-08-19"
-
-budget:
-  openai_credit_usd: 9.25
-  spent_usd: 0.00
-  verified: "2026-08-19"
-  note: >
-    At verified gpt-5.6-sol pricing ($5/Mtok in, $0.50 cached, $30/Mtok out) a
-    representative turn (~4k in / ~600 out) costs ~$0.038 uncached, ~$0.029 with a
-    2k cached prefix. The credit therefore funds roughly 240-320 interactive turns:
-    enough for the Phase 3 spine proof and one small eval slice, NOT the full
-    section 24 behavioral suite run through both editions.
-
 history:
   - H0001
   - H0002
   - H0003
   - H0004
   - H0005
+  - H0006
+
+blockers:
+  doctrine_adr:
+    severity: high
+    summary: >
+      Cloud Gold puts a PAID frontier model on the chat/diagnosis path, which
+      conflicted with root CLAUDE.md Hard Constraint #2 and with
+      .claude/rules/zero-token-architecture.md Hard Rule 1.
+    raised_by: P0001
+    status: RESOLVED
+    resolved_by: "ADR-0037 (docs/adr/0037-cloud-gold-paid-inference-edition.md)"
+    resolved_on: "2026-08-19"
+    note: >
+      Both rules were amended IN PLACE, not merely in the ADR, so the carve-out
+      cannot be discovered only by reading the ADR. ADR-0037 also makes per-turn
+      cost telemetry a PRECONDITION for Cloud Gold traffic - that is P0003 Part B.
+
+budget:
+  openai_credit_usd: 9.25
+  spent_usd: 0.00
+  verified: "2026-08-19"
+  note: >
+    Verified gpt-5.6-sol pricing $5/Mtok in, $0.50 cached, $30/Mtok out. A
+    representative turn (~4k in / ~600 out) costs ~$0.038 uncached, ~$0.029 with a
+    2k cached prefix, so the credit funds roughly 240-320 interactive turns: the
+    Phase 3 spine proof and one small eval slice, NOT the full section 24 suite
+    through both editions. P0001, P0002 and P0003 each spend $0.00.

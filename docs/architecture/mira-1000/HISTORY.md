@@ -37,96 +37,54 @@ MIRA-1000 now uses:
 
 The first active prompt is P0001: discovery/convergence mapping.
 
-## 2026-08-19 — H0004 — P0001 discovery executed
+## 2026-08-19 — H0004 — P0001 discovery completed in PR #3340
 
-**Goal:** map the current repository to MIRA-1000 before any Cloud Gold code.
+P0001 found that the divergence is materially smaller than the original green-field architecture implied:
 
-**Discovery — the divergence is smaller than the PRD assumed:**
+- all major clients already converge on `Supervisor.process()`;
+- the repository already has 26 MCP tools;
+- the OpenAI SDK and key plumbing already exist for another narrow use case;
+- `TechnicianContext`/context-contract work already exists but is not adopted on the production turn path;
+- current "streaming" is a complete reply emitted as one SSE chunk, not token streaming;
+- the existing usage telemetry is per-container and lacks the fields required to govern Cloud Gold spend.
 
-- All **13** client surfaces already call one entry point, `Supervisor.process()`
-  (`mira-bots/shared/engine.py:2272`), with a normalized signature carrying platform,
-  tenant, user, and UNS provenance. G4 is largely already satisfied.
-- Every current provider is already OpenAI-compatible through a single function,
-  `_call_openai_compat` (`router.py:530`).
-- The **OpenAI SDK is already in the repo** (`printsense/interpret.py:349`) and
-  `OPENAI_API_KEY` is already mapped in prod and staging compose.
-- **26 `@mcp.tool` functions already exist** in `mira-mcp/server.py`, including the CMMS
-  write tools section 17 anticipates.
-- The section 14 context architecture already exists as ADR-0033 `TechnicianContext`
-  (`MIRA_CONTEXT_CONTRACT`) — **built, default-off, with no production call site**.
+The recommended seam is `InferenceProvider` above `InferenceRouter`, preserving the current router and its production call sites.
 
-**Decision:** recommend the seam **above** `InferenceRouter`, not a fourth cascade entry.
-`InferenceRouter.complete()` has 11 production call sites and no room for tools, policy or
-streaming; wrapping preserves all of them and lets both editions inherit the fix once.
+PR #3340 contains the repo-backed current-to-target map. It is in review and not yet merged at this history entry.
 
-**Assumptions the repository proved wrong:** streaming does not exist at all (the current SSE
-path emits the whole reply as one chunk, `mira-pipeline/main.py:1034`); the tool registry is not
-greenfield; clients have not diverged; OpenAI is not a new dependency; `api_usage` is missing 9 of
-the fields section 23 requires and is per-container SQLite.
+## 2026-08-19 — H0005 — P0002 provider seam built, honestly PARTIAL, PR #3341
 
-**Blocker raised:** Cloud Gold conflicts with root `CLAUDE.md` Hard Constraint #2 and with
-`.claude/rules/zero-token-architecture.md` Hard Rule 1. Recorded as `blockers.doctrine_adr`
-(OPEN). This is not a reason to stop the program; it is a reason to ratify it explicitly.
+P0002 introduced the behavior-preserving `InferenceProvider` seam with `CascadeProvider` wrapping today's inference path. Unknown provider names fail loudly; the Cascade provider explicitly does not claim tool capability; immutable provider results are treated as records rather than editable buffers.
 
-**Budget:** verified OpenAI pricing. The $9.25 credit funds ~240-320 frontier turns — the spine
-proof and one eval slice, not the full behavioral suite.
+ADR-0037 resolved the standing doctrine conflict by authorizing Cloud Gold as a distinct, budget-capped, telemetry-enforced edition rather than a general permission for paid inference.
 
-**PR:** see `CHILD_PRS` / the P0001 child PR.
+Closure remains **PARTIAL**:
 
-**Evidence:** `CURRENT_TO_TARGET_MAP.md` (file:line citations throughout; OpenAI docs verified
-2026-08-19 against `developers.openai.com`, since `platform.openai.com/docs/*` now 301s there).
+- BUILT: yes
+- TESTED: yes
+- ENABLED/default-safe: yes
+- CONNECTED: no
+- PROVEN on a real runtime turn: no
+- OBSERVABLE to Cloud Gold's required per-turn cost standard: no
 
-**Paid inference spent:** $0.00
+That gap becomes P0003.
 
-**Next:** P0002 — provider seam, behavior-preserving (`prompts/P0002-provider-seam.md`).
-**NOT AUTHORIZED** — awaiting owner authorization and the doctrine ADR.
+## 2026-08-20 — H0006 — Product surfaces converged: Hub control plane, existing native app becomes MIRA
 
-## 2026-08-19 — H0005 — P0002 provider seam + ADR-0037
+Repository inspection changed the UI recommendation.
 
-**Goal:** introduce the `InferenceProvider` seam behavior-preservingly, and resolve the
-doctrine blocker P0001 raised.
+The existing `mira-mobile` application is not a disposable prototype. It already contains the native/auth/session/deep-link/QR/offline/files/notebook/citation/nameplate/work-order/schedule foundation required by a field technician application. Building a new chat-native client would recreate solved infrastructure.
 
-**Authorization:** owner approved the pivot and P0001's recommendations on 2026-08-19.
+**Decision:**
 
-**ADR-0037 (Accepted).** Cloud Gold is authorized as a distinct, budget-capped,
-telemetry-enforced *edition* — not a general relaxation. Both conflicting rules were
-amended **in place** so the exception cannot be discovered only by reading the ADR:
+- FactoryLM Hub remains the desktop configuration/governance/control plane.
+- MIRA becomes the primary technician-facing intelligent product.
+- The existing `mira-mobile` codebase is refactored into MIRA's primary native interface.
+- Do not create a third `mira-chat` / `mira-technician-v2` application merely to achieve a cleaner shell.
+- The target native experience is minimal and conversation-first, in the family of ChatGPT/Claude.
+- Existing Workorders, Schedule, Assets, Files, QR/nameplate, and Notebook capabilities are retained as secondary browse/manage surfaces and/or server-backed tools/context.
+- Notebook becomes a persistent machine/incident/research context primitive instead of a mandatory source-selection front door to all intelligence.
 
-- root `CLAUDE.md` Hard Constraint #2 now names two carve-outs (PrintSynth print-vision,
-  and Cloud Gold via the `InferenceProvider` seam), and restates that the free cascade is
-  the default for every edition and Anthropic stays out of the diagnostic cascade.
-- `.claude/rules/zero-token-architecture.md` Hard Rule 1 now admits a *declared product
-  edition* as a legitimate paid lane — under the rule's own discipline (budget declared up
-  front, hard stop, no re-validation on unchanged inputs, and development/debugging still
-  on hermetic fixtures and the free cascade).
+The detailed decision is now `PRODUCT_SURFACES.md`.
 
-**Implementation.** `mira-bots/shared/inference/provider.py`: `InferenceProvider`,
-`TurnResult`, `ToolCall`, `CascadeProvider`, `get_provider()`. The seam sits ABOVE
-`InferenceRouter`; `CascadeProvider` delegates to it with no transformation, so all 11
-existing call sites are untouched and sanitization/retries/budget-tracking/usage-logging
-keep working unchanged. `tools` and `policy` are accepted and **ignored** by the cascade —
-stated in the docstring and locked by a test, rather than silently dropped. An unknown
-provider name **raises** instead of falling back, so a deployment that asked for Cloud Gold
-can never quietly get the free cascade.
-
-**Evidence.** Full `mira-bots` suite, both passes run to completion (~30 min each):
-**baseline 56 failed / 2467 passed / 17 skipped → after 56 failed / 2483 passed / 17
-skipped**. Exactly **+16 passed, failure count identical** — zero regressions across the
-whole suite. Three mutations were applied and all were caught: changing the `max_tokens`
-default, disabling PII sanitization, and fabricating a tool call on the cascade. `ruff`
-clean; zero existing importers of the new module.
-
-The 56 failures are **pre-existing and unrelated** — they reproduce byte-identically with
-this branch's files excluded. Separately, three adapter tests (`test_gchat_adapter`,
-`test_slack_relay`, `test_teams_adapter`) fail *collection* on a pre-existing `sys.path`
-module-shadowing issue; they were excluded from both passes equally.
-
-**Honest closure (section 28).** BUILT yes · TESTED yes · ENABLED yes (default = today's
-behavior) · **CONNECTED no** · **PROVEN no** · OBSERVABLE no. Nothing calls the seam in
-production yet — that is deliberate for a behavior-preserving change, and it means P0002 is
-**PARTIAL**, not COMPLETE.
-
-**Paid inference spent:** $0.00 (credit remains $9.25).
-
-**Next:** P0003 — wire the first caller and close the telemetry gap, before any OpenAI
-provider. Cloud Gold traffic stays gated on per-turn cost telemetry (ADR-0037 decision 4).
+Sequencing was also corrected: P0003 remains backend-first (connect the seam, close telemetry, establish the provider-independent event contract). The native shell convergence is P0004 so runtime and UI changes do not become one unreviewable slice.
