@@ -56,7 +56,7 @@ prompts:
 
   P0001:
     title: "Discovery and convergence map"
-    state: ACTIVE
+    state: COMPLETE
     file: "prompts/P0001-discovery-convergence.md"
     owner: null
     child_pr: null
@@ -66,12 +66,24 @@ prompts:
       - "Identify active overlapping PR/session ownership."
       - "Record cloud/on-prem shared boundaries."
       - "Recommend the smallest non-duplicative P0002 implementation slice."
-    result: null
+    completed: "2026-08-19"
+    artifact: "CURRENT_TO_TARGET_MAP.md"
+    paid_inference_spent_usd: 0.00
+    result: |
+      Seam recommendation: InferenceProvider ABOVE InferenceRouter (not a 4th
+      cascade provider). 13 client surfaces already converge on
+      Supervisor.process(); 26 MCP tools already exist; the OpenAI SDK and
+      OPENAI_API_KEY plumbing already ship. Four real gaps: no tools in the
+      provider contract, no token streaming anywhere (current SSE is a single
+      whole-reply chunk), api_usage missing 9 of the fields section 23 requires,
+      and two unresolved doctrine conflicts (see blockers).
 
   P0002:
     title: "Cloud Gold provider seam"
     state: PLANNED
-    file: null
+    authorized: false
+    blocked_by: ["owner_authorization", "doctrine_adr"]
+    file: "prompts/P0002-provider-seam.md"
     owner: null
     child_pr: null
     result: null
@@ -137,7 +149,33 @@ cost_architecture:
     service_tier: batch
   guardrail: "Optimize cost per successful trustworthy outcome, never by bypassing FactoryLM evidence/policy."
 
+blockers:
+  doctrine_adr:
+    severity: high
+    summary: >
+      Cloud Gold puts a PAID frontier model on the chat/diagnosis path. Root
+      CLAUDE.md Hard Constraint #2 names the cloud cascade as Groq+Cerebras+Together
+      (free-tier) and limits the paid carve-out to PrintSynth print-vision,
+      "never chat/diagnosis". Separately, .claude/rules/zero-token-architecture.md
+      Hard Rule 1 permits metered paid inference ONLY as a budget-declared
+      acceptance test, never as a product runtime. Both need an ADR and owner
+      ratification before Cloud Gold chat code ships.
+    raised_by: P0001
+    status: OPEN
+
+budget:
+  openai_credit_usd: 9.25
+  spent_usd: 0.00
+  verified: "2026-08-19"
+  note: >
+    At verified gpt-5.6-sol pricing ($5/Mtok in, $0.50 cached, $30/Mtok out) a
+    representative turn (~4k in / ~600 out) costs ~$0.038 uncached, ~$0.029 with a
+    2k cached prefix. The credit therefore funds roughly 240-320 interactive turns:
+    enough for the Phase 3 spine proof and one small eval slice, NOT the full
+    section 24 behavioral suite run through both editions.
+
 history:
   - H0001
   - H0002
   - H0003
+  - H0004

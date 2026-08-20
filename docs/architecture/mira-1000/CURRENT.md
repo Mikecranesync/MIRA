@@ -16,12 +16,31 @@ GO on the architecture direction, subject to discovery against current repo trut
 
 ## Active prompt
 
-**P0001 — Discovery and Convergence Map**
+**None. P0001 is COMPLETE; P0002 is drafted but NOT AUTHORIZED.**
 
-Read:
-`prompts/P0001-discovery-convergence.md`
+- **P0001 — Discovery and Convergence Map — ✅ COMPLETE (2026-08-19).**
+  Result: `CURRENT_TO_TARGET_MAP.md`. Docs only; $0.00 paid inference.
+- **P0002 — Provider seam (behavior-preserving) — PLANNED, NOT AUTHORIZED.**
+  Drafted at `prompts/P0002-provider-seam.md`. Per PRD section 32, do not execute
+  without explicit owner authorization.
 
-This is the only default execution prompt currently marked ACTIVE.
+### ⚠️ Blocker before any Cloud Gold chat code
+
+P0001 found that Cloud Gold conflicts with two standing repository rules:
+
+1. Root `CLAUDE.md` Hard Constraint #2 — the cloud cascade is Groq+Cerebras+Together
+   (free-tier), and the sole paid carve-out is PrintSynth print-vision,
+   *"print-photo vision only, never chat/diagnosis."*
+2. `.claude/rules/zero-token-architecture.md` Hard Rule 1 — metered paid inference is a
+   budget-declared acceptance test, **never** a product runtime.
+
+Neither is a reason to abandon the program. Both need an ADR and owner ratification.
+Tracked as `blockers.doctrine_adr` in `TRACKER.yaml`.
+
+### Budget
+
+$9.25 OpenAI credit, $0.00 spent. At verified pricing that is ~240-320 frontier turns —
+the Phase 3 spine proof and one small eval slice, not the full section 24 suite.
 
 ## Why discovery is first
 
