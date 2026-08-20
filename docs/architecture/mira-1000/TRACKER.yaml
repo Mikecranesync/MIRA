@@ -125,10 +125,11 @@ prompts:
     paid_inference_spent_usd: 0.00
     closure:
       built: true
-      connected: true       # RAGWorker._call_llm -- the production technician answer path
+      connected: true            # RAGWorker._call_llm -- the production answer path
       tested: true
-      observable: true      # migration 078 extends decision_traces, the existing ledger
-      proven: true          # a real _call_llm turn flows through the seam (network stubbed only)
+      observable: true           # a real turn's usage now REACHES decision_traces (078)
+      provider_selectable: true  # get_provider(router=...) governs the real worker path
+      proven: true               # a real _call_llm turn flows through seam + telemetry
       default_cascade_preserved: true
       rollback: "MIRA_INFERENCE_PROVIDER unset (already the default); provider wraps the same router"
     result: |
@@ -143,6 +144,19 @@ prompts:
       Part C: mira-bots/shared/inference/events.py -- 17-member EventType,
       TurnEnvelope, no OpenAI wire names, and no fabricated deltas.
       Part D: inspected only; gaps recorded under P0004 inputs.
+
+      CLOSURE PASS (2026-08-20, owner-identified gaps):
+      (1) Provider selection was NOT real -- RAGWorker hardcoded
+      CascadeProvider(router=...), so MIRA_INFERENCE_PROVIDER never governed the
+      connected path. get_provider() now takes the injected router and the worker
+      uses it, so an unknown edition fails loudly at construction instead of
+      silently serving the free cascade.
+      (2) Telemetry was NOT connected -- 078 and build_trace_row existed but no
+      real turn reached them; the earlier observable:true was an OVERCLAIM. The
+      turn snapshot now flows worker sink -> engine result -> write_trace. It is
+      threaded per-turn (state dict), NOT cached on the shared RAGWorker, because
+      an instance attribute read after an await is the #1704 cross-tenant bleed
+      this module already guards against for _last_sources.
 
   P0004:
     title: "Conversation-first native MIRA shell convergence"
@@ -234,6 +248,7 @@ history:
   - H0005
   - H0006
   - H0007
+  - H0008
 
 blockers:
   doctrine_adr:

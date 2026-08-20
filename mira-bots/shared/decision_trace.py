@@ -162,6 +162,35 @@ def _audit_manifest(context_manifest: Optional[dict]) -> tuple[dict[str, Any] | 
     return audit_payload, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def trace_usage_kwargs(turn_usage: dict | None) -> dict[str, Any]:
+    """Map a per-turn telemetry projection onto build_trace_row()'s kwargs.
+
+    The engine holds the turn's snapshot as one opaque dict; this splits it into
+    the named arguments the row builder takes, WITHOUT letting the dict widen the
+    call — only these keys are forwarded, so a malformed or hostile snapshot
+    cannot reach an unintended parameter (e.g. tenant_id).
+
+    `model_used` is forwarded only when the snapshot actually carries one, so it
+    never clobbers the engine's own `router.last_model_for()` attribution with a
+    None on a turn that took the Open WebUI fallback.
+    """
+    u = turn_usage or {}
+    out: dict[str, Any] = {
+        "usage": {
+            "provider": u.get("provider"),
+            "input_tokens": u.get("input_tokens"),
+            "cached_input_tokens": u.get("cached_input_tokens"),
+            "output_tokens": u.get("output_tokens"),
+        },
+        "route_reason": u.get("route_reason"),
+        "tool_call_count": u.get("tool_call_count"),
+        "status": u.get("status"),
+    }
+    if u.get("model_used"):
+        out["model_used"] = u["model_used"]
+    return out
+
+
 def _usage_columns(
     usage: Optional[dict],
     *,

@@ -26,7 +26,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from shared.decision_trace import build_trace_row  # noqa: E402
+from shared.decision_trace import build_trace_row, trace_usage_kwargs  # noqa: E402
 from shared.inference.events import (  # noqa: E402
     EventType,
     MiraEvent,
@@ -83,10 +83,22 @@ async def test_p1_usage_still_logged_exactly_once():
 async def test_p2_production_path_uses_the_provider_seam():
     w = _worker()
     assert isinstance(w.provider, CascadeProvider), "RAGWorker must hold a provider"
-    await w._call_llm([{"role": "user", "content": "hi"}])
-    assert w._last_turn is not None, "the turn did not go through the seam"
-    assert w._last_turn.provider == "groq"
-    assert w._last_turn.events.is_terminal
+    sink: dict = {}
+    await w._call_llm([{"role": "user", "content": "hi"}], usage_sink=sink)
+    assert sink.get("_rag_turn_usage"), "the turn did not go through the seam"
+    assert sink["_rag_turn_usage"]["provider"] == "groq"
+
+
+async def test_p2_telemetry_is_per_turn_not_shared_instance_state():
+    """#1704: RAGWorker is a singleton across tenants. Turn telemetry must never
+    live on the instance, or a concurrent tenant's turn overwrites it before the
+    engine reads it back after an await."""
+    w = _worker()
+    assert not hasattr(w, "_last_turn"), "turn telemetry must not be cached on self"
+    a, b = {}, {}
+    await w._call_llm([{"role": "user", "content": "1"}], usage_sink=a)
+    await w._call_llm([{"role": "user", "content": "2"}], usage_sink=b)
+    assert a["_rag_turn_usage"] is not b["_rag_turn_usage"], "sinks must not alias"
 
 
 async def test_p2_provider_wraps_the_same_router_instance():
@@ -311,3 +323,134 @@ def test_p9_envelope_text_prefers_whole_over_deltas_but_handles_both():
     assert whole.text == "AB"
     assert deltas.text == "AB"
     assert deltas.stream_was_incremental is True
+
+
+# ── gap 1: provider SELECTION reaches the real RAGWorker path ───────────────
+
+
+def test_gap1_worker_honors_the_provider_env_on_the_real_path(monkeypatch):
+    """Not get_provider() in isolation — the actual worker construction path."""
+    monkeypatch.setenv("MIRA_INFERENCE_PROVIDER", "cascade")
+    w = _worker()
+    assert isinstance(w.provider, CascadeProvider)
+
+
+def test_gap1_unknown_provider_fails_loudly_when_the_worker_is_built(monkeypatch):
+    """The load-bearing one: a deployment that asks for an unimplemented edition
+    must fail at construction, not silently serve the free cascade and bill
+    nothing while the operator believes Cloud Gold is live."""
+    monkeypatch.setenv("MIRA_INFERENCE_PROVIDER", "openai")
+    with pytest.raises(ValueError, match="unknown inference provider"):
+        _worker()
+
+
+def test_gap1_selected_provider_wraps_the_injected_router_not_a_new_one(monkeypatch):
+    """A second router would fork last_model_for() and the budget counters."""
+    monkeypatch.delenv("MIRA_INFERENCE_PROVIDER", raising=False)
+    w = _worker()
+    assert w.provider.router is w.router
+
+
+# ── gap 2: a real turn produces durable telemetry ───────────────────────────
+
+
+async def test_gap2_real_turn_yields_the_078_columns():
+    w = _worker()
+    sink: dict = {}
+    await w._call_llm([{"role": "user", "content": "GS10 CE10?"}], usage_sink=sink)
+    row = build_trace_row(
+        tenant_id="acme",
+        user_question="GS10 CE10?",
+        recommendation="check P09.03",
+        **trace_usage_kwargs(sink["_rag_turn_usage"]),
+    )
+    assert row["provider"] == "groq"
+    assert row["input_tokens"] == 40
+    assert row["output_tokens"] == 12
+    assert row["status"] == "ok"
+    assert row["tool_call_count"] == 0
+    assert row["route_reason"] and row["route_reason"].startswith("groq:")
+    assert row["model_used"] == "groq/x"
+
+
+async def test_gap2_exhausted_cascade_is_status_empty_not_missing():
+    w = _worker(text="", usage={"provider": "together"})
+    w._call_openwebui = AsyncMock(return_value="local")
+    sink: dict = {}
+    await w._call_llm([{"role": "user", "content": "hi"}], usage_sink=sink)
+    row = build_trace_row(
+        tenant_id="acme", user_question="q", recommendation="",
+        **trace_usage_kwargs(sink["_rag_turn_usage"]),
+    )
+    assert row["status"] == "empty", "an exhausted cascade must be recorded, not dropped"
+    assert row["provider"] == "together"
+
+
+def test_gap2_no_provider_call_writes_nulls_not_zeros():
+    """A guardrail STOP / cached answer / fallback-only turn never reached a
+    provider. NULL means 'no call'; 0 would mean 'a call that cost nothing'."""
+    row = build_trace_row(
+        tenant_id="acme", user_question="q", recommendation="a",
+        **trace_usage_kwargs(None),
+    )
+    assert row["provider"] is None
+    assert row["input_tokens"] is None
+    assert row["status"] is None
+    assert row["tool_call_count"] is None
+
+
+def test_gap2_kwargs_mapper_cannot_widen_the_row_call():
+    """The mapper forwards a fixed key set — a hostile snapshot cannot reach
+    tenant_id or any other parameter it does not own."""
+    hostile = {
+        "provider": "groq", "tenant_id": "attacker", "user_question": "pwn",
+        "recommendation": "pwn", "principal": "root",
+    }
+    kw = trace_usage_kwargs(hostile)
+    assert set(kw) <= {"usage", "route_reason", "tool_call_count", "status", "model_used"}
+    row = build_trace_row(tenant_id="acme", user_question="q", recommendation="a", **kw)
+    assert row["tenant_id"] == "acme"
+    assert row["principal"] is None
+
+
+def test_gap2_model_used_not_clobbered_when_snapshot_has_none():
+    """A fallback turn has no provider model; the engine's own attribution wins."""
+    kw = trace_usage_kwargs({"provider": None, "status": "empty"})
+    assert "model_used" not in kw
+
+
+# ── gap 2b: the ENGINE actually carries the snapshot to the trace writer ────
+
+
+def test_gap2_engine_result_carries_the_turn_usage_snapshot():
+    """_make_result must thread the per-turn snapshot onto the result dict, which
+    is what _schedule_decision_trace reads. Without this the telemetry stops at
+    the worker and migration 078 stays permanently NULL."""
+    from shared.engine import Supervisor
+
+    snap = {"provider": "groq", "status": "ok", "input_tokens": 40}
+    res = Supervisor._make_result("reply", turn_usage=snap)
+    assert res["_turn_usage"] == snap
+
+
+def test_gap2_engine_imports_the_kwargs_mapper():
+    """_schedule_decision_trace resolves trace_usage_kwargs at call time; a rename
+    would only surface at runtime inside a fire-and-forget task (i.e. silently)."""
+    from shared.decision_trace import trace_usage_kwargs as m
+
+    assert callable(m)
+
+
+def test_gap2_end_to_end_projection_chain():
+    """sink -> engine result -> kwargs -> row, with no step dropping the fields."""
+    from shared.engine import Supervisor
+    from shared.inference.provider import TurnResult, turn_telemetry
+
+    turn = TurnResult(text="ok", provider="groq", usage=dict(USAGE))
+    sink = {"_rag_turn_usage": turn_telemetry(turn)}
+    res = Supervisor._make_result("reply", turn_usage=sink["_rag_turn_usage"])
+    row = build_trace_row(
+        tenant_id="acme", user_question="q", recommendation="a",
+        **trace_usage_kwargs(res["_turn_usage"]),
+    )
+    assert (row["provider"], row["input_tokens"], row["status"]) == ("groq", 40, "ok")

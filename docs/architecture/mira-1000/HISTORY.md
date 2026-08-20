@@ -143,3 +143,49 @@ remains unproven and unbuilt, which is correct for this slice.
 
 **Next:** P0004 — converge the existing `mira-mobile` information architecture onto the
 conversation-first shell, reusing the native foundation. Not authorized by this prompt.
+
+## 2026-08-20 — H0008 — P0003 closure pass: two gaps, one of them my overclaim
+
+The owner reviewed #3342 and found two genuine closure gaps. Both are recorded here
+as corrections rather than quietly folded into H0007.
+
+**Gap 1 — provider selection was not real on the connected path.** `RAGWorker`
+constructed `CascadeProvider(router=router)` directly, so `MIRA_INFERENCE_PROVIDER`
+governed `get_provider()` in isolation but **never the technician path that was
+actually wired**. A deployment could ask for Cloud Gold and silently keep getting the
+free cascade — the exact self-hiding spend/quality bug the fail-loud rule exists to
+prevent. Fixed: `get_provider()` now accepts the caller's `InferenceRouter` and the
+worker selects through it. The router MUST be threaded rather than letting the cascade
+build its own, because the runtime's router carries the session→model cache
+(`last_model_for`, which the decision trace reads) and the hourly budget counters; a
+second router would silently fork both.
+
+**Gap 2 — telemetry was built but not connected, and `observable: true` was an
+OVERCLAIM.** Migration 078 and `build_trace_row()` existed, and a real turn went
+through the seam, but the turn's usage never reached `decision_traces` — it stopped at
+`_last_turn`. H0007 recorded `observable: true` on the strength of the schema existing.
+That was wrong and is corrected here.
+
+Fixed by threading the snapshot **per turn**: `_call_llm(usage_sink=...)` writes into
+this turn's `state` dict, the engine pops it onto the result
+(`parsed["_turn_usage"]` → `_make_result` → `result["_turn_usage"]`), and
+`_schedule_decision_trace` maps it onto the 078 columns.
+
+**`_last_turn` was removed, not merely bypassed.** Caching the turn on the shared
+`RAGWorker` was the same `#1704` cross-tenant bleed this module already documents for
+`_last_sources`: the singleton is shared across tenants and the engine reads telemetry
+back *after* an await, so a concurrent turn can overwrite it first. A test now asserts
+the attribute does not exist.
+
+**engine.py was touched — deliberately, and minimally.** Six one-line insertions, each
+adjacent to the identical existing `_context_manifest` pattern. #3191's `engine.py`
+hunks sit at ~36/952/960/2704; the nearest of mine is ~160 lines away.
+
+**Evidence.** 37 P0003 proofs pass (25 → 37). Three new mutations all caught:
+reverting to the hardcoded provider, dropping the snapshot in the engine, and the
+worker not writing the sink. `ruff` clean.
+
+**Paid inference spent:** $0.00. Credit remains $9.25.
+
+**Closure:** BUILT ✅ CONNECTED ✅ TESTED ✅ OBSERVABLE ✅ PROVIDER-SELECTABLE ✅
+PROVEN ✅.

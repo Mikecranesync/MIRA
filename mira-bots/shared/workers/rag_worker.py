@@ -20,7 +20,7 @@ from ..agentic_retrieval import (
     merge_subquery_results,
 )
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
-from ..inference.provider import CascadeProvider
+from ..inference.provider import get_provider, turn_telemetry
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 from ..uns_resolver import canonical_vendor
@@ -601,12 +601,14 @@ class RAGWorker:
         self.nemotron = nemotron
         self.router = router  # InferenceRouter instance
         # MIRA-1000 P0003: the primary technician answer goes through the
-        # InferenceProvider seam. The provider WRAPS this same router, so default
-        # behavior is byte-identical; what changes is that the call now produces a
-        # TurnResult + conversation-event envelope instead of a bare string, and
-        # one place decides which edition (Cascade today, Cloud Gold later) serves
-        # the turn. Rollback = MIRA_INFERENCE_PROVIDER unset (already the default).
-        self.provider = CascadeProvider(router=router) if router is not None else None
+        # InferenceProvider seam, SELECTED by the provider contract rather than
+        # hardcoded — so MIRA_INFERENCE_PROVIDER actually governs this path and an
+        # unknown edition fails loudly here instead of silently serving Cascade.
+        # The selected provider wraps THIS router (never a second one), so default
+        # behavior is byte-identical and last_model_for / budget counters stay on
+        # the instance the rest of the runtime reads.
+        # Rollback = MIRA_INFERENCE_PROVIDER unset (already the default).
+        self.provider = get_provider(router=router) if router is not None else None
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
         if not self.tenant_id:
             logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
@@ -616,10 +618,12 @@ class RAGWorker:
         self._last_no_kb: bool = False
         self._last_neon_chunks: list[dict] = []
         self._kb_status: dict = {"status": "unknown", "citations": []}
-        #: Last TurnResult from the provider seam — carries the P0003 event
-        #: envelope and the usage the telemetry writer records. None until a
-        #: cascade turn has run.
-        self._last_turn = None
+        # NOTE: the turn's usage is deliberately NOT cached on self. RAGWorker is
+        # a singleton shared across tenants and the engine reads telemetry back
+        # AFTER an await, so an instance attribute is exactly the #1704
+        # cross-tenant bleed this module already guards against for _last_sources.
+        # _call_llm writes the per-turn projection into a caller-supplied sink
+        # (the turn's ``state`` dict), which the engine pops. See _call_llm.
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
@@ -983,7 +987,11 @@ class RAGWorker:
                 state["_rag_no_kb"] = self._last_no_kb
 
             t0 = time.monotonic()
-            raw = await self._call_llm(messages, model=model)
+            raw = await self._call_llm(
+                messages,
+                model=model,
+                usage_sink=state if isinstance(state, dict) else None,
+            )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             async with spans.llm_inference(len(str(messages)) // 4, raw, elapsed_ms):
@@ -1407,7 +1415,9 @@ class RAGWorker:
         logger.warning("Ollama embed failed on all candidates: %s", candidates)
         return None
 
-    async def _call_llm(self, messages: list[dict], model: str = None) -> str:
+    async def _call_llm(
+        self, messages: list[dict], model: str = None, usage_sink: dict | None = None
+    ) -> str:
         """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback.
 
         PII sanitization (IPv4/MAC/serial → placeholders) is applied to every
@@ -1428,7 +1438,11 @@ class RAGWorker:
                 clean,
                 metadata={"max_tokens": 2048, "sanitize": False},
             )
-            self._last_turn = turn
+            # #1704-safe: write the telemetry projection into THIS turn's sink,
+            # never onto self. The engine pops it into the per-turn result and
+            # hands it to the decision_traces write (migration 078).
+            if usage_sink is not None:
+                usage_sink["_rag_turn_usage"] = turn_telemetry(turn)
             if turn.text:
                 self.router.log_usage(turn.usage)
                 return turn.text

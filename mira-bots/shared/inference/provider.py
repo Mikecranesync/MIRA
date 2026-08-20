@@ -184,17 +184,63 @@ class CascadeProvider(InferenceProvider):
         )
 
 
-def get_provider(name: str | None = None) -> InferenceProvider:
+def turn_telemetry(turn: TurnResult) -> dict:
+    """Project a TurnResult onto the per-turn telemetry fields (migration 078).
+
+    ADR-0037 makes per-turn spend telemetry a PRECONDITION for Cloud Gold traffic.
+    This is the one place a provider result becomes those columns, so the runtime
+    and the trace writer cannot drift apart.
+
+    Deliberately narrow — counts, identity and status only. The provider's `usage`
+    dict is read by explicit key, so if a provider ever returns prompt text or a
+    credential in it, nothing here carries that to the database.
+
+    `status` distinguishes the three real outcomes so a spend query can tell them
+    apart: a served turn, an exhausted cascade, and a turn that never ran.
+    """
+    u = turn.usage or {}
+    return {
+        "provider": turn.provider,
+        "model_used": u.get("model"),
+        "input_tokens": u.get("input_tokens"),
+        # The free cascade does not report cache hits; Cloud Gold will
+        # (usage.input_tokens_details.cached_tokens, verified 2026-08-19).
+        "cached_input_tokens": u.get("cached_input_tokens"),
+        "output_tokens": u.get("output_tokens"),
+        "tool_call_count": len(turn.tool_calls),
+        "status": "ok" if turn.text else "empty",
+        # Which edition served the turn and why. Explicit so ADR-0037's
+        # "Cloud Gold is never silently selected" is auditable per row.
+        "route_reason": f"{turn.provider}:{os.getenv(PROVIDER_ENV) or DEFAULT_PROVIDER}",
+    }
+
+
+def get_provider(
+    name: str | None = None,
+    *,
+    router: InferenceRouter | None = None,
+) -> InferenceProvider:
     """Return the configured provider. Defaults to today's behavior.
 
     Selection order: explicit argument, then ``MIRA_INFERENCE_PROVIDER``, then
     ``cascade``. An unknown name raises rather than silently falling back — a
     deployment that asked for Cloud Gold and quietly got the free cascade would
     be a spend/quality bug that hides itself.
+
+    ``router`` is the caller's already-constructed :class:`InferenceRouter`. It
+    MUST be threaded through rather than letting the cascade build its own,
+    because the runtime's router carries per-process state the callers depend on
+    — the session→model cache (``last_model_for``, which the decision trace reads),
+    the hourly provider budget counters, and the enabled/backend flags. A second
+    router would silently fork all of that.
+
+    This parameter is what makes provider selection real on the runtime path: a
+    caller that holds a router can still honor ``MIRA_INFERENCE_PROVIDER`` instead
+    of hardcoding one edition.
     """
     requested = (name or os.getenv(PROVIDER_ENV) or DEFAULT_PROVIDER).strip().lower()
     if requested == "cascade":
-        return CascadeProvider()
+        return CascadeProvider(router=router)
     raise ValueError(
         f"unknown inference provider {requested!r} "
         f"(available: 'cascade'; Cloud Gold is not implemented yet — see ADR-0037)"
