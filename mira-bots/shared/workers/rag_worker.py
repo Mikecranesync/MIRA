@@ -20,6 +20,7 @@ from ..agentic_retrieval import (
     merge_subquery_results,
 )
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
+from ..inference.provider import CascadeProvider
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 from ..uns_resolver import canonical_vendor
@@ -599,6 +600,13 @@ class RAGWorker:
         self.collection_id = collection_id
         self.nemotron = nemotron
         self.router = router  # InferenceRouter instance
+        # MIRA-1000 P0003: the primary technician answer goes through the
+        # InferenceProvider seam. The provider WRAPS this same router, so default
+        # behavior is byte-identical; what changes is that the call now produces a
+        # TurnResult + conversation-event envelope instead of a bare string, and
+        # one place decides which edition (Cascade today, Cloud Gold later) serves
+        # the turn. Rollback = MIRA_INFERENCE_PROVIDER unset (already the default).
+        self.provider = CascadeProvider(router=router) if router is not None else None
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
         if not self.tenant_id:
             logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
@@ -608,6 +616,10 @@ class RAGWorker:
         self._last_no_kb: bool = False
         self._last_neon_chunks: list[dict] = []
         self._kb_status: dict = {"status": "unknown", "citations": []}
+        #: Last TurnResult from the provider seam — carries the P0003 event
+        #: envelope and the usage the telemetry writer records. None until a
+        #: cascade turn has run.
+        self._last_turn = None
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
@@ -1409,11 +1421,17 @@ class RAGWorker:
             else InferenceRouter.sanitize_context(messages)
         )
 
-        if self.router and self.router.enabled:
-            content, usage = await self.router.complete(clean, max_tokens=2048, sanitize=False)
-            if content:
-                self.router.log_usage(usage)
-                return content
+        if self.router and self.router.enabled and self.provider is not None:
+            # sanitize=False because `clean` was already sanitized above — the
+            # provider forwards this verbatim, so the guarantee is unchanged.
+            turn = await self.provider.respond(
+                clean,
+                metadata={"max_tokens": 2048, "sanitize": False},
+            )
+            self._last_turn = turn
+            if turn.text:
+                self.router.log_usage(turn.usage)
+                return turn.text
 
         return await self._call_openwebui(clean, model=model)
 

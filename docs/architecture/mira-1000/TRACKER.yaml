@@ -108,7 +108,7 @@ prompts:
 
   P0003:
     title: "First connected caller, cost telemetry, and conversation event contract"
-    state: ACTIVE
+    state: REVIEW
     file: "prompts/P0003-first-caller-telemetry-conversation-contract.md"
     owner: null
     child_pr: null
@@ -121,10 +121,53 @@ prompts:
       - "Provider-independent conversation/event contract supports future text deltas, citations, tools, approvals, attachments, usage, final/error events."
       - "Current Cascade behavior and security invariants are preserved."
       - "No paid OpenAI runtime traffic and no broad UI rewrite in this slice."
+    owner_claim: "https://github.com/Mikecranesync/MIRA/pull/3339#issuecomment-5352030428"
+    paid_inference_spent_usd: 0.00
+    closure:
+      built: true
+      connected: true       # RAGWorker._call_llm -- the production technician answer path
+      tested: true
+      observable: true      # migration 078 extends decision_traces, the existing ledger
+      proven: true          # a real _call_llm turn flows through the seam (network stubbed only)
+      default_cascade_preserved: true
+      rollback: "MIRA_INFERENCE_PROVIDER unset (already the default); provider wraps the same router"
+    result: |
+      Part A: connected at RAGWorker._call_llm -- the primary technician answer
+      path, and deliberately NOT engine.py, which has four open PRs against it
+      (#3191/#2985/#2984/#2983). Blast radius is one function.
+      Part B: REUSED decision_traces rather than creating a second run ledger --
+      migration 078 adds provider/route_reason/principal/token counts/
+      cached_input_tokens/cost_usd_estimate/tool_call_count/status. The projection
+      is an allowlist, so a provider payload cannot inject tenant or smuggle
+      columns.
+      Part C: mira-bots/shared/inference/events.py -- 17-member EventType,
+      TurnEnvelope, no OpenAI wire names, and no fabricated deltas.
+      Part D: inspected only; gaps recorded under P0004 inputs.
 
   P0004:
     title: "Conversation-first native MIRA shell convergence"
     state: PLANNED
+    inputs_from_p0003:
+      current_client_frames: ["sources", "content", "status"]
+      client_parser: "mira-mobile/src/lib/sse.ts (sources -> content* -> status -> [DONE])"
+      mapped_to_new_contract:
+        content: "assistant.text / assistant.text.delta"
+        sources: "citation"
+        status: "final / error.recoverable / error.fatal"
+      client_has_no_equivalent_for:
+        - "context.changed"
+        - "tool.call.started|progress|completed|failed"
+        - "tool.result"
+        - "approval.required|accepted|rejected"
+        - "attachment"
+        - "usage"
+      note: >
+        sse.ts documents the Hub chat frames as supporting INCREMENTAL content
+        delivery ("Phase-4 streamed variant, same frames"). That qualifies the
+        P0001 finding, which measured the mira-pipeline /v1/chat/completions SSE
+        path (one whole-reply chunk, main.py:1034). Whether the Hub endpoint
+        actually emits content incrementally today was NOT verified in P0003 --
+        verify before designing the P0004 streaming UX.
     file: null
     owner: null
     child_pr: null
@@ -190,6 +233,7 @@ history:
   - H0004
   - H0005
   - H0006
+  - H0007
 
 blockers:
   doctrine_adr:

@@ -88,3 +88,58 @@ The existing `mira-mobile` application is not a disposable prototype. It already
 The detailed decision is now `PRODUCT_SURFACES.md`.
 
 Sequencing was also corrected: P0003 remains backend-first (connect the seam, close telemetry, establish the provider-independent event contract). The native shell convergence is P0004 so runtime and UI changes do not become one unreviewable slice.
+
+## 2026-08-20 — H0007 — P0003: the seam is connected, telemetry is real
+
+**Claim:** posted on #3339 before editing; re-read confirmed no competing claim.
+
+**Preflight findings worth keeping.** #3340 went `CONFLICTING` when the parent moved —
+the conflict surface is exactly the three ledger files (`CURRENT.md`, `HISTORY.md`,
+`TRACKER.yaml`), no code. P0002 is **not** in the parent, so this branch stacks from
+P0002's head per the prompt rather than reimplementing it. Four open PRs touch
+`engine.py` (#3191, #2985, #2984, #2983); only #3191 touches `router.complete`.
+
+**Part A — connected at `RAGWorker._call_llm`.** That is the primary technician answer
+path, and deliberately **not** `engine.py`, whose four open PRs make it the wrong place
+to wire a seam this week. Blast radius is one function. The provider wraps the *same*
+injected router, so default behavior is byte-identical; what changes is that the call
+now yields a `TurnResult` + event envelope, and one place decides which edition serves
+the turn. The Open WebUI fallback (the On-Prem line) is preserved and tested.
+
+**Part B — reused `decision_traces`; did NOT create a second ledger.** It was already the
+append-only, RLS-scoped, per-turn record written non-blocking from the bot runtime, and
+it already carried the identity half (tenant/session/trace_id/platform/model/latency/ts).
+Migration **078** adds only the accounting half: `provider`, `route_reason`, `principal`,
+`input_tokens`, `cached_input_tokens`, `output_tokens`, `cost_usd_estimate`,
+`tool_call_count`, `status`. `cached_input_tokens` is separate because cached input bills
+at ~0.1x and folding it in would overstate spend by up to 10x. Cost is stored as
+**inputs, not a frozen total**, because provider prices change. The projection is an
+**allowlist** — a provider payload cannot inject `tenant_id` or smuggle a prompt into the
+billing columns, and both properties are mutation-tested.
+
+**Part C — the conversation/event contract.** `mira-bots/shared/inference/events.py`:
+a 17-member `EventType`, an immutable `MiraEvent`, and a `TurnEnvelope` with
+deterministic JSON. No OpenAI wire names (a test asserts none start with `response.`).
+**No fake streaming:** the cascade returns a finished string, so it emits ONE
+`ASSISTANT_TEXT`, never fabricated deltas; `stream_was_incremental` records which
+actually happened so a client cannot be misled.
+
+**Part D — inspected only, no UI work.** Today's client contract is
+`sources → content* → status → [DONE]` (`mira-mobile/src/lib/sse.ts`). Mapping and the
+six event kinds the client has no equivalent for are recorded under P0004's
+`inputs_from_p0003` in `TRACKER.yaml`.
+
+**A qualification to a P0001 finding.** `sse.ts` documents the Hub chat frames as
+supporting *incremental* content delivery. P0001's "nothing token-streams" measured the
+**mira-pipeline** `/v1/chat/completions` path (`main.py:1034`, one whole-reply chunk).
+Whether the Hub endpoint actually emits incrementally today was **not verified here** —
+verify before designing P0004's streaming UX.
+
+**Paid inference spent:** $0.00. Credit remains $9.25.
+
+**Closure:** BUILT ✅ CONNECTED ✅ TESTED ✅ OBSERVABLE ✅ PROVEN ✅ — a real
+`_call_llm` turn flows through the seam with only the network stubbed. Cloud Gold itself
+remains unproven and unbuilt, which is correct for this slice.
+
+**Next:** P0004 — converge the existing `mira-mobile` information architecture onto the
+conversation-first shell, reusing the native foundation. Not authorized by this prompt.

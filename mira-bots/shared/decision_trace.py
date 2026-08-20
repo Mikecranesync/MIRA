@@ -50,7 +50,10 @@ INSERT INTO decision_traces (
     tenant_id, session_id, platform, uns_path, user_question,
     tag_evidence, manual_evidence, kg_evidence, recommendation,
     citations_present, technician_confirmed, outcome, model_used, latency_ms,
-    context_manifest, context_manifest_sha256
+    context_manifest, context_manifest_sha256,
+    provider, route_reason, principal,
+    input_tokens, cached_input_tokens, output_tokens,
+    cost_usd_estimate, tool_call_count, status
 ) VALUES (
     -- tenant_id is TEXT (migration 070): bot surfaces produce slug tenants
     -- ('staging', 'default', chat_tenant slugs), not UUIDs. A CAST here threw
@@ -77,7 +80,19 @@ INSERT INTO decision_traces (
     -- off — which also makes the column the adoption counter for the flag's
     -- promotion decision.
     CAST(:context_manifest AS JSONB),
-    :context_manifest_sha256
+    :context_manifest_sha256,
+    -- ADR-0037 / P0003 Part B (migration 078): per-turn spend telemetry. Counts,
+    -- identifiers and status only -- never prompt text, retrieved data, or any
+    -- credential. NULL on turns that did not reach a provider.
+    :provider,
+    :route_reason,
+    :principal,
+    :input_tokens,
+    :cached_input_tokens,
+    :output_tokens,
+    :cost_usd_estimate,
+    :tool_call_count,
+    :status
 )
 """
 
@@ -147,6 +162,42 @@ def _audit_manifest(context_manifest: Optional[dict]) -> tuple[dict[str, Any] | 
     return audit_payload, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _usage_columns(
+    usage: Optional[dict],
+    *,
+    route_reason: Optional[str],
+    principal: Optional[str],
+    cost_usd_estimate: Optional[float],
+    tool_call_count: Optional[int],
+    status: Optional[str],
+) -> dict[str, Any]:
+    """Project a provider usage dict onto the migration-078 columns.
+
+    Deliberately narrow: it copies counts and identifiers and nothing else. If a
+    provider ever puts prompt text or a key into its usage dict, that field does
+    NOT reach the database through here — the allowlist below is the whole
+    contract (P0003 Part B: no prompts or sensitive payload in the billing
+    columns).
+
+    Every column is nullable. A turn that never reached a provider (a guardrail
+    STOP, a cached answer, a refusal) writes NULLs rather than zeros, so "no
+    provider call" stays distinguishable from "a call that cost nothing".
+    """
+    u = usage or {}
+    return {
+        "provider": u.get("provider"),
+        "route_reason": route_reason,
+        "principal": principal,
+        "input_tokens": u.get("input_tokens"),
+        # The free cascade does not report cache hits; Cloud Gold will.
+        "cached_input_tokens": u.get("cached_input_tokens"),
+        "output_tokens": u.get("output_tokens"),
+        "cost_usd_estimate": cost_usd_estimate,
+        "tool_call_count": tool_call_count,
+        "status": status,
+    }
+
+
 def build_trace_row(
     *,
     tenant_id: str,
@@ -163,6 +214,12 @@ def build_trace_row(
     model_used: Optional[str] = None,
     latency_ms: Optional[int] = None,
     context_manifest: Optional[dict] = None,
+    usage: Optional[dict] = None,
+    route_reason: Optional[str] = None,
+    principal: Optional[str] = None,
+    cost_usd_estimate: Optional[float] = None,
+    tool_call_count: Optional[int] = None,
+    status: Optional[str] = None,
 ) -> dict[str, Any]:
     """Assemble the decision_traces row from engine-turn inputs (pure).
 
@@ -195,6 +252,18 @@ def build_trace_row(
         "latency_ms": latency_ms,
         "context_manifest": json.dumps(cm_payload, sort_keys=True) if cm_payload else None,
         "context_manifest_sha256": cm_sha if cm_payload else None,
+        # ADR-0037 spend telemetry. `usage` is the provider's own dict
+        # (InferenceRouter shape: provider/model/input_tokens/output_tokens);
+        # cached_input_tokens is read separately because the cascade does not
+        # report it and Cloud Gold will (usage.input_tokens_details.cached_tokens).
+        **_usage_columns(
+            usage,
+            route_reason=route_reason,
+            principal=principal,
+            cost_usd_estimate=cost_usd_estimate,
+            tool_call_count=tool_call_count,
+            status=status,
+        ),
         # Carried for callers/tests; not a DB column.
         "_uns_source": ctx.get("source"),
         "_uns_confidence": ctx.get("confidence"),

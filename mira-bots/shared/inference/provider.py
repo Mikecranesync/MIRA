@@ -36,6 +36,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from .events import TurnEnvelope, envelope_from_completed_text
 from .router import InferenceRouter
 
 #: Selects the active provider. Default is today's behavior, byte-for-byte.
@@ -71,6 +72,10 @@ class TurnResult:
     usage: dict = field(default_factory=dict)
     tool_calls: tuple[ToolCall, ...] = ()
     finish_reason: str = "stop"
+    #: The P0003 conversation-event view of this same turn. Providers that cannot
+    #: stream emit one ASSISTANT_TEXT + USAGE + FINAL; they must NOT fabricate
+    #: deltas from a completed string (see events.py).
+    events: TurnEnvelope = field(default_factory=TurnEnvelope)
 
     @property
     def ok(self) -> bool:
@@ -162,11 +167,20 @@ class CascadeProvider(InferenceProvider):
         # ("", last_error) when the last one returned empty content. Both are
         # "no usable text" — surfaced as finish_reason="empty" rather than an
         # exception, matching the router's own non-raising contract.
+        provider_name = usage.get("provider") or self.name
         return TurnResult(
             text=text,
-            provider=usage.get("provider") or self.name,
+            provider=provider_name,
             usage=usage,
             finish_reason="stop" if text else "empty",
+            # Coarse-but-honest: the cascade hands back a finished string, so the
+            # envelope carries one ASSISTANT_TEXT (or a recoverable error when the
+            # cascade was exhausted) plus usage. stream_was_incremental stays False.
+            events=envelope_from_completed_text(
+                text,
+                usage=usage or None,
+                error=None if text else "cascade_exhausted",
+            ),
         )
 
 
