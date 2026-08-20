@@ -17,6 +17,13 @@ issues."*
 - Metered paid inference (gpt-5.5 or any $-billed model) runs ONLY as the bounded
   acceptance test of the artifact currently being developed or promoted — a phase gate, a
   calibration decision, a qualification run.
+- **AMENDED 2026-08-19 by ADR-0037 (MIRA-1000 Cloud Gold).** A *declared product edition*
+  is now also a legitimate paid lane — but under this rule's discipline, not outside it:
+  the budget is still declared up front, the lane still hard-stops at it, re-validation on
+  unchanged inputs is still banned, and **development/debugging still uses hermetic
+  fixtures and the free cascade, never the paid edition**. The carve-out is Cloud Gold
+  selected through the `InferenceProvider` seam and nothing else; every other paid use is
+  governed by this rule unamended.
 - Every paid lane declares a dollar budget BEFORE it runs and hard-stops at the budget.
 - Debugging, iterating, exploring, and fixing are Claude's job (the coding agent, already
   paid for), done against hermetic fixtures and the deterministic spine. If a development
