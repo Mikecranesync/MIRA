@@ -62,6 +62,18 @@ The one-pipeline law (`.claude/rules/one-pipeline-ingest.md`) governs **factory 
 
 These become **CU-03** in the backlog (security-adjacent → xhigh adversarial review per §Gate 7).
 
+> ✅ **RESOLVED 2026-08-18 by CU-03 (#3268, merge `dde2efcfc` → `v3.277.5`).** The three rows above
+> are the Gate 0 discovery record and are kept verbatim; none of them is live drift any more.
+> **I-1:** `insert_chunk`/`store_chunks`/`ingest_text_inline` take a **required keyword-only**
+> `is_private`, and `insert_chunk` additionally runs the provenance classifier at the write
+> boundary (`ingest/store.py:113` → `ingest/provenance.py::enforce_visibility`), so it can refuse
+> a write or force it tenant-scoped — never grant sharing the caller did not request.
+> **I-2:** `ingest_url` is gated on the canonical `mira-crawler/provenance_policy.yaml`
+> (CU-03a, #3297) rather than `sources.yaml`, fail-closed, with every redirect hop re-checked.
+> **I-3:** audited — `learning_ingester` writes `is_private=true, verified=false` (no approver
+> identity in `feedback_log`; no production scheduler wiring). The `mira-crawler` `known_drift`
+> entry in `REGISTRY.yaml` is now empty for the same reason. Full walk: `units/CU-03.md`.
+
 ## 5. Databases — no conflicting writers found
 
 All 13 core NeonDB tables are created by `mira-hub/db/migrations/` and written only from MIRA modules; **zero factorylm writers** (blind spot §13.3: clear). Other stores: `atlas-db` (separate Postgres, Atlas-owned, bridged by `atlas-hub-sync.py` writing `cmms_equipment.atlas_id` back), Node-RED local SQLite (ephemeral), legacy `mira-core/mira.db` (no active writers → DELETE_CANDIDATE data audit).

@@ -104,7 +104,16 @@ mira-crawler:
   dependencies:
     - mira-core
     - mira-bots
-  known_drift: ["insert_chunk hardcodes is_private=false (I-1); ingest_url lacks sources.yaml gate (I-2) — CU-03"]
+  # I-1 and I-2 are RESOLVED by CU-03 (PR #3268, merge dde2efcfc -> v3.277.5), verified on main:
+  #   I-1 insert_chunk now takes a required keyword-only is_private (ingest/store.py:63,79) and
+  #       enforces the provenance policy at the write boundary (store.py:113 ->
+  #       ingest/provenance.py::enforce_visibility) - a route that omits it is a TypeError,
+  #       and a classified-private/unclassified origin can no longer be published.
+  #   I-2 ingest_url consults the canonical mira-crawler/provenance_policy.yaml through
+  #       ingest/provenance.py (CU-03a, #3297); the duplicate sources.yaml host loader is gone.
+  # Locked by mira-crawler/tests/{test_write_path_visibility,test_provenance_policy}.py, both in
+  # CI (.github/workflows/ci.yml:439). Do not re-add these two as live drift.
+  known_drift: []
 
 mira-web:
   repo: MIRA
