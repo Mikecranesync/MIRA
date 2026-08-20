@@ -20,11 +20,12 @@ GO on the architecture direction, subject to discovery against current repo trut
 
 - **P0001 — Discovery and Convergence Map — ✅ COMPLETE (2026-08-19).**
   Result: `CURRENT_TO_TARGET_MAP.md`. Docs only; $0.00 paid inference.
-- **P0002 — Provider seam (behavior-preserving) — PLANNED, NOT AUTHORIZED.**
-  Drafted at `prompts/P0002-provider-seam.md`. Per PRD section 32, do not execute
-  without explicit owner authorization.
+- **P0002 — Provider seam (behavior-preserving) — ⚠️ PARTIAL (2026-08-19).**
+  Seam BUILT + TESTED + ENABLED (default = today's cascade), but **not CONNECTED and not
+  PROVEN** — nothing calls it in production yet. That is deliberate; wiring the first
+  caller is P0003. Do not report the seam as done.
 
-### ⚠️ Blocker before any Cloud Gold chat code
+### ✅ Blocker RESOLVED — ADR-0037 (2026-08-19)
 
 P0001 found that Cloud Gold conflicts with two standing repository rules:
 
@@ -34,8 +35,10 @@ P0001 found that Cloud Gold conflicts with two standing repository rules:
 2. `.claude/rules/zero-token-architecture.md` Hard Rule 1 — metered paid inference is a
    budget-declared acceptance test, **never** a product runtime.
 
-Neither is a reason to abandon the program. Both need an ADR and owner ratification.
-Tracked as `blockers.doctrine_adr` in `TRACKER.yaml`.
+**Both were amended in place by ADR-0037**, which authorizes Cloud Gold as a distinct,
+budget-capped, telemetry-enforced *edition* — not a general relaxation. The free cascade
+remains the default for every edition; Cloud Gold is opt-in and never the fallback; and
+Cloud Gold traffic stays gated on per-turn cost telemetry.
 
 ### Budget
 

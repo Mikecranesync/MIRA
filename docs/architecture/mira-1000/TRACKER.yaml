@@ -80,10 +80,24 @@ prompts:
 
   P0002:
     title: "Cloud Gold provider seam"
-    state: PLANNED
-    authorized: false
-    blocked_by: ["owner_authorization", "doctrine_adr"]
+    state: PARTIAL
+    authorized: true
+    authorized_by: "owner, 2026-08-19"
     file: "prompts/P0002-provider-seam.md"
+    paid_inference_spent_usd: 0.00
+    closure:
+      built: true
+      connected: false      # the seam has no production caller yet - by design
+      tested: true          # 16 contract tests, 3 mutations caught
+      enabled: true         # default selection is today's cascade
+      observable: false     # telemetry gap unchanged (see blockers.cost_telemetry)
+      proven: false         # no real turn flows through it yet
+    result: |
+      InferenceProvider seam introduced ABOVE InferenceRouter, with
+      CascadeProvider wrapping today's cascade byte-for-byte. ADR-0037 ratified
+      the doctrine conflict and both rules were amended in place. NOT COMPLETE:
+      nothing calls the seam in production yet, so it is BUILT+TESTED but not
+      CONNECTED or PROVEN. Wiring the first caller is P0003.
     owner: null
     child_pr: null
     result: null
@@ -161,7 +175,9 @@ blockers:
       acceptance test, never as a product runtime. Both need an ADR and owner
       ratification before Cloud Gold chat code ships.
     raised_by: P0001
-    status: OPEN
+    status: RESOLVED
+    resolved_by: "ADR-0037 (docs/adr/0037-cloud-gold-paid-inference-edition.md)"
+    resolved_on: "2026-08-19"
 
 budget:
   openai_credit_usd: 9.25
@@ -179,3 +195,4 @@ history:
   - H0002
   - H0003
   - H0004
+  - H0005
