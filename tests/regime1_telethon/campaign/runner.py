@@ -298,6 +298,62 @@ async def amain(args) -> int:
                 p = ledger.freeze(args.campaign, conv_id, transcript, dict(judge=v, **meta))
                 print(f"FROZEN: {p.name}  [{v.get('category')}] {v.get('reason')}")
             print(f"{v['verdict']}  {conv_id}")
+    elif args.tier == 4:
+        from tests.regime1_telethon.campaign import truth
+
+        equipment = truth.known_equipment()
+        print(f"tier4 ground truth: {len(equipment)} equipment labels loaded")
+        suffix = truth.JUDGE_SUFFIX.format(
+            equipment=", ".join(equipment[:120]) or "(none — empty tenant)"
+        )
+        conv_id = f"t4_{args.seed}_{0:03d}"
+        if conv_id in done:
+            n_skip += 1
+        else:
+            transcript = []
+            last = await client.get_messages(STAGING_BOT, limit=1)
+            min_id = last[0].id if last else 0
+            await client.send_message(STAGING_BOT, "/new")
+            _, min_id = await uat.collect_reply(client, STAGING_BOT, min_id)
+            await asyncio.sleep(uat.SEND_GAP_S)
+            for i, q in enumerate(truth.TIER4_QUESTIONS[: args.count], 1):
+                await client.send_message(STAGING_BOT, q)
+                transcript.append(dict(role="tech", text=q))
+                ledger.turn(args.campaign, conv_id, 4, i, "tech", q)
+                reply, min_id = await uat.collect_reply(client, STAGING_BOT, min_id)
+                transcript.append(dict(role="mira", text=reply))
+                ledger.turn(args.campaign, conv_id, 4, i, "mira", reply)
+                await asyncio.sleep(uat.SEND_GAP_S)
+            judge_mod_sys = judge_mod.SYSTEM + suffix
+            convo = "\n".join(f"{h['role'].upper()}: {h['text'][:600]}" for h in transcript)
+            from tests.regime1_telethon.campaign import llm as llm_mod
+
+            v = llm_mod.complete_json(
+                judge_mod_sys, f"CONVERSATION:\n{convo}\n\nJudge (JSON only):"
+            )
+            if v.get("verdict") not in ("PASS", "SUSPECT"):
+                v = {
+                    "verdict": "SUSPECT",
+                    "category": "HARNESS",
+                    "reason": "malformed judge output",
+                }
+            ledger.verdict(
+                args.campaign,
+                conv_id,
+                4,
+                v["verdict"],
+                category=v.get("category", ""),
+                notes=v.get("reason", ""),
+                evidence=v.get("evidence", ""),
+                **meta,
+            )
+            if v["verdict"] == "PASS":
+                n_pass += 1
+            else:
+                n_fail += 1
+                pth = ledger.freeze(args.campaign, conv_id, transcript, dict(judge=v, **meta))
+                print(f"FROZEN: {pth.name}  [{v.get('category')}] {v.get('reason')}")
+            print(f"{v['verdict']}  {conv_id}")
     else:
         print(f"tier {args.tier} not implemented in this runner version")
         return 2
