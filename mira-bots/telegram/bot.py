@@ -26,10 +26,14 @@ from shared import (
     print_autoeval,
     print_translator,
     print_workspace,
+    session_memory,
     tts,
     wiring_intake,
 )
+from shared.channel_workflow import ChannelWorkflowClient
 from shared.chat.dispatcher import ChatDispatcher
+from shared.chat.drive_context import clear_drive_context
+from shared.chat.types import NormalizedChatResponse
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
     submit_file_to_hub_folder,
@@ -71,6 +75,7 @@ from telegram.error import Conflict
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -178,7 +183,12 @@ _admin_db_engine = (
 
 # Chat Abstraction Layer — wraps engine in platform-agnostic protocol
 adapter = TelegramChatAdapter(bot_token=TELEGRAM_BOT_TOKEN)
-dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
+_channel_workflow_client = ChannelWorkflowClient.from_env()
+dispatcher = ChatDispatcher(
+    engine,
+    identity_service=_identity_service,
+    channel_workflow_client=_channel_workflow_client,
+)
 
 FAULT_KEYWORDS = {
     "fault",
@@ -241,6 +251,145 @@ class typing_action:
                 await self._task
             except asyncio.CancelledError:
                 pass
+
+
+_CHANNEL_PROGRESS = {
+    "prepared": "prepared",
+    "recognizing_nameplate": "recognizing the nameplate",
+    "discovering_manual": "checking official OEM manuals",
+    "ingesting_file": "ingesting the canonical File",
+    "answering_from_files": "answering from verified Files",
+    "resetting_workspace": "resetting the canonical workspace",
+}
+_CHANNEL_OPERATION_ID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+async def _try_canonical_workflow(
+    update: Update,
+    normalized,
+    *,
+    action: str = "message",
+    prior_operation_id: str = "",
+    confirmed_identity: dict | None = None,
+):
+    """Render one Hub semantic result and ACK only after Telegram accepts it."""
+
+    progress_message = None
+    target_message = update.message or update.callback_query.message
+
+    async def on_progress(operation_id: str, step: str) -> None:
+        nonlocal progress_message
+        label = _CHANNEL_PROGRESS.get(step, step.replace("_", " "))
+        text = f"MIRA operation {operation_id}: {label}."
+        try:
+            if progress_message is None:
+                progress_message = await target_message.reply_text(text)
+            else:
+                await progress_message.edit_text(text)
+        except Exception as exc:
+            logger.warning("channel progress render failed operation=%s: %s", operation_id, exc)
+
+    try:
+        response = await dispatcher.try_channel_workflow(
+            normalized,
+            action=action,
+            context=None,
+            prior_operation_id=prior_operation_id,
+            confirmed_identity=confirmed_identity,
+            on_progress=on_progress,
+        )
+    except Exception as exc:
+        logger.error("canonical workflow adapter error: %s", exc)
+        await target_message.reply_text(
+            "The canonical MIRA workflow could not start this request; no operation was created."
+        )
+        return NormalizedChatResponse(
+            text="",
+            operation_state="failed",
+            semantic_kind="fallthrough",
+            workflow_handled=True,
+            suppress_delivery=True,
+        )
+    if response is None:
+        return None
+    if response.suppress_delivery:
+        return response
+    delivered = await adapter.render_outgoing(response, normalized)
+    if delivered:
+        await dispatcher.ack_channel_delivery(response)
+    else:
+        logger.error(
+            "CHANNEL_TERMINAL_UNACKED operation=%s channel=telegram",
+            response.operation_id,
+        )
+        if progress_message is not None and response.operation_id:
+            try:
+                await progress_message.edit_text(
+                    "MIRA could not confirm delivery of the terminal response. "
+                    f"Use /recover {response.operation_id} to recover it; this may repeat "
+                    "an answer Telegram already accepted."
+                )
+            except Exception as exc:
+                logger.warning(
+                    "channel recovery prompt failed operation=%s: %s",
+                    response.operation_id,
+                    exc,
+                )
+    return response
+
+
+async def channel_workflow_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transport a candidate confirmation back to the canonical Hub operation."""
+
+    query = update.callback_query
+    await query.answer()
+    prefix = "channel_workflow_confirm:"
+    data = query.data or ""
+    if not data.startswith(prefix):
+        return
+    prior_operation_id = data[len(prefix) :]
+    message = query.message.to_dict()
+    message["from"] = query.from_user.to_dict()
+    message["text"] = "Confirm identity"
+    normalized = await adapter.normalize_incoming(
+        {"update_id": update.update_id, "message": message}
+    )
+    normalized.event_id = f"callback:{query.id}"
+    normalized.text = "Confirm identity"
+    await _try_canonical_workflow(
+        update,
+        normalized,
+        action="confirm_identity",
+        prior_operation_id=prior_operation_id,
+    )
+
+
+async def recover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Explicitly recover one known claimed-but-unacknowledged Hub result."""
+
+    args = context.args or []
+    if len(args) != 1 or not _CHANNEL_OPERATION_ID_RE.fullmatch(args[0]):
+        await update.message.reply_text(
+            "Usage: /recover <operation-id>. This may repeat an answer whose delivery "
+            "could not be confirmed."
+        )
+        return
+    if not _channel_workflow_client.enabled:
+        await update.message.reply_text("Canonical response recovery is not configured.")
+        return
+    normalized = await adapter.normalize_incoming(update.to_dict())
+    normalized.text = "Recover terminal response; possible duplicate accepted"
+    response = await _try_canonical_workflow(
+        update,
+        normalized,
+        action="recover_delivery",
+        prior_operation_id=args[0].lower(),
+    )
+    if response is None:
+        await update.message.reply_text("Canonical response recovery is not configured.")
 
 
 def _resize_for_vision(image_bytes: bytes) -> bytes:
@@ -398,12 +547,7 @@ async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, upda
 
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive PDF documents and submit them to the Hub as intake evidence.
-
-    HubV3: a PDF is a contextualization source. The bot builds the §2 intake
-    contract and POSTs it (+ raw bytes) to the Hub import endpoint, where it
-    lands as a ``proposed`` source for review. The bot owns no truth.
-    """
+    """Transport a PDF through the canonical workflow, with flag-off fallback."""
     doc = update.message.document
     filename = doc.file_name or "upload.pdf"
     caption = update.message.caption or ""
@@ -417,31 +561,39 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
         return
 
-    if not _hub_intake_configured():
-        await update.message.reply_text("Hub intake is not configured.")
-        return
-
-    await update.message.reply_text(f"Submitting {filename} to the Hub...")
     logger.info("PDF from telegram_id=%s: %s", update.effective_user.id, filename)
+    try:
+        if not _channel_workflow_client.enabled and not _hub_intake_configured():
+            await update.message.reply_text("Hub intake is not configured.")
+            return
+        tg_file = await context.bot.get_file(doc.file_id)
+        pdf_bytes = bytes(await tg_file.download_as_bytearray())
+        if _channel_workflow_client.enabled:
+            normalized = await adapter.normalize_incoming(update.to_dict())
+            normalized.text = caption
+            if normalized.attachments:
+                normalized.attachments[0].data = pdf_bytes
+            canonical = await _try_canonical_workflow(update, normalized)
+            if canonical is not None:
+                return
 
-    async def _do_submit_doc():
-        try:
-            tg_file = await context.bot.get_file(doc.file_id)
-            pdf_bytes = bytes(await tg_file.download_as_bytearray())
-            ok = await _submit_doc_to_hub(pdf_bytes, filename, caption, update)
-            if ok:
-                reply = (
-                    f"Submitted *{filename}* to the Hub for review.\n"
-                    "It will appear as a proposed source once contextualized."
-                )
-            else:
-                reply = f"Couldn't submit {filename} to the Hub. Please try again later."
-            await update.message.reply_text(reply, parse_mode="Markdown")
-        except Exception as exc:
-            logger.error("doc submit error: %s", exc)
-            await update.message.reply_text(f"Submitting {filename} failed. Please try again.")
-
-    asyncio.create_task(_do_submit_doc())
+        # Explicit flag-off/delegation rollback path only.
+        if not _hub_intake_configured():
+            await update.message.reply_text("Hub intake is not configured.")
+            return
+        await update.message.reply_text(f"Submitting {filename} to the Hub...")
+        ok = await _submit_doc_to_hub(pdf_bytes, filename, caption, update)
+        if ok:
+            reply = (
+                f"Submitted *{filename}* to the Hub for review.\n"
+                "It will appear as a proposed source once contextualized."
+            )
+        else:
+            reply = f"Couldn't submit {filename} to the Hub. Please try again later."
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    except Exception as exc:
+        logger.error("doc submit error: %s", exc)
+        await update.message.reply_text(f"Submitting {filename} failed. Please try again.")
 
 
 def _get_voice_enabled(chat_id: str) -> bool:
@@ -586,6 +738,17 @@ def _get_drive_context(chat_id: str, max_age_s: int | None = None) -> str | None
     if (_time.time() - float(updated_at)) > max_age:
         return None
     return pack_id
+
+
+def _clear_drive_context(chat_id: str) -> None:
+    """Remove the Telegram-local drive pack selected for this chat."""
+    try:
+        db = _drive_context_db()
+        db.execute("DELETE FROM telegram_drive_context WHERE chat_id = ?", (chat_id,))
+        db.commit()
+        db.close()
+    except Exception as exc:
+        logger.warning("drive-context clear failed: %s", exc)
 
 
 async def _try_drive_pack_followup(
@@ -1154,6 +1317,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
 
+    normalized = None
+    if _channel_workflow_client.enabled:
+        normalized = await adapter.normalize_incoming(update.to_dict())
+        canonical = await _try_canonical_workflow(update, normalized)
+        if canonical is not None:
+            return
+
     # Drive-conversation continuity: a text follow-up after a nameplate / /drive
     # identification answers from that pack directly (read-only, cited, un-gated)
     # instead of dropping to the enrollment-gated engine path with no memory of
@@ -1187,7 +1357,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
         await update.message.reply_text("Diagnosing...")
-    normalized = await adapter.normalize_incoming(update.to_dict())
+    if normalized is None:
+        normalized = await adapter.normalize_incoming(update.to_dict())
     try:
         _t0 = _time.monotonic()
         async with typing_action(context, update.effective_chat.id):
@@ -1939,6 +2110,17 @@ async def _dispatch_single_photo(
     refusal) from the nameplate — everything else falls through to the
     unchanged engine dispatch below.
     """
+    if _channel_workflow_client.enabled:
+        normalized = await adapter.normalize_incoming(update.to_dict())
+        normalized.text = caption
+        if normalized.attachments:
+            # The canonical Hub owns recognition and receives the original bytes;
+            # the local resize belongs only to the flag-off legacy vision path.
+            normalized.attachments[0].data = raw_bytes
+        canonical = await _try_canonical_workflow(update, normalized)
+        if canonical is not None:
+            return
+
     # Admin test-caption mode (/printsense_grade <question>): pre-empts every
     # rung so an admin probe never leaks into customer flows. Fail-closed.
     if await printsense_testkit.try_printsense_grade_reply(
@@ -2327,23 +2509,52 @@ async def _photo_batch_worker(application: Application) -> None:
             await photo_queue.mark_failed(rec.id, str(exc))
 
 
-async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reset GSD conversation state."""
-    chat_id = str(update.effective_chat.id)
+def _clear_legacy_conversation_state(chat_id: str) -> None:
+    """Clear every flag-off cache only after the canonical reset succeeds."""
+
     engine.reset(chat_id)
-    # D4b: the print workspace persisted past engine.reset (7-day TTL) and
-    # kept routing text turns into the print rung after a "fresh" session.
     print_workspace.clear_workspace(chat_id)
-    await update.message.reply_text("Conversation reset.")
+    _clear_drive_context(chat_id)
+    clear_drive_context("telegram", f"telegram:{chat_id}")
+    session_memory.clear_session(chat_id)
+    session_memory.clear_session(f"telegram:{chat_id}")
+    try:
+        collector = _BURST_COLLECTOR.pop(int(chat_id), None)
+    except ValueError:
+        collector = None
+    if collector:
+        task = collector.get("task")
+        if task is not None and not task.done():
+            task.cancel()
+
+
+async def _reset_conversation(update: Update, *, fallback_text: str) -> None:
+    chat_id = str(update.effective_chat.id)
+    if not _channel_workflow_client.enabled:
+        _clear_legacy_conversation_state(chat_id)
+        await update.message.reply_text(fallback_text)
+        return
+    normalized = await adapter.normalize_incoming(update.to_dict())
+    normalized.text = update.message.text or "/new"
+    canonical = await _try_canonical_workflow(update, normalized, action="reset")
+    if canonical is not None:
+        if canonical.operation_state == "complete" and canonical.semantic_kind == "reset":
+            _clear_legacy_conversation_state(chat_id)
+        return
+    _clear_legacy_conversation_state(chat_id)
+    await update.message.reply_text(fallback_text)
+
+
+async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Rotate the canonical workspace and then clear legacy fallback state."""
+    await _reset_conversation(update, fallback_text="Conversation reset.")
 
 
 async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
     chat_id = str(update.effective_chat.id)
-    engine.reset(chat_id)
-    print_workspace.clear_workspace(chat_id)
+    await _reset_conversation(update, fallback_text="🔄 Fresh start. What can I help with?")
     logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
-    await update.message.reply_text("🔄 Fresh start. What can I help with?")
 
 
 # Tolerant /new matcher: catches "/new", "/ new", "/New", "/  new", "/NEW", etc.
@@ -2532,6 +2743,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
         "/new \u2014 Fresh start (clear conversation state)\n"
         "/reset \u2014 Reset conversation state (alias for /new)\n"
+        "/recover <operation-id> \u2014 Recover an unacknowledged response (may repeat it)\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
         "Send a photo to identify equipment.\n"
@@ -2726,13 +2938,12 @@ def main():
         # Args present → invite-token consumption flow (unchanged).
         if not (context.args or []):
             chat_id = str(update.effective_chat.id)
-            engine.reset(chat_id)
             logger.info(
                 "START_RESET chat_id=%s user=%s",
                 chat_id,
                 update.effective_user.first_name if update.effective_user else "?",
             )
-            await update.message.reply_text("🔄 Fresh start. What can I help with?")
+            await new_command(update, context)
             return
         await start_command(
             update,
@@ -2771,9 +2982,16 @@ def main():
     app.add_handler(CommandHandler("drive", drive_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("reset", reset_command))
+    app.add_handler(CommandHandler("recover", recover_command))
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(
+        CallbackQueryHandler(
+            channel_workflow_callback,
+            pattern=r"^channel_workflow_confirm:[0-9a-fA-F-]{36}$",
+        )
+    )
     # /new variant matcher: catches "/ new", "/New", " /new ", etc. that PTB's
     # CommandHandler doesn't match. Must be registered BEFORE the catch-all
     # text handler so a stray-space /new doesn't get diagnosed as a question.

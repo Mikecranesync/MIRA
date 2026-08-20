@@ -78,3 +78,21 @@ class NormalizedChatResponse:
     ephemeral: bool = False
     files: list[dict] = field(default_factory=list)  # file uploads
     suggestions: list[str] = field(default_factory=list)  # suggestion chips
+    # Canonical Hub channel-workflow metadata. Existing engine callers leave
+    # these at their neutral defaults; Telegram/Slack render them but never
+    # recompute their meaning.
+    operation_id: str = ""
+    operation_state: str = ""
+    semantic_kind: str = ""
+    citations: list[dict] = field(default_factory=list)
+    provenance: dict = field(default_factory=dict)
+    terminal_delivery_token: str = ""
+    suppress_delivery: bool = False
+    # None for legacy engine responses. Canonical adapters render only True;
+    # False is an explicit Hub-owned delegation to the legacy diagnostic path.
+    workflow_handled: bool | None = None
+    # Authenticated delivery context is transport metadata, not canonical
+    # provenance and is never rendered.
+    delivery_tenant_id: str = ""
+    delivery_user_id: str = ""
+    delivery_channel: str = ""

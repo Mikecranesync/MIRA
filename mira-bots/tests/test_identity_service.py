@@ -66,7 +66,9 @@ def test_resolve_same_identity_returns_same_user(svc):
 
 def test_resolve_different_platforms_same_person_via_email(svc):
     """Slack and Teams resolve to the same user when email matches."""
-    slack_user = svc.resolve("slack", "U_CAROL", "acme", email="carol@acme.com", display_name="Carol")
+    slack_user = svc.resolve(
+        "slack", "U_CAROL", "acme", email="carol@acme.com", display_name="Carol"
+    )
     teams_user = svc.resolve("teams", "T_CAROL", "acme", email="carol@acme.com")
     assert slack_user.id == teams_user.id
 
@@ -181,6 +183,15 @@ def test_lookup_only_returns_user_for_known_identity(svc):
     assert found.id == created.id
     assert found.tenant_id == "acme"
     assert found.display_name == "Eve"
+
+
+def test_lookup_only_requires_tenant_when_external_identity_is_ambiguous(svc):
+    acme = svc.resolve("telegram", "same-user", "acme")
+    beta = svc.resolve("telegram", "same-user", "beta-corp")
+
+    assert svc.lookup_only("telegram", "same-user") is None
+    assert svc.lookup_only("telegram", "same-user", "acme") == acme
+    assert svc.lookup_only("telegram", "same-user", "beta-corp") == beta
 
 
 def test_lookup_only_does_not_auto_create(svc):

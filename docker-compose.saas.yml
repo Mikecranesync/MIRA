@@ -314,10 +314,14 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
-      # Citable file intake → Hub folder-upload door (#2540). Unset token = skip.
-      - HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
-      - HUB_BASE_PATH=${HUB_BASE_PATH:-/hub}
+      # Canonical channel workflow. Hub is root-mounted inside this stack;
+      # default OFF until the shared token + UUID tenant are in Doppler.
+      - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      - HUB_URL=http://mira-hub:3000
+      - HUB_BASE_PATH=
       - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
+      - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
+      - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
@@ -417,6 +421,13 @@ services:
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      # Same canonical Hub boundary as Telegram; Slack owns rendering only.
+      - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      - HUB_URL=http://mira-hub:3000
+      - HUB_BASE_PATH=
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
+      - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
+      - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
@@ -736,6 +747,8 @@ services:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated
       # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
       # block only (pure code). Set in Doppler factorylm/prd to bound the surface.

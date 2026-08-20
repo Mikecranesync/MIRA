@@ -65,11 +65,19 @@ def render_telegram(response: NormalizedChatResponse) -> tuple[str, dict | None]
 
         elif kind == "button_row":
             buttons = data.get("buttons", [])
-            row = [
-                {"text": b.get("label", ""), "callback_data": b.get("action", b.get("label", ""))}
-                for b in buttons
-                if b.get("label")
-            ]
+            row = []
+            for button in buttons:
+                if not button.get("label"):
+                    continue
+                action = button.get("action", button.get("label", ""))
+                value = button.get("value", "")
+                callback_data = f"{action}:{value}" if value else action
+                row.append(
+                    {
+                        "text": button.get("label", ""),
+                        "callback_data": callback_data[:64],
+                    }
+                )
             if row:
                 keyboard_rows.append(row)
 

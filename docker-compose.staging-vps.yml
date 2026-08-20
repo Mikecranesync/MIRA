@@ -288,6 +288,8 @@ services:
       - "0.0.0.0:4101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:4101}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
@@ -423,6 +425,14 @@ services:
       - KNOWLEDGE_COLLECTION_ID=
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
+      # Canonical channel workflow. Root-mounted stg Hub; disabled until the
+      # shared service token and a UUID staging tenant are provisioned.
+      - MIRA_CHANNEL_WORKFLOW_ENABLED=${MIRA_CHANNEL_WORKFLOW_ENABLED:-0}
+      - HUB_URL=http://stg-mira-hub:3000
+      - HUB_BASE_PATH=
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
+      - MIRA_CHANNEL_WORKFLOW_POLL_SECONDS=${MIRA_CHANNEL_WORKFLOW_POLL_SECONDS:-2}
+      - MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS=${MIRA_CHANNEL_WORKFLOW_TIMEOUT_SECONDS:-600}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
       # FactoryLM machine-evidence spine (PRD #3048). Default OFF — inert until
       # both are set to 1 in Doppler factorylm/stg. The 2026-08-02 round-3

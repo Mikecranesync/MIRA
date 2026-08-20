@@ -29,6 +29,7 @@ import {
   coerceAmbient,
   coerceInsulation,
   parseNameplateLines,
+  reconcileIdentityCandidate,
   mergeCandidates,
   agreementKey,
   evidenceToValues,
@@ -232,6 +233,42 @@ describe("parseAmbient / parseInsulation", () => {
 // ── Identifiers: missing dashes, homoglyphs, wrong field ─────────────────────
 
 describe("identifier parsing", () => {
+  it("keeps the Danfoss TYPE and P/N separate from the FC-202 model/series", () => {
+    const rawText = [
+      "Danfoss",
+      "VLT AQUA Drive",
+      "TYPE FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      "P/N 131H4017",
+      "S/N 02334H073",
+      "15 kW / 20 HP",
+      "3x200-240 V",
+    ];
+    const parsed = parseNameplateLines(rawText);
+    expect(parsed.typeCode?.value).toBe("FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX");
+    expect(parsed.partNumber?.value).toBe("131H4017");
+    expect(parsed.catalogNumber?.value).toBe("131H4017");
+
+    const identity = reconcileIdentityCandidate(
+      {
+        manufacturer: "Danfoss",
+        productFamily: "VLT AQUA Drive",
+        series: "FC-202",
+        model: "FC-202",
+        rawText,
+      },
+      rawText,
+    );
+    expect(identity).toMatchObject({
+      productFamily: "VLT AQUA Drive",
+      series: "FC-202",
+      model: "FC-202",
+      typeCode: "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+      partNumber: "131H4017",
+      catalogNumber: "131H4017",
+      serialNumber: "02334H073",
+    });
+  });
+
   it("pulls the motor part number out of a labelled line", () => {
     expect(parseCatalogNumber(["Motor P/N AZM911AC-D"])!.value).toBe("AZM911AC-D");
     expect(parseCatalogNumber(["Catalog: 2080-LC20-20QWB"])!.value).toBe("2080-LC20-20QWB");

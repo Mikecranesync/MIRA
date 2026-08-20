@@ -18,12 +18,12 @@
  * The provider is a candidate generator, never an authority (PRD §4.4/§10).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
-import { parseNameplateLines } from "@/lib/nameplate/passes";
+import { parseNameplateLines, reconcileIdentityCandidate } from "@/lib/nameplate/passes";
 import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ function safePhotoName(raw: string | undefined, mime: string): string {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
@@ -134,19 +134,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const originalB64 = buffer.toString("base64");
     const read = await resolveRecognitionImage(originalB64, mime);
     let imageSource = read.imageSource;
-    let candidate;
+    let recognized;
     try {
-      candidate = await recognizer.recognize(read.base64, read.mimeType);
+      recognized = await recognizer.recognize(read.base64, read.mimeType);
     } catch (err) {
       // Second-level fallback: a recognition failure ON THE CROP must not cost
       // a photo the whole-frame path could read (internet-100: two dense
       // plates whose crop response overflowed the provider while the original
       // parsed fine). Detection may only ever ADD information.
       if (imageSource.kind !== "auto_detected_crop") throw err;
-      candidate = await recognizer.recognize(originalB64, mime);
+      recognized = await recognizer.recognize(originalB64, mime);
       imageSource = { kind: "original_photo" };
     }
-    const rawText = candidate.rawText ?? [];
+    const rawText = recognized.rawText ?? [];
+    const candidate = reconcileIdentityCandidate(recognized, rawText);
 
     // Classify every claim before it leaves the server. `rawText` is the
     // recognizer's own account of what it read, and a model that hallucinates
@@ -167,7 +168,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const det = parseNameplateLines(rawText);
     const evidence = [
       toFact({ field: "manufacturer", value: candidate.manufacturer ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "productFamily", value: candidate.productFamily ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "series", value: candidate.series ?? null, rawText, confidence: candidate.confidence ?? null }),
       toFact({ field: "model", value: det.model?.value ?? candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "typeCode", value: det.typeCode?.value ?? candidate.typeCode ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "partNumber", value: det.partNumber?.value ?? candidate.partNumber ?? null, rawText, confidence: candidate.confidence ?? null }),
       toFact({ field: "catalogNumber", value: det.catalogNumber?.value ?? candidate.catalogNumber ?? null, rawText }),
       toFact({ field: "serialNumber", value: det.serialNumber?.value ?? candidate.serialNumber ?? null, rawText }),
       toFact({ field: "equipmentType", value: candidate.equipmentType ?? null, rawText }),
@@ -179,6 +184,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       fileId: parked.fileId,
+      imageKind: candidate.imageKind ?? "unknown",
       candidate,
       rawObservation: {
         provider: recognizer.name,

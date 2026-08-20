@@ -16,6 +16,10 @@ from typing import Any
 import httpx
 from chat_adapter import SlackChatAdapter
 from PIL import Image
+from shared import session_memory
+from shared.channel_workflow import ChannelWorkflowClient
+from shared.chat.drive_context import clear_drive_context
+from shared.chat.types import NormalizedChatResponse
 from shared.conversation_logger import log_turn, measure_ms
 
 logging.basicConfig(
@@ -169,6 +173,176 @@ class SlackRuntime:
             resp.raise_for_status()
             return resp.content
 
+    async def _run_canonical(
+        self,
+        normalized: Any,
+        *,
+        say: Any = None,
+        client: Any = None,
+        action: str = "message",
+        prior_operation_id: str = "",
+        confirmed_identity: dict | None = None,
+    ):
+        """Render one Hub result and ACK only after Slack accepts it."""
+
+        attempt = getattr(self.dispatcher, "try_channel_workflow", None)
+        if not callable(attempt):
+            return None
+
+        progress_ts = ""
+
+        async def on_progress(operation_id: str, step: str) -> None:
+            nonlocal progress_ts
+            label = step.replace("_", " ")
+            text = f"MIRA operation {operation_id}: {label}."
+            try:
+                if progress_ts and client is not None:
+                    await client.chat_update(
+                        channel=normalized.external_channel_id,
+                        ts=progress_ts,
+                        text=text,
+                    )
+                elif say is not None:
+                    sent = await say(text=text, thread_ts=normalized.external_thread_id)
+                    if isinstance(sent, Mapping):
+                        progress_ts = str(sent.get("ts", ""))
+            except Exception as exc:
+                logger.warning("channel progress render failed operation=%s: %s", operation_id, exc)
+
+        try:
+            response = await attempt(
+                normalized,
+                action=action,
+                context=None,
+                prior_operation_id=prior_operation_id,
+                confirmed_identity=confirmed_identity,
+                on_progress=on_progress,
+            )
+        except Exception as exc:
+            logger.error("canonical workflow adapter error: %s", exc)
+            if say is not None:
+                await say(
+                    text=(
+                        "The canonical MIRA workflow could not start this request; "
+                        "no operation was created."
+                    ),
+                    thread_ts=normalized.external_thread_id,
+                )
+            return NormalizedChatResponse(
+                text="",
+                operation_state="failed",
+                semantic_kind="fallthrough",
+                workflow_handled=True,
+                suppress_delivery=True,
+            )
+        if response is None:
+            return None
+        if response.suppress_delivery:
+            return response
+        delivered = await self.adapter.render_outgoing(response, normalized)
+        if delivered:
+            await self.dispatcher.ack_channel_delivery(response)
+        else:
+            logger.error(
+                "CHANNEL_TERMINAL_UNACKED operation=%s channel=slack",
+                response.operation_id,
+            )
+            if progress_ts and client is not None and response.operation_id:
+                recovery_text = (
+                    "MIRA could not confirm delivery of the terminal response. "
+                    "Recovering it may repeat an answer that Slack already accepted."
+                )
+                try:
+                    await client.chat_update(
+                        channel=normalized.external_channel_id,
+                        ts=progress_ts,
+                        text=recovery_text,
+                        blocks=[
+                            {
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": recovery_text},
+                            },
+                            {
+                                "type": "actions",
+                                "elements": [
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Recover response",
+                                        },
+                                        "action_id": "channel_workflow_recover",
+                                        "value": response.operation_id,
+                                    }
+                                ],
+                            },
+                        ],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "channel recovery prompt failed operation=%s: %s",
+                        response.operation_id,
+                        exc,
+                    )
+        return response
+
+    def clear_legacy_conversation(self, normalized: Any) -> None:
+        channel_id = str(normalized.external_channel_id)
+        thread_id = str(normalized.external_thread_id)
+        session_key = f"slack:{channel_id}:{thread_id}"
+        self.engine.reset(session_key)
+        clear_drive_context("slack", session_key)
+        session_memory.clear_session(channel_id)
+        session_memory.clear_session(session_key)
+
+    async def reset_conversation(self, event: dict, *, say: Any = None, client: Any = None):
+        normalized = await self.adapter.normalize_incoming(event)
+        response = await self._run_canonical(normalized, say=say, client=client, action="reset")
+        if response is None:
+            self.clear_legacy_conversation(normalized)
+            return None
+        if response.operation_state == "complete" and response.semantic_kind == "reset":
+            self.clear_legacy_conversation(normalized)
+        return response
+
+    async def confirm_identity(
+        self,
+        event: dict,
+        prior_operation_id: str,
+        *,
+        say: Any = None,
+        client: Any = None,
+    ):
+        normalized = await self.adapter.normalize_incoming(event)
+        normalized.text = "Confirm identity"
+        return await self._run_canonical(
+            normalized,
+            say=say,
+            client=client,
+            action="confirm_identity",
+            prior_operation_id=prior_operation_id,
+        )
+
+    async def recover_delivery(
+        self,
+        event: dict,
+        prior_operation_id: str,
+        *,
+        say: Any = None,
+        client: Any = None,
+    ):
+        """Transport an explicit possible-duplicate recovery to the Hub."""
+
+        normalized = await self.adapter.normalize_incoming(event)
+        normalized.text = "Recover terminal response; possible duplicate accepted"
+        return await self._run_canonical(
+            normalized,
+            say=say,
+            client=client,
+            action="recover_delivery",
+            prior_operation_id=prior_operation_id,
+        )
+
     async def log_startup_auth_identity(self, app: Any) -> None:
         try:
             auth = await app.client.auth_test()
@@ -206,10 +380,11 @@ class SlackRuntime:
     async def handle_message(self, event, say, client) -> None:
         """Handle all message events: text, photos, and file uploads."""
         ts = event.get("ts", "")
-        if ts in self.seen_events:
+        event_id = event.get("client_msg_id") or ts
+        if event_id in self.seen_events:
             _log_event_decision(event, decision="ignored", reason="duplicate")
             return
-        self.seen_events.add(ts)
+        self.seen_events.add(event_id)
         if len(self.seen_events) > 200:
             self.seen_events.clear()
 
@@ -235,16 +410,36 @@ class SlackRuntime:
         thread = self.thread_ts(event)
         files = event.get("files", [])
         pdf_files = [f for f in files if f.get("mimetype", "") == "application/pdf"]
+        normalized = await self.adapter.normalize_incoming(event)
+
+        if normalized.attachments:
+            try:
+                for attachment in normalized.attachments:
+                    attachment.data = await self.adapter.download_attachment(attachment)
+                if not normalized.text and any(
+                    item.kind == "image" for item in normalized.attachments
+                ):
+                    normalized.text = "Analyze this equipment photo"
+            except Exception as exc:
+                logger.error("Attachment download error: %s", exc)
+                await say(text=f"MIRA error downloading attachment: {exc}", thread_ts=thread)
+                return
+
+        canonical = await self._run_canonical(normalized, say=say, client=client, action="message")
+        if canonical is not None:
+            _log_event_decision(event, decision="handled", reason="canonical_workflow")
+            return
 
         if pdf_files:
+            # Flag-off/delegated rollback path only.
             await say(text="Processing PDF...", thread_ts=thread)
             try:
                 from pdf_handler import ingest_pdf
 
                 file_info = pdf_files[0]
-                url = file_info.get("url_private_download") or file_info.get("url_private")
                 filename = file_info.get("name", "document.pdf")
-                pdf_bytes = await self.download_slack_file(url)
+                pdf_attachment = next(item for item in normalized.attachments if item.kind == "pdf")
+                pdf_bytes = pdf_attachment.data
                 reply = await ingest_pdf(pdf_bytes, filename)
             except Exception as exc:
                 logger.error("PDF handler error: %s", exc)
@@ -253,20 +448,15 @@ class SlackRuntime:
             _log_event_decision(event, decision="handled", reason="pdf")
             return
 
-        normalized = await self.adapter.normalize_incoming(event)
-
         if normalized.attachments:
             img_att = next((a for a in normalized.attachments if a.kind == "image"), None)
             if img_att:
                 await say(text="Analyzing equipment...", thread_ts=thread)
                 try:
-                    raw_bytes = await self.adapter.download_attachment(img_att)
-                    img_att.data = self.resize_for_vision(raw_bytes)
-                    if not normalized.text:
-                        normalized.text = "Analyze this equipment photo"
+                    img_att.data = self.resize_for_vision(img_att.data)
                 except Exception as exc:
-                    logger.error("Photo download error: %s", exc)
-                    await say(text=f"MIRA error downloading photo: {exc}", thread_ts=thread)
+                    logger.error("Photo resize error: %s", exc)
+                    await say(text=f"MIRA error processing photo: {exc}", thread_ts=thread)
                     return
 
         if not normalized.text and not any(a.kind == "image" for a in normalized.attachments):
@@ -333,7 +523,12 @@ def create_runtime(settings: SlackSettings) -> SlackRuntime:
             "NEON_DATABASE_URL not set or sqlalchemy missing - Slack dispatcher will fail closed "
             "until identity service is configured (multi-tenant gate)"
         )
-    dispatcher = ChatDispatcher(engine, identity_service=identity_service)
+    workflow_client = ChannelWorkflowClient.from_env()
+    dispatcher = ChatDispatcher(
+        engine,
+        identity_service=identity_service,
+        channel_workflow_client=workflow_client,
+    )
     return SlackRuntime(
         settings=settings,
         engine=engine,
@@ -355,6 +550,52 @@ def create_app(runtime: SlackRuntime):
     @app.event("message")
     async def handle_message(event, say, client):
         await runtime.handle_message(event, say, client)
+
+    @app.action("channel_workflow_confirm")
+    async def confirm_identity_action(ack, body, action, say, client):
+        await ack()
+        channel_id = str((body.get("channel") or {}).get("id", ""))
+        user_id = str((body.get("user") or {}).get("id", ""))
+        message = body.get("message") or {}
+        message_ts = str(message.get("ts", ""))
+        thread_ts = str(message.get("thread_ts") or message_ts)
+        action_ts = str(body.get("action_ts") or body.get("trigger_id") or message_ts)
+        await runtime.confirm_identity(
+            {
+                "client_msg_id": f"action:{action_ts}",
+                "ts": action_ts,
+                "thread_ts": thread_ts,
+                "channel": channel_id,
+                "user": user_id,
+                "text": "Confirm identity",
+            },
+            str(action.get("value", "")),
+            say=say,
+            client=client,
+        )
+
+    @app.action("channel_workflow_recover")
+    async def recover_delivery_action(ack, body, action, say, client):
+        await ack()
+        channel_id = str((body.get("channel") or {}).get("id", ""))
+        user_id = str((body.get("user") or {}).get("id", ""))
+        message = body.get("message") or {}
+        message_ts = str(message.get("ts", ""))
+        thread_ts = str(message.get("thread_ts") or message_ts)
+        action_ts = str(body.get("action_ts") or body.get("trigger_id") or message_ts)
+        await runtime.recover_delivery(
+            {
+                "client_msg_id": f"recovery:{action_ts}",
+                "ts": action_ts,
+                "thread_ts": thread_ts,
+                "channel": channel_id,
+                "user": user_id,
+                "text": "Recover terminal response; possible duplicate accepted",
+            },
+            str(action.get("value", "")),
+            say=say,
+            client=client,
+        )
 
     @app.command("/mira-equipment")
     async def equipment_command(ack, command, say):
@@ -460,9 +701,18 @@ def create_app(runtime: SlackRuntime):
     async def reset_command(ack, command, say):
         await ack()
         channel = command["channel_id"]
-        session = f"slack:{channel}:main"
-        runtime.engine.reset(session)
-        await say(text="Conversation reset. Start fresh anytime.")
+        event = {
+            "ts": command.get("trigger_id", "") or command.get("command_ts", "reset"),
+            "client_msg_id": command.get("trigger_id", ""),
+            "user": command.get("user_id", ""),
+            "channel": channel,
+            "thread_ts": "main",
+            "channel_type": "slash",
+            "text": "/mira-reset",
+        }
+        response = await runtime.reset_conversation(event, say=say, client=app.client)
+        if response is None:
+            await say(text="Conversation reset. Start fresh anytime.")
 
     async def _dispatch_command(command, say, text: str) -> None:
         channel_id = command["channel_id"]

@@ -1,3 +1,57 @@
+# Hot Cache — 2026-08-18 — CHARLIE — channel-neutral manual/Files workflow (draft PR #3300)
+
+## Just Finished
+
+- Implemented #3299 on `fix/channel-neutral-manual-workflow` from R0
+  `b2b1fca6923ceb1bdb45defee82791fef2a1d7bd`; draft PR #3300 is the review boundary.
+- Hub now owns one tenant-scoped operation/workspace path for nameplate identity, official
+  manual discovery, canonical Files, notebook association, retrieval, citations, reset,
+  and at-most-once terminal delivery. Telegram and Slack are feature-gated thin clients.
+- The literal Danfoss FC-202 floor incident is durable at
+  `tests/fixtures/channel_workflow/danfoss_fc202_telegram.json`.
+- Adversarial round 1 on `099e4416d` found reset crash recovery, mixed-attachment discard,
+  and schema drift; all three were reproduced red and fixed. Round 2 on `ce34f50f5` found
+  the remaining delivery-availability gap. Automatic retry remains forbidden, but an
+  explicit same-user/session `recover_delivery` event now creates a new idempotent operation
+  marked as a possible duplicate. Telegram `/recover <operation-id>` and Slack's
+  original-thread recovery button are thin transports over that Hub decision.
+- Gate 7 xhigh round 1 on `87924498e` returned BLOCK, but its two high claims (empty-token
+  auth bypass and tenant-agnostic operations) contradict the fail-closed runtime validators;
+  its schema and `[SN]` claims also fail direct inspection. The CU record carries exact
+  dispositions plus 50 Hub, 30 bot, and 11 deployment/schema grounding tests. No code was
+  changed to accommodate ungrounded findings; exact-SHA rerun remains required.
+- Final standard Codex round on `88d78fbd2` found zero blocker/high and one real medium:
+  active-session equality made an unacknowledged reset result or pre-reset answer
+  unrecoverable. Red-first tests reproduced both. Recovery now uses immutable external
+  conversation provenance, validates reset results against the generation durably linked by
+  `reset_operation_id`, and retains tenant/channel/actor/uploader fences. Focused remediation
+  is 39/39; full Hub is 2,011/2,011 and the production build passes.
+- Fresh local evidence after remediation: Hub 2,011/2,011; deployment/contract/architecture
+  40/40; focused security/tenancy/review 273/273; Next build and changed-file lint/format
+  green. Collision-isolated bot runs have 2,549 passes and 20 skips. The monolithic runner's
+  pre-existing adapter-module collisions and the isolated wiring lazy-import behavior are
+  grounded against unchanged `origin/main` files.
+
+## Machine State
+
+- **Charlie:** branch pushed to draft PR #3300; unrelated untracked
+  `docs/prd/2026-08-03-cited-technician-turn.md` remains untouched.
+- **VPS/production:** unchanged. No migration, deploy, backfill, or secret mutation ran.
+
+## Blocked
+
+- Live Danfoss proof requires Mike's separate GO plus staging token/UUID identity/provider
+  configuration and migration 078. Treat it as `PENDING-HUMAN`, never fixture proof.
+
+## Next (any machine)
+
+- Use PR #3300's immutable review ledger as the authority: the latest head must have a GREEN
+  adversarial pass, xhigh Gate 7 disposition, and settled CI before requesting Mike's GO.
+- With GO, stage first and capture real Telegram plus Hub/mobile operation IDs, route,
+  identity, official URL, File/document links, citations, timing, and one terminal response.
+
+---
+
 # Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
 
 `feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).

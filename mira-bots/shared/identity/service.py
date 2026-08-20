@@ -105,27 +105,44 @@ class IdentityService:
             conn.commit()
             return MiraUser(id=user_id, tenant_id=tenant_id, display_name=display_name, email=email)
 
-    def lookup_only(self, platform: str, external_user_id: str) -> MiraUser | None:
+    def lookup_only(
+        self, platform: str, external_user_id: str, tenant_id: str = ""
+    ) -> MiraUser | None:
         """Strict lookup: return MiraUser if (platform, external_user_id) has
         an explicit identity_links row, else None. Never inserts. Never falls
-        back to env vars. Used by the dispatcher gate to keep strangers out.
+        back to env vars. A tenant scope selects that tenant; an unscoped
+        ambiguous identity fails closed instead of selecting an arbitrary row.
+        Used by the dispatcher gate to keep strangers out.
         """
         from sqlalchemy import text
 
         with self._engine.connect() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 text(
                     "SELECT u.id, u.tenant_id, u.display_name, u.email "
                     "FROM mira_users u "
                     "JOIN identity_links l ON l.mira_user_id = u.id "
                     "WHERE l.platform = :platform "
                     "  AND l.external_user_id = :ext_id "
-                    "LIMIT 1"
+                    "  AND (:tenant_id = '' OR l.tenant_id = :tenant_id) "
+                    "ORDER BY l.tenant_id "
+                    "LIMIT 2"
                 ),
-                {"platform": platform, "ext_id": external_user_id},
-            ).fetchone()
-        if not row:
+                {
+                    "platform": platform,
+                    "ext_id": external_user_id,
+                    "tenant_id": tenant_id,
+                },
+            ).fetchall()
+        if len(rows) != 1:
+            if len(rows) > 1:
+                logger.warning(
+                    "IDENTITY_LOOKUP_AMBIGUOUS platform=%s external_user_id=%s",
+                    platform,
+                    external_user_id,
+                )
             return None
+        row = rows[0]
         return MiraUser(id=str(row[0]), tenant_id=row[1], display_name=row[2], email=row[3])
 
     def get_user(self, mira_user_id: str) -> MiraUser | None:

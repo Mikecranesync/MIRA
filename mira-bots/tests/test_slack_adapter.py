@@ -186,8 +186,9 @@ async def test_render_outgoing_plain_text_fallback(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     assert posted_payload["channel"] == "C789"
     assert posted_payload["text"] == "Check the motor overload relay."
     assert len(posted_payload["blocks"]) == 1
@@ -237,8 +238,9 @@ async def test_render_outgoing_with_blocks(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     blocks = posted_payload["blocks"]
     types = [b["type"] for b in blocks]
     assert "header" in types
@@ -288,8 +290,9 @@ async def test_render_outgoing_retries_plain_text_when_blocks_invalid(adapter):
         mock_client.post = AsyncMock(side_effect=mock_post)
         mock_client_cls.return_value = mock_client
 
-        await adapter.render_outgoing(response, event)
+        delivered = await adapter.render_outgoing(response, event)
 
+    assert delivered is True
     assert len(posted_payloads) == 2
     assert "blocks" in posted_payloads[0]
     assert posted_payloads[1] == {

@@ -109,7 +109,7 @@ class TelegramChatAdapter:
 
     async def render_outgoing(
         self, response: NormalizedChatResponse, event: NormalizedChatEvent
-    ) -> None:
+    ) -> bool:
         """Send response to Telegram using MarkdownV2, with InlineKeyboard for buttons."""
         text, reply_markup = render_telegram(response)
         payload: dict = {
@@ -132,6 +132,8 @@ class TelegramChatAdapter:
                     json=payload,
                 )
                 data = resp.json()
+                if data.get("ok"):
+                    return True
                 if not data.get("ok"):
                     err_desc = data.get("description", "")
                     logger.warning("Telegram sendMessage error: %s", err_desc)
@@ -144,13 +146,17 @@ class TelegramChatAdapter:
                             json=plain_payload,
                         )
                         data2 = resp2.json()
+                        if data2.get("ok"):
+                            return True
                         if not data2.get("ok"):
                             logger.error(
                                 "Telegram plain-text fallback also failed: %s",
                                 data2.get("description"),
                             )
+                return False
         except Exception as exc:
             logger.error("render_outgoing failed: %s", exc)
+            return False
 
     async def download_attachment(self, attachment: NormalizedAttachment) -> bytes:
         """Download a Telegram file by file_id stored in attachment.url."""

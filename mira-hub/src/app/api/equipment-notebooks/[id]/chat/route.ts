@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { relevantQuoteWindow } from "@/lib/quote-window";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
 import {
@@ -224,7 +224,7 @@ function sse(obj: unknown): string {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 

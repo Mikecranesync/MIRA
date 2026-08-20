@@ -13,7 +13,7 @@
  *   offset     >= 0
  */
 import { NextResponse } from "next/server";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
 
   const url = new URL(req.url);
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
 
   let form: FormData;
@@ -173,6 +173,10 @@ export async function POST(req: Request) {
       sizeBytes: file.size,
       buffer,
       createdBy: ctx.userId,
+      source:
+        ctx.authKind === "service" && ctx.sourceChannel
+          ? `channel:${ctx.sourceChannel}`
+          : "user_upload",
     });
 
     if (targets.length > 0) {

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { parseChannelWorkflowToggle } from "@/lib/channel-workflow-http";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -18,15 +20,34 @@ export function GET() {
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
   };
 
-  const required = ["NEON_DATABASE_URL", "INGEST_URL"] as const;
+  const workflowToggle = parseChannelWorkflowToggle();
+  const invalid = workflowToggle === "invalid" ? ["MIRA_CHANNEL_WORKFLOW_ENABLED"] : [];
+  const workflowEnabled = workflowToggle === "enabled";
+  const required = [
+    "NEON_DATABASE_URL",
+    "INGEST_URL",
+    ...(workflowEnabled ? (["HUB_INGEST_TOKEN"] as const) : []),
+  ] as const;
   const missing = required.filter((k) => !process.env[k]);
 
-  if (missing.length > 0) {
+  if (missing.length > 0 || invalid.length > 0) {
     return NextResponse.json(
-      { status: "unhealthy", service: "mira-hub", missing, ...identity, ts: Date.now() },
+      {
+        status: "unhealthy",
+        service: "mira-hub",
+        missing,
+        invalid,
+        ...identity,
+        ts: Date.now(),
+      },
       { status: 503 },
     );
   }
 
-  return NextResponse.json({ status: "ok", service: "mira-hub", ...identity, ts: Date.now() });
+  return NextResponse.json({
+    status: "ok",
+    service: "mira-hub",
+    ...identity,
+    ts: Date.now(),
+  });
 }

@@ -1,0 +1,71 @@
+{
+  "fixtureVersion": "1.0",
+  "name": "Mike real Telegram Danfoss FC-202 manual workflow",
+  "source": {
+    "kind": "production_floor_test",
+    "reportedBy": "Mike",
+    "channel": "telegram",
+    "purpose": "Durable regression evidence for the channel-neutral nameplate, official-manual, supplied-PDF, retrieval, citation, idempotency, and reset workflow."
+  },
+  "equipment": {
+    "manufacturer": "Danfoss",
+    "product": "VLT AQUA Drive",
+    "productFamily": "VLT AQUA Drive",
+    "series": "FC-202",
+    "model": "FC-202",
+    "typeCode": "FC-202P15KT2E20H2XGXXSXXXXAXBXCXXXXDX",
+    "partNumber": "131H4017",
+    "serialNumber": "02334H073",
+    "rating": "15 kW / 20 HP",
+    "input": "3-phase 200-240 V"
+  },
+  "userIntent": "find the official PDF user manual",
+  "sequence": [
+    {
+      "step": 1,
+      "kind": "photo_message",
+      "text": "Can you find the user manual?",
+      "attachment": "Danfoss VLT AQUA Drive FC-202 nameplate photo"
+    },
+    {
+      "step": 2,
+      "kind": "photo_message",
+      "text": "Here's the model number",
+      "attachment": "Later photo containing the same model/type information"
+    },
+    {
+      "step": 3,
+      "kind": "document_message",
+      "text": "VLT User Manual",
+      "attachment": "VLT User Manual.pdf"
+    },
+    {
+      "step": 4,
+      "kind": "text_message",
+      "text": "i gave you the user manual can you help me"
+    }
+  ],
+  "observedFailures": [
+    "Can you find the user manual? repeatedly triggered photo analysis and timeout messages.",
+    "#3292 removed the MiniMax timeout, allowing the nameplate to be recognized.",
+    "The bot recognized the FC-202 but still said it had no documentation and asked for a model number already visible on the plate.",
+    "A later photo containing the model information was routed to the electrical-print interpreter.",
+    "The interpreter correctly described it as a nameplate but stated that it could not retrieve external files.",
+    "Mike uploaded a PDF named or captioned VLT User Manual.",
+    "Telegram replied: Hub intake is not configured.",
+    "Mike then said: i gave you the user manual can you help me",
+    "The bot denied access to the PDF and told him to type the model number and consult a vendor manual.",
+    "Repeated attempts produced duplicate progress and timeout responses."
+  ],
+  "requiredOutcome": {
+    "photoRoute": "nameplate_manual",
+    "manualSourcePolicy": "approved official OEM source only",
+    "suppliedFilename": "VLT User Manual.pdf",
+    "canonicalFileExactlyOnce": true,
+    "conversationAssociation": true,
+    "assetAssociationWhenSelected": true,
+    "nextTurnUsesExactDocument": true,
+    "citationRequired": true,
+    "terminalResponsesPerEvent": 1
+  }
+}

@@ -18,6 +18,8 @@ _MISSING = object()
 def _temporary_import_state(*module_names: str):
     saved_path = list(sys.path)
     saved_modules = {name: sys.modules.get(name, _MISSING) for name in module_names}
+    for name in module_names:
+        sys.modules.pop(name, None)
     sys.path.insert(0, str(MIRA_BOTS))
     sys.path.insert(0, str(SLACK_DIR))
     try:

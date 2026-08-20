@@ -25,7 +25,7 @@
  * directly; only auth and request-shape failures use 4xx.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionOr401 } from "@/lib/session";
+import { requestContextOr401 } from "@/lib/service-request-context";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
@@ -55,7 +55,11 @@ export type ConfirmStatus =
 
 const IDENTITY_FIELDS = [
   "manufacturer",
+  "productFamily",
+  "series",
   "model",
+  "typeCode",
+  "partNumber",
   "catalogNumber",
   "serialNumber",
   "equipmentType",
@@ -70,7 +74,11 @@ type Identity = Partial<Record<IdentityField, string>>;
 
 const IDENTITY_LABELS: Record<IdentityField, string> = {
   manufacturer: "Manufacturer",
+  productFamily: "Product family",
+  series: "Series",
   model: "Model",
+  typeCode: "Full type code",
+  partNumber: "Part number",
   catalogNumber: "Catalog number",
   serialNumber: "Serial number",
   equipmentType: "Equipment type",
@@ -165,7 +173,7 @@ async function chunksForDoc(
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await sessionOr401();
+  const ctx = await requestContextOr401(req);
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
@@ -351,7 +359,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       discovery: { requested: false },
     });
   }
-  if (!identity.manufacturer || !(identity.model || identity.catalogNumber)) {
+  if (
+    !identity.manufacturer ||
+    !(
+      identity.model ||
+      identity.series ||
+      identity.typeCode ||
+      identity.catalogNumber ||
+      identity.partNumber
+    )
+  ) {
     return respond("manufacturer_model_required", {
       message:
         "Add a manufacturer and a model (or catalog number) so MIRA can look for the official manual.",
@@ -360,7 +377,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const discovery = await discoverManual({
     manufacturer: identity.manufacturer,
+    productFamily: identity.productFamily,
+    series: identity.series,
     model: identity.model,
+    typeCode: identity.typeCode,
+    partNumber: identity.partNumber,
     catalogNumber: identity.catalogNumber,
   });
   if (!discovery.serviceAvailable) {
@@ -561,8 +582,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     verdict = assessApplicability({
       identity: {
         manufacturer: identity.manufacturer,
-        model: identity.model,
-        catalogNumber: identity.catalogNumber,
+        model: identity.model ?? identity.series ?? identity.typeCode,
+        catalogNumber: identity.catalogNumber ?? identity.partNumber,
       },
       chunks,
       oemHost: discovery.oemHost,
