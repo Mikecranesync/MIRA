@@ -36,3 +36,47 @@ MIRA-1000 now uses:
 - child PRs that cite the MIRA-1000 prompt ID they execute
 
 The first active prompt is P0001: discovery/convergence mapping.
+
+## 2026-08-19 — H0004 — P0001 discovery executed
+
+**Goal:** map the current repository to MIRA-1000 before any Cloud Gold code.
+
+**Discovery — the divergence is smaller than the PRD assumed:**
+
+- All **13** client surfaces already call one entry point, `Supervisor.process()`
+  (`mira-bots/shared/engine.py:2272`), with a normalized signature carrying platform,
+  tenant, user, and UNS provenance. G4 is largely already satisfied.
+- Every current provider is already OpenAI-compatible through a single function,
+  `_call_openai_compat` (`router.py:530`).
+- The **OpenAI SDK is already in the repo** (`printsense/interpret.py:349`) and
+  `OPENAI_API_KEY` is already mapped in prod and staging compose.
+- **26 `@mcp.tool` functions already exist** in `mira-mcp/server.py`, including the CMMS
+  write tools section 17 anticipates.
+- The section 14 context architecture already exists as ADR-0033 `TechnicianContext`
+  (`MIRA_CONTEXT_CONTRACT`) — **built, default-off, with no production call site**.
+
+**Decision:** recommend the seam **above** `InferenceRouter`, not a fourth cascade entry.
+`InferenceRouter.complete()` has 11 production call sites and no room for tools, policy or
+streaming; wrapping preserves all of them and lets both editions inherit the fix once.
+
+**Assumptions the repository proved wrong:** streaming does not exist at all (the current SSE
+path emits the whole reply as one chunk, `mira-pipeline/main.py:1034`); the tool registry is not
+greenfield; clients have not diverged; OpenAI is not a new dependency; `api_usage` is missing 9 of
+the fields section 23 requires and is per-container SQLite.
+
+**Blocker raised:** Cloud Gold conflicts with root `CLAUDE.md` Hard Constraint #2 and with
+`.claude/rules/zero-token-architecture.md` Hard Rule 1. Recorded as `blockers.doctrine_adr`
+(OPEN). This is not a reason to stop the program; it is a reason to ratify it explicitly.
+
+**Budget:** verified OpenAI pricing. The $9.25 credit funds ~240-320 frontier turns — the spine
+proof and one eval slice, not the full behavioral suite.
+
+**PR:** see `CHILD_PRS` / the P0001 child PR.
+
+**Evidence:** `CURRENT_TO_TARGET_MAP.md` (file:line citations throughout; OpenAI docs verified
+2026-08-19 against `developers.openai.com`, since `platform.openai.com/docs/*` now 301s there).
+
+**Paid inference spent:** $0.00
+
+**Next:** P0002 — provider seam, behavior-preserving (`prompts/P0002-provider-seam.md`).
+**NOT AUTHORIZED** — awaiting owner authorization and the doctrine ADR.
