@@ -1,11 +1,12 @@
 # MIRA-1000 — Cloud Gold / On-Prem parity rule
 
-For any substantial work touching MIRA inference, orchestration, chat behavior, retrieval, evidence, tools, memory, client adapters, model routing, OpenAI, local inference, or cloud/on-prem parity:
+For any substantial work touching MIRA inference, orchestration, chat behavior, retrieval, evidence, tools, memory, client adapters, model routing, OpenAI, local inference, cloud/on-prem parity, or the primary technician UI:
 
 1. Follow the global multi-session/session-discipline rules first.
 2. Before editing, read:
    - `docs/architecture/mira-1000/README.md`
    - `docs/architecture/mira-1000/CURRENT.md`
+   - `docs/architecture/mira-1000/PRODUCT_SURFACES.md`
    - the active prompt referenced by `CURRENT.md`
    - `docs/architecture/mira-1000/TRACKER.yaml`
 3. Treat **MIRA-1000** as the architecture ID regardless of GitHub PR number.
@@ -15,6 +16,8 @@ For any substantial work touching MIRA inference, orchestration, chat behavior, 
    - On-Prem: local inference
    - both reuse the same FactoryLM truth/context/tool/policy/evidence contracts wherever deployment constraints allow.
 6. Never create a second retrieval, evidence, identity, tool, approval, or client-brain architecture merely because the inference provider differs.
-7. Prompt files under `docs/architecture/mira-1000/prompts/` are immutable once issued. Supersede them with a new prompt ID.
-8. Every MIRA-1000 child PR must update `TRACKER.yaml` and append a concise entry to `HISTORY.md`.
-9. Do not claim a capability is done merely because code exists. Record real-path connection, enablement state, eval evidence, rollback, and remaining gaps.
+7. **Product-surface rule:** FactoryLM Hub is the desktop control/configuration plane; MIRA is the technician product; evolve the existing `mira-mobile` codebase into the primary conversation-first MIRA interface. Do not create a third native/chat client merely to obtain a new UI shell.
+8. Notebook/source-scoped research remains a capability but must not become a mandatory prerequisite for ordinary MIRA conversation; MIRA may gather authorized context/tools on demand.
+9. Prompt files under `docs/architecture/mira-1000/prompts/` are immutable once issued. Supersede them with a new prompt ID.
+10. Every MIRA-1000 child PR must update `TRACKER.yaml` and append a concise entry to `HISTORY.md`.
+11. Do not claim a capability is done merely because code exists. Record real-path connection, enablement state, eval evidence, rollback, and remaining gaps.
