@@ -119,6 +119,9 @@ class TestMakeResult:
             "_citation_evidence": None,
             # WS1 context manifest (default None — flag off / non-contract turn).
             "_context_manifest": None,
+            # MIRA-1000 P0003 per-turn provider/token/route snapshot (default
+            # None — a turn that never reached a provider).
+            "_turn_usage": None,
             # Print-turn observability provenance (default None off print turns).
             "route": None,
             "model": None,
