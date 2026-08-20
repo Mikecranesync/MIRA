@@ -189,3 +189,54 @@ worker not writing the sink. `ruff` clean.
 
 **Closure:** BUILT ✅ CONNECTED ✅ TESTED ✅ OBSERVABLE ✅ PROVIDER-SELECTABLE ✅
 PROVEN ✅.
+
+## 2026-08-20 — H0009 — P0003 regression proof: both extra failures were real, and mine
+
+The suite delta was **not** order dependence. My earlier hypothesis that it might be
+was **wrong**, and no appeal to collection-order flakiness was needed in the end.
+
+**The two extra failures, both caused by this slice, both fixed:**
+
+1. `tests/test_engine.py::TestMakeResult::test_basic_result` — asserts the EXACT
+   `_make_result` dict, and P0003 added `_turn_usage` to that contract. The test was
+   doing its job. Fixed by updating the expected shape, not by loosening the assertion.
+2. `tests/test_engine_no_embedding_gs11.py::test_gs11_modbus_query_grounded_when_embedding_fails`
+   — the grounding regression suite installed after the embed-sidecar demo failure. I
+   had threaded `usage_sink=` through `_call_llm`, whose fake stubs `(messages,
+   model=None)`. Investigating showed `_call_llm` is **also passed as a callable in
+   production** (`engine.py:2263`, `llm_call=rag._call_llm`), so its signature is a
+   wider contract than it looks. Fixed by carrying the snapshot on a `ContextVar` with
+   a `capture_turn_usage()` helper — zero signature change, and per-asyncio-task
+   isolation gives the same `#1704` property the sink was for.
+   `test_p2_call_llm_signature_is_unchanged` is now a standing guard.
+
+**Name-level proof (not aggregate counts).**
+
+```
+baseline  8c4bf57c7 (P0002 head, #3341): 56 failed, 2483 passed, 17 skipped (30:07)
+branch    6adb915c0 (P0003 head, #3342): 56 failed, 2521 passed, 17 skipped (29:50)
+
+py -3 -m pytest tests/ -q -p no:randomly   --ignore=tests/test_gchat_adapter.py --ignore=tests/test_slack_relay.py   --ignore=tests/test_teams_adapter.py -rf --tb=no
+```
+
+Diffing the two 56-name `FAILED` lists: **zero names only on the branch, zero names
+only on the baseline — byte-identical.** Passes reconcile exactly: 2483 + 38 new
+P0003 tests = 2521. The baseline was run in a throwaway detached worktree at the
+P0002 head under the same selection and environment, then removed.
+
+None of the 56 pre-existing failures touch a file this slice changed — they are
+`test_email_adapter` (39), `test_slack_runtime_diagnostics` (7),
+`tools/test_active_learner` (3), `test_slack_fast_paths` (2), `test_slack_doctor` (2),
+`test_drive_pack_truth_pins` (2), `test_visual_region_schema` (1).
+
+**Process note worth keeping.** The first two full-suite runs captured only `tail -2`.
+That summary line is what let a real regression hide behind an aggregate count for two
+rounds. Runs now capture the complete `FAILED` list, and closure is judged on names.
+
+**Paid inference spent:** $0.00. Credit remains $9.25.
+
+**P0003 closure: GREEN.** BUILT ✅ CONNECTED ✅ PROVIDER-SELECTABLE ✅ OBSERVABLE ✅
+TESTED ✅ REGRESSION-FREE ✅ PROVEN ✅.
+
+Cloud Gold itself remains unbuilt and unproven — correct for this slice. Next is P0004
+(conversation-first `mira-mobile` convergence), which is **not** authorized by P0003.

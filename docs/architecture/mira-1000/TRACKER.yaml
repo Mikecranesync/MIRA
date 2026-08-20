@@ -108,7 +108,7 @@ prompts:
 
   P0003:
     title: "First connected caller, cost telemetry, and conversation event contract"
-    state: REVIEW
+    state: COMPLETE
     file: "prompts/P0003-first-caller-telemetry-conversation-contract.md"
     owner: null
     child_pr: null
@@ -129,8 +129,28 @@ prompts:
       tested: true
       observable: true           # a real turn's usage now REACHES decision_traces (078)
       provider_selectable: true  # get_provider(router=...) governs the real worker path
+      regression_free: true      # 56 failing test NAMES byte-identical vs baseline
       proven: true               # a real _call_llm turn flows through seam + telemetry
       default_cascade_preserved: true
+      verdict: GREEN
+    regression_proof:
+      method: "name-level diff of the full mira-bots suite, baseline vs branch"
+      baseline_ref: "8c4bf57c7 (P0002 head, #3341)"
+      branch_ref: "6adb915c0 (P0003 head, #3342)"
+      command: >
+        py -3 -m pytest tests/ -q -p no:randomly
+        --ignore=tests/test_gchat_adapter.py --ignore=tests/test_slack_relay.py
+        --ignore=tests/test_teams_adapter.py -rf --tb=no
+      baseline_result: "56 failed, 2483 passed, 17 skipped (30:07)"
+      branch_result: "56 failed, 2521 passed, 17 skipped (29:50)"
+      names_only_on_branch: []
+      names_only_on_baseline: []
+      identical_failure_names: true
+      passed_reconciliation: "2483 baseline + 38 new P0003 tests = 2521, exact"
+      order_dependence: >
+        NOT invoked and the earlier hypothesis was WRONG. Both extra failures
+        were real regressions with identified causes and fixes (see H0009); no
+        appeal to collection-order flakiness was needed or made.
       rollback: "MIRA_INFERENCE_PROVIDER unset (already the default); provider wraps the same router"
     result: |
       Part A: connected at RAGWorker._call_llm -- the primary technician answer
@@ -249,6 +269,7 @@ history:
   - H0006
   - H0007
   - H0008
+  - H0009
 
 blockers:
   doctrine_adr:
