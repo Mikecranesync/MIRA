@@ -34,7 +34,7 @@ from shared.inference.events import (  # noqa: E402
     envelope_from_completed_text,
 )
 from shared.inference.provider import CascadeProvider, get_provider  # noqa: E402
-from shared.workers.rag_worker import RAGWorker  # noqa: E402
+from shared.workers.rag_worker import RAGWorker, capture_turn_usage  # noqa: E402
 
 USAGE = {"provider": "groq", "model": "groq/x", "input_tokens": 40, "output_tokens": 12}
 
@@ -83,10 +83,10 @@ async def test_p1_usage_still_logged_exactly_once():
 async def test_p2_production_path_uses_the_provider_seam():
     w = _worker()
     assert isinstance(w.provider, CascadeProvider), "RAGWorker must hold a provider"
-    sink: dict = {}
-    await w._call_llm([{"role": "user", "content": "hi"}], usage_sink=sink)
-    assert sink.get("_rag_turn_usage"), "the turn did not go through the seam"
-    assert sink["_rag_turn_usage"]["provider"] == "groq"
+    with capture_turn_usage() as snap:
+        await w._call_llm([{"role": "user", "content": "hi"}])
+    assert snap, "the turn did not go through the seam"
+    assert snap["provider"] == "groq"
 
 
 async def test_p2_telemetry_is_per_turn_not_shared_instance_state():
@@ -95,10 +95,21 @@ async def test_p2_telemetry_is_per_turn_not_shared_instance_state():
     engine reads it back after an await."""
     w = _worker()
     assert not hasattr(w, "_last_turn"), "turn telemetry must not be cached on self"
-    a, b = {}, {}
-    await w._call_llm([{"role": "user", "content": "1"}], usage_sink=a)
-    await w._call_llm([{"role": "user", "content": "2"}], usage_sink=b)
-    assert a["_rag_turn_usage"] is not b["_rag_turn_usage"], "sinks must not alias"
+    with capture_turn_usage() as a:
+        await w._call_llm([{"role": "user", "content": "1"}])
+    with capture_turn_usage() as b:
+        await w._call_llm([{"role": "user", "content": "2"}])
+    assert a is not b, "each turn must get its own carrier"
+
+
+async def test_p2_call_llm_signature_is_unchanged():
+    """_call_llm is passed around as a callable (engine.py llm_call=rag._call_llm)
+    and stubbed in tests with (messages, model=None) fakes. Adding a kwarg here
+    broke the GS11 grounding suite once; the contextvar exists so it cannot again."""
+    import inspect
+
+    params = list(inspect.signature(RAGWorker._call_llm).parameters)
+    assert params == ["self", "messages", "model"], f"signature widened: {params}"
 
 
 async def test_p2_provider_wraps_the_same_router_instance():
@@ -356,13 +367,13 @@ def test_gap1_selected_provider_wraps_the_injected_router_not_a_new_one(monkeypa
 
 async def test_gap2_real_turn_yields_the_078_columns():
     w = _worker()
-    sink: dict = {}
-    await w._call_llm([{"role": "user", "content": "GS10 CE10?"}], usage_sink=sink)
+    with capture_turn_usage() as snap:
+        await w._call_llm([{"role": "user", "content": "GS10 CE10?"}])
     row = build_trace_row(
         tenant_id="acme",
         user_question="GS10 CE10?",
         recommendation="check P09.03",
-        **trace_usage_kwargs(sink["_rag_turn_usage"]),
+        **trace_usage_kwargs(snap),
     )
     assert row["provider"] == "groq"
     assert row["input_tokens"] == 40
@@ -376,11 +387,11 @@ async def test_gap2_real_turn_yields_the_078_columns():
 async def test_gap2_exhausted_cascade_is_status_empty_not_missing():
     w = _worker(text="", usage={"provider": "together"})
     w._call_openwebui = AsyncMock(return_value="local")
-    sink: dict = {}
-    await w._call_llm([{"role": "user", "content": "hi"}], usage_sink=sink)
+    with capture_turn_usage() as snap:
+        await w._call_llm([{"role": "user", "content": "hi"}])
     row = build_trace_row(
         tenant_id="acme", user_question="q", recommendation="",
-        **trace_usage_kwargs(sink["_rag_turn_usage"]),
+        **trace_usage_kwargs(snap),
     )
     assert row["status"] == "empty", "an exhausted cascade must be recorded, not dropped"
     assert row["provider"] == "together"
@@ -447,8 +458,7 @@ def test_gap2_end_to_end_projection_chain():
     from shared.inference.provider import TurnResult, turn_telemetry
 
     turn = TurnResult(text="ok", provider="groq", usage=dict(USAGE))
-    sink = {"_rag_turn_usage": turn_telemetry(turn)}
-    res = Supervisor._make_result("reply", turn_usage=sink["_rag_turn_usage"])
+    res = Supervisor._make_result("reply", turn_usage=turn_telemetry(turn))
     row = build_trace_row(
         tenant_id="acme", user_question="q", recommendation="a",
         **trace_usage_kwargs(res["_turn_usage"]),

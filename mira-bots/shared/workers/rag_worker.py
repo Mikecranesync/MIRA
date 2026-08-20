@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,6 +26,39 @@ from ..inference.provider import get_provider, turn_telemetry
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 from ..uns_resolver import canonical_vendor
+
+#: Per-turn carrier for the provider telemetry snapshot (MIRA-1000 P0003).
+#:
+#: A ContextVar, deliberately, for two reasons:
+#:
+#: 1. **#1704 safety.** RAGWorker is a singleton shared across tenants and the
+#:    engine reads telemetry back AFTER an await, so an instance attribute is the
+#:    documented cross-tenant bleed this module already guards against for
+#:    ``_last_sources``. Each asyncio task gets its own context, so concurrent
+#:    turns cannot see each other's snapshot.
+#: 2. **No signature change.** ``_call_llm`` is passed around as a callable
+#:    (``engine.py`` -> ``llm_call=rag._call_llm``) and stubbed in tests with
+#:    ``(messages, model=None)`` fakes. Threading a new kwarg through it broke
+#:    those stubs -- a real regression caught by the GS11 grounding suite. The
+#:    contextvar carries the snapshot without touching the contract.
+_TURN_USAGE: ContextVar[dict | None] = ContextVar("mira_turn_usage", default=None)
+
+
+@contextmanager
+def capture_turn_usage():
+    """Collect the provider telemetry for one turn.
+
+    Yields a dict that ``_call_llm`` fills in if a provider actually served the
+    turn. Stays empty when the turn never reached one (guardrail STOP, cached
+    answer, Open WebUI fallback) -- which is what makes NULL-vs-zero meaningful
+    in migration 078.
+    """
+    sink: dict = {}
+    token = _TURN_USAGE.set(sink)
+    try:
+        yield sink
+    finally:
+        _TURN_USAGE.reset(token)
 
 # CRA-11 / Unit 2 — citation infrastructure.
 #
@@ -987,11 +1022,10 @@ class RAGWorker:
                 state["_rag_no_kb"] = self._last_no_kb
 
             t0 = time.monotonic()
-            raw = await self._call_llm(
-                messages,
-                model=model,
-                usage_sink=state if isinstance(state, dict) else None,
-            )
+            with capture_turn_usage() as turn_usage:
+                raw = await self._call_llm(messages, model=model)
+            if isinstance(state, dict) and turn_usage:
+                state["_rag_turn_usage"] = dict(turn_usage)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             async with spans.llm_inference(len(str(messages)) // 4, raw, elapsed_ms):
@@ -1415,9 +1449,7 @@ class RAGWorker:
         logger.warning("Ollama embed failed on all candidates: %s", candidates)
         return None
 
-    async def _call_llm(
-        self, messages: list[dict], model: str = None, usage_sink: dict | None = None
-    ) -> str:
+    async def _call_llm(self, messages: list[dict], model: str = None) -> str:
         """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback.
 
         PII sanitization (IPv4/MAC/serial → placeholders) is applied to every
@@ -1441,8 +1473,9 @@ class RAGWorker:
             # #1704-safe: write the telemetry projection into THIS turn's sink,
             # never onto self. The engine pops it into the per-turn result and
             # hands it to the decision_traces write (migration 078).
-            if usage_sink is not None:
-                usage_sink["_rag_turn_usage"] = turn_telemetry(turn)
+            sink = _TURN_USAGE.get()
+            if sink is not None:
+                sink.update(turn_telemetry(turn))
             if turn.text:
                 self.router.log_usage(turn.usage)
                 return turn.text
