@@ -1,0 +1,143 @@
+schema_version: 1
+architecture_id: MIRA-1000
+name: "MIRA CLOUD GOLD — The Divergence"
+created: "2026-08-19"
+baseline:
+  branch: main
+  sha: "5dfcbb8940bc2e724cf2b9b111f1837182f20688"
+
+decision:
+  cloud_gold:
+    inference: "OpenAI Responses API"
+    connectivity: "online"
+    role: "reference intelligence / behavioral gold"
+  on_prem:
+    inference: "local inference stack"
+    connectivity: "no cloud inference required"
+    role: "privacy/offline deployment line converging toward Gold"
+  divergence_boundary: "InferenceProvider"
+  shared_contracts:
+    - identity_and_scope
+    - conversation
+    - context
+    - approved_retrieval
+    - knowledge_graph
+    - evidence_and_citations
+    - asset_context
+    - live_machine_state
+    - deterministic_validation
+    - cmms_and_work_orders
+    - tool_registry
+    - tool_policy
+    - approvals
+    - action_audit
+    - client_normalization
+    - evals
+
+rules:
+  - "Converge before creating parallel infrastructure."
+  - "FactoryLM remains canonical for truth, authority, evidence, tools, and audit."
+  - "Prompt files are immutable once issued; supersede with a new prompt ID."
+  - "Every child PR updates this tracker and HISTORY.md."
+  - "No generic autonomous OT write tool under MIRA-1000."
+  - "Gold quality is established before model-cost routing."
+  - "On-Prem gaps are measured against the same behavioral contract."
+
+active_prompt: P0001
+
+prompts:
+  P0000:
+    title: "Master operating prompt"
+    state: CONTROL
+    file: "prompts/P0000-master-operating-prompt.md"
+    owner: null
+    child_pr: null
+    result: null
+
+  P0001:
+    title: "Discovery and convergence map"
+    state: ACTIVE
+    file: "prompts/P0001-discovery-convergence.md"
+    owner: null
+    child_pr: null
+    acceptance:
+      - "Map current runtime to target architecture with file/route/table/flag evidence."
+      - "Identify existing components to keep/wrap/replace."
+      - "Identify active overlapping PR/session ownership."
+      - "Record cloud/on-prem shared boundaries."
+      - "Recommend the smallest non-duplicative P0002 implementation slice."
+    result: null
+
+  P0002:
+    title: "Cloud Gold provider seam"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0003:
+    title: "Deterministic retrieval and context tools"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0004:
+    title: "Unified conversation, evidence, and client runtime"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0005:
+    title: "Delegated business tools and approvals"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0006:
+    title: "Gold conversational and industrial parity evals"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0007:
+    title: "Prompt caching, Flex/Batch, and model routing"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0008:
+    title: "On-Prem provider parity"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+cost_architecture:
+  verified: "2026-08-19"
+  interactive:
+    service_tier: standard
+    optimization:
+      - prompt_caching
+      - eval_backed_model_routing
+  background_low_priority:
+    service_tier: flex
+  grouped_async:
+    service_tier: batch
+  guardrail: "Optimize cost per successful trustworthy outcome, never by bypassing FactoryLM evidence/policy."
+
+history:
+  - H0001
+  - H0002
+  - H0003
