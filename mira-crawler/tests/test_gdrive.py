@@ -117,3 +117,100 @@ class TestScanPdfFiles:
         result = _scan_pdf_files(str(tmp_path))
 
         assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Windows portability regression — the file:// URL the sync task emits must be
+# parseable by the SAME parse the consumer uses.
+#
+# tasks/ingest.py::_validated_local_path resolves a file:// URL with
+# url2pathname(urlparse(url).path) and then requires containment in the allowed
+# base. An f-string URL (`file://{path}`) puts a Windows drive letter in the URL
+# AUTHORITY and leaves `path` empty, so a legitimately contained file resolves
+# elsewhere and is refused (fail-closed). as_uri() emits the three-slash form
+# that round-trips. POSIX output is unchanged by the fix, so this test pins the
+# contract on every platform rather than only the one that was broken.
+# ---------------------------------------------------------------------------
+
+
+class TestFileUrlRoundTripsThroughConsumerParse:
+    """The URL gdrive emits must survive the consumer's urlparse+url2pathname."""
+
+    @staticmethod
+    def _consumer_parse(url: str) -> Path:
+        """Byte-for-byte the resolution tasks/ingest.py::_validated_local_path does."""
+        from urllib.parse import urlparse
+        from urllib.request import url2pathname
+
+        return Path(url2pathname(urlparse(url).path)).resolve()
+
+    def test_emitted_url_round_trips_to_the_same_file(self, tmp_path: Path):
+        pdf = tmp_path / "manual.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+
+        url = pdf.resolve().as_uri()
+
+        assert self._consumer_parse(url) == pdf.resolve()
+
+    def test_emitted_url_round_trips_with_spaces_in_the_path(self, tmp_path: Path):
+        """as_uri() percent-encodes; url2pathname decodes. Drive folders have spaces."""
+        folder = tmp_path / "drive inbox"
+        folder.mkdir()
+        pdf = folder / "my manual.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+
+        url = pdf.resolve().as_uri()
+
+        assert "%20" in url
+        assert self._consumer_parse(url) == pdf.resolve()
+
+    def test_fstring_form_is_the_regression_being_prevented(self, tmp_path: Path):
+        """Documents WHY as_uri() is required: on Windows the f-string form loses
+        the path entirely. On POSIX the two forms coincide, so this asserts only
+        that as_uri() is never worse."""
+        pdf = tmp_path / "manual.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        resolved = pdf.resolve()
+
+        good = self._consumer_parse(resolved.as_uri())
+        assert good == resolved
+
+        naive = self._consumer_parse(f"file://{resolved}")
+        if naive != resolved:  # Windows
+            assert good == resolved, "as_uri() must survive where the f-string fails"
+
+    def test_call_site_uses_as_uri_not_an_fstring(self):
+        """Structural lock on the PRODUCTION call site.
+
+        The round-trip tests above prove what a correct URL does; this proves
+        gdrive.py actually builds one. Without it the tests pass while the
+        shipped f-string is still there (they only exercise the stdlib).
+        Mirrors the structural-invariant style used in
+        tests/test_write_path_visibility.py.
+        """
+        import ast
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parents[1] / "tasks" / "gdrive.py"
+        tree = ast.parse(src.read_text(encoding="utf-8", errors="replace"))
+
+        assigns = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "file_url" for t in n.targets
+            )
+        ]
+        assert assigns, "file_url assignment not found in gdrive.py — test is stale"
+
+        for node in assigns:
+            assert not isinstance(node.value, ast.JoinedStr), (
+                "file_url must not be built with an f-string: on Windows "
+                "`file://{path}` puts the drive letter in the URL authority and the "
+                "consumer's containment check fails closed. Use path.resolve().as_uri()."
+            )
+            assert (
+                isinstance(node.value, ast.Call)
+                and getattr(node.value.func, "attr", "") == "as_uri"
+            ), "file_url must be built with .as_uri()"

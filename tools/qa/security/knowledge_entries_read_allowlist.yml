@@ -523,7 +523,7 @@ approved:
             WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
             GROUP BY doc_id
 
-  "mira-hub/src/lib/node-knowledge-ingest.ts:196":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:259":
     approved_classification: TENANT-ONLY
     query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
     reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
@@ -531,12 +531,14 @@ approved:
       + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
       user-facing corpus read, so the hybrid OEM filter (is_private=false OR …) does not
       apply; the writer must only ever touch its own tenant's freshly-inserted chunks.
-      Moved :195->:196 (import pool added above for deleteOrphanNodeIngest; SQL unchanged)."
+      Moved :195->:196 (import pool added above for deleteOrphanNodeIngest; SQL unchanged).
+      Moved :196->:259 (embed-failure classification added above in the migration-079
+      grant fix; SQL unchanged — query_sha256 re-verified identical at the new line)."
     query_snippet: |
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
                     AND source_type = 'node_attachment' AND embedding IS NULL
-  "mira-hub/src/lib/node-knowledge-ingest.ts:480":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:585":
     approved_classification: TENANT-ONLY
     query_sha256: "0d657143447d26f41d1f666f9eba610597104a78d42f8daf31127e5568a2e89a"
     reason: "deleteOrphanNodeIngest — best-effort DELETE of a LOST-FENCE ingest's own
@@ -545,7 +547,9 @@ approved:
       just created; not a corpus read, and the hybrid OEM filter cannot apply — OEM
       rows belong to the system tenant and can never match the caller's tenant_id
       plus a doc_id minted in this request. Raw owner pool because factorylm_app has
-      no DELETE grant (migrations 011/049 are SELECT/INSERT only)."
+      no DELETE grant (migrations 011/049 are SELECT/INSERT only).
+      Moved :480->:585 (embed-failure classification added above in the migration-079
+      grant fix; SQL unchanged — query_sha256 re-verified identical at the new line)."
     query_snippet: |
       `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
   "mira-hub/src/lib/node-document-proposals.ts:127":
