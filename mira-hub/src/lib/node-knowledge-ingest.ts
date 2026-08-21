@@ -142,29 +142,86 @@ const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
 const EMBED_ON_WRITE = (process.env.NODE_EMBED_ON_WRITE ?? "1") !== "0";
 
 /**
+ * Stable, greppable reason codes for why the trailing embed pass stopped.
+ *
+ * The point of these is the failure mode this module actually shipped: a
+ * PERMANENT authorization error (Postgres 42501, the missing UPDATE grant fixed
+ * by migration 079) was swallowed into a single console.warn, which made
+ * "permanently broken" and "still indexing" look identical to an operator.
+ * Every code below is therefore classified `permanent` or `transient`, and a
+ * permanent one is logged at error level. Never widen this to a bare string.
+ */
+export type EmbedFailureCode =
+  | "embedder_not_configured" // OLLAMA_BASE_URL unset — enrichment is off by config
+  | "embedder_unavailable" // network/HTTP error reaching the embedder
+  | "embedder_http_error" // embedder answered non-2xx
+  | "embedder_timeout" // request exceeded EMBED_TIMEOUT_MS
+  | "embedding_dimension_mismatch" // wrong-dim vector — refusing to store it
+  | "db_permission_denied" // 42501 — the grant class this module was broken by
+  | "vector_update_failed" // any other DB error on the UPDATE
+  | "select_failed"; // could not even read the pending batch
+
+const PERMANENT_CODES: ReadonlySet<EmbedFailureCode> = new Set([
+  // These do not get better by waiting. An operator must act (grant a
+  // privilege, fix the model/dim, set the env var).
+  "embedder_not_configured",
+  "embedding_dimension_mismatch",
+  "db_permission_denied",
+]);
+
+/** Terminal state of one trailing embed pass. `degraded` = operator must look. */
+export type EmbedPassState =
+  | "complete" // no NULL-embedding rows remain for this source
+  | "disabled" // kill switch off — deliberate, not a failure
+  | "degraded"; // stopped early; see `code`
+
+export interface EmbedPassResult {
+  embedded: number;
+  state: EmbedPassState;
+  code?: EmbedFailureCode;
+  /** True when `code` cannot resolve on its own. Drives error-vs-warn logging. */
+  permanent: boolean;
+}
+
+const EMBED_TIMEOUT_MS = 15000;
+
+/** Map a thrown DB error to a stable code. 42501 is the grant class (see 079). */
+function classifyDbError(err: unknown): EmbedFailureCode {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === "42501") return "db_permission_denied";
+  return "vector_update_failed";
+}
+
+/**
  * Best-effort embed of one chunk with the SAME model + dim the query path uses.
- * Returns null on ANY failure — no embedder configured, HTTP/timeout error, or a
- * dimension mismatch (a wrong-dim vector makes cosine meaningless, so we refuse to
- * store it). A null just leaves the chunk BM25-only; ingest never hard-depends on
+ * Returns the vector, or a stable failure code — never a bare null, so the
+ * caller can tell "embedder is down for a minute" from "this will never work".
+ * A failure still just leaves the chunk BM25-only; ingest never hard-depends on
  * the embedder (#1385).
  */
-async function embedText(text: string): Promise<number[] | null> {
+async function embedText(
+  text: string,
+): Promise<{ vec: number[] } | { code: EmbedFailureCode }> {
   const base = process.env.OLLAMA_BASE_URL;
-  if (!base) return null;
+  if (!base) return { code: "embedder_not_configured" };
   try {
     const resp = await fetch(`${base}/api/embeddings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return { code: "embedder_http_error" };
     const data = (await resp.json()) as { embedding?: number[] };
     const vec = data.embedding;
-    if (!Array.isArray(vec) || vec.length !== EMBED_DIM) return null;
-    return vec;
-  } catch {
-    return null;
+    if (!Array.isArray(vec) || vec.length !== EMBED_DIM) {
+      return { code: "embedding_dimension_mismatch" };
+    }
+    return { vec };
+  } catch (err) {
+    // AbortSignal.timeout rejects with a TimeoutError DOMException.
+    const name = (err as { name?: string } | null)?.name;
+    return { code: name === "TimeoutError" ? "embedder_timeout" : "embedder_unavailable" };
   }
 }
 
@@ -186,48 +243,96 @@ async function embedText(text: string): Promise<number[] | null> {
 export async function embedPendingNodeChunks(
   tenantId: string,
   sourceUrl: string,
-): Promise<number> {
-  if (!EMBED_ON_WRITE) return 0;
+): Promise<EmbedPassResult> {
+  if (!EMBED_ON_WRITE) {
+    return { embedded: 0, state: "disabled", permanent: false };
+  }
   let embedded = 0;
+  let code: EmbedFailureCode | undefined;
+
   try {
     for (;;) {
-      const rows = await withTenantContext(tenantId, async (c) => {
-        const res = await c.query<{ id: string; content: string }>(
-          `SELECT id::text, content FROM knowledge_entries
-            WHERE tenant_id = $1 AND source_url = $2
-              AND source_type = 'node_attachment' AND embedding IS NULL
-            LIMIT $3`,
-          [tenantId, sourceUrl, EMBED_BATCH],
-        );
-        return res.rows;
-      });
-      if (rows.length === 0) break;
+      let rows: { id: string; content: string }[];
+      try {
+        rows = await withTenantContext(tenantId, async (c) => {
+          const res = await c.query<{ id: string; content: string }>(
+            `SELECT id::text, content FROM knowledge_entries
+              WHERE tenant_id = $1 AND source_url = $2
+                AND source_type = 'node_attachment' AND embedding IS NULL
+              LIMIT $3`,
+            [tenantId, sourceUrl, EMBED_BATCH],
+          );
+          return res.rows;
+        });
+      } catch (err) {
+        // A SELECT failure is its own class: 42501 here means the role cannot
+        // even read the pending batch, which is a different grant than the one
+        // 079 fixes.
+        code = classifyDbError(err) === "db_permission_denied"
+          ? "db_permission_denied"
+          : "select_failed";
+        break;
+      }
+      if (rows.length === 0) break; // nothing left — success
 
       // Embed with NO DB connection held.
-      const vecs = await Promise.all(rows.map((r) => embedText(r.content)));
-      const writable = rows
-        .map((r, i) => ({ id: r.id, vec: vecs[i] }))
-        .filter((x): x is { id: string; vec: number[] } => x.vec !== null);
-      if (writable.length === 0) break; // embedder unavailable — leave NULL (BM25-live)
+      const results = await Promise.all(rows.map((r) => embedText(r.content)));
+      const writable: { id: string; vec: number[] }[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const r = results[i];
+        if ("vec" in r) writable.push({ id: rows[i].id, vec: r.vec });
+        else code ??= r.code; // keep the FIRST reason — it explains the stall
+      }
+      if (writable.length === 0) {
+        // Embedder produced nothing usable. `code` is already set above; stop
+        // rather than spin on a persistently-failing embedder.
+        break;
+      }
 
-      await withTenantContext(tenantId, async (c) => {
-        for (const w of writable) {
-          await c.query(
-            `UPDATE knowledge_entries SET embedding = $2::vector
-              WHERE id = $1 AND embedding IS NULL`,
-            [w.id, `[${w.vec.join(",")}]`],
-          );
-        }
-      });
+      try {
+        await withTenantContext(tenantId, async (c) => {
+          for (const w of writable) {
+            await c.query(
+              `UPDATE knowledge_entries SET embedding = $2::vector
+                WHERE id = $1 AND embedding IS NULL`,
+              [w.id, `[${w.vec.join(",")}]`],
+            );
+          }
+        });
+      } catch (err) {
+        // THE regression this classification exists for: before migration 079
+        // this threw 42501 on every upload and was swallowed as a warn, so the
+        // vector lane was permanently dark while looking like "still indexing".
+        code = classifyDbError(err);
+        break;
+      }
       embedded += writable.length;
+      code = undefined; // a later success clears an earlier transient blip
     }
   } catch (err) {
-    // A trailing embed failure must never surface to the upload caller.
-    console.warn(
-      `[node-ingest] embed-on-write pass failed for ${sourceUrl}: ${(err as Error).message}`,
-    );
+    // Defence in depth: the pass must never surface to the upload caller.
+    code ??= classifyDbError(err);
   }
-  return embedded;
+
+  if (!code) return { embedded, state: "complete", permanent: false };
+
+  const permanent = PERMANENT_CODES.has(code);
+  const detail = {
+    event: "embed_enrichment_degraded",
+    code,
+    permanent,
+    embedded,
+    sourceUrl,
+    tenantId,
+  };
+  // Permanent = an operator must act; it must NOT read as "still processing".
+  // Transient = genuinely may finish later, so warn.
+  if (permanent) {
+    console.error(`[node-ingest] ${JSON.stringify(detail)}`);
+  } else {
+    console.warn(`[node-ingest] ${JSON.stringify(detail)}`);
+  }
+  return { embedded, state: "degraded", code, permanent };
 }
 
 interface NodeChunkOpts {
