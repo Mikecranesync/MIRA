@@ -107,7 +107,7 @@ def sync_google_drive() -> dict:
       2. Run ``rclone sync`` to download new/updated files.
       3. Scan dest directory for PDF files.
       4. Load already-processed file paths from Redis set.
-      5. For each new PDF: queue via ingest_url.delay(url=f"file://{path}").
+      5. For each new PDF: queue via ingest_url.delay(url=path.resolve().as_uri()).
       6. Persist newly queued paths to Redis.
       7. Return summary counts.
     """
@@ -157,7 +157,15 @@ def sync_google_drive() -> dict:
         if path_str in processed:
             continue
 
-        file_url = f"file://{pdf_path}"
+        # Build the URL with as_uri() rather than an f-string. On Windows an
+        # f-string yields `file://C:\dir\x.pdf`, where urlparse reads `C:...` as the
+        # URL AUTHORITY and leaves `path` empty — so the consumer's
+        # url2pathname(urlparse(url).path) containment check in
+        # tasks/ingest.py::_validated_local_path resolves the wrong path and
+        # fails closed, refusing every legitimately contained file. as_uri()
+        # emits `file:///C:/dir/x.pdf` (and percent-encodes spaces), which
+        # round-trips exactly. POSIX output is unchanged.
+        file_url = pdf_path.resolve().as_uri()
         try:
             # PRIVATE. This is a Google Drive mirror — the customer's own
             # documents, not published OEM material. Before this, the file://
