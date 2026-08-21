@@ -14,6 +14,7 @@
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
+import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
 
 export type IdentityStatus = "unknown" | "candidate" | "user_confirmed" | "verified";
 export type MatchState = "candidate" | "user_confirmed" | "verified" | "rejected";
@@ -49,6 +50,10 @@ export type NotebookSource = {
   /** Persisted applicability evidence (075 match_evidence) — matched tokens,
    *  evidence pages, decision method, discovery/final URLs, confidence. */
   matchEvidence: unknown | null;
+  /** "Ready to Ask" contract (see lib/document-readiness.ts). Derived, not
+   *  stored — a projection of upload status + materialized chunk facts. The
+   *  composer gates on `readiness.canChat`, which never depends on embeddings. */
+  readiness: Readiness;
 };
 
 // Aliased for SELECTs that join the source-count subquery (needs `n.`).
@@ -399,18 +404,62 @@ export async function listSources(
   const byId = new Map<string, Record<string, unknown>>(
     docs.rows.map((r: Record<string, unknown>) => [String(r.id), r]),
   );
+
+  // Materialized-chunk facts for the readiness contract. Counted per doc:
+  //   n         -> citable chunks (what makes a doc askable)
+  //   emb       -> chunks carrying a vector (enhancement progress ONLY)
+  //   anchored  -> chunks with a real page locator (citations must resolve)
+  // Raw pool, explicitly tenant-scoped. These are the caller's OWN uploads
+  // (doc ids came from hub_uploads for this tenant), so this is a pure-tenant
+  // read, NOT the hybrid OEM-corpus case in
+  // .claude/rules/knowledge-entries-tenant-scoping.md — no `is_private = false`
+  // arm, which would count another corpus into this tenant's readiness.
+  const counts = await pool.query(
+    `SELECT doc_id::text AS doc_id,
+            count(*)::int                                   AS n,
+            count(embedding)::int                           AS emb,
+            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored
+       FROM knowledge_entries
+      WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
+      GROUP BY doc_id`,
+    [tenantId, ids],
+  );
+  const chunksById = new Map<string, { n: number; emb: number; anchored: number }>(
+    counts.rows.map((r: Record<string, unknown>) => [
+      String(r.doc_id),
+      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored) },
+    ]),
+  );
+
   return memb.map((m) => {
     const d = byId.get(String(m.doc_id));
+    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0 };
+    const status = d ? ((d.status as string) ?? null) : null;
+    const readiness = deriveReadiness({
+      // An upload row exists at all => the bytes were durably accepted.
+      bytesDurable: Boolean(d),
+      parseFailed: status === "failed" && c.n === 0,
+      // Zero chunks after the parser finished = no text layer (a scan).
+      // While status is still 'queued'/'parsing' this stays false so the doc
+      // reports "preparing text", not a premature OCR verdict.
+      noExtractableText: status === "parsed" && c.n === 0,
+      chunkCount: c.n,
+      hasPageAnchors: c.anchored > 0,
+      scopeValidated: true, // membership was proven by the query above
+      originalResolvable: Boolean(d?.file_id),
+      embeddedChunkCount: c.emb,
+    });
     return {
       docId: String(m.doc_id),
       filename: d ? ((d.filename as string) ?? null) : null,
-      status: d ? ((d.status as string) ?? null) : null,
+      status,
       enabledByDefault: Boolean(m.enabled_by_default),
       matchState: m.match_state as MatchState,
       sourceRole: (m.source_role as string) ?? null,
       pages: null,
       fileId: d ? ((d.file_id as string) ?? null) : null,
       matchEvidence: m.match_evidence ?? null,
+      readiness,
     };
   });
 }
