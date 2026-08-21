@@ -503,6 +503,26 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
+  "mira-hub/src/lib/equipment-notebooks.ts:422":
+    approved_classification: TENANT-ONLY
+    query_sha256: "dbf369caa36584dcb8c49bfef0c788d99bd8d9315eb97770e28064e30d49777b"
+    reason: "listSources readiness facts — counts chunks / embedded / page-anchored for
+      the doc ids ALREADY resolved from equipment_notebook_sources for this tenant's own
+      notebook, to derive the Ready-to-Ask contract (lib/document-readiness.ts). It is an
+      aggregate COUNT over the caller's OWN uploads (doc ids come from this tenant's
+      hub_uploads via the membership query directly above), and returns NO content — only
+      integers. The hybrid OEM filter (is_private = false OR ...) is deliberately NOT
+      applied: adding it would count the shared system-tenant OEM corpus into ONE tenant's
+      per-document readiness, reporting a notebook as enhanced/enhancing based on chunks
+      that do not belong to its documents. That is the opposite of the #1761 fix's intent,
+      which is about not HIDING the OEM corpus from user-facing corpus reads; this is not a
+      corpus read. Raw owner pool (not withTenantContext) to match the surrounding
+      hub_uploads metadata read in the same function."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
+            GROUP BY doc_id
+
   "mira-hub/src/lib/node-knowledge-ingest.ts:196":
     approved_classification: TENANT-ONLY
     query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
