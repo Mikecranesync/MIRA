@@ -683,7 +683,11 @@ class TestIngestUrlVisibilityDeclaration:
         pdf.write_bytes(b"%PDF-1.4 fake")
         monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: base.resolve())
 
-        seen = self._run(monkeypatch, f"file://{pdf}", is_private=False)
+        # Use as_uri(), which is exactly what tasks/gdrive.py emits. An f-string
+        # here would put the Windows drive letter in the URL authority, so the
+        # containment check fails closed and the test asserts against a refusal
+        # rather than against the private-forcing floor it is meant to cover.
+        seen = self._run(monkeypatch, pdf.resolve().as_uri(), is_private=False)
         assert seen["is_private"] is True, "file:// must be forced private"
 
     def test_uppercase_file_scheme_also_forced_private(self, monkeypatch, tmp_path) -> None:
@@ -696,7 +700,10 @@ class TestIngestUrlVisibilityDeclaration:
         pdf.write_bytes(b"%PDF-1.4 fake")
         monkeypatch.setattr(ingest_mod, "_allowed_base", lambda: base.resolve())
 
-        seen = self._run(monkeypatch, f"FILE://{pdf}", is_private=False)
+        # as_uri() then upper-case ONLY the scheme, so this still tests scheme
+        # case-insensitivity while using the URL shape gdrive.py really emits.
+        url = pdf.resolve().as_uri().replace("file://", "FILE://", 1)
+        seen = self._run(monkeypatch, url, is_private=False)
         assert seen["is_private"] is True
 
 
@@ -1042,7 +1049,13 @@ class TestLocalIngestCallSitesArePrivate:
     def test_folder_watcher_persists_private(self, monkeypatch, tmp_path):
         import pytest
 
+        # main.py top-level-imports BOTH apscheduler and watcher.folder_watcher
+        # (-> watchdog). Guarding only apscheduler made this ERROR rather than
+        # skip on a checkout that has one but not the other — the exact shape a
+        # bare/dev environment produces. Guard every heavy module main.py pulls
+        # in at import time so the skip is honest.
         pytest.importorskip("apscheduler", reason="main.py imports apscheduler at module scope")
+        pytest.importorskip("watchdog", reason="main.py imports watcher.folder_watcher (watchdog) at module scope")
         import main as crawler_main
 
         seen: dict = {}
