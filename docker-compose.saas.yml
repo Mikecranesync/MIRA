@@ -736,6 +736,17 @@ services:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      # Embedder for the Hub's OWN vector path — both halves of it:
+      #   write: lib/node-knowledge-ingest.ts::embedPendingNodeChunks (embed-on-write)
+      #   read:  lib/agents/asset-intelligence.ts::searchKB (query embedding)
+      # Both call ${OLLAMA_BASE_URL}/api/embeddings with nomic-embed-text (768-dim),
+      # and they MUST use the same embedder or cosine is meaningless. This var was
+      # never passed to the hub, while five sibling services already received it —
+      # so the write path returned `embedder_not_configured` and every node
+      # attachment stayed embedding IS NULL, and the read path threw outright.
+      # Same declaration + default as mira-core / mira-ingest / mira-pipeline /
+      # the two bots; the real value comes from Doppler.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated
       # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
       # block only (pure code). Set in Doppler factorylm/prd to bound the surface.

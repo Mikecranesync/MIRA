@@ -215,6 +215,34 @@ jobs:
           ORDER BY t.table_name;
 
           \echo
+          \echo === knowledge_entries embedding coverage (vector-dark backlog) — READ-ONLY ===
+          \echo 'Chunks with embedding IS NULL are invisible to the VECTOR ranker (searchKB'
+          \echo 'filters embedding IS NOT NULL); they remain BM25/full-text searchable.'
+          \echo 'A large node_attachment backlog means the Hub embed-on-write pass was not'
+          \echo 'writing — historically either the missing UPDATE grant (migration 079) or a'
+          \echo 'missing OLLAMA_BASE_URL on the mira-hub service. Both are visible above/here.'
+          SELECT source_type,
+                 count(*)                                   AS total_chunks,
+                 count(embedding)                           AS embedded,
+                 count(*) - count(embedding)                AS dark,
+                 CASE WHEN count(*) = 0 THEN NULL
+                      ELSE round(100.0 * count(embedding) / count(*), 1)
+                 END                                        AS pct_embedded
+          FROM knowledge_entries
+          GROUP BY source_type
+          ORDER BY dark DESC, source_type;
+
+          \echo
+          \echo '--- corpus-wide totals ---'
+          SELECT count(*)                    AS total_chunks,
+                 count(embedding)            AS embedded,
+                 count(*) - count(embedding) AS dark,
+                 CASE WHEN count(*) = 0 THEN NULL
+                      ELSE round(100.0 * count(embedding) / count(*), 1)
+                 END                         AS pct_embedded
+          FROM knowledge_entries;
+
+          \echo
           \echo === #1899 folder=brain upload-path schema probe ===
           \echo 'hub_uploads is RUNTIME-managed (ensureUploadsSchema), NOT migration-managed.'
           \echo 'createUpload INSERTs kg_entity_id + ingest_route; if absent here, the door 500s (42703).'
