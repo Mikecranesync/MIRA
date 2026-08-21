@@ -96,6 +96,32 @@ chain, and it is the same flow proven on staging:
 **Pass criteria:** new chunks appear with `emb = 0` briefly (immediately BM25-searchable), then
 reach full coverage within ~1 min for a small document, and the answer cites a real page.
 
+## 4d. The permanent production-smoke tenant
+
+**Do not create a throwaway account per smoke run.** §4c needs a signed-in tenant that can reach
+`/equipment/`, and the pre-existing test account `pf525.test@factorylm.com` is **trial-expired** —
+it hard-redirects to `/upgrade/`, so it cannot run the smoke. Rather than minting a random account
+each time, one designated tenant is documented here:
+
+| | |
+|---|---|
+| Login | `prod.smoke.20260821@factorylm.test` |
+| Created | 2026-08-21, via the normal public `/signup/` flow (7-day trial) |
+| Purpose | production smoke only — never a demo or customer account |
+| Password | not recorded in the repo; held with the other prod test credentials |
+
+**Two standing caveats.**
+
+1. **Its trial expires**, and an expired tenant is paywalled off `/equipment/` — the exact failure
+   that forced this tenant to exist. Before relying on it, confirm it can still open
+   `/equipment/`; if not, extend/upgrade it rather than minting another throwaway.
+2. **It accumulates smoke artifacts** (a notebook + a document per run). Prune periodically, but
+   **preserve the evidence first** — the coverage before/after numbers and the verified citation
+   are the proof that the deploy worked.
+
+Smoke uploads are counted by the coverage probe like any other chunk, so a smoke run moves
+`node_attachment.total` and `embedded` together. That is the assertion, not noise.
+
 ## 5. Backlog recovery (separate, bounded — NOT part of the deploy)
 
 The deploy fixes the path forward; it does not retroactively embed the **1,227** existing dark
