@@ -110,8 +110,26 @@ each time, one designated tenant is documented here:
 | Purpose | production smoke only — never a demo or customer account |
 | Password | not recorded in the repo; held with the other prod test credentials |
 
-**Two standing caveats.**
+> **⚠️ 2026-08-21 — this tenant is UNREACHABLE, and the policy below is why.** Its password was
+> chosen during the session that created it and deliberately written down nowhere. **mira-hub has no
+> password-reset or forgot-password route at all** (verified: zero matches for reset/forgot across
+> `mira-hub/` and `mira-web/`; the only auth routes are NextAuth, the OAuth providers, and
+> `/api/auth/register`). The address is also under `.test`, an IANA-reserved non-deliverable TLD, so
+> no reset mail could ever arrive even if such a route existed. A credential with no recovery path
+> and no recorded value is not "permanent" — it is a single-session account.
+>
+> **Rule going forward: a tenant is only designated permanent once its password is stored somewhere
+> retrievable** (the shared password manager, alongside the other prod test credentials). Record the
+> *pointer* here — never the secret itself. If you cannot say where the password lives, the tenant
+> does not qualify.
+>
+> The 2026-08-21 Pixel 9a device proof therefore ran against an operator-supplied real tenant
+> instead. See `docs/proofs/2026-08-21-pixel9a-mobile-production-proof.md`.
 
+**Three standing caveats.**
+
+0. **Its credential must be retrievable** — see the warning above. Confirm you can actually obtain
+   the password *before* planning a smoke run around this tenant.
 1. **Its trial expires**, and an expired tenant is paywalled off `/equipment/` — the exact failure
    that forced this tenant to exist. Before relying on it, confirm it can still open
    `/equipment/`; if not, extend/upgrade it rather than minting another throwaway.
