@@ -9,7 +9,17 @@
  * answer (Gate G). Every turn persists its source snapshot + evidence (§8.3).
  *
  * Frames (typed — src/lib/notebook-chat-types.ts): `sources` first, `content`
- * deltas, `status` last, then `data: [DONE]`.
+ * deltas, `status` last, then `data: [DONE]`. Under MIRA_CANONICAL_SEAM a
+ * `usage` frame carrying per-turn spend is emitted before `status`; existing
+ * clients ignore unknown kinds (mira-mobile sse.ts is an if/else-if chain),
+ * so the addition is backward compatible.
+ *
+ * PROVIDER SELECTION: `providers()` below is the LEGACY inline cascade and is
+ * the fallback path. When MIRA_CANONICAL_SEAM=1 the turn is served by the
+ * canonical seam (@/lib/inference/canonical-cascade), which is the single
+ * definition of the cascade and matches Hard Constraint #2 (Groq → Cerebras →
+ * Together). The legacy list still contains Gemini; that divergence is exactly
+ * what the seam removes (P0004 map §10 Q4).
  */
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
@@ -17,6 +27,18 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
+import {
+  buildRequestBody,
+  canonicalProviders,
+  canonicalSeamEnabled,
+  exhaustedUsage,
+  logTurnUsage,
+  maxOutputTokens,
+  routeReasonFor,
+  usageFrame,
+  usageFromRaw,
+  type TurnUsage,
+} from "@/lib/inference/canonical-cascade";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -67,6 +89,11 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
+/**
+ * LEGACY inline cascade — the fallback when MIRA_CANONICAL_SEAM is off.
+ * Diverges from Hard Constraint #2 by listing Gemini; kept byte-identical so
+ * the flag-off path is provably unchanged. Delete when the seam is default-on.
+ */
 function providers(): CascadeProvider[] {
   return [
     {
@@ -389,7 +416,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let servedModel: string | null = null;
       let internalError: unknown = null;
 
-      cascade: for (const provider of providers()) {
+      // ONE cascade definition per turn. Flag off => byte-identical legacy list.
+      const seam = canonicalSeamEnabled();
+      const cascadeProviders = seam ? canonicalProviders() : providers();
+      const outputCap = maxOutputTokens();
+      const attempted: string[] = [];
+      let turnUsage: TurnUsage | null = null;
+      let rawUsage: unknown = null;
+      let capped = false;
+
+      cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         try {
           const res = await fetch(provider.url, {
@@ -398,25 +434,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               "Content-Type": "application/json",
               Authorization: `Bearer ${provider.key}`,
             },
-            body: JSON.stringify({
-              model: provider.model,
-              messages,
-              stream: true,
-              // A broad/enumeration answer legitimately needs more room; a narrow
-              // answer stays tight. On gpt-oss the model's hidden reasoning also
-              // draws from the completion budget, which was truncating broad
-              // answers mid-list — hence reasoning_effort:low on Groq (frees the
-              // budget for the visible answer; see the gpt-oss Groq migration
-              // trap) plus the larger broad cap.
-              max_tokens: coverageDirective ? 1400 : 800,
-              temperature: 0.3,
-              ...(provider.name === "Groq"
-                ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
-                : {}),
-            }),
+            // A broad/enumeration answer legitimately needs more room; a narrow
+            // answer stays tight. On gpt-oss the model's hidden reasoning also
+            // draws from the completion budget, which was truncating broad
+            // answers mid-list — hence reasoning_effort:low on Groq (frees the
+            // budget for the visible answer; see the gpt-oss Groq migration
+            // trap) plus the larger broad cap.
+            body: JSON.stringify(
+              seam
+                ? buildRequestBody(
+                    provider as never,
+                    messages,
+                    Math.min(coverageDirective ? 1400 : 800, outputCap),
+                  )
+                : {
+                    model: provider.model,
+                    messages,
+                    stream: true,
+                    max_tokens: coverageDirective ? 1400 : 800,
+                    temperature: 0.3,
+                    ...(provider.name === "Groq"
+                      ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
+                      : {}),
+                  },
+            ),
             signal: AbortSignal.timeout(30_000),
           });
-          if (!res.ok || !res.body) continue;
+          if (!res.ok || !res.body) {
+            // Record the attempt BEFORE continuing: an HTTP-level rejection is
+            // a fallback just as much as a thrown error, and skipping it here
+            // made a Cerebras-served turn report routeReason 'primary'.
+            if (seam) attempted.push(provider.name);
+            continue;
+          }
           const reader = res.body.getReader();
           const dec = new TextDecoder();
           let buffer = "";
@@ -438,7 +488,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               try {
                 const parsed = JSON.parse(data) as {
                   choices?: { delta?: { content?: string }; finish_reason?: string }[];
+                  usage?: unknown;
                 };
+                // include_usage delivers the usage block on a FINAL chunk that
+                // carries no choices — capture it whenever present rather than
+                // only at finish_reason, or it is missed on some providers.
+                if (parsed.usage) rawUsage = parsed.usage;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
                   const norm = normalize.push(delta);
@@ -446,6 +501,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                     responseBuffer.push(norm);
                     const frame: NotebookContentFrame = { kind: "content", content: norm };
                     controller.enqueue(enc.encode(sse(frame)));
+                  }
+                  // Cost cap. Chars/4 is a deliberately cheap proxy: a real
+                  // tokenizer here would cost more than the tokens it guards,
+                  // and the cap exists to stop a RUNAWAY turn, not to bill.
+                  if (seam && responseBuffer.join("").length / 4 > outputCap) {
+                    capped = true;
+                    finished = true;
+                    break;
                   }
                 }
                 if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
@@ -462,8 +525,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
             served = true;
             servedModel = `${provider.name}:${provider.model}`;
+            if (seam) {
+              turnUsage = usageFromRaw(
+                provider.name,
+                provider.model,
+                rawUsage as never,
+                routeReasonFor(attempted),
+                attempted,
+                capped ? "capped" : "ok",
+              );
+            }
             break;
           }
+          if (seam) attempted.push(provider.name);
         } catch (err) {
           if (!isProviderCascadeError(err)) {
             // A bug in this route, not a provider outage — fail loud with a
@@ -476,6 +550,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             `[notebook-chat] provider ${provider.name} failed:`,
             err instanceof Error ? err.message : err,
           );
+          if (seam) attempted.push(provider.name);
           continue; // cascade to next provider
         }
       }
@@ -508,6 +583,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : { kind: "status", status: "error", message: "No answer provider available." };
+      // Canonical per-turn spend, emitted BEFORE status so a client that stops
+      // reading at `status` has still received it. Seam-flagged only; the
+      // legacy path's frame sequence is byte-for-byte unchanged.
+      if (seam) {
+        const finalUsage: TurnUsage = turnUsage ?? exhaustedUsage(attempted);
+        controller.enqueue(enc.encode(sse(usageFrame(finalUsage))));
+        // Structured log so spend is greppable in container logs today. The DB
+        // column (migration 078) is the NEXT slice, not this one.
+        logTurnUsage({ tenantId: ctx.tenantId, notebookId }, finalUsage);
+      }
+
       controller.enqueue(enc.encode(sse(statusFrame)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();

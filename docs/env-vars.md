@@ -130,3 +130,14 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `MQTT_INGEST_DRY_RUN` | `mira-relay/mqtt_ingest/config.py` — `"1"` decodes + logs Sparkplug payloads but never writes to the DB. |
 | `MQTT_INGEST_AUTO_DISCOVER` | `mira-relay/mqtt_ingest/config.py` — `"1"` records unknown tags as seen instead of dropping them (default disabled). |
 | `MQTT_INGEST_DEBUG` | `mira-relay/mqtt_ingest/config.py` — `"1"` enables debug logging for the subscriber. |
+
+## Canonical inference seam (Hub) — P0004G
+
+| Var | Default | Meaning |
+|---|---|---|
+| `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
+| `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
+| `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
+
+Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
+See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.
