@@ -1,0 +1,54 @@
+name: Gate 7 Trigger
+
+# Half one of the two-workflow split that closes the "mutable workflow on internal PRs"
+# exposure Gate 7 raised against its own lane.
+#
+# THIS file runs from the PR head, so a PR can change it freely — which is exactly why it
+# holds NO secrets and does NO reviewing. All it does is record which PR and which commit
+# to review. The worst a modified copy can do is write a wrong number into an artifact,
+# and the reviewer half re-derives the head SHA from the workflow_run event rather than
+# trusting the file.
+#
+# The reviewing half (gate7-review.yml) runs on `workflow_run`, which GitHub always
+# executes from the DEFAULT BRANCH. A pull request therefore cannot alter what runs while
+# the provider keys are in scope. That is the property `pull_request` could not give us:
+# environment-scoping the keys would not have helped, because the same GROQ/CEREBRAS
+# secrets exist at repo level for deepeval-ci, unseen-generalization-lane and code-review,
+# so a modified workflow could simply reference them directly.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Read-only, and deliberately no `secrets:` usage anywhere in this file.
+permissions:
+  contents: read
+
+concurrency:
+  group: gate7-trigger-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  record:
+    name: Record PR context for Gate 7
+    # Fork PRs cannot be reviewed (the reviewer half needs secrets the fork run never
+    # gets), so skip rather than queue work that must fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write PR context
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p gate7-ctx
+          # Plain, boring values. The reviewer half validates both before use.
+          printf '%s\n' "$PR"  > gate7-ctx/pr-number
+          printf '%s\n' "$SHA" > gate7-ctx/head-sha
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate7-pr-context
+          path: gate7-ctx/
+          retention-days: 1
