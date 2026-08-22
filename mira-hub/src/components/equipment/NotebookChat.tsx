@@ -29,6 +29,8 @@ export type ChatTurn = {
   content: string;
   status?: "answered" | "insufficient_evidence" | "error";
   citations?: EvidenceCitation[];
+  /** Deterministic follow-up questions from the server (answered turns only). */
+  followups?: string[];
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -51,9 +53,14 @@ export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] 
 export function Bubble({
   turn,
   onCite,
+  onFollowup,
 }: {
   turn: ChatTurn;
   onCite?: (c: EvidenceCitation) => void;
+  /** When provided (the LAST assistant turn only), follow-up chips render and
+   *  tapping one sends it as the next user message. Older turns get no chips —
+   *  stale suggestions are noise. */
+  onFollowup?: (question: string) => void;
 }) {
   const isUser = turn.role === "user";
   const cites = turn.citations ?? [];
@@ -111,6 +118,25 @@ export function Bubble({
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }}>
           Not found in the selected sources. Add a source or rephrase.
         </p>
+      )}
+      {onFollowup && turn.status === "answered" && (turn.followups?.length ?? 0) > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2" aria-label="Ask follow-up:" data-testid="followup-chips">
+          <span className="sr-only">Ask follow-up:</span>
+          {turn.followups!.map((q) => (
+            <button
+              key={q}
+              onClick={() => onFollowup(q)}
+              className="rounded-full px-3 py-1.5 text-xs"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--foreground-muted)",
+                background: "var(--surface-1)",
+              }}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
       )}
       {passages.length > 0 && (
         <div className="mt-2">
@@ -184,8 +210,8 @@ export function NotebookChat({
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
 
-  const send = useCallback(async () => {
-    const message = input.trim();
+  const sendText = useCallback(async (raw: string) => {
+    const message = raw.trim();
     if (!message || busy) return;
     if (enabledDocIds.length === 0) {
       setTurns((t) => [
@@ -226,6 +252,7 @@ export function NotebookChat({
       let citations: EvidenceCitation[] = [];
       let status: ChatTurn["status"] = "answered";
       let content = "";
+      let followups: string[] = [];
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -246,6 +273,7 @@ export function NotebookChat({
               prev.map((x) => (x.id === aId ? { ...x, content, citations } : x)),
             );
           } else if (frame.kind === "status") status = frame.status;
+          else if (frame.kind === "followups") followups = frame.suggestions;
         }
       }
       setTurns((prev) =>
@@ -260,6 +288,7 @@ export function NotebookChat({
                     : "No answer provider was available."),
                 citations,
                 status,
+                followups,
               }
             : x,
         ),
@@ -273,7 +302,9 @@ export function NotebookChat({
     } finally {
       setBusy(false);
     }
-  }, [input, busy, enabledDocIds, notebookId]);
+  }, [busy, enabledDocIds, notebookId]);
+
+  const send = useCallback(() => sendText(input), [sendText, input]);
 
   return (
     <div className="flex h-full flex-col">
@@ -308,8 +339,17 @@ export function NotebookChat({
             </div>
           </div>
         )}
-        {turns.map((t) => (
-          <Bubble key={t.id} turn={t} onCite={onOpenCitation} />
+        {turns.map((t, i) => (
+          <Bubble
+            key={t.id}
+            turn={t}
+            onCite={onOpenCitation}
+            onFollowup={
+              !busy && i === turns.length - 1 && t.role === "assistant"
+                ? (q) => void sendText(q)
+                : undefined
+            }
+          />
         ))}
         {busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-subtle)" }}>
