@@ -23,9 +23,11 @@ import {
   type NotebookSource,
   type SourcePassage,
   type WorkspaceFile,
+  deleteNotebook,
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
+import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
@@ -124,6 +126,12 @@ export function NotebookScreen({
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [openSource, setOpenSource] = useState<NotebookSource | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Ref, not state: a double-tap must be rejected synchronously, before
+  // React commits `deleting` and disables the button.
+  const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,7 +191,20 @@ export function NotebookScreen({
         <button className="btn-link" onClick={onExit}>
           ← Notebooks
         </button>
-        <h3 style={{ margin: "4px 0 0" }}>{notebook.displayName}</h3>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
+          <button
+            className="btn-link"
+            aria-label="Delete notebook"
+            onClick={() => {
+              setDeleteError(null);
+              setConfirmDelete(true);
+            }}
+            style={{ color: "var(--fl-danger, #dc2626)", flex: "none" }}
+          >
+            Delete
+          </button>
+        </div>
         <div className="meta">
           {sources.length} source{sources.length === 1 ? "" : "s"}
           {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
@@ -201,6 +222,84 @@ export function NotebookScreen({
           ))}
         </div>
       </div>
+
+      {confirmDelete && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Delete notebook"
+          className="sheet-backdrop"
+          onClick={() => !deleting && setConfirmDelete(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--fl-bg, #fff)",
+              border: "1px solid var(--fl-line, #ddd)",
+              borderRadius: "var(--fl-radius, 12px)",
+              padding: 16,
+              maxWidth: 360,
+              width: "100%",
+            }}
+          >
+            <h3 style={{ margin: 0 }}>Delete this notebook?</h3>
+            <p className="meta" style={{ marginTop: 8 }}>
+              {/* Name it explicitly — the technician must see WHICH notebook
+                  is being destroyed, not merely that one is. */}
+              <strong>{notebook.displayName}</strong> and its chat history will be
+              permanently deleted. This cannot be undone.
+            </p>
+            <p className="meta" style={{ marginTop: 6 }}>
+              Uploaded documents are kept — they may be attached to other notebooks.
+            </p>
+            {deleteError && (
+              <p role="alert" className="meta" style={{ color: "var(--fl-danger, #dc2626)" }}>
+                {deleteError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+              <button className="btn-link" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                disabled={deleting}
+                aria-busy={deleting}
+                onClick={async () => {
+                  await deleteGuard.current.run(async () => {
+                    setDeleting(true);
+                    setDeleteError(null);
+                    try {
+                      await deleteNotebook(id);
+                      setConfirmDelete(false);
+                      // onExit re-lists notebooks, so the deleted row leaves the
+                      // UI immediately rather than on some later refresh.
+                      onExit();
+                    } catch (e) {
+                      const status = (e as { status?: number } | null)?.status ?? 0;
+                      setDeleteError(deleteFailureMessage(status));
+                      setDeleting(false);
+                    }
+                  });
+                }}
+                style={{ background: "var(--fl-danger, #dc2626)" }}
+              >
+                {deleting ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {panel === "sources" && (
         <div className="content bottompad" style={{ paddingTop: 0 }}>
