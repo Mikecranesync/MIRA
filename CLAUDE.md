@@ -188,6 +188,32 @@ optional visual layer only. Eval scenarios run against the real Supervisor via `
 
 ---
 
+## Mobile Regression Testing (default = emulator, not your phone)
+
+**`tools/mobile-e2e/` is the default mobile regression gate.** It replays the full technician
+journey against a deployed environment on an emulator - sign in, upload a manual, ingest+embed,
+ask, grounded cited answer, citation resolves to the real passage - and **refuses to run against
+a physical device** unless `--allow-physical` is passed.
+
+```bash
+export FLM_EMAIL='...' FLM_PASSWORD='...'
+bash tools/mobile-e2e/run.sh manual.pdf "question without a question mark" <expected-page>
+```
+
+Pass a `--expect-page` you read out of the PDF **first**, so a green run means it cited the
+right page rather than merely producing a citation.
+
+**Reserve a physical device for exactly three things** - everything else is emulator work:
+
+| Needs real hardware | Why |
+|---|---|
+| Cellular behaviour | the emulator is always on the host network |
+| Real camera capture | no camera to miss (this is how #3353 stayed hidden) |
+| Release-signed Play identity | needs the upload keystore + a Play-installed build |
+
+Baseline these replaced: `docs/proofs/2026-08-21-pixel9a-mobile-production-proof.md`.
+Emulator caveats + the eight adb traps the harness encodes: `tools/mobile-e2e/README.md`.
+
 ## Screenshot Rule (Promotional Materials Pipeline)
 
 Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-screenshots/` with a descriptive filename:
