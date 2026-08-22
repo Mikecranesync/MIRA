@@ -50,6 +50,11 @@ vi.mock("@/lib/tenant-context", () => ({
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
+const persistMock = vi.hoisted(() => ({
+  persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "trace-1" })),
+}));
+vi.mock("@/lib/inference/persist-usage", () => persistMock);
+
 import { POST } from "../[id]/chat/route";
 
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -324,5 +329,88 @@ describe("cost cap", () => {
     await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(body.max_tokens).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("telemetry persistence through the real route", () => {
+  beforeEach(() => {
+    process.env.MIRA_CANONICAL_SEAM = "1";
+    persistMock.persistTurnUsage.mockResolvedValue({ persisted: true, traceId: "trace-1" } as never);
+  });
+
+  it("persists the SAME record it streamed as the usage frame", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("grounded [1]", {
+      prompt_tokens: 1351, completion_tokens: 134, prompt_tokens_details: { cached_tokens: 200 },
+    })));
+    const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    const streamed = f.find((x) => x.kind === "usage")!;
+
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const [scope, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    // The ledger and the wire must not be able to disagree about a turn.
+    expect(usage.provider).toBe(streamed.provider);
+    expect(usage.inputTokens).toBe(streamed.inputTokens);
+    expect(usage.outputTokens).toBe(streamed.outputTokens);
+    expect(usage.costUsdEstimate).toBe(streamed.costUsdEstimate);
+    expect(scope.tenantId).toBe(TENANT_A);
+    expect(scope.notebookId).toBe(NB);
+    expect(Number(scope.latencyMs)).toBeGreaterThanOrEqual(0);
+  });
+
+  it("persists AFTER the stream closed — telemetry never delays the answer", async () => {
+    let closedAt = 0;
+    persistMock.persistTurnUsage.mockImplementation(async () => {
+      // if this ran before the body resolved, closedAt would still be 0
+      expect(closedAt).toBeGreaterThan(0);
+      return { persisted: true, traceId: "t" } as never;
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("x [1]", { prompt_tokens: 1, completion_tokens: 1 })));
+    const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
+    await res.text();
+    closedAt = Date.now();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(persistMock.persistTurnUsage).toHaveBeenCalled();
+  });
+
+  it("a ledger failure does NOT break an otherwise valid cited answer", async () => {
+    // The whole point of the non-fatal posture: telemetry down != chat down.
+    persistMock.persistTurnUsage.mockResolvedValue({ persisted: false, reason: "42703" } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("DC bus undervoltage [1]", {
+      prompt_tokens: 10, completion_tokens: 5,
+    })));
+    const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    expect(f.find((x) => x.kind === "status")?.status).toBe("answered");
+    expect(f.some((x) => x.kind === "sources")).toBe(true);
+    expect(f.some((x) => x.kind === "content")).toBe(true);
+  });
+
+  it("survives persistence THROWING, not just returning failure", async () => {
+    persistMock.persistTurnUsage.mockRejectedValue(new Error("connection terminated"));
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("answer [1]", { prompt_tokens: 3, completion_tokens: 2 })));
+    const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
+    const f = await frames(res);
+    expect(f.find((x) => x.kind === "status")?.status).toBe("answered");
+  });
+
+  it("does NOT persist when the seam is off (legacy path writes no spend rows)", async () => {
+    delete process.env.MIRA_CANONICAL_SEAM;
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("answer [1]")));
+    await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+  });
+
+  it("persists an exhausted turn too — a failed turn is still a turn", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
+    await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    const [, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
+      unknown,
+      Record<string, unknown>,
+    ];
+    expect(usage.status).toBe("error");
+    expect(usage.provider).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
   });
 });

@@ -39,6 +39,7 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -422,6 +423,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
       let turnUsage: TurnUsage | null = null;
+      // Held so persistence runs AFTER the stream is closed — the ledger
+      // write must never delay a byte of the technician's answer.
+      let pendingUsage: TurnUsage | null = null;
+      // Wall time for the whole turn (decision_traces.latency_ms).
+      const turnStartedAt = Date.now();
       let rawUsage: unknown = null;
       let capped = false;
 
@@ -589,9 +595,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (seam) {
         const finalUsage: TurnUsage = turnUsage ?? exhaustedUsage(attempted);
         controller.enqueue(enc.encode(sse(usageFrame(finalUsage))));
-        // Structured log so spend is greppable in container logs today. The DB
-        // column (migration 078) is the NEXT slice, not this one.
+        // Structured log: still emitted, because a log line survives a database
+        // outage and is the thing you grep DURING an incident.
         logTurnUsage({ tenantId: ctx.tenantId, notebookId }, finalUsage);
+        pendingUsage = finalUsage;
       }
 
       controller.enqueue(enc.encode(sse(statusFrame)));
@@ -611,6 +618,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // persistence failure must not break the stream already delivered —
         // but it must not be invisible either.
         console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
+      }
+
+      // Durable spend ledger (migration 080). Deliberately LAST and non-fatal:
+      // the answer is already streamed and already persisted as conversation
+      // history, so a telemetry outage must not retroactively destroy a correct,
+      // cited answer. persistTurnUsage never throws — it returns a result and
+      // logs a distinct `turn.usage.persist_failed` event, so a spend gap stays
+      // diagnosable without becoming a chat outage.
+      if (pendingUsage) {
+        await persistTurnUsage(
+          {
+            tenantId: ctx.tenantId,
+            notebookId,
+            question: message,
+            answerText: served ? answerText : null,
+            citationsPresent: emittedCitations.length > 0,
+            latencyMs: Date.now() - turnStartedAt,
+          },
+          pendingUsage,
+        );
       }
     },
   });
