@@ -374,6 +374,93 @@ export async function detachSource(
   });
 }
 
+export type DeleteNotebookResult = {
+  deleted: boolean;
+  /** Rows removed per dependent table -- surfaced so the caller can log/assert
+   *  that dependants were actually cleaned rather than silently orphaned. */
+  sources: number;
+  turns: number;
+  fileLinks: number;
+};
+
+/**
+ * Permanently delete a notebook and every notebook-scoped dependent row.
+ *
+ * NONE of the dependent tables declare a foreign key to equipment_notebooks
+ * (073 keys `equipment_notebook_sources` / `equipment_notebook_turns` by
+ * notebook_id with no FK; 075 `workspace_file_links` is polymorphic on
+ * `target_type`/`target_id`, which cannot carry one). So there is no ON DELETE
+ * CASCADE to rely on -- deleting only the parent row would leave orphans that
+ * still match `notebook_id`/`target_id` and would be silently re-adopted by a
+ * future notebook issued the same UUID. Every dependant is therefore removed
+ * explicitly, in dependency order, inside ONE transaction.
+ *
+ * What is deliberately NOT deleted:
+ *   - the uploaded documents themselves (`namespace_direct_uploads` /
+ *     `hub_uploads` / `knowledge_entries`). One file may be linked to many
+ *     targets (075 "one file, many links"), so a notebook owns its LINKS, never
+ *     the bytes. `workspace_file_links.file_id` is ON DELETE RESTRICT, which
+ *     encodes exactly that.
+ *   - the wrapped `kg_entities` node (`node_id`). The knowledge graph outlives
+ *     the notebook that surfaced it, and kg rows are approval-governed
+ *     (ADR-0017) -- deleting one here would be an unreviewed graph mutation.
+ *
+ * withTenantContext supplies BEGIN/COMMIT + ROLLBACK-on-throw and
+ * `SET LOCAL ROLE factorylm_app`, so tenant isolation is enforced twice: by the
+ * explicit `tenant_id` predicate on every statement AND by RLS. A notebook
+ * belonging to another tenant is invisible, so this returns deleted:false
+ * rather than removing anything.
+ */
+export async function deleteNotebook(
+  tenantId: string,
+  notebookId: string,
+): Promise<DeleteNotebookResult> {
+  return withTenantContext(tenantId, async (c) => {
+    // Parent first as an existence + ownership probe. FOR UPDATE serializes
+    // against a concurrent delete of the same row, so exactly one caller sees
+    // deleted:true and the other gets a clean 404 instead of a partial pass.
+    const owned = await c.query(
+      `SELECT id FROM equipment_notebooks
+        WHERE tenant_id = $1::uuid AND id = $2::uuid
+        FOR UPDATE`,
+      [tenantId, notebookId],
+    );
+    if (owned.rows.length === 0) {
+      return { deleted: false, sources: 0, turns: 0, fileLinks: 0 };
+    }
+
+    const links = await c.query(
+      `DELETE FROM workspace_file_links
+        WHERE tenant_id = $1::uuid
+          AND target_type = 'equipment_notebook'
+          AND target_id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    const turns = await c.query(
+      `DELETE FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    const sources = await c.query(
+      `DELETE FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    const parent = await c.query(
+      `DELETE FROM equipment_notebooks
+        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+
+    return {
+      deleted: (parent.rowCount ?? 0) > 0,
+      sources: sources.rowCount ?? 0,
+      turns: turns.rowCount ?? 0,
+      fileLinks: links.rowCount ?? 0,
+    };
+  });
+}
+
 export async function listSources(
   tenantId: string,
   notebookId: string,

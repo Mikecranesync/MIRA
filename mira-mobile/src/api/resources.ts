@@ -395,6 +395,15 @@ export async function setSourceEnabled(
   );
 }
 
+export async function deleteNotebook(notebookId: string): Promise<void> {
+  // Trailing slash matches every other notebook call: the Hub 308-redirects
+  // slashless paths, and a 308 on a DELETE is not replayed with the method
+  // intact by every client stack -- so the slash is load-bearing, not style.
+  await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function detachSource(notebookId: string, docId: string): Promise<void> {
   await request(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/${encodeURIComponent(docId)}/`,
