@@ -586,6 +586,30 @@ def verdict_of(text: str, findings: list[Finding]) -> str:
 # Qwen on Together is not a reasoning-effort model; that limitation is recorded
 # per-attempt rather than silently hidden.
 PROVIDERS = [
+    # Gemini first, measured 2026-08-19 against a real 28,417-char review prompt while
+    # the other three tiers were all failing at once:
+    #   groq      empty completion — gpt-oss reasoning consumed the whole budget. It had
+    #             completed a 21,654-char diff an hour earlier and then failed at 15,393,
+    #             so the burn threshold moves with provider load; it cannot be relied on
+    #             for large diffs, which are exactly the reviews that matter most.
+    #   cerebras  HTTP 402 Payment Required.
+    #   together  HTTP 400 Bad Request.
+    #   gemini    completed in 32s (reasoning_effort=high) with parseable findings.
+    #
+    # This also realigns Gate 7 with the cascade `.github/workflows/code-review.yml` has
+    # used since 2026-04-20, which is groq -> cerebras -> GEMINI. Gate 7 was the odd one
+    # out, carrying `together` in that slot — the one provider of the four with no
+    # working path. GEMINI_API_KEY is already a repo secret, so CI needs no new
+    # credential. Gemini is reached through its OpenAI-compatible endpoint, so it needs
+    # no special-casing in call_cascade, and it accepts reasoning_effort (verified: high
+    # was both accepted and faster than omitting it).
+    (
+        "gemini",
+        "GEMINI_API_KEY",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "gemini-2.5-flash",
+        True,
+    ),
     (
         "groq",
         "GROQ_API_KEY",
