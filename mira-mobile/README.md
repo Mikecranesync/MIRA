@@ -61,3 +61,9 @@ paired with Android `assetlinks.json`).
 - Session storage: native cookie-jar values persisted via Preferences for the skeleton — Phase 4
   moves this to Keystore/Keychain-backed secure storage before any store submission.
 - The Hub canonicalizes to trailing-slash API paths; slashless calls 308.
+
+## Regression testing
+
+Use **`tools/mobile-e2e/`** (emulator, no phone required) as the default gate - see the root
+`CLAUDE.md` section "Mobile Regression Testing". A physical device is needed only for cellular
+behaviour, real camera capture, and release-signed Play identity.
