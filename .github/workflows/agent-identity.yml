@@ -1,0 +1,33 @@
+name: Agent identity
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  agent-identity:
+    name: agent-identity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the reviewed range
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Capture PR metadata and commit messages
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          git log --format='%B%x00' "$BASE_SHA..$HEAD_SHA" > "$RUNNER_TEMP/commit-messages"
+
+      - name: Validate agent identity
+        run: |
+          python3 tools/check_agent_identity.py \
+            --pr-body-file "$RUNNER_TEMP/pr-body.md" \
+            --commits-file "$RUNNER_TEMP/commit-messages"

@@ -1,0 +1,49 @@
+name: Work claim
+description: Claim a repository slice with durable agent identity.
+title: "[WORK-CLAIM] "
+labels:
+  - governance
+body:
+  - type: input
+    id: agent-identity
+    attributes:
+      label: Agent-Identity
+      description: "Use <agent>/<machine>/<session-id>, for example codex/charlie/2026-08-18-pr3302."
+      placeholder: "codex/charlie/2026-08-18-pr3302"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent-role
+    attributes:
+      label: Agent-Role
+      options:
+        - implementation
+        - review
+        - triage
+    validations:
+      required: true
+  - type: input
+    id: human-owner
+    attributes:
+      label: Human-Owner
+      placeholder: "@mikecranesync"
+    validations:
+      required: true
+  - type: input
+    id: branch
+    attributes:
+      label: Branch
+    validations:
+      required: true
+  - type: input
+    id: worktree
+    attributes:
+      label: Worktree
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and collision surface
+    validations:
+      required: true
