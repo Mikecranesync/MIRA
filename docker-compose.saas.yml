@@ -747,6 +747,12 @@ services:
       # Same declaration + default as mira-core / mira-ingest / mira-pipeline /
       # the two bots; the real value comes from Doppler.
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # P0004G canonical inference seam. OFF unless explicitly set to "1" —
+      # with it unset the notebook-chat route keeps using the pre-existing
+      # inline cascade, so this line changes nothing until someone flips it.
+      - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # Per-turn output ceiling under the seam (cost guard).
+      - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated
       # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
       # block only (pure code). Set in Doppler factorylm/prd to bound the surface.

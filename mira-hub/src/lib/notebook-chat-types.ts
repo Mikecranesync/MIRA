@@ -36,7 +36,29 @@ export type NotebookStatusFrame = {
   message?: string;
 };
 
-export type NotebookChatFrame = NotebookSourcesFrame | NotebookContentFrame | NotebookStatusFrame;
+/**
+ * Per-turn spend (canonical seam only, MIRA_CANONICAL_SEAM=1). Mirrors
+ * migration 078's decision_traces columns so persistence needs no reshape.
+ * Existing clients ignore unknown frame kinds, so this is additive.
+ */
+export type NotebookUsageFrame = {
+  kind: "usage";
+  provider: string | null;
+  model: string | null;
+  routeReason: string;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  outputTokens: number | null;
+  /** Estimate, not billing truth. null (never 0) when the provider is unpriced. */
+  costUsdEstimate: number | null;
+  status: "ok" | "empty" | "error" | "capped";
+};
+
+export type NotebookChatFrame =
+  | NotebookSourcesFrame
+  | NotebookContentFrame
+  | NotebookStatusFrame
+  | NotebookUsageFrame;
 
 export function parseFrame(data: string): NotebookChatFrame | null {
   try {
