@@ -350,6 +350,13 @@ services:
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
+      # P0004G canonical inference seam (same declaration + default as
+      # docker-compose.saas.yml). Staging proves the flag before production;
+      # without this line a Doppler factorylm/stg value can never reach the
+      # container, because compose passes only what it lists here.
+      - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # Per-turn output ceiling under the seam (cost guard).
+      - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
