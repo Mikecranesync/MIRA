@@ -32,13 +32,20 @@ describe("hubSessionPresent", () => {
 });
 
 describe("hubScanPath", () => {
-  test("points at /scan, which nginx already routes to the Hub", () => {
-    // NOT /m/ — that prefix is proxied to mira-web, so using it would loop.
-    expect(hubScanPath("CV-101")).toBe("/scan/CV-101");
-    expect(hubScanPath("CV-101").startsWith("/m/")).toBe(false);
+  test("points at /machine, the prefix nginx leaves to the Hub", () => {
+    expect(hubScanPath("CV-101")).toBe("/machine/CV-101");
+  });
+
+  test("avoids every prefix another app already owns", () => {
+    // /m/ is this app (would loop); /scan/ is the MIRA Scan SPA on :5180.
+    // The first version of this hand-off used /scan/ and served the wrong
+    // application in production, so both are pinned here, not just one.
+    const path = hubScanPath("CV-101");
+    expect(path.startsWith("/m/")).toBe(false);
+    expect(path.startsWith("/scan/")).toBe(false);
   });
 
   test("encodes the tag", () => {
-    expect(hubScanPath("CV 101/../admin")).toBe("/scan/CV%20101%2F..%2Fadmin");
+    expect(hubScanPath("CV 101/../admin")).toBe("/machine/CV%20101%2F..%2Fadmin");
   });
 });

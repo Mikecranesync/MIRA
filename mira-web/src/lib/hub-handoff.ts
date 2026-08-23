@@ -26,10 +26,12 @@ export function hubSessionPresent(cookies: Record<string, string>): boolean {
 /**
  * Where the Hub serves the machine experience.
  *
- * `/scan/`, not `/m/`: nginx routes `/m/` to mira-web and everything else to
- * the Hub, so this path is reachable with no nginx change — which is what keeps
- * this fix small and leaves the funnel's routes untouched.
+ * `/machine/`, and neither `/m/` nor `/scan/`. nginx proxies `/m/` here (this
+ * app) and `/scan/` to the MIRA Scan SPA on :5180 — using either would send the
+ * technician to the wrong application, and the first version of this hand-off
+ * did exactly that until production probing caught it. `/machine/` is claimed by
+ * no location block, so it falls through to the Hub with no nginx change.
  */
 export function hubScanPath(assetTag: string): string {
-  return `/scan/${encodeURIComponent(assetTag)}`;
+  return `/machine/${encodeURIComponent(assetTag)}`;
 }

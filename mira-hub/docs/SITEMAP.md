@@ -51,6 +51,7 @@
 | `/library` | static | `(hub)/library/page.tsx` |
 | `/login` | static | `login/page.tsx` |
 | `/m/[assetTag]` | dynamic | `m/[assetTag]/page.tsx` |
+| `/machine/[assetTag]` | dynamic | `machine/[assetTag]/page.tsx` |
 | `/magic` | static | `magic/page.tsx` |
 | `/more` | static | `(hub)/more/page.tsx` |
 | `/namespace` | static | `(hub)/namespace/page.tsx` |
@@ -65,7 +66,6 @@
 | `/requests` | static | `(hub)/requests/page.tsx` |
 | `/requests/new` | static | `(hub)/requests/new/page.tsx` |
 | `/scan` | static | `(hub)/scan/page.tsx` |
-| `/scan/[assetTag]` | dynamic | `scan/[assetTag]/page.tsx` |
 | `/schedule` | static | `(hub)/schedule/page.tsx` |
 | `/settings` | static | `(hub)/settings/page.tsx` |
 | `/settings/audit-log` | static | `(hub)/settings/audit-log/page.tsx` |
