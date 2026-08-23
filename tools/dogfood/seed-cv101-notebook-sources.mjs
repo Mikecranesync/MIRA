@@ -138,11 +138,15 @@ for (const rel of FILES) {
 }
 
 // --- verify what the notebook now sees -------------------------------------
-const sources = await (await api(`/api/equipment-notebooks/${NOTEBOOK}/sources/`)).json().catch(() => null);
+// The sources sub-route is POST-only (a GET returns 405); the notebook detail
+// endpoint is where membership is read. Getting this wrong made the seeder
+// silently skip its own verification.
+const detail = await (await api(`/api/equipment-notebooks/${NOTEBOOK}/`)).json().catch(() => null);
+const sources = detail;
 if (Array.isArray(sources?.sources)) {
   console.log(`\nnotebook sources (${sources.sources.length}):`);
   for (const s of sources.sources) {
-    console.log(`  ${s.filename ?? s.docId} — match=${s.matchState} role=${s.sourceRole ?? "-"} ready=${s.readiness?.canChat ?? "?"}`);
+    console.log(`  ${s.filename ?? "(unnamed)"} — docId=${s.docId} match=${s.matchState} role=${s.sourceRole ?? "-"} ready=${s.readiness?.canChat ?? "?"}`);
   }
 }
 
