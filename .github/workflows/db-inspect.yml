@@ -65,6 +65,54 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+      # Placed FIRST among the query steps on purpose: the job is capped at
+      # timeout-minutes: 5 and the kg/knowledge_entries sweeps below can consume
+      # all of it, which cancelled the run that first tried to read this ledger.
+      # A spend read must not depend on unrelated heavy queries completing.
+      - name: decision_traces spend ledger (migration 080) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo
+          \echo === decision_traces spend ledger (migration 080) — READ-ONLY ===
+          \echo 'Sanctioned prod read path for the P0004G canonical seam cutover: hard rule #1'
+          \echo 'forbids psql against prod from a code session, so the spend ledger is verified'
+          \echo 'here. No question, answer, or excerpt text is selected — this is a spend record,'
+          \echo 'not a transcript.'
+          SELECT column_name, data_type
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='decision_traces'
+             AND column_name IN ('provider','route_reason','principal','input_tokens',
+                                 'cached_input_tokens','output_tokens','cost_usd_estimate',
+                                 'tool_call_count','status')
+           ORDER BY column_name;
+          \echo
+          \echo === idx_decision_traces_spend present? ===
+          SELECT EXISTS(SELECT 1 FROM pg_indexes
+                        WHERE schemaname='public' AND tablename='decision_traces'
+                          AND indexname='idx_decision_traces_spend') AS index_present;
+          \echo
+          \echo === seam turns by platform, last 24h (provider NOT NULL = served by the seam) ===
+          SELECT platform,
+                 count(*)                                   AS turns,
+                 count(provider)                            AS with_provider,
+                 count(*) FILTER (WHERE citations_present)  AS cited,
+                 round(sum(cost_usd_estimate)::numeric, 6)  AS est_cost_usd
+            FROM decision_traces
+           WHERE ts > now() - interval '24 hours'
+           GROUP BY platform ORDER BY turns DESC;
+          \echo
+          \echo === last 5 seam spend rows (no free text) ===
+          SELECT ts, platform, provider, route_reason, model_used,
+                 input_tokens, cached_input_tokens, output_tokens,
+                 cost_usd_estimate, status, latency_ms, citations_present
+            FROM decision_traces
+           WHERE provider IS NOT NULL
+           ORDER BY ts DESC LIMIT 5;
+          SQL
+
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -653,44 +701,4 @@ jobs:
             FROM system_health_log
            WHERE service = 'kb_cron' AND category = 'data'
            ORDER BY ts DESC LIMIT 3;
-          \echo
-          \echo === decision_traces spend ledger (migration 080) — READ-ONLY ===
-          \echo 'Sanctioned prod read path for the P0004G canonical seam cutover: hard rule #1'
-          \echo 'forbids psql against prod from a code session, so the spend ledger is verified'
-          \echo 'here. No question, answer, or excerpt text is selected — this is a spend record,'
-          \echo 'not a transcript.'
-          SELECT column_name, data_type
-            FROM information_schema.columns
-           WHERE table_schema='public' AND table_name='decision_traces'
-             AND column_name IN ('provider','route_reason','principal','input_tokens',
-                                 'cached_input_tokens','output_tokens','cost_usd_estimate',
-                                 'tool_call_count','status')
-           ORDER BY column_name;
-
-          \echo
-          \echo === idx_decision_traces_spend present? ===
-          SELECT EXISTS(SELECT 1 FROM pg_indexes
-                        WHERE schemaname='public' AND tablename='decision_traces'
-                          AND indexname='idx_decision_traces_spend') AS index_present;
-
-          \echo
-          \echo === seam turns by platform, last 24h (provider NOT NULL = served by the seam) ===
-          SELECT platform,
-                 count(*)                                   AS turns,
-                 count(provider)                            AS with_provider,
-                 count(*) FILTER (WHERE citations_present)  AS cited,
-                 round(sum(cost_usd_estimate)::numeric, 6)  AS est_cost_usd
-            FROM decision_traces
-           WHERE ts > now() - interval '24 hours'
-           GROUP BY platform ORDER BY turns DESC;
-
-          \echo
-          \echo === last 5 seam spend rows (no free text) ===
-          SELECT ts, platform, provider, route_reason, model_used,
-                 input_tokens, cached_input_tokens, output_tokens,
-                 cost_usd_estimate, status, latency_ms, citations_present
-            FROM decision_traces
-           WHERE provider IS NOT NULL
-           ORDER BY ts DESC LIMIT 5;
-
           SQL
