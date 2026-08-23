@@ -54,10 +54,31 @@ export type NotebookUsageFrame = {
   status: "ok" | "empty" | "error" | "capped";
 };
 
+/**
+ * A safety hard-stop occurred: the turn was refused before retrieval and before
+ * any provider call, and the streamed content is the isolation/LOTO notice
+ * rather than an answer.
+ *
+ * WHY A FRAME AND NOT A NEW `status` VALUE. `status` is a three-value union
+ * pinned by the `equipment_notebook_turns.answer_status` CHECK constraint
+ * (migration 073), and every client switches on it. Adding a fourth value would
+ * mean a migration plus a coordinated client release to say something additive.
+ * A new frame kind costs nothing — existing clients ignore unknown kinds, which
+ * is the precedent the `usage` frame set. The turn still reports
+ * `status: "answered"` because the technician did receive a complete, intended
+ * response; this frame is what distinguishes it from a grounded answer.
+ */
+export type NotebookSafetyFrame = {
+  kind: "safety";
+  /** The matched phrase, for observability. Never shown to the technician. */
+  trigger: string;
+};
+
 export type NotebookChatFrame =
   | NotebookSourcesFrame
   | NotebookContentFrame
   | NotebookStatusFrame
+  | NotebookSafetyFrame
   | NotebookUsageFrame;
 
 export function parseFrame(data: string): NotebookChatFrame | null {
