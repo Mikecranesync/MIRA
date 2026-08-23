@@ -1,7 +1,7 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 68,
+    "pages": 69,
     "apiRoutes": 177
   },
   "pages": [
@@ -53,6 +53,7 @@
     "/requests",
     "/requests/new",
     "/scan",
+    "/scan/[assetTag]",
     "/schedule",
     "/settings",
     "/settings/audit-log",
