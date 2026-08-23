@@ -113,6 +113,49 @@ jobs:
            ORDER BY ts DESC LIMIT 5;
           SQL
 
+      # Independent verification for the garage dogfood rig: a DIFFERENT workflow
+      # and different queries from the seed that wrote the identity, so a green
+      # result here is not the seed grading its own homework. Read-only.
+      - name: CV-101 identity (garage dogfood rig) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === CV-101 asset row (cmms_equipment) ===
+          SELECT tenant_id, equipment_number, description AS label, uns_path::text,
+                 qr_generated_at IS NOT NULL AS qr_bound
+            FROM cmms_equipment
+           WHERE equipment_number = 'CV-101';
+
+          \echo
+          \echo === CV-101 knowledge-graph bridge row ===
+          \echo 'approval_state MUST be verified and uns_path NOT NULL, or every'
+          \echo 'KG-grounded surface resolves to nothing (chat/route.ts, traversal.ts).'
+          SELECT k.tenant_id,
+                 k.name                         AS kg_label,
+                 k.approval_state,
+                 k.uns_path::text,
+                 k.properties->>'asset_tag'     AS alias_key,
+                 k.properties->>'canonical_key' AS derived_key,
+                 (k.entity_id = ce.id::text)    AS entity_id_is_the_uuid
+            FROM cmms_equipment ce
+            JOIN kg_entities k
+              ON k.entity_type = 'equipment'
+             AND k.entity_id = ce.id::text
+           WHERE ce.equipment_number = 'CV-101';
+
+          \echo
+          \echo === notebooks bound to CV-101 (081) ===
+          SELECT n.display_name, n.asset_selected_via,
+                 n.asset_confirmed_at IS NOT NULL AS confirmed,
+                 (SELECT count(*) FROM equipment_notebook_sources s
+                   WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS sources
+            FROM equipment_notebooks n
+            JOIN cmms_equipment ce ON ce.id::text = n.equipment_entity_id
+           WHERE ce.equipment_number = 'CV-101';
+          SQL
+
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
