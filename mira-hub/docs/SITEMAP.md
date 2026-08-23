@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **68** (11 dynamic) |
-| API routes | **175** (63 dynamic) |
+| API routes | **176** (64 dynamic) |
 
 ## Pages (68)
 
@@ -86,7 +86,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (175)
+## API routes (176)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -170,6 +170,7 @@
 | `/api/documents/upload` | static | `api/documents/upload/route.ts` |
 | `/api/equipment-notebooks` | static | `api/equipment-notebooks/route.ts` |
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
+| `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
