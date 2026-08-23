@@ -48,6 +48,25 @@ export type EquipmentNotebook = {
  * There is no `gps` member: GPS cannot resolve one machine from its neighbour
  * indoors, so recording it as identity provenance would launder a guess.
  */
+/**
+ * Entity types a notebook may be bound to: a MACHINE, never a place.
+ *
+ * Two vocabularies exist and both are legitimate. Seeded/bridged rows carry
+ * `equipment` (the CV-101 bridge, and every notebook's own backing node), while
+ * the namespace builder's API mints `asset` — its allowed kinds are site, plant,
+ * area, line, production_line, asset, component, ... with no `equipment` at all.
+ * Accepting only `equipment` meant a machine created through the UI could never
+ * be bound, which is the gap this set closes.
+ *
+ * What stays excluded is the point: `area`, `line`, `site`, `plant`,
+ * `production_line`. Every user-created node is minted `verified` with a
+ * uns_path regardless of kind, so without this exclusion a notebook could bind
+ * to a LINE — and a later live-evidence probe scoped by `uns_path <@` would
+ * scale to the whole line and render a sibling machine's reading as this
+ * machine's current state. Silent and plausible.
+ */
+export const MACHINE_ENTITY_TYPES = new Set(["equipment", "asset"]);
+
 export const ASSET_SELECTION_METHODS = [
   "asset_picker",
   "qr",
@@ -351,7 +370,9 @@ export async function createAndBindNotebookTx(
     );
     const a = asset.rows[0];
     if (!a) return { ok: false as const, error: "asset_not_found" as const };
-    if (a.entity_type !== "equipment") return { ok: false as const, error: "asset_not_equipment" as const };
+    if (!MACHINE_ENTITY_TYPES.has(String(a.entity_type))) {
+      return { ok: false as const, error: "asset_not_equipment" as const };
+    }
     if (a.approval_state !== "verified" || !a.uns_path) {
       return { ok: false as const, error: "asset_not_verified" as const };
     }
@@ -416,7 +437,7 @@ export async function bindNotebookAsset(
     );
     const row = asset.rows[0];
     if (!row) return { ok: false as const, error: "asset_not_found" as const };
-    if (row.entity_type !== "equipment") {
+    if (!MACHINE_ENTITY_TYPES.has(String(row.entity_type))) {
       return { ok: false as const, error: "asset_not_equipment" as const };
     }
     if (row.approval_state !== "verified" || !row.uns_path) {
@@ -939,12 +960,12 @@ export async function resolveBoundAsset(
       `SELECT entity_id, name, uns_path::text AS uns_path
          FROM kg_entities
         WHERE tenant_id = $1::uuid
-          AND entity_type = 'equipment'
+          AND entity_type = ANY($3::text[])
           AND entity_id = $2
           AND approval_state = 'verified'
           AND uns_path IS NOT NULL
         LIMIT 1`,
-      [tenantId, String(row.equipment_entity_id)],
+      [tenantId, String(row.equipment_entity_id), [...MACHINE_ENTITY_TYPES]],
     );
     const a = asset.rows[0];
     if (!a) return { state: "unresolvable" as const, entityId: String(row.equipment_entity_id) };

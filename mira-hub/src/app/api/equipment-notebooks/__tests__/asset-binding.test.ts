@@ -81,7 +81,13 @@ describe("PUT /asset", () => {
     });
   });
 
-  it("refuses a non-equipment node — binding an area would scope answers to a whole line", async () => {
+  it("accepts an 'asset' node — the namespace API mints that kind, never 'equipment'", async () => {
+    stubQueries({ asset: { entity_id: ASSET_UUID, entity_type: "asset", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab.conveyor_1" } });
+    const res = await PUT(putReq({ assetRef: ASSET_UUID, selectedVia: "asset_picker" }), params);
+    expect(res.status).toBe(200);
+  });
+
+  it("still refuses a location — binding an area would scope answers to a whole line", async () => {
     stubQueries({ asset: { entity_id: "area-1", entity_type: "area", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab" } });
     const res = await PUT(putReq({ assetRef: "area-1", selectedVia: "asset_picker" }), params);
     expect(res.status).toBe(422);
@@ -90,6 +96,18 @@ describe("PUT /asset", () => {
     // Distinct from not-found on purpose: "you picked a location" is actionable,
     // "not found" sends the technician hunting for a permissions problem.
     expect(body.code).not.toBe("asset_not_found");
+  });
+
+it("refuses every location kind, not just 'area'", async () => {
+    for (const kind of ["area", "line", "site", "plant", "production_line"]) {
+      // Reset per iteration: mockResolvedValueOnce queues survive across calls,
+      // so the second kind would otherwise read the first one's leftovers.
+      dbMock.query.mockReset();
+      stubQueries({ asset: { entity_id: "loc", entity_type: kind, approval_state: "verified", uns_path: "enterprise.x" } });
+      const res = await PUT(putReq({ assetRef: "loc", selectedVia: "asset_picker" }), params);
+      expect(res.status, `${kind} must not be bindable`).toBe(422);
+      expect((await res.json()).code).toBe("asset_not_equipment");
+    }
   });
 
   it("refuses an unapproved asset — a proposal must not become an identity", async () => {
