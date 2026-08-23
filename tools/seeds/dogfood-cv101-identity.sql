@@ -122,7 +122,16 @@ UPDATE kg_entities k
    AND k.entity_type = 'equipment'
    AND k.entity_id = ce.id::text
    AND ce.tenant_id = :tenant_id
-   AND ce.equipment_number = 'CV-101';
+   AND ce.equipment_number = 'CV-101'
+   -- Skip when all three keys already hold these values. Without this the
+   -- merge rewrites identical JSON and bumps updated_at on every apply, so
+   -- "idempotent" would mean "harmless", not "no-op" — and updated_at is a
+   -- signal an operator reads when asking what last touched this row.
+   AND (
+        k.properties->>'asset_tag' IS DISTINCT FROM 'CV-101'
+     OR k.properties->>'canonical_key' IS DISTINCT FROM 'cv_101'
+     OR k.properties->>'identity_seed' IS DISTINCT FROM 'dogfood-cv101-identity'
+   );
 
 -- 3a. The label the QR scan card renders (rowToAsset falls back to
 --     description for `name` — api/assets/by-tag/[tag]/route.ts:11).
