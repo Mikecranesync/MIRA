@@ -36,6 +36,35 @@ export type EquipmentNotebook = {
   sourceCount: number;
   lastOpenedAt: string | null;
   createdAt: string;
+  /** Canonical asset binding (081). `null` when the notebook is unbound. */
+  asset: NotebookAssetBinding | null;
+};
+
+/**
+ * How the asset arrived. A QR scan is a SELECTION, not a confirmation —
+ * stickers get swapped during a rebuild, and two identical bench conveyors are
+ * indistinguishable to a sticker. Confirmation is a separate, human act.
+ *
+ * There is no `gps` member: GPS cannot resolve one machine from its neighbour
+ * indoors, so recording it as identity provenance would launder a guess.
+ */
+export const ASSET_SELECTION_METHODS = [
+  "asset_picker",
+  "qr",
+  "nfc",
+  "work_order",
+  "nameplate",
+  "manual_entry",
+] as const;
+export type AssetSelectionMethod = (typeof ASSET_SELECTION_METHODS)[number];
+
+export type NotebookAssetBinding = {
+  /** kg_entities.entity_id — the cmms_equipment UUID as text. */
+  entityId: string;
+  selectedVia: AssetSelectionMethod | null;
+  /** Null means selected-but-unconfirmed; the UI must show that state. */
+  confirmedBy: string | null;
+  confirmedAt: string | null;
 };
 
 export type NotebookSource = {
@@ -61,7 +90,8 @@ const NOTEBOOK_COLS = `
   n.id::text AS id, n.display_name, n.manufacturer, n.model, n.catalog_number,
   n.serial_number, n.equipment_type, n.asset_tag, n.location_label,
   n.identity_status, n.identity_confidence, n.identity_source_type,
-  n.node_id::text AS node_id, n.last_opened_at, n.created_at`;
+  n.node_id::text AS node_id, n.last_opened_at, n.created_at,
+  n.equipment_entity_id, n.asset_selected_via, n.asset_confirmed_by, n.asset_confirmed_at`;
 // Un-aliased for RETURNING / single-table SELECTs — a RETURNING clause has no
 // table alias, so the `n.` form errors ("missing FROM-clause entry for n").
 const NOTEBOOK_COLS_BARE = NOTEBOOK_COLS.replace(/\bn\./g, "");
@@ -84,6 +114,16 @@ function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNo
     sourceCount,
     lastOpenedAt: r.last_opened_at ? String(r.last_opened_at) : null,
     createdAt: String(r.created_at),
+    // Without this the read path cannot see what the write path stored — the
+    // binding would be invisible everywhere except the database.
+    asset: r.equipment_entity_id
+      ? {
+          entityId: String(r.equipment_entity_id),
+          selectedVia: (r.asset_selected_via as AssetSelectionMethod) ?? null,
+          confirmedBy: (r.asset_confirmed_by as string) ?? null,
+          confirmedAt: r.asset_confirmed_at ? String(r.asset_confirmed_at) : null,
+        }
+      : null,
   };
 }
 
@@ -226,6 +266,119 @@ export async function updateNotebook(
 
 /** Attach an existing tenant document (hub_uploads row) as a notebook source.
  *  Validates the doc belongs to THIS tenant before attaching (IDOR guard). */
+/**
+ * Bind a notebook to a canonical asset (migration 081).
+ *
+ * The predicate is the whole security and correctness story, so it is spelled
+ * out rather than assembled:
+ *
+ *   entity_type = 'equipment'  — LOAD-BEARING. Every user-created namespace node
+ *     is minted `verified` with a uns_path regardless of kind
+ *     (api/namespace/node/route.ts:102-110), so without this a notebook could
+ *     legally bind to an AREA. A later live-evidence probe scoped by `uns_path <@`
+ *     would then scale to the whole area and render a sibling machine's
+ *     "Motor_Speed: 1740 rpm" as this conveyor's current state on a stopped belt.
+ *     That failure is silent and plausible, which is the worst combination.
+ *
+ *   approval_state = 'verified' — an unapproved graph row is a proposal, and a
+ *     proposal must not become an asset identity by being bound to.
+ *
+ *   uns_path IS NOT NULL — a notebook's own backing node has no uns_path, so this
+ *     also refuses the degenerate self-binding.
+ *
+ *   (id::text = $2 OR entity_id = $2) — accepts either the kg row id or the
+ *     cmms UUID mirrored into entity_id, matching how every other resolver in
+ *     the Hub accepts an asset reference.
+ *
+ * Distinct error codes because they mean different things to a technician:
+ * `asset_not_equipment` is "you picked a line, not a machine";
+ * `asset_not_found` is "that is not yours, or does not exist".
+ */
+export type BindAssetResult =
+  | { ok: true; notebook: EquipmentNotebook }
+  | { ok: false; error: "asset_not_found" | "asset_not_equipment" | "asset_not_verified" | "notebook_not_found" | "asset_already_bound"; boundNotebookId?: string };
+
+export async function bindNotebookAsset(
+  tenantId: string,
+  notebookId: string,
+  assetRef: string,
+  opts: { selectedVia: AssetSelectionMethod; confirmedBy?: string | null },
+): Promise<BindAssetResult> {
+  return withTenantContext(tenantId, async (c) => {
+    const asset = await c.query(
+      `SELECT entity_id, entity_type, approval_state, uns_path::text AS uns_path
+         FROM kg_entities
+        WHERE tenant_id = $1::uuid
+          AND (id::text = $2 OR entity_id = $2)
+        LIMIT 1`,
+      [tenantId, assetRef],
+    );
+    const row = asset.rows[0];
+    if (!row) return { ok: false as const, error: "asset_not_found" as const };
+    if (row.entity_type !== "equipment") {
+      return { ok: false as const, error: "asset_not_equipment" as const };
+    }
+    if (row.approval_state !== "verified" || !row.uns_path) {
+      return { ok: false as const, error: "asset_not_verified" as const };
+    }
+
+    // One notebook per asset (081's partial-unique index). Checked here so the
+    // caller gets the existing id rather than a bare constraint violation.
+    const taken = await c.query(
+      `SELECT id::text AS id FROM equipment_notebooks
+        WHERE tenant_id = $1::uuid AND equipment_entity_id = $2 AND id <> $3::uuid
+        LIMIT 1`,
+      [tenantId, row.entity_id, notebookId],
+    );
+    if (taken.rows[0]) {
+      return {
+        ok: false as const,
+        error: "asset_already_bound" as const,
+        boundNotebookId: String(taken.rows[0].id),
+      };
+    }
+
+    // Confirmation is server-derived. A caller may say HOW the asset was
+    // selected; it may never assert that a human confirmed it.
+    const confirmedBy = opts.selectedVia === "qr" || opts.selectedVia === "nfc" ? null : opts.confirmedBy ?? null;
+
+    const updated = await c.query(
+      `UPDATE equipment_notebooks
+          SET equipment_entity_id = $3,
+              asset_selected_via  = $4,
+              asset_confirmed_by  = $5,
+              asset_confirmed_at  = CASE WHEN $5::text IS NULL THEN NULL ELSE now() END,
+              updated_at = now()
+        WHERE tenant_id = $1::uuid AND id = $2::uuid
+        RETURNING ${NOTEBOOK_COLS_BARE}`,
+      [tenantId, notebookId, row.entity_id, opts.selectedVia, confirmedBy],
+    );
+    if (!updated.rows[0]) return { ok: false as const, error: "notebook_not_found" as const };
+    return { ok: true as const, notebook: rowToNotebook(updated.rows[0]) };
+  });
+}
+
+/** Clear the binding. All four columns move together — a half-cleared binding
+ *  would leave a confirmation timestamp attached to no asset. */
+export async function unbindNotebookAsset(
+  tenantId: string,
+  notebookId: string,
+): Promise<{ ok: boolean }> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `UPDATE equipment_notebooks
+          SET equipment_entity_id = NULL,
+              asset_selected_via  = NULL,
+              asset_confirmed_by  = NULL,
+              asset_confirmed_at  = NULL,
+              updated_at = now()
+        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    return { ok: (res.rowCount ?? 0) > 0 };
+  });
+}
+
 export async function attachSource(
   tenantId: string,
   notebookId: string,
