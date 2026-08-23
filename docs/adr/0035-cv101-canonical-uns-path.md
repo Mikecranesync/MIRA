@@ -146,3 +146,82 @@ Landing any subset alone is the failure mode this ADR exists to prevent. Tracked
 - `.github/workflows/cv101-live-gate.yml` + `tools/cv101_live_gate.py` — the gate that asserts
   observed-vs-allowlisted.
 - `.claude/rules/uns-compliance.md` — UNS path builders and `RESERVED_LABELS`.
+
+---
+
+## Amendment — 2026-08-23: the canonical asset key is DERIVED, not stored
+
+**Status:** accepted. Amends §1 and §3 of the decision above. Does **not** change the canonical
+operational UNS path, the display name, the ingest source, or any alias.
+
+### What changed
+
+§1 placed the canonical asset key `cv_101` in `kg_entities.entity_id`. Implementation never did
+that, and the gap was found while planning the garage dogfood walk
+(`docs/plans/2026-08-23-conveyor-localization-and-live-data-plan.md` §2).
+
+`kg_entities.entity_id` holds the **`cmms_equipment` UUID**, written by
+`tools/seeds/garage-cv101-kg-bridge.sql:36` (`ce.id::text`). Every resolver passes that UUID:
+`/api/assets/[id]/chat` resolves with `(id::text = $2 OR entity_id = $2)` where `$2` is the route
+param. So the ADR described an intention no code implemented.
+
+**The amendment: `cv_101` is a derived value — `slug(equipment_number)` — not a stored identifier.**
+It is already derived that way in SQL at `mira-pipeline/ignition_chat.py:381`. Nothing needs to
+store it, and nothing may key on a stored copy of it.
+
+### Why not simply implement §1 as written
+
+Writing `cv_101` into `entity_id` is a net regression: it breaks three working surfaces, fixes
+none, and is not even the value the one alias-consuming reader wants.
+
+| Reader | Filter | Today | After `entity_id='cv_101'` |
+|---|---|---|---|
+| `chat/route.ts:401` verified-relationship count | `+ approval_state='verified'` | 0 (bridge row is `proposed`) | 0 — unchanged |
+| `traversal.ts:433` `maintenanceContext` | `+ 'equipment' + 'verified'` | null | null — unchanged |
+| `context-builder.ts:96` | `entity_id = ANY($2) + 'verified'` | dead | still dead — `extractor.ts:22` upper-cases and emits `CV-101`, never `cv_101` |
+| `context/route.ts:66` → `uns_path` | `entity_type='equipment'` | **works** | **breaks** |
+| `signal-history/route.ts:43` | `entity_type='equipment'` | **works** | **breaks** |
+| `machine-memory-response.ts:108` → `buildMachineContextPacket` | `entity_type='equipment'` | **works** | **breaks — this is the live-evidence path** |
+
+No constraint blocks the write; `entity_id`'s UNIQUE and NOT NULL were dropped at
+`025_kg_entities_natural_key.sql:32,38`. The failure is purely resolver-semantic, which is worse
+than a constraint error: `uns_path` returns null, the machine packet returns empty, the card
+renders blank, **and nothing errors**.
+
+### The identity contract, restated
+
+| Layer | Value | Where it lives |
+|---|---|---|
+| **Internal key** | the `cmms_equipment` row UUID | `cmms_equipment.id`; mirrored into `kg_entities.entity_id` by the bridge |
+| **Canonical asset key** | `cv_101` | **derived** as `slug(equipment_number)`; may be recorded in `kg_entities.properties->>'canonical_key'` for display, never keyed on |
+| **Human handle (QR / speech / search)** | `CV-101` | `cmms_equipment.equipment_number`, permanent per `012_qr_permanent_binding.sql` |
+| **Alias key read by the bot** | `CV-101` | `kg_entities.properties->>'asset_tag'` (`mira-bots/shared/demo_namespace.py:205`) |
+| **Human display name** | `Discharge Conveyor` | `kg_entities.name` — unchanged from §1 |
+| **Canonical operational UNS path** | `enterprise.home_garage.conveyor_lab.conveyor_1` | unchanged from §1 |
+
+§3 still holds in full: every surface resolves aliases inward before persisting identity, and the
+display name, informal alias, gateway name and UNS path must never be written where the canonical
+asset key belongs. This amendment narrows *where the canonical asset key belongs* to "nowhere — it
+is computed", which makes that prohibition trivially satisfiable.
+
+### Note on `Discharge Conveyor` and CV-200
+
+These are the same physical rig, not two assets. `tools/seeds/approved_tags_northwind_cv200.sql:5-10`
+states it verbatim: the Northwind allowlist covers "the SAME physical rig (Micro820 + GS10), mapped
+onto the CV-200 UNS subtree", published a second time as that tenant. §1 already lists `CV-200` as a
+*presentation* alias; this amendment adds the operational consequence:
+
+> A `CAUSE_IDENTITY` verdict from the CV-101 live gate may mean the Northwind stream is publishing,
+> not that the rig is misconfigured. The gate probe groups on `(source_system, source_connection_id)`
+> with no tenant predicate (`cv101-live-gate.yml:112-117`), so a re-enabled Northwind publication
+> collapses both tenants into one group and adds the CV-200 path. Check
+> `SELECT DISTINCT uns_path FROM tag_events WHERE source_connection_id='cv101-bench-gw'` before
+> concluding the rig is broken.
+
+### Data repair this authorises
+
+`tools/seeds/dogfood-cv101-identity.sql` — additive, idempotent, single transaction: promote the one
+bridge row to `verified` **by `entity_id`**, add `properties->>'asset_tag'='CV-101'` (the key that is
+actually read) plus the derived `canonical_key` for display, and replace the seed-changelog string
+currently sitting in **both** label fields with the §1 display name. It never writes `entity_id`;
+`tests/test_dogfood_cv101_identity_seed.py` pins that mechanically.
