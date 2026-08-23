@@ -28,6 +28,9 @@ vi.mock("@/lib/session", () => sessionMock);
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   recordTurn: vi.fn(async () => undefined),
+  // I3: the route resolves the notebook's bound asset; unbound keeps the
+  // pre-081 behaviour these suites assert.
+  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => null),
   listSources: vi.fn(async () => []),
 }));
