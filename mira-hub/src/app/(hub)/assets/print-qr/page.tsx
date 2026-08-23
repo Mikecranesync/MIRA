@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QrCodeImage } from "@/components/qr-code";
 import { API_BASE } from "@/lib/config";
+import { QR_CANONICAL_ORIGIN, isOffCanonicalOrigin, qrUrlForTag } from "@/lib/qr-origin";
 
 type Asset = {
   id: string;
@@ -45,7 +46,12 @@ export default function PrintQrPage() {
     };
   }, []);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // The label ALWAYS encodes the canonical production origin, never this page's.
+  // A sticker printed from localhost or staging encodes a URL the in-app scanner
+  // silently refuses (mira-mobile/src/lib/tags.ts pins the trusted origin), and
+  // the label is already glued to the machine by the time anyone finds out.
+  const pageOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const offCanonical = isOffCanonicalOrigin(pageOrigin);
   const visible = useMemo(
     () => assets.filter((a) => selected.has(a.id)),
     [assets, selected],
@@ -120,6 +126,15 @@ export default function PrintQrPage() {
         </div>
       ) : null}
 
+      {offCanonical ? (
+        <div className="max-w-3xl mx-auto mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
+          <strong>You are printing from {pageOrigin}.</strong> The labels below still encode{" "}
+          <span className="font-mono">{QR_CANONICAL_ORIGIN}</span>, which is the only origin the
+          FactoryLM app will scan — so they are safe to stick on a machine. If you expected these
+          stickers to point somewhere else, stop and check before printing.
+        </div>
+      ) : null}
+
       {/* Label sheet — visible on screen and print */}
       <div className="max-w-5xl mx-auto grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 print:grid-cols-3 print:gap-2">
         {visible.map((a) => (
@@ -128,8 +143,13 @@ export default function PrintQrPage() {
             className="border rounded p-3 flex flex-col items-center text-center bg-white print:break-inside-avoid"
             style={{ borderColor: "var(--border)" }}
           >
-            <QrCodeImage value={`${origin}/m/${a.tag}`} size={144} />
+            <QrCodeImage value={qrUrlForTag(a.tag)} size={144} />
             <div className="mt-2 font-mono text-xs">{a.tag}</div>
+            {/* The encoded URL, visible. A QR code is unreadable to a human, so
+                without this nobody can tell a good sheet from a ruined one. */}
+            <div className="mt-1 font-mono text-[9px] text-slate-500 break-all leading-tight">
+              {qrUrlForTag(a.tag)}
+            </div>
             <div className="text-xs font-medium leading-tight mt-1 line-clamp-2">{a.name}</div>
             {a.location ? (
               <div className="text-[10px] text-slate-500 leading-tight mt-1 line-clamp-1">{a.location}</div>

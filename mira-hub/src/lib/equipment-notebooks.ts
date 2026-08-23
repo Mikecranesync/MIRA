@@ -190,17 +190,26 @@ export async function createNotebook(
   });
 }
 
-export async function listNotebooks(tenantId: string): Promise<EquipmentNotebook[]> {
+export async function listNotebooks(
+  tenantId: string,
+  opts: { equipmentEntityId?: string | null } = {},
+): Promise<EquipmentNotebook[]> {
   return withTenantContext(tenantId, async (c) => {
+    // The reverse lookup (asset -> its notebook) did not exist anywhere before
+    // 081: every equipment_notebooks predicate keyed on id, tenant_id or
+    // node_id. Without it, "scan the sticker and land in the notebook" is
+    // delivered by nothing.
+    const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
+    const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
     const res = await c.query(
       `SELECT ${NOTEBOOK_COLS},
               (SELECT count(*) FROM equipment_notebook_sources s
                 WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS source_count
          FROM equipment_notebooks n
-        WHERE n.tenant_id = $1::uuid
+        WHERE n.tenant_id = $1::uuid${assetFilter}
         ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC
         LIMIT 100`,
-      [tenantId],
+      args,
     );
     return res.rows.map((r: Record<string, unknown>) =>
       rowToNotebook(r, Number(r.source_count ?? 0)),
@@ -297,6 +306,98 @@ export async function updateNotebook(
 export type BindAssetResult =
   | { ok: true; notebook: EquipmentNotebook }
   | { ok: false; error: "asset_not_found" | "asset_not_equipment" | "asset_not_verified" | "notebook_not_found" | "asset_already_bound"; boundNotebookId?: string };
+
+/**
+ * Open — or create — THE notebook for an asset, in ONE transaction.
+ *
+ * WHY THIS IS NOT create-then-bind.
+ * `withTenantContext` opens a pooled connection and wraps its callback in
+ * BEGIN…COMMIT, and `createNotebook` is exactly one such call. Composing
+ * create-then-bind therefore COMMITS the notebook and its backing kg_entities
+ * row before the bind runs. If the bind then fails — a 422 case, or the
+ * partial-unique index rejecting a concurrent double-tap at the machine — the
+ * result is an orphan notebook plus an orphan kg_entities row whose `name` now
+ * occupies the (tenant, type, name) natural key. The retry then 500s on the
+ * duplicate display name, so the second tap is WORSE than the first. A
+ * technician tapping twice because the first tap seemed slow is not an edge
+ * case; it is what happens at a machine.
+ *
+ * So the asset resolve, both INSERTs and the binding UPDATE all run inside one
+ * callback. A unique violation (23505) is caught INSIDE it and returned as a
+ * conflict — the transaction rolls back and leaves nothing behind.
+ *
+ * `node_id` deliberately stays the notebook's OWN private node with a NULL
+ * uns_path; it is not repointed at the asset's bridge node. `node_id` scopes
+ * DOCUMENTS, `equipment_entity_id` names the MACHINE. Repointing would push
+ * this notebook's chunks into the asset chat's retrieval scope and collide on
+ * the natural key.
+ */
+export type OpenNotebookResult =
+  | { ok: true; created: boolean; notebook: EquipmentNotebook }
+  | { ok: false; error: "asset_not_found" | "asset_not_equipment" | "asset_not_verified" };
+
+export async function createAndBindNotebookTx(
+  tenantId: string,
+  assetRef: string,
+  opts: { selectedVia: AssetSelectionMethod; createdBy?: string | null; displayName?: string | null },
+): Promise<OpenNotebookResult> {
+  return withTenantContext(tenantId, async (c) => {
+    const asset = await c.query(
+      `SELECT entity_id, name, entity_type, approval_state, uns_path::text AS uns_path
+         FROM kg_entities
+        WHERE tenant_id = $1::uuid AND (id::text = $2 OR entity_id = $2)
+        LIMIT 1`,
+      [tenantId, assetRef],
+    );
+    const a = asset.rows[0];
+    if (!a) return { ok: false as const, error: "asset_not_found" as const };
+    if (a.entity_type !== "equipment") return { ok: false as const, error: "asset_not_equipment" as const };
+    if (a.approval_state !== "verified" || !a.uns_path) {
+      return { ok: false as const, error: "asset_not_verified" as const };
+    }
+
+    // Already bound? Return it. This is the common path once the sticker has
+    // been scanned even once, so it comes before any write.
+    const existing = await c.query(
+      `SELECT ${NOTEBOOK_COLS_BARE}
+         FROM equipment_notebooks
+        WHERE tenant_id = $1::uuid AND equipment_entity_id = $2
+        LIMIT 1`,
+      [tenantId, String(a.entity_id)],
+    );
+    if (existing.rows[0]) {
+      return { ok: true as const, created: false, notebook: rowToNotebook(existing.rows[0]) };
+    }
+
+    const name = (opts.displayName ?? String(a.name ?? "").trim() ?? "").trim() || "Equipment notebook";
+
+    try {
+      const node = await c.query(
+        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
+         VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
+         RETURNING id::text AS id`,
+        [name, tenantId],
+      );
+      const created = await c.query(
+        `INSERT INTO equipment_notebooks
+           (tenant_id, display_name, node_id, created_by,
+            equipment_entity_id, asset_selected_via, asset_confirmed_by, asset_confirmed_at)
+         VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, NULL, NULL)
+         RETURNING ${NOTEBOOK_COLS_BARE}`,
+        [tenantId, name, String(node.rows[0].id), opts.createdBy ?? null, String(a.entity_id), opts.selectedVia],
+      );
+      return { ok: true as const, created: true, notebook: rowToNotebook(created.rows[0]) };
+    } catch (err) {
+      // 23505 = unique_violation. Two taps raced; the loser rolls back entirely.
+      // Re-reading here would be inside an aborted transaction, so the caller
+      // re-issues the request and takes the already-bound path above.
+      if ((err as { code?: string }).code === "23505") {
+        throw Object.assign(new Error("notebook_race"), { code: "NOTEBOOK_RACE" });
+      }
+      throw err;
+    }
+  });
+}
 
 export async function bindNotebookAsset(
   tenantId: string,
