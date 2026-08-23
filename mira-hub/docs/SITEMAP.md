@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **68** (11 dynamic) |
+| Pages | **69** (12 dynamic) |
 | API routes | **177** (65 dynamic) |
 
-## Pages (68)
+## Pages (69)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -65,6 +65,7 @@
 | `/requests` | static | `(hub)/requests/page.tsx` |
 | `/requests/new` | static | `(hub)/requests/new/page.tsx` |
 | `/scan` | static | `(hub)/scan/page.tsx` |
+| `/scan/[assetTag]` | dynamic | `scan/[assetTag]/page.tsx` |
 | `/schedule` | static | `(hub)/schedule/page.tsx` |
 | `/settings` | static | `(hub)/settings/page.tsx` |
 | `/settings/audit-log` | static | `(hub)/settings/audit-log/page.tsx` |

@@ -750,6 +750,7 @@ jobs:
           src/lib/__tests__/drive-commander.test.ts
           src/__tests__/printsense-landing.test.ts
           src/lib/__tests__/components.test.ts
+          src/lib/__tests__/hub-handoff.test.ts
 
   architecture-check:
     name: Architecture Check
