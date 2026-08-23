@@ -758,14 +758,20 @@ export async function recordTurn(
     enabledSourceDocIds: string[];
     evidence: unknown[];
     model: string | null;
+    /** 081 snapshot: which asset this specific answer was about. Point-in-time
+     *  and never backfilled — rewriting it when a notebook is rebound would
+     *  destroy the only record of what an answer was actually grounded on. */
+    equipmentEntityId?: string | null;
+    assetUnsPath?: string | null;
   },
 ): Promise<void> {
   await withTenantContext(tenantId, async (c) => {
     await c.query(
       `INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
-          enabled_source_doc_ids, evidence, model)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
+          enabled_source_doc_ids, evidence, model,
+          equipment_entity_id, asset_uns_path)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10)`,
       [
         notebookId,
         tenantId,
@@ -775,8 +781,81 @@ export async function recordTurn(
         JSON.stringify(turn.enabledSourceDocIds),
         JSON.stringify(turn.evidence),
         turn.model,
+        turn.equipmentEntityId ?? null,
+        turn.assetUnsPath ?? null,
       ],
     );
+  });
+}
+
+/**
+ * What asset is this notebook's turn about?
+ *
+ * Three outcomes, and the middle one is why this exists as its own function:
+ *
+ *   unbound      — no asset was ever bound. Today's behaviour, unchanged.
+ *   resolved     — the binding still resolves to a verified equipment node.
+ *   unresolvable — a binding EXISTS but no longer resolves: the asset was
+ *                  deleted, un-verified, or re-seeded under a new key.
+ *
+ * `unresolvable` must fail closed. The tempting alternative — fall back to
+ * "unbound" and answer anyway — is precisely the downgrade
+ * .claude/rules/direct-connection-uns-certified.md forbids: the notebook would
+ * keep displaying the last stored asset name while answering about nothing in
+ * particular. A stale identity that still looks confident is worse than a
+ * refusal.
+ */
+export type ResolvedAsset =
+  | { state: "unbound" }
+  | {
+      state: "resolved";
+      entityId: string;
+      name: string;
+      unsPath: string;
+      selectedVia: AssetSelectionMethod | null;
+      confirmedAt: string | null;
+    }
+  | { state: "unresolvable"; entityId: string };
+
+export async function resolveBoundAsset(
+  tenantId: string,
+  notebookId: string,
+): Promise<ResolvedAsset> {
+  return withTenantContext(tenantId, async (c) => {
+    const nb = await c.query(
+      `SELECT equipment_entity_id, asset_selected_via, asset_confirmed_at
+         FROM equipment_notebooks
+        WHERE tenant_id = $1::uuid AND id = $2::uuid
+        LIMIT 1`,
+      [tenantId, notebookId],
+    );
+    const row = nb.rows[0];
+    if (!row?.equipment_entity_id) return { state: "unbound" as const };
+
+    // Same predicate as bindNotebookAsset — an asset that could not be bound
+    // today must not keep working because it was bound yesterday.
+    const asset = await c.query(
+      `SELECT entity_id, name, uns_path::text AS uns_path
+         FROM kg_entities
+        WHERE tenant_id = $1::uuid
+          AND entity_type = 'equipment'
+          AND entity_id = $2
+          AND approval_state = 'verified'
+          AND uns_path IS NOT NULL
+        LIMIT 1`,
+      [tenantId, String(row.equipment_entity_id)],
+    );
+    const a = asset.rows[0];
+    if (!a) return { state: "unresolvable" as const, entityId: String(row.equipment_entity_id) };
+
+    return {
+      state: "resolved" as const,
+      entityId: String(a.entity_id),
+      name: String(a.name ?? ""),
+      unsPath: String(a.uns_path),
+      selectedVia: (row.asset_selected_via as AssetSelectionMethod) ?? null,
+      confirmedAt: row.asset_confirmed_at ? String(row.asset_confirmed_at) : null,
+    };
   });
 }
 

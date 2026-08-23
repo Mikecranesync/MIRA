@@ -26,7 +26,14 @@ import pool from "@/lib/db";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
+import {
+  getNotebook,
+  listSources,
+  recordTurn,
+  resolveBoundAsset,
+  validateChatSources,
+  type ResolvedAsset,
+} from "@/lib/equipment-notebooks";
 import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
@@ -359,6 +366,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { docIds, nodeId } = validated;
 
+  // Which machine is this turn about? Resolved BEFORE retrieval, so an
+  // unresolvable binding costs nothing: no retrieval SQL, no provider call.
+  const boundAsset: ResolvedAsset = await resolveBoundAsset(ctx.tenantId, notebookId);
+  if (boundAsset.state === "unresolvable") {
+    // Fail closed. Quietly answering as if unbound is the downgrade
+    // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
+    // would keep showing the last stored machine name while answering about
+    // nothing in particular.
+    //
+    // `error` is a sentence and `code` is the discriminator: mira-mobile renders
+    // `data.error` verbatim (client.ts:198-208), so returning only the token
+    // puts the literal string "uns_required" on the technician's phone.
+    return NextResponse.json(
+      {
+        error:
+          "This notebook points at equipment that is no longer available in your account. " +
+          "Re-select the machine before asking about it.",
+        code: "uns_required",
+        notebookId,
+        entityId: boundAsset.entityId,
+      },
+      { status: 422 },
+    );
+  }
+  // Snapshot for every persisted turn, including abstains and safety stops: a
+  // refusal about a specific machine is still a record about that machine.
+  const assetSnapshot =
+    boundAsset.state === "resolved"
+      ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
+      : { equipmentEntityId: null, assetUnsPath: null };
+
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
@@ -370,6 +408,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       enabledSourceDocIds: docIds,
       evidence: [],
       model: null,
+      ...assetSnapshot,
     });
     return safetyStopResponse(safetyTrigger, docIds);
   }
@@ -400,6 +439,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       enabledSourceDocIds: docIds,
       evidence: [],
       model: null,
+      // An abstain about a specific machine is still a record about that
+      // machine — omitting the snapshot here would make "what has MIRA been
+      // asked about this conveyor" silently under-count refusals.
+      ...assetSnapshot,
     });
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -439,10 +482,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
   ]);
   const identity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+  // A bound asset is a stronger identity claim than free-text manufacturer/model,
+  // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
+  // a QR scan proves which sticker was scanned, not which machine wears it, and
+  // the model must never present a scan as a confirmed identity.
+  const assetLine =
+    boundAsset.state === "resolved"
+      ? " Asset: " +
+        (boundAsset.name || "(unnamed)") +
+        " — canonical path " +
+        boundAsset.unsPath +
+        ". " +
+        (boundAsset.confirmedAt
+          ? "Identity CONFIRMED by a technician."
+          : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
+      : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
-    `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.\n` +
+    `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
@@ -700,6 +758,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           enabledSourceDocIds: docIds,
           evidence: emittedCitations,
           model: servedModel,
+          ...assetSnapshot,
         });
       } catch (err) {
         // persistence failure must not break the stream already delivered —
