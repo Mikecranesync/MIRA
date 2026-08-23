@@ -93,3 +93,59 @@ The sticker encodes `https://app.factorylm.com/m/CV-101`. Print from `/assets/pr
 Hub is on 3101, so a scan currently lands on a "Register equipment" page rather than the Hub's
 asset card. Verified live. The sticker itself is correct and permanent
 (`012_qr_permanent_binding.sql`) — do not reprint when the routing is fixed.
+
+---
+
+## 6. Attaching the print set (I6)
+
+```bash
+node tools/dogfood/seed-cv101-notebook-sources.mjs \
+  --base https://app.factorylm.com \
+  --email you@example.test --password '…' \
+  --notebook <the conveyor's notebook uuid>
+```
+
+Attaches three files and refuses to report success unless each one indexed:
+
+| File | Chunks (staging) |
+|---|---|
+| `docs/onboarding/cv-101-evidence/cv101_print.pdf` | 1 |
+| `docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf` | 6 |
+| `plc/conv_simple_electrical/sheets/CV-101_print_set.pdf` | 49 |
+
+**Why a script and not a SQL seed.** Retrieval filters `ingest_route = 'v2'`
+(`manual-rag.ts:506,542`), a value only the real parser writes
+(`node-knowledge-ingest.ts:406`), and `apply-seeds.yml` notes SQL-seeded chunks land with
+`embedding = NULL`. A seeded row would sit in the table looking attached and never be citable —
+failing as silence, which is the worst way for evidence to fail.
+
+**Why not the asset page.** `validateTargetTx` returns `nodeId: null` for `cmms_asset`
+(`workspace-files.ts:396-402`) and the Files route gates indexing on having a node, so a file
+uploaded against an asset parks and never becomes citable. That is what mobile's asset Detail
+upload does today.
+
+**A bare 200 is not success.** The door returns `ok: true, indexed: false` when bytes parked but
+never indexed. The script treats only `indexed: true` as a pass and exits non-zero otherwise.
+
+### Honest limits
+
+- **This does not close [#3218](https://github.com/Mikecranesync/MIRA/issues/3218).** One cited
+  answer is not proof the whole print set is retrievable. It proves the door works and that at
+  least one real passage is reachable.
+- **`cv101_print.pdf` yields exactly one chunk** from a 130 KB single-page drawing. It is mostly
+  vector geometry with a thin text layer, so treat it as a diagram with a caption, not as a
+  searchable document. The 9-sheet `CV-101_print_set.pdf` (49 chunks) is the one that answers
+  questions.
+- The notebook chat path is **online-only**; there is no offline answer.
+
+### Proof (staging, 2026-08-23)
+
+Question: *"What PLC model controls this conveyor and what role does it have"*
+
+> Allen-Brad­ley Micro820 2080-LC20-20QBB is the PLC model, and it serves as the conveyor
+> controller and Modbus RTU master to VFD1 **[1]**
+> — cited to `CV-101_print_set.pdf` p.1
+
+That matches the print's own device schedule row (`PLC1 | plc | Allen-Bradley Micro820
+2080-LC20-20QBB | Conveyor controller; Modbus RTU master`), read out of the PDF independently
+before the question was asked.
