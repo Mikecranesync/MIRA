@@ -18,7 +18,7 @@ import { extractAssetTag } from "./lib/tags";
 import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
-import { NotebooksTab } from "./screens/NotebooksTab";
+import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
 import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
 import { MoreTab } from "./screens/More";
 
@@ -35,6 +35,10 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [tab, setTab] = useState<TabId>("workorders");
   const [assetsRoute, setAssetsRoute] = useState<AssetsRoute>({ name: "list" });
+  // Lifted for the same reason AssetsRoute is: a scan has to switch the tab AND
+  // set the route in one go. Doing only the first drops the technician on the
+  // notebook list, one tap away from the machine they are standing next to.
+  const [notebookRoute, setNotebookRoute] = useState<NotebookRoute>({ name: "home" });
   // Each tab exposes a back-handler ref the shell calls on Android back.
   const backHandler = useRef<(() => boolean) | null>(null);
 
@@ -111,9 +115,20 @@ export default function App() {
       <div className="tabhost">
         {tab === "workorders" && <WorkordersTab me={me} backRef={backHandler} />}
         {tab === "schedule" && <ScheduleTab me={me} backRef={backHandler} />}
-        {tab === "chat" && <NotebooksTab backRef={backHandler} />}
+        {tab === "chat" && (
+          <NotebooksTab backRef={backHandler} route={notebookRoute} setRoute={setNotebookRoute} />
+        )}
         {tab === "assets" && (
-          <AssetsTab route={assetsRoute} setRoute={setAssetsRoute} backRef={backHandler} />
+          <AssetsTab
+            route={assetsRoute}
+            setRoute={setAssetsRoute}
+            backRef={backHandler}
+            openNotebook={(id) => {
+              // Both, together. See the note on notebookRoute above.
+              setNotebookRoute({ name: "notebook", id });
+              setTab("chat");
+            }}
+          />
         )}
         {tab === "more" && (
           <MoreTab

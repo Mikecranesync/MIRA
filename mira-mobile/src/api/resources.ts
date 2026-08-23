@@ -227,6 +227,30 @@ export async function getAssetByTag(tag: string): Promise<Asset | null> {
   return (d as { asset?: Asset })?.asset ?? (d as Asset) ?? null;
 }
 
+/**
+ * Open THE notebook for an asset, creating and binding it on first use.
+ *
+ * Idempotent server-side: a second call returns the same notebook rather than a
+ * second one. Two notebooks on one machine would have disjoint document sets
+ * and split history, and the duplicate is invisible in a list.
+ *
+ * `via` records HOW the machine was chosen — a scan is a selection, never a
+ * confirmation — so the notebook can show identity as unconfirmed until a
+ * human says otherwise.
+ */
+export async function openAssetNotebook(
+  assetId: string,
+  via: "qr" | "nfc" | "asset_picker" | "work_order" | "nameplate" | "manual_entry",
+): Promise<Notebook> {
+  const r = await request(`/api/assets/${encodeURIComponent(assetId)}/notebook/`, {
+    method: "POST",
+    json: { selectedVia: via },
+  });
+  const d = r.data as { notebook?: Notebook };
+  if (!d?.notebook) throw new Error("open_notebook_failed");
+  return d.notebook;
+}
+
 // --- equipment notebooks (NotebookLM-style workspaces; build spec §3–6) -----
 
 export interface Notebook {
