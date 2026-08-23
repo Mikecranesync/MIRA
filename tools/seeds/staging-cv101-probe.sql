@@ -27,10 +27,29 @@
 
 BEGIN;
 
--- equipment_number carries a GLOBAL unique constraint
--- (cmms_equipment_equipment_number_key), so key every statement on it: repair
--- or claim the one CV-101 row (fixes the quoted-tenant row from the bad first
--- apply), else insert it. Idempotent either way.
+-- Every statement keys on equipment_number alone: repair or claim the one
+-- CV-101 row (fixes the quoted-tenant row from the bad first apply), else
+-- insert it. Idempotent either way. The tenant-free predicate IS the repair
+-- mechanism here — do not add a tenant filter, or a mis-tenanted row becomes
+-- unreachable instead of reclaimed.
+--
+-- CORRECTION (2026-08-23): an earlier version of this comment cited a GLOBAL
+-- unique constraint `cmms_equipment_equipment_number_key`. No migration creates
+-- it. What exists is the PER-TENANT partial unique index
+-- `idx_cmms_equipment_number_tenant_unique` (012_qr_permanent_binding.sql:44),
+-- so two tenants may each hold a CV-101 and the singular phrasing above is an
+-- assumption, not a guarantee. The assertion below makes it true at run time
+-- rather than trusting a constraint that was never there.
+DO $$
+DECLARE
+  n integer;
+BEGIN
+  SELECT count(*) INTO n FROM cmms_equipment WHERE equipment_number = 'CV-101';
+  IF n > 1 THEN
+    RAISE EXCEPTION
+      'staging-cv101-probe: % CV-101 rows exist; the tenant-free UPDATE below would claim an arbitrary one. Resolve the duplicate first.', n;
+  END IF;
+END $$;
 UPDATE cmms_equipment
    SET tenant_id = :tenant_id,
        uns_path = 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree,

@@ -27,7 +27,7 @@ on:
           - staging
           - prod
       seeds:
-        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
+        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, dogfood-cv101-identity, all. NOTE: dogfood-cv101-identity is a rig-specific identity repair for the garage CV-101 conveyor and is deliberately NOT part of "all" — pass it by name, with the tenant that owns CV-101. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
         required: true
         default: 'all'
         type: string
