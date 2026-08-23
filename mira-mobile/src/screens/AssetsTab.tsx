@@ -8,6 +8,7 @@ import {
   listAssets,
   getAsset,
   getAssetByTag,
+  openAssetNotebook,
   listWorkOrders,
   listPmSchedules,
   listAssetDocuments,
@@ -20,6 +21,7 @@ import {
   type AssetAttachedDoc,
   type AssetSuggestedDoc,
 } from "../api/resources";
+import { resolveScan, type ScanOutcome } from "../lib/scan-landing";
 import { extractAssetTag } from "../lib/tags";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { FilePreview } from "./FilePreview";
@@ -42,10 +44,14 @@ export function AssetsTab({
   route,
   setRoute,
   backRef,
+  openNotebook,
 }: {
   route: AssetsRoute;
   setRoute: (r: AssetsRoute) => void;
   backRef: MutableRefObject<(() => boolean) | null>;
+  /** Hands the shell a notebook id so a scan lands inside the machine's
+   *  notebook rather than on a read-only asset card whose only action is Back. */
+  openNotebook: (notebookId: string) => void;
 }) {
   backRef.current = () => {
     if (route.name !== "list") {
@@ -76,7 +82,8 @@ export function AssetsTab({
       <TagLanding
         tag={route.tag}
         error={route.error}
-        onOpen={(id) => setRoute({ name: "detail", id })}
+        onOpenNotebook={openNotebook}
+        onOpenAsset={(id) => setRoute({ name: "detail", id })}
         onHome={() => setRoute({ name: "list" })}
       />
     );
@@ -466,37 +473,61 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
   );
 }
 
+/**
+ * Where a scan lands.
+ *
+ * Resolve the tag, then open THE notebook for that machine — the point of
+ * scanning is to ask a question, and an asset card whose only action is Back is
+ * a dead end at the machine.
+ *
+ * Every failure keeps a way forward. A technician standing at a running
+ * conveyor with a blank screen has been failed twice: once by the error, and
+ * again by having nothing to tap.
+ */
 function TagLanding({
   tag,
   error,
-  onOpen,
+  onOpenNotebook,
+  onOpenAsset,
   onHome,
 }: {
   tag: string;
   error?: string;
-  onOpen: (id: string) => void;
+  onOpenNotebook: (notebookId: string) => void;
+  onOpenAsset: (assetId: string) => void;
   onHome: () => void;
 }) {
-  const [state, setState] = useState<"loading" | "notfound" | "failed">("loading");
+  // The decision lives in lib/scan-landing.ts (pure, unit-tested); this
+  // component only renders it.
+  const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
+
   useEffect(() => {
     if (!tag || error) return;
-    setState("loading");
-    void getAssetByTag(tag)
-      .then((a) => {
-        if (a?.id) onOpen(a.id);
-        else setState("notfound");
-      })
-      .catch(() => setState("failed"));
+    let cancelled = false;
+    setOutcome(null);
+    void resolveScan(tag, { getAssetByTag, openAssetNotebook }).then((o) => {
+      if (cancelled) return;
+      if (o.kind === "notebook") onOpenNotebook(o.notebookId);
+      else setOutcome(o);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [tag, error]);
+
   return (
     <div className="content bottompad">
       {error && <div className="empty">{error}</div>}
-      {!error && state === "loading" && <Loading what={`asset ${tag}`} />}
-      {!error && state === "notfound" && (
+      {!error && outcome === null && <Loading what={`asset ${tag}`} />}
+      {!error && outcome?.kind === "notfound" && (
         <Empty text={`No asset with tag “${tag}” in this workspace.`} />
       )}
-      {!error && state === "failed" && (
-        <Empty text="Could not resolve the tag — check connectivity." />
+      {!error && outcome?.kind === "failed" && <Empty text={outcome.message} />}
+      {!error && outcome?.kind === "asset_only" && <Empty text={outcome.message} />}
+      {outcome?.kind === "asset_only" && (
+        <button onClick={() => onOpenAsset(outcome.assetId)} style={{ marginTop: 16 }}>
+          Open asset
+        </button>
       )}
       <button onClick={onHome} style={{ marginTop: 16 }}>
         Continue

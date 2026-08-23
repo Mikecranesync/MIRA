@@ -14,10 +14,11 @@ import { ApiError } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
 
-type Route =
+export type NotebookRoute =
   | { name: "home" }
   | { name: "create"; candidate?: NameplateCandidate }
   | { name: "notebook"; id: string; openAddSources?: boolean };
+type Route = NotebookRoute;
 
 /** Deterministic cover color per notebook (category tiles, spec §8.2). */
 export function coverClass(nb: Pick<Notebook, "id" | "equipmentType">): string {
@@ -40,10 +41,16 @@ export function coverGlyph(equipmentType: string | null): string {
 
 export function NotebooksTab({
   backRef,
+  route,
+  setRoute,
 }: {
   backRef: MutableRefObject<(() => boolean) | null>;
+  /** Lifted to the shell so a scan can land INSIDE a notebook: switching the
+   *  tab and setting the route must happen together, or the technician lands on
+   *  the notebook LIST instead of the machine they just scanned. */
+  route: Route;
+  setRoute: (r: Route) => void;
 }) {
-  const [route, setRoute] = useState<Route>({ name: "home" });
   const notebookBack = useRef<(() => boolean) | null>(null);
 
   backRef.current = () => {
