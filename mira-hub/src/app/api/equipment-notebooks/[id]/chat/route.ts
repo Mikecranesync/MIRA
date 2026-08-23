@@ -27,6 +27,7 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
+import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -58,6 +59,7 @@ import {
 import type {
   EvidenceCitation,
   NotebookContentFrame,
+  NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
 } from "@/lib/notebook-chat-types";
@@ -69,7 +71,12 @@ const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specif
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
 - Lead with the direct answer in the FIRST sentence: the parameter number, terminal number, fault meaning, value, or action. e.g. "P042 [Decel Time 1] sets the deceleration ramp [1]."
 - Then at most one or two short sentences of explanation. Stop there.
-- Do NOT open with background, safety boilerplate, or a restatement of the question.
+- Do NOT open with background, generic safety boilerplate, or a restatement of the question.
+
+ENERGY STATE — this rule outranks brevity:
+- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus verified at 0 V, check continuity across terminals 07-08 [2]."
+- Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
+- Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
 
 GROUNDING & CITATIONS:
 - Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
@@ -251,6 +258,45 @@ function sse(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
 
+/**
+ * The streamed safety hard-stop. Same frame grammar as every other notebook
+ * turn — `sources` (empty) → `content`… → `safety` → `status` → `[DONE]` — so a
+ * client that knows nothing about safety still renders it as an ordinary,
+ * complete answer rather than breaking on an unfamiliar shape.
+ *
+ * Content is chunked by word to match the streaming cadence of a normal answer;
+ * a single blob arrives as a jarring instant wall of text next to every other
+ * reply the technician has seen.
+ */
+function safetyStopResponse(trigger: string, docIds: string[]): Response {
+  const enc = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
+      controller.enqueue(enc.encode(sse(sources)));
+      for (const word of SAFETY_STOP.split(" ")) {
+        const frame: NotebookContentFrame = { kind: "content", content: word + " " };
+        controller.enqueue(enc.encode(sse(frame)));
+      }
+      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
+      controller.enqueue(enc.encode(sse(safety)));
+      const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+      controller.enqueue(enc.encode(sse(status)));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      // Observability parity with the asset- and node-chat routes.
+      "X-Safety-Stop": trigger,
+    },
+  });
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -273,10 +319,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // retrieves on the thread's subject instead of its own thin words.
   const history = sanitizeHistory(body.history);
 
+  // SAFETY HARD-STOP. Evaluated here, before retrieval and before any provider
+  // call, because this notebook is the surface a technician uses while standing
+  // at a running machine — and it is the one chat route in the Hub that had no
+  // guardrail at all. The asset- and node-chat routes already stop here; this
+  // reuses their classifier rather than adding a second policy, which keeps the
+  // educational carve-out ("what is arc flash?" is a question, not a hazard
+  // report) that a fresh keyword list would silently lose.
+  const safetyTrigger = matchSafetyStop(message);
+
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
   const validated = await validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []);
   if (!validated.ok) {
+    // "Smoke is coming from the panel" in a notebook with nothing attached must
+    // not be answered with a filing complaint. `no_sources_selected` already
+    // proves the notebook exists and belongs to this tenant (the resolver
+    // returns `notebook_not_found` otherwise), so the stop is safe to serve and
+    // safe to persist here.
+    if (safetyTrigger && validated.error === "no_sources_selected") {
+      await recordTurn(ctx.tenantId, notebookId, {
+        question: message,
+        answerStatus: "answered",
+        answerText: SAFETY_STOP,
+        enabledSourceDocIds: [],
+        evidence: [],
+        model: null,
+      });
+      return safetyStopResponse(safetyTrigger, []);
+    }
     const status =
       validated.error === "notebook_not_found"
         ? 404
@@ -287,6 +358,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const { docIds, nodeId } = validated;
+
+  // The stop is persisted like any other turn so it survives the technician
+  // switching devices mid-incident — spec §10 requires the warning to be
+  // retained on resume, and a warning that lives only in a stream is not.
+  if (safetyTrigger) {
+    await recordTurn(ctx.tenantId, notebookId, {
+      question: message,
+      answerStatus: "answered",
+      answerText: SAFETY_STOP,
+      enabledSourceDocIds: docIds,
+      evidence: [],
+      model: null,
+    });
+    return safetyStopResponse(safetyTrigger, docIds);
+  }
+
   const retrievalQuery = buildRetrievalQuery(message, history);
   const chunks = await withTenantContext(ctx.tenantId, (client) =>
     retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
