@@ -519,3 +519,27 @@ describe("binary transport", () => {
     );
   });
 });
+
+describe("candidateAction — the field-reported dead end", () => {
+  it("promotes the file when the server actually imported one", async () => {
+    const { candidateAction } = await import("../nameplate-flow");
+    expect(candidateAction({ fileId: "f1" } as never)).toBe("accept");
+  });
+
+  it("offers upload when the server only found a link it would not import", async () => {
+    const { candidateAction } = await import("../nameplate-flow");
+    // The Siemens TP700 case: a candidate URL surfaced for review, no file.
+    // Before the fix this rendered a disabled "Use this manual" that looked
+    // enabled, and there was no other action on the screen.
+    expect(candidateAction({ fileId: null } as never)).toBe("upload");
+    expect(candidateAction(null)).toBe("upload");
+    expect(candidateAction(undefined)).toBe("upload");
+  });
+
+  it("never returns accept without a file — a promote with nothing to promote", async () => {
+    const { candidateAction } = await import("../nameplate-flow");
+    for (const bad of [null, undefined, {}, { fileId: "" }] as never[]) {
+      expect(candidateAction(bad)).toBe("upload");
+    }
+  });
+});

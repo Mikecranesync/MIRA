@@ -1035,6 +1035,13 @@ function AddSourcesSheet({
               setPhoto(null);
               setMode("menu");
             }}
+            onUploadInstead={() => {
+              setPhoto(null);
+              setMode("menu");
+              // Next tick: the picker must open after this flow unmounts, or the
+              // input click is swallowed by the screen that is going away.
+              setTimeout(() => fileRef.current?.click(), 0);
+            }}
           />
         )}
         <input

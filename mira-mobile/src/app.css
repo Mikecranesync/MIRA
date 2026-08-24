@@ -58,6 +58,47 @@ button, .btn {
   color: var(--flm-btn-primary-fg);
   font-weight: 600;
 }
+
+/* A disabled button MUST look disabled.
+ *
+ * Reported from real use on a Pixel: the nameplate flow's "Use this manual"
+ * button is disabled when MIRA found a candidate URL but could not download
+ * the file — and it rendered as a solid, high-contrast primary button, exactly
+ * like the live one. The technician tapped it repeatedly and concluded the app
+ * was stuck, which is the correct conclusion to draw from what was on screen.
+ *
+ * This is global on purpose: the same trap existed on every disabled button in
+ * the app (Send with an empty composer, and any future one), because nothing
+ * styled :disabled at all. */
+button:disabled,
+a.btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The candidate manual's URL, as something a technician can actually open.
+ * Styled as an obvious tap target, not a run of unreadable text — verifying
+ * the document IS the job of this screen. */
+.candidate-link {
+  display: block;
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  min-height: 44px;
+  border: 1px solid var(--fl-accent);
+  border-radius: var(--fl-radius);
+  background: var(--fl-surface);
+  color: var(--fl-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.candidate-link-url {
+  display: block;
+  margin-top: 4px;
+  color: var(--fl-ink-muted);
+  font-weight: 400;
+  font-size: 12px;
+  word-break: break-all;
+}
 .btn-link { border: none; background: none; width: auto; color: var(--fl-accent); padding: 0; min-height: 44px; }
 
 input {
