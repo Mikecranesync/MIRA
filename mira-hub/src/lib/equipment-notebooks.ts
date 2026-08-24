@@ -15,6 +15,12 @@ import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
+import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
+
+/** Short disambiguator for an internal backing-node name. Never user-facing. */
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 export type IdentityStatus = "unknown" | "candidate" | "user_confirmed" | "verified";
 export type MatchState = "candidate" | "user_confirmed" | "verified" | "rejected";
@@ -173,11 +179,19 @@ export async function createNotebook(
   return withTenantContext(tenantId, async (c) => {
     // Backing node — approval_state MUST be pinned 'verified' or chat 404s
     // (audit trap #6; the migration-set default is contradictory).
-    const node = await c.query(
+    //
+    // Savepoint-fenced for the same reason as createAndBindNotebookTx: this
+    // name shares the kg_entities natural key with every asset identity node
+    // and every other notebook's backing node, so a technician naming a
+    // notebook after a machine they own would otherwise 500. The suffix is
+    // internal — display_name is what gets read.
+    const node = await insertWithUniqueFallback<{ id: string }>(
+      c,
       `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
        VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
        RETURNING id::text AS id`,
       [name, tenantId],
+      [`${name} · notebook ${randomSuffix()}`, tenantId],
     );
     const nodeId = String(node.rows[0].id);
     const res = await c.query(
@@ -393,13 +407,29 @@ export async function createAndBindNotebookTx(
 
     const name = (opts.displayName ?? String(a.name ?? "").trim() ?? "").trim() || "Equipment notebook";
 
+    // The backing node competes for the kg_entities natural key
+    // (tenant_id, entity_type, name) with the ASSET'S OWN identity node, which
+    // is also entity_type='equipment' and carries the same human name — see
+    // lib/knowledge-graph/asset-bridge.ts. Before assets had identity nodes the
+    // name was always free; now a first, uncontended tap collided and this
+    // block's blanket 23505 handler reported it as NOTEBOOK_RACE, so the
+    // technician got "Another request just opened this notebook. Try again."
+    // forever — retrying cannot help, the name is still taken.
+    //
+    // So the backing node gets its own savepoint-fenced fallback, and only the
+    // equipment_notebooks insert below still means a genuine double-tap. The
+    // fallback name is internal: node_id scopes DOCUMENTS, while the notebook's
+    // display_name (unchanged) is what a technician actually reads.
+    const node = await insertWithUniqueFallback<{ id: string }>(
+      c,
+      `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
+       VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
+       RETURNING id::text AS id`,
+      [name, tenantId],
+      [`${name} · notebook ${String(a.bind_key).slice(0, 8)}`, tenantId],
+    );
+
     try {
-      const node = await c.query(
-        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
-         VALUES ('equipment', $1, NULL, $2::uuid, 'verified')
-         RETURNING id::text AS id`,
-        [name, tenantId],
-      );
       const created = await c.query(
         `INSERT INTO equipment_notebooks
            (tenant_id, display_name, node_id, created_by,

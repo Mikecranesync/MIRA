@@ -62,6 +62,26 @@ async function createAsset(client: PoolClient, tag: string, manufacturer = "Alle
 
 let client: PoolClient;
 
+/**
+ * Every real caller runs inside `withTenantContext`, which opens an explicit
+ * transaction — and that is what makes the SAVEPOINT fallback both necessary
+ * and legal. Running these calls in autocommit instead would let a plain retry
+ * "work" and hide the production failure, which is exactly how the first
+ * version of this suite passed while production returned 409.
+ */
+async function inTx<T>(fn: () => Promise<T>): Promise<T> {
+  await client.query("BEGIN");
+  try {
+    const out = await fn();
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+
 beforeAll(async () => {
   if (!process.env.TEST_DATABASE_URL) {
     throw new Error("TEST_DATABASE_URL is required — see this file's header.");
@@ -94,12 +114,12 @@ describe("the bridge, against the real schema", () => {
   it("makes that same asset one the notebook route accepts", async () => {
     const assetId = await createAsset(client, "CV-301");
 
-    const res = await mintAssetBridgeNode(client, TENANT, {
+    const res = await inTx(() => mintAssetBridgeNode(client, TENANT, {
       assetId,
       tag: "CV-301",
       description: "Discharge Conveyor",
       manufacturer: "Allen-Bradley",
-    });
+    }));
     expect(res).toMatchObject({ ok: true, created: true, unsPath: "enterprise.main_site.cv_301" });
 
     const verdict = await notebookWouldOpen(client, assetId);
@@ -135,7 +155,7 @@ describe("the bridge, against the real schema", () => {
     );
     const assetId = await createAsset(client, "CV-303");
 
-    const res = await mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-303" });
+    const res = await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-303" }));
 
     expect(res).toMatchObject({ ok: true, unsPath: "enterprise.acme.bottling_1.cv_303" });
     const sites = await client.query(
@@ -151,8 +171,8 @@ describe("the bridge, against the real schema", () => {
     const first = await createAsset(client, "CV-304");
     const second = await createAsset(client, "CV-305");
 
-    const a = await mintAssetBridgeNode(client, TENANT, { assetId: first, tag: "CV-304", description: "Discharge Conveyor" });
-    const b = await mintAssetBridgeNode(client, TENANT, { assetId: second, tag: "CV-305", description: "Discharge Conveyor" });
+    const a = await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId: first, tag: "CV-304", description: "Discharge Conveyor" }));
+    const b = await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId: second, tag: "CV-305", description: "Discharge Conveyor" }));
 
     expect(a).toMatchObject({ ok: true, created: true });
     expect(b).toMatchObject({ ok: true, created: true });
@@ -169,8 +189,8 @@ describe("the bridge, against the real schema", () => {
   it("is idempotent — a retried create does not double-bridge", async () => {
     const assetId = await createAsset(client, "CV-306");
 
-    await mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-306", description: "Discharge Conveyor" });
-    const again = await mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-306", description: "Discharge Conveyor" });
+    await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-306", description: "Discharge Conveyor" }));
+    const again = await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-306", description: "Discharge Conveyor" }));
 
     expect(again).toMatchObject({ ok: true, created: false });
     const rows = await client.query(
@@ -183,8 +203,8 @@ describe("the bridge, against the real schema", () => {
   it("reconciles onto the default site rather than duplicating it", async () => {
     const a = await createAsset(client, "CV-307");
     const b = await createAsset(client, "CV-308");
-    await mintAssetBridgeNode(client, TENANT, { assetId: a, tag: "CV-307" });
-    await mintAssetBridgeNode(client, TENANT, { assetId: b, tag: "CV-308" });
+    await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId: a, tag: "CV-307" }));
+    await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId: b, tag: "CV-308" }));
 
     const sites = await client.query(
       `SELECT count(*)::int AS n FROM kg_entities WHERE tenant_id = $1::uuid AND entity_type = 'site'`,
@@ -195,7 +215,7 @@ describe("the bridge, against the real schema", () => {
 
   it("backfills the asset row's own uns_path, and never overwrites one", async () => {
     const assetId = await createAsset(client, "CV-309");
-    const res = await mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-309" });
+    const res = await inTx(() => mintAssetBridgeNode(client, TENANT, { assetId, tag: "CV-309" }));
     if (!res.ok) throw new Error("bridge failed");
 
     await backfillAssetUnsPath(client, TENANT, assetId, res.unsPath);

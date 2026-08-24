@@ -53,6 +53,7 @@
 
 import type { PoolClient } from "pg";
 import { equipmentPath, sitePath, slugify } from "@/lib/uns";
+import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 import { resolveTenantParentPath } from "./cmms-sync";
 
 /**
@@ -183,26 +184,23 @@ export async function mintAssetBridgeNode(
     model_number: input.model ?? null,
   });
 
-  const insert = (name: string) =>
-    client.query<{ id: string }>(
-      `INSERT INTO kg_entities
-         (tenant_id, entity_type, entity_id, name, properties, uns_path, approval_state)
-       VALUES ($1::uuid, 'equipment', $2, $3, $4::jsonb, $5::ltree, 'verified')
-       RETURNING id::text AS id`,
-      [tenantId, input.assetId, name, properties, unsPath],
-    );
-
   // `name` renders as the machine's title on the scan card, so prefer the
   // human description and fall back to a tag-qualified name only when taken.
+  // The fallback MUST be savepoint-fenced: this runs inside the asset-create
+  // transaction, where a 23505 aborts everything and a plain retry would die
+  // with "current transaction is aborted" instead.
   const preferred = base || input.tag;
-  try {
-    const res = await insert(preferred);
-    return { ok: true as const, created: true, nodeId: res.rows[0].id, unsPath };
-  } catch (err) {
-    if ((err as { code?: string })?.code !== "23505") throw err;
-    const res = await insert(base ? `${base} (${input.tag})` : input.tag);
-    return { ok: true as const, created: true, nodeId: res.rows[0].id, unsPath };
-  }
+  const fallback = base ? `${base} (${input.tag})` : input.tag;
+  const res = await insertWithUniqueFallback<{ id: string }>(
+    client,
+    `INSERT INTO kg_entities
+       (tenant_id, entity_type, entity_id, name, properties, uns_path, approval_state)
+     VALUES ($1::uuid, 'equipment', $2, $3, $4::jsonb, $5::ltree, 'verified')
+     RETURNING id::text AS id`,
+    [tenantId, input.assetId, preferred, properties, unsPath],
+    [tenantId, input.assetId, fallback, properties, unsPath],
+  );
+  return { ok: true as const, created: true, nodeId: res.rows[0].id, unsPath };
 }
 
 /**
