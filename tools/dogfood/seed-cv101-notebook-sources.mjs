@@ -167,7 +167,20 @@ console.log(`asset:    ${TAG} → ${asset.id}${asset.name ? ` (${asset.name})` :
 const nbRes = await api(`/api/assets/${asset.id}/notebook/`, POST({ selectedVia: "asset_picker" }));
 const nbBody = await json(nbRes);
 const NOTEBOOK = nbBody?.notebook?.id;
-if (!NOTEBOOK) die(`FAIL: could not open the notebook for ${TAG} (HTTP ${nbRes.status}).`, 1);
+if (!NOTEBOOK) {
+  // Name the likely cause rather than the status code. `by-tag` reads
+  // cmms_equipment; this route resolves against kg_entities (matching id OR
+  // entity_id, and requiring approval_state='verified' with a uns_path). An
+  // asset created through the Hub UI has a cmms_equipment row and NO kg_entities
+  // bridge row, so this 404s — the same 404 a genuinely missing asset gives.
+  // CV-101 works only because the dogfood identity seed built its bridge row.
+  const hint =
+    nbRes.status === 404
+      ? `\n  ${TAG} exists in cmms_equipment (${asset.id}) but the notebook route resolves` +
+        `\n  against kg_entities. Most likely there is no verified bridge row for this asset.`
+      : "";
+  die(`FAIL: could not open the notebook for ${TAG} — HTTP ${nbRes.status} ${nbBody?.error ?? ""}${hint}`, 1);
+}
 console.log(`notebook: ${NOTEBOOK}${nbBody.created ? " (created)" : ""}`);
 
 // --- attach ----------------------------------------------------------------
