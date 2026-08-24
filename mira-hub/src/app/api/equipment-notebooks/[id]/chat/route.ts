@@ -66,6 +66,7 @@ import {
 import type {
   EvidenceCitation,
   NotebookContentFrame,
+  NotebookEvidenceFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
@@ -101,6 +102,33 @@ PRECISION RULES:
 - If the excerpts only partially cover the topic and the authoritative detail is likely in a fuller manual, answer what you found and note the complete specification may be in the full user manual.
 
 MACHINE OVERVIEW — if asked what you know about the machine, or for an overview: state the equipment identity (manufacturer/model), the documents currently loaded and what they cover, and any coverage limitation. Do NOT merely summarize the first excerpt.`;
+
+/**
+ * General mode (spec §1.1 Universal Technician Rule). Used ONLY when the client
+ * explicitly asks for `mode: "general"`, and never mixed with excerpts — the
+ * whole point is that the technician can tell the two apart.
+ *
+ * The hard rule in this prompt is the bracket ban. `BASE_SYSTEM_PROMPT` teaches
+ * the model to cite as `[1]`, and the mobile client renders `[n]` as a citation
+ * chip. A general answer has no sources, so a stray `[1]` would render as a
+ * chip pointing at nothing — model reasoning wearing the costume of an OEM
+ * citation, which is exactly what §1.3 forbids. The route also strips any that
+ * survive; this is the first of the two guards, not the only one.
+ */
+const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
+
+ANSWER SHAPE — the technician needs something they can act on:
+- Lead with the most likely cause or the first thing to check, in the FIRST sentence.
+- Then a short ordered list of checks, cheapest and safest first.
+- Ask a diagnostic question when one answer would genuinely change your advice. Ask at most one.
+- Keep it under about 150 words.
+
+HONESTY:
+- You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Say what it typically is and that it must be verified against the unit's own manual.
+- If the question genuinely cannot be answered without model-specific documentation, say that plainly and say which document would settle it.
+- NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
+
+SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -177,6 +205,45 @@ async function buildCitations(
  *  instead of `[3]`. Normalize to `[n]` so the UI renders clickable chips and
  *  citation-entailment can match. Streaming-safe: a delta that ends mid-marker
  *  (an open `【` with no closing `】`) is held back until the marker completes. */
+/**
+ * General-mode citation-marker STRIPPER (spec §1.3).
+ *
+ * A general answer has no sources, so a `[1]` it emits anyway points at nothing
+ * — and mira-mobile renders `[n]` as a citation chip, so it would appear as
+ * documentary proof that does not exist. The system prompt forbids the markers;
+ * this removes any that survive.
+ *
+ * Streaming-safe for the same reason makeCitationNormalizer is: a marker can be
+ * split across deltas (`[` then `1]`). A trailing partial `[` or `[12` is held
+ * back rather than emitted, so it can never escape as visible text.
+ */
+export function makeGeneralBracketStripper(): { push: (delta: string) => string; flush: () => string } {
+  let pending = "";
+  return {
+    push(delta: string): string {
+      const buf = pending + delta;
+      // Drop any COMPLETE marker, along with whitespace immediately before it.
+      let out = buf.replace(/[ 	]*\[\d+\]/g, "");
+      // Hold back a trailing partial marker ("[", "[1", "[12") — it may complete
+      // on the next delta.
+      const partial = out.match(/[ 	]*\[\d*$/);
+      if (partial) {
+        pending = partial[0];
+        out = out.slice(0, out.length - partial[0].length);
+      } else {
+        pending = "";
+      }
+      return out;
+    },
+    flush(): string {
+      // Whatever is still held back never completed, so it was not a marker.
+      const rest = pending;
+      pending = "";
+      return rest;
+    },
+  };
+}
+
 export function makeCitationNormalizer(): { push: (delta: string) => string; flush: () => string } {
   let pending = "";
   return {
@@ -309,12 +376,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
-  let body: { message?: string; sourceDocIds?: string[]; history?: unknown };
+  let body: { message?: string; sourceDocIds?: string[]; history?: unknown; mode?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
+  // Spec §1.1 — a technician with nothing configured must still get help, and
+  // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
+  // grounding. So general mode is opt-in per turn: the client asks for it, the
+  // answer is labelled, and it can carry no citations. Grounded mode below is
+  // untouched; with zero chunks it still abstains without calling a provider.
+  const general = body.mode === "general";
   const message = (body.message ?? "").trim();
   if (!message) return NextResponse.json({ error: "message_required" }, { status: 400 });
   if (message.length > 4000) {
@@ -355,16 +428,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
       return safetyStopResponse(safetyTrigger, []);
     }
-    const status =
-      validated.error === "notebook_not_found"
-        ? 404
-        : validated.error === "no_sources_selected"
-          ? 422
-          : 403;
-    return NextResponse.json({ error: validated.error }, { status });
+    // A notebook with nothing attached is exactly the case the Universal
+    // Technician Rule exists for: the technician is standing at a machine with
+    // no manual loaded and still needs help.
+    //
+    // OWNERSHIP MUST BE PROVEN HERE, EXPLICITLY. `no_sources_selected` is
+    // returned from an early `requestedDocIds.length === 0` check that never
+    // touches the database, so — contrary to the comment on the safety-stop
+    // branch above — it does NOT establish that this notebook belongs to the
+    // caller. Letting it stand in for ownership would let any notebook id spend
+    // this tenant's provider budget. getNotebook() is tenant-scoped.
+    if (general && validated.error === "no_sources_selected") {
+      if (!(await getNotebook(ctx.tenantId, notebookId))) {
+        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+      }
+    } else {
+      const status =
+        validated.error === "notebook_not_found"
+          ? 404
+          : validated.error === "no_sources_selected"
+            ? 422
+            : 403;
+      return NextResponse.json({ error: validated.error }, { status });
+    }
   }
 
-  const { docIds, nodeId } = validated;
+  // Grounded mode keeps the validated doc set as its boundary. General mode
+  // deliberately has none: it retrieves nothing, so there is nothing to scope.
+  const docIds: string[] = validated.ok ? validated.docIds : [];
+  const nodeId = validated.ok ? validated.nodeId : null;
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
@@ -414,7 +506,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const retrievalQuery = buildRetrievalQuery(message, history);
-  const chunks = await withTenantContext(ctx.tenantId, (client) =>
+  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
+  // `nodeId === null` arm is the same case — only the general path can reach
+  // here without `validated.ok`, since every other branch returned above.
+  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
     retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
       nodeId,
       unsPath: null, // notebook nodes are standalone; scope is the doc set
@@ -430,7 +525,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const enc = new TextEncoder();
 
-  if (chunks.length === 0) {
+  // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
+  // is the one path allowed past this gate. Gate G itself is unchanged: with
+  // sources selected and nothing retrieved, MIRA still refuses without calling
+  // a provider.
+  if (chunks.length === 0 && !general) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     await recordTurn(ctx.tenantId, notebookId, {
       question: message,
@@ -534,7 +633,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } else if (classifyBroad(message).broad) {
     coverageDirective = `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`;
   }
-  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + coverageDirective;
+  const systemPrompt = general
+    ? GENERAL_SYSTEM_PROMPT + machineContext
+    : appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + coverageDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -558,6 +659,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // only its supporting evidence (no retrieved-but-unused pages as proof).
       const responseBuffer: string[] = [];
       const normalize = makeCitationNormalizer();
+      // Only used in general mode; constructing it unconditionally keeps the
+      // grounded delta path byte-identical to before.
+      const stripBrackets = makeGeneralBracketStripper();
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -647,7 +751,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 if (parsed.usage) rawUsage = parsed.usage;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
-                  const norm = normalize.push(delta);
+                  const norm = general ? stripBrackets.push(normalize.push(delta)) : normalize.push(delta);
                   if (norm) {
                     responseBuffer.push(norm);
                     const frame: NotebookContentFrame = { kind: "content", content: norm };
@@ -669,7 +773,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
           }
           if (responseBuffer.length > 0) {
-            const tail = normalize.flush();
+            const tail = general
+              ? stripBrackets.push(normalize.flush()) + stripBrackets.flush()
+              : normalize.flush();
             if (tail) {
               responseBuffer.push(tail);
               controller.enqueue(enc.encode(sse({ kind: "content", content: tail } as NotebookContentFrame)));
@@ -706,13 +812,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
-      const answerText = responseBuffer.join("");
+      let answerText = responseBuffer.join("");
 
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as
       // insufficient_evidence; a grounded answer ships only the [n] it used.
       const refused = served && isRefusal(answerText);
-      const emittedCitations = !served || refused ? [] : citationsUsedInAnswer(answerText, citations);
+      // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
+      // sources, so any [n] the model emitted anyway points at nothing and would
+      // render as a citation chip in mira-mobile. Strip the markers rather than
+      // ship a chip that resolves to no document.
+      if (general) answerText = answerText.replace(/\s*\[\d+\]/g, "");
+      const emittedCitations =
+        general || !served || refused ? [] : citationsUsedInAnswer(answerText, citations);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
@@ -725,6 +837,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         sourceSnapshot: docIds,
       };
       controller.enqueue(enc.encode(sse(sourcesFrame)));
+
+      // Evidence basis (spec §1.3) — emitted before `status` so a client that
+      // stops at `status` has still received it, same discipline as `usage`.
+      // Says out loud what the answer rests on, so general reasoning can never
+      // be mistaken for a manual.
+      const evidenceFrame: NotebookEvidenceFrame = general
+        ? {
+            kind: "evidence",
+            basis: "general_reasoning",
+            label: "General guidance — not grounded in this machine's documents.",
+          }
+        : {
+            kind: "evidence",
+            basis: "oem_documentation",
+            label: "Grounded in this notebook's sources.",
+          };
+      controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
         answerStatus === "answered"

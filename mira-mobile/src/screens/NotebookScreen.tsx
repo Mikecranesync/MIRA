@@ -454,6 +454,15 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {/* Evidence basis (spec 1.3). Rendered only for a general answer:
+                    a grounded one already shows its citation chips, and a second
+                    badge saying "grounded" would be noise. Silence here never
+                    means "trust it" — an unlabelled answer shows its chips. */}
+                {t.a.evidenceBasis === "general_reasoning" && (
+                  <div className="evidence-basis-general">
+                    {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
+                  </div>
+                )}
                 <div>
                   {t.a.citations.map((c) => (
                     <button
@@ -474,9 +483,10 @@ export function NotebookScreen({
           </div>
           <div className="composer">
             <input
-              placeholder={scope.length === 0 ? "Add a source to start" : "Ask a question…"}
+              placeholder={
+                scope.length === 0 ? "Ask anything — no manual loaded yet" : "Ask a question…"
+              }
               value={q}
-              disabled={scope.length === 0}
               onChange={(e) => setQ(e.target.value)}
             />
             <span className="counter">
@@ -484,14 +494,18 @@ export function NotebookScreen({
             </span>
             <button
               className="btn-primary"
-              disabled={busy || !q.trim() || scope.length === 0}
+              disabled={busy || !q.trim()}
               onClick={async () => {
                 const question = q.trim();
                 setQ("");
                 setBusy(true);
                 setChatError(null);
                 try {
-                  const a = await askNotebook(id, question, scope);
+                  // With no source attached the only honest answer is a general
+                  // one, and the server labels it as such. With sources present
+                  // this stays the strict grounded path — the mode is never sent
+                  // as a fallback when retrieval comes back empty.
+                  const a = await askNotebook(id, question, scope, scope.length === 0 ? "general" : undefined);
                   setLiveTurns((t) => [...t, { q: question, a }]);
                 } catch (e) {
                   setChatError(e);

@@ -20,6 +20,12 @@ export interface ChatTurn {
   answer: string;
   citations: ChatCitation[];
   status: string;
+  /** Evidence basis (spec 1.3). Absent on older servers -> render nothing
+   *  rather than guessing; an unlabelled answer must never be presented as
+   *  grounded. */
+  evidenceBasis?: string;
+  /** One-sentence caption the server supplies for the badge. */
+  evidenceLabel?: string;
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -46,6 +52,8 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
   let answer = "";
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
+  let evidenceBasis: string | undefined;
+  let evidenceLabel: string | undefined;
   for (const block of body.split("\n\n")) {
     const line = block.trim();
     if (!line.startsWith("data:")) continue;
@@ -57,9 +65,13 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
       else if (frame.kind === "sources")
         citations = normalizeCitations(frame.citations);
       else if (frame.kind === "status") status = String(frame.status ?? "");
+      else if (frame.kind === "evidence") {
+        evidenceBasis = String(frame.basis ?? "");
+        evidenceLabel = String(frame.label ?? "");
+      }
     } catch {
       /* keep parsing subsequent frames */
     }
   }
-  return { answer, citations, status };
+  return { answer, citations, status, evidenceBasis, evidenceLabel };
 }

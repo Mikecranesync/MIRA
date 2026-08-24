@@ -74,12 +74,49 @@ export type NotebookSafetyFrame = {
   trigger: string;
 };
 
+/**
+ * What kind of evidence this answer rests on — the evidence ladder from the
+ * technician-app spec §1.3.
+ *
+ * The technician must never have to guess whether "check the DC bus capacitors"
+ * came from the drive's manual or from the model's general knowledge of drives.
+ * Both are legitimate; presenting them identically is not.
+ *
+ * Only `general_reasoning` and `oem_documentation` are emitted today. The rest
+ * are declared here so the ladder has one vocabulary from the start rather than
+ * a second one bolted on when machine history and live signals arrive.
+ */
+export type EvidenceBasis =
+  | "general_reasoning"
+  | "identified_component"
+  | "oem_documentation"
+  | "workspace_evidence"
+  | "machine_history"
+  | "live_machine_evidence";
+
+/**
+ * Emitted once per turn, before `status`, naming the answer's evidentiary
+ * basis. Additive: existing clients ignore unknown frame kinds, which is the
+ * precedent `usage` and `safety` set — no migration, no coordinated release.
+ *
+ * A `general_reasoning` turn MUST carry zero citations. That invariant is what
+ * keeps the universal door from quietly becoming a way to launder model
+ * reasoning as an OEM citation (spec §1.3, §1.4).
+ */
+export type NotebookEvidenceFrame = {
+  kind: "evidence";
+  basis: EvidenceBasis;
+  /** One short sentence the UI may render verbatim as a badge/caption. */
+  label: string;
+};
+
 export type NotebookChatFrame =
   | NotebookSourcesFrame
   | NotebookContentFrame
   | NotebookStatusFrame
   | NotebookSafetyFrame
-  | NotebookUsageFrame;
+  | NotebookUsageFrame
+  | NotebookEvidenceFrame;
 
 export function parseFrame(data: string): NotebookChatFrame | null {
   try {
