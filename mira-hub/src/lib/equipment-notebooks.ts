@@ -362,7 +362,8 @@ export async function createAndBindNotebookTx(
 ): Promise<OpenNotebookResult> {
   return withTenantContext(tenantId, async (c) => {
     const asset = await c.query(
-      `SELECT entity_id, name, entity_type, approval_state, uns_path::text AS uns_path
+      `SELECT coalesce(entity_id, id::text) AS bind_key,
+              name, entity_type, approval_state, uns_path::text AS uns_path
          FROM kg_entities
         WHERE tenant_id = $1::uuid AND (id::text = $2 OR entity_id = $2)
         LIMIT 1`,
@@ -384,7 +385,7 @@ export async function createAndBindNotebookTx(
          FROM equipment_notebooks
         WHERE tenant_id = $1::uuid AND equipment_entity_id = $2
         LIMIT 1`,
-      [tenantId, String(a.entity_id)],
+      [tenantId, String(a.bind_key)],
     );
     if (existing.rows[0]) {
       return { ok: true as const, created: false, notebook: rowToNotebook(existing.rows[0]) };
@@ -405,7 +406,7 @@ export async function createAndBindNotebookTx(
             equipment_entity_id, asset_selected_via, asset_confirmed_by, asset_confirmed_at)
          VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, NULL, NULL)
          RETURNING ${NOTEBOOK_COLS_BARE}`,
-        [tenantId, name, String(node.rows[0].id), opts.createdBy ?? null, String(a.entity_id), opts.selectedVia],
+        [tenantId, name, String(node.rows[0].id), opts.createdBy ?? null, String(a.bind_key), opts.selectedVia],
       );
       return { ok: true as const, created: true, notebook: rowToNotebook(created.rows[0]) };
     } catch (err) {
@@ -428,7 +429,13 @@ export async function bindNotebookAsset(
 ): Promise<BindAssetResult> {
   return withTenantContext(tenantId, async (c) => {
     const asset = await c.query(
-      `SELECT entity_id, entity_type, approval_state, uns_path::text AS uns_path
+      // BIND KEY, not entity_id. A bridged row (the CV-101 seed) carries
+      // entity_id = the cmms UUID as text; a node created through the namespace
+      // API carries entity_id NULL and is identified by its own PK. Storing
+      // `entity_id` blindly wrote the JavaScript string "null" into the column
+      // for the second case — a value that looks bound and resolves to nothing.
+      `SELECT coalesce(entity_id, id::text) AS bind_key,
+              entity_type, approval_state, uns_path::text AS uns_path
          FROM kg_entities
         WHERE tenant_id = $1::uuid
           AND (id::text = $2 OR entity_id = $2)
@@ -450,7 +457,7 @@ export async function bindNotebookAsset(
       `SELECT id::text AS id FROM equipment_notebooks
         WHERE tenant_id = $1::uuid AND equipment_entity_id = $2 AND id <> $3::uuid
         LIMIT 1`,
-      [tenantId, row.entity_id, notebookId],
+      [tenantId, row.bind_key, notebookId],
     );
     if (taken.rows[0]) {
       return {
@@ -473,7 +480,7 @@ export async function bindNotebookAsset(
               updated_at = now()
         WHERE tenant_id = $1::uuid AND id = $2::uuid
         RETURNING ${NOTEBOOK_COLS_BARE}`,
-      [tenantId, notebookId, row.entity_id, opts.selectedVia, confirmedBy],
+      [tenantId, notebookId, row.bind_key, opts.selectedVia, confirmedBy],
     );
     if (!updated.rows[0]) return { ok: false as const, error: "notebook_not_found" as const };
     return { ok: true as const, notebook: rowToNotebook(updated.rows[0]) };
@@ -957,11 +964,14 @@ export async function resolveBoundAsset(
     // Same predicate as bindNotebookAsset — an asset that could not be bound
     // today must not keep working because it was bound yesterday.
     const asset = await c.query(
-      `SELECT entity_id, name, uns_path::text AS uns_path
+      // Either key: a bridged row resolves by entity_id, a namespace-created
+      // node by its own PK. Matching only entity_id made every UI-created
+      // machine unresolvable the moment it was bound.
+      `SELECT coalesce(entity_id, id::text) AS bind_key, name, uns_path::text AS uns_path
          FROM kg_entities
         WHERE tenant_id = $1::uuid
           AND entity_type = ANY($3::text[])
-          AND entity_id = $2
+          AND (entity_id = $2 OR id::text = $2)
           AND approval_state = 'verified'
           AND uns_path IS NOT NULL
         LIMIT 1`,
@@ -972,7 +982,7 @@ export async function resolveBoundAsset(
 
     return {
       state: "resolved" as const,
-      entityId: String(a.entity_id),
+      entityId: String(a.bind_key),
       name: String(a.name ?? ""),
       unsPath: String(a.uns_path),
       selectedVia: (row.asset_selected_via as AssetSelectionMethod) ?? null,
