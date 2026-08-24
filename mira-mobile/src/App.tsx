@@ -15,6 +15,7 @@ import {
 } from "./lib/offline-queue";
 import { TABS, visibleTabs, type TabId } from "./nav";
 import { extractAssetTag } from "./lib/tags";
+import { openNotebookTransition } from "./lib/scan-landing";
 import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
@@ -124,9 +125,13 @@ export default function App() {
             setRoute={setAssetsRoute}
             backRef={backHandler}
             openNotebook={(id) => {
-              // Both, together. See the note on notebookRoute above.
-              setNotebookRoute({ name: "notebook", id });
-              setTab("chat");
+              // All three, together. See the note on notebookRoute above, and
+              // openNotebookTransition for why the assets route must be
+              // consumed rather than left armed.
+              const next = openNotebookTransition(id);
+              setNotebookRoute(next.notebookRoute);
+              setTab(next.tab);
+              setAssetsRoute(next.assetsRoute);
             }}
           />
         )}
