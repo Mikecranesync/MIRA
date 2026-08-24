@@ -16,8 +16,11 @@ What is pinned:
      so a single UPDATE leaves the QR card and the KG surfaces disagreeing.
   3. Promotion to ``verified`` is scoped to one row BY ``entity_id`` — never a pattern,
      never a bare ``equipment_type`` sweep. proposed → verified is an evidenced act.
-  4. The older staging probe seed asserts it is operating on a single CV-101 row,
-     because the global unique constraint its comment claimed does not exist.
+  4. The older staging probe seed asserts it is operating on a single CV-101 row.
+     It must, and now for the opposite reason from the one first recorded here: the
+     global unique constraint DID exist in production and migration 083 dropped it,
+     so from now on two tenants may each hold a CV-101 and the seed's tenant-free
+     UPDATE really can see more than one row.
 """
 
 from __future__ import annotations
@@ -127,9 +130,20 @@ def test_probe_seed_asserts_single_cv101_row() -> None:
     sql = _read(PROBE_SEED)
     assert "RAISE EXCEPTION" in sql, "probe seed must refuse to claim an arbitrary CV-101 row"
     assert re.search(r"count\(\*\).*cmms_equipment", sql, flags=re.S | re.I)
-    assert "cmms_equipment_equipment_number_key" not in sql or "CORRECTION" in sql, (
-        "the global unique constraint cited in the old comment does not exist in any migration"
-    )
+    # This assertion used to require that naming `cmms_equipment_equipment_number_key`
+    # be accompanied by a "CORRECTION" disclaiming it, on the grounds that no migration
+    # creates it. That was inferred from the migration folder. A read-only db-inspect
+    # probe against PROD (2026-08-24) found the constraint present: it shipped with the
+    # original CMMS schema, 012 added the per-tenant index alongside it, and nothing
+    # ever dropped it — so `grep db/migrations` was the wrong place to look. Migration
+    # 083 drops it. The guard is now inverted: if the file names the constraint, it must
+    # also name the migration that removed it, so the false correction cannot return.
+    if "cmms_equipment_equipment_number_key" in sql:
+        assert "083" in sql, (
+            "the global unique constraint was REAL in production and migration 083 dropped it; "
+            "if this file names the constraint it must also name 083, or the next reader will "
+            "'correct' it back to not existing"
+        )
 
 
 def test_bridge_seed_is_not_rewritten() -> None:
@@ -159,4 +173,58 @@ def test_identity_seed_registered_but_not_in_all() -> None:
     assert all_loop, "could not locate the 'all' seed loop"
     assert "dogfood-cv101-identity" not in all_loop.group(1), (
         "a rig-specific identity repair must not run as part of 'all'"
+    )
+
+
+def test_migration_083_drops_the_global_tag_constraint_and_keeps_the_per_tenant_one() -> None:
+    """Asset tags are unique per tenant, not globally.
+
+    Production carried BOTH indexes on ``cmms_equipment`` (read-only db-inspect probe,
+    2026-08-24)::
+
+        cmms_equipment_equipment_number_key      (equipment_number)             global
+        idx_cmms_equipment_number_tenant_unique  (tenant_id, equipment_number)  per tenant
+
+    The global one meant the first tenant to use ``CV-101`` denied that tag to every
+    other tenant, and made 409-vs-201 an oracle for which tags exist in other accounts.
+
+    The half that matters most here is the SECOND assertion: dropping the wrong index
+    would remove tag uniqueness altogether, letting one tenant hold two ``CV-101`` rows
+    and making ``/api/assets/by-tag`` (``LIMIT 1``) silently pick one of them.
+    """
+    path = os.path.join(
+        _REPO_ROOT, "mira-hub", "db", "migrations",
+        "083_cmms_equipment_tag_unique_per_tenant.sql",
+    )
+    assert os.path.exists(path), "migration 083 is referenced by the probe seed and the tests"
+    sql = _read(path)
+
+    assert re.search(
+        r"DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+cmms_equipment_equipment_number_key", sql, re.I
+    ), "083 must drop the GLOBAL unique constraint"
+
+    assert re.search(
+        r"CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_cmms_equipment_number_tenant_unique",
+        sql, re.I,
+    ), "083 must leave a PER-TENANT unique index behind — never zero tag uniqueness"
+
+    # The end-state assertions are the point: both statements above are IF EXISTS /
+    # IF NOT EXISTS, so on a drifted database they can each be a silent no-op and the
+    # migration still reports success. 083 must therefore VERIFY the outcome.
+    #
+    # Counting RAISE EXCEPTION is not enough — the FK guard contributes one, so a
+    # count-based assertion survives deleting both end-state checks (confirmed by
+    # mutation). Assert the distinctive shape of each check instead.
+    assert re.search(r"NOT\s+LIKE\s+'%tenant_id%'", sql, re.I), (
+        "083 must detect a SURVIVING global index — a unique index over equipment_number "
+        "whose definition does not mention tenant_id"
+    )
+    assert re.search(
+        r"pg_indexes[\s\S]{0,400}idx_cmms_equipment_number_tenant_unique", sql, re.I
+    ), (
+        "083 must confirm the per-tenant index exists afterwards; without that check a "
+        "wrong drop leaves the table with NO tag uniqueness at all"
+    )
+    assert sql.count("RAISE EXCEPTION") >= 3, (
+        "expected the FK guard plus both end-state guards"
     )
