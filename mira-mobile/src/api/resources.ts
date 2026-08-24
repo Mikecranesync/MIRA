@@ -1010,10 +1010,17 @@ export async function askNotebook(
   notebookId: string,
   message: string,
   sourceDocIds: string[],
+  /**
+   * "general" asks for an explicitly ungrounded answer (spec 1.1). It is sent
+   * ONLY when the technician chose it — never as an automatic fallback, because
+   * silently downgrading a grounded question to general reasoning is precisely
+   * the evidence-contract change 1.4 forbids.
+   */
+  mode?: "general",
 ): Promise<ChatTurn> {
   const r = await request(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
-    { method: "POST", json: { message, sourceDocIds }, timeoutMs: 120_000 },
+    { method: "POST", json: { message, sourceDocIds, ...(mode ? { mode } : {}) }, timeoutMs: 120_000 },
   );
   return parseChatSse(r.text, r.status);
 }

@@ -18,9 +18,86 @@ The installed Android package, `com.factorylm.mira`, continues as the FactoryLM 
 
 The useful promise is simple:
 
-> Open FactoryLM beside a machine, identify the exact asset, and ask MIRA what is happening or what to check. MIRA answers from that asset's manuals, work history, approved knowledge, and trustworthy read-only live signals. If the evidence or safety conditions are not good enough, it says so.
+> Open FactoryLM beside any machine and ask MIRA what is happening or what to check. MIRA helps immediately from general engineering reasoning, and becomes more specific as evidence appears - the identified component, its OEM manual, that asset's work history, and trustworthy read-only live signals. It always says which of those an answer rests on, and if the evidence or safety conditions are not good enough, it says so.
+
+**Amended 2026-08-24.** The earlier wording of this promise began "identify the exact asset,"
+which made identification a precondition. It is not. Identification is the first *upgrade*, not
+the entry fee - see 1.1.
 
 The first real-life test is deliberately narrow: Mike uses the connected Pixel 9a with the garage conveyor. The conveyor remains under its existing physical controls. FactoryLM may observe and explain; it may never start, stop, reset, jog, bypass, acknowledge, or write to the machine.
+
+## 1.1 The Universal Technician Rule
+
+**A technician who has configured nothing must still get useful help.**
+
+MIRA must provide useful troubleshooting assistance when the technician has **none** of:
+
+- a preconfigured asset, a FactoryLM tag, a QR code, a machine hierarchy
+- a UNS path, a PLC connection, prior work-order history, a manual already attached
+
+A technician may begin from **any one** of: a typed question, a spoken description, a photograph,
+an equipment nameplate, a barcode, a QR code, a Data Matrix, a catalog number, a model number, a
+serial number, a fault/error code, an uploaded manual, an electrical print, pasted text, or an
+existing FactoryLM asset.
+
+> **Configuration increases context. It does not unlock the right to ask a question.**
+
+Any design that makes a technician create, pick, or scan something *before* MIRA will answer is a
+defect against this rule, however convenient it is to implement.
+
+## 1.2 The Progressive Context Rule
+
+MIRA becomes more specific as evidence arrives, and stays useful at every step. The levels
+describe evidence that happens to be available - they are not a setup wizard the technician walks
+through.
+
+| Level | What MIRA knows | What changes |
+|---|---|---|
+| **L0 - General** | Nothing preconfigured | Reasons from general electrical/mechanical/controls knowledge. May ask diagnostic questions. Clearly labelled as general. |
+| **L1 - Identified component** | Manufacturer, model, catalog/serial, and eventually the OEM manual | Answers can cite the actual document. A component may exist **without belonging to any machine**. |
+| **L2 - Assembled machine** | Components related to one machine, built up over days of real work | Relationships, shared history, machine-scoped memory. Never a required upfront wizard. |
+| **L3 - Connected machine** | OPC UA / EtherNet-IP / Modbus / MQTT / Ignition / historian / UNS | Moves answers from "here are likely checks" to "your drive command dropped to 18 Hz at 01:32:14." Optional and advanced. |
+
+L3 must never become a precondition for L0. MIRA stays **read-only and advisory** toward equipment
+at every level unless a separate, explicitly authorized control architecture is built.
+
+## 1.3 The evidence ladder
+
+An answer must know what kind of evidence supports it, and the UI must not imply equal certainty
+across kinds. This is a **label on an existing answer**, not a second trust system - it reuses the
+citation and refusal machinery already in `lib/notebook-chat-types.ts`.
+
+| Basis | Means | Example rendering |
+|---|---|---|
+| `general_reasoning` | Model reasoning, no source attached | *General guidance - not grounded in this machine's documents* |
+| `identified_component` | Identity known, document not yet attached | *For a PowerFlex 525 - no manual attached yet* |
+| `oem_documentation` | A confirmed source chunk | *Allen-Bradley PowerFlex 525 User Manual, p.146* |
+| `workspace_evidence` | The tenant's own uploads or notes | *From your workspace* |
+| `machine_history` | Work orders, resolutions, prior turns on this asset | *Previous repair on this asset, 2026-08-02* |
+| `live_machine_evidence` | A read-only signal, with freshness | *Live PLC observation, 8 s old* |
+
+**MIRA must never present general model reasoning as though it came from an OEM manual.**
+
+## 1.4 The Notebook grounding rule is NOT relaxed
+
+The Equipment Notebook's strictness is a feature: with no valid source it refuses rather than
+inventing a machine-specific answer. **General mode is a different evidentiary state, not an
+exemption.**
+
+- The Notebook must not silently treat source-free general knowledge as machine evidence.
+- If a technician is inside a Notebook with no source and wants general help, the UI offers it
+  **explicitly** ("Ask generally - not grounded in this machine's documents") rather than quietly
+  changing the evidence contract.
+- The technician always knows which contract they are under.
+
+**No second conversation store, no second Chat tab.** Section 2 already forbids a parallel generic
+Chat tab; the universal front door therefore lives *inside* the Notebook tab and shares its
+persisted turns. One conversation store, two evidentiary states.
+
+**No second implementation of anything.** The universal door reuses the canonical safety seam
+(`lib/safety-classifier.ts`), the canonical inference seam (`lib/inference/canonical-cascade.ts`),
+the existing SSE frame grammar, the existing file and evidence model, the nameplate pipeline, and
+the knowledge graph. A new provider cascade, safety classifier, or evidence model is a defect.
 
 ## 2. Product language
 
@@ -187,7 +264,17 @@ Offline drafts are clearly marked and are not treated as sent. After reconnectio
 
 ## 8. Equipment context gate
 
-MIRA does not troubleshoot until it knows which equipment the technician means.
+**Amended 2026-08-24 - read 1.1 first.** This section previously opened "MIRA does not troubleshoot
+until it knows which equipment the technician means." That sentence is **superseded**. It gated
+*answering at all*, which contradicts the Universal Technician Rule.
+
+What survives, and is still binding, is narrower and more important:
+
+> **MIRA does not make an ASSET-SPECIFIC claim until it knows which equipment the technician means.**
+
+General troubleshooting needs no asset. Binding a turn to an asset, citing that asset's manuals,
+reading its history, or reporting its live signals all still require the resolution and
+confirmation flow below. The gate moved from "may I speak" to "may I speak *about this machine*."
 
 The canonical CV-101 identity is:
 
@@ -496,6 +583,10 @@ Each workstream must be independently reviewable and must not bypass the ownersh
 This document governs the cohesive technician-app and first garage-conveyor dogfood experience.
 
 - It supersedes older mobile wording that presents a separate visible **Chat** tab; the product label is **Notebook**.
+- **Sections 1.1-1.4 (2026-08-24) are the current product direction** and supersede any earlier text
+  in this document, in plans, or in handoffs that makes an asset, tag, QR code, hierarchy, manual, or
+  PLC connection a precondition for MIRA answering at all. Where section 8's original opening
+  sentence and 1.1 conflict, 1.1 wins.
 - It does not supersede the mobile trust boundary or the server's authority over tenant capabilities.
 - [ADR-0035](https://github.com/Mikecranesync/MIRA/blob/a1f2a3d6a7db710c21ec60dd23baa86711f6e8ae/docs/adr/0035-cv101-canonical-uns-path.md) remains the authority for CV-101 identity. References must follow that decision rather than duplicating or casually renaming its values.
 - Existing safety, read-only fieldbus, UNS, FactoryLM UI, and SaaS scope rules continue to apply.

@@ -76,6 +76,23 @@ label { display: block; font-size: 13px; color: var(--fl-ink-muted); margin: 12p
 .empty { color: var(--fl-ink-muted); text-align: center; margin-top: 40px; }
 
 .chat-answer { white-space: pre-wrap; line-height: 1.45; }
+
+/* Evidence basis: a general answer says so, in the technician's line of sight
+   (spec 1.3). Amber = caution/unverified per the FactoryLM state palette; it is
+   deliberately NOT styled like .cite-chip, because looking like a citation is
+   exactly the confusion this exists to prevent. Tokens only, no hex. */
+.evidence-basis-general {
+  display: block;
+  margin: 6px 0 0 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--fl-amber);
+  background: var(--fl-surface);
+  color: var(--fl-ink-muted);
+  border-radius: var(--fl-radius);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .cite-chip {
   display: inline-block;
   background: var(--flm-citation-bg);
