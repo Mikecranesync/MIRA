@@ -42,7 +42,7 @@ function stubQueries(opts: {
   taken?: { id: string } | null;
   updated?: Record<string, unknown> | null;
 }) {
-  const asset = opts.asset === undefined ? { entity_id: ASSET_UUID, entity_type: "equipment", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab.conveyor_1" } : opts.asset;
+  const asset = opts.asset === undefined ? { bind_key: ASSET_UUID, entity_type: "equipment", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab.conveyor_1" } : opts.asset;
   const updated = opts.updated === undefined
     ? {
         id: NB, display_name: "Discharge Conveyor", node_id: "33333333-3333-4333-8333-333333333333",
@@ -82,13 +82,13 @@ describe("PUT /asset", () => {
   });
 
   it("accepts an 'asset' node — the namespace API mints that kind, never 'equipment'", async () => {
-    stubQueries({ asset: { entity_id: ASSET_UUID, entity_type: "asset", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab.conveyor_1" } });
+    stubQueries({ asset: { bind_key: ASSET_UUID, entity_type: "asset", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab.conveyor_1" } });
     const res = await PUT(putReq({ assetRef: ASSET_UUID, selectedVia: "asset_picker" }), params);
     expect(res.status).toBe(200);
   });
 
   it("still refuses a location — binding an area would scope answers to a whole line", async () => {
-    stubQueries({ asset: { entity_id: "area-1", entity_type: "area", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab" } });
+    stubQueries({ asset: { bind_key: "area-1", entity_type: "area", approval_state: "verified", uns_path: "enterprise.home_garage.conveyor_lab" } });
     const res = await PUT(putReq({ assetRef: "area-1", selectedVia: "asset_picker" }), params);
     expect(res.status).toBe(422);
     const body = await res.json();
@@ -103,7 +103,7 @@ it("refuses every location kind, not just 'area'", async () => {
       // Reset per iteration: mockResolvedValueOnce queues survive across calls,
       // so the second kind would otherwise read the first one's leftovers.
       dbMock.query.mockReset();
-      stubQueries({ asset: { entity_id: "loc", entity_type: kind, approval_state: "verified", uns_path: "enterprise.x" } });
+      stubQueries({ asset: { bind_key: "loc", entity_type: kind, approval_state: "verified", uns_path: "enterprise.x" } });
       const res = await PUT(putReq({ assetRef: "loc", selectedVia: "asset_picker" }), params);
       expect(res.status, `${kind} must not be bindable`).toBe(422);
       expect((await res.json()).code).toBe("asset_not_equipment");
@@ -111,14 +111,14 @@ it("refuses every location kind, not just 'area'", async () => {
   });
 
   it("refuses an unapproved asset — a proposal must not become an identity", async () => {
-    stubQueries({ asset: { entity_id: ASSET_UUID, entity_type: "equipment", approval_state: "proposed", uns_path: "enterprise.x" } });
+    stubQueries({ asset: { bind_key: ASSET_UUID, entity_type: "equipment", approval_state: "proposed", uns_path: "enterprise.x" } });
     const res = await PUT(putReq({ assetRef: ASSET_UUID, selectedVia: "asset_picker" }), params);
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("asset_not_verified");
   });
 
   it("refuses a verified asset with no uns_path — this is the notebook's own node", async () => {
-    stubQueries({ asset: { entity_id: "node-self", entity_type: "equipment", approval_state: "verified", uns_path: null } });
+    stubQueries({ asset: { bind_key: "node-self", entity_type: "equipment", approval_state: "verified", uns_path: null } });
     const res = await PUT(putReq({ assetRef: "node-self", selectedVia: "asset_picker" }), params);
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("asset_not_verified");

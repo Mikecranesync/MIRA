@@ -23,7 +23,7 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 const ENTITY = "ee715d08-4ea6-4b7a-b99b-958a33c39ea8";
 
 const VERIFIED_ASSET = {
-  entity_id: ENTITY,
+  bind_key: ENTITY,
   name: "Discharge Conveyor",
   entity_type: "equipment",
   approval_state: "verified",
@@ -78,6 +78,25 @@ describe("createAndBindNotebookTx", () => {
     // could fail after the notebook is already committed.
     expect(inserts[1]).toMatch(/equipment_entity_id/);
     expect(inserts[1]).toMatch(/asset_selected_via/);
+  });
+
+it("binds a namespace-created node by its own id when entity_id is NULL", async () => {
+    // The namespace API never sets entity_id, so `String(entity_id)` wrote the
+    // literal string "null" into the binding — a value that looks bound and
+    // resolves to nothing. coalesce(entity_id, id::text) is what the query
+    // returns now, so the stub carries the resolved key.
+    clientMock.query
+      .mockResolvedValueOnce({ rows: [{ ...VERIFIED_ASSET, bind_key: "kg-row-uuid", entity_type: "asset" }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "node-1" }] })
+      .mockResolvedValueOnce({ rows: [NOTEBOOK_ROW] });
+
+    await createAndBindNotebookTx(TENANT, "kg-row-uuid", { selectedVia: "qr" });
+    const insert = clientMock.query.mock.calls[3];
+    const params = insert[1] as unknown[];
+    expect(params).toContain("kg-row-uuid");
+    expect(params).not.toContain("null");
+    expect(params.every((p) => p !== "undefined")).toBe(true);
   });
 
   it("a scan never pre-confirms the identity", async () => {
