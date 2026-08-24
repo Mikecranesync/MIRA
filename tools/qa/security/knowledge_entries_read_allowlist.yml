@@ -514,7 +514,7 @@ approved:
       rather than widening that skip list, so a REAL knowledge_entries read added to this
       file later would still fail the gate on a hash mismatch. Deleting this test would
       remove the only guard that notebook deletion does not destroy shared documents."
-  "mira-hub/src/lib/equipment-notebooks.ts:791":
+  "mira-hub/src/lib/equipment-notebooks.ts:821":
     approved_classification: TENANT-ONLY
     query_sha256: "dbf369caa36584dcb8c49bfef0c788d99bd8d9315eb97770e28064e30d49777b"
     reason: "listSources readiness facts — counts chunks / embedded / page-anchored for
