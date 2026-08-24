@@ -1,9 +1,14 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-// ADR-0034 trust boundary: static packaged bundle ONLY.
-// - NO server.url (never load remote content into the shell)
-// - NO allowNavigation (external content opens in the system browser)
+// ADR-0034 trust boundary, as amended 2026-08-24 ("Amendment: signed OTA web bundles"):
+// the packaged bundle is the trusted RECOVERY bundle, and the shell may additionally run a
+// signed, checksum-verified, native-compatible web bundle fetched from a FactoryLM HTTPS
+// endpoint into app-private storage.
+// - NO server.url (never point the WebView at a remote origin) — UNCHANGED
+// - NO allowNavigation (external content opens in the system browser) — UNCHANGED
 // - androidScheme https so the WebView origin is stable/secure
+// - OTA does NOT change any of the above: LiveUpdate unpacks to app-private storage and the
+//   WebView keeps serving from the LOCAL origin. It carries web assets only, never native code.
 const config: CapacitorConfig = {
   appId: "com.factorylm.mira",
   appName: "FactoryLM",
