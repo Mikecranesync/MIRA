@@ -58,3 +58,28 @@ export async function resolveScan(tag: string, deps: ScanDeps): Promise<ScanOutc
     return { kind: "asset_only", assetId: asset.id, message: messageFrom(err, FALLBACK_NOTEBOOK) };
   }
 }
+
+/**
+ * The shell state a resolved notebook must produce — pure, so the transition is
+ * testable without a DOM (the same reason `resolveScan` lives here).
+ *
+ * `assetsRoute` is the load-bearing field. TagLanding resolves its tag in a
+ * MOUNT effect, so a `{name:"tag"}` route left armed after the hand-off is not
+ * inert: tapping Assets remounts the landing, it re-resolves, re-POSTs a
+ * notebook, and throws the technician straight back to chat. They can never
+ * reach the asset list again without restarting the app. A scan route is
+ * single-use — consuming it is part of the transition, not cleanup.
+ */
+export type NotebookTransition = {
+  tab: "chat";
+  notebookRoute: { name: "notebook"; id: string };
+  assetsRoute: { name: "list" };
+};
+
+export function openNotebookTransition(notebookId: string): NotebookTransition {
+  return {
+    tab: "chat",
+    notebookRoute: { name: "notebook", id: notebookId },
+    assetsRoute: { name: "list" },
+  };
+}

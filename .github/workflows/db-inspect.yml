@@ -116,6 +116,47 @@ jobs:
       # Independent verification for the garage dogfood rig: a DIFFERENT workflow
       # and different queries from the seed that wrote the identity, so a green
       # result here is not the seed grading its own homework. Read-only.
+      # Why this probe exists: creating an asset tagged CV-101 in a BRAND NEW
+      # tenant returns 409 "tag already exists", while reading it back through
+      # the tenant-scoped route returns 404. Read is scoped, write is not — so
+      # some deployed constraint spans tenants. Migration 012 declares only the
+      # per-tenant partial index, so the deployed schema and the canonical
+      # migrations disagree and only the deployed side can settle it.
+      # `tools/seeds/staging-cv101-probe.sql` currently asserts the per-tenant
+      # reading from the migrations alone; this step is what that claim should
+      # have been checked against.
+      - name: cmms_equipment tag uniqueness — deployed vs canonical — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === every unique constraint/index touching equipment_number ===
+          \echo 'A row whose definition lacks tenant_id is GLOBAL: one tenant can then'
+          \echo 'permanently deny a tag like CV-101 to every other tenant, and probing'
+          \echo '409-vs-201 reveals whether another tenant holds it.'
+          SELECT i.relname AS index_name,
+                 ix.indisunique AS is_unique,
+                 pg_get_indexdef(ix.indexrelid) AS definition,
+                 pg_get_indexdef(ix.indexrelid) LIKE '%tenant_id%' AS scoped_by_tenant
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_class t ON t.oid = ix.indrelid
+           WHERE t.relname = 'cmms_equipment'
+             AND ix.indisunique
+             AND pg_get_indexdef(ix.indexrelid) LIKE '%equipment_number%'
+           ORDER BY scoped_by_tenant, i.relname;
+
+          \echo
+          \echo === how many tenants hold each duplicated tag (would break on a global constraint) ===
+          SELECT equipment_number, count(DISTINCT tenant_id) AS tenants, count(*) AS rows
+            FROM cmms_equipment
+           WHERE equipment_number IS NOT NULL
+           GROUP BY equipment_number
+          HAVING count(DISTINCT tenant_id) > 1
+           ORDER BY tenants DESC LIMIT 10;
+          SQL
+
       - name: CV-101 identity (garage dogfood rig) — READ-ONLY
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
