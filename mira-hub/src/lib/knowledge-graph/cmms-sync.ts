@@ -197,7 +197,7 @@ async function batchUpsertEntities(
  * else site) so cmms equipment rows can nest under it. Returns null when
  * the wizard hasn't run.
  */
-async function resolveTenantParentPath(
+export async function resolveTenantParentPath(
   client: PoolClient,
   tenantId: string,
 ): Promise<string | null> {

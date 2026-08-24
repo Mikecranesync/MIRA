@@ -4,6 +4,7 @@ import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { enrichAsset } from "@/lib/agents/asset-intelligence";
 import { generateAssetTag, validateAssetTag } from "@/lib/asset-tag";
+import { backfillAssetUnsPath, mintAssetBridgeNode } from "@/lib/knowledge-graph/asset-bridge";
 
 export const dynamic = "force-dynamic";
 
@@ -109,8 +110,8 @@ export async function POST(req: Request) {
     }
 
     const insert = (assetTag: string) =>
-      withTenantContext(ctx.tenantId, (c) =>
-        c.query(
+      withTenantContext(ctx.tenantId, async (c) => {
+        const created = await c.query(
           `INSERT INTO cmms_equipment
              (tenant_id, equipment_number, manufacturer, model_number, serial_number,
               location, criticality, installation_date, description,
@@ -132,8 +133,34 @@ export async function POST(req: Request) {
             name?.trim() || null,
             parentAssetId || null,
           ],
-        ).then((r) => r.rows[0]),
-      );
+        ).then((r) => r.rows[0]);
+
+        // Bridge the new asset into the knowledge graph in the SAME
+        // transaction. A half-created machine — an asset-register row with no
+        // kg_entities node — is precisely the state that made scan→notebook
+        // work for CV-101 (whose bridge row was seeded by hand) and 404 with
+        // "That asset isn't in this account" for every other machine. Create
+        // is the only moment both facts are known, so it is where they are
+        // written together. See lib/knowledge-graph/asset-bridge.ts.
+        const bridge = await mintAssetBridgeNode(c, ctx.tenantId, {
+          assetId: String(created.id),
+          tag: assetTag,
+          description: (created.description as string | null) ?? null,
+          manufacturer: (created.manufacturer as string | null) ?? null,
+          model: (created.model_number as string | null) ?? null,
+        });
+        if (bridge.ok) {
+          await backfillAssetUnsPath(c, ctx.tenantId, String(created.id), bridge.unsPath);
+        } else {
+          // Not fatal: the asset is still usable in the register and a later
+          // namespace edit can place it. Loud, because until it is placed the
+          // machine cannot open a notebook.
+          console.warn(
+            `[api/assets POST] asset ${created.id} created without a UNS path (${bridge.reason}) — notebook will refuse it`,
+          );
+        }
+        return created;
+      });
 
     let row: Record<string, unknown> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
