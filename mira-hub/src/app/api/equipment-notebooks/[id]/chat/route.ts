@@ -225,8 +225,10 @@ export function makeGeneralBracketStripper(): { push: (delta: string) => string;
       // Drop any COMPLETE marker, along with whitespace immediately before it.
       let out = buf.replace(/[ 	]*\[\d+\]/g, "");
       // Hold back a trailing partial marker ("[", "[1", "[12") — it may complete
-      // on the next delta.
-      const partial = out.match(/[ 	]*\[\d*$/);
+      // on the next delta. Trailing whitespace is held for the same reason: the
+      // space before a marker usually arrives in an EARLIER delta, and once
+      // emitted it cannot be taken back, leaving "P042  on this drive".
+      const partial = out.match(/[ 	]*\[\d*$|[ 	]+$/);
       if (partial) {
         pending = partial[0];
         out = out.slice(0, out.length - partial[0].length);

@@ -11,6 +11,7 @@ import {
   citationsUsedInAnswer,
   buildProviderMessages,
   isProviderCascadeError,
+  makeGeneralBracketStripper,
 } from "../route";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import type { ChatHistoryTurn } from "@/lib/notebook-query";
@@ -121,5 +122,36 @@ describe("isProviderCascadeError — programming errors must not masquerade as p
     expect(isProviderCascadeError(new DOMException("Aborted", "AbortError"))).toBe(true);
     expect(isProviderCascadeError(new Error("HTTP 429 rate limited"))).toBe(true);
     expect(isProviderCascadeError("weird non-Error throw")).toBe(true);
+  });
+});
+
+describe("makeGeneralBracketStripper", () => {
+  it("removes a complete marker with the space before it", () => {
+    const s = makeGeneralBracketStripper();
+    expect(s.push("Check the DC bus [1] and the fan [2].") + s.flush()).toBe(
+      "Check the DC bus and the fan.",
+    );
+  });
+
+  it("removes a marker SPLIT ACROSS DELTAS — the case a per-delta regex misses", () => {
+    const s = makeGeneralBracketStripper();
+    let out = s.push("the ramp is set by P042 ");
+    out += s.push("[");
+    out += s.push("12");
+    out += s.push("] on this drive");
+    out += s.flush();
+    expect(out).toBe("the ramp is set by P042 on this drive");
+  });
+
+  it("never leaks a held-back partial as visible text", () => {
+    // A trailing "[" that never completes is not a marker, so it must survive —
+    // swallowing it would silently corrupt the answer.
+    const s = makeGeneralBracketStripper();
+    expect(s.push("see note [") + s.flush()).toBe("see note [");
+  });
+
+  it("leaves ordinary bracketed prose alone", () => {
+    const s = makeGeneralBracketStripper();
+    expect(s.push("terminal [A] and [B1]") + s.flush()).toBe("terminal [A] and [B1]");
   });
 });
