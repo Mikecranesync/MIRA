@@ -7,6 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -856,10 +857,28 @@ function AddSourcesSheet({
   const [pasteText, setPasteText] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // The proven camera pattern (NotebooksTab): capture="environment" on a
-  // hidden input, value reset after every pick so re-shooting the same photo
-  // still fires onChange.
+  // On device the phone's own picker is used (#3353 — the WebView turned
+  // capture="environment" into a chooser). The hidden inputs below stay for the
+  // web build, which has no native picker to call.
   const cameraRef = useRef<HTMLInputElement | null>(null);
+
+  /** Nameplate photo: phone picker on device, hidden input on web. */
+  const openNameplatePicker = async () => {
+    if (!canPickNatively()) return cameraRef.current?.click();
+    const f = await pickNameplatePhoto();
+    if (!f) return; // backed out
+    setNote(null);
+    setPhoto(f);
+    setMode("nameplate");
+  };
+
+  /** PDF: phone document picker on device, hidden input on web. */
+  const openPdfPicker = async () => {
+    if (!canPickNatively()) return fileRef.current?.click();
+    const f = await pickPdf();
+    if (!f) return;
+    await uploadPdf(f);
+  };
 
   const uploadPdf = async (file: File | null) => {
     if (!file) return;
@@ -936,14 +955,14 @@ function AddSourcesSheet({
             <button
               className="sheet-option"
               disabled={busy}
-              onClick={() => fileRef.current?.click()}
+              onClick={() => void openPdfPicker()}
             >
               📄 {busy ? "Uploading…" : "Upload a PDF manual"}
             </button>
             <button
               className="sheet-option"
               disabled={busy}
-              onClick={() => cameraRef.current?.click()}
+              onClick={() => void openNameplatePicker()}
             >
               📷 Photograph a component nameplate
             </button>
@@ -1039,8 +1058,10 @@ function AddSourcesSheet({
               setPhoto(null);
               setMode("menu");
               // Next tick: the picker must open after this flow unmounts, or the
-              // input click is swallowed by the screen that is going away.
-              setTimeout(() => fileRef.current?.click(), 0);
+              // input click is swallowed by the screen that is going away. The
+              // native picker is its own activity, so it has no such problem —
+              // but the deferral is harmless and keeps one code path.
+              setTimeout(() => void openPdfPicker(), 0);
             }}
           />
         )}

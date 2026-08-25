@@ -45,9 +45,18 @@ export type OtaChannel = "canary" | "production";
  * computed from the SAME dependency set that produced the bundle rather than
  * being maintained by hand.
  */
+declare const __FLM_NATIVE_FINGERPRINT__: string | undefined;
+
+// Read the BARE identifier, not `globalThis.__FLM_NATIVE_FINGERPRINT__`.
+// Vite's `define` substitutes standalone identifiers; it does not rewrite a
+// property access, so the globalThis form was never replaced and every build
+// silently shipped "unset" — verified on the installed 1.0.1(2) APK and
+// reproduced with a clean `vite build` on main. A shell whose fingerprint is
+// "unset" refuses every correctly-stamped bundle (see checkForUpdate below),
+// which disables OTA entirely. `typeof` keeps this safe when nothing defined it
+// (plain `vitest`, `vite dev` without the define).
 export const NATIVE_FINGERPRINT: string =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).__FLM_NATIVE_FINGERPRINT__ ?? "unset";
+  typeof __FLM_NATIVE_FINGERPRINT__ !== "undefined" ? __FLM_NATIVE_FINGERPRINT__ : "unset";
 
 export type OtaState = {
   /** Bundle id currently executing ("packaged" when running the APK's own copy). */
