@@ -22,6 +22,7 @@ import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
+import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { parseNameplateLines } from "@/lib/nameplate/passes";
 import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
@@ -69,8 +70,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (file.size > MAX_IMAGE_BYTES) {
     return NextResponse.json({ error: "image_too_large" }, { status: 413 });
   }
-  const mime = (file.type || "").toLowerCase().split(";")[0].trim();
-  if (!ALLOWED_IMAGE_MIMES.includes(mime)) {
+  // Declared MIME is a claim, not the truth: mobile pickers ship real JPEGs
+  // declared application/octet-stream. Sniff the bytes before rejecting; 415
+  // only when neither the declared nor the sniffed type is on the safelist.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mime = effectiveImageMime(file.type, buffer, ALLOWED_IMAGE_MIMES);
+  if (!mime) {
     return NextResponse.json(
       {
         error: "unsupported_image_type",
@@ -80,7 +85,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const filename = safePhotoName(file.name, mime);
 
   // ── Park FIRST. Everything below may fail; the bytes must not. ─────────────
