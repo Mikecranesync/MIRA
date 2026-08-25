@@ -34,8 +34,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode bumps by exactly 1 on every Play upload (Play rejects reuse);
         // versionName tracks the mobile release line (docs/release/android/README.md).
-        versionCode 2
-        versionName "1.0.1"
+        versionCode 3
+        versionName "1.0.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
