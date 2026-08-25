@@ -47,6 +47,7 @@ public class MainActivity extends BridgeActivity {
     private boolean wasPaused = false;
     private boolean recovering = false;
     private Runnable pendingProbe;
+    private Runnable pendingTimeout;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -101,22 +102,29 @@ public class MainActivity extends BridgeActivity {
             handler.removeCallbacks(pendingProbe);
             pendingProbe = null;
         }
+        if (pendingTimeout != null) {
+            handler.removeCallbacks(pendingTimeout);
+            pendingTimeout = null;
+        }
     }
 
     private void probeRendered() {
         pendingProbe = null;
         final WebView wv = getBridge() != null ? getBridge().getWebView() : null;
-        if (wv == null || recovering) return;
+        // !pageLoaded here means a reload is already in flight (e.g. the JS half fired).
+        if (wv == null || recovering || !pageLoaded) return;
         // A surface that merely stopped painting gets a fresh frame.
         wv.invalidate();
 
         final boolean[] answered = { false };
         final Runnable timeout = () -> {
+            pendingTimeout = null;
             if (!answered[0]) {
                 answered[0] = true;
                 recover(wv, "probe timed out (renderer not answering)");
             }
         };
+        pendingTimeout = timeout;
         handler.postDelayed(timeout, PROBE_TIMEOUT_MS);
         try {
             wv.evaluateJavascript(
@@ -125,6 +133,7 @@ public class MainActivity extends BridgeActivity {
                     if (answered[0]) return;
                     answered[0] = true;
                     handler.removeCallbacks(timeout);
+                    pendingTimeout = null;
                     if (!"\"ok\"".equals(value)) {
                         recover(wv, "probe returned " + value);
                     } else {
