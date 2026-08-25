@@ -1,0 +1,135 @@
+name: Mobile release — build + distribute
+
+# The NATIVE delivery path. Everything OTA structurally cannot carry — new native
+# plugins, Capacitor upgrades, MainActivity/Gradle/manifest changes, permission
+# changes, SDK bumps — ships here as a signed APK.
+#
+# Manual dispatch only. A native release changes what is installed on a
+# technician's phone, so it is never a side effect of a merge.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "What changed (shown to testers in Firebase)"
+        required: true
+        type: string
+      groups:
+        description: "Firebase tester group(s), comma-separated"
+        required: false
+        default: "technicians"
+        type: string
+      distribute:
+        description: "Actually distribute? 'no' builds and verifies only."
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-distribute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install mobile deps
+        working-directory: mira-mobile
+        run: bun install --frozen-lockfile
+
+      # Gate the release on the same tests that guard every mobile change. A
+      # signed APK that reaches a phone is the most expensive thing to get wrong.
+      - name: Mobile unit tests
+        working-directory: mira-mobile
+        run: bun run test
+
+      - name: Build web bundle (tsc --noEmit + vite build)
+        working-directory: mira-mobile
+        run: bun run build
+
+      - name: Capacitor sync
+        working-directory: mira-mobile
+        run: node node_modules/@capacitor/cli/bin/capacitor sync android
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # The keystore lives in Doppler as base64 and is materialised to a file
+      # that exists only for this job. It is never echoed and never an artifact.
+      - name: Materialise signing key
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/signing"
+          doppler secrets get ANDROID_KEYSTORE_BASE64 --plain \
+            --project factorylm --config prd \
+            | base64 -d > "$RUNNER_TEMP/signing/upload.jks"
+          test -s "$RUNNER_TEMP/signing/upload.jks"
+          echo "keystore materialised ($(stat -c%s "$RUNNER_TEMP/signing/upload.jks") bytes)"
+
+      - name: Build signed release APK
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+        working-directory: mira-mobile/android
+        run: |
+          set -euo pipefail
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          doppler run --project factorylm --config prd -- ./gradlew --no-daemon assembleRelease
+
+      # Fail loudly if the APK came out unsigned. build.gradle deliberately
+      # degrades to "unsigned but successful" when credentials are absent, which
+      # is right for ordinary CI and catastrophic here — an unsigned APK cannot
+      # install, and finding that out on a technician's phone is too late.
+      - name: Verify signature
+        working-directory: mira-mobile/android
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)
+          "$APKSIGNER" verify --print-certs --verbose "$APK" | tee /tmp/signing.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/signing.txt
+          grep -q "CN=FactoryLM" /tmp/signing.txt
+          echo "signed OK"
+
+      - name: Distribute to testers
+        if: inputs.distribute == 'yes'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+        run: |
+          set -euo pipefail
+          doppler secrets get FIREBASE_SERVICE_ACCOUNT_JSON --plain \
+            --project factorylm --config prd > "$RUNNER_TEMP/fb.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/fb.json"
+          APP_ID=$(doppler secrets get FIREBASE_ANDROID_APP_ID --plain --project factorylm --config prd)
+          npx --yes firebase-tools appdistribution:distribute \
+            mira-mobile/android/app/build/outputs/apk/release/app-release.apk \
+            --app "$APP_ID" \
+            --groups "${{ inputs.groups }}" \
+            --release-notes "${{ inputs.release_notes }}"
+          rm -f "$RUNNER_TEMP/fb.json"
+
+      - name: Report
+        run: |
+          {
+            echo "### Mobile release"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- distributed: \`${{ inputs.distribute }}\`"
+            echo "- expected signer: \`CN=FactoryLM\`, cert SHA-256 \`23:95:B9:60:...:92:A9\`"
+            echo "  (full value in docs/release/android/signing.md)"
+          } >> "$GITHUB_STEP_SUMMARY"

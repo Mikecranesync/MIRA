@@ -5,6 +5,8 @@ import { useState, type MutableRefObject } from "react";
 import { listTeam, getUsage, type Me, type TeamMember } from "../api/resources";
 import { Loading, ErrorState, load, type Loadable } from "./common";
 import { FilesScreen, type FilesRoute } from "./FilesScreen";
+import { AboutUpdates } from "./AboutUpdates";
+import { pendingCount, preferencesStore } from "../lib/offline-queue";
 
 export function MoreTab({
   me,
@@ -19,9 +21,17 @@ export function MoreTab({
   const [usage, setUsage] = useState<Loadable<Record<string, unknown> | null> | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [files, setFiles] = useState<FilesRoute | null>(null);
+  const [showAbout, setShowAbout] = useState(false);
 
-  // Android back pops the Files stack before leaving the tab.
+  // Android back pops the pushed views before leaving the tab. This is assigned
+  // BEFORE any early return: a pushed view that renders without registering its
+  // back handler is unpoppable, and hardware back then falls through to
+  // minimizeApp — the technician taps back and the whole app disappears.
   backRef.current = () => {
+    if (showAbout) {
+      setShowAbout(false);
+      return true;
+    }
     if (files?.name === "detail") {
       setFiles({ name: "list" });
       return true;
@@ -32,6 +42,18 @@ export function MoreTab({
     }
     return false;
   };
+
+  // About is a pushed view: rendered INSTEAD of the tab body so the technician
+  // is never looking at two screens' worth of chrome.
+  if (showAbout) {
+    return (
+      <AboutUpdates
+        // Never swap the bundle while work is still only on this phone.
+        pendingOfflineWork={async () => (await pendingCount(preferencesStore, me.tenantId)) > 0}
+        onBack={() => setShowAbout(false)}
+      />
+    );
+  }
 
   if (files)
     return <FilesScreen route={files} setRoute={setFiles} onBack={() => setFiles(null)} />;
@@ -86,6 +108,10 @@ export function MoreTab({
           </div>
         )}
       </div>
+
+      <button style={{ marginTop: 10 }} onClick={() => setShowAbout(true)}>
+        About &amp; updates
+      </button>
 
       <button
         style={{ marginTop: 10 }}
