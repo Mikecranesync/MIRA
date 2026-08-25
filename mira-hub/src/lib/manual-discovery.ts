@@ -195,6 +195,36 @@ const OEM_HOSTS: Record<string, string[]> = {
 };
 
 /**
+ * Can WE independently confirm that `host` is this manufacturer's own
+ * documentation domain — without taking the discovery service's word for it?
+ *
+ * This is a security gate, not a convenience (#3400). The confirm route uses it
+ * to decide whether an UNVALIDATED candidate may be handed to safeDownloadPdf
+ * at all. `allowedHostsForCandidate` below deliberately trusts the candidate's
+ * own host, which is correct for a candidate that discovery already validated —
+ * but it is NOT an independent check, so it cannot be the thing that authorises
+ * relaxing the gate. This re-derives the answer from our own OEM table.
+ *
+ * Matching is exact-host or dot-suffix ONLY, so `notsiemens.com` and
+ * `siemens.com.evil.net` both fail where a naive `endsWith` would pass.
+ */
+export function isOemDocumentationHost(
+  manufacturer: string | null | undefined,
+  host: string | null | undefined,
+): boolean {
+  const h = (host ?? "").trim().toLowerCase();
+  const mfr = (manufacturer ?? "").trim().toLowerCase();
+  if (!h || !mfr) return false;
+  for (const [key, domains] of Object.entries(OEM_HOSTS)) {
+    if (mfr !== key && !mfr.includes(key)) continue;
+    for (const d of domains) {
+      if (h === d || h.endsWith(`.${d}`)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * The host allowlist for downloading ONE discovered candidate. Always includes
  * the candidate's own host (so subdomain redirects on that host are fine) plus
  * the manufacturer's known documentation domains — nothing else. A redirect off
