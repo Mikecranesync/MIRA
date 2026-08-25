@@ -25,6 +25,7 @@ import {
   NAMEPLATE_FIELDS,
   NAMEPLATE_FORM_HINT,
   canSubmitIdentity,
+  candidateAction,
   nameplateReducer,
   nameplateStatusCopy,
   type NameplateManual,
@@ -36,12 +37,17 @@ export function ComponentNameplateFlow({
   photo,
   onDone,
   onCancel,
+  onUploadInstead,
 }: {
   notebookId: string;
   photo: File;
   /** Called when the notebook's sources actually changed. */
   onDone: () => void;
   onCancel: () => void;
+  /** Leave this flow and open the PDF picker — the honest next step when MIRA
+   *  found a link it could not import, and the technician has downloaded the
+   *  document themselves. */
+  onUploadInstead: () => void;
 }) {
   const [state, dispatch] = useReducer(nameplateReducer, INITIAL_NAMEPLATE_STATE);
   const [transportError, setTransportError] = useState<unknown>(null);
@@ -216,28 +222,63 @@ export function ComponentNameplateFlow({
           <div className="title">
             {state.manual?.filename ?? state.candidate?.title ?? "Untitled document"}
           </div>
-          <div className="meta" style={{ marginBottom: 8, wordBreak: "break-all" }}>
+          <div className="meta" style={{ marginBottom: 8 }}>
             {state.candidate?.host ? `${state.candidate.host} · ` : ""}
             {state.candidate?.oemHost ? "manufacturer site" : "not a manufacturer site"}
-            {state.candidate?.url ? ` · ${state.candidate.url}` : ""}
           </div>
+          {/* The whole point of this screen is "confirm before using", and a
+           *  technician cannot confirm a document they cannot open. The URL used
+           *  to be plain text — unreadable and untappable — so the only way to
+           *  check it was to retype a 100-character Siemens link by hand.
+           *
+           *  Opens in the system browser, not the WebView: capacitor.config.ts
+           *  sets no allowNavigation, so an off-origin link leaves the app and
+           *  the flow is still here on return. This is a PUBLIC OEM url, so
+           *  none of the authenticated-open concerns in api/client.ts
+           *  (requestBinary) apply — no session cookie is involved. */}
+          {state.candidate?.url && (
+            <a
+              className="candidate-link"
+              href={state.candidate.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open this document to check it ↗
+              <span className="candidate-link-url">{state.candidate.url}</span>
+            </a>
+          )}
           {state.message && (
             <div className="meta" style={{ marginBottom: 8 }}>
               {state.message}
             </div>
           )}
-          <button
-            className="btn-primary"
-            disabled={!state.manual?.fileId}
-            onClick={() => state.manual && void acceptCandidate(state.manual, state.identity)}
-          >
-            Use this manual
-          </button>
-          {!state.manual?.fileId && (
-            <div className="meta" style={{ marginTop: 6 }}>
-              MIRA didn't download this one, so there's nothing to add yet —
-              check the link yourself, then upload it as a source if it's right.
-            </div>
+          {/* Two different situations wore the same button and the same label,
+           *  which is what made this screen a dead end in the field.
+           *
+           *  When MIRA auto-imported the document there IS a file, and this
+           *  promotes it to user_confirmed. When MIRA only found a LINK it could
+           *  not auto-import (not validated / not a direct PDF / not an OEM
+           *  host), there is nothing on the server to promote — the old button
+           *  was permanently disabled, but rendered as a solid primary action,
+           *  so the honest next step was invisible underneath it. */}
+          {candidateAction(state.manual) === "accept" ? (
+            <button
+              className="btn-primary"
+              onClick={() => state.manual && void acceptCandidate(state.manual, state.identity)}
+            >
+              Use this manual
+            </button>
+          ) : (
+            <>
+              <button className="btn-primary" onClick={onUploadInstead}>
+                I checked it — add it as a source
+              </button>
+              <div className="meta" style={{ marginTop: 6 }}>
+                MIRA could not confirm this is the official document, so it did
+                not import it. Open the link above, download the PDF, then add it
+                here and MIRA will use it.
+              </div>
+            </>
           )}
           <button style={{ marginTop: 8 }} onClick={() => dispatch({ type: "candidate_rejected" })}>
             Not this one — edit the details

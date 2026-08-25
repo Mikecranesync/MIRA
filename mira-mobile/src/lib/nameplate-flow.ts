@@ -331,3 +331,24 @@ export function canSubmitIdentity(identity: ComponentIdentity): boolean {
       (identity.model.trim() || identity.catalogNumber.trim()),
   );
 }
+
+/**
+ * What the primary button on `candidate_review` should DO.
+ *
+ * Reported from the field on a Pixel: the screen offered "Use this manual" as a
+ * solid primary button while it was permanently disabled, because the server had
+ * found a LINK it declined to auto-import — there was no file to promote, and no
+ * amount of tapping could produce one. The technician read a working button and
+ * concluded the app had hung, which is the only fair reading of that screen.
+ *
+ * The two situations are genuinely different and must not share a control:
+ *
+ *   "accept" — the server auto-imported the PDF (validated + direct PDF + OEM
+ *              host). A file exists; the button promotes it to user_confirmed.
+ *   "upload" — the server surfaced a candidate URL for review WITHOUT importing
+ *              it. Nothing exists to promote. The honest action is: open the
+ *              link, check it, then add the downloaded PDF as a source.
+ */
+export function candidateAction(manual: NameplateManual | null | undefined): "accept" | "upload" {
+  return manual?.fileId ? "accept" : "upload";
+}
