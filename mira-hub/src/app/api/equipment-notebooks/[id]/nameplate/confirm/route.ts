@@ -30,7 +30,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
-import { discoverManual, allowedHostsForCandidate } from "@/lib/manual-discovery";
+import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
 
@@ -380,15 +380,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     oemHost: discovery.oemHost,
   };
 
-  // Auto-import ONLY a validated, direct-PDF, OEM-hosted result. Anything else
-  // is handed back for the technician to confirm — never silently imported.
-  if (!(discovery.validated && discovery.isDirectPdf && discovery.oemHost)) {
+  // Auto-import ONLY a validated, direct-PDF, OEM-hosted result.
+  const autoImport = discovery.validated && discovery.isDirectPdf && discovery.oemHost;
+
+  // #3400 — let the hardened download, not the search service's flag, decide
+  // whether the bytes are retrievable.
+  //
+  // `validated` means only that the discovery service's own HEAD/Range probe
+  // confirmed a PDF. Measured on the reported Siemens candidate: oem_host=true,
+  // is_direct_pdf=true, validated=FALSE — while the URL serves a real 1.79 MB
+  // %PDF-1.6. The probe failing is a statement about the probe, not about the
+  // document. The old gate returned candidate_review before safeDownloadPdf ever
+  // ran, so the technician got a primary button that could never do anything.
+  //
+  // The relaxation is deliberately narrow, and every condition is load-bearing:
+  //   - isDirectPdf   : we are not fetching a landing page hoping for a PDF.
+  //   - oemHost       : the service's own strict manufacturer-domain check.
+  //   - independently : re-derived from OUR OEM table. "Discovery said so" is
+  //                     explicitly not sufficient trust on its own, and
+  //                     allowedHostsForCandidate cannot serve here because it
+  //                     trusts the candidate host by construction.
+  // A candidate failing ANY of these keeps the old review path. safeDownloadPdf
+  // is unchanged and remains the only fetcher, with every SSRF, redirect,
+  // size, MIME and magic-byte guard intact.
+  const independentlyOemHosted = isOemDocumentationHost(identity.manufacturer, candidate.host);
+  const probeUnvalidated =
+    !discovery.validated && discovery.isDirectPdf && discovery.oemHost && independentlyOemHosted;
+
+  if (!autoImport && !probeUnvalidated) {
     return respond("candidate_review", {
       candidate: candidateView,
       message:
         "MIRA found a possible manual but could not confirm it is the official document. Review it before adding.",
     });
   }
+
+  // A download that succeeds proves the bytes are retrievable and are a real
+  // PDF from a host we independently attribute to this manufacturer. It proves
+  // NOTHING about whether this is the right document, so an unvalidated
+  // candidate can never auto-enable — a human confirms it. See the
+  // applicability block below.
+  const requiresUserConfirmation = probeUnvalidated;
 
   const download = await safeDownloadPdf(candidate.url, {
     allowedHosts: allowedHostsForCandidate(identity, candidate),
@@ -532,6 +564,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     discoveryTitle: candidate.title,
     discoveryHost: candidate.host,
     oemHost: discovery.oemHost,
+    // #3400 provenance: whether the SEARCH SERVICE validated the candidate, and
+    // whether WE could independently attribute the host to this manufacturer.
+    // A consumer must never read a successful download as "official".
+    discoveryValidated: discovery.validated,
+    independentlyOemHosted,
+    awaitingUserConfirmation: requiresUserConfirmation,
     confirmedIdentity: identity,
     reusedExistingDocument: reused,
   };
@@ -567,7 +605,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       chunks,
       oemHost: discovery.oemHost,
     });
-    if (verdict.state === "verified") {
+    if (verdict.state === "verified" && !requiresUserConfirmation) {
       matchState = "verified";
       enabled = true;
       await setSourceState(ctx.tenantId, notebookId, manualDocId, {

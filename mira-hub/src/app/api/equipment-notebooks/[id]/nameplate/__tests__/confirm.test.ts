@@ -46,10 +46,17 @@ vi.mock("@/lib/node-knowledge-ingest", () => {
     NoExtractableTextError,
   };
 });
-vi.mock("@/lib/manual-discovery", () => ({
-  discoverManual: vi.fn(),
-  allowedHostsForCandidate: vi.fn(() => ["rockwellautomation.com"]),
-}));
+// Partial mock: discovery + the download allowlist are stubbed, but the
+// INDEPENDENT OEM-host predicate stays REAL — it is the security gate the
+// unvalidated-candidate path below turns on, so a test must not fake it.
+vi.mock("@/lib/manual-discovery", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/manual-discovery")>();
+  return {
+    ...actual,
+    discoverManual: vi.fn(),
+    allowedHostsForCandidate: vi.fn(() => ["rockwellautomation.com"]),
+  };
+});
 vi.mock("@/lib/safe-download", () => ({
   safeDownloadPdf: vi.fn(),
   safePdfFilename: vi.fn(() => "520-um001.pdf"),
@@ -360,18 +367,25 @@ describe("discovery terminal states", () => {
     expect(discoverManual).not.toHaveBeenCalled();
   });
 
-  it("status candidate_review — an unvalidated result is never auto-imported", async () => {
+  // CHANGED BY #3400. This candidate is literature.rockwellautomation.com, which
+  // we can independently attribute to Allen-Bradley, so it is now PROBED with the
+  // hardened downloader instead of dead-ending. The invariant that matters is
+  // unchanged and still asserted here: an unvalidated result is never auto-
+  // ENABLED. "Not downloaded" was never the invariant — it was the symptom.
+  // The genuinely-not-probed cases are covered in the #3400 block below
+  // (non-OEM host, oemHost:false, not a direct PDF).
+  it("status candidate_review — an unvalidated result is probed but never auto-enabled", async () => {
     vi.mocked(discoverManual).mockResolvedValue({
       ...importableDiscovery(),
       validated: false,
     });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
     const body = await res.json();
     expect(body.status).toBe("candidate_review");
     expect(body.candidate).toMatchObject({ url: CANDIDATE.url });
-    expect(safeDownloadPdf).not.toHaveBeenCalled();
-    // The nameplate TEXT is parked (idempotent citable source); the MANUAL is not.
-    expect(vi.mocked(parkOrReuseFile).mock.calls.every((c) => c[0].source === "nameplate_text")).toBe(true);
+    expect(safeDownloadPdf).toHaveBeenCalledTimes(1);
+    expect(body.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false });
   });
 
   it("status download_rejected when the hardened fetcher refuses", async () => {
@@ -598,5 +612,205 @@ describe("fail-closed attach + orphan cleanup (self-review round 3, 2026-08-16)"
     vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
     await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
     expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, MANUAL_DOC_ID);
+  });
+});
+
+// ── #3400: the hardened download, not the search service's flag, decides ─────
+//
+// Measured on the real Siemens candidate: oem_host=true (support.industry.
+// siemens.com is in the service's OEM_DOMAINS), is_direct_pdf=true, but
+// validated=false — the service's HEAD/Range probe did not confirm the PDF from
+// production. The URL nevertheless serves a real 1.79 MB %PDF-1.6. The old gate
+// returned candidate_review BEFORE safeDownloadPdf ever ran, so the technician
+// got a dead "Use this manual" button.
+//
+// The relaxation is deliberately narrow: an unvalidated candidate is probed
+// ONLY when it is a direct PDF, the service says oem_host, AND we can
+// INDEPENDENTLY confirm the host belongs to this manufacturer. safeDownloadPdf
+// is unchanged and remains the only fetcher.
+describe("#3400 — unvalidated OEM candidate is probed, never trusted", () => {
+  const SIEMENS_IDENTITY = {
+    ...IDENTITY,
+    manufacturer: "SIEMENS",
+    model: "TP700 Comfort",
+    catalogNumber: null,
+  };
+  const SIEMENS_CANDIDATE = {
+    url: "https://support.industry.siemens.com/cs/attachments/109768600/manual_en-US.pdf",
+    title: "SIMATIC HMI Comfort Panels — Operating Instructions",
+    host: "support.industry.siemens.com",
+    score: 0.8,
+    docType: "user_manual",
+    isDirectPdf: true,
+    validated: false,
+  };
+  const siemensBody = { ...baseBody, identity: SIEMENS_IDENTITY };
+
+  /** Discovery as production actually returned it: OEM host, but unvalidated. */
+  function unvalidatedOemDiscovery(over: Record<string, unknown> = {}) {
+    return {
+      serviceAvailable: true,
+      found: true,
+      candidate: SIEMENS_CANDIDATE,
+      validated: false,
+      isDirectPdf: true,
+      oemHost: true,
+      trustedDistributorHost: false,
+      reason: "candidate manual found",
+      ...over,
+    };
+  }
+
+  it("downloads it, attaches it as an UNVERIFIED candidate, and asks the user to confirm", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as Record<string, never>;
+
+    expect(res.status).toBe(200);
+    expect(safeDownloadPdf).toHaveBeenCalledTimes(1);
+    // Never "complete" — a successful download is not proof the doc is official.
+    expect(body.status).toBe("candidate_review");
+    expect(body.manual).toBeTruthy();
+    expect((body.manual as Record<string, unknown>).matchState).toBe("candidate");
+    expect((body.manual as Record<string, unknown>).enabledByDefault).toBe(false);
+  });
+
+  it("records discoveryValidated:false so nothing downstream can read it as official", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+
+    await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+
+    const evidences = vi
+      .mocked(setSourceState)
+      .mock.calls.map((c) => (c[3] as { matchEvidence?: Record<string, unknown> })?.matchEvidence)
+      .filter(Boolean) as Record<string, unknown>[];
+    expect(evidences.length).toBeGreaterThan(0);
+    for (const e of evidences) {
+      expect(e.discoveryValidated).toBe(false);
+      expect(e.independentlyOemHosted).toBe(true);
+    }
+  });
+
+  it("still refuses to auto-enable even when the document text matches the identity", async () => {
+    // Chunks that WOULD verify a validated candidate. An unvalidated one must
+    // still land in front of a human — the download proved retrievability, not
+    // provenance.
+    vi.mocked(withTenantContext).mockResolvedValue([
+      { content: "SIMATIC HMI TP700 Comfort operating instructions SIEMENS", page: 1 },
+      { content: "TP700 Comfort technical specifications", page: 2 },
+    ] as never);
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as Record<string, never>;
+
+    expect(body.status).toBe("candidate_review");
+    expect((body.manual as Record<string, unknown>).matchState).toBe("candidate");
+    expect((body.manual as Record<string, unknown>).enabledByDefault).toBe(false);
+    for (const call of vi.mocked(setSourceState).mock.calls) {
+      expect((call[3] as Record<string, unknown>).matchState).not.toBe("verified");
+      expect((call[3] as Record<string, unknown>).enabledByDefault).not.toBe(true);
+    }
+  });
+
+  it("does NOT download when the host is not independently attributable to the manufacturer", async () => {
+    // Service claims oem_host, but manualslib.com is on nobody's OEM list. The
+    // service's word alone is not trust.
+    vi.mocked(discoverManual).mockResolvedValue(
+      unvalidatedOemDiscovery({
+        candidate: {
+          ...SIEMENS_CANDIDATE,
+          host: "manualslib.com",
+          url: "https://manualslib.com/x.pdf",
+        },
+      }) as never,
+    );
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as Record<string, never>;
+
+    expect(body.status).toBe("candidate_review");
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
+    expect(body.manual ?? null).toBeNull();
+  });
+
+  it("does NOT download when the service itself says the host is not the OEM's", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery({ oemHost: false }) as never);
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as Record<string, never>;
+
+    expect(body.status).toBe("candidate_review");
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
+  });
+
+  it("does NOT download an unvalidated candidate that is not a direct PDF", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery({ isDirectPdf: false }) as never);
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    expect(((await res.json()) as Record<string, never>).status).toBe("candidate_review");
+    expect(safeDownloadPdf).not.toHaveBeenCalled();
+  });
+
+  it("reports the vendor refusing the download honestly, and imports nothing", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue({ ok: false, reason: "http_error" } as never);
+
+    const res = await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as Record<string, never>;
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("download_rejected");
+    expect(body.reason).toBe("http_error");
+    // No partial file, no source row, no misleading metadata.
+    // The nameplate TEXT is still parked (it is its own citable source); the
+    // MANUAL must not be.
+    expect(vi.mocked(parkOrReuseFile).mock.calls.every((c) => c[0].source === "nameplate_text")).toBe(true);
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(body.manual ?? null).toBeNull();
+    // The message names the category without leaking infrastructure detail.
+    expect(String(body.message)).not.toMatch(/mira-ask|:8011|internal|127\.0\.0\.1|docker/i);
+  });
+
+  it("reports a timeout honestly rather than as a missing manual", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue({ ok: false, reason: "timeout" } as never);
+
+    const body = (await (
+      await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID))
+    ).json()) as Record<string, never>;
+    expect(body.status).toBe("download_rejected");
+    expect(body.reason).toBe("timeout");
+    expect(vi.mocked(parkOrReuseFile).mock.calls.every((c) => c[0].source === "nameplate_text")).toBe(true);
+  });
+
+  it("keeps returning only statuses the mobile client already maps", async () => {
+    const KNOWN = new Set([
+      "complete",
+      "candidate_review",
+      "no_manual_found",
+      "search_unavailable",
+      "no_extractable_text",
+      "manufacturer_model_required",
+      "nameplate_not_indexed",
+      "download_rejected",
+    ]);
+    vi.mocked(discoverManual).mockResolvedValue(unvalidatedOemDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    const a = (await (
+      await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID))
+    ).json()) as Record<string, never>;
+    expect(KNOWN.has(String(a.status))).toBe(true);
+
+    vi.mocked(safeDownloadPdf).mockResolvedValue({ ok: false, reason: "network_error" } as never);
+    const b = (await (
+      await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID))
+    ).json()) as Record<string, never>;
+    expect(KNOWN.has(String(b.status))).toBe(true);
   });
 });
