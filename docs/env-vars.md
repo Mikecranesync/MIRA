@@ -7,6 +7,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `TELEGRAM_BOT_TOKEN` | mira-bot-telegram                    |
 | `PRINTSENSE_COMMERCIAL_ROOT` | mira-bot-telegram — PrintSense concierge storage root (default `/data/printsense_commercial`; container-ephemeral unless volume-mounted) |
 | `PRINTSENSE_REVIEWER_CHAT_IDS` | mira-bot-telegram — comma-separated Telegram chat ids allowed the admin `/ps_review` reviewer commands (empty = reviewer surface disabled) |
+| `OTA_ORIGIN`         | mira-hub — origin of the published OTA manifest + artifacts (default `https://updates.factorylm.com`). The live-update manifest route reads `<OTA_ORIGIN>/manifest.<channel>.json` and refuses any `downloadUrl` not on that host. |
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `SLACK_SIGNING_SECRET` | mira-bot-slack - optional; retained for request-verification/OAuth-era compatibility. Socket Mode runtime requires `SLACK_APP_TOKEN`. |

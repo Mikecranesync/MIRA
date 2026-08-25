@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **69** (12 dynamic) |
-| API routes | **177** (65 dynamic) |
+| API routes | **178** (65 dynamic) |
 
 ## Pages (69)
 
@@ -87,7 +87,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (177)
+## API routes (178)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -217,6 +217,7 @@
 | `/api/library/tree` | static | `api/library/tree/route.ts` |
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
+| `/api/mobile/live-update/manifest` | static | `api/mobile/live-update/manifest/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
 | `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |

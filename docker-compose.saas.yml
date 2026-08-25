@@ -757,6 +757,11 @@ services:
       # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
       # block only (pure code). Set in Doppler factorylm/prd to bound the surface.
       - COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST=${COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST:-}
+      # Origin of the published OTA manifest + release artifacts. The mobile
+      # live-update manifest route reads <OTA_ORIGIN>/manifest.<channel>.json and
+      # refuses any downloadUrl that is not on this host, so this is a trust
+      # boundary, not just a convenience.
+      - OTA_ORIGIN=${OTA_ORIGIN:-https://updates.factorylm.com}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
