@@ -72,12 +72,47 @@ export async function GET(
       if (nodeCheck.rows.length === 0) return null;
 
       // Parked originals — never select content.
+      //
+      // #3396: filing lives in workspace_file_links since migration 075, and
+      // `node_id` is only "the legacy single-node column ... kept in sync for
+      // backward compat" (parkOrReuseFile). Listing by node_id alone hid two
+      // whole classes of file:
+      //   * a file whose bytes were already parked elsewhere — parkOrReuseFile
+      //     returns reused:true and never moves node_id, so the second folder's
+      //     filing exists ONLY as a link;
+      //   * a file parked with no node at all — POST /api/files parks first and
+      //     files afterwards, which is why migration 082 made node_id nullable.
+      // Both were invisible here while node chat and RAG could see them, because
+      // those paths already read the link table.
+      //
+      // EXISTS rather than a JOIN so a file with several links to the same node
+      // cannot multiply into duplicate rows.
+      //
+      // Tenant scoping is deliberately belt-and-braces. workspace_file_links has
+      // NO foreign key on target_id — 075 delegates ownership to per-target
+      // validators — so a forged link can name any node id. Measured under
+      // mutation: RLS (this runs inside withTenantContext, SET LOCAL ROLE
+      // factorylm_app) is what actually blocks the cross-tenant row today; the
+      // explicit tenant predicates below are defence in depth, and become the
+      // ONLY guard the moment anyone moves this query to the raw owner pool,
+      // which is BYPASSRLS. Keep both.
       const directRes = await c.query<FileRow>(
-        `SELECT id, filename, mime_type, size_bytes::text, 'direct' AS source,
-                created_at, upload_id::text AS upload_id, verified
-         FROM namespace_direct_uploads
-         WHERE node_id = $1 AND tenant_id = $2
-         ORDER BY created_at DESC`,
+        `SELECT u.id, u.filename, u.mime_type, u.size_bytes::text, 'direct' AS source,
+                u.created_at, u.upload_id::text AS upload_id, u.verified
+         FROM namespace_direct_uploads u
+         WHERE u.tenant_id = $2
+           AND (
+             u.node_id = $1
+             OR EXISTS (
+               SELECT 1
+                 FROM workspace_file_links l
+                WHERE l.file_id = u.id
+                  AND l.tenant_id = u.tenant_id
+                  AND l.target_type = 'namespace_node'
+                  AND l.target_id = $1::uuid
+             )
+           )
+         ORDER BY u.created_at DESC`,
         [id, ctx.tenantId],
       );
 

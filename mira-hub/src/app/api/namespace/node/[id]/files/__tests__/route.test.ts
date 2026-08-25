@@ -468,3 +468,76 @@ describe("POST — plain text is indexable (copied-text source door)", () => {
     expect(body).toMatchObject({ indexed: true });
   });
 });
+
+// ── #3396 — filing lives in workspace_file_links, not just node_id ───────────
+//
+// The rest of this file mocks withTenantContext straight to a finished array,
+// so the GET's real SQL never runs. That is exactly how #3396 shipped and stayed
+// live for six days behind a green suite. This block drives the callback with a
+// stub client instead, so a regression to a node_id-only listing is caught in
+// CI (which does not run the vitest integration suite). The real proof, against
+// Postgres with RLS, is node-files-links.integration.test.ts.
+describe("GET — a file filed only through workspace_file_links (#3396)", () => {
+  /** Answers the two statements GET issues, keyed on what the SQL asks for. */
+  function stubClient(opts: { linkFiledRow: Record<string, unknown> }) {
+    return {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM kg_entities")) return { rows: [{ id: VALID_UUID }] };
+        // The link-filed file has no node_id pointing here. It is reachable ONLY
+        // if the listing consults workspace_file_links.
+        if (sql.includes("workspace_file_links")) return { rows: [opts.linkFiledRow] };
+        return { rows: [] };
+      }),
+    };
+  }
+
+  const linkFiledRow = {
+    id: "file-linked-1",
+    filename: "shared-manual.pdf",
+    mime_type: "application/pdf",
+    size_bytes: "4096",
+    source: "direct",
+    created_at: "2026-08-24T00:00:00Z",
+    upload_id: null,
+    verified: false,
+  };
+
+  it("lists it — a node_id-only listing would return nothing", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const client = stubClient({ linkFiledRow });
+    vi.mocked(withTenantContext).mockImplementation(
+      async (_tenantId: string, fn: (c: never) => Promise<unknown>) => fn(client as never),
+    );
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never);
+
+    const res = await GET(makeReq(), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { files: Array<{ filename: string }> };
+    expect(body.files.map((f) => f.filename)).toContain("shared-manual.pdf");
+  });
+
+  it("scopes the link lookup to namespace_node targets and this tenant", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const client = stubClient({ linkFiledRow });
+    vi.mocked(withTenantContext).mockImplementation(
+      async (_tenantId: string, fn: (c: never) => Promise<unknown>) => fn(client as never),
+    );
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never);
+
+    await GET(makeReq(), makeParams(VALID_UUID));
+
+    const listingSql = client.query.mock.calls
+      .map((c) => c[0] as string)
+      .find((sql) => sql.includes("workspace_file_links"));
+    expect(listingSql).toBeDefined();
+    // A link table with no FK on target_id must never be read unscoped.
+    expect(listingSql).toContain("target_type = 'namespace_node'");
+    expect(listingSql).toContain("l.tenant_id = u.tenant_id");
+    expect(listingSql).toContain("u.tenant_id = $2");
+    // Bound to the requested node + tenant, not interpolated.
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining("workspace_file_links"),
+      [VALID_UUID, TENANT_ID],
+    );
+  });
+});
