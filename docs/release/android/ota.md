@@ -95,8 +95,38 @@ sudo nginx -t && sudo systemctl reload nginx
 curl -sS https://updates.factorylm.com/healthz     # -> ok
 ```
 
-Static files only — no `proxy_pass`, no application. The Hub can be down and the
-update channel keeps working.
+Static files only — no `proxy_pass`, no application.
+
+## How a device actually gets the manifest
+
+The device does **not** read `manifest.<channel>.json` from this host directly.
+It asks the Hub:
+
+```
+GET https://app.factorylm.com/api/mobile/live-update/manifest?channel=<c>&fingerprint=<fp>
+```
+
+(`mira-hub/src/app/api/mobile/live-update/manifest/route.ts`, added because the
+client had called this since #3393 and the route did not exist — every "Check
+now" returned `Update server error (404)`.)
+
+That route reads the published `manifest.<channel>.json` from `OTA_ORIGIN`
+(default `https://updates.factorylm.com`) and serves it only if it is usable:
+right channel, fingerprint matching the asking shell, signature and checksum
+present, and a `downloadUrl` on the release host itself. Anything else is a
+`200` with no `downloadUrl`, which the client reads as "no update" rather than
+an error.
+
+The **artifact** is still fetched straight from this host by the device — the
+Hub is never a proxy for the zip, and never verifies the signature (it cannot;
+the signature covers the zip's digest, which never passes through it). The
+device verifies what it downloads, against the public key baked into the APK.
+
+Consequence worth knowing: **the Hub must be up for a device to discover an
+update.** It does not need to be up to serve one — an already-discovered
+download comes from this host. (An earlier version of this runbook claimed the
+Hub could be down entirely; that stopped being true once the client started
+asking the Hub for the manifest.)
 
 ---
 

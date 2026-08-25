@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 69,
-    "apiRoutes": 177
+    "apiRoutes": 178
   },
   "pages": [
     "/admin",
@@ -202,6 +202,7 @@
     "/api/library/tree",
     "/api/me",
     "/api/mira/ask",
+    "/api/mobile/live-update/manifest",
     "/api/namespace/files/[id]",
     "/api/namespace/files/[id]/verify",
     "/api/namespace/node",
