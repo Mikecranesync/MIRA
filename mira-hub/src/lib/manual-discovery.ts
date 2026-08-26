@@ -44,10 +44,21 @@ export interface DiscoveryResult {
   trustedDistributorHost: boolean;
   /** Technician-facing, already honest. Safe to render as-is. */
   reason: string;
+  /** The manufacturer's own manual-request page, validated live by the
+   * discovery service (200 right now) — the official next step when nothing
+   * could be found or trusted. */
+  oemRequestUrl: string | null;
+}
+
+function requestUrl(body: Record<string, unknown> | null | undefined): string | null {
+  const u = body?.oem_request_url;
+  return typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : null;
 }
 
 const DEFAULT_ASK_URL = "http://mira-ask:8011";
-const DISCOVERY_TIMEOUT_MS = 12_000;
+// 60s (was 12s): mira-ask now reads the top candidate PDFs before choosing
+// (model-judged, 2026-08-26); its own budget is MANUAL_DISCOVERY_TIMEOUT=50s.
+const DISCOVERY_TIMEOUT_MS = 60_000;
 
 const NO_MANUAL = "no official manual found";
 const UNAVAILABLE = "search service unavailable";
@@ -62,6 +73,7 @@ function unavailable(reason = UNAVAILABLE): DiscoveryResult {
     oemHost: false,
     trustedDistributorHost: false,
     reason,
+    oemRequestUrl: null,
   };
 }
 
@@ -75,6 +87,7 @@ function notFound(reason = NO_MANUAL): DiscoveryResult {
     oemHost: false,
     trustedDistributorHost: false,
     reason,
+    oemRequestUrl: null,
   };
 }
 
@@ -124,7 +137,7 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
   if (body.found !== true || !url) {
-    return notFound(str(body.reason) ?? NO_MANUAL);
+    return { ...notFound(str(body.reason) ?? NO_MANUAL), oemRequestUrl: requestUrl(body) };
   }
   let host = c ? (str(c.host) ?? "") : "";
   if (!host) {
@@ -153,7 +166,8 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     isDirectPdf: body.is_direct_pdf === true || candidate.isDirectPdf,
     oemHost: body.oem_host === true,
     trustedDistributorHost: body.trusted_distributor_host === true,
-    reason: str(body.reason) ?? "candidate manual found",
+    reason: str(body.reason_detail) || str(body.reason) || "candidate manual found",
+    oemRequestUrl: requestUrl(body),
   };
 }
 

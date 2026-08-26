@@ -226,6 +226,22 @@ export function ComponentNameplateFlow({
             {state.candidate?.host ? `${state.candidate.host} · ` : ""}
             {state.candidate?.oemHost ? "manufacturer site" : "not a manufacturer site"}
           </div>
+          {state.reason ? (
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {state.reason}
+            </div>
+          ) : null}
+          {state.oemRequestUrl ? (
+            <a
+              className="candidate-link"
+              href={state.oemRequestUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Request the official manual from the manufacturer ↗
+              <span className="candidate-link-url">{state.oemRequestUrl}</span>
+            </a>
+          ) : null}
           {/* The whole point of this screen is "confirm before using", and a
            *  technician cannot confirm a document they cannot open. The URL used
            *  to be plain text — unreadable and untappable — so the only way to
@@ -308,6 +324,17 @@ export function ComponentNameplateFlow({
             The photo is saved in your workspace either way.
           </div>
           {transportError != null && <ErrorState error={transportError} />}
+          {state.oemRequestUrl ? (
+            <a
+              className="candidate-link"
+              href={state.oemRequestUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Request the official manual from the manufacturer ↗
+              <span className="candidate-link-url">{state.oemRequestUrl}</span>
+            </a>
+          ) : null}
           {state.fileId && (
             <button onClick={() => dispatch({ type: "edit_again" })}>
               Edit the details and try again
