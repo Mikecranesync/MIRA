@@ -175,6 +175,17 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         result = _NO_RESULT.copy()
         result["oem_request_url"] = oem_request_url
         return result
+    if candidate.get("reason") == "judged_not_applicable":
+        # Every relevant candidate was READ and rejected. Owner canary rule
+        # (2026-08-26): bad manuals disappear — do not hand the technician a
+        # newspaper to "review"; say no manual was found, show why, and offer
+        # the manufacturer's own request form.
+        result = _NO_RESULT.copy()
+        result["reason"] = "judged_not_applicable"
+        result["reason_detail"] = candidate.get("reason_detail") or ""
+        result["judged_rejected"] = candidate.get("judged_rejected") or []
+        result["oem_request_url"] = oem_request_url
+        return result
 
     validated = bool(candidate.get("validated"))
     is_direct_pdf = bool(candidate.get("is_direct_pdf"))

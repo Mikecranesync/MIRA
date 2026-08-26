@@ -715,18 +715,18 @@ async def search_manual(make: str, model: str) -> dict | None:
             c["validated"] = True
             if _judge.judge_enabled():
                 # The judge is on but this candidate was never READ (fetch
-                # blocked / too big / no text / provider down). A byte-valid
-                # PDF nobody has read is not a manual we vouch for: hold it for
-                # review unless it sits on the manufacturer's own host. (Live
-                # 2026-08-26: this path handed back a state tax form and an
-                # education-archive PDF as validated=True.)
+                # blocked / too big / no text / model output unparseable).
+                # Canary run 1 (2026-08-26): the only real GS10 hit came back
+                # unparseable and the old OEM-host exception blessed it unread.
+                # Owner rule: uncertain stays uncertain — a judged match is the
+                # ONLY thing that validates while the judge is on.
                 c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
                 c["reason_detail"] = (
                     "Judged candidates were rejected; this one could not be read — review before use."
                     if judged_any
                     else "Could not read the candidate PDF — review before use."
                 )
-                c["validated"] = _is_oem_host(c.get("host") or "", make)
+                c["validated"] = False
                 c["judged_rejected"] = rejected_out
             else:
                 c.setdefault("reason", "ok")
@@ -736,6 +736,12 @@ async def search_manual(make: str, model: str) -> dict | None:
     # caller can hold it for human review. Never promote an unvalidated
     # candidate to a trusted manual link.
     deduped[0]["validated"] = False
+    if _judge.judge_enabled():
+        deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
+        deduped[0].setdefault(
+            "reason_detail", "Could not read the candidate PDF — review before use."
+        )
+        deduped[0]["judged_rejected"] = rejected_out
     return deduped[0]
 
 
