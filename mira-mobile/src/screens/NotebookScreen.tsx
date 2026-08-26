@@ -11,6 +11,7 @@ import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick
 import {
   getNotebookDetail,
   askNotebook,
+  buildChatHistory,
   attachFileToTargets,
   setSourceEnabled,
   detachSource,
@@ -152,6 +153,7 @@ export function NotebookScreen({
       setViewCitation(null);
       setPassages(null);
       setShowOriginal(false);
+      setShowDetails(false);
       return true;
     }
     if (sheetOpen) {
@@ -531,7 +533,13 @@ export function NotebookScreen({
                   // one, and the server labels it as such. With sources present
                   // this stays the strict grounded path — the mode is never sent
                   // as a fallback when retrieval comes back empty.
-                  const a = await askNotebook(id, question, scope, scope.length === 0 ? "general" : undefined);
+                  // CONV-3: the recent thread rides along so a follow-up
+                  // ("what about the second one?") has memory — same contract
+                  // the web client already ships.
+                  const a = await askNotebook(id, question, scope, {
+                    mode: scope.length === 0 ? "general" : undefined,
+                    history: buildChatHistory(turns, liveTurns),
+                  });
                   setLiveTurns((t) => [...t, { q: question, a }]);
                 } catch (e) {
                   setChatError(e);
@@ -550,6 +558,8 @@ export function NotebookScreen({
         <StudioPanel
           notebookId={id}
           scope={scope}
+          // Studio generators are one-shot scoped prompts — chat history
+          // would contaminate them, so it is deliberately NOT sent here.
           ask={(prompt) => askNotebook(id, prompt, scope)}
           onCitation={setViewCitation}
         />

@@ -1019,22 +1019,66 @@ export async function getSourcePassage(
   return ((r.data as { passages?: SourcePassage[] } | null)?.passages ?? []);
 }
 
+/** One prior exchange line, the shape the server's sanitizeHistory accepts. */
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * CONV-3: the recent thread, built from BOTH stores a notebook renders —
+ * persisted turns (server truth, survives devices) and this session's live
+ * turns — in chronological order, as role/content pairs. Same windowing the
+ * web client uses (last 12 lines); the route caps it again defensively.
+ * A refusal contributes its QUESTION (real context) but no fabricated answer
+ * line. Pure and unit-tested.
+ */
+export function buildChatHistory(
+  turns: Pick<NotebookServerTurn, "question" | "answerText">[],
+  liveTurns: { q: string; a: Pick<ChatTurn, "answer"> }[],
+  maxLines = 12,
+): ChatHistoryTurn[] {
+  const out: ChatHistoryTurn[] = [];
+  for (const t of turns) {
+    if (t.question.trim()) out.push({ role: "user", content: t.question });
+    if (t.answerText?.trim()) out.push({ role: "assistant", content: t.answerText });
+  }
+  for (const t of liveTurns) {
+    if (t.q.trim()) out.push({ role: "user", content: t.q });
+    if (t.a.answer?.trim()) out.push({ role: "assistant", content: t.a.answer });
+  }
+  return out.slice(-maxLines);
+}
+
 /** Ask within the caller-selected source scope (per-source checkboxes). */
 export async function askNotebook(
   notebookId: string,
   message: string,
   sourceDocIds: string[],
-  /**
-   * "general" asks for an explicitly ungrounded answer (spec 1.1). It is sent
-   * ONLY when the technician chose it — never as an automatic fallback, because
-   * silently downgrading a grounded question to general reasoning is precisely
-   * the evidence-contract change 1.4 forbids.
-   */
-  mode?: "general",
+  opts: {
+    /**
+     * "general" asks for an explicitly ungrounded answer (spec 1.1). It is
+     * sent ONLY when the technician chose it — never as an automatic
+     * fallback, because silently downgrading a grounded question to general
+     * reasoning is precisely the evidence-contract change 1.4 forbids.
+     */
+    mode?: "general";
+    /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
+    history?: ChatHistoryTurn[];
+  } = {},
 ): Promise<ChatTurn> {
   const r = await request(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
-    { method: "POST", json: { message, sourceDocIds, ...(mode ? { mode } : {}) }, timeoutMs: 120_000 },
+    {
+      method: "POST",
+      json: {
+        message,
+        sourceDocIds,
+        ...(opts.mode ? { mode: opts.mode } : {}),
+        ...(opts.history?.length ? { history: opts.history } : {}),
+      },
+      timeoutMs: 120_000,
+    },
   );
   return parseChatSse(r.text, r.status);
 }
