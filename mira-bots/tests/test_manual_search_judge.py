@@ -579,3 +579,31 @@ async def test_extract_text_round_trips_a_real_pdf_through_the_child():
         b"trailer<</Root 1 0 R>>\n%%EOF\n"
     )
     assert "UMS-3-0335" in await judge.extract_text(pdf)
+
+
+# ── canary audit trail (owner protocol 2026-08-26) ───────────────────────────
+
+
+async def test_every_judgment_and_the_pick_are_logged_as_json(wired, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="mira.manual_search")
+    caplog.set_level(logging.INFO, logger="mira.manual_search.judge")
+    await search_mod.search_manual("Harrington", "UMS3-0335")
+    verdicts = [
+        json.loads(r.getMessage().split(" ", 1)[1])
+        for r in caplog.records
+        if r.getMessage().startswith("MANUAL_JUDGE_VERDICT ")
+    ]
+    picks = [
+        json.loads(r.getMessage().split(" ", 1)[1])
+        for r in caplog.records
+        if r.getMessage().startswith("MANUAL_JUDGE_PICK ")
+    ]
+    assert len(verdicts) >= 2 and len(picks) == 1
+    match = next(v for v in verdicts if v["url"] == SERIES3)
+    assert match["is_manual"] is True and "UMS-3-0335" in match["evidence_quote"]
+    assert match["provider"] == "fake" and isinstance(match["latency_ms"], int)
+    assert match["text_chars"] > 0
+    assert picks[0]["top_url"] == SERIES3 and picks[0]["top_is_match"] is True
+    assert picks[0]["rejected"] >= 1

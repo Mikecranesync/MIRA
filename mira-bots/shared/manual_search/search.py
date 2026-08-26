@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -654,6 +655,27 @@ async def search_manual(make: str, model: str) -> dict | None:
     rejected_out: list[dict] = []
     if _judge.judge_enabled():
         ranked = await _judge.judge_candidates(make, model, deduped)
+        # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
+        # lines so a false positive can be traced from the phone back to the read.
+        _top = ranked[0] if ranked else None
+        logger.info(
+            "MANUAL_JUDGE_PICK %s",
+            json.dumps(
+                {
+                    "make": make,
+                    "model_number": model,
+                    "pool": len(ranked),
+                    "judged": sum(
+                        1 for c in ranked if (c.get("judge") or {}).get("status") == "judged"
+                    ),
+                    "matches": sum(1 for c in ranked if _judge.is_match(c)),
+                    "rejected": sum(1 for c in ranked if _judge.is_rejected(c)),
+                    "top_url": (_top or {}).get("url", "")[:200],
+                    "top_is_match": bool(_top and _judge.is_match(_top)),
+                    "top_is_rejected": bool(_top and _judge.is_rejected(_top)),
+                }
+            ),
+        )
         rejected = [
             {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
             for c in ranked

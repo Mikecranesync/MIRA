@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any
 
 import httpx
@@ -249,6 +250,7 @@ async def judge_text(make: str, model: str, cand: dict, text: str) -> dict[str, 
         f"Candidate title: {cand.get('title', '')[:160]}\n\n"
         f"First pages of the PDF:\n<<<\n{text}\n>>>"
     )
+    t0 = time.monotonic()
     try:
         content, _usage = await asyncio.wait_for(
             router.complete(
@@ -263,8 +265,21 @@ async def judge_text(make: str, model: str, cand: dict, text: str) -> dict[str, 
     except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
         logger.info("judge model call failed: %s", e)
         return None
+    latency_ms = int((time.monotonic() - t0) * 1000)
     verdict = _extract_json(content)
     if not verdict or "is_manual_for_model" not in verdict:
+        logger.info(
+            "MANUAL_JUDGE_VERDICT %s",
+            json.dumps(
+                {
+                    "status": "unparseable",
+                    "url": cand.get("url", "")[:200],
+                    "provider": (_usage or {}).get("provider"),
+                    "model": (_usage or {}).get("model"),
+                    "latency_ms": latency_ms,
+                }
+            ),
+        )
         return None
     try:
         conf = float(verdict.get("confidence", 0.0))
@@ -279,6 +294,9 @@ async def judge_text(make: str, model: str, cand: dict, text: str) -> dict[str, 
         "confidence": max(0.0, min(1.0, conf)),
         "evidence_quote": str(verdict.get("evidence_quote") or "")[:240],
         "reason": str(verdict.get("reason") or "")[:240],
+        "provider": (_usage or {}).get("provider"),
+        "model": (_usage or {}).get("model"),
+        "latency_ms": latency_ms,
     }
 
 
@@ -299,7 +317,33 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
         cand["judge"] = {"status": "unavailable"}
         return cand
     verdict["status"] = "judged"
+    verdict["text_chars"] = len(text)
     cand["judge"] = verdict
+    # One auditable line per judgment (owner canary protocol, 2026-08-26):
+    # what was read, what was decided, by which model, how fast.
+    logger.info(
+        "MANUAL_JUDGE_VERDICT %s",
+        json.dumps(
+            {
+                "status": "judged",
+                "make": make,
+                "model_number": model,
+                "url": cand.get("url", "")[:200],
+                "host": cand.get("host", ""),
+                "title": (cand.get("title") or "")[:120],
+                "text_chars": len(text),
+                "is_manual": verdict["is_manual"],
+                "doc_type": verdict["doc_type"],
+                "scope": verdict.get("scope"),
+                "confidence": verdict["confidence"],
+                "evidence_quote": verdict["evidence_quote"],
+                "reason": verdict["reason"],
+                "provider": verdict.get("provider"),
+                "model": verdict.get("model"),
+                "latency_ms": verdict.get("latency_ms"),
+            }
+        ),
+    )
     return cand
 
 
