@@ -9,10 +9,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
+import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 
 export const dynamic = "force-dynamic";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// Raster safelist mirrors the notebook recognize route (SVG deliberately absent).
+const ALLOWED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 export async function POST(req: NextRequest) {
   const ctx = await sessionOr401();
@@ -31,11 +34,17 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_IMAGE_BYTES) {
     return NextResponse.json({ error: "image_too_large" }, { status: 413 });
   }
-  const mime = file.type || "image/jpeg";
-  if (!mime.startsWith("image/")) {
-    return NextResponse.json({ error: "not_an_image" }, { status: 400 });
-  }
+  // Declared MIME is a claim: mobile pickers ship real JPEGs declared
+  // application/octet-stream. The bytes decide — reject only when neither the
+  // declared nor the sniffed type is a safelisted raster image.
   const buf = Buffer.from(await file.arrayBuffer());
+  const mime = effectiveImageMime(file.type || "image/jpeg", buf, ALLOWED_IMAGE_MIMES);
+  if (!mime) {
+    return NextResponse.json(
+      { error: "unsupported_image_type", message: "Send a JPEG, PNG, GIF, or WebP photo." },
+      { status: 415 },
+    );
+  }
   try {
     // Crop-then-recognize when the detector finds the label (fixes the 10x
     // current misread); any detector failure reads the original, as before.

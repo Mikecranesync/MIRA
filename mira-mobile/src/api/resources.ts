@@ -864,6 +864,11 @@ export interface ConfirmComponentResult {
   applicability: unknown | null;
   message: string | null;
   warning: string | null;
+  /** On candidate_review: what discovery learned by READING the file
+   *  ("Read the PDF: a lever-hoist brochure, no end-truck model"). */
+  discoveryReason?: string | null;
+  /** The manufacturer's own manual-request page (validated by the server). */
+  oemRequestUrl?: string | null;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source

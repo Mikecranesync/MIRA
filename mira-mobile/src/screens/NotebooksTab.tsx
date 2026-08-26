@@ -11,7 +11,7 @@ import {
   type Notebook,
   type NameplateCandidate,
 } from "../api/resources";
-import { ApiError } from "../api/client";
+import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-flow";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
 
@@ -134,12 +134,9 @@ function Home({
       const candidate = await recognizeNameplate(file);
       onCreate(candidate);
     } catch (e) {
-      // Honest failure (e.g. recognizer_not_configured 503) → manual create.
-      setScanNote(
-        e instanceof ApiError && e.status === 503
-          ? "Nameplate recognition isn't available — create the notebook manually."
-          : "Couldn't read that nameplate — create the notebook manually.",
-      );
+      // Honest failure, with the server's actual reason (EVID-3): a rejected
+      // format or an oversized photo must not read as an unreadable nameplate.
+      setScanNote(`${nameplateErrorCopy(reasonFromRecognizeError(e))} — create the notebook manually.`);
     } finally {
       setScanning(false);
     }
@@ -166,7 +163,7 @@ function Home({
         {state.state === "loading" && <Loading what="notebooks" />}
         {state.state === "error" && <ErrorState error={state.error} onRetry={refresh} />}
         {state.state === "ready" && state.data.length === 0 && (
-          <Empty text="No machine notebooks yet. Create one and add its manual — then ask it anything." />
+          <Empty text="No machine notebooks yet. Create one and ask right away — add the manual when you have it for cited answers." />
         )}
         {shown.map((nb) => (
           <div key={nb.id} className="card nb-card" onClick={() => onOpen(nb.id)}>

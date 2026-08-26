@@ -315,7 +315,7 @@ export function NotebookScreen({
             </div>
           )}
           {sources.length === 0 && (
-            <Empty text="Saved sources will appear here. Add the machine's manual to start asking questions." />
+            <Empty text="Saved sources will appear here. Add the machine's manual to get cited, machine-specific answers — you can ask general questions right now." />
           )}
           {sources.map((s) => {
             const chattable = canBeChatSource(s);
@@ -417,7 +417,7 @@ export function NotebookScreen({
                 <Empty
                   text={
                     scope.length === 0
-                      ? "Add a source first — answers are grounded only in this notebook's documents."
+                      ? "Ask anything now — answers are general until this notebook has documents; then they're grounded and cited."
                       : "Ask this machine anything. Answers cite the manual."
                   }
                 />

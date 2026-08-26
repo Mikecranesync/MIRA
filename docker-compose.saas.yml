@@ -513,7 +513,18 @@ services:
       SERPER_API_KEY: "${SERPER_API_KEY:-}"
       MANUAL_SEARCH_TIMEOUT: "${MANUAL_SEARCH_TIMEOUT:-15}"
       MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
-      MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-20}"
+      MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-50}"
+      # Read-before-choose judge (shared/manual_search/judge.py). Code default is
+      # ON; this compose default is OFF ON PURPOSE — owner decision 2026-08-26:
+      # ship dark, verify health, enable (Doppler prd MANUAL_JUDGE_ENABLED=1 +
+      # redeploy mira-ask) for the supervised mike-pilot Pixel test, disable on
+      # any failure. See docs/architecture/convergence/CAPABILITY_CLOSURE.yaml.
+      MANUAL_JUDGE_ENABLED: "${MANUAL_JUDGE_ENABLED:-0}"
+      MANUAL_JUDGE_MAX_CANDIDATES: "${MANUAL_JUDGE_MAX_CANDIDATES:-4}"
+      MANUAL_JUDGE_MAX_BYTES: "${MANUAL_JUDGE_MAX_BYTES:-26214400}"
+      MANUAL_JUDGE_FETCH_TIMEOUT: "${MANUAL_JUDGE_FETCH_TIMEOUT:-12}"
+      MANUAL_JUDGE_LLM_TIMEOUT: "${MANUAL_JUDGE_LLM_TIMEOUT:-25}"
+      MANUAL_JUDGE_EXTRACT_TIMEOUT: "${MANUAL_JUDGE_EXTRACT_TIMEOUT:-15}"
       MIRA_MANUAL_SENSE_WEB_ENABLED: "${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}"
       # Nameplate text-DETECTION endpoint (POST /nameplate/detect) — finds the
       # label region so the Hub can crop before recognition (fixes the 1.27A->
