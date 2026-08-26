@@ -1003,6 +1003,9 @@ jobs:
       - name: Validator rule tests (incl. negative fixtures)
         run: pytest tests/test_capability_closure.py -q
 
+      - name: Approved-retrieval gate is plumbed and enforced (#3328)
+        run: pytest tests/test_approved_retrieval_plumbing.py -q
+
   drive-pack-extract-tests:
     name: Drive Pack Extract Tests
     runs-on: ubuntu-latest
