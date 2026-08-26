@@ -63,6 +63,11 @@ FETCH_TIMEOUT = float(os.getenv("MANUAL_JUDGE_FETCH_TIMEOUT", "12"))
 EXTRACT_TIMEOUT = float(os.getenv("MANUAL_JUDGE_EXTRACT_TIMEOUT", "15"))
 LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
 
+# Only these document kinds can ever be "the manual". Enforced in code, not just in the
+# prompt: canary 2026-08-26 accepted a fuse-kit PARTS LIST for a GS1-45P0 as the manual
+# (doc_type=parts_list, conf 0.92) — a false positive by the owner's rule.
+MANUAL_DOC_TYPES = frozenset({"user_manual", "installation_manual"})
+
 # Verdict strings the caller can show verbatim.
 REASON_JUDGED_MATCH = "judged_manual_match"
 REASON_JUDGED_REJECTED = "judged_not_applicable"
@@ -194,10 +199,11 @@ _JUDGE_SYSTEM = (
     '"confidence": 0.0-1.0, '
     '"evidence_quote": "<verbatim text from the document that supports your answer, <=200 chars>", '
     '"reason": "<one sentence>"}\n'
-    "Rules: is_manual_for_model is true only if the document is a manual/instructions/parts "
-    "document that covers THIS model (exact model, or a family/series the document explicitly "
-    "lists this model under). A sales brochure, catalog, price list, or a manual for a different "
-    "product line is false. If the text does not mention the model or its family, answer false "
+    "Rules: is_manual_for_model is true ONLY for a user / owner's / installation / operation "
+    "manual that covers THIS model (exact model, or a family/series the document explicitly "
+    "lists this model under). A parts list, accessory or fuse kit sheet, datasheet, spec sheet, "
+    "sales brochure, catalog, price list, revision history, or a manual for a different product "
+    "line is false even when it names the model. If the text does not mention the model or its family, answer false "
     'with low confidence. scope is "section" when the PDF is one chapter/appendix/warning '
     "insert of a larger manual (page numbers like W-1, A-3, or a chapter title as the whole "
     'document), "complete" when it is the whole manual. Never invent a quote.'
@@ -299,15 +305,25 @@ async def _judge_text_once(
         conf = float(verdict.get("confidence", 0.0))
     except (TypeError, ValueError):
         conf = 0.0
+    doc_type = str(verdict.get("doc_type") or "other")[:40]
+    said_yes = bool(verdict.get("is_manual_for_model"))
     return {
-        "is_manual": bool(verdict.get("is_manual_for_model")),
-        "doc_type": str(verdict.get("doc_type") or "other")[:40],
+        # A "yes" on anything but a real manual kind is downgraded to a rejection with
+        # the model's own classification as the reason.
+        "is_manual": said_yes and doc_type in MANUAL_DOC_TYPES,
+        "doc_type": doc_type,
+        "downgraded": said_yes and doc_type not in MANUAL_DOC_TYPES,
         "scope": "section"
         if str(verdict.get("scope") or "").lower().startswith("sec")
         else "complete",
         "confidence": max(0.0, min(1.0, conf)),
         "evidence_quote": str(verdict.get("evidence_quote") or "")[:240],
-        "reason": str(verdict.get("reason") or "")[:240],
+        "reason": (
+            f"Classified as {doc_type.replace('_', ' ')}, not a user/installation manual. "
+            + str(verdict.get("reason") or "")
+        )[:240]
+        if (said_yes and doc_type not in MANUAL_DOC_TYPES)
+        else str(verdict.get("reason") or "")[:240],
         "provider": (_usage or {}).get("provider"),
         "model": (_usage or {}).get("model"),
         "latency_ms": latency_ms,
@@ -347,6 +363,7 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
                 "title": (cand.get("title") or "")[:120],
                 "text_chars": len(text),
                 "is_manual": verdict["is_manual"],
+                "downgraded": verdict.get("downgraded", False),
                 "doc_type": verdict["doc_type"],
                 "scope": verdict.get("scope"),
                 "confidence": verdict["confidence"],

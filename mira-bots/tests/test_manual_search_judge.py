@@ -629,3 +629,61 @@ async def test_unparseable_verdict_is_retried_once(wired, monkeypatch):
     )
     assert v is not None and v["is_manual"] is True
     assert len(calls) == 2
+
+
+# ── false positive, phone canary 2026-08-26 (GS1-45P0 → fuse-kit parts list) ─
+
+
+async def test_parts_list_is_never_the_manual_even_if_the_model_says_yes(monkeypatch):
+    class SaysYes:
+        enabled = True
+
+        async def complete(self, *a, **k):
+            return (
+                json.dumps(
+                    {
+                        "is_manual_for_model": True,
+                        "doc_type": "parts_list",
+                        "scope": "complete",
+                        "confidence": 0.92,
+                        "evidence_quote": "GS-45P0 fuse kit",
+                        "reason": "lists fuse kits for GS1 drives",
+                    }
+                ),
+                {"provider": "fake", "model": "fake/m"},
+            )
+
+    monkeypatch.setattr(judge, "_router", SaysYes())
+    v = await judge.judge_text(
+        "AutomationDirect",
+        "GS1-45P0",
+        {"url": "https://cdn.x/gsacfuse.pdf", "title": ""},
+        "fuse kits",
+    )
+    assert v is not None
+    assert v["is_manual"] is False and v["downgraded"] is True
+    assert v["reason"].startswith("Classified as parts list, not a user/installation manual.")
+    cand = {"url": "https://cdn.x/gsacfuse.pdf", "title": "", "is_direct_pdf": True, "score": 150}
+    cand["judge"] = dict(v, status="judged")
+    assert judge.is_match(cand) is False and judge.is_rejected(cand) is True
+
+
+async def test_user_and_installation_manuals_still_match(monkeypatch):
+    for kind in ("user_manual", "installation_manual"):
+
+        class Yes:
+            enabled = True
+
+            async def complete(self, *a, **k):
+                return json.dumps(
+                    {
+                        "is_manual_for_model": True,
+                        "doc_type": kind,
+                        "confidence": 0.9,
+                        "reason": "r",
+                    }
+                ), {}
+
+        monkeypatch.setattr(judge, "_router", Yes())
+        v = await judge.judge_text("X", "Y", {"url": "https://x/m.pdf", "title": ""}, "t")
+        assert v["is_manual"] is True and v["downgraded"] is False
