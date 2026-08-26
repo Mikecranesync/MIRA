@@ -153,3 +153,39 @@ describe("web", () => {
     expect(canPickNatively()).toBe(true);
   });
 });
+
+describe("image MIME truth (EVID-1) — the picker's label is a claim, not a fact", () => {
+  // Android's picker returns undefined or octet-stream for gallery images
+  // often enough that trusting it sent real JPEGs to the recognizer as
+  // octet-stream → 415. `data` variant avoids the fetch stub.
+  const bytes = { data: btoa("abc"), path: undefined };
+
+  it("derives image/jpeg from the extension when the picker returns no mime", async () => {
+    pickImages.mockResolvedValue({ files: [{ name: "IMG_2041.JPG", ...bytes }] });
+    const f = await pickNameplatePhoto();
+    expect(f?.type).toBe("image/jpeg");
+  });
+
+  it("derives image/png when the picker declares octet-stream for a .png", async () => {
+    pickImages.mockResolvedValue({
+      files: [{ name: "shot.png", mimeType: "application/octet-stream", ...bytes }],
+    });
+    const f = await pickNameplatePhoto();
+    expect(f?.type).toBe("image/png");
+  });
+
+  it("keeps a truthful declared image mime as-is", async () => {
+    pickImages.mockResolvedValue({
+      files: [{ name: "x.bin", mimeType: "image/webp", ...bytes }],
+    });
+    const f = await pickNameplatePhoto();
+    expect(f?.type).toBe("image/webp");
+  });
+
+  it("falls back to image/jpeg — NEVER octet-stream — with no name and no mime", async () => {
+    pickImages.mockResolvedValue({ files: [{ ...bytes }] });
+    const f = await pickNameplatePhoto();
+    expect(f?.type).toBe("image/jpeg");
+    expect(f?.name).toBe("nameplate.jpg");
+  });
+});

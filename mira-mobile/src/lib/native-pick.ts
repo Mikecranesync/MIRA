@@ -52,9 +52,45 @@ function base64ToBytes(b64: string): ArrayBuffer {
   return buf;
 }
 
-async function toFile(picked: PickedFile, fallbackName: string, forceMime?: string): Promise<File | null> {
+/** A mime override for `toFile`: a fixed string (the PDF path) or a resolver
+ *  that sees what the picker actually returned (the image path). */
+type MimeOf = string | ((picked: PickedFile) => string);
+
+const IMAGE_EXT_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  // Truthful even though the recognizer can't take these yet — the server can
+  // then say "unsupported image type" instead of blaming the photo.
+  heic: "image/heic",
+  heif: "image/heif",
+};
+
+/**
+ * Android pickers return a missing or `application/octet-stream` mime for
+ * gallery images often enough that trusting it sent real JPEGs to the
+ * recognizer as octet-stream → 415 (the image half of the same lie #3403
+ * fixed for PDFs). Images can't force ONE type the way PDFs can, so: trust a
+ * real `image/*` mime, else derive from the extension, else JPEG — the
+ * overwhelmingly common camera output. Never octet-stream.
+ */
+function imageMimeOf(picked: PickedFile): string {
+  const declared = (picked.mimeType ?? "").toLowerCase().split(";")[0].trim();
+  if (declared.startsWith("image/")) return declared;
+  const name = (picked.name ?? "").trim().toLowerCase();
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1) : "";
+  return IMAGE_EXT_MIME[ext] ?? "image/jpeg";
+}
+
+async function toFile(picked: PickedFile, fallbackName: string, mimeOf?: MimeOf): Promise<File | null> {
   const name = picked.name?.trim() || fallbackName;
-  const type = forceMime ?? picked.mimeType ?? "application/octet-stream";
+  const type =
+    (typeof mimeOf === "function" ? mimeOf(picked) : mimeOf) ??
+    picked.mimeType ??
+    "application/octet-stream";
 
   if (picked.blob) return new File([picked.blob], name, { type });
 
@@ -72,14 +108,14 @@ async function toFile(picked: PickedFile, fallbackName: string, forceMime?: stri
 async function pickOne(
   run: () => Promise<{ files?: PickedFile[] }>,
   fallbackName: string,
-  forceMime?: string,
+  mimeOf?: MimeOf,
 ): Promise<File | null> {
   if (!canPickNatively()) return null;
   try {
     const res = await run();
     const first = res?.files?.[0];
     if (!first) return null; // backed out
-    return await toFile(first, fallbackName, forceMime);
+    return await toFile(first, fallbackName, mimeOf);
   } catch {
     // Cancel surfaces as a rejection on some hosts, and a genuine failure must
     // not strand the caller either. Both mean "no file".
@@ -87,9 +123,10 @@ async function pickOne(
   }
 }
 
-/** The nameplate photo, from the phone's own image picker. */
+/** The nameplate photo, from the phone's own image picker. The mime is
+ *  resolved (never trusted raw): see `imageMimeOf`. */
 export function pickNameplatePhoto(): Promise<File | null> {
-  return pickOne(() => FilePicker.pickImages({ limit: 1 }), "nameplate.jpg");
+  return pickOne(() => FilePicker.pickImages({ limit: 1 }), "nameplate.jpg", imageMimeOf);
 }
 
 /**

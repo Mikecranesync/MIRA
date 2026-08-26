@@ -56,12 +56,17 @@ const notebook = {
 
 const makeParams = (id: string) => ({ params: Promise.resolve({ id }) });
 
-function makeReq(opts: { field?: string; name?: string; type?: string; bytes?: number } = {}) {
+function makeReq(
+  opts: { field?: string; name?: string; type?: string; bytes?: number; content?: Uint8Array } = {},
+) {
   const fd = new FormData();
   const size = opts.bytes ?? 16;
+  // Copy into a fresh buffer: a view over a shared ArrayBufferLike is not a
+  // BlobPart (same constraint native-pick documents for base64ToBytes).
+  const content = new Uint8Array(opts.content ?? new Uint8Array(size));
   fd.append(
     opts.field ?? "image",
-    new File([new Uint8Array(size)], opts.name ?? "plate.jpg", {
+    new File([content.buffer], opts.name ?? "plate.jpg", {
       type: opts.type ?? "image/jpeg",
     }),
   );
@@ -370,5 +375,43 @@ describe("detector crop wiring", () => {
       expect(["image", "image_inferred"]).toContain(fact.source);
       expect(fact.corroboration).toEqual([]);
     }
+  });
+});
+
+describe("picker-mislabeled images (EVID-2: the bytes decide, not the declared MIME)", () => {
+  // A real JPEG as Android's picker delivers it: correct bytes, wrong label.
+  const JPEG_MAGIC = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+
+  it("accepts a JPEG declared application/octet-stream, and parks it under its TRUE mime", async () => {
+    vi.mocked(defaultRecognizer).mockReturnValue({
+      name: "together-vision",
+      recognize: vi.fn().mockResolvedValue({
+        manufacturer: "Automation Direct",
+        model: "GS10",
+        catalogNumber: null,
+        equipmentType: "VFD",
+        confidence: 0.9,
+        rawText: ["MODEL", "GS10", "Automation Direct"],
+      }),
+    } as never);
+
+    const res = await POST(
+      makeReq({ type: "application/octet-stream", name: "nameplate.jpg", content: JPEG_MAGIC }),
+      makeParams(NOTEBOOK_ID),
+    );
+
+    expect(res.status).toBe(200);
+    // The effective (sniffed) mime is what gets parked — never octet-stream.
+    expect(vi.mocked(parkOrReuseFile).mock.calls[0][0]).toMatchObject({ mimeType: "image/jpeg" });
+  });
+
+  it("still 415s bytes that are not an image, whatever the filename claims", async () => {
+    const notAnImage = new TextEncoder().encode("#!/bin/sh\necho pwned");
+    const res = await POST(
+      makeReq({ type: "application/octet-stream", name: "plate.jpg", content: notAnImage }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(415);
+    expect((await res.json()).error).toBe("unsupported_image_type");
   });
 });
