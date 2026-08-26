@@ -992,7 +992,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install pyyaml + pytest
-        run: pip install pyyaml pytest
+        # sqlalchemy: tests/test_approved_retrieval_plumbing.py imports
+        # mira-bots/shared/neon_recall.py to capture the SQL it emits (#3328).
+        run: pip install pyyaml pytest sqlalchemy
 
       - name: Validate the capability-closure registry
         run: python tools/capability_closure.py
