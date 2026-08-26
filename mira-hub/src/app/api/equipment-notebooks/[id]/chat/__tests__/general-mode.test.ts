@@ -184,3 +184,38 @@ describe("grounded mode — §1.4 unchanged by any of this", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("basis persistence (084 / #3387) — the badge must survive reload", () => {
+  it("persists general_reasoning on a served general turn", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    await (await POST(req({ message: "drive trips", mode: "general" }), params)).text();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(
+      expect.any(String),
+      NB,
+      expect.objectContaining({ basis: "general_reasoning", answerStatus: "answered" }),
+    );
+  });
+
+  it("persists oem_documentation on a served grounded turn — exactly what the frame streamed", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." },
+    ]);
+    await (await POST(req({ message: "what is F004" }), params)).text();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(
+      expect.any(String),
+      NB,
+      expect.objectContaining({ basis: "oem_documentation", answerStatus: "answered" }),
+    );
+  });
+
+  it("a grounded refusal makes NO basis claim", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    await POST(req({ message: "unanswerable" }), params);
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+    const turn = call?.[2] as { answerStatus?: string; basis?: string | null } | undefined;
+    expect(turn?.answerStatus).toBe("insufficient_evidence");
+    expect(turn?.basis ?? null).toBeNull();
+  });
+});

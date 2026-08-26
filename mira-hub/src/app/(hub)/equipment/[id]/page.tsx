@@ -64,7 +64,7 @@ export default function NotebookPage() {
       return next;
     });
     setInitialTurns(
-      (data.turns ?? []).flatMap((t: { id: string; question: string; answerStatus: string; answerText: string | null; evidence: EvidenceCitation[] }) => [
+      (data.turns ?? []).flatMap((t: { id: string; question: string; answerStatus: string; answerText: string | null; evidence: EvidenceCitation[]; basis?: string | null }) => [
         { id: `${t.id}-q`, role: "user" as const, content: t.question },
         {
           id: `${t.id}-a`,
@@ -72,6 +72,8 @@ export default function NotebookPage() {
           content: t.answerText ?? "I couldn't find that in the selected sources.",
           status: t.answerStatus as ChatTurn["status"],
           citations: t.evidence,
+          // 084 (#3387): the persisted basis — the badge survives reload.
+          basis: t.basis ?? null,
         },
       ]),
     );

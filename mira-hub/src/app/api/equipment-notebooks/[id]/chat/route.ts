@@ -67,10 +67,12 @@ import type {
   EvidenceCitation,
   NotebookContentFrame,
   NotebookEvidenceFrame,
+  NotebookFollowupsFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
 } from "@/lib/notebook-chat-types";
+import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
 export const dynamic = "force-dynamic";
 
@@ -878,6 +880,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       controller.enqueue(enc.encode(sse(statusFrame)));
+
+      // Deterministic follow-up chips (CONV-4, answered turns only) — derived
+      // from the coverage plan + proven facet evidence; no LLM call, no new
+      // retrieval. General mode gets only the answer-derived lanes (chunks is
+      // empty, so no facet chip can name unproven evidence).
+      if (answerStatus === "answered") {
+        const provenFacets = plan.facets.length
+          ? [...facetEvidencePages(chunks, plan.facets)]
+              .filter(([, pages]) => pages.length)
+              .map(([facet]) => facet)
+          : [];
+        const suggestions = buildFollowupSuggestions({
+          plan,
+          provenFacets,
+          answer: answerText,
+          status: answerStatus,
+        });
+        if (suggestions.length) {
+          const followupsFrame: NotebookFollowupsFrame = { kind: "followups", suggestions };
+          controller.enqueue(enc.encode(sse(followupsFrame)));
+        }
+      }
+
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
 
@@ -889,6 +914,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           enabledSourceDocIds: docIds,
           evidence: emittedCitations,
           model: servedModel,
+          // 084 (#3387): persist EXACTLY what the evidence frame streamed —
+          // and only for a served answer. A failed turn makes no basis claim.
+          basis: served ? evidenceFrame.basis : null,
           ...assetSnapshot,
         });
       } catch (err) {

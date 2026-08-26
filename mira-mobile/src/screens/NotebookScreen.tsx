@@ -11,6 +11,7 @@ import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick
 import {
   getNotebookDetail,
   askNotebook,
+  buildChatHistory,
   attachFileToTargets,
   setSourceEnabled,
   detachSource,
@@ -32,7 +33,7 @@ import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete"
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
-import { FilePreview } from "./FilePreview";
+import { FilePreview, SourceThumb } from "./FilePreview";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -126,6 +127,9 @@ export function NotebookScreen({
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  // Citation sheet for a photo-derived source: the photograph is primary and
+  // the derived text/provenance collapses behind this toggle (084).
+  const [showDetails, setShowDetails] = useState(false);
   const [openSource, setOpenSource] = useState<NotebookSource | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -149,6 +153,7 @@ export function NotebookScreen({
       setViewCitation(null);
       setPassages(null);
       setShowOriginal(false);
+      setShowDetails(false);
       return true;
     }
     if (sheetOpen) {
@@ -182,9 +187,38 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
+  // One send path for the composer AND follow-up chips (CONV-4). With no
+  // source attached the only honest answer is a general one, and the server
+  // labels it as such; with sources present this stays the strict grounded
+  // path — the mode is never sent as a fallback when retrieval comes back
+  // empty. CONV-3: the recent thread rides along so a follow-up has memory.
+  const sendQuestion = async (raw: string) => {
+    const question = raw.trim();
+    if (!question || busy) return;
+    setQ("");
+    setBusy(true);
+    setChatError(null);
+    try {
+      const a = await askNotebook(id, question, scope, {
+        mode: scope.length === 0 ? "general" : undefined,
+        history: buildChatHistory(turns, liveTurns),
+      });
+      setLiveTurns((t) => [...t, { q: question, a }]);
+    } catch (e) {
+      setChatError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
+  // One object, two doors (084): when the cited doc DERIVES from a canonical
+  // file (the nameplate photograph behind the materialized text), the viewer
+  // leads with that file. The derived text demotes to "Source details".
+  const citedOriginFileId = viewCitation
+    ? (sources.find((s) => s.docId === viewCitation.docId)?.originFileId ?? null)
+    : null;
 
   return (
     <>
@@ -360,8 +394,16 @@ export function NotebookScreen({
                   </span>
                 )}
                 <div className="grow">
-                  <div className="title">
-                    {s.sourceRole === "photo" ? "🖼" : "📄"} {s.filename ?? s.docId}
+                  <div className="title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Attachment-card affordance: a photo-derived source
+                        shows an actual thumbnail of the photograph;
+                        everything else keeps its conventional glyph. */}
+                    {s.originFileId ? (
+                      <SourceThumb fileId={s.originFileId} />
+                    ) : (
+                      <span aria-hidden>{s.sourceRole === "photo" ? "🖼" : "📄"}</span>
+                    )}
+                    <span>{s.filename ?? s.docId}</span>
                   </div>
                   <div className="meta">
                     {s.pages ? `${s.pages} pages · ` : ""}
@@ -436,6 +478,14 @@ export function NotebookScreen({
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                {/* 084 (#3387): the basis survives reload because it is READ
+                    from the persisted row — never inferred from zero
+                    citations. Same rendering rule as the live turn below. */}
+                {t.basis === "general_reasoning" && (
+                  <div className="evidence-basis-general">
+                    General guidance — not grounded in this machine's documents.
+                  </div>
+                )}
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
                     <button
@@ -455,6 +505,20 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {/* Follow-up chips (CONV-4): server-derived, deterministic,
+                    last turn only — tapping one sends it as the next turn. */}
+                {!busy &&
+                  i === liveTurns.length - 1 &&
+                  t.a.status === "answered" &&
+                  (t.a.followups?.length ?? 0) > 0 && (
+                    <div className="chip-row" aria-label="Ask follow-up:">
+                      {t.a.followups!.map((f) => (
+                        <button key={f} className="chip" onClick={() => void sendQuestion(f)}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {/* Evidence basis (spec 1.3). Rendered only for a general answer:
                     a grounded one already shows its citation chips, and a second
                     badge saying "grounded" would be noise. Silence here never
@@ -496,24 +560,7 @@ export function NotebookScreen({
             <button
               className="btn-primary"
               disabled={busy || !q.trim()}
-              onClick={async () => {
-                const question = q.trim();
-                setQ("");
-                setBusy(true);
-                setChatError(null);
-                try {
-                  // With no source attached the only honest answer is a general
-                  // one, and the server labels it as such. With sources present
-                  // this stays the strict grounded path — the mode is never sent
-                  // as a fallback when retrieval comes back empty.
-                  const a = await askNotebook(id, question, scope, scope.length === 0 ? "general" : undefined);
-                  setLiveTurns((t) => [...t, { q: question, a }]);
-                } catch (e) {
-                  setChatError(e);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              onClick={() => void sendQuestion(q)}
             >
               Send
             </button>
@@ -525,6 +572,8 @@ export function NotebookScreen({
         <StudioPanel
           notebookId={id}
           scope={scope}
+          // Studio generators are one-shot scoped prompts — chat history
+          // would contaminate them, so it is deliberately NOT sent here.
           ask={(prompt) => askNotebook(id, prompt, scope)}
           onCitation={setViewCitation}
         />
@@ -537,6 +586,7 @@ export function NotebookScreen({
             setViewCitation(null);
             setPassages(null);
             setShowOriginal(false);
+            setShowDetails(false);
           }}
         >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -544,6 +594,25 @@ export function NotebookScreen({
               [{viewCitation.citationId}] {viewCitation.sourceTitle}
               {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
             </h3>
+            {/* Photo-derived source: the ACTUAL photograph is the primary
+                experience (tap it for full-screen pinch/zoom). The derived
+                text, quote, and provenance live under "Source details". */}
+            {citedOriginFileId && (
+              <>
+                <FilePreview fileId={citedOriginFileId} filename={viewCitation.sourceTitle} />
+                {!showDetails && (
+                  <button
+                    className="btn-link"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setShowDetails(true)}
+                  >
+                    Source details — why this was used
+                  </button>
+                )}
+              </>
+            )}
+            {(!citedOriginFileId || showDetails) && (
+              <>
             {passages === null && viewCitation.quote && (
               <div
                 className="msg-answer"
@@ -612,11 +681,13 @@ export function NotebookScreen({
                 />
               </div>
             )}
-            {!viewCitation.fileId && (
+            {!viewCitation.fileId && !citedOriginFileId && (
               <div className="meta" style={{ marginTop: 12 }}>
                 This answer didn't record which file the passage came from, so
                 the original can't be opened from here.
               </div>
+            )}
+              </>
             )}
             <div className="meta" style={{ marginTop: 10 }}>
               Cited from the source document
@@ -629,6 +700,7 @@ export function NotebookScreen({
                 setViewCitation(null);
                 setPassages(null);
                 setShowOriginal(false);
+                setShowDetails(false);
               }}
             >
               Close
@@ -645,7 +717,9 @@ export function NotebookScreen({
               {sourceKindLabel(openSource)}
             </div>
             <FilePreview
-              fileId={openSource.fileId}
+              // One object, two doors (084): opening a photo-derived source
+              // shows the photograph, same as tapping its citation.
+              fileId={openSource.originFileId ?? openSource.fileId}
               filename={openSource.filename ?? "document"}
             />
             <button style={{ marginTop: 12 }} onClick={() => setOpenSource(null)}>

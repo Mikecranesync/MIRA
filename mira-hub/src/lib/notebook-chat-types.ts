@@ -116,12 +116,32 @@ export type NotebookChatFrame =
   | NotebookStatusFrame
   | NotebookSafetyFrame
   | NotebookUsageFrame
-  | NotebookEvidenceFrame;
+  | NotebookEvidenceFrame
+  | NotebookFollowupsFrame;
+
+/** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
+ *  `status` on answered turns only; each string is a complete question the
+ *  client may send verbatim as the next user turn. Additive: clients that
+ *  don't know the kind ignore it. */
+export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] };
+
+const FRAME_KINDS = new Set([
+  "sources",
+  "content",
+  "status",
+  "safety",
+  "usage",
+  "evidence",
+  "followups",
+]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {
   try {
     const obj = JSON.parse(data);
-    if (obj && (obj.kind === "sources" || obj.kind === "content" || obj.kind === "status")) {
+    // Every kind in the union passes through. This list previously stopped at
+    // the original three, which silently dropped `evidence` (the live basis
+    // badge on web never fired) — keep it in lockstep with NotebookChatFrame.
+    if (obj && FRAME_KINDS.has(obj.kind)) {
       return obj as NotebookChatFrame;
     }
     return null;
