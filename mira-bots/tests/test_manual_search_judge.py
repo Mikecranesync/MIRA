@@ -619,9 +619,14 @@ async def test_unparseable_verdict_is_retried_once(wired, monkeypatch):
             calls.append(1)
             if len(calls) == 1:
                 return '{"is_manual_for_model": tr', {"provider": "fake"}  # truncated
-            return json.dumps({"is_manual_for_model": True, "confidence": 0.9, "reason": "ok"}), {
-                "provider": "fake"
-            }
+            return json.dumps(
+                {
+                    "is_manual_for_model": True,
+                    "doc_type": "user_manual",
+                    "confidence": 0.9,
+                    "reason": "ok",
+                }
+            ), {"provider": "fake"}
 
     monkeypatch.setattr(judge, "_router", Flaky())
     v = await judge.judge_text(
