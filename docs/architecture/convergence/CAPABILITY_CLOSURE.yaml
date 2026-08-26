@@ -265,6 +265,70 @@ capabilities:
 # reason: `--discover` fails when a gate flag is in neither list, so a new flag
 # cannot stay anonymous.
 # ---------------------------------------------------------------------------
+  # =========================================================================
+  - id: manual_discovery_judge
+    purpose: >-
+      Read the top candidate PDFs (SSRF-guarded, byte-capped) and let the
+      canonical text cascade judge whether each is THE manual for the
+      confirmed (manufacturer, model) before discovery picks one; a judged
+      rejection is never returned as validated; when nothing validates, offer
+      the OEM's own manual-request page (probed live).
+    customer_outcome: >-
+      A nameplate photo lands on the machine's actual manual with a quoted
+      evidence line - not a distributor brochure whose title says "manual" -
+      and when the manual cannot be found the technician gets an honest reason
+      and the manufacturer's official next step.
+    feature_flag: MANUAL_JUDGE_ENABLED
+    entrypoints:
+      - "mira-bots/shared/manual_search/judge.py"
+      - "mira-bots/shared/manual_search/search.py       # search_manual() judge branch"
+      - "mira-bots/ask_api/manual_discovery.py          # reason/judge/oem_request_url passthrough"
+    consumers:
+      - "mira-ask                              # docker-compose.saas.yml MANUAL_JUDGE_* env"
+      - "mira-hub/src/lib/manual-discovery.ts  # 60 s budget; candidate_review carries discoveryReason + oemRequestUrl"
+      - "mira-mobile/src/screens/ComponentNameplateFlow.tsx"
+    schema: []
+    environments:
+      dev: unset
+      staging: unset                          # staging has no mira-ask service
+      production: unset                       # compose default 0 - ships DARK by owner decision (2026-08-26)
+    state: deployed_disabled
+    owner: "Mike Harper"
+    ci_jobs:
+      - "Unit Tests                           # mira-bots/tests/test_manual_search_judge.py, test_manual_search.py, test_ask_api_manual_discovery.py"
+      - "Hub Unit Tests                       # mira-hub manual-discovery + equipment-notebooks suites"
+      - "Mobile Unit Tests"
+    required_checks: []
+    evidence:
+      - path: docs/decisions/2026-08-26-technician-copilot-owner-decisions.md
+        note: >-
+          Owner decision A+C and deploy protocol: merge with MANUAL_JUDGE_ENABLED=0,
+          verify health, enable for a supervised mike-pilot Pixel test, disable
+          immediately on failure; physical Pixel proof required before "released".
+      - path: docs/discovery/2026-08-26-feasibility-photo-to-manual-vs-chatgpt.md
+        note: >-
+          The measured failure this closes (Harrington UMS3-0335 -> lever-hoist
+          brochure) and the live results with staging keys: AutomationDirect
+          GS10-20P5 now resolves to the DURApulse GS10 Drive User Manual with a
+          quoted evidence line; the Harrington positive is unsatisfiable server-side
+          (every copy bot-walled) and is the designated negative/refusal case.
+    rollback: >-
+      Set MANUAL_JUDGE_ENABLED=0 in Doppler factorylm/prd (or leave unset - compose
+      default is 0) and redeploy mira-ask; the legacy HEAD-validate path is
+      untouched. No schema.
+    blocker: >-
+      Ships dark. Not "released" until the supervised mike-pilot physical Pixel
+      journey (nameplate -> correct manual -> cited answer on GS10; honest refusal +
+      OEM request link on Harrington) is recorded.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Enable in production for the supervised mike-pilot Pixel run; record device, build, backend SHA, time, outcome."
+      - "GS10-20P5 positive and Harrington negative both pass on the phone; disable on any failure."
+      - "Then: whole-manual preference when the OEM splits chapters (GS10 still lands on a chapter); free-tier vs OpenAI judge benchmark (later evaluation)."
+    review_by: "2026-09-26"
+    notes: >-
+      Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface
