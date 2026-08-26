@@ -239,11 +239,24 @@ def _get_router() -> Any:
 
 
 async def judge_text(make: str, model: str, cand: dict, text: str) -> dict[str, Any] | None:
-    """One narrow model call. Returns the parsed verdict, or ``None`` when the
-    cascade is disabled/unavailable or returned nothing parseable."""
+    """One narrow model call (retried once on unparseable output — canary run 1
+    lost the only real GS10 hit to a malformed answer). Returns the parsed
+    verdict, or ``None`` when the cascade is disabled/unavailable or both
+    attempts returned nothing parseable."""
     router = _get_router()
     if not getattr(router, "enabled", False):
         return None
+    for attempt in range(2):
+        verdict = await _judge_text_once(make, model, cand, text, attempt)
+        if verdict is not None:
+            return verdict
+    return None
+
+
+async def _judge_text_once(
+    make: str, model: str, cand: dict, text: str, attempt: int
+) -> dict[str, Any] | None:
+    router = _get_router()
     user = (
         f"Equipment: manufacturer={make!r} model={model!r}\n"
         f"Candidate URL: {cand.get('url', '')[:200]}\n"
@@ -273,6 +286,7 @@ async def judge_text(make: str, model: str, cand: dict, text: str) -> dict[str, 
             json.dumps(
                 {
                     "status": "unparseable",
+                    "attempt": attempt,
                     "url": cand.get("url", "")[:200],
                     "provider": (_usage or {}).get("provider"),
                     "model": (_usage or {}).get("model"),

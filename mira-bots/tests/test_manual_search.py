@@ -36,6 +36,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 import shared.manual_search.crawler_bridge as crawler_bridge
 import shared.manual_search.search as search_mod
 
+
+@pytest.fixture(autouse=True)
+def _legacy_judge_off(monkeypatch):
+    """This suite pins the HEAD-validate (pre-judge) path; the read-before-choose
+    judge (judge.py, default ON) is exercised in test_manual_search_judge.py."""
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+
+
 # ---------------------------------------------------------------------------
 # Pure scoring / classification helpers — no mocking needed
 # ---------------------------------------------------------------------------
@@ -379,8 +387,8 @@ async def test_record_manual_discovery_combines_both_bridges(tmp_path, monkeypat
 import httpx as _httpx
 
 _FAKE_DNS = {
-    "good.example": "93.184.216.34",     # public
-    "evil-internal.example": "10.0.0.8", # private
+    "good.example": "93.184.216.34",  # public
+    "evil-internal.example": "10.0.0.8",  # private
     "evil-loop.example": "127.0.0.1",
     "evil-cgnat.example": "100.64.0.1",  # CGNAT via DNS    # loopback
 }
@@ -400,16 +408,16 @@ class TestSsrfGuardDirect:
             "http://10.0.0.8/manual.pdf",
             "http://192.168.4.1/m.pdf",
             "http://169.254.169.254/latest/meta-data/",  # cloud metadata
-            "http://100.64.0.1/x",                       # CGNAT (Codex-reproduced bypass)
-            "http://100.127.255.254/x",                  # CGNAT upper edge
+            "http://100.64.0.1/x",  # CGNAT (Codex-reproduced bypass)
+            "http://100.127.255.254/x",  # CGNAT upper edge
             "http://[::1]/x",
             "http://[fe80::1]/x",
-            "http://[::ffff:127.0.0.1]/x",               # v4-mapped loopback
-            "http://[::ffff:100.64.0.1]/x",              # v4-mapped CGNAT
+            "http://[::ffff:127.0.0.1]/x",  # v4-mapped loopback
+            "http://[::ffff:100.64.0.1]/x",  # v4-mapped CGNAT
             "file:///etc/passwd",
             "gopher://good.example/x",
-            "http://evil-internal.example/m.pdf",        # private via DNS
-            "http://evil-loop.example/m.pdf",            # loopback via DNS
+            "http://evil-internal.example/m.pdf",  # private via DNS
+            "http://evil-loop.example/m.pdf",  # loopback via DNS
         ]
         for url in blocked:
             assert search_mod._url_is_probeable(url) is False, url
@@ -429,7 +437,9 @@ class TestValidatePdfSsrf:
         def handler(request: _httpx.Request) -> _httpx.Response:
             seen.append(str(request.url))
             if request.url.host == "good.example":
-                return _httpx.Response(302, headers={"location": "http://169.254.169.254/latest/meta-data/"})
+                return _httpx.Response(
+                    302, headers={"location": "http://169.254.169.254/latest/meta-data/"}
+                )
             return _httpx.Response(200, headers={"content-type": "application/pdf"})
 
         monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
@@ -468,7 +478,9 @@ class TestValidatePdfSsrf:
 
         def handler(request: _httpx.Request) -> _httpx.Response:
             n["count"] += 1
-            return _httpx.Response(302, headers={"location": f"https://good.example/hop{n['count']}"})
+            return _httpx.Response(
+                302, headers={"location": f"https://good.example/hop{n['count']}"}
+            )
 
         monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
         assert await search_mod.validate_pdf("https://good.example/m.pdf") is False
