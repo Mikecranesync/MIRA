@@ -225,54 +225,6 @@ approved:
       // it does NOT join knowledge_entries, so the hybrid raw-pool rule does not apply
       // here — see .claude/rules/knowledge-entries-tenant-scoping.md). A trace owned by
       // another tenant returns 404 by construction (the tenant predicate excludes it).
-  "mira-hub/src/app/api/library/tree/route.ts:73":
-    approved_classification: TENANT-ONLY
-    query_sha256: "8af969fcb2816632825ed28d85dddbeb1ce8f7014b30771bea5ebaa2651633ba"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                WHERE tenant_id = $1
-                GROUP BY manufacturer, model_number, source_url, source_type, metadata->>'title'
-  "mira-hub/src/app/api/library/tree/route.ts:80":
-    approved_classification: TENANT-ONLY
-    query_sha256: "4ce17e3ee9459855042059acf9c0f45da0f2cc8e551acf854c2c255c0fe99d3e"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                WHERE tenant_id = $1
-                GROUP BY manufacturer, model_number, source_url, source_type, metadata->>'title'
-  "mira-hub/src/app/api/library/chunks/route.ts:80":
-    approved_classification: TENANT-ONLY
-    query_sha256: "2bf7fc6d64fbfa89f12342bfa01e8e2ee071a703c5e3792c6200be186b5ad9e3"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                WHERE tenant_id = $1 AND source_url = $2
-                GROUP BY metadata->>'title'
-  "mira-hub/src/app/api/library/chunks/route.ts:98":
-    approved_classification: TENANT-ONLY
-    query_sha256: "76026f2a4b2f9c7f5e03ff571f4a7a39ab563d01b3355d6768e8fc4b7dc775d6"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                WHERE tenant_id = $1 AND source_url = $2
-                ORDER BY source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST
-  "mira-hub/src/app/api/library/chunks/route.ts:115":
-    approved_classification: TENANT-ONLY
-    query_sha256: "8b86b5ad3fc57e5c703360b4314ee800483ee1aadff81466807f07fa58c7d9fb"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM kg_relationships r
-                JOIN kg_entities      fc ON fc.id = r.target_entity
-                JOIN knowledge_entries ke ON ke.id = r.source_chunk_id
-  "mira-hub/src/app/api/library/documents/route.ts:68":
-    approved_classification: TENANT-ONLY
-    query_sha256: "30d49f336ebcac1f42218ec7d6fad0c2c2ad721b53f67e27f22d9bb238a953c0"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                  WHERE tenant_id = $1
-                    AND ${mfrPredicate}
   "mira-hub/src/app/api/usage/route.ts:61":
     approved_classification: TENANT-ONLY
     query_sha256: "23f7ee756ada0e662ac75d18ca5a97f2934579acfa206960ca1252283a001cee"
