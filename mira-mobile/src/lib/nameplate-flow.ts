@@ -69,6 +69,7 @@ export type NameplateState =
       manual: NameplateManual | null;
       /** Why it is only a candidate — the judge's evidence line, if any. */
       reason?: string | null;
+      oemRequestUrl?: string | null;
       /** The search hit itself — always present on a review. */
       candidate: ManualCandidateView | null;
       message: string | null;
@@ -86,6 +87,9 @@ export type NameplateState =
       /** Retained context so the user can correct and retry, not start over. */
       fileId: string | null;
       identity: ComponentIdentity | null;
+      /** Official next step when no manual could be found: the OEM's own
+       *  manual-request page, validated by the server. */
+      oemRequestUrl?: string | null;
     };
 
 export type NameplateEvent =
@@ -196,6 +200,7 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
             manual: r.manual,
             candidate: r.candidate,
             reason: r.discoveryReason ?? null,
+            oemRequestUrl: r.oemRequestUrl ?? null,
             message: r.message,
           };
         if (r.status === "complete") {
@@ -221,6 +226,7 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
           reason: STATUS_TO_ERROR[r.status] ?? "confirm_failed",
           fileId: state.fileId,
           identity: state.identity,
+          oemRequestUrl: r.oemRequestUrl ?? null,
         };
       }
       return state;

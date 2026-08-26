@@ -219,6 +219,36 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 )
 
 
+# Manufacturer -> the OEM's own "request an owner's manual" form. Offered when
+# discovery cannot find or validate a manual (2026-08-26, Harrington UMS3-0335:
+# every copy of the Series 3 manual is bot-walled or JS-rendered; the OEM's
+# door is this form). Always re-probed before it is offered — never a dead link.
+OEM_MANUAL_REQUEST: dict[str, str] = {
+    "harrington": "https://www.harringtonhoists.com/owners-manual-request",
+    "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
+    "harrington hoists and cranes": "https://www.harringtonhoists.com/owners-manual-request",
+}
+
+
+async def oem_request_link(make: str) -> str | None:
+    """The OEM's manual-request page for `make`, only if it answers 200 right
+    now (SSRF-guarded probe, redirects re-validated). None otherwise."""
+    url = OEM_MANUAL_REQUEST.get(_norm(make))
+    if not url:
+        return None
+    try:
+        async with httpx.AsyncClient(
+            timeout=HEAD_TIMEOUT,
+            follow_redirects=False,
+            transport=_transport_for_tests,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
+        ) as client:
+            r = await _guarded_probe(client, "GET", url)
+            return url if r is not None and r.status_code == 200 else None
+    except httpx.HTTPError:
+        return None
+
+
 def _norm(s: str) -> str:
     return (s or "").strip().lower()
 

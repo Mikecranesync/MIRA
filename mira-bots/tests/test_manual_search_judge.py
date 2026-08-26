@@ -489,3 +489,39 @@ async def test_all_relevant_rejected_returns_top_rejection_not_unread_stranger(w
     assert r["url"] != stranger
     assert r["validated"] is False and r["reason"] == judge.REASON_JUDGED_REJECTED
     assert len(r["judged_rejected"]) >= 3
+
+
+# ── OEM request-form fallback (decision C, 2026-08-26) ───────────────────────
+
+
+async def test_oem_request_link_only_when_the_page_answers_200(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: True)
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200 if "harringtonhoists" in str(request.url) else 404)
+
+    monkeypatch.setattr(search_mod, "_transport_for_tests", httpx.MockTransport(handler))
+    assert await search_mod.oem_request_link("Harrington Hoists and Cranes") == (
+        "https://www.harringtonhoists.com/owners-manual-request"
+    )
+    assert await search_mod.oem_request_link("Siemens") is None  # no form on file
+    assert calls == ["https://www.harringtonhoists.com/owners-manual-request"]
+
+
+async def test_oem_request_link_dead_page_is_not_offered(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: True)
+    monkeypatch.setattr(
+        search_mod, "_transport_for_tests", httpx.MockTransport(lambda r: httpx.Response(404))
+    )
+    assert await search_mod.oem_request_link("Harrington") is None
+
+
+async def test_oem_request_link_respects_ssrf_guard(monkeypatch):
+    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: False)
+    assert await search_mod.oem_request_link("Harrington") is None

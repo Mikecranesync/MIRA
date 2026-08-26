@@ -367,7 +367,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return respond("search_unavailable", { message: discovery.reason });
   }
   if (!discovery.found || !discovery.candidate) {
-    return respond("no_manual_found", { message: discovery.reason });
+    return respond("no_manual_found", {
+      message: discovery.reason,
+      oemRequestUrl: discovery.oemRequestUrl,
+    });
   }
 
   const candidate = discovery.candidate;
@@ -413,6 +416,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // judge reads the PDF and says e.g. "Read the PDF: a lever-hoist
       // brochure, no end-truck model"). The technician decides with that.
       discoveryReason: discovery.reason,
+      oemRequestUrl: discovery.oemRequestUrl,
       candidate: candidateView,
       message:
         "MIRA found a possible manual but could not confirm it is the official document. Review it before adding.",
