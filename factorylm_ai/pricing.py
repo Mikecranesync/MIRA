@@ -32,6 +32,9 @@ PRICING: dict[str, tuple[float, float]] = {
     # M01 vision intake, M03 print region extract — only vision model with
     # proven serverless access on this account (2026-07-19 live probe).
     "google/gemma-3n-E4B-it": (0.06, 0.12),
+    # Vision default since 2026-08-25 (gemma-3n went dedicated-only). Together
+    # catalog price, per 1M tokens, read live 2026-08-25.
+    "MiniMaxAI/MiniMax-M3": (0.30, 1.20),
     # M05 intent router, M10 answer writer, M12 feedback curator — cheapest
     # serverless text model on the platform; a Liquid model served on
     # Together (the strategy convergence point).

@@ -134,9 +134,11 @@ PROVIDERS: dict[str, ProviderSpec] = {
         text_model_env="TOGETHERAI_MODEL",
         text_model_default="meta-llama/Llama-3.3-70B-Instruct-Turbo",
         vision_model_env="TOGETHERAI_VISION_MODEL",
-        # Only serverless vision model verified on this account (v3.162.2);
-        # MiniMax-M3 is selected via env / approved policy, not hardcoded.
-        vision_model_default="google/gemma-3n-E4B-it",
+        # 2026-08-25: google/gemma-3n-E4B-it went dedicated-only on Together
+        # (400 model_not_available) and 502'd every nameplate read. MiniMax-M3
+        # is the only vision-capable model still serverless on this account.
+        # MUST match mira-bots/shared/inference/router.py (test pins them).
+        vision_model_default="MiniMaxAI/MiniMax-M3",
         timeout_env="TOGETHERAI_TIMEOUT",
         timeout_default=90.0,
     ),

@@ -311,16 +311,17 @@ def _build_providers() -> list[_Provider]:
                 # crash-loops the bot at import (same trap as
                 # TOGETHERAI_VISION_MODEL below — this has bitten the repo twice).
                 timeout=float(os.getenv("TOGETHERAI_TIMEOUT") or "90"),
-                # google/gemma-3n-E4B-it is the ONLY vision-capable model this
-                # account can reach serverless (verified live 2026-07-18: every
-                # Qwen-VL / Llama-4 / Kimi / GLM-4.5V id in the catalog rejects
-                # with "non-serverless model" — including the per-token-priced
-                # ones, so catalog pricing does NOT imply serverless access).
+                # MiniMaxAI/MiniMax-M3 is the only vision-capable model this
+                # account can still reach serverless (re-verified live
+                # 2026-08-25 after google/gemma-3n-E4B-it went dedicated-only —
+                # 400 model_not_available — and every Qwen-VL / Llama-4 /
+                # GLM-4.5V / MiniMax-M2.7 id rejected the same way; catalog
+                # pricing does NOT imply serverless access).
                 # Same free-credits basis as the default text model above. The
                 # `or` form is load-bearing: compose maps
                 # ${TOGETHERAI_VISION_MODEL:-}, which delivers an EMPTY STRING
                 # in-container; a plain getenv default would leave vision dead.
-                vision_model=os.getenv("TOGETHERAI_VISION_MODEL") or "google/gemma-3n-E4B-it",
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL") or "MiniMaxAI/MiniMax-M3",
             )
         )
 

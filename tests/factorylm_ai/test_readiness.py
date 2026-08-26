@@ -61,7 +61,7 @@ def test_ready_report_validates_and_exits_zero(
     validate_or_raise(report, load_schema("runtime_capabilities"))
     assert report["verdict"] == "ready"
     assert report["provider"]["requested"] == "together"
-    assert report["provider"]["model"] == "google/gemma-3n-E4B-it"  # env default
+    assert report["provider"]["model"] == "MiniMaxAI/MiniMax-M3"  # env default
     assert report["provider"]["text_probe"] == "skipped"  # no --live in CI, ever
     assert report["ocr"]["tesseract_version"] == "5.3.0"
     assert report["errors"] == []

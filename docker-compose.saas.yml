@@ -836,6 +836,9 @@ services:
       # through to TOGETHERAI_VISION_MODEL and then the in-code default.
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - NAMEPLATE_VISION_MODEL=${NAMEPLATE_VISION_MODEL:-}
+      # Models tried in order when the configured one answers model_not_available
+      # (2026-08-25: gemma-3n went dedicated-only and 502'd every nameplate read).
+      - NAMEPLATE_VISION_FALLBACK_MODELS=${NAMEPLATE_VISION_FALLBACK_MODELS:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
