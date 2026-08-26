@@ -28,6 +28,7 @@ import {
   candidateAction,
   nameplateReducer,
   nameplateStatusCopy,
+  reasonFromRecognizeError,
   type NameplateManual,
 } from "../lib/nameplate-flow";
 import { ErrorState } from "./common";
@@ -81,9 +82,11 @@ export function ComponentNameplateFlow({
       .catch((e) => {
         // Even the honest failures (503 recognizer_not_configured, 502) keep
         // the photo AND its notebook link — so still refresh the source list.
+        // The server's reason travels with the failure: a 415/413/503/502 must
+        // never render as "couldn't read the nameplate" (EVID-3).
         onDone();
         setTransportError(e);
-        dispatch({ type: "recognize_failed" });
+        dispatch({ type: "recognize_failed", reason: reasonFromRecognizeError(e) });
       });
   }, [notebookId, photo]); // eslint-disable-line react-hooks/exhaustive-deps
 

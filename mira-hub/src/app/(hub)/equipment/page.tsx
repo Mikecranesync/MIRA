@@ -140,7 +140,7 @@ export default function EquipmentNotebooksPage() {
             Ask your equipment, not the whole internet.
           </h2>
           <p className="mx-auto mt-2 max-w-sm text-sm" style={{ color: "var(--foreground-muted)" }}>
-            Scan a nameplate or create a notebook, add its manual, and ask a question.
+            Scan a nameplate or create a notebook and ask right away — add its manual for cited answers.
           </p>
           <div className="mt-4 flex justify-center gap-2">
             <Link
