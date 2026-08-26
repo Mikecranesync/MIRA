@@ -412,9 +412,9 @@ def test_rank_prefers_the_whole_manual_over_one_chapter():
     assert judge.rank([chapter, whole]) == [whole, chapter]
 
 
-async def test_unread_candidate_on_oem_host_stays_validated(wired, monkeypatch):
-    """An unread PDF on the manufacturer's OWN host keeps validated=True — the
-    host is the trust signal the legacy path always relied on."""
+async def test_unread_candidate_on_oem_host_is_NOT_validated_while_judge_is_on(wired, monkeypatch):
+    """Canary run 1: the only real GS10 hit came back unparseable and the OEM-host
+    exception blessed it unread. Owner rule: uncertain stays uncertain."""
     oem = "https://www.harringtonhoists.com/download/2021/03/23/x_59103.pdf"
 
     async def serper(query, num=10):
@@ -432,7 +432,7 @@ async def test_unread_candidate_on_oem_host_stays_validated(wired, monkeypatch):
 
     monkeypatch.setattr(search_mod, "validate_pdf", head_ok)
     r = await search_mod.search_manual("Harrington", "UMS3-0335")
-    assert r["url"] == oem and r["validated"] is True
+    assert r["url"] == oem and r["validated"] is False
     assert r["reason"] == judge.REASON_JUDGE_UNAVAILABLE
 
 
@@ -579,3 +579,53 @@ async def test_extract_text_round_trips_a_real_pdf_through_the_child():
         b"trailer<</Root 1 0 R>>\n%%EOF\n"
     )
     assert "UMS-3-0335" in await judge.extract_text(pdf)
+
+
+# ── canary audit trail (owner protocol 2026-08-26) ───────────────────────────
+
+
+async def test_every_judgment_and_the_pick_are_logged_as_json(wired, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="mira.manual_search")
+    caplog.set_level(logging.INFO, logger="mira.manual_search.judge")
+    await search_mod.search_manual("Harrington", "UMS3-0335")
+    verdicts = [
+        json.loads(r.getMessage().split(" ", 1)[1])
+        for r in caplog.records
+        if r.getMessage().startswith("MANUAL_JUDGE_VERDICT ")
+    ]
+    picks = [
+        json.loads(r.getMessage().split(" ", 1)[1])
+        for r in caplog.records
+        if r.getMessage().startswith("MANUAL_JUDGE_PICK ")
+    ]
+    assert len(verdicts) >= 2 and len(picks) == 1
+    match = next(v for v in verdicts if v["url"] == SERIES3)
+    assert match["is_manual"] is True and "UMS-3-0335" in match["evidence_quote"]
+    assert match["provider"] == "fake" and isinstance(match["latency_ms"], int)
+    assert match["text_chars"] > 0
+    assert picks[0]["top_url"] == SERIES3 and picks[0]["top_is_match"] is True
+    assert picks[0]["rejected"] >= 1
+
+
+async def test_unparseable_verdict_is_retried_once(wired, monkeypatch):
+    calls = []
+
+    class Flaky:
+        enabled = True
+
+        async def complete(self, *a, **k):
+            calls.append(1)
+            if len(calls) == 1:
+                return '{"is_manual_for_model": tr', {"provider": "fake"}  # truncated
+            return json.dumps({"is_manual_for_model": True, "confidence": 0.9, "reason": "ok"}), {
+                "provider": "fake"
+            }
+
+    monkeypatch.setattr(judge, "_router", Flaky())
+    v = await judge.judge_text(
+        "Harrington", "UMS3-0335", {"url": SERIES3, "title": ""}, TEXT[SERIES3]
+    )
+    assert v is not None and v["is_manual"] is True
+    assert len(calls) == 2

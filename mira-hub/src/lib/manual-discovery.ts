@@ -137,7 +137,12 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
   if (body.found !== true || !url) {
-    return { ...notFound(str(body.reason) ?? NO_MANUAL), oemRequestUrl: requestUrl(body) };
+    // Prefer the judge's human line ("Read the PDF: a newspaper article…") over
+    // the code ("judged_not_applicable") — the phone renders this verbatim.
+    return {
+      ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL),
+      oemRequestUrl: requestUrl(body),
+    };
   }
   let host = c ? (str(c.host) ?? "") : "";
   if (!host) {

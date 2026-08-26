@@ -213,3 +213,45 @@ describe("isOemDocumentationHost", () => {
     expect(isOemDocumentationHost("  siemens  ", "  SUPPORT.INDUSTRY.SIEMENS.COM  ")).toBe(true);
   });
 });
+
+describe("discoverManual — judge rejections disappear honestly", () => {
+  it("renders the judge's reason_detail and the OEM request link when everything read was rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            found: false,
+            candidate: null,
+            validated: false,
+            is_direct_pdf: false,
+            oem_host: false,
+            trusted_distributor_host: false,
+            reason: "judged_not_applicable",
+            reason_detail: "Read the PDF: a newspaper article about a car show.",
+            judged_rejected: [{ url: "https://linpub.example/news.pdf", reason: "newspaper" }],
+            oem_request_url: "https://www.harringtonhoists.com/owners-manual-request",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const r = await discoverManual({ manufacturer: "Harrington", model: "UMS3-0335", catalogNumber: null });
+    expect(r.serviceAvailable).toBe(true);
+    expect(r.found).toBe(false);
+    expect(r.candidate).toBeNull();
+    expect(r.reason).toBe("Read the PDF: a newspaper article about a car show.");
+    expect(r.oemRequestUrl).toBe("https://www.harringtonhoists.com/owners-manual-request");
+  });
+
+  it("drops a non-https request link", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "no_result", oem_request_url: "javascript:alert(1)" }), { status: 200 }),
+      ),
+    );
+    const r = await discoverManual({ manufacturer: "X", model: "Y", catalogNumber: null });
+    expect(r.oemRequestUrl).toBeNull();
+  });
+});
