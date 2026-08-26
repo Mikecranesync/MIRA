@@ -1,5 +1,8 @@
 # Feasibility: is FactoryLM worth pursuing when ChatGPT already does photo → manual?
 
+> **Status: input to the Technician Copilot PRD — not ratified; owner decisions recorded 2026-08-26 (see decision record below).**
+> Decision record: `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md` · Phase 0 audit: `docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md`. This memo supplies PRD §3.3's missing row (option B below) and the baseline Slice 1 (PR #3411) had to beat.
+
 **Date:** 2026-08-26 · **Trigger:** Mike photographed a Harrington UMS3-0335 end-truck plate.
 ChatGPT returned the correct *Series 3 End Trucks Owner's Manual* with page refs and a caveat
 (end truck ≠ hoist; unit-specific wiring diagram not in the generic manual). FactoryLM, after
@@ -72,11 +75,13 @@ said "real at both ends, cut in the middle." That is still true.
 
 ## 3. Options
 
-**A. Quit.** Rational if the goal was "a software product that wins on AI capability." That
+**Owner ruling (Mike, 2026-08-26):** A remains a valid go/no-go outcome · **B partially adopted** — OpenAI API models are permitted *behind the canonical server-side seam* (text, vision, manual-candidate judging, when evals justify); a browsing/tool-use frontier engine is a *later evaluation*, not adopted · **C adopted** · **D adopted** (sequence C → App → D). Note: PRD §3.3 lists a different "B — thin ChatGPT wrapper" (rejected); the B below — *frontier model as engine* — was assumed by the PRD but not listed, and is the one the ruling addresses.
+
+**A. Quit.** *(valid outcome — not chosen)* Rational if the goal was "a software product that wins on AI capability." That
 goal is dead; frontier models own it. Not rational yet if the goal is "the maintenance context
 tool a plant pays for," because that hasn't been tested with a buyer.
 
-**B. Pivot the engine, keep the product.** Stop building recognizers, rankers, cascades.
+**B. Frontier model as engine — pivot the engine, keep the product.** *(partially adopted: OpenAI behind the seam; browsing = later evaluation)* Stop building recognizers, rankers, cascades.
 Use a frontier model *as the engine* (photo → identity → browse → pick → read → cite), and
 spend all effort on what it can't do: the asset registry, per-asset docs incl. the unit
 wiring diagram, work orders, shared crew memory, approval, Ignition. This is literally
@@ -85,16 +90,18 @@ wiring diagram, work orders, shared crew memory, approval, Ignition. This is lit
 actively harming the product. $50–200/month of API spend would beat months of heuristics.
 That constraint is Mike's to change.
 
-**C. Sell the outcome, not the software.** Mike is a working technician. Take 2–3 plants
+**C. Sell the outcome, not the software.** *(adopted)* Mike is a working technician. Take 2–3 plants
 (own employer first), build their namespace + digitize their docs + put "Ask MIRA" on the
 HMI, with a frontier model inside. Charge for the setup and a monthly fee. Revenue and the
 paying-customer proof arrive together; the software follows what they actually use.
 
-**D. Narrow to the tools ChatGPT is weak at.** Drive Commander (live read-only VFD data),
+**D. Narrow to the tools ChatGPT is weak at.** *(adopted, sequenced after C and the app)* Drive Commander (live read-only VFD data),
 PrintSense (electrical prints), PLC Logic Lens. Per `project_go_forward_product_sequence`.
 Smaller market, but a phone can't photograph a live Modbus register.
 
 ## 4. Recommendation
+
+> **Decided 2026-08-26 (Mike).** The recommendation below stands as written; the owner rulings are: provider constraint amended (OpenAI permitted behind the seam, free-tier cascade stays as fallback/dev, Anthropic still excluded), C and D adopted with C → App → D sequencing, pilot = Mike alone on tenant `mike-pilot`, and the app stays the pilot lead artifact. See the decision record.
 
 **Don't quit on tonight's evidence. Do kill the strategy tonight's evidence indicts.**
 
@@ -111,6 +118,8 @@ If (2) fails with a frontier-grade engine inside, then the context-layer thesis 
 and quitting or a hard pivot is the honest answer.
 
 ## 5. Cheap engineering follow-ups (only if B/C proceed)
+
+**Update 2026-08-26 — Slice 1 is built (PR #3411, `feat/manual-discovery-judged-candidates`):** a read-before-choose judge on the *existing* free-tier cascade reads the top direct-PDF candidates (SSRF-guarded, size-capped) and asks "is this the manual for `{make} {model}`?" before choosing; a judged rejection is never validated/attached; ranking is matched (whole > chapter) > unread > rejected. Live result: **GS10-20P5 is the positive case** (finds the DURApulse GS10 User Manual with evidence). The **Harrington positive is unsatisfiable server-side** — every Series 3 End Trucks manual copy is bot-walled (403) or sits behind a JS OEM page with an owners-manual-request form — so Harrington is designated the **negative/refusal case**: explain that nothing validated and offer the OEM request-form link. Judge traps recorded: `max_tokens` must be ≥1200 (reasoning models truncate JSON), and hyphen-variant queries need a make/model-family relevance filter before any read.
 
 - Add `harrington` → `harringtonhoists.com` to `OEM_DOMAINS` (one line; +120 OEM boost).
 - Feed identity *variants* to search (`UMS3-0335`, `UMS-3-0335`, `UMS3`) and union candidates.

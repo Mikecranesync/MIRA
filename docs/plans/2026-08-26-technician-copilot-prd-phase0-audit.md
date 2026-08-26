@@ -2,6 +2,7 @@
 
 **Date:** 2026-08-26 · **Repo truth:** origin/main `17fddd20d` (read at `C:/wt-pick`) · **Scope:** PRD §19 items 1–8 · **Mode:** read-only audit, no code changes.
 **PRD under audit:** "MIRA ChatGPT-Quality Technician Copilot PRD" (uploaded 2026-08-25, §0–§20).
+**Accepted by Mike 2026-08-26 — see decision record `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`.**
 **Status legend:** ALREADY SATISFIED / PARTIAL / GAP / CONFLICT / BLOCKED / NOT APPLICABLE.
 
 ---
@@ -77,7 +78,7 @@ PR relationships: #3406 ⊂ this PRD (Phase 1↔P1/PLAT-4, Phase 2↔CONV-1..3, 
 | INTAKE-003 honest failures | PARTIAL | `recognize.test.ts:124-204`; `nameplate/index.ts:73` + `together-fallback.test.ts:40` (#3407) | No quality gate on four named cases; ambiguous identity untested |
 | INTAKE-004 confirm identity | ALREADY SATISFIED | `ComponentNameplateFlow.tsx:178-193`; `evidence.ts:428,459`; mig 073 | — |
 | INTAKE-005 server-side binding | ALREADY SATISFIED | mig 081; `asset-binding.test.ts:71-205` (15 cases) | legacy null-entity case implied only |
-| DOC-001 discovery ranking | PARTIAL | `manual-discovery.ts:23-46`; `manual_search/search.py:250 _score`, `:64 OEM_DOMAINS` | No revision/date; URL/title heuristic; no PDF read; Harrington mis-pick measured (#3408 doc) |
+| DOC-001 discovery ranking — **restated 2026-08-26:** model-judged candidate reading: prefer OEM/approved sources; read the candidate before choosing; a judged rejection is never attached; when nothing validates, explain and offer the validated OEM request-form link | PARTIAL → Slice 1 (#3411) | `manual-discovery.ts:23-46`; `manual_search/search.py:250 _score`, `:64 OEM_DOMAINS` | No revision/date; URL/title heuristic; no PDF read; Harrington mis-pick measured (#3408 doc) |
 | DOC-002 safe download | ALREADY SATISFIED | `safe-download.ts` + tests `:39-370` | DNS rebinding out of scope; policy duplicated in `search.py:382-437` |
 | DOC-003 no silent promotion | ALREADY SATISFIED | `confirm/route.ts:384,408,424`; `confirm.test.ts` | #3390 is UX extension only |
 | DOC-004 canonical file | PARTIAL | mig 075 sha256 + links; `confirm/route.ts:439,463` | #3398 listing asymmetry (`display_label` never read) |
@@ -170,7 +171,7 @@ Ranked. "Blocks" = steps that cannot be recorded as PASS today.
 | 5 | **Resume reload loses live turns + open conversation** (lands on list) | 11 | `resume-guard.ts:61`; `App.tsx:42` not persisted |
 | 6 | **Nameplate MIME/415 fix not on main** (JPEG from picker → octet-stream → 415) | 4 | `native-pick.ts:57,88-91`; fix on #3406 |
 | 7 | **No assetless door** — general ask needs a notebook row; no composer at launch | 3 (passes only via "create empty notebook" workaround) | `App.tsx:37`; `NotebookScreen.tsx:509` |
-| 8 | **OTA host not live** (`updates.factorylm.com` DNS+nginx) | 1, 15 | Mike-only gate |
+| 8 | **OTA host not live** (`updates.factorylm.com` DNS+nginx) | 1, 15 | Mike-only gate — runbook **PR #3410** |
 | 9 | Chat POST has no idempotency key | 14 (message half) | `resources.ts:1021-1024`; `client.ts:333` |
 
 Steps 2 (#3405), 5 (INTAKE-004), 12 (mig 081 bind/unbind) are believed passable but **no recorded Pixel run exists** for them at `17fddd20d`; the vision 502 (step 4) is fixed by #3407 and needs a fresh device run to confirm.
@@ -183,9 +184,9 @@ Ordering = user value ÷ risk. Every slice: read-only toward OT, no second runti
 
 | # | Slice | Scope | Files | Acceptance tests | Device gate | Must NOT |
 |---|---|---|---|---|---|---|
-| 1 | **Journey 2 passes on Harrington: model-judged candidate reading** | Before selecting, fetch top-N candidates via existing `safe-download`, extract first pages, ask the *existing text cascade* to judge "is this the manual for `{mfr} {model}`?"; add `harrington`/`aceindustries` to OEM_DOMAINS as mitigation; return `reason` naming the judged evidence | `mira-bots/shared/manual_search/search.py` (+ `judge.py`), `mira-hub/src/lib/manual-discovery.ts` (reason passthrough), tests `mira-bots/tests/test_manual_search_*.py` | Offline fixture: UMS3-0335 candidate set from the feasibility doc → correct Series 3 End Trucks manual ranked #1, brochure rejected with reason; no-manual case returns `candidate_review` not a guess; safe-download tests unchanged | **Yes** — nameplate→manual→cited answer on the real Harrington plate | Does **not** require relaxing Hard Constraint #2: judging runs on Groq/Cerebras/Together text models. Must not add browsing/Serper beyond current egress, must not auto-attach unvalidated candidates (DOC-003 stays), must not touch Supervisor |
+| 1 | **Journey 2: model-judged candidate reading** → **PR #3411** (HELD → authorized 2026-08-26; positive = GS10-20P5, Harrington = negative/refusal case; ships dark behind `MANUAL_JUDGE_ENABLED`) | Before selecting, fetch top-N candidates via existing `safe-download`, extract first pages, ask the *existing text cascade* to judge "is this the manual for `{mfr} {model}`?"; add `harrington`/`aceindustries` to OEM_DOMAINS as mitigation; return `reason` naming the judged evidence | `mira-bots/shared/manual_search/search.py` (+ `judge.py`), `mira-hub/src/lib/manual-discovery.ts` (reason passthrough), tests `mira-bots/tests/test_manual_search_*.py` | Offline fixture: UMS3-0335 candidate set from the feasibility doc → correct Series 3 End Trucks manual ranked #1, brochure rejected with reason; no-manual case returns `candidate_review` not a guess; safe-download tests unchanged | **Yes** — nameplate→manual→cited answer on the real Harrington plate | Does **not** require relaxing Hard Constraint #2: judging runs on Groq/Cerebras/Together text models. Must not add browsing/Serper beyond current egress, must not auto-attach unvalidated candidates (DOC-003 stays), must not touch Supervisor |
 | 2 | Mobile turn resilience | Send `history`; keep draft until success; per-turn retry; handle `kind:"safety"` frame with amber banner; idempotency key on chat POST | `mira-mobile/src/api/resources.ts`, `lib/sse.ts`, `screens/NotebookScreen.tsx`, `app.css`; hub route accept `clientKey` | vitest: parseChatSse safety frame; draft-preserved-on-error; history payload shape; hub test: duplicate clientKey returns same turn | Yes (steps 10, 13, 14) | No new route; no client-side model names |
-| 3 | Nameplate MIME truth (land #3406 Phase 1) | Picker MIME + server byte sniffing → 415 only for real non-images | `native-pick.ts`, `mira-hub/src/lib/nameplate/image-mime.ts`, recognize route | existing #3406 tests | Yes (step 4) | Do not merge #3406's PRD text with it — split docs from code |
+| 3 | Nameplate MIME truth (land #3406 Phase 1) → **PR #3409** (held for Pixel upload/download test) | Picker MIME + server byte sniffing → 415 only for real non-images | `native-pick.ts`, `mira-hub/src/lib/nameplate/image-mime.ts`, recognize route | existing #3406 tests | Yes (step 4) | Do not merge #3406's PRD text with it — split docs from code |
 | 4 | Conversation resume + persisted route | Persist `notebookRoute`; rehydrate turns after reload; instrument cold/warm start to composer | `App.tsx`, `NotebookScreen.tsx`, `lib/resume-guard.ts` | vitest for route persistence; timing log frame | Yes (steps 2, 11) | No 6th tab; door stays inside Notebook tab (`nav.ts` frozen) |
 | 5 | Citation opens at page | Render PDF page in-app (pdf.js bundled, no CDN) at cited page; show revision if present | `screens/FilePreview.tsx`, `NotebookScreen.tsx` | vitest page-arg plumbing; screenshot at p.N archived | Yes (step 9) | No external viewer hand-off of session cookie |
 | 6 | Assetless door inside Notebook tab | "Ask MIRA" composer on `NotebooksTab` home that creates/uses a tenant "General" notebook; explicit general/grounded toggle | `NotebooksTab.tsx`, `NotebookScreen.tsx`, hub: reuse existing route | vitest; hub general-mode tests extended | Yes (step 3) | Must not bypass UNS gate for asset-specific *claims*; must not add a notebook-less server route |
@@ -205,15 +206,17 @@ Slices 1–6 are the Phase 1/3 minimum for §13.2; 7–9 are Phase 1 polish and 
 
 ---
 
-## 9. Open questions for Mike
+## 9. Open questions for Mike — ANSWERED 2026-08-26
 
-1. **Provider constraint:** keep Hard Constraint #2 (free-tier Groq/Cerebras/Together, no Anthropic, no OpenAI) as-is, or amend `CLAUDE.md` + AGENTS.md §2 to permit a paid frontier provider behind the single seam? Slice 1 works either way; PRD §1 as written does not.
-2. **UNS gate scope:** narrow `.claude/rules/uns-confirmation-gate.md` + rubric dim.2 to asset-specific *claims* (enables L0), or shrink PRD L0 to educational-only?
-3. **ADR-0036:** accept option A/C or B/D for Together vision + Serper egress — the arc is already live in prod ahead of the decision.
-4. **Merge authorizations:** slice 3 (#3406 Phase 1 code) and slice 1 after device proof — yes/no, and are the docs halves of #3406/#3408 to land separately?
-5. **IA:** does the frozen 5-tab shell stand (door inside Notebook), or does PRD §8.1 conversation-first launch amend the dogfood spec §3?
-6. **Service-vs-app:** is the standalone client still the lead artifact through the §14 pilot, or do we sequence C (commissioning) → D (Drive Commander) first per NORTH_STAR and treat the app as one surface?
-7. **Pilot scope:** which real technician(s), which tenant fixture, and is a personal ChatGPT Projects side-by-side with customer documents authorized (SERVICE-005 checklist does not exist yet)?
-8. **OTA gate:** when can `updates.factorylm.com` DNS + nginx be done so §13.2 steps 1/15 can be recorded?
+All eight answered; record: `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`.
+
+1. **Provider constraint:** AMENDED — OpenAI permitted behind the canonical seam; free-tier cascade stays fallback/dev; Anthropic still excluded. (decision 1)
+2. **UNS gate scope:** NARROWED to asset-specific claims; rubric dim.2 hard-fail reworded. (decision 2)
+3. **ADR-0036:** ACCEPTED A/C with all scope limits; vision behind the seam later. (decision 3)
+4. **Merge authorizations:** conditional yes — Slice 1 = #3411, Slice 3 = #3409; docs (#3408) land separately. (decision 4)
+5. **IA:** conversation-first wins; 5 tabs stay as navigation; Notebook door transitional. (decision 5)
+6. **Service-vs-app:** app remains pilot lead; sequence C → App → D. (decision 6)
+7. **Pilot scope:** Mike alone on `mike-pilot`; Harrington + synthetic fixtures; ChatGPT Projects only with public/synthetic/authorized docs. (decision 7)
+8. **OTA gate:** in parallel — Claude prepares (#3410), Mike performs the account action; hard requirement before Phase 1 acceptance. (decision 8)
 
 Nothing was merged or deployed by this audit.

@@ -45,6 +45,8 @@ Did MIRA resolve the technician's work context (site → area → line → machi
 
 Hard fail if the reply launches into a fix without naming the asset and the message did not already pin it down.
 
+**Amendment 2026-08-26 (owner decision 2):** the hard-fail is restated as — **"asserts an asset-specific diagnosis or action without confirming the asset."** Clearly labeled general guidance, safe reversible checks, and identifying questions given without an asset are NOT a hard fail. Record: `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`.
+
 ### 3. Actionability (1–5)
 
 Is a technician on the plant floor — on a phone, in a noisy room, possibly mid-fault — better off after reading this?
