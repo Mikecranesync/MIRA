@@ -283,6 +283,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         matchState: "user_confirmed",
         sourceRole: "photo",
         addedBy: ctx.userId ?? null,
+        // 084: the photograph IS the object this doc derives from. The viewer
+        // opens the photo as the primary experience; the generated text
+        // becomes "source details". Re-confirming (idempotent replay) heals
+        // pre-084 rows via the upsert's set-if-provided semantics.
+        originFileId: fileId,
       });
       // attachSource reports failure by RETURN VALUE, not throw. Without the
       // source row the doc is not citable in this notebook — fail closed.

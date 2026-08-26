@@ -889,6 +889,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           enabledSourceDocIds: docIds,
           evidence: emittedCitations,
           model: servedModel,
+          // 084 (#3387): persist EXACTLY what the evidence frame streamed —
+          // and only for a served answer. A failed turn makes no basis claim.
+          basis: served ? evidenceFrame.basis : null,
           ...assetSnapshot,
         });
       } catch (err) {

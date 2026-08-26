@@ -32,7 +32,7 @@ import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete"
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
-import { FilePreview } from "./FilePreview";
+import { FilePreview, SourceThumb } from "./FilePreview";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -126,6 +126,9 @@ export function NotebookScreen({
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  // Citation sheet for a photo-derived source: the photograph is primary and
+  // the derived text/provenance collapses behind this toggle (084).
+  const [showDetails, setShowDetails] = useState(false);
   const [openSource, setOpenSource] = useState<NotebookSource | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -185,6 +188,12 @@ export function NotebookScreen({
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
+  // One object, two doors (084): when the cited doc DERIVES from a canonical
+  // file (the nameplate photograph behind the materialized text), the viewer
+  // leads with that file. The derived text demotes to "Source details".
+  const citedOriginFileId = viewCitation
+    ? (sources.find((s) => s.docId === viewCitation.docId)?.originFileId ?? null)
+    : null;
 
   return (
     <>
@@ -360,8 +369,16 @@ export function NotebookScreen({
                   </span>
                 )}
                 <div className="grow">
-                  <div className="title">
-                    {s.sourceRole === "photo" ? "🖼" : "📄"} {s.filename ?? s.docId}
+                  <div className="title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Attachment-card affordance: a photo-derived source
+                        shows an actual thumbnail of the photograph;
+                        everything else keeps its conventional glyph. */}
+                    {s.originFileId ? (
+                      <SourceThumb fileId={s.originFileId} />
+                    ) : (
+                      <span aria-hidden>{s.sourceRole === "photo" ? "🖼" : "📄"}</span>
+                    )}
+                    <span>{s.filename ?? s.docId}</span>
                   </div>
                   <div className="meta">
                     {s.pages ? `${s.pages} pages · ` : ""}
@@ -436,6 +453,14 @@ export function NotebookScreen({
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                {/* 084 (#3387): the basis survives reload because it is READ
+                    from the persisted row — never inferred from zero
+                    citations. Same rendering rule as the live turn below. */}
+                {t.basis === "general_reasoning" && (
+                  <div className="evidence-basis-general">
+                    General guidance — not grounded in this machine's documents.
+                  </div>
+                )}
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
                     <button
@@ -537,6 +562,7 @@ export function NotebookScreen({
             setViewCitation(null);
             setPassages(null);
             setShowOriginal(false);
+            setShowDetails(false);
           }}
         >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -544,6 +570,25 @@ export function NotebookScreen({
               [{viewCitation.citationId}] {viewCitation.sourceTitle}
               {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
             </h3>
+            {/* Photo-derived source: the ACTUAL photograph is the primary
+                experience (tap it for full-screen pinch/zoom). The derived
+                text, quote, and provenance live under "Source details". */}
+            {citedOriginFileId && (
+              <>
+                <FilePreview fileId={citedOriginFileId} filename={viewCitation.sourceTitle} />
+                {!showDetails && (
+                  <button
+                    className="btn-link"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setShowDetails(true)}
+                  >
+                    Source details — why this was used
+                  </button>
+                )}
+              </>
+            )}
+            {(!citedOriginFileId || showDetails) && (
+              <>
             {passages === null && viewCitation.quote && (
               <div
                 className="msg-answer"
@@ -612,11 +657,13 @@ export function NotebookScreen({
                 />
               </div>
             )}
-            {!viewCitation.fileId && (
+            {!viewCitation.fileId && !citedOriginFileId && (
               <div className="meta" style={{ marginTop: 12 }}>
                 This answer didn't record which file the passage came from, so
                 the original can't be opened from here.
               </div>
+            )}
+              </>
             )}
             <div className="meta" style={{ marginTop: 10 }}>
               Cited from the source document
@@ -629,6 +676,7 @@ export function NotebookScreen({
                 setViewCitation(null);
                 setPassages(null);
                 setShowOriginal(false);
+                setShowDetails(false);
               }}
             >
               Close
@@ -645,7 +693,9 @@ export function NotebookScreen({
               {sourceKindLabel(openSource)}
             </div>
             <FilePreview
-              fileId={openSource.fileId}
+              // One object, two doors (084): opening a photo-derived source
+              // shows the photograph, same as tapping its citation.
+              fileId={openSource.originFileId ?? openSource.fileId}
               filename={openSource.filename ?? "document"}
             />
             <button style={{ marginTop: 12 }} onClick={() => setOpenSource(null)}>

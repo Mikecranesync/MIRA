@@ -101,6 +101,10 @@ export type NotebookSource = {
   sourceRole: string | null;
   pages: number | null;
   fileId: string | null; // namespace_direct_uploads id for the byte-serving viewer
+  /** 084: the canonical file this doc DERIVES from — the nameplate photograph
+   *  behind a materialized nameplate text doc. The viewer shows this as the
+   *  primary object; the doc's own bytes become "source details". */
+  originFileId: string | null;
   /** Persisted applicability evidence (075 match_evidence) — matched tokens,
    *  evidence pages, decision method, discovery/final URLs, confidence. */
   matchEvidence: unknown | null;
@@ -542,7 +546,14 @@ export async function attachSource(
   tenantId: string,
   notebookId: string,
   docId: string,
-  opts: { matchState?: MatchState; sourceRole?: string | null; addedBy?: string | null } = {},
+  opts: {
+    matchState?: MatchState;
+    sourceRole?: string | null;
+    addedBy?: string | null;
+    /** Canonical workspace file this doc was DERIVED from (084) — e.g. the
+     *  nameplate photograph behind the materialized nameplate text. */
+    originFileId?: string | null;
+  } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
   const doc = await pool.query(
@@ -564,6 +575,7 @@ export async function attachSource(
       matchState: opts.matchState ?? "user_confirmed",
       sourceRole: opts.sourceRole ?? null,
       addedBy: opts.addedBy ?? null,
+      originFileId: opts.originFileId ?? null,
     });
     return { ok: true };
   });
@@ -584,6 +596,9 @@ export async function upsertNotebookSourceTx(
     sourceRole?: string | null;
     addedBy?: string | null;
     matchEvidence?: unknown;
+    /** 084: the canonical file this doc derives from. Set-if-provided,
+     *  never cleared by a later upsert that omits it. */
+    originFileId?: string | null;
   },
 ): Promise<void> {
   const evidence =
@@ -604,8 +619,8 @@ export async function upsertNotebookSourceTx(
   await c.query(
     `INSERT INTO equipment_notebook_sources
        (notebook_id, doc_id, tenant_id, enabled_by_default, match_state,
-        source_role, added_by, match_evidence)
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb)
+        source_role, added_by, match_evidence, origin_file_id)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb, $9::uuid)
      ON CONFLICT (notebook_id, doc_id)
      DO UPDATE SET
        match_state = CASE
@@ -617,6 +632,12 @@ export async function upsertNotebookSourceTx(
          ELSE EXCLUDED.match_state
        END,
        enabled_by_default = CASE
+         -- P2 scope contract: a replay at the SAME trust level is not a new
+         -- decision — an idempotent re-confirm (retry semantics on the
+         -- nameplate confirm route) must never re-enable a source the user
+         -- explicitly excluded from chat.
+         WHEN equipment_notebook_sources.match_state = EXCLUDED.match_state
+           THEN equipment_notebook_sources.enabled_by_default
          WHEN EXCLUDED.match_state = 'verified' THEN true
          WHEN equipment_notebook_sources.match_state IN ('verified', 'user_confirmed', 'rejected')
               AND EXCLUDED.match_state = 'candidate'
@@ -625,7 +646,11 @@ export async function upsertNotebookSourceTx(
        END,
        source_role    = EXCLUDED.source_role,
        match_evidence = COALESCE(EXCLUDED.match_evidence,
-                                 equipment_notebook_sources.match_evidence)`,
+                                 equipment_notebook_sources.match_evidence),
+       -- Set-if-provided, never cleared: an upsert without an origin keeps the
+       -- one already recorded.
+       origin_file_id = COALESCE(EXCLUDED.origin_file_id,
+                                 equipment_notebook_sources.origin_file_id)`,
     [
       opts.notebookId,
       opts.docId,
@@ -636,6 +661,7 @@ export async function upsertNotebookSourceTx(
       opts.sourceRole ?? null,
       opts.addedBy ?? null,
       evidence,
+      opts.originFileId ?? null,
     ],
   );
 }
@@ -780,7 +806,7 @@ export async function listSources(
   const memb = await withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `SELECT doc_id::text AS doc_id, enabled_by_default, match_state, source_role,
-              match_evidence
+              match_evidence, origin_file_id::text AS origin_file_id
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
         ORDER BY created_at`,
@@ -857,6 +883,7 @@ export async function listSources(
       sourceRole: (m.source_role as string) ?? null,
       pages: null,
       fileId: d ? ((d.file_id as string) ?? null) : null,
+      originFileId: (m.origin_file_id as string) ?? null,
       matchEvidence: m.match_evidence ?? null,
       readiness,
     };
@@ -922,6 +949,10 @@ export async function recordTurn(
      *  destroy the only record of what an answer was actually grounded on. */
     equipmentEntityId?: string | null;
     assetUnsPath?: string | null;
+    /** 084 (#3387): the evidence-ladder basis of the SERVED answer — exactly
+     *  what the `evidence` SSE frame streamed. Null = no basis claim
+     *  (refusals, safety stops, errors). Never inferred client-side. */
+    basis?: string | null;
   },
 ): Promise<void> {
   await withTenantContext(tenantId, async (c) => {
@@ -929,8 +960,8 @@ export async function recordTurn(
       `INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10)`,
+          equipment_entity_id, asset_uns_path, basis)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)`,
       [
         notebookId,
         tenantId,
@@ -942,6 +973,7 @@ export async function recordTurn(
         turn.model,
         turn.equipmentEntityId ?? null,
         turn.assetUnsPath ?? null,
+        turn.basis ?? null,
       ],
     );
   });
@@ -1032,6 +1064,7 @@ export async function listTurns(
     answerStatus: string;
     answerText: string | null;
     evidence: unknown[];
+    basis: string | null;
     createdAt: string;
   }[]
 > {
@@ -1042,9 +1075,9 @@ export async function listTurns(
     // from the notebook on reload. Recent-window + chronological display fixes
     // that while keeping the render order the UI expects.
     const res = await c.query(
-      `SELECT id, question, answer_status, answer_text, evidence, created_at
+      `SELECT id, question, answer_status, answer_text, evidence, basis, created_at
          FROM (
-           SELECT id::text AS id, question, answer_status, answer_text, evidence, created_at
+           SELECT id::text AS id, question, answer_status, answer_text, evidence, basis, created_at
              FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
             ORDER BY created_at DESC
@@ -1059,6 +1092,7 @@ export async function listTurns(
       answerStatus: String(r.answer_status),
       answerText: (r.answer_text as string) ?? null,
       evidence: Array.isArray(r.evidence) ? (r.evidence as unknown[]) : [],
+      basis: (r.basis as string) ?? null,
       createdAt: String(r.created_at),
     }));
   });

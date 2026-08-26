@@ -29,6 +29,10 @@ export type ChatTurn = {
   content: string;
   status?: "answered" | "insufficient_evidence" | "error";
   citations?: EvidenceCitation[];
+  /** Evidence-ladder basis (spec §1.3). Streamed live via the `evidence`
+   *  frame AND persisted on the turn row (084/#3387) — never inferred from
+   *  citation count. */
+  basis?: string | null;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -110,6 +114,18 @@ export function Bubble({
       {turn.status === "insufficient_evidence" && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }}>
           Not found in the selected sources. Add a source or rephrase.
+        </p>
+      )}
+      {turn.basis === "general_reasoning" && (
+        <p
+          className="mt-1 text-xs font-medium"
+          style={{
+            color: "var(--foreground-muted)",
+            borderLeft: "3px solid var(--status-yellow)",
+            paddingLeft: 8,
+          }}
+        >
+          General guidance — not grounded in this machine&apos;s documents.
         </p>
       )}
       {passages.length > 0 && (
@@ -225,6 +241,7 @@ export function NotebookChat({
       let buf = "";
       let citations: EvidenceCitation[] = [];
       let status: ChatTurn["status"] = "answered";
+      let basis: string | null = null;
       let content = "";
       while (true) {
         const { done, value } = await reader.read();
@@ -240,6 +257,7 @@ export function NotebookChat({
           const frame = parseFrame(data);
           if (!frame) continue;
           if (frame.kind === "sources") citations = frame.citations;
+          else if (frame.kind === "evidence") basis = frame.basis;
           else if (frame.kind === "content") {
             content += frame.content;
             setTurns((prev) =>
@@ -260,6 +278,9 @@ export function NotebookChat({
                     : "No answer provider was available."),
                 citations,
                 status,
+                // Only a served answer carries a basis claim — mirrors what
+                // the server persists (084).
+                basis: status === "answered" ? basis : null,
               }
             : x,
         ),

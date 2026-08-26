@@ -323,6 +323,11 @@ export interface NotebookSource {
   pages: number | null;
   /** Workspace file behind this source (null for legacy doc-only rows). */
   fileId: string | null;
+  /** 084: the canonical file this doc DERIVES from — e.g. the nameplate
+   *  photograph behind a materialized nameplate text doc. When set, the
+   *  viewer opens THIS as the primary object; the doc's own bytes are
+   *  secondary "source details". */
+  originFileId: string | null;
   sourceRole: string | null;
   /** Opaque server evidence for the match (why it was proposed). Preserved
    *  verbatim — the client never interprets or drops it. */
@@ -342,6 +347,7 @@ export function toNotebookSource(d: Record<string, unknown>): NotebookSource {
     matchState: d.matchState != null ? String(d.matchState) : "user_confirmed",
     pages: d.pages != null ? Number(d.pages) : null,
     fileId: d.fileId != null ? String(d.fileId) : null,
+    originFileId: d.originFileId != null ? String(d.originFileId) : null,
     sourceRole: d.sourceRole != null ? String(d.sourceRole) : null,
     matchEvidence: d.matchEvidence ?? null,
   };
@@ -366,6 +372,9 @@ export interface NotebookServerTurn {
   answerText: string | null;
   /** Persisted citations (same shape as the live sources frame). */
   evidence?: unknown[];
+  /** 084 (#3387): the evidence-ladder basis the answer was SERVED under.
+   *  Never inferred from "zero citations" — absent means no claim. */
+  basis?: string | null;
 }
 
 export interface NotebookDetail {
