@@ -47,7 +47,9 @@ export interface DiscoveryResult {
 }
 
 const DEFAULT_ASK_URL = "http://mira-ask:8011";
-const DISCOVERY_TIMEOUT_MS = 12_000;
+// 60s (was 12s): mira-ask now reads the top candidate PDFs before choosing
+// (model-judged, 2026-08-26); its own budget is MANUAL_DISCOVERY_TIMEOUT=50s.
+const DISCOVERY_TIMEOUT_MS = 60_000;
 
 const NO_MANUAL = "no official manual found";
 const UNAVAILABLE = "search service unavailable";
@@ -153,7 +155,7 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     isDirectPdf: body.is_direct_pdf === true || candidate.isDirectPdf,
     oemHost: body.oem_host === true,
     trustedDistributorHost: body.trusted_distributor_host === true,
-    reason: str(body.reason) ?? "candidate manual found",
+    reason: str(body.reason_detail) || str(body.reason) || "candidate manual found",
   };
 }
 

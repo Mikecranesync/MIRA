@@ -67,6 +67,8 @@ export type NameplateState =
       identity: ComponentIdentity;
       /** Retained bytes, if the server got that far (null on an early review). */
       manual: NameplateManual | null;
+      /** Why it is only a candidate — the judge's evidence line, if any. */
+      reason?: string | null;
       /** The search hit itself — always present on a review. */
       candidate: ManualCandidateView | null;
       message: string | null;
@@ -193,6 +195,7 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
             identity: state.identity,
             manual: r.manual,
             candidate: r.candidate,
+            reason: r.discoveryReason ?? null,
             message: r.message,
           };
         if (r.status === "complete") {

@@ -409,6 +409,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!autoImport && !probeUnvalidated) {
     return respond("candidate_review", {
+      // What discovery actually found out about this file (2026-08-26: the
+      // judge reads the PDF and says e.g. "Read the PDF: a lever-hoist
+      // brochure, no end-truck model"). The technician decides with that.
+      discoveryReason: discovery.reason,
       candidate: candidateView,
       message:
         "MIRA found a possible manual but could not confirm it is the official document. Review it before adding.",

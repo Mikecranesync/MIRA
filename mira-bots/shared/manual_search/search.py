@@ -45,6 +45,7 @@ import asyncio
 import ipaddress
 import logging
 import os
+import re
 import socket
 from urllib.parse import urljoin, urlparse
 
@@ -160,6 +161,12 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "smc": ("smcusa.com",),
     "ifm": ("ifm.com",),
     "balluff": ("balluff.com",),
+    # Hoists / cranes (2026-08-26, UMS3-0335 end-truck case): the OEM hosts its
+    # manuals at harringtonhoists.com; without this entry the site-scoped pass is
+    # skipped and the OEM host boost never applies.
+    "harrington": ("harringtonhoists.com",),
+    "harrington hoists": ("harringtonhoists.com",),
+    "harrington hoists and cranes": ("harringtonhoists.com",),
     "banner": ("bannerengineering.com",),
     "pepperl": ("pepperl-fuchs.com",),
     "pepperl+fuchs": ("pepperl-fuchs.com",),
@@ -245,6 +252,34 @@ def _model_tokens(model: str) -> list[str]:
     if len(m) >= 6:
         tokens.append(m[: len(m) - 2])
     return tokens
+
+
+def _model_variants(model: str) -> list[str]:
+    """Search-string variants of a model number, original first.
+
+    One hyphen flips the result: measured 2026-08-26, ``Harrington UMS3-0335``
+    surfaces the Series 3 end-truck manual while ``UMS-3-0335`` (how the OEM
+    prints it in the manual) surfaces a tax form. Nameplates, OEM manuals and
+    distributors disagree on hyphenation, so the typed-PDF pass runs each
+    variant and the candidates are pooled.
+    """
+    m = (model or "").strip()
+    if not m:
+        return []
+    out = [m]
+    flat = m.replace("-", "").replace(" ", "")
+    if flat and flat != m:
+        out.append(flat)
+    # family prefix: GS10-20P5 → GS10, UMS3-0335 → UMS3 (OEMs publish one
+    # manual per family; the exact model is a row in its table)
+    fam = re.match(r"[A-Za-z]+\d+", m)
+    if fam and fam.group(0) != m and fam.group(0) not in out:
+        out.append(fam.group(0))
+    # letters→digits boundary gets a hyphen: UMS3-0335 → UMS-3-0335, GS10 → GS-10
+    dashed = re.sub(r"(?<=[A-Za-z])(?=\d)", "-", m, count=1)
+    if dashed != m and dashed not in out:
+        out.append(dashed)
+    return out[:4]
 
 
 def _score(url: str, title: str, make: str, model: str) -> int:
@@ -542,11 +577,19 @@ async def search_manual(make: str, model: str) -> dict | None:
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
-        q2 = f"{make} {model} manual filetype:pdf"
-        try:
-            candidates.extend(_collect(await _serper_search(q2), make, model))
-        except Exception:
-            logger.exception("Serper q2 (filetype:pdf) failed")
+        for i, variant in enumerate(_model_variants(model) or [model]):
+            q2 = f"{make} {variant} manual filetype:pdf"
+            try:
+                found = _collect(await _serper_search(q2), make, model)
+            except Exception:
+                logger.exception("Serper q2 (filetype:pdf) failed")
+                continue
+            if i:
+                # A hit from a re-hyphenated form is a weaker signal than one
+                # from the nameplate's own spelling: it must not win a tie.
+                for c in found:
+                    c["score"] -= 5
+            candidates.extend(found)
 
     # Pass 3: widest fallback — accept landing pages too if nothing above.
     if not candidates:
@@ -569,10 +612,70 @@ async def search_manual(make: str, model: str) -> dict | None:
         deduped.append(c)
     deduped.sort(key=lambda c: c["score"], reverse=True)
 
+    # Read before choosing (2026-08-26): fetch the top direct-PDF candidates,
+    # extract their first pages, and let the canonical text cascade judge
+    # whether each is THE manual for (make, model). A judged match wins and is
+    # already byte-validated; a judged rejection is returned unvalidated so the
+    # caller holds it for review (DOC-003) instead of downloading a brochure.
+    # Any judge failure leaves the legacy HEAD-validate path below untouched.
+    judged_any = False
+    rejected_out: list[dict] = []
+    if _judge.judge_enabled():
+        ranked = await _judge.judge_candidates(make, model, deduped)
+        rejected = [
+            {"url": c["url"], "reason": (c.get("judge") or {}).get("reason", "")}
+            for c in ranked
+            if _judge.is_rejected(c)
+        ]
+        judged_any = bool(rejected) or any(_judge.is_match(c) for c in ranked)
+        rejected_out = rejected
+        top = ranked[0]
+        if _judge.is_match(top):
+            code, line = _judge.judge_summary(top)
+            top["reason"], top["reason_detail"] = code, line
+            top["judged_rejected"] = [r for r in rejected if r["url"] != top["url"]]
+            top["validated"] = True
+            return top
+        # No judged match. Rejections are NEVER returned as validated; the
+        # legacy HEAD path below may still pick an UNJUDGED candidate — but
+        # only one that at least names the make/model. If every relevant
+        # candidate was read and rejected, say so (top rejection + reasons)
+        # rather than surfacing an unread stranger.
+        unread = [c for c in ranked if not _judge.is_rejected(c)]
+        deduped = [c for c in unread if _judge.relevant(c, make, model)]
+        if not deduped and rejected:
+            deduped = []
+        elif not deduped:
+            deduped = unread
+        if not deduped:
+            worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
+            code, line = _judge.judge_summary(worst)
+            worst["reason"], worst["reason_detail"] = code, line
+            worst["judged_rejected"] = rejected
+            worst["validated"] = False
+            return worst
+
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
-        if await validate_pdf(c["url"]):
+        if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
+            if _judge.judge_enabled():
+                # The judge is on but this candidate was never READ (fetch
+                # blocked / too big / no text / provider down). A byte-valid
+                # PDF nobody has read is not a manual we vouch for: hold it for
+                # review unless it sits on the manufacturer's own host. (Live
+                # 2026-08-26: this path handed back a state tax form and an
+                # education-archive PDF as validated=True.)
+                c.setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
+                c["reason_detail"] = (
+                    "Judged candidates were rejected; this one could not be read — review before use."
+                    if judged_any
+                    else "Could not read the candidate PDF — review before use."
+                )
+                c["validated"] = _is_oem_host(c.get("host") or "", make)
+                c["judged_rejected"] = rejected_out
+            else:
+                c.setdefault("reason", "ok")
             return c
 
     # Nothing validated — return the top scorer as a candidate so the
@@ -580,3 +683,6 @@ async def search_manual(make: str, model: str) -> dict | None:
     # candidate to a trusted manual link.
     deduped[0]["validated"] = False
     return deduped[0]
+
+
+from . import judge as _judge  # noqa: E402 — circular-safe: judge imports this module lazily

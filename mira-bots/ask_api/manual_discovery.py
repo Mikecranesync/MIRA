@@ -134,7 +134,9 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     # Strongest identifier wins: catalog_number over model, when supplied.
     search_identifier = catalog_number or model
 
-    timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "20"))
+    # 50s (was 20s): the judge fetches + reads the top candidate PDFs before
+    # choosing (shared/manual_search/judge.py). The Hub side allows 60s.
+    timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
     try:
         candidate = await asyncio.wait_for(
@@ -175,5 +177,10 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         "is_direct_pdf": is_direct_pdf,
         "oem_host": oem_host,
         "trusted_distributor_host": trusted_distributor_host,
-        "reason": "ok",
+        # Judge outcome (judged_manual_match / judged_not_applicable /
+        # judge_unavailable) when the candidate PDF was read; "ok" otherwise.
+        "reason": candidate.get("reason") or "ok",
+        "reason_detail": candidate.get("reason_detail") or "",
+        "judge": candidate.get("judge") or None,
+        "judged_rejected": candidate.get("judged_rejected") or [],
     }

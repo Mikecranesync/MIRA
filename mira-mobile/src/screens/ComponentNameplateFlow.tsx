@@ -226,6 +226,11 @@ export function ComponentNameplateFlow({
             {state.candidate?.host ? `${state.candidate.host} · ` : ""}
             {state.candidate?.oemHost ? "manufacturer site" : "not a manufacturer site"}
           </div>
+          {state.reason ? (
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {state.reason}
+            </div>
+          ) : null}
           {/* The whole point of this screen is "confirm before using", and a
            *  technician cannot confirm a document they cannot open. The URL used
            *  to be plain text — unreadable and untappable — so the only way to
