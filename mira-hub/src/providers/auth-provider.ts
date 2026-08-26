@@ -2,6 +2,7 @@
 
 import type { AuthProvider } from "@refinedev/core";
 import { signIn, signOut, getSession } from "next-auth/react";
+import { sessionRole } from "@/lib/role";
 
 export const authProvider: AuthProvider = {
   login: async ({ email, password }: { email: string; password: string }) => {
@@ -31,8 +32,9 @@ export const authProvider: AuthProvider = {
   },
 
   getPermissions: async () => {
+    // "" (NO_ROLE) when the session carries no resolvable role — never owner.
     const session = await getSession();
-    return (session?.user as { role?: string } | undefined)?.role ?? "owner";
+    return sessionRole(session);
   },
 
   getIdentity: async () => {
