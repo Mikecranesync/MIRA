@@ -1,6 +1,8 @@
 package com.factorylm.mira;
 
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
@@ -8,6 +10,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.PixelCopy;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
@@ -40,6 +43,8 @@ public class MainActivity extends BridgeActivity {
     private static final long PROBE_DELAY_MS = 1200;
     private static final long PROBE_TIMEOUT_MS = 2500;
     private static final long PAINT_RECHECK_MS = 700;
+    /** Repaint rungs tried before reload(): each is non-destructive to page state. */
+    private static final int PAINT_KICKS = 5;
     private static final long RECOVER_COOLDOWN_MS = 6000;
 
     private static final String PROBE_JS =
@@ -52,6 +57,7 @@ public class MainActivity extends BridgeActivity {
     private boolean pageLoaded = false;
     private boolean wasPaused = false;
     private boolean recovering = false;
+    private boolean probing = false;
     private Runnable pendingProbe;
     private Runnable pendingTimeout;
 
@@ -97,7 +103,7 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         // Only after a genuine background round-trip, and only once the page has loaded
         // at least once — the cold-start onResume must never probe a still-booting page.
-        if (!wasPaused || !pageLoaded || recovering) return;
+        if (!wasPaused || !pageLoaded || recovering || probing) return;
         cancelProbe();
         pendingProbe = this::probeRendered;
         handler.postDelayed(pendingProbe, PROBE_DELAY_MS);
@@ -161,8 +167,11 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * Sample the WebView's window region into a tiny bitmap. Uniform = blank.
-     * attempt 0: blank → re-attach the surface and re-check; attempt 1: still blank →
-     * reload the page (recover()).
+     * attempts 0..PAINT_KICKS-1: blank → one repaint rung, re-check; after the last
+     * rung still blank → reload the page (recover()). Measured 2026-08-26: the
+     * picker's file result was still delivered to JS while the screen was blank
+     * (recognize → 200 one second before a reload threw it away), so every rung
+     * must keep page state, and reload is strictly the last resort.
      */
     private void probePaint(final WebView wv, final int attempt) {
         if (recovering || wv.getWidth() < 8 || wv.getHeight() < 8 || getWindow() == null) return;
@@ -180,20 +189,27 @@ public class MainActivity extends BridgeActivity {
                     if (result != PixelCopy.SUCCESS) {
                         Log.d(TAG, "paint probe unavailable (" + result + "); skipping");
                         bmp.recycle();
+                        probing = false;
                         return;
                     }
                     boolean uniform = isUniform(bmp);
                     bmp.recycle();
                     if (!uniform) {
-                        Log.d(TAG, "resume probe ok (paint)");
+                        Log.d(TAG, "resume probe ok (paint)" + (attempt > 0 ? " after rung " + (attempt - 1) : ""));
+                        probing = false;
                         return;
                     }
-                    if (attempt == 0) {
-                        Log.w(TAG, "DOM ok but nothing painted after resume; re-attaching WebView surface");
-                        kickSurface(wv);
-                        handler.postDelayed(() -> probePaint(wv, 1), PAINT_RECHECK_MS);
+                    probing = true;
+                    if (attempt < PAINT_KICKS) {
+                        Log.w(TAG, "DOM ok but nothing painted after resume; repaint rung " + attempt);
+                        kickSurface(wv, attempt);
+                        handler.postDelayed(
+                            () -> probePaint(wv, attempt + 1),
+                            attempt == PAINT_KICKS - 1 ? PAINT_RECHECK_MS * 3 : PAINT_RECHECK_MS
+                        );
                     } else {
-                        recover(wv, "still blank after surface re-attach");
+                        probing = false;
+                        recover(wv, "still blank after " + PAINT_KICKS + " repaint rungs");
                     }
                 },
                 handler
@@ -222,14 +238,72 @@ public class MainActivity extends BridgeActivity {
         return Math.max(dr, Math.max(dg, db));
     }
 
-    /** Detach/re-attach the WebView's drawing surface — what a HOME/relaunch does. */
-    private void kickSurface(final WebView wv) {
-        wv.setVisibility(View.INVISIBLE);
-        handler.post(() -> {
-            wv.setVisibility(View.VISIBLE);
-            wv.requestLayout();
-            wv.invalidate();
-        });
+    /**
+     * Repaint rungs, weakest first. None of them reloads the page or drops JS state.
+     *  0: WebView's own pause/resume + visibility toggle (compositor re-sync).
+     *  1: detach the WebView from its parent and re-attach it — a real surface
+     *     teardown/rebuild, which is what the Activity stop/start did when a
+     *     HOME + relaunch repainted the measured blank.
+     *  2: bump the window pixel format (forces the window surface to be recreated).
+     *  3: hardware→software→hardware layer type (drops the compositor layer tree).
+     *  4: bounce the task (moveTaskToBack + reorder-to-front) — the automated form of
+     *     the HOME + relaunch that measurably repainted; same Activity, same WebView,
+     *     no reload. Visible as a ~300 ms flicker; strictly before reload().
+     */
+    private void kickSurface(final WebView wv, final int rung) {
+        switch (rung) {
+            case 0:
+                wv.onPause();
+                wv.setVisibility(View.INVISIBLE);
+                handler.post(() -> {
+                    wv.onResume();
+                    wv.setVisibility(View.VISIBLE);
+                    wv.requestLayout();
+                    wv.invalidate();
+                });
+                break;
+            case 1: {
+                final ViewGroup parent = wv.getParent() instanceof ViewGroup ? (ViewGroup) wv.getParent() : null;
+                if (parent == null) return;
+                final int index = parent.indexOfChild(wv);
+                final ViewGroup.LayoutParams lp = wv.getLayoutParams();
+                parent.removeView(wv);
+                handler.post(() -> {
+                    parent.addView(wv, index, lp);
+                    wv.requestLayout();
+                    wv.invalidate();
+                });
+                break;
+            }
+            case 2:
+                if (getWindow() != null) {
+                    getWindow().setFormat(PixelFormat.TRANSLUCENT);
+                    handler.post(() -> {
+                        getWindow().setFormat(PixelFormat.OPAQUE);
+                        wv.invalidate();
+                    });
+                }
+                break;
+            case 3:
+                wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                handler.post(() -> {
+                    wv.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                    wv.invalidate();
+                });
+                break;
+            default: {
+                Log.w(TAG, "bouncing task to rebuild the window surface");
+                moveTaskToBack(true);
+                handler.postDelayed(
+                    () -> {
+                        Intent i = new Intent(MainActivity.this, MainActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(i);
+                    },
+                    250
+                );
+            }
+        }
     }
 
     // ── 3. Recovery ─────────────────────────────────────────────────────────────
