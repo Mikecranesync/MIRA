@@ -187,6 +187,29 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
+  // One send path for the composer AND follow-up chips (CONV-4). With no
+  // source attached the only honest answer is a general one, and the server
+  // labels it as such; with sources present this stays the strict grounded
+  // path — the mode is never sent as a fallback when retrieval comes back
+  // empty. CONV-3: the recent thread rides along so a follow-up has memory.
+  const sendQuestion = async (raw: string) => {
+    const question = raw.trim();
+    if (!question || busy) return;
+    setQ("");
+    setBusy(true);
+    setChatError(null);
+    try {
+      const a = await askNotebook(id, question, scope, {
+        mode: scope.length === 0 ? "general" : undefined,
+        history: buildChatHistory(turns, liveTurns),
+      });
+      setLiveTurns((t) => [...t, { q: question, a }]);
+    } catch (e) {
+      setChatError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
@@ -482,6 +505,20 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {/* Follow-up chips (CONV-4): server-derived, deterministic,
+                    last turn only — tapping one sends it as the next turn. */}
+                {!busy &&
+                  i === liveTurns.length - 1 &&
+                  t.a.status === "answered" &&
+                  (t.a.followups?.length ?? 0) > 0 && (
+                    <div className="chip-row" aria-label="Ask follow-up:">
+                      {t.a.followups!.map((f) => (
+                        <button key={f} className="chip" onClick={() => void sendQuestion(f)}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {/* Evidence basis (spec 1.3). Rendered only for a general answer:
                     a grounded one already shows its citation chips, and a second
                     badge saying "grounded" would be noise. Silence here never
@@ -523,30 +560,7 @@ export function NotebookScreen({
             <button
               className="btn-primary"
               disabled={busy || !q.trim()}
-              onClick={async () => {
-                const question = q.trim();
-                setQ("");
-                setBusy(true);
-                setChatError(null);
-                try {
-                  // With no source attached the only honest answer is a general
-                  // one, and the server labels it as such. With sources present
-                  // this stays the strict grounded path — the mode is never sent
-                  // as a fallback when retrieval comes back empty.
-                  // CONV-3: the recent thread rides along so a follow-up
-                  // ("what about the second one?") has memory — same contract
-                  // the web client already ships.
-                  const a = await askNotebook(id, question, scope, {
-                    mode: scope.length === 0 ? "general" : undefined,
-                    history: buildChatHistory(turns, liveTurns),
-                  });
-                  setLiveTurns((t) => [...t, { q: question, a }]);
-                } catch (e) {
-                  setChatError(e);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              onClick={() => void sendQuestion(q)}
             >
               Send
             </button>

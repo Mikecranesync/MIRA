@@ -26,6 +26,8 @@ export interface ChatTurn {
   evidenceBasis?: string;
   /** One-sentence caption the server supplies for the badge. */
   evidenceLabel?: string;
+  /** Deterministic follow-up questions (CONV-4) — answered turns only. */
+  followups?: string[];
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -53,6 +55,7 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
   let evidenceBasis: string | undefined;
+  let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
   for (const block of body.split("\n\n")) {
     const line = block.trim();
@@ -65,7 +68,11 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
       else if (frame.kind === "sources")
         citations = normalizeCitations(frame.citations);
       else if (frame.kind === "status") status = String(frame.status ?? "");
-      else if (frame.kind === "evidence") {
+      else if (frame.kind === "followups") {
+        followups = Array.isArray(frame.suggestions)
+          ? (frame.suggestions as unknown[]).map(String)
+          : undefined;
+      } else if (frame.kind === "evidence") {
         evidenceBasis = String(frame.basis ?? "");
         evidenceLabel = String(frame.label ?? "");
       }
@@ -73,5 +80,5 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
       /* keep parsing subsequent frames */
     }
   }
-  return { answer, citations, status, evidenceBasis, evidenceLabel };
+  return { answer, citations, status, evidenceBasis, evidenceLabel, followups };
 }
