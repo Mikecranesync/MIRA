@@ -66,7 +66,29 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 //   GROQ_API_KEY + GROQ_VISION_MODEL — Groq path, live ONLY if the model is set
 //   NAMEPLATE_RECOGNIZER=fixture — deterministic test switch (no module mocking)
 
-const TOGETHER_VISION_DEFAULT = "google/gemma-3n-E4B-it";
+// 2026-08-25: google/gemma-3n-E4B-it stopped being served serverless on Together
+// (400 model_not_available) and every prod nameplate read 502'd. MiniMax-M3 is the
+// one vision-capable model on the account that is still serverless — it is also the
+// model the PrintSense production lane already pins (TOGETHERAI_VISION_MODEL).
+const TOGETHER_VISION_DEFAULT = "MiniMaxAI/MiniMax-M3";
+
+/**
+ * Models to try, in order, when the provider says the configured model is not
+ * available (Together `model_not_available`, or a 404). Comma-separated, opt-in,
+ * so a retired model becomes a config change instead of an outage.
+ */
+export function togetherVisionFallbackModels(): string[] {
+  return (process.env.NAMEPLATE_VISION_FALLBACK_MODELS || "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
+/** True when the thrown provider error means "this model id is not served". */
+export function isModelUnavailableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("model_not_available") || /recognizer_provider_error_404/.test(msg);
+}
 
 export function togetherVisionModel(): string {
   return (
@@ -154,8 +176,18 @@ async function openAiCompatVision(
       throw new Error("recognizer_provider_unreachable");
     }
     if (!resp.ok) {
-      // Scrub any credential-bearing detail from provider errors (PRD §20).
-      throw new Error(`recognizer_provider_error_${resp.status}`);
+      // Scrub any credential-bearing detail from provider errors (PRD §20):
+      // keep only the status and the provider's short error CODE (e.g.
+      // `model_not_available`), never the free-text message.
+      let code = "";
+      try {
+        const body = (await resp.json()) as { error?: { code?: unknown } };
+        const c = body?.error?.code;
+        if (typeof c === "string" && /^[a-z0-9_]{1,40}$/i.test(c)) code = `_${c}`;
+      } catch {
+        // non-JSON error body — status alone is the signal
+      }
+      throw new Error(`recognizer_provider_error_${resp.status}${code}`);
     }
     const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
     const text = body.choices?.[0]?.message?.content ?? "{}";
@@ -199,7 +231,9 @@ export class GroqVisionRecognizer implements NameplateRecognizer {
 /**
  * Together vision provider — the repo's only live vision path
  * (mira-bots/shared/inference/router.py). Model id from
- * NAMEPLATE_VISION_MODEL || TOGETHERAI_VISION_MODEL || google/gemma-3n-E4B-it.
+ * NAMEPLATE_VISION_MODEL || TOGETHERAI_VISION_MODEL || MiniMaxAI/MiniMax-M3.
+ * If the provider reports the model is not served, each model in
+ * NAMEPLATE_VISION_FALLBACK_MODELS is tried in order before giving up.
  */
 export class TogetherVisionRecognizer implements NameplateRecognizer {
   readonly name = "together-vision";
@@ -207,13 +241,26 @@ export class TogetherVisionRecognizer implements NameplateRecognizer {
   async recognize(imageBase64: string, mimeType: string): Promise<EquipmentIdentityCandidate> {
     const key = process.env.TOGETHERAI_API_KEY;
     if (!key) throw new Error("recognizer_not_configured");
-    return openAiCompatVision(
-      "https://api.together.xyz/v1/chat/completions",
-      key,
-      togetherVisionModel(),
-      imageBase64,
-      mimeType,
-    );
+    const models = [togetherVisionModel(), ...togetherVisionFallbackModels()];
+    let lastErr: unknown;
+    for (const model of models) {
+      try {
+        return await openAiCompatVision(
+          "https://api.together.xyz/v1/chat/completions",
+          key,
+          model,
+          imageBase64,
+          mimeType,
+        );
+      } catch (err) {
+        lastErr = err;
+        // Only a "model not served" answer moves on to the next model; every
+        // other failure (timeout, 5xx, auth) keeps its status and stops here.
+        if (!isModelUnavailableError(err)) throw err;
+        console.warn(`[nameplate] together model unavailable: ${model}`);
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("recognizer_provider_unreachable");
   }
 }
 
