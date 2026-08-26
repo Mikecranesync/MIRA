@@ -317,6 +317,8 @@ def _score(url: str, title: str, make: str, model: str) -> int:
     if not url:
         return 0
     parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return -1  # never a candidate: it is rendered as a tappable link downstream
     host = (parsed.netloc or "").lower()
     if _is_denied(host):
         return -1  # filtered out

@@ -525,3 +525,57 @@ async def test_oem_request_link_dead_page_is_not_offered(monkeypatch):
 async def test_oem_request_link_respects_ssrf_guard(monkeypatch):
     monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: False)
     assert await search_mod.oem_request_link("Harrington") is None
+
+
+# ── review findings 2026-08-26 ───────────────────────────────────────────────
+
+
+def test_extract_json_takes_the_last_parseable_object_past_prose_braces():
+    prose = 'Thinking: the table {model list} is on page 10 and {"draft": 1} was wrong.\n'
+    good = '{"is_manual_for_model": true, "confidence": 0.9, "reason": "table lists it"}'
+    assert judge._extract_json(prose + good) == {
+        "is_manual_for_model": True,
+        "confidence": 0.9,
+        "reason": "table lists it",
+    }
+    assert judge._extract_json("no json here") is None
+    assert judge._extract_json("") is None
+
+
+def test_score_rejects_non_http_schemes_outright():
+    assert (
+        search_mod._score("javascript:alert(1)", "Harrington manual", "Harrington", "UMS3-0335")
+        == -1
+    )
+    assert (
+        search_mod._score("data:text/html;base64,AAAA", "manual", "Harrington", "UMS3-0335") == -1
+    )
+    assert (
+        search_mod._score("ftp://x.example/manual.pdf", "manual", "Harrington", "UMS3-0335") == -1
+    )
+    assert (
+        search_mod._score("https://x.example/manual.pdf", "manual", "Harrington", "UMS3-0335") > 0
+    )
+
+
+async def test_extract_text_is_killed_on_timeout(monkeypatch):
+    """The parse runs in a child process; a hang is killed, not awaited."""
+    monkeypatch.setattr(judge, "EXTRACT_TIMEOUT", 0.5)
+    monkeypatch.setattr(judge, "_EXTRACT_CHILD", "import time; time.sleep(30)")
+    import time
+
+    t = time.monotonic()
+    assert await judge.extract_text(b"%PDF-1.4 whatever") == ""
+    assert time.monotonic() - t < 5
+
+
+async def test_extract_text_round_trips_a_real_pdf_through_the_child():
+    pdf = (
+        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 100]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
+        b"4 0 obj<</Length 60>>stream\nBT /F1 18 Tf 10 50 Td (Model UMS-3-0335 End Truck) Tj ET\nendstream\nendobj\n"
+        b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+        b"trailer<</Root 1 0 R>>\n%%EOF\n"
+    )
+    assert "UMS-3-0335" in await judge.extract_text(pdf)

@@ -293,25 +293,26 @@ capabilities:
       staging: unset                          # staging has no mira-ask service
       production: unset                       # compose default 0 - ships DARK by owner decision (2026-08-26)
     state: deployed_disabled
+    reason: >-
+      Owner decision 2026-08-26: ship dark, verify health, then enable for a
+      supervised mike-pilot physical Pixel test; disable immediately on failure.
     owner: "Mike Harper"
     ci_jobs:
-      - "Unit Tests                           # mira-bots/tests/test_manual_search_judge.py, test_manual_search.py, test_ask_api_manual_discovery.py"
-      - "Hub Unit Tests                       # mira-hub manual-discovery + equipment-notebooks suites"
-      - "Mobile Unit Tests"
+      - test-unit            # mira-bots/tests/test_manual_search_judge.py, test_manual_search.py, test_ask_api_manual_discovery.py
+      - mira-hub-unit        # mira-hub manual-discovery + equipment-notebooks suites
+      - mobile-unit-tests
     required_checks: []
     evidence:
-      - path: docs/decisions/2026-08-26-technician-copilot-owner-decisions.md
+      - path: mira-bots/tests/test_manual_search_judge.py
         note: >-
-          Owner decision A+C and deploy protocol: merge with MANUAL_JUDGE_ENABLED=0,
-          verify health, enable for a supervised mike-pilot Pixel test, disable
-          immediately on failure; physical Pixel proof required before "released".
-      - path: docs/discovery/2026-08-26-feasibility-photo-to-manual-vs-chatgpt.md
-        note: >-
-          The measured failure this closes (Harrington UMS3-0335 -> lever-hoist
-          brochure) and the live results with staging keys: AutomationDirect
-          GS10-20P5 now resolves to the DURApulse GS10 Drive User Manual with a
-          quoted evidence line; the Harrington positive is unsatisfiable server-side
-          (every copy bot-walled) and is the designated negative/refusal case.
+          Offline proof over the REAL Harrington UMS3-0335 candidate set measured
+          2026-08-26 (brochure scored 40 over the Series 3 manual at 30) plus the
+          three defects only live runs exposed. Live with staging keys:
+          AutomationDirect GS10-20P5 resolves to the DURApulse GS10 Drive User
+          Manual with a quoted evidence line; Harrington is the designated
+          negative/refusal case (every copy bot-walled) and gets the OEM
+          request-form link. Owner decision record + feasibility memo land with
+          PR #3408 (docs/decisions/2026-08-26-technician-copilot-owner-decisions.md).
     rollback: >-
       Set MANUAL_JUDGE_ENABLED=0 in Doppler factorylm/prd (or leave unset - compose
       default is 0) and redeploy mira-ask; the legacy HEAD-validate path is

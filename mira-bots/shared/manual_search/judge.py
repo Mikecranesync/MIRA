@@ -59,6 +59,7 @@ MAX_BYTES = _int_env("MANUAL_JUDGE_MAX_BYTES", 25 * 1024 * 1024)  # real OEM man
 MAX_PAGES = _int_env("MANUAL_JUDGE_MAX_PAGES", 8)
 MAX_CHARS = _int_env("MANUAL_JUDGE_MAX_CHARS", 7000)
 FETCH_TIMEOUT = float(os.getenv("MANUAL_JUDGE_FETCH_TIMEOUT", "12"))
+EXTRACT_TIMEOUT = float(os.getenv("MANUAL_JUDGE_EXTRACT_TIMEOUT", "15"))
 LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
 
 # Verdict strings the caller can show verbatim.
@@ -133,12 +134,53 @@ def _extract_text_sync(data: bytes, max_pages: int, max_chars: int) -> str:
     return text[:max_chars]
 
 
+_EXTRACT_CHILD = (
+    "import sys;from shared.manual_search.judge import _extract_text_sync as f;"
+    "d=sys.stdin.buffer.read();"
+    "sys.stdout.buffer.write(f(d,int(sys.argv[1]),int(sys.argv[2])).encode('utf-8','replace'))"
+)
+
+
 async def extract_text(data: bytes, max_pages: int = MAX_PAGES, max_chars: int = MAX_CHARS) -> str:
+    """Parse untrusted PDF bytes in a KILLABLE child process, bounded by
+    ``EXTRACT_TIMEOUT``. Review 2026-08-26: a decompression-bomb / pathologically
+    nested PDF hangs pdfminer for minutes; in a thread that pin stays alive
+    after the caller times out and, on the shared default executor, starves
+    every other ``to_thread`` user in the process (including the SSRF guard).
+    A child process is killed outright on timeout."""
+    import sys
+
     try:
-        return await asyncio.to_thread(_extract_text_sync, data, max_pages, max_chars)
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            _EXTRACT_CHILD,
+            str(max_pages),
+            str(max_chars),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        )
+    except (OSError, ValueError) as e:
+        logger.info("judge extraction could not start: %s", e)
+        return ""
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(data), timeout=EXTRACT_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.info("judge text extraction timed out after %.0fs; killed", EXTRACT_TIMEOUT)
+        proc.kill()
+        try:
+            await proc.wait()
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
     except Exception as e:  # noqa: BLE001
         logger.info("judge text extraction failed: %s", e)
         return ""
+    if proc.returncode != 0:
+        return ""
+    return out.decode("utf-8", "replace")[:max_chars]
 
 
 # ── judge ───────────────────────────────────────────────────────────────────
@@ -162,16 +204,24 @@ _JUDGE_SYSTEM = (
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
+    """The LAST parseable JSON object in ``text``. A reasoning model may emit
+    prose containing braces before the answer; a greedy first-'{'..last-'}'
+    span would swallow that prose and fail to parse (review 2026-08-26)."""
     if not text:
         return None
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
+    end = text.rfind("}")
+    if end < 0:
         return None
-    try:
-        obj = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
-    return obj if isinstance(obj, dict) else None
+    for start in (i for i, ch in enumerate(text) if ch == "{"):
+        if start > end:
+            break
+        try:
+            obj = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
 
 
 _router: Any = None
