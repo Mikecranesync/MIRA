@@ -91,7 +91,7 @@ TASKS: dict[str, TaskSpec] = {
         prompt_file="m01_vision_intake_v1.txt",
         prompt_version="m01_vision_intake_v1",
         output_schema="task_outputs/m01_output",
-        default_models={"mock": "mock-fixture", "together": "google/gemma-3n-E4B-it"},
+        default_models={"mock": "mock-fixture", "together": "MiniMaxAI/MiniMax-M3"},
     ),
     "M03": TaskSpec(
         task_id="M03",
@@ -99,7 +99,7 @@ TASKS: dict[str, TaskSpec] = {
         prompt_file="m03_print_region_extract_v1.txt",
         prompt_version="m03_print_region_extract_v1",
         output_schema="task_outputs/m03_output",
-        default_models={"mock": "mock-fixture", "together": "google/gemma-3n-E4B-it"},
+        default_models={"mock": "mock-fixture", "together": "MiniMaxAI/MiniMax-M3"},
     ),
     "M05": TaskSpec(
         task_id="M05",
