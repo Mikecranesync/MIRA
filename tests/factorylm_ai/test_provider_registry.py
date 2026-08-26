@@ -90,7 +90,7 @@ def test_registry_or_form_empty_strings_fall_back(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("TOGETHERAI_TIMEOUT", "")
     resolved = provider_registry.resolve("together")
     assert resolved.text_model == "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    assert resolved.vision_model == "google/gemma-3n-E4B-it"
+    assert resolved.vision_model == "MiniMaxAI/MiniMax-M3"
     assert resolved.timeout == 90.0
 
 

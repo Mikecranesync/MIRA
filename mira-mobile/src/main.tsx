@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import App, { handleDeepLink } from "./App";
 import { confirmBundleReady } from "./lib/live-update";
+import { installResumeGuard } from "./lib/resume-guard";
 import "./app.css";
 
 // OTA rollback confirmation — FIRST, before deep links, before any API call.
@@ -21,6 +22,9 @@ if (!Capacitor.isNativePlatform()) document.body.classList.add("web-preview");
 
 // Deep links (factorylm://m/<TAG> and https://app.factorylm.com/m/<TAG>).
 // Registered BEFORE first render so a cold-start URL is not missed.
+// Blank-white-screen recovery after background/picker round-trips (#3392).
+installResumeGuard();
+
 void CapApp.addListener("appUrlOpen", ({ url }) => handleDeepLink(url));
 void CapApp.getLaunchUrl().then((l) => {
   if (l?.url) handleDeepLink(l.url);
