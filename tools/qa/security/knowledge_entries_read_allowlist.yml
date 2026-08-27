@@ -503,7 +503,41 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/node-knowledge-ingest.ts:196":
+  "mira-hub/src/lib/__tests__/equipment-notebooks-delete.test.ts:109":
+    approved_classification: UNFILTERED
+    query_sha256: "f838fec39f7fe113f3fc2764043eef5a9d1a9d218f129dc01a21fbfbf25fb6ad"
+    reason: "NOT a read site. This is the negative assertion that deleteNotebook never
+      issues `DELETE FROM knowledge_entries` (nor hub_uploads / namespace_direct_uploads /
+      kg_entities) — the token appears only inside expect(...).not.toMatch(). The scanner
+      matches the literal and cannot tell an assertion from a query; the same situation the
+      checker already handles for its own source and fixture via the skip list. Allowlisted
+      rather than widening that skip list, so a REAL knowledge_entries read added to this
+      file later would still fail the gate on a hash mismatch. Deleting this test would
+      remove the only guard that notebook deletion does not destroy shared documents."
+  "mira-hub/src/lib/equipment-notebooks.ts:847":
+    approved_classification: TENANT-ONLY
+    query_sha256: "dbf369caa36584dcb8c49bfef0c788d99bd8d9315eb97770e28064e30d49777b"
+    reason: "listSources readiness facts — counts chunks / embedded / page-anchored for
+      the doc ids ALREADY resolved from equipment_notebook_sources for this tenant's own
+      notebook, to derive the Ready-to-Ask contract (lib/document-readiness.ts). It is an
+      aggregate COUNT over the caller's OWN uploads (doc ids come from this tenant's
+      hub_uploads via the membership query directly above), and returns NO content — only
+      integers. The hybrid OEM filter (is_private = false OR ...) is deliberately NOT
+      applied: adding it would count the shared system-tenant OEM corpus into ONE tenant's
+      per-document readiness, reporting a notebook as enhanced/enhancing based on chunks
+      that do not belong to its documents. That is the opposite of the #1761 fix's intent,
+      which is about not HIDING the OEM corpus from user-facing corpus reads; this is not a
+      corpus read. Raw owner pool (not withTenantContext) to match the surrounding
+      hub_uploads metadata read in the same function. KEY MIGRATION 2026-08-22: moved
+      :422 -> :509 when deleteNotebook was added ABOVE it in the same file. Pure line
+      shift — query_sha256 is unchanged, which is the proof the SQL text and its
+      tenant scope are byte-identical; no re-approval warranted."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
+            GROUP BY doc_id
+
+  "mira-hub/src/lib/node-knowledge-ingest.ts:259":
     approved_classification: TENANT-ONLY
     query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
     reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
@@ -511,12 +545,14 @@ approved:
       + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
       user-facing corpus read, so the hybrid OEM filter (is_private=false OR …) does not
       apply; the writer must only ever touch its own tenant's freshly-inserted chunks.
-      Moved :195->:196 (import pool added above for deleteOrphanNodeIngest; SQL unchanged)."
+      Moved :195->:196 (import pool added above for deleteOrphanNodeIngest; SQL unchanged).
+      Moved :196->:259 (embed-failure classification added above in the migration-079
+      grant fix; SQL unchanged — query_sha256 re-verified identical at the new line)."
     query_snippet: |
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
                     AND source_type = 'node_attachment' AND embedding IS NULL
-  "mira-hub/src/lib/node-knowledge-ingest.ts:480":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:585":
     approved_classification: TENANT-ONLY
     query_sha256: "0d657143447d26f41d1f666f9eba610597104a78d42f8daf31127e5568a2e89a"
     reason: "deleteOrphanNodeIngest — best-effort DELETE of a LOST-FENCE ingest's own
@@ -525,7 +561,9 @@ approved:
       just created; not a corpus read, and the hybrid OEM filter cannot apply — OEM
       rows belong to the system tenant and can never match the caller's tenant_id
       plus a doc_id minted in this request. Raw owner pool because factorylm_app has
-      no DELETE grant (migrations 011/049 are SELECT/INSERT only)."
+      no DELETE grant (migrations 011/049 are SELECT/INSERT only).
+      Moved :480->:585 (embed-failure classification added above in the migration-079
+      grant fix; SQL unchanged — query_sha256 re-verified identical at the new line)."
     query_snippet: |
       `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
   "mira-hub/src/lib/node-document-proposals.ts:127":

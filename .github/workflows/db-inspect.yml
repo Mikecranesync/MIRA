@@ -65,6 +65,138 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+      # Placed FIRST among the query steps on purpose: the job is capped at
+      # timeout-minutes: 5 and the kg/knowledge_entries sweeps below can consume
+      # all of it, which cancelled the run that first tried to read this ledger.
+      # A spend read must not depend on unrelated heavy queries completing.
+      - name: decision_traces spend ledger (migration 080) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo
+          \echo === decision_traces spend ledger (migration 080) — READ-ONLY ===
+          \echo 'Sanctioned prod read path for the P0004G canonical seam cutover: hard rule #1'
+          \echo 'forbids psql against prod from a code session, so the spend ledger is verified'
+          \echo 'here. No question, answer, or excerpt text is selected — this is a spend record,'
+          \echo 'not a transcript.'
+          SELECT column_name, data_type
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='decision_traces'
+             AND column_name IN ('provider','route_reason','principal','input_tokens',
+                                 'cached_input_tokens','output_tokens','cost_usd_estimate',
+                                 'tool_call_count','status')
+           ORDER BY column_name;
+          \echo
+          \echo === idx_decision_traces_spend present? ===
+          SELECT EXISTS(SELECT 1 FROM pg_indexes
+                        WHERE schemaname='public' AND tablename='decision_traces'
+                          AND indexname='idx_decision_traces_spend') AS index_present;
+          \echo
+          \echo === seam turns by platform, last 24h (provider NOT NULL = served by the seam) ===
+          SELECT platform,
+                 count(*)                                   AS turns,
+                 count(provider)                            AS with_provider,
+                 count(*) FILTER (WHERE citations_present)  AS cited,
+                 round(sum(cost_usd_estimate)::numeric, 6)  AS est_cost_usd
+            FROM decision_traces
+           WHERE ts > now() - interval '24 hours'
+           GROUP BY platform ORDER BY turns DESC;
+          \echo
+          \echo === last 5 seam spend rows (no free text) ===
+          SELECT ts, platform, provider, route_reason, model_used,
+                 input_tokens, cached_input_tokens, output_tokens,
+                 cost_usd_estimate, status, latency_ms, citations_present
+            FROM decision_traces
+           WHERE provider IS NOT NULL
+           ORDER BY ts DESC LIMIT 5;
+          SQL
+
+      # Independent verification for the garage dogfood rig: a DIFFERENT workflow
+      # and different queries from the seed that wrote the identity, so a green
+      # result here is not the seed grading its own homework. Read-only.
+      # Why this probe exists: creating an asset tagged CV-101 in a BRAND NEW
+      # tenant returns 409 "tag already exists", while reading it back through
+      # the tenant-scoped route returns 404. Read is scoped, write is not — so
+      # some deployed constraint spans tenants. Migration 012 declares only the
+      # per-tenant partial index, so the deployed schema and the canonical
+      # migrations disagree and only the deployed side can settle it.
+      # `tools/seeds/staging-cv101-probe.sql` currently asserts the per-tenant
+      # reading from the migrations alone; this step is what that claim should
+      # have been checked against.
+      - name: cmms_equipment tag uniqueness — deployed vs canonical — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === every unique constraint/index touching equipment_number ===
+          \echo 'A row whose definition lacks tenant_id is GLOBAL: one tenant can then'
+          \echo 'permanently deny a tag like CV-101 to every other tenant, and probing'
+          \echo '409-vs-201 reveals whether another tenant holds it.'
+          SELECT i.relname AS index_name,
+                 ix.indisunique AS is_unique,
+                 pg_get_indexdef(ix.indexrelid) AS definition,
+                 pg_get_indexdef(ix.indexrelid) LIKE '%tenant_id%' AS scoped_by_tenant
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_class t ON t.oid = ix.indrelid
+           WHERE t.relname = 'cmms_equipment'
+             AND ix.indisunique
+             AND pg_get_indexdef(ix.indexrelid) LIKE '%equipment_number%'
+           ORDER BY scoped_by_tenant, i.relname;
+
+          \echo
+          \echo === how many tenants hold each duplicated tag (would break on a global constraint) ===
+          SELECT equipment_number, count(DISTINCT tenant_id) AS tenants, count(*) AS rows
+            FROM cmms_equipment
+           WHERE equipment_number IS NOT NULL
+           GROUP BY equipment_number
+          HAVING count(DISTINCT tenant_id) > 1
+           ORDER BY tenants DESC LIMIT 10;
+          SQL
+
+      - name: CV-101 identity (garage dogfood rig) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === CV-101 asset row (cmms_equipment) ===
+          SELECT tenant_id, equipment_number, description AS label, uns_path::text,
+                 qr_generated_at IS NOT NULL AS qr_bound
+            FROM cmms_equipment
+           WHERE equipment_number = 'CV-101';
+
+          \echo
+          \echo === CV-101 knowledge-graph bridge row ===
+          \echo 'approval_state MUST be verified and uns_path NOT NULL, or every'
+          \echo 'KG-grounded surface resolves to nothing (chat/route.ts, traversal.ts).'
+          SELECT k.tenant_id,
+                 k.name                         AS kg_label,
+                 k.approval_state,
+                 k.uns_path::text,
+                 k.properties->>'asset_tag'     AS alias_key,
+                 k.properties->>'canonical_key' AS derived_key,
+                 (k.entity_id = ce.id::text)    AS entity_id_is_the_uuid
+            FROM cmms_equipment ce
+            JOIN kg_entities k
+              ON k.entity_type = 'equipment'
+             AND k.entity_id = ce.id::text
+           WHERE ce.equipment_number = 'CV-101';
+
+          \echo
+          \echo === notebooks bound to CV-101 (081) ===
+          SELECT n.display_name, n.asset_selected_via,
+                 n.asset_confirmed_at IS NOT NULL AS confirmed,
+                 (SELECT count(*) FROM equipment_notebook_sources s
+                   WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS sources
+            FROM equipment_notebooks n
+            JOIN cmms_equipment ce ON ce.id::text = n.equipment_entity_id
+           WHERE ce.equipment_number = 'CV-101';
+          SQL
+
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -213,6 +345,34 @@ jobs:
            AND g.grantee = 'factorylm_app'
           GROUP BY t.table_name
           ORDER BY t.table_name;
+
+          \echo
+          \echo === knowledge_entries embedding coverage (vector-dark backlog) — READ-ONLY ===
+          \echo 'Chunks with embedding IS NULL are invisible to the VECTOR ranker (searchKB'
+          \echo 'filters embedding IS NOT NULL); they remain BM25/full-text searchable.'
+          \echo 'A large node_attachment backlog means the Hub embed-on-write pass was not'
+          \echo 'writing — historically either the missing UPDATE grant (migration 079) or a'
+          \echo 'missing OLLAMA_BASE_URL on the mira-hub service. Both are visible above/here.'
+          SELECT source_type,
+                 count(*)                                   AS total_chunks,
+                 count(embedding)                           AS embedded,
+                 count(*) - count(embedding)                AS dark,
+                 CASE WHEN count(*) = 0 THEN NULL
+                      ELSE round(100.0 * count(embedding) / count(*), 1)
+                 END                                        AS pct_embedded
+          FROM knowledge_entries
+          GROUP BY source_type
+          ORDER BY dark DESC, source_type;
+
+          \echo
+          \echo '--- corpus-wide totals ---'
+          SELECT count(*)                    AS total_chunks,
+                 count(embedding)            AS embedded,
+                 count(*) - count(embedding) AS dark,
+                 CASE WHEN count(*) = 0 THEN NULL
+                      ELSE round(100.0 * count(embedding) / count(*), 1)
+                 END                         AS pct_embedded
+          FROM knowledge_entries;
 
           \echo
           \echo === #1899 folder=brain upload-path schema probe ===

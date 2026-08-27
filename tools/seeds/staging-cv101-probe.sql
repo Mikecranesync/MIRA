@@ -27,10 +27,42 @@
 
 BEGIN;
 
--- equipment_number carries a GLOBAL unique constraint
--- (cmms_equipment_equipment_number_key), so key every statement on it: repair
--- or claim the one CV-101 row (fixes the quoted-tenant row from the bad first
--- apply), else insert it. Idempotent either way.
+-- Every statement keys on equipment_number alone: repair or claim the one
+-- CV-101 row (fixes the quoted-tenant row from the bad first apply), else
+-- insert it. Idempotent either way. The tenant-free predicate IS the repair
+-- mechanism here — do not add a tenant filter, or a mis-tenanted row becomes
+-- unreachable instead of reclaimed.
+--
+-- HISTORY. A first note here cited a GLOBAL unique constraint
+-- `cmms_equipment_equipment_number_key`. A second note "corrected" it to say no
+-- such constraint exists, because no migration creates one — reasoning from the
+-- canonical migrations rather than from the deployed database.
+--
+-- The deployed database had BOTH (read-only probe, prod, 2026-08-24):
+--   cmms_equipment_equipment_number_key      (equipment_number)             global
+--   idx_cmms_equipment_number_tenant_unique  (tenant_id, equipment_number)  per tenant
+--
+-- The global one came with the original CMMS schema and no migration ever
+-- dropped it, which is why it was invisible to a grep of `db/migrations`. So
+-- the FIRST note was right about production and the correction was wrong: this
+-- repo has a documented history of deployed-vs-canonical drift
+-- (`.claude/rules/mira-hub-migrations.md` §8), and a claim about a constraint
+-- has to be settled against the database, not the migration folder.
+--
+-- Migration 083 drops the global constraint and keeps the per-tenant index, so
+-- from then on two tenants MAY each hold a CV-101 and the singular phrasing
+-- above is genuinely an assumption. The assertion below is what makes it true
+-- at run time — keep it.
+DO $$
+DECLARE
+  n integer;
+BEGIN
+  SELECT count(*) INTO n FROM cmms_equipment WHERE equipment_number = 'CV-101';
+  IF n > 1 THEN
+    RAISE EXCEPTION
+      'staging-cv101-probe: % CV-101 rows exist; the tenant-free UPDATE below would claim an arbitrary one. Resolve the duplicate first.', n;
+  END IF;
+END $$;
 UPDATE cmms_equipment
    SET tenant_id = :tenant_id,
        uns_path = 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree,

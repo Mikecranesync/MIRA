@@ -114,3 +114,32 @@ describe("SUGGESTED_QUESTIONS", () => {
     expect(SUGGESTED_QUESTIONS.length).toBeLessThanOrEqual(6);
   });
 });
+
+describe("Bubble — follow-up suggestion chips", () => {
+  it("renders tappable follow-up chips on an answered turn when a handler is provided", () => {
+    const turn: ChatTurn = {
+      id: "a9",
+      role: "assistant",
+      content: "P042 [Decel Time 1] sets the deceleration time. [1]",
+      status: "answered",
+      followups: ["What's the valid range for P042?", "How do I change P042 from the keypad?"],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={turn} onFollowup={() => {}} />);
+    expect(html).toContain("What&#x27;s the valid range for P042?");
+    expect(html).toContain("How do I change P042 from the keypad?");
+    expect(html).toContain("Ask follow-up:");
+  });
+
+  it("renders NO chips without a handler (older turns) or without followups", () => {
+    const turn: ChatTurn = {
+      id: "a10",
+      role: "assistant",
+      content: "P042 sets the deceleration time. [1]",
+      status: "answered",
+      followups: ["What's the valid range for P042?"],
+    };
+    expect(renderToStaticMarkup(<Bubble turn={turn} />)).not.toContain("valid range");
+    const bare: ChatTurn = { id: "a11", role: "assistant", content: "Hi.", status: "answered" };
+    expect(renderToStaticMarkup(<Bubble turn={bare} onFollowup={() => {}} />)).not.toContain("Ask follow-up");
+  });
+});

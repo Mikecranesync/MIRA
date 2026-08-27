@@ -7,9 +7,11 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
+  buildChatHistory,
   attachFileToTargets,
   setSourceEnabled,
   detachSource,
@@ -23,13 +25,15 @@ import {
   type NotebookSource,
   type SourcePassage,
   type WorkspaceFile,
+  deleteNotebook,
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
+import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
-import { FilePreview } from "./FilePreview";
+import { FilePreview, SourceThumb } from "./FilePreview";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -123,7 +127,16 @@ export function NotebookScreen({
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  // Citation sheet for a photo-derived source: the photograph is primary and
+  // the derived text/provenance collapses behind this toggle (084).
+  const [showDetails, setShowDetails] = useState(false);
   const [openSource, setOpenSource] = useState<NotebookSource | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Ref, not state: a double-tap must be rejected synchronously, before
+  // React commits `deleting` and disables the button.
+  const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -140,6 +153,7 @@ export function NotebookScreen({
       setViewCitation(null);
       setPassages(null);
       setShowOriginal(false);
+      setShowDetails(false);
       return true;
     }
     if (sheetOpen) {
@@ -173,9 +187,38 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
+  // One send path for the composer AND follow-up chips (CONV-4). With no
+  // source attached the only honest answer is a general one, and the server
+  // labels it as such; with sources present this stays the strict grounded
+  // path — the mode is never sent as a fallback when retrieval comes back
+  // empty. CONV-3: the recent thread rides along so a follow-up has memory.
+  const sendQuestion = async (raw: string) => {
+    const question = raw.trim();
+    if (!question || busy) return;
+    setQ("");
+    setBusy(true);
+    setChatError(null);
+    try {
+      const a = await askNotebook(id, question, scope, {
+        mode: scope.length === 0 ? "general" : undefined,
+        history: buildChatHistory(turns, liveTurns),
+      });
+      setLiveTurns((t) => [...t, { q: question, a }]);
+    } catch (e) {
+      setChatError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
+  // One object, two doors (084): when the cited doc DERIVES from a canonical
+  // file (the nameplate photograph behind the materialized text), the viewer
+  // leads with that file. The derived text demotes to "Source details".
+  const citedOriginFileId = viewCitation
+    ? (sources.find((s) => s.docId === viewCitation.docId)?.originFileId ?? null)
+    : null;
 
   return (
     <>
@@ -183,7 +226,20 @@ export function NotebookScreen({
         <button className="btn-link" onClick={onExit}>
           ← Notebooks
         </button>
-        <h3 style={{ margin: "4px 0 0" }}>{notebook.displayName}</h3>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
+          <button
+            className="btn-link"
+            aria-label="Delete notebook"
+            onClick={() => {
+              setDeleteError(null);
+              setConfirmDelete(true);
+            }}
+            style={{ color: "var(--fl-danger, #dc2626)", flex: "none" }}
+          >
+            Delete
+          </button>
+        </div>
         <div className="meta">
           {sources.length} source{sources.length === 1 ? "" : "s"}
           {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
@@ -202,6 +258,84 @@ export function NotebookScreen({
         </div>
       </div>
 
+      {confirmDelete && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Delete notebook"
+          className="sheet-backdrop"
+          onClick={() => !deleting && setConfirmDelete(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--fl-bg, #fff)",
+              border: "1px solid var(--fl-line, #ddd)",
+              borderRadius: "var(--fl-radius, 12px)",
+              padding: 16,
+              maxWidth: 360,
+              width: "100%",
+            }}
+          >
+            <h3 style={{ margin: 0 }}>Delete this notebook?</h3>
+            <p className="meta" style={{ marginTop: 8 }}>
+              {/* Name it explicitly — the technician must see WHICH notebook
+                  is being destroyed, not merely that one is. */}
+              <strong>{notebook.displayName}</strong> and its chat history will be
+              permanently deleted. This cannot be undone.
+            </p>
+            <p className="meta" style={{ marginTop: 6 }}>
+              Uploaded documents are kept — they may be attached to other notebooks.
+            </p>
+            {deleteError && (
+              <p role="alert" className="meta" style={{ color: "var(--fl-danger, #dc2626)" }}>
+                {deleteError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+              <button className="btn-link" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                disabled={deleting}
+                aria-busy={deleting}
+                onClick={async () => {
+                  await deleteGuard.current.run(async () => {
+                    setDeleting(true);
+                    setDeleteError(null);
+                    try {
+                      await deleteNotebook(id);
+                      setConfirmDelete(false);
+                      // onExit re-lists notebooks, so the deleted row leaves the
+                      // UI immediately rather than on some later refresh.
+                      onExit();
+                    } catch (e) {
+                      const status = (e as { status?: number } | null)?.status ?? 0;
+                      setDeleteError(deleteFailureMessage(status));
+                      setDeleting(false);
+                    }
+                  });
+                }}
+                style={{ background: "var(--fl-danger, #dc2626)" }}
+              >
+                {deleting ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {panel === "sources" && (
         <div className="content bottompad" style={{ paddingTop: 0 }}>
           <button className="btn-primary" onClick={() => setSheetOpen(true)}>
@@ -215,7 +349,7 @@ export function NotebookScreen({
             </div>
           )}
           {sources.length === 0 && (
-            <Empty text="Saved sources will appear here. Add the machine's manual to start asking questions." />
+            <Empty text="Saved sources will appear here. Add the machine's manual to get cited, machine-specific answers — you can ask general questions right now." />
           )}
           {sources.map((s) => {
             const chattable = canBeChatSource(s);
@@ -260,8 +394,16 @@ export function NotebookScreen({
                   </span>
                 )}
                 <div className="grow">
-                  <div className="title">
-                    {s.sourceRole === "photo" ? "🖼" : "📄"} {s.filename ?? s.docId}
+                  <div className="title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Attachment-card affordance: a photo-derived source
+                        shows an actual thumbnail of the photograph;
+                        everything else keeps its conventional glyph. */}
+                    {s.originFileId ? (
+                      <SourceThumb fileId={s.originFileId} />
+                    ) : (
+                      <span aria-hidden>{s.sourceRole === "photo" ? "🖼" : "📄"}</span>
+                    )}
+                    <span>{s.filename ?? s.docId}</span>
                   </div>
                   <div className="meta">
                     {s.pages ? `${s.pages} pages · ` : ""}
@@ -317,7 +459,7 @@ export function NotebookScreen({
                 <Empty
                   text={
                     scope.length === 0
-                      ? "Add a source first — answers are grounded only in this notebook's documents."
+                      ? "Ask anything now — answers are general until this notebook has documents; then they're grounded and cited."
                       : "Ask this machine anything. Answers cite the manual."
                   }
                 />
@@ -336,6 +478,14 @@ export function NotebookScreen({
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                {/* 084 (#3387): the basis survives reload because it is READ
+                    from the persisted row — never inferred from zero
+                    citations. Same rendering rule as the live turn below. */}
+                {t.basis === "general_reasoning" && (
+                  <div className="evidence-basis-general">
+                    General guidance — not grounded in this machine's documents.
+                  </div>
+                )}
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
                     <button
@@ -355,6 +505,29 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {/* Follow-up chips (CONV-4): server-derived, deterministic,
+                    last turn only — tapping one sends it as the next turn. */}
+                {!busy &&
+                  i === liveTurns.length - 1 &&
+                  t.a.status === "answered" &&
+                  (t.a.followups?.length ?? 0) > 0 && (
+                    <div className="chip-row" aria-label="Ask follow-up:">
+                      {t.a.followups!.map((f) => (
+                        <button key={f} className="chip" onClick={() => void sendQuestion(f)}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                {/* Evidence basis (spec 1.3). Rendered only for a general answer:
+                    a grounded one already shows its citation chips, and a second
+                    badge saying "grounded" would be noise. Silence here never
+                    means "trust it" — an unlabelled answer shows its chips. */}
+                {t.a.evidenceBasis === "general_reasoning" && (
+                  <div className="evidence-basis-general">
+                    {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
+                  </div>
+                )}
                 <div>
                   {t.a.citations.map((c) => (
                     <button
@@ -375,9 +548,10 @@ export function NotebookScreen({
           </div>
           <div className="composer">
             <input
-              placeholder={scope.length === 0 ? "Add a source to start" : "Ask a question…"}
+              placeholder={
+                scope.length === 0 ? "Ask anything — no manual loaded yet" : "Ask a question…"
+              }
               value={q}
-              disabled={scope.length === 0}
               onChange={(e) => setQ(e.target.value)}
             />
             <span className="counter">
@@ -385,21 +559,8 @@ export function NotebookScreen({
             </span>
             <button
               className="btn-primary"
-              disabled={busy || !q.trim() || scope.length === 0}
-              onClick={async () => {
-                const question = q.trim();
-                setQ("");
-                setBusy(true);
-                setChatError(null);
-                try {
-                  const a = await askNotebook(id, question, scope);
-                  setLiveTurns((t) => [...t, { q: question, a }]);
-                } catch (e) {
-                  setChatError(e);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              disabled={busy || !q.trim()}
+              onClick={() => void sendQuestion(q)}
             >
               Send
             </button>
@@ -411,6 +572,8 @@ export function NotebookScreen({
         <StudioPanel
           notebookId={id}
           scope={scope}
+          // Studio generators are one-shot scoped prompts — chat history
+          // would contaminate them, so it is deliberately NOT sent here.
           ask={(prompt) => askNotebook(id, prompt, scope)}
           onCitation={setViewCitation}
         />
@@ -423,6 +586,7 @@ export function NotebookScreen({
             setViewCitation(null);
             setPassages(null);
             setShowOriginal(false);
+            setShowDetails(false);
           }}
         >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -430,6 +594,25 @@ export function NotebookScreen({
               [{viewCitation.citationId}] {viewCitation.sourceTitle}
               {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
             </h3>
+            {/* Photo-derived source: the ACTUAL photograph is the primary
+                experience (tap it for full-screen pinch/zoom). The derived
+                text, quote, and provenance live under "Source details". */}
+            {citedOriginFileId && (
+              <>
+                <FilePreview fileId={citedOriginFileId} filename={viewCitation.sourceTitle} />
+                {!showDetails && (
+                  <button
+                    className="btn-link"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setShowDetails(true)}
+                  >
+                    Source details — why this was used
+                  </button>
+                )}
+              </>
+            )}
+            {(!citedOriginFileId || showDetails) && (
+              <>
             {passages === null && viewCitation.quote && (
               <div
                 className="msg-answer"
@@ -498,11 +681,13 @@ export function NotebookScreen({
                 />
               </div>
             )}
-            {!viewCitation.fileId && (
+            {!viewCitation.fileId && !citedOriginFileId && (
               <div className="meta" style={{ marginTop: 12 }}>
                 This answer didn't record which file the passage came from, so
                 the original can't be opened from here.
               </div>
+            )}
+              </>
             )}
             <div className="meta" style={{ marginTop: 10 }}>
               Cited from the source document
@@ -515,6 +700,7 @@ export function NotebookScreen({
                 setViewCitation(null);
                 setPassages(null);
                 setShowOriginal(false);
+                setShowDetails(false);
               }}
             >
               Close
@@ -531,7 +717,9 @@ export function NotebookScreen({
               {sourceKindLabel(openSource)}
             </div>
             <FilePreview
-              fileId={openSource.fileId}
+              // One object, two doors (084): opening a photo-derived source
+              // shows the photograph, same as tapping its citation.
+              fileId={openSource.originFileId ?? openSource.fileId}
               filename={openSource.filename ?? "document"}
             />
             <button style={{ marginTop: 12 }} onClick={() => setOpenSource(null)}>
@@ -743,10 +931,28 @@ function AddSourcesSheet({
   const [pasteText, setPasteText] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // The proven camera pattern (NotebooksTab): capture="environment" on a
-  // hidden input, value reset after every pick so re-shooting the same photo
-  // still fires onChange.
+  // On device the phone's own picker is used (#3353 — the WebView turned
+  // capture="environment" into a chooser). The hidden inputs below stay for the
+  // web build, which has no native picker to call.
   const cameraRef = useRef<HTMLInputElement | null>(null);
+
+  /** Nameplate photo: phone picker on device, hidden input on web. */
+  const openNameplatePicker = async () => {
+    if (!canPickNatively()) return cameraRef.current?.click();
+    const f = await pickNameplatePhoto();
+    if (!f) return; // backed out
+    setNote(null);
+    setPhoto(f);
+    setMode("nameplate");
+  };
+
+  /** PDF: phone document picker on device, hidden input on web. */
+  const openPdfPicker = async () => {
+    if (!canPickNatively()) return fileRef.current?.click();
+    const f = await pickPdf();
+    if (!f) return;
+    await uploadPdf(f);
+  };
 
   const uploadPdf = async (file: File | null) => {
     if (!file) return;
@@ -823,14 +1029,14 @@ function AddSourcesSheet({
             <button
               className="sheet-option"
               disabled={busy}
-              onClick={() => fileRef.current?.click()}
+              onClick={() => void openPdfPicker()}
             >
               📄 {busy ? "Uploading…" : "Upload a PDF manual"}
             </button>
             <button
               className="sheet-option"
               disabled={busy}
-              onClick={() => cameraRef.current?.click()}
+              onClick={() => void openNameplatePicker()}
             >
               📷 Photograph a component nameplate
             </button>
@@ -921,6 +1127,15 @@ function AddSourcesSheet({
             onCancel={() => {
               setPhoto(null);
               setMode("menu");
+            }}
+            onUploadInstead={() => {
+              setPhoto(null);
+              setMode("menu");
+              // Next tick: the picker must open after this flow unmounts, or the
+              // input click is swallowed by the screen that is going away. The
+              // native picker is its own activity, so it has no such problem —
+              // but the deferral is harmless and keeps one code path.
+              setTimeout(() => void openPdfPicker(), 0);
             }}
           />
         )}

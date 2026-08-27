@@ -349,3 +349,43 @@ class TestIsOemHost:
     def test_blank_manufacturer_or_host_returns_false(self):
         assert is_oem_host("", "literature.rockwellautomation.com") is False
         assert is_oem_host("rockwell", "") is False
+
+
+def test_all_rejected_disappears_as_no_manual_found(monkeypatch):
+    """Owner canary rule 2026-08-26: when every read candidate was rejected the
+    technician gets no_manual_found + reasons + the OEM request link — never a
+    newspaper to 'review'."""
+    import ask_api.manual_discovery as md
+
+    async def fake_search(make, model):
+        return {
+            "url": "https://linpub.example/news.pdf",
+            "title": "Car show",
+            "host": "linpub.example",
+            "score": 30,
+            "is_direct_pdf": True,
+            "validated": False,
+            "reason": "judged_not_applicable",
+            "reason_detail": "Read the PDF: a newspaper article.",
+            "judged_rejected": [{"url": "https://linpub.example/news.pdf", "reason": "newspaper"}],
+        }
+
+    async def fake_link(make):
+        return "https://www.harringtonhoists.com/owners-manual-request"
+
+    monkeypatch.setattr(md, "search_manual", fake_search)
+    monkeypatch.setattr(md, "oem_request_link", fake_link)
+    monkeypatch.delenv("ASK_API_KEY", raising=False)
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(md.router)
+    r = TestClient(app).post(
+        "/manual-discovery/search", json={"manufacturer": "Harrington", "model": "UMS3-0335"}
+    )
+    d = r.json()
+    assert d["found"] is False and d["candidate"] is None
+    assert d["reason"] == "judged_not_applicable"
+    assert d["judged_rejected"][0]["reason"] == "newspaper"
+    assert d["oem_request_url"].endswith("/owners-manual-request")

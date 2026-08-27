@@ -33,6 +33,7 @@ import {
   parseCookies,
   readChannelPref,
 } from "../lib/cookie-session.js";
+import { hubSessionPresent, hubScanPath } from "../lib/hub-handoff.js";
 
 function buildChannelUrl(
   channel: string,
@@ -68,6 +69,28 @@ m.get("/:asset_tag", async (c) => {
 
   const cookieHeader = c.req.header("cookie");
   const cookies = parseCookies(cookieHeader);
+
+  // --- HUB HAND-OFF (added 2026-08-23) ------------------------------------
+  // A technician who is already signed in to the Hub scanned a machine label.
+  // They want the machine — its notebook, its documents, Ask MIRA — not the
+  // channel funnel, which exists to onboard a COLD visitor who has no account.
+  //
+  // Everything below this branch is untouched: an anonymous scan still gets the
+  // preference/chooser/guest-report routing and the byte-identical NOT_FOUND
+  // that keeps cross-tenant and nonexistent tags indistinguishable. This only
+  // adds a first branch for a visitor who demonstrably already has an account.
+  //
+  // The Hub serves the machine page at /scan/:tag rather than /m/:tag because
+  // nginx routes /m/ here (mira-web :3200) and everything else to the Hub
+  // (:3101) — so /scan is reachable with NO nginx change, which is the smallest
+  // solution that leaves this funnel intact.
+  //
+  // Presence of the cookie is NOT treated as authentication: the Hub validates
+  // the session itself and shows its own guest landing if the cookie is stale.
+  // This is a routing hint, never an authorization decision.
+  if (hubSessionPresent(cookies)) {
+    return c.redirect(hubScanPath(assetTag), 302);
+  }
 
   // Try to resolve auth token: Authorization header > ?token= query > mira_session cookie
   const headerRaw = c.req.header("Authorization")?.replace("Bearer ", "");

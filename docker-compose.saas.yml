@@ -513,7 +513,18 @@ services:
       SERPER_API_KEY: "${SERPER_API_KEY:-}"
       MANUAL_SEARCH_TIMEOUT: "${MANUAL_SEARCH_TIMEOUT:-15}"
       MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
-      MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-20}"
+      MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-50}"
+      # Read-before-choose judge (shared/manual_search/judge.py). Code default is
+      # ON; this compose default is OFF ON PURPOSE — owner decision 2026-08-26:
+      # ship dark, verify health, enable (Doppler prd MANUAL_JUDGE_ENABLED=1 +
+      # redeploy mira-ask) for the supervised mike-pilot Pixel test, disable on
+      # any failure. See docs/architecture/convergence/CAPABILITY_CLOSURE.yaml.
+      MANUAL_JUDGE_ENABLED: "${MANUAL_JUDGE_ENABLED:-0}"
+      MANUAL_JUDGE_MAX_CANDIDATES: "${MANUAL_JUDGE_MAX_CANDIDATES:-4}"
+      MANUAL_JUDGE_MAX_BYTES: "${MANUAL_JUDGE_MAX_BYTES:-26214400}"
+      MANUAL_JUDGE_FETCH_TIMEOUT: "${MANUAL_JUDGE_FETCH_TIMEOUT:-12}"
+      MANUAL_JUDGE_LLM_TIMEOUT: "${MANUAL_JUDGE_LLM_TIMEOUT:-25}"
+      MANUAL_JUDGE_EXTRACT_TIMEOUT: "${MANUAL_JUDGE_EXTRACT_TIMEOUT:-15}"
       MIRA_MANUAL_SENSE_WEB_ENABLED: "${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}"
       # Nameplate text-DETECTION endpoint (POST /nameplate/detect) — finds the
       # label region so the Hub can crop before recognition (fixes the 1.27A->
@@ -736,10 +747,32 @@ services:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      # Embedder for the Hub's OWN vector path — both halves of it:
+      #   write: lib/node-knowledge-ingest.ts::embedPendingNodeChunks (embed-on-write)
+      #   read:  lib/agents/asset-intelligence.ts::searchKB (query embedding)
+      # Both call ${OLLAMA_BASE_URL}/api/embeddings with nomic-embed-text (768-dim),
+      # and they MUST use the same embedder or cosine is meaningless. This var was
+      # never passed to the hub, while five sibling services already received it —
+      # so the write path returned `embedder_not_configured` and every node
+      # attachment stayed embedding IS NULL, and the read path threw outright.
+      # Same declaration + default as mira-core / mira-ingest / mira-pipeline /
+      # the two bots; the real value comes from Doppler.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # P0004G canonical inference seam. OFF unless explicitly set to "1" —
+      # with it unset the notebook-chat route keeps using the pre-existing
+      # inline cascade, so this line changes nothing until someone flips it.
+      - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # Per-turn output ceiling under the seam (cost guard).
+      - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated
       # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
       # block only (pure code). Set in Doppler factorylm/prd to bound the surface.
       - COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST=${COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST:-}
+      # Origin of the published OTA manifest + release artifacts. The mobile
+      # live-update manifest route reads <OTA_ORIGIN>/manifest.<channel>.json and
+      # refuses any downloadUrl that is not on this host, so this is a trust
+      # boundary, not just a convenience.
+      - OTA_ORIGIN=${OTA_ORIGIN:-https://updates.factorylm.com}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
@@ -814,6 +847,9 @@ services:
       # through to TOGETHERAI_VISION_MODEL and then the in-code default.
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - NAMEPLATE_VISION_MODEL=${NAMEPLATE_VISION_MODEL:-}
+      # Models tried in order when the configured one answers model_not_available
+      # (2026-08-25: gemma-3n went dedicated-only and 502'd every nameplate read).
+      - NAMEPLATE_VISION_FALLBACK_MODELS=${NAMEPLATE_VISION_FALLBACK_MODELS:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed

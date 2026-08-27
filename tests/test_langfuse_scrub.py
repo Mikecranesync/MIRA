@@ -39,3 +39,22 @@ def test_scrub_strips_multiple_in_one_string():
     assert "10.0.0.5" not in out
     assert "00:1B:44:11:3A:B7" not in out
     assert "[IP]" in out and "[MAC]" in out
+
+def test_scrub_leaves_the_word_service_alone():
+    """#3305 regression at the Langfuse seam.
+
+    The router was fixed first and this mirror was not, so traces kept recording
+    "Check the [SN] manual…" after the provider path was already clean —
+    corrupting exactly the evidence used to diagnose prompt quality. Found by the
+    Codex adversarial lane on PR #3314 (F1).
+    """
+    sentence = "Check the service manual for the PowerFlex 525"
+    assert _scrub(sentence) == sentence
+
+
+def test_scrub_still_strips_real_serials_after_the_3305_fix():
+    """The paired positive control — narrowing must not become under-redaction."""
+    out = _scrub("S/N ABC12345 on the nameplate")
+    assert "[SN]" in out
+    assert "ABC12345" not in out
+

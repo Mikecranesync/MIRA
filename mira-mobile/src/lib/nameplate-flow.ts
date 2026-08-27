@@ -44,7 +44,33 @@ export type NameplateErrorReason =
   | "search_unavailable"
   | "download_rejected"
   | "upload_failed"
-  | "confirm_failed";
+  | "confirm_failed"
+  // Intake failures the server names precisely — never collapsed into
+  // "couldn't read the nameplate" (that sentence is reserved for a photo the
+  // recognizer actually looked at and couldn't read).
+  | "unsupported_image_type"
+  | "image_too_large"
+  | "recognizer_unavailable"
+  | "provider_error";
+
+/**
+ * Map a failed recognize call onto the reason the server actually gave.
+ * Duck-typed against ApiError ({status, detail}) so this module stays pure.
+ * Anything unrecognized stays "upload_failed" — never invent a cause.
+ */
+export function reasonFromRecognizeError(e: unknown): NameplateErrorReason {
+  const status = typeof (e as { status?: unknown })?.status === "number"
+    ? ((e as { status: number }).status)
+    : null;
+  const detail = String((e as { detail?: unknown })?.detail ?? "");
+  if (status === 415) return "unsupported_image_type";
+  if (status === 413) return "image_too_large";
+  if (status === 503 || detail.includes("recognizer_not_configured")) {
+    return "recognizer_unavailable";
+  }
+  if (status === 502) return "provider_error";
+  return "upload_failed";
+}
 
 export type NameplateManual = ConfirmedManual;
 
@@ -67,6 +93,9 @@ export type NameplateState =
       identity: ComponentIdentity;
       /** Retained bytes, if the server got that far (null on an early review). */
       manual: NameplateManual | null;
+      /** Why it is only a candidate — the judge's evidence line, if any. */
+      reason?: string | null;
+      oemRequestUrl?: string | null;
       /** The search hit itself — always present on a review. */
       candidate: ManualCandidateView | null;
       message: string | null;
@@ -84,6 +113,9 @@ export type NameplateState =
       /** Retained context so the user can correct and retry, not start over. */
       fileId: string | null;
       identity: ComponentIdentity | null;
+      /** Official next step when no manual could be found: the OEM's own
+       *  manual-request page, validated by the server. */
+      oemRequestUrl?: string | null;
     };
 
 export type NameplateEvent =
@@ -193,6 +225,8 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
             identity: state.identity,
             manual: r.manual,
             candidate: r.candidate,
+            reason: r.discoveryReason ?? null,
+            oemRequestUrl: r.oemRequestUrl ?? null,
             message: r.message,
           };
         if (r.status === "complete") {
@@ -218,6 +252,7 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
           reason: STATUS_TO_ERROR[r.status] ?? "confirm_failed",
           fileId: state.fileId,
           identity: state.identity,
+          oemRequestUrl: r.oemRequestUrl ?? null,
         };
       }
       return state;
@@ -302,6 +337,14 @@ export function nameplateErrorCopy(reason: NameplateErrorReason): string {
       return "Couldn't read the nameplate";
     case "confirm_failed":
       return "File retained even though later processing failed";
+    case "unsupported_image_type":
+      return "That image format isn't supported — use a JPEG or PNG photo";
+    case "image_too_large":
+      return "Photo is too large (over 8 MB) — retake or pick a smaller one";
+    case "recognizer_unavailable":
+      return "Nameplate reading isn't available on the server right now";
+    case "provider_error":
+      return "The vision service failed — your photo is kept; try again";
   }
 }
 
@@ -330,4 +373,25 @@ export function canSubmitIdentity(identity: ComponentIdentity): boolean {
     identity.manufacturer.trim() &&
       (identity.model.trim() || identity.catalogNumber.trim()),
   );
+}
+
+/**
+ * What the primary button on `candidate_review` should DO.
+ *
+ * Reported from the field on a Pixel: the screen offered "Use this manual" as a
+ * solid primary button while it was permanently disabled, because the server had
+ * found a LINK it declined to auto-import — there was no file to promote, and no
+ * amount of tapping could produce one. The technician read a working button and
+ * concluded the app had hung, which is the only fair reading of that screen.
+ *
+ * The two situations are genuinely different and must not share a control:
+ *
+ *   "accept" — the server auto-imported the PDF (validated + direct PDF + OEM
+ *              host). A file exists; the button promotes it to user_confirmed.
+ *   "upload" — the server surfaced a candidate URL for review WITHOUT importing
+ *              it. Nothing exists to promote. The honest action is: open the
+ *              link, check it, then add the downloaded PDF as a source.
+ */
+export function candidateAction(manual: NameplateManual | null | undefined): "accept" | "upload" {
+  return manual?.fileId ? "accept" : "upload";
 }

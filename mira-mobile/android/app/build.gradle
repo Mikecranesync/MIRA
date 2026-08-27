@@ -4,11 +4,26 @@ apply plugin: 'com.android.application'
 // (gitignored) + a keystore file OUTSIDE the repo — see docs/release/android/signing.md.
 // Without keystore.properties the release build stays unsigned (CI-safe): Play App
 // Signing holds the real app signing key; this keystore is only the upload key.
+// Signing credentials come from ONE of two places, never from git:
+//   1. android/keystore.properties  — the release machine (gitignored)
+//   2. environment variables        — CI, injected from Doppler factorylm/prd
+// Env wins when present so a protected workflow never needs a file on disk.
+// Absent both, release builds stay UNSIGNED and do not fail (CI-safe).
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
+
+// ANDROID_KEYSTORE_FILE is a PATH written by CI after base64-decoding the
+// keystore from Doppler — the key material itself is never an env var, never
+// echoed, and never lands in a log.
+def envStoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+def envStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+def envKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+def envKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+def hasEnvSigning = envStoreFile != null && !envStoreFile.isEmpty()
+def hasSigning = hasEnvSigning || keystorePropertiesFile.exists()
 
 android {
     namespace = "com.factorylm.mira"
@@ -19,8 +34,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode bumps by exactly 1 on every Play upload (Play rejects reuse);
         // versionName tracks the mobile release line (docs/release/android/README.md).
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 5
+        versionName "1.0.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -30,7 +45,12 @@ android {
     }
     signingConfigs {
         release {
-            if (keystorePropertiesFile.exists()) {
+            if (hasEnvSigning) {
+                storeFile file(envStoreFile)
+                storePassword envStorePassword
+                keyAlias envKeyAlias
+                keyPassword envKeyPassword
+            } else if (keystorePropertiesFile.exists()) {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -42,7 +62,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (keystorePropertiesFile.exists()) {
+            if (hasSigning) {
                 signingConfig signingConfigs.release
             }
         }

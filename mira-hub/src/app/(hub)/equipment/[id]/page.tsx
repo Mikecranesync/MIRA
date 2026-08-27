@@ -6,9 +6,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FilePlus2, Layers, Loader2, X, Check } from "lucide-react";
+import { ArrowLeft, FilePlus2, Layers, Loader2, X, Check, Trash2 } from "lucide-react";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import { NotebookChat, type ChatTurn } from "@/components/equipment/NotebookChat";
+import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialog";
+import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 
 type Notebook = {
@@ -38,6 +40,12 @@ export default function NotebookPage() {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Ref, not state: the guard must reject a re-entrant call synchronously,
+  // before React has committed `deleting`.
+  const deleteGuard = useRef(createSubmitGuard());
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +64,7 @@ export default function NotebookPage() {
       return next;
     });
     setInitialTurns(
-      (data.turns ?? []).flatMap((t: { id: string; question: string; answerStatus: string; answerText: string | null; evidence: EvidenceCitation[] }) => [
+      (data.turns ?? []).flatMap((t: { id: string; question: string; answerStatus: string; answerText: string | null; evidence: EvidenceCitation[]; basis?: string | null }) => [
         { id: `${t.id}-q`, role: "user" as const, content: t.question },
         {
           id: `${t.id}-a`,
@@ -64,6 +72,8 @@ export default function NotebookPage() {
           content: t.answerText ?? "I couldn't find that in the selected sources.",
           status: t.answerStatus as ChatTurn["status"],
           citations: t.evidence,
+          // 084 (#3387): the persisted basis — the badge survives reload.
+          basis: t.basis ?? null,
         },
       ]),
     );
@@ -185,6 +195,28 @@ export default function NotebookPage() {
     };
   }, [sheetOpen, closeSheet]);
 
+  const onDelete = useCallback(async () => {
+    await deleteGuard.current.run(async () => {
+      setDeleting(true);
+      setDeleteError(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) throw Object.assign(new Error("delete failed"), { status: res.status });
+        // Leave first, then refresh, so the list cannot re-render the row we
+        // just removed from a stale client cache.
+        router.replace("/equipment");
+        router.refresh();
+      } catch (err) {
+        const status = (err as { status?: number } | null)?.status ?? 0;
+        setDeleteError(deleteFailureMessage(status));
+        setDeleting(false);
+      }
+    });
+  }, [id, router]);
+
   if (notFound) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center" style={{ color: "var(--foreground-muted)" }}>
@@ -229,6 +261,20 @@ export default function NotebookPage() {
         >
           <Layers size={14} aria-hidden /> Sources · {enabledDocIds.length}/{usableCount}
         </button>
+        <button
+          onClick={() => {
+            setDeleteError(null);
+            setConfirmDelete(true);
+          }}
+          aria-haspopup="dialog"
+          aria-expanded={confirmDelete}
+          aria-label="Delete notebook"
+          title="Delete notebook"
+          className="flex items-center rounded-lg px-2 py-1.5"
+          style={{ border: "1px solid var(--border)", color: "var(--foreground-muted)" }}
+        >
+          <Trash2 size={14} aria-hidden />
+        </button>
       </header>
 
       <div className="min-h-0 flex-1">
@@ -239,6 +285,17 @@ export default function NotebookPage() {
           initialTurns={initialTurns}
         />
       </div>
+
+
+      {confirmDelete && notebook && (
+        <NotebookDeleteDialog
+          notebookName={notebook.displayName}
+          deleting={deleting}
+          error={deleteError}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
 
       {sheetOpen && (
         // --z-overlay (50): above nav chrome (--z-nav 40 = bottom tab bar +

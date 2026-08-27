@@ -227,6 +227,30 @@ export async function getAssetByTag(tag: string): Promise<Asset | null> {
   return (d as { asset?: Asset })?.asset ?? (d as Asset) ?? null;
 }
 
+/**
+ * Open THE notebook for an asset, creating and binding it on first use.
+ *
+ * Idempotent server-side: a second call returns the same notebook rather than a
+ * second one. Two notebooks on one machine would have disjoint document sets
+ * and split history, and the duplicate is invisible in a list.
+ *
+ * `via` records HOW the machine was chosen — a scan is a selection, never a
+ * confirmation — so the notebook can show identity as unconfirmed until a
+ * human says otherwise.
+ */
+export async function openAssetNotebook(
+  assetId: string,
+  via: "qr" | "nfc" | "asset_picker" | "work_order" | "nameplate" | "manual_entry",
+): Promise<Notebook> {
+  const r = await request(`/api/assets/${encodeURIComponent(assetId)}/notebook/`, {
+    method: "POST",
+    json: { selectedVia: via },
+  });
+  const d = r.data as { notebook?: Notebook };
+  if (!d?.notebook) throw new Error("open_notebook_failed");
+  return d.notebook;
+}
+
 // --- equipment notebooks (NotebookLM-style workspaces; build spec §3–6) -----
 
 export interface Notebook {
@@ -299,6 +323,11 @@ export interface NotebookSource {
   pages: number | null;
   /** Workspace file behind this source (null for legacy doc-only rows). */
   fileId: string | null;
+  /** 084: the canonical file this doc DERIVES from — e.g. the nameplate
+   *  photograph behind a materialized nameplate text doc. When set, the
+   *  viewer opens THIS as the primary object; the doc's own bytes are
+   *  secondary "source details". */
+  originFileId: string | null;
   sourceRole: string | null;
   /** Opaque server evidence for the match (why it was proposed). Preserved
    *  verbatim — the client never interprets or drops it. */
@@ -318,6 +347,7 @@ export function toNotebookSource(d: Record<string, unknown>): NotebookSource {
     matchState: d.matchState != null ? String(d.matchState) : "user_confirmed",
     pages: d.pages != null ? Number(d.pages) : null,
     fileId: d.fileId != null ? String(d.fileId) : null,
+    originFileId: d.originFileId != null ? String(d.originFileId) : null,
     sourceRole: d.sourceRole != null ? String(d.sourceRole) : null,
     matchEvidence: d.matchEvidence ?? null,
   };
@@ -342,6 +372,9 @@ export interface NotebookServerTurn {
   answerText: string | null;
   /** Persisted citations (same shape as the live sources frame). */
   evidence?: unknown[];
+  /** 084 (#3387): the evidence-ladder basis the answer was SERVED under.
+   *  Never inferred from "zero citations" — absent means no claim. */
+  basis?: string | null;
 }
 
 export interface NotebookDetail {
@@ -393,6 +426,15 @@ export async function setSourceEnabled(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/${encodeURIComponent(docId)}/`,
     { method: "PATCH", json: { enabledByDefault: enabled } },
   );
+}
+
+export async function deleteNotebook(notebookId: string): Promise<void> {
+  // Trailing slash matches every other notebook call: the Hub 308-redirects
+  // slashless paths, and a 308 on a DELETE is not replayed with the method
+  // intact by every client stack -- so the slash is load-bearing, not style.
+  await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`, {
+    method: "DELETE",
+  });
 }
 
 export async function detachSource(notebookId: string, docId: string): Promise<void> {
@@ -831,6 +873,11 @@ export interface ConfirmComponentResult {
   applicability: unknown | null;
   message: string | null;
   warning: string | null;
+  /** On candidate_review: what discovery learned by READING the file
+   *  ("Read the PDF: a lever-hoist brochure, no end-truck model"). */
+  discoveryReason?: string | null;
+  /** The manufacturer's own manual-request page (validated by the server). */
+  oemRequestUrl?: string | null;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -972,15 +1019,66 @@ export async function getSourcePassage(
   return ((r.data as { passages?: SourcePassage[] } | null)?.passages ?? []);
 }
 
+/** One prior exchange line, the shape the server's sanitizeHistory accepts. */
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * CONV-3: the recent thread, built from BOTH stores a notebook renders —
+ * persisted turns (server truth, survives devices) and this session's live
+ * turns — in chronological order, as role/content pairs. Same windowing the
+ * web client uses (last 12 lines); the route caps it again defensively.
+ * A refusal contributes its QUESTION (real context) but no fabricated answer
+ * line. Pure and unit-tested.
+ */
+export function buildChatHistory(
+  turns: Pick<NotebookServerTurn, "question" | "answerText">[],
+  liveTurns: { q: string; a: Pick<ChatTurn, "answer"> }[],
+  maxLines = 12,
+): ChatHistoryTurn[] {
+  const out: ChatHistoryTurn[] = [];
+  for (const t of turns) {
+    if (t.question.trim()) out.push({ role: "user", content: t.question });
+    if (t.answerText?.trim()) out.push({ role: "assistant", content: t.answerText });
+  }
+  for (const t of liveTurns) {
+    if (t.q.trim()) out.push({ role: "user", content: t.q });
+    if (t.a.answer?.trim()) out.push({ role: "assistant", content: t.a.answer });
+  }
+  return out.slice(-maxLines);
+}
+
 /** Ask within the caller-selected source scope (per-source checkboxes). */
 export async function askNotebook(
   notebookId: string,
   message: string,
   sourceDocIds: string[],
+  opts: {
+    /**
+     * "general" asks for an explicitly ungrounded answer (spec 1.1). It is
+     * sent ONLY when the technician chose it — never as an automatic
+     * fallback, because silently downgrading a grounded question to general
+     * reasoning is precisely the evidence-contract change 1.4 forbids.
+     */
+    mode?: "general";
+    /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
+    history?: ChatHistoryTurn[];
+  } = {},
 ): Promise<ChatTurn> {
   const r = await request(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
-    { method: "POST", json: { message, sourceDocIds }, timeoutMs: 120_000 },
+    {
+      method: "POST",
+      json: {
+        message,
+        sourceDocIds,
+        ...(opts.mode ? { mode: opts.mode } : {}),
+        ...(opts.history?.length ? { history: opts.history } : {}),
+      },
+      timeoutMs: 120_000,
+    },
   );
   return parseChatSse(r.text, r.status);
 }

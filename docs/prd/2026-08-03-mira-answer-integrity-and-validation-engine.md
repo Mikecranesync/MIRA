@@ -9,6 +9,12 @@
   see in itself.** Every fix below is paired with a check that would have caught
   the defect, and every checker is itself tested with known-bad input.
 
+
+> **Product frame (added 2026-08-18):** the evidence-first positioning this PRD serves is stated in
+> [`docs/superpowers/specs/2026-08-18-factorylm-evidence-first-product-pivot.md`](../superpowers/specs/2026-08-18-factorylm-evidence-first-product-pivot.md).
+> That document does **not** supersede this one — it frames what this and the other evidence PRDs are
+> collectively building toward, and carries the numbered requirements (R1–R7) an implementing slice cites.
+
 ---
 
 ## 1. Summary

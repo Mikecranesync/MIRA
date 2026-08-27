@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **68** (11 dynamic) |
-| API routes | **175** (63 dynamic) |
+| Pages | **69** (12 dynamic) |
+| API routes | **178** (65 dynamic) |
 
-## Pages (68)
+## Pages (69)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -51,6 +51,7 @@
 | `/library` | static | `(hub)/library/page.tsx` |
 | `/login` | static | `login/page.tsx` |
 | `/m/[assetTag]` | dynamic | `m/[assetTag]/page.tsx` |
+| `/machine/[assetTag]` | dynamic | `machine/[assetTag]/page.tsx` |
 | `/magic` | static | `magic/page.tsx` |
 | `/more` | static | `(hub)/more/page.tsx` |
 | `/namespace` | static | `(hub)/namespace/page.tsx` |
@@ -86,7 +87,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (175)
+## API routes (178)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -109,6 +110,7 @@
 | `/api/assets/[id]/enrich` | dynamic | `api/assets/[id]/enrich/route.ts` |
 | `/api/assets/[id]/machine-memory` | dynamic | `api/assets/[id]/machine-memory/route.ts` |
 | `/api/assets/[id]/machine-memory/stream` | dynamic | `api/assets/[id]/machine-memory/stream/route.ts` |
+| `/api/assets/[id]/notebook` | dynamic | `api/assets/[id]/notebook/route.ts` |
 | `/api/assets/[id]/qr` | dynamic | `api/assets/[id]/qr/route.ts` |
 | `/api/assets/[id]/signal-history` | dynamic | `api/assets/[id]/signal-history/route.ts` |
 | `/api/assets/[id]/signals` | dynamic | `api/assets/[id]/signals/route.ts` |
@@ -170,6 +172,7 @@
 | `/api/documents/upload` | static | `api/documents/upload/route.ts` |
 | `/api/equipment-notebooks` | static | `api/equipment-notebooks/route.ts` |
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
+| `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
@@ -214,6 +217,7 @@
 | `/api/library/tree` | static | `api/library/tree/route.ts` |
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
+| `/api/mobile/live-update/manifest` | static | `api/mobile/live-update/manifest/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
 | `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |

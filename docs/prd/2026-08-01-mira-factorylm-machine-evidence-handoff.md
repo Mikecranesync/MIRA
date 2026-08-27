@@ -4,6 +4,12 @@
 **Amended 2026-08-02** — verified against the real ingest contract on `origin/main` before any code was written. Every symbol and file this PRD names exists as described. Four corrections are inlined below and marked *Amended 2026-08-02*: (1) `source_system` must be `plc_bridge`, since `factorylm-plc-modbus` is rejected by `VALID_SOURCE_SYSTEMS`; (2) the envelope→canonical-batch field mapping is now specified, because `machine_state` / `active_conditions` had nowhere to go yet are required to build a `LiveStateOverlay`; (3) seeding `approved_tags` is a **prerequisite** of PR 3 — the allowlist is fail-closed, so without it a valid snapshot yields `accepted=0` and an empty overlay; (4) PR 4 reads state back at turn time, because the relay persists rather than carrying a request-scoped snapshot. The preflight's "stop if no ingress exists" contingency **does not fire** — the ingress exists and is mandatory.
 **Objective:** Make FactoryLM's canonical PLC snapshot available to MIRA's existing audited technician context as read-only live evidence, without creating a second runtime schema, a second relay, or any plant-control capability.
 
+
+> **Product frame (added 2026-08-18):** the evidence-first positioning this PRD serves is stated in
+> [`docs/superpowers/specs/2026-08-18-factorylm-evidence-first-product-pivot.md`](../superpowers/specs/2026-08-18-factorylm-evidence-first-product-pivot.md).
+> That document does **not** supersede this one — it frames what this and the other evidence PRDs are
+> collectively building toward, and carries the numbered requirements (R1–R7) an implementing slice cites.
+
 ## Product outcome
 
 A technician asking MIRA about a machine can receive a grounded answer that uses FactoryLM's current canonical PLC values. The same live evidence must be present in:

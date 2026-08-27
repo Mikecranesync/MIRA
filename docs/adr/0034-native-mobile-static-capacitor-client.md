@@ -70,9 +70,14 @@ and is not modified by the client (server-side additions — bearer shim, deleti
 assetlinks — land as separate, individually reviewable Hub changes when their phase arrives).
 
 ### Architecture rules bound by this ADR
-1. **Trust boundary:** only the packaged bundle runs in the WebView. No `server.url`, no
-   `allowNavigation` entries. External content (OAuth, `/m` web fallback, pricing, arbitrary
-   links) opens in the system browser (`@capacitor/browser`), never in the app WebView.
+1. **Trust boundary (AMENDED 2026-08-24 — see "Amendment: signed OTA web bundles" below):**
+   The packaged static bundle remains MIRA Mobile's trusted **recovery** bundle. The native shell
+   may download and execute a cryptographically signed, checksum-verified, native-compatible
+   HTML/CSS/JavaScript bundle from a FactoryLM-controlled HTTPS endpoint into app-private storage.
+   It must **not** set `server.url`, load a remote origin, download native executable code, change
+   native plugins through OTA, or apply an unsigned/incompatible bundle. No `allowNavigation`
+   entries. External content (OAuth, `/m` web fallback, pricing, arbitrary links) opens in the
+   system browser, never in the app WebView.
 2. **Auth:** phase 2 = credentials + magic-token via the existing NextAuth csrf/callback dance,
    session JWE held in the app-private native cookie jar (persisted by the OS, app-sandboxed);
    sign-out clears it. Google (and Drive/Slack/Microsoft/Dropbox/Confluence connectors) = system
@@ -101,6 +106,69 @@ assetlinks — land as separate, individually reviewable Hub changes when their 
    requirement that attaches to third-party-login *account-creation* apps). The $499 CTA and
    public signup stay on the web. Full store-rule analysis is a Phase 5 deliverable before
    submission.
+
+
+## Amendment: signed OTA web bundles (2026-08-24)
+
+**Authorized by Mike, 2026-08-24.** Rule 1 above previously read *"only the packaged bundle runs in
+the WebView"*. That sentence is superseded by the narrower rule stated inline in rule 1.
+
+### Why the original rule was too broad
+
+The rule was written to forbid **`server.url` — pointing the shell at a live remote origin**, which
+would put the Hub's whole authenticated web surface inside the WebView and make every page load a
+trust decision. That prohibition stands and is unchanged.
+
+What it *also* forbade, incidentally rather than deliberately, was shipping a fix to a technician
+without a USB cable. The app is a static Vite/React bundle; the overwhelming majority of changes —
+including every mobile fix shipped on 2026-08-24 — are HTML/CSS/JS only. Requiring a cabled
+`adb install` for those is not a security property, it is a distribution accident.
+
+### What actually changes, and what does not
+
+| | Before | After |
+|---|---|---|
+| `server.url` | unset | **unset** (unchanged) |
+| `allowNavigation` | empty | **empty** (unchanged) |
+| WebView origin | local | **local** (unchanged — OTA unpacks to app-private storage, it does not load a remote origin) |
+| Native code source | APK only | **APK only** (unchanged — OTA carries no native code) |
+| Web bundle source | APK only | APK **or** a signed, verified bundle from a FactoryLM endpoint |
+
+The distinction that makes this safe: Capacitor OTA does **not** point the WebView at a server. It
+downloads an archive, verifies it, unpacks it into app-private storage, and serves it from the same
+local origin. An attacker who controls the CDN still cannot inject code, because the shell refuses
+any bundle whose RSA signature does not verify against a public key **compiled into the APK**.
+
+### Non-negotiable conditions
+
+1. FactoryLM-controlled **HTTPS** endpoint only.
+2. Mandatory **SHA-256 checksum**.
+3. Mandatory **RSA signature verification**, public key embedded in the native shell.
+4. OTA private signing key in Doppler `factorylm/prd`, **separate from the Android keystore** — a
+   compromise of one must not grant the other.
+5. Encryption is optional (confidentiality); it never substitutes for a signature.
+6. **Immutable** bundle artifacts.
+7. A **native compatibility fingerprint** covering the Capacitor version and every native plugin —
+   a bundle built against native code the installed shell does not have must be refused.
+8. **Automatic rollback** when `LiveUpdate.ready()` is not reached.
+9. Never apply an update during an active mutation, pending offline work-order sync, file upload,
+   or an active technician operation.
+10. The packaged bundle must always remain recoverable.
+
+### What must still go through the native path (Firebase App Distribution / Play)
+
+Native plugin changes, Capacitor upgrades, `MainActivity`/Gradle/manifest changes, permission
+changes, and SDK-level changes. These are structurally outside OTA and the release workflow fails
+closed if a diff touches them.
+
+### Google Play position
+
+Play's Device and Network Abuse policy forbids an app updating its own executable code, then
+explicitly carves out *"code that runs in a virtual machine or an interpreter … such as JavaScript
+in a webview"*. OTA-updating this bundle is permitted; the OTA'd JavaScript must still obey every
+other Play policy. The app is not currently distributed via Play, so the policy binds nothing
+today — this is recorded so a future listing does not have to re-litigate it.
+
 
 ## Consequences
 

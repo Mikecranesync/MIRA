@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 68,
-    "apiRoutes": 175
+    "pages": 69,
+    "apiRoutes": 178
   },
   "pages": [
     "/admin",
@@ -39,6 +39,7 @@
     "/library",
     "/login",
     "/m/[assetTag]",
+    "/machine/[assetTag]",
     "/magic",
     "/more",
     "/namespace",
@@ -94,6 +95,7 @@
     "/api/assets/[id]/enrich",
     "/api/assets/[id]/machine-memory",
     "/api/assets/[id]/machine-memory/stream",
+    "/api/assets/[id]/notebook",
     "/api/assets/[id]/qr",
     "/api/assets/[id]/signal-history",
     "/api/assets/[id]/signals",
@@ -155,6 +157,7 @@
     "/api/documents/upload",
     "/api/equipment-notebooks",
     "/api/equipment-notebooks/[id]",
+    "/api/equipment-notebooks/[id]/asset",
     "/api/equipment-notebooks/[id]/chat",
     "/api/equipment-notebooks/[id]/nameplate/confirm",
     "/api/equipment-notebooks/[id]/nameplate/recognize",
@@ -199,6 +202,7 @@
     "/api/library/tree",
     "/api/me",
     "/api/mira/ask",
+    "/api/mobile/live-update/manifest",
     "/api/namespace/files/[id]",
     "/api/namespace/files/[id]/verify",
     "/api/namespace/node",

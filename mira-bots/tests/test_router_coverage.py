@@ -213,7 +213,7 @@ class TestVisionModelConfig:
     def test_together_vision_defaults_to_gemma(self):
         with patch.dict("os.environ", self._ENV_CLOUD, clear=True):
             together = next(p for p in _build_providers() if p.name == "together")
-            assert together.vision_model == "google/gemma-3n-E4B-it"
+            assert together.vision_model == "MiniMaxAI/MiniMax-M3"
 
     def test_together_vision_empty_env_gets_default(self):
         """Compose maps ``${TOGETHERAI_VISION_MODEL:-}`` → "" in-container; the
@@ -222,7 +222,7 @@ class TestVisionModelConfig:
             "os.environ", {**self._ENV_CLOUD, "TOGETHERAI_VISION_MODEL": ""}, clear=True
         ):
             together = next(p for p in _build_providers() if p.name == "together")
-            assert together.vision_model == "google/gemma-3n-E4B-it"
+            assert together.vision_model == "MiniMaxAI/MiniMax-M3"
 
     def test_together_vision_env_override(self):
         with patch.dict(

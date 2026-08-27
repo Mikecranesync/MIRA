@@ -260,7 +260,91 @@ above. Anything you merely suspect is missing goes under NOT REVIEWED, phrased a
 question for the author, never as a finding."""
 
 
-def build_prompt(title: str, body: str, diff: str, level: str, reasons: list[str]) -> str:
+# --- #3313: rounds must accumulate, and a docs PR is not a code PR -----------
+# Two defects this lane exhibited on CU-08 (issue #3313):
+#   (a) round 2 re-raised, verbatim, two findings whose written refutations were
+#       INSIDE the 40k it was sent (verified at chars 27,364-30,480 — the
+#       tempting "it was truncated" explanation was tested and false);
+#   (b) three of five round-2 findings were the unit's OWN documented findings
+#       quoted back from the text the PR added — systematic for any docs/audit
+#       unit, because every problem it documents appears in the diff as ADDED
+#       TEXT to a reviewer briefed to find defects.
+# Both are fixed in the brief, which is where they originate.
+
+_DOC_SUFFIXES = (".md", ".markdown", ".rst", ".txt")
+
+
+def pr_kind(changed_paths: list[str]) -> str:
+    """Classify a PR as documentation / code / mixed from its changed paths.
+
+    Pure. Used to tell the reviewer what it is looking at — a documentation PR
+    whose CONTENT is a list of defects is not a PR that INTRODUCES defects.
+    """
+    if not changed_paths:
+        return "code"
+    docs = sum(1 for p in changed_paths if p.lower().endswith(_DOC_SUFFIXES))
+    if docs == len(changed_paths):
+        return "documentation"
+    if docs:
+        return "mixed"
+    return "code"
+
+
+def settled_block(prior_reports: list[str]) -> str:
+    """Render previously-adjudicated findings as SETTLED context.
+
+    Each prior round's report text is parsed with the existing `parse_findings`,
+    so the ids and titles match what was actually posted. Returns "" when there
+    is nothing settled, so round 1 is byte-identical to today's brief.
+    """
+    lines: list[str] = []
+    for rnd, report in enumerate(prior_reports, 1):
+        for f in parse_findings(report):
+            lines.append(f"- [round {rnd}] [{f.severity}] {f.title}")
+    if not lines:
+        return ""
+    return (
+        "\n--- SETTLED FROM EARLIER ROUNDS (do not re-raise) ---\n"
+        "These findings were already raised on an EARLIER round of this same PR and\n"
+        "were adjudicated — accepted and remediated, or refuted in writing with the\n"
+        "command that proves the refutation. The rounds are cumulative: this round\n"
+        "starts from that settled state.\n\n"
+        "**Do NOT re-raise any of these without NEW evidence that the adjudication was\n"
+        "wrong.** Restating a settled finding is not a finding; it consumes a round of a\n"
+        "3-round budget and trains readers to stop reading this gate. If you believe an\n"
+        "adjudication was mistaken, say so explicitly and cite what is new.\n\n"
+        + "\n".join(lines)
+        + "\n--- END SETTLED ---\n"
+    )
+
+
+def kind_block(kind: str) -> str:
+    """The PR-kind note appended to the brief. Pure."""
+    if kind == "code":
+        return ""
+    subject = "entirely documentation" if kind == "documentation" else "partly documentation"
+    return (
+        f"\n--- WHAT KIND OF CHANGE THIS IS ---\n"
+        f"This PR is {subject}. Read the diff accordingly:\n"
+        "**Text that DOCUMENTS a problem is not a problem this PR INTRODUCES.**\n"
+        "Audit records, drift reports, unit records and PRDs exist to write defects\n"
+        "down; every defect they record appears in the diff as added text. Reporting\n"
+        "the document's own subject matter back as a finding is a false positive.\n"
+        "Do report: claims the document makes that are FALSE, internally contradictory,\n"
+        "unsupported by the cited file/line, or that overstate what is delivered.\n"
+        "--- END KIND ---\n"
+    )
+
+
+def build_prompt(
+    title: str,
+    body: str,
+    diff: str,
+    level: str,
+    reasons: list[str],
+    settled: str = "",
+    kind: str = "code",
+) -> str:
     """Assemble the Gate 7 brief. Pure — no I/O.
 
     PR title/body/diff are attacker-controllable, so they are fenced and explicitly
@@ -283,7 +367,7 @@ has added nothing. The value of this gate is finding what the implementing agent
 tests and fuzzing were structurally blind to. On the last unit, this gate caught a
 case-sensitivity defect that the author's own corpus AND fuzz generator both missed.
 Assume a defect of that shape is present and go find it.
-{escalation_note}
+{escalation_note}{kind_block(kind)}{settled}
 Attempt to disprove the implementation, specifically looking for:
 {DISPROVE_LIST}.
 
@@ -673,9 +757,7 @@ def call_cascade(
     return None, "", attempts
 
 
-def render(
-    review: Review, number: int, level: str, reasons: list[str], receipts: list[str]
-) -> str:
+def render(review: Review, number: int, level: str, reasons: list[str], receipts: list[str]) -> str:
     """The evidence shape a units/CU-*.md record cites."""
     lines = [
         f"# Gate 7 adversarial review — PR #{number}",
@@ -726,6 +808,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         "evidence-complete adjudication scopes slightly over the default cap "
         "-- truncation cuts the diff TAIL, which is exactly where quoted "
         "evidence often lives.",
+    )
+    p.add_argument(
+        "--settled",
+        action="append",
+        default=None,
+        metavar="PRIOR_REPORT",
+        help="a PRIOR round's report for this same PR (repeatable, in round "
+        "order). Its findings are rendered into the brief as SETTLED so the "
+        "reviewer does not re-raise them without new evidence. Rounds are "
+        "cumulative; without this the lane restarts from zero every round and "
+        "re-reports findings whose refutations are in its own input (#3313).",
     )
     p.add_argument(
         "--adjudicate",
@@ -875,8 +968,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     # AND scales with input length — a 26k-char diff at High effort consumed a
     # 12k budget entirely as hidden reasoning (empty message, HTTP 200). Size
     # for the reasoning, not the visible report.
+    settled = ""
+    if a.settled:
+        try:
+            settled = settled_block([Path(f).read_text(encoding="utf-8") for f in a.settled])
+        except OSError as e:
+            print(f"error: could not read --settled report: {e}", file=sys.stderr)
+            return 1
+    kind = pr_kind(paths)
+    if settled:
+        print(
+            f"Gate 7: {len(a.settled)} prior round(s) supplied as settled context.", file=sys.stderr
+        )
+    if kind != "code":
+        print(
+            f"Gate 7: PR classified as {kind} — briefing the reviewer accordingly.", file=sys.stderr
+        )
+
     text, provider, attempts = call_cascade(
-        build_prompt(title, body, diff, level, reasons),
+        build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind),
         max_tokens=32000 if level == "xhigh" else 24000,
     )
     if text is None:

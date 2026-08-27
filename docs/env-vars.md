@@ -7,6 +7,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `TELEGRAM_BOT_TOKEN` | mira-bot-telegram                    |
 | `PRINTSENSE_COMMERCIAL_ROOT` | mira-bot-telegram — PrintSense concierge storage root (default `/data/printsense_commercial`; container-ephemeral unless volume-mounted) |
 | `PRINTSENSE_REVIEWER_CHAT_IDS` | mira-bot-telegram — comma-separated Telegram chat ids allowed the admin `/ps_review` reviewer commands (empty = reviewer surface disabled) |
+| `OTA_ORIGIN`         | mira-hub — origin of the published OTA manifest + artifacts (default `https://updates.factorylm.com`). The live-update manifest route reads `<OTA_ORIGIN>/manifest.<channel>.json` and refuses any `downloadUrl` not on that host. |
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `SLACK_SIGNING_SECRET` | mira-bot-slack - optional; retained for request-verification/OAuth-era compatibility. Socket Mode runtime requires `SLACK_APP_TOKEN`. |
@@ -28,11 +29,18 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
 | `TOGETHERAI_TIMEOUT`     | mira-bots, mira-pipeline — Together client HTTP timeout in seconds (httpx `AsyncClient(timeout=...)`). Default **90** (raised from a hardcoded 30s, v3.173.x). Together is the LAST text-cascade provider AND the ONLY vision provider (no fallback) — the 2026-07-19 bench measured successful theory calls at 13.9-28.6s with 2/10 runs crossing the old 30s and losing an already-computed answer. Read as `float(os.getenv("TOGETHERAI_TIMEOUT") or "90")` — the `or`-form is mandatory: compose maps `${TOGETHERAI_TIMEOUT:-}`, which delivers an empty string in-container, and a bare `float("")` crash-loops the bot at import. Groq/Cerebras stay hardcoded at 30s (not exposed as env knobs). |
 | `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: **google/gemma-3n-E4B-it since v3.162.2** (the only serverless vision model on this Together account when verified live 2026-07-18; the 2026-07-19 round-4 probes found Kimi-K2.6 / MiniMax-M3 / Qwen3.5-9B newly serverless with vision). Empty-string env falls back to the default (`or`-form parse). |
-| `NAMEPLATE_VISION_MODEL` | mira-hub — per-feature override for the nameplate recognizer's vision model on EITHER provider (`src/lib/nameplate/index.ts`). Unset falls through to `TOGETHERAI_VISION_MODEL`, then the `google/gemma-3n-E4B-it` default. Live-qualified 2026-08-15 on real OEM plates (AutomationDirect GS10-20P5, AB 2080-LC20-20QWB) at 1.6-5.1s/plate. |
+| `NAMEPLATE_VISION_FALLBACK_MODELS` | mira-hub — comma-separated Together model ids the nameplate recognizer tries, in order, when the configured model answers `model_not_available`/404 (`src/lib/nameplate/index.ts`). Default empty. Turns a retired model into a config change instead of an outage. |
+| `NAMEPLATE_VISION_MODEL` | mira-hub — per-feature override for the nameplate recognizer's vision model on EITHER provider (`src/lib/nameplate/index.ts`). Unset falls through to `TOGETHERAI_VISION_MODEL`, then the `MiniMaxAI/MiniMax-M3` default (was `google/gemma-3n-E4B-it` until 2026-08-25, when Together made it dedicated-only → 400 `model_not_available` → hub 502 on every nameplate read). Live-qualified 2026-08-15 on real OEM plates (AutomationDirect GS10-20P5, AB 2080-LC20-20QWB) at 1.6-5.1s/plate. |
 | `SERPER_API_KEY` | mira-ask (`ask_api/manual_discovery.py` → `shared/manual_search/search.py`) — Serper.dev key for OEM manual discovery. **Required for the feature; absent/empty = the search raises and the router answers `reason="search_unavailable"` at HTTP 200 — it never fabricates a URL and never 500s.** Was previously not passed to mira-ask at all, so discovery could not work in that container. |
 | `MANUAL_SEARCH_TIMEOUT` | mira-ask — per-Serper-request HTTP timeout in seconds for `search_manual`. Default **15**. |
 | `MANUAL_HEAD_TIMEOUT` | mira-ask — timeout in seconds for the HEAD/Range PDF validation probe that decides `validated`. Default **8**. Only a `validated` candidate may be auto-imported. |
-| `MANUAL_DISCOVERY_TIMEOUT` | mira-ask — OVERALL `asyncio.wait_for` budget in seconds around the whole 3-pass search, so a slow backend cannot hang the Hub caller. Default **20**; on expiry the router returns `reason="search_unavailable"`. |
+| `MANUAL_DISCOVERY_TIMEOUT` | mira-ask — OVERALL `asyncio.wait_for` budget in seconds around the whole 3-pass search + the read-before-choose judge, so a slow backend cannot hang the Hub caller. Default **50** (was 20 before the judge, 2026-08-26); the Hub allows 60s. On expiry the router returns `reason="search_unavailable"`. |
+| `MANUAL_JUDGE_ENABLED` | mira-ask — `shared/manual_search/judge.py`: fetch the top direct-PDF candidates, extract first pages, ask the canonical text cascade "is this the manual for {make} {model}?" and re-rank; a judged rejection is returned `validated=false` (never auto-attached). Code default **1**; `docker-compose.saas.yml` ships **0** on purpose (owner rollout protocol 2026-08-26: dark → health → supervised Pixel test → enable; disable on failure). `0` restores pure URL/title heuristics. |
+| `MANUAL_JUDGE_MAX_CANDIDATES` | mira-ask — how many direct-PDF candidates the judge reads (default **4**). |
+| `MANUAL_JUDGE_MAX_BYTES` | mira-ask — per-candidate download cap for the judge fetch (default **26214400** = 25 MiB); larger PDFs are left unjudged. |
+| `MANUAL_JUDGE_FETCH_TIMEOUT` | mira-ask — seconds per candidate fetch (default **12**). |
+| `MANUAL_JUDGE_EXTRACT_TIMEOUT` | mira-ask — seconds for the killable child process that parses one candidate PDF (default **15**); a hung parse is killed, the candidate is left unjudged. |
+| `MANUAL_JUDGE_LLM_TIMEOUT` | mira-ask — seconds per judge model call (default **25**). |
 | `MIRA_MANUAL_SENSE_WEB_ENABLED` | mira-bots, mira-ask — gate for the ManualSense web-discovery path in `shared/visual/equipment.py`. Default **`0`** (off); the nameplate→manual router does not depend on it. |
 | `NAMEPLATE_DETECT_ENABLED` | mira-ask (`ask_api/nameplate_detect.py`) — gate for `POST /nameplate/detect`, the PaddleOCR text-DETECTION-only nameplate region finder (no recognizer loaded). Default **`0`**: nothing imports, zero RAM cost, endpoint answers `available=false` and the caller's whole-photo recognition continues. When `1`, the detector lazy-loads on first request (~430 MiB RSS; single-image inference peaks ~757 MiB, bounded by an in-process concurrency-1 semaphore — the mira-ask `mem_limit` was raised 512m→1536m for this). |
 | `NAMEPLATE_DET_MODEL` | mira-ask — Paddle detection model name. Default **`PP-OCRv5_mobile_det`** (the probe-qualified smallest viable detector; auto-downloaded to the container's `~/.paddlex` on first use). MKL-DNN is hard-disabled in code (Paddle 3.x PIR/oneDNN CPU kernel bug, VPS probe 2026-08-16). |
@@ -130,3 +138,14 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `MQTT_INGEST_DRY_RUN` | `mira-relay/mqtt_ingest/config.py` — `"1"` decodes + logs Sparkplug payloads but never writes to the DB. |
 | `MQTT_INGEST_AUTO_DISCOVER` | `mira-relay/mqtt_ingest/config.py` — `"1"` records unknown tags as seen instead of dropping them (default disabled). |
 | `MQTT_INGEST_DEBUG` | `mira-relay/mqtt_ingest/config.py` — `"1"` enables debug logging for the subscriber. |
+
+## Canonical inference seam (Hub) — P0004G
+
+| Var | Default | Meaning |
+|---|---|---|
+| `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
+| `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
+| `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
+
+Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
+See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.

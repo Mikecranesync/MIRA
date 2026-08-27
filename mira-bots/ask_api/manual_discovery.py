@@ -32,7 +32,12 @@ import os
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
-from shared.manual_search.search import OEM_DOMAINS, TRUSTED_DOMAINS, search_manual
+from shared.manual_search.search import (
+    OEM_DOMAINS,
+    TRUSTED_DOMAINS,
+    oem_request_link,
+    search_manual,
+)
 
 logger = logging.getLogger("mira-ask")
 
@@ -133,8 +138,16 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
 
     # Strongest identifier wins: catalog_number over model, when supplied.
     search_identifier = catalog_number or model
+    # The OEM's own manual-request page (validated live) — offered with any
+    # non-success so the technician always has an official next step.
+    try:
+        oem_request_url = await asyncio.wait_for(oem_request_link(manufacturer), timeout=10)
+    except Exception:  # noqa: BLE001
+        oem_request_url = None
 
-    timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "20"))
+    # 50s (was 20s): the judge fetches + reads the top candidate PDFs before
+    # choosing (shared/manual_search/judge.py). The Hub side allows 60s.
+    timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
     try:
         candidate = await asyncio.wait_for(
@@ -149,15 +162,30 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         )
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
+        result["oem_request_url"] = oem_request_url
         return result
     except Exception as e:  # noqa: BLE001
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
+        result["oem_request_url"] = oem_request_url
         return result
 
     if candidate is None:
-        return _NO_RESULT.copy()
+        result = _NO_RESULT.copy()
+        result["oem_request_url"] = oem_request_url
+        return result
+    if candidate.get("reason") == "judged_not_applicable":
+        # Every relevant candidate was READ and rejected. Owner canary rule
+        # (2026-08-26): bad manuals disappear — do not hand the technician a
+        # newspaper to "review"; say no manual was found, show why, and offer
+        # the manufacturer's own request form.
+        result = _NO_RESULT.copy()
+        result["reason"] = "judged_not_applicable"
+        result["reason_detail"] = candidate.get("reason_detail") or ""
+        result["judged_rejected"] = candidate.get("judged_rejected") or []
+        result["oem_request_url"] = oem_request_url
+        return result
 
     validated = bool(candidate.get("validated"))
     is_direct_pdf = bool(candidate.get("is_direct_pdf"))
@@ -175,5 +203,11 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         "is_direct_pdf": is_direct_pdf,
         "oem_host": oem_host,
         "trusted_distributor_host": trusted_distributor_host,
-        "reason": "ok",
+        # Judge outcome (judged_manual_match / judged_not_applicable /
+        # judge_unavailable) when the candidate PDF was read; "ok" otherwise.
+        "reason": candidate.get("reason") or "ok",
+        "reason_detail": candidate.get("reason_detail") or "",
+        "judge": candidate.get("judge") or None,
+        "judged_rejected": candidate.get("judged_rejected") or [],
+        "oem_request_url": oem_request_url,
     }

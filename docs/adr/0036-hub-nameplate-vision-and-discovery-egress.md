@@ -14,7 +14,7 @@ root policy does not permit**:
 
 1. **Nameplate vision** — `mira-hub/src/lib/nameplate/index.ts` calls Together's
    OpenAI-compatible vision endpoint directly. By default `defaultRecognizer()` uses
-   Together (`google/gemma-3n-E4B-it`); it can also use Groq **iff** `GROQ_VISION_MODEL`
+   Together (`MiniMaxAI/MiniMax-M3` since 2026-08-25 — `google/gemma-3n-E4B-it` went dedicated-only and 502'd every read; `NAMEPLATE_VISION_FALLBACK_MODELS` lists models to try on `model_not_available`); it can also use Groq **iff** `GROQ_VISION_MODEL`
    is explicitly set (Groq ships no vision model otherwise, so this is off by default).
    Anthropic is never used here.
 2. **Manual discovery** — `mira-ask`'s `/manual-discovery/search` sends

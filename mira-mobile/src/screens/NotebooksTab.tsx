@@ -3,6 +3,7 @@
 // equipment-notebook APIs: home card list → "+ Create new" pill / camera
 // (nameplate → EDITABLE candidate → confirm) → workspace (NotebookScreen).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { canPickNatively, pickNameplatePhoto } from "../lib/native-pick";
 import {
   listNotebooks,
   createNotebook,
@@ -10,14 +11,15 @@ import {
   type Notebook,
   type NameplateCandidate,
 } from "../api/resources";
-import { ApiError } from "../api/client";
+import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-flow";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
 
-type Route =
+export type NotebookRoute =
   | { name: "home" }
   | { name: "create"; candidate?: NameplateCandidate }
   | { name: "notebook"; id: string; openAddSources?: boolean };
+type Route = NotebookRoute;
 
 /** Deterministic cover color per notebook (category tiles, spec §8.2). */
 export function coverClass(nb: Pick<Notebook, "id" | "equipmentType">): string {
@@ -40,10 +42,16 @@ export function coverGlyph(equipmentType: string | null): string {
 
 export function NotebooksTab({
   backRef,
+  route,
+  setRoute,
 }: {
   backRef: MutableRefObject<(() => boolean) | null>;
+  /** Lifted to the shell so a scan can land INSIDE a notebook: switching the
+   *  tab and setting the route must happen together, or the technician lands on
+   *  the notebook LIST instead of the machine they just scanned. */
+  route: Route;
+  setRoute: (r: Route) => void;
 }) {
-  const [route, setRoute] = useState<Route>({ name: "home" });
   const notebookBack = useRef<(() => boolean) | null>(null);
 
   backRef.current = () => {
@@ -108,6 +116,16 @@ function Home({
         : state.data
       : [];
 
+  /**
+   * The nameplate shortcut. On device this is the phone's own image picker
+   * (#3353: the WebView turned capture="environment" into a chooser); on web
+   * the hidden input below still does the job.
+   */
+  const openNameplatePicker = async () => {
+    if (!canPickNatively()) return cameraRef.current?.click();
+    await onCameraPick(await pickNameplatePhoto());
+  };
+
   const onCameraPick = async (file: File | null) => {
     if (!file) return;
     setScanning(true);
@@ -116,12 +134,9 @@ function Home({
       const candidate = await recognizeNameplate(file);
       onCreate(candidate);
     } catch (e) {
-      // Honest failure (e.g. recognizer_not_configured 503) → manual create.
-      setScanNote(
-        e instanceof ApiError && e.status === 503
-          ? "Nameplate recognition isn't available — create the notebook manually."
-          : "Couldn't read that nameplate — create the notebook manually.",
-      );
+      // Honest failure, with the server's actual reason (EVID-3): a rejected
+      // format or an oversized photo must not read as an unreadable nameplate.
+      setScanNote(`${nameplateErrorCopy(reasonFromRecognizeError(e))} — create the notebook manually.`);
     } finally {
       setScanning(false);
     }
@@ -148,7 +163,7 @@ function Home({
         {state.state === "loading" && <Loading what="notebooks" />}
         {state.state === "error" && <ErrorState error={state.error} onRetry={refresh} />}
         {state.state === "ready" && state.data.length === 0 && (
-          <Empty text="No machine notebooks yet. Create one and add its manual — then ask it anything." />
+          <Empty text="No machine notebooks yet. Create one and ask right away — add the manual when you have it for cited answers." />
         )}
         {shown.map((nb) => (
           <div key={nb.id} className="card nb-card" onClick={() => onOpen(nb.id)}>
@@ -169,7 +184,7 @@ function Home({
           className="fab-round"
           title="Scan a nameplate"
           disabled={scanning}
-          onClick={() => cameraRef.current?.click()}
+          onClick={() => void openNameplatePicker()}
         >
           {scanning ? "…" : "📷"}
         </button>

@@ -93,8 +93,70 @@ def test_strip_memory_block_throughput():
     )
 
 
+_PERF_CYCLES = 100
+
+# Measured 4.79-5.08x across runs; ~3x headroom. Load-invariant by construction,
+# so the headroom covers ratio variance only, not machine speed (#3178).
+_PERF_RATIO_BUDGET = 15.0
+
+_PERF_STATE_TEMPLATE = {
+    "chat_id": "perf_user",
+    "state": "Q1",
+    "context": {
+        "session_context": {},
+        "history": [
+            {"role": "user", "content": "Motor tripped"},
+            {"role": "assistant", "content": "Check current draw."},
+        ],
+    },
+    "asset_identified": "GS10 VFD",
+    "fault_category": "electrical",
+    "exchange_count": 1,
+    "final_state": None,
+}
+
+
+def _sqlite_roundtrip_cost(tmp_path, cycles: int = _PERF_CYCLES) -> float:
+    """Cost of `cycles` trivial sqlite write+read roundtrips, HERE and NOW.
+
+    The calibration baseline for `test_state_load_save_throughput`. It runs on
+    the same machine, the same disk and the same moment as the measurement it
+    calibrates, so runner load scales BOTH and cancels out of the ratio.
+    """
+    import json
+    import sqlite3
+
+    payload = json.dumps(_PERF_STATE_TEMPLATE)
+    con = sqlite3.connect(str(tmp_path / "calibration.db"))
+    try:
+        con.execute("CREATE TABLE IF NOT EXISTS t (k TEXT PRIMARY KEY, v TEXT)")
+        con.commit()
+        start = time.perf_counter()
+        for i in range(cycles):
+            con.execute("INSERT OR REPLACE INTO t VALUES (?, ?)", (f"k{i}", payload))
+            con.commit()
+            con.execute("SELECT v FROM t WHERE k = ?", (f"k{i}",)).fetchone()
+        return time.perf_counter() - start
+    finally:
+        con.close()
+
+
 def test_state_load_save_throughput(tmp_path):
-    """State load+save roundtrip must handle 100 cycles in under 2s."""
+    """State load+save must stay within a fixed MULTIPLE of raw sqlite cost.
+
+    #3178: this assertion used to be an absolute wall-clock budget
+    (`elapsed < 2.0`). Under `-n auto` several xdist workers contend for the
+    runner's CPU and disk, so the number measured runner load, not this code —
+    it went red at 5.06s against a 2.0s budget on a PR whose diff could not
+    reach this path at all, while 4,648 other tests passed.
+
+    Measuring against a calibration loop taken on the same machine at the same
+    moment makes the check load-invariant: a 3x slower runner makes BOTH numbers
+    3x larger and the ratio unchanged. The ratio itself is the real signal —
+    measured at 4.79-5.08x across runs (+/-3%), so the budget below has ~3x
+    headroom and still catches any regression that changes the shape of the
+    work (an added query, a lost index, an O(n) scan).
+    """
     from unittest.mock import patch
     db_path = str(tmp_path / "perf.db")
     with patch.dict("os.environ", {"INFERENCE_BACKEND": "local"}):
@@ -125,13 +187,21 @@ def test_state_load_save_throughput(tmp_path):
         "final_state": None,
     }
 
+    calibration = _sqlite_roundtrip_cost(tmp_path)
+
     start = time.perf_counter()
-    for i in range(100):
+    for i in range(_PERF_CYCLES):
         sv._save_state(f"perf_user_{i}", {**state_template, "chat_id": f"perf_user_{i}"})
         sv._load_state(f"perf_user_{i}")
     elapsed = time.perf_counter() - start
-    assert elapsed < 2.0, (
-        f"State load/save throughput regression: 100 cycles took {elapsed:.3f}s (budget: 2.0s)"
+
+    ratio = elapsed / calibration if calibration > 0 else float("inf")
+    assert ratio < _PERF_RATIO_BUDGET, (
+        f"State load/save throughput regression: {_PERF_CYCLES} cycles took "
+        f"{elapsed:.3f}s against a {calibration:.3f}s sqlite calibration on this "
+        f"machine — {ratio:.1f}x raw sqlite cost (budget: {_PERF_RATIO_BUDGET}x, "
+        f"observed baseline ~5x). This is a RATIO, so a slow or loaded runner "
+        f"does not move it (#3178)."
     )
 
 
@@ -218,3 +288,27 @@ def test_pipeline_p95_latency():
     p95 = sorted(latencies)[int(len(latencies) * 0.95)]
     print(f"\nP95 latency: {p95:.2f}s over {len(latencies)} calls")
     assert p95 < _P95_BUDGET_S, f"P95 regression: {p95:.2f}s > {_P95_BUDGET_S}s budget"
+
+
+def test_sqlite_calibration_is_real_and_fails_closed(tmp_path):
+    """Negative control for the #3178 ratio guard.
+
+    A ratio budget only means something if the denominator is a real
+    measurement. Two properties are pinned here:
+
+    1. the calibration does measurable work, so the ratio is a ratio;
+    2. a degenerate (zero) calibration yields `inf`, which EXCEEDS the budget —
+       the guard fails loudly rather than passing vacuously.
+    """
+    cost = _sqlite_roundtrip_cost(tmp_path, cycles=_PERF_CYCLES)
+    assert cost > 0, "calibration measured no work — the ratio denominator is dead"
+
+    # the real path: some observed elapsed over a real calibration is finite
+    assert (cost * 5) / cost < _PERF_RATIO_BUDGET
+
+    # the degenerate path, computed exactly as the test does it
+    degenerate_calibration = 0.0
+    ratio = 1.0 / degenerate_calibration if degenerate_calibration > 0 else float("inf")
+    assert not (ratio < _PERF_RATIO_BUDGET), (
+        "a zero calibration must exceed the budget, not slip under it"
+    )
