@@ -12,6 +12,7 @@ import {
   getNotebookDetail,
   askNotebook,
   buildChatHistory,
+  isStoppedTurn,
   attachFileToTargets,
   setSourceEnabled,
   detachSource,
@@ -519,7 +520,18 @@ export function NotebookScreen({
                 )}
               </>
             )}
-            {turns.map((t) => (
+            {turns.map((t) =>
+              isStoppedTurn(t) ? (
+                // STRM-2 stopped-turn contract on reload: `error` + partial
+                // text is the turn the technician stopped. Same render as the
+                // live "stopped" branch below — partial text, "Stopped"
+                // caption, no citations, no basis, no follow-ups.
+                <div key={t.id}>
+                  <div className="msg-user">{t.question}</div>
+                  <AnswerMarkdown text={t.answerText!} citations={[]} />
+                  <div className="meta answer-stopped">Stopped</div>
+                </div>
+              ) : (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 <AnswerMarkdown
@@ -549,7 +561,8 @@ export function NotebookScreen({
                   ))}
                 </div>
               </div>
-            ))}
+              ),
+            )}
             {liveTurns.map((t, i) => (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>

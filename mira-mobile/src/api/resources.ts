@@ -1027,20 +1027,35 @@ export interface ChatHistoryTurn {
 }
 
 /**
+ * STRM-2 stopped-turn contract (no schema change): the server persists a
+ * client-stopped turn as `answer_status='error'` with `answer_text` = the
+ * partial that streamed; a provider-failure turn is `'error'` with
+ * `answer_text` NULL. So `error` + non-empty text IS the stopped turn.
+ * One rule, applied on reload (this) and live (`status === "stopped"`).
+ */
+export function isStoppedTurn(t: Pick<NotebookServerTurn, "answerStatus" | "answerText">): boolean {
+  return t.answerStatus === "error" && !!t.answerText?.trim();
+}
+
+/**
  * CONV-3: the recent thread, built from BOTH stores a notebook renders —
  * persisted turns (server truth, survives devices) and this session's live
  * turns — in chronological order, as role/content pairs. Same windowing the
  * web client uses (last 12 lines); the route caps it again defensively.
  * A refusal contributes its QUESTION (real context) but no fabricated answer
- * line. Pure and unit-tested.
+ * line. A STOPPED turn (see `isStoppedTurn`) contributes nothing — a stopped
+ * answer is not an answer, and neither is the question that produced it,
+ * identically to how a live stopped turn is filtered out. Pure and
+ * unit-tested.
  */
 export function buildChatHistory(
-  turns: Pick<NotebookServerTurn, "question" | "answerText">[],
+  turns: Pick<NotebookServerTurn, "question" | "answerText" | "answerStatus">[],
   liveTurns: { q: string; a: Pick<ChatTurn, "answer"> }[],
   maxLines = 12,
 ): ChatHistoryTurn[] {
   const out: ChatHistoryTurn[] = [];
   for (const t of turns) {
+    if (isStoppedTurn(t)) continue;
     if (t.question.trim()) out.push({ role: "user", content: t.question });
     if (t.answerText?.trim()) out.push({ role: "assistant", content: t.answerText });
   }

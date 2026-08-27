@@ -11,13 +11,19 @@
 //   - images never render as `<img>` (ADR-0034: no remote content in the
 //     shell). `![alt](url)` in model text would otherwise make the WebView
 //     fetch an arbitrary host — a tracking pixel or an unbounded download.
-//     They render like links: alt text plus the URL, nothing fetched;
+//     They render as the fallback "[image: alt]" with the URL SUPPRESSED
+//     (same shape as the web notebook), so nothing is fetched and nothing
+//     invites a tap;
+//   - soft newlines render as line breaks (`remark-breaks`, MIT) — the same
+//     convergence choice the web notebook made, so a model answer that wraps
+//     lines paints identically on both clients;
 //   - code blocks get a language label and a copy button (platform clipboard).
 // Refusal / safety / error copy is plain text and renders unchanged — a
 // status sentence contains no markdown.
 import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { remarkCitationMarks } from "../lib/remark-citation-marks";
 import type { ChatCitation } from "../lib/sse";
 
@@ -77,7 +83,11 @@ export function AnswerMarkdown({
 }) {
   const byId = useMemo(() => new Map(citations.map((c) => [c.citationId, c])), [citations]);
   const plugins = useMemo(
-    () => [remarkGfm, [remarkCitationMarks, { knownIds: new Set(byId.keys()) }] as const],
+    () => [
+      remarkGfm,
+      remarkBreaks,
+      [remarkCitationMarks, { knownIds: new Set(byId.keys()) }] as const,
+    ],
     [byId],
   );
 
@@ -109,15 +119,12 @@ export function AnswerMarkdown({
         </span>
       );
     },
-    img: ({ alt, src }) => {
-      const url = typeof src === "string" ? src : "";
-      const label = alt || "image";
-      return (
-        <span className="answer-link answer-image">
-          {label}
-          {url && url !== label ? ` (${url})` : ""}
-        </span>
-      );
+    img: ({ alt }) => {
+      // The URL is deliberately dropped: an image URL in answer text is not
+      // evidence a technician can act on, and echoing it invites a paste
+      // into a browser that would fetch it. Web renders the same fallback.
+      const label = (alt ?? "").trim() || "image";
+      return <span className="answer-image">[image: {label}]</span>;
     },
     pre: ({ children }) => {
       const child = Children.toArray(children)[0];

@@ -273,10 +273,12 @@ export interface StreamOpts {
  *  Android — the parser + UI path is identical, only the granularity differs.
  *  True token streaming on device needs the raw WebView fetch
  *  (`CapacitorWebFetch`), which in turn needs the Hub to CORS-allow the app
- *  origin and the session cookie to live in the WebView store — a server-side
- *  change, tracked separately. Abort is honored by the client regardless (the
- *  read is raced against the signal); the native request may run to
- *  completion in the background. NOT retried — a chat turn is not idempotent. */
+ *  origin and the session cookie to live in the WebView store — the Hub-side
+ *  CORS + cookie prerequisite tracked in #3453 (hub-streaming lane). Until
+ *  that lands, Stop on device is client-side only: the read loop cancels
+ *  delivery, but the abort never reaches the server, so the server persists a
+ *  full answered turn rather than a stopped one. NOT retried — a chat turn is
+ *  not idempotent. */
 export async function requestStream(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
   const native = Capacitor.isNativePlatform();

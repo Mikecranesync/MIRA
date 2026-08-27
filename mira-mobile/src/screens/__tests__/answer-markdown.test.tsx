@@ -93,10 +93,10 @@ describe("AnswerMarkdown", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
-  it("markdown image syntax never renders an <img> (no remote fetch from answer text)", () => {
+  it("markdown image syntax never renders an <img>; fallback is [image: alt] with the URL suppressed", () => {
     // Reviewer probe: `![pixel](https://evil.example/t.png)` used to render a
-    // live <img> — react-markdown's url transform only blocks non-http(s)
-    // schemes. ADR-0034: no remote content in the shell.
+    // live <img>. Web-parity shape: "[image: alt]" and NO URL echoed — the
+    // web lane asserts the identical string.
     const { container } = render(
       <AnswerMarkdown
         text={"Before ![pixel](https://evil.example/t.png) after ![](https://evil.example/x.png)"}
@@ -105,13 +105,54 @@ describe("AnswerMarkdown", () => {
     );
     expect(container.querySelector("img")).toBeNull();
     expect(container.innerHTML).not.toContain("<img");
+    expect(container.textContent).not.toContain("evil.example");
+    expect(container.textContent).not.toContain("https://");
     const spans = container.querySelectorAll(".answer-image");
     expect(spans).toHaveLength(2);
-    expect(spans[0].textContent).toBe("pixel (https://evil.example/t.png)");
-    expect(spans[1].textContent).toBe("image (https://evil.example/x.png)");
-    expect(container.querySelector("p")?.textContent).toBe(
-      "Before pixel (https://evil.example/t.png) after image (https://evil.example/x.png)",
+    expect(spans[0].textContent).toBe("[image: pixel]");
+    expect(spans[1].textContent).toBe("[image: image]");
+    expect(container.textContent).toBe("Before [image: pixel] after [image: image]");
+  });
+
+  it("soft newlines render as line breaks (remark-breaks), like the web notebook", () => {
+    const { container } = render(
+      <AnswerMarkdown text={"Line one\nLine two\n\nPara two"} citations={[]} />,
     );
+    expect(container.querySelectorAll("br")).toHaveLength(1);
+    expect(container.querySelectorAll("p")).toHaveLength(2);
+    expect(container.querySelector("p")!.textContent).toBe("Line one\nLine two");
+  });
+
+  it("shared-shape fixture (web lane has the equivalent): table + [1] + list + soft newline + image", () => {
+    const SHARED = [
+      "| Param | Value |",
+      "|---|---|",
+      "| P06.01 | 115 % [1] |",
+      "",
+      "- first [1]",
+      "- second",
+      "",
+      "soft line A",
+      "soft line B",
+      "",
+      "![wiring photo](https://example.com/w.png)",
+    ].join("\n");
+    const onCitation = vi.fn();
+    const { container } = render(
+      <AnswerMarkdown text={SHARED} citations={[cite("1")]} onCitation={onCitation} />,
+    );
+    expect(container.querySelector("table")).not.toBeNull();
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(container.querySelectorAll("button.cite-mark")).toHaveLength(2);
+    expect(container.querySelector("td button.cite-mark")).not.toBeNull();
+    expect(container.querySelector("li button.cite-mark")).not.toBeNull();
+    expect(container.querySelectorAll("br")).toHaveLength(1);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".answer-image")!.textContent).toBe("[image: wiring photo]");
+    expect(container.textContent).not.toContain("example.com");
+    expect(container.querySelector("a")).toBeNull();
+    fireEvent.click(container.querySelector("td button.cite-mark")!);
+    expect(onCitation).toHaveBeenCalledWith(cite("1"));
   });
 
   it("refusal and error copy render byte-identical as plain text", () => {

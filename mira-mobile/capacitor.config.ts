@@ -54,8 +54,10 @@ const config: CapacitorConfig = {
       // ignores AbortSignal, so on device the SSE body arrives in one chunk.
       // Per-token delivery on device needs the raw WebView fetch, which
       // needs the Hub to CORS-allow the app origin (https://localhost) and
-      // the session cookie in the WebView cookie store — a Hub change,
-      // tracked separately. Trust boundary unchanged: packaged bundle only,
+      // the session cookie in the WebView cookie store — the Hub-side
+      // CORS + cookie prerequisite, tracked in #3453 (hub-streaming lane).
+      // Until then Stop is client-side only on device: the abort never
+      // reaches the server. Trust boundary unchanged: packaged bundle only,
       // no remote UI.
       enabled: true,
     },

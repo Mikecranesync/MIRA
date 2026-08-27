@@ -147,4 +147,48 @@ describe("NotebookScreen composer", () => {
     expect(JSON.stringify(nextOpts.history ?? [])).not.toContain("under-voltage");
     expect(JSON.stringify(nextOpts.history ?? [])).not.toContain("explain F004");
   });
+
+  it("STRM-2 reload: a persisted error+partial turn renders the partial with Stopped, no chips/basis, and is excluded from history", async () => {
+    getNotebookDetail.mockResolvedValue({
+      ...detail(),
+      turns: [
+        {
+          id: "t1",
+          question: "explain F004",
+          answerStatus: "error",
+          answerText: "F004 is an under-voltage",
+          evidence: [{ citationId: "1", sourceTitle: "ghost", page: 3, docId: "d", fileId: "f" }],
+          basis: "general_reasoning",
+        },
+        { id: "t2", question: "later q", answerStatus: "answered", answerText: "later a", evidence: [] },
+      ],
+    });
+    askNotebook.mockResolvedValueOnce({ answer: "next", citations: [], status: "answered" });
+    mount();
+    await screen.findByText("Stopped");
+    expect(screen.getByText("F004 is an under-voltage")).toBeTruthy();
+    expect(screen.queryByText(/1 · ghost/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Citation 1" })).toBeNull();
+    expect(screen.queryByText(/General guidance/)).toBeNull();
+    expect(screen.queryByText(/Something went wrong/)).toBeNull();
+
+    fireEvent.change(await composer(), { target: { value: "next question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("next");
+    const h = JSON.stringify((askNotebook.mock.calls.at(-1)?.[3] as AskOpts).history ?? []);
+    expect(h).not.toContain("under-voltage");
+    expect(h).not.toContain("explain F004");
+    expect(h).toContain("later q");
+    expect(h).toContain("later a");
+  });
+
+  it("STRM-2 reload: a persisted error+null turn renders the existing error copy, never Stopped", async () => {
+    getNotebookDetail.mockResolvedValue({
+      ...detail(),
+      turns: [{ id: "t1", question: "what tripped?", answerStatus: "error", answerText: null, evidence: [] }],
+    });
+    mount();
+    await screen.findByText("Something went wrong answering that — try again.");
+    expect(screen.queryByText("Stopped")).toBeNull();
+  });
 });
