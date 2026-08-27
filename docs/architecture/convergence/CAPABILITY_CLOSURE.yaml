@@ -260,6 +260,43 @@ capabilities:
       - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
     review_by: "2026-10-19"
 
+  # =========================================================================
+  - id: photo_ocr_evidence
+    purpose: "Turn a photographed page/label/spec table into indexed, citable text (EVID-4, Tesseract)."
+    customer_outcome: "A technician photographs a spec table and chat can cite it — the citation opens the photo."
+    feature_flag: PHOTO_OCR_ENABLED
+    entrypoints:
+      - "mira-bots/ask_api/ocr_extract.py"
+      - "mira-hub/src/lib/photo-ocr.ts"
+      - "mira-hub/src/app/api/files/route.ts"
+    consumers:
+      - "mira-ask                            # docker-compose.saas.yml:541"
+      - "mira-hub                            # docker-compose.saas.yml:848"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "Awaiting Mike's merge + Doppler flip (PR #3430); no one has observed it live yet."
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - path: mira-bots/tests/test_ask_api_ocr_extract.py
+        note: "13 offline cases: every degradation path returns available:false, never 500; quality math."
+      - path: mira-hub/src/app/api/files/__tests__/upload-photo-ocr.test.ts
+        note: "8 route cases: OCR text rides the ordinary ingestTextToNode writer against the photo's own file row; flag-off parity."
+    rollback: "Set PHOTO_OCR_ENABLED=0 (both services) — photos revert to viewable-only; already-indexed OCR chunks stay citable."
+    reason: >-
+      Shipped dark. The EVID-4 live gate (photo of a spec table -> cited answer
+      sourced from it) has not been run against prod: needs the Doppler flip,
+      a mira-ask image rebuild (Dockerfile adds tesseract), and a real photo.
+    promotion_criteria:
+      - "PHOTO_OCR_ENABLED=1 in Doppler factorylm/prd for mira-ask AND mira-hub; deploy services=mira-ask,mira-hub."
+      - "One real spec-table photo -> [1] citation whose file opens the photograph, on prod (server-side proof acceptable)."
+      - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
+    review_by: "2026-10-26"
+
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
 # reason: `--discover` fails when a gate flag is in neither list, so a new flag
