@@ -127,7 +127,7 @@ capabilities:
     environments:
       dev: unset
       staging: unset
-      production: "true"                    # Doppler factorylm/prd, observed 2026-08-19
+      production: "true"                    # Doppler factorylm/prd; in-container 2026-08-27
     state: production_enabled
     owner: null
     owner_missing: "No owner recorded for a security-relevant control."
@@ -143,20 +143,23 @@ capabilities:
           check, staging 2026-08-26: 83,540 verified public (OEM corpus
           backfilled), 255 verified private, 711 UNverified private — gate-on
           hides only unapproved uploads, the designed direction.
+      - path: docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md
+        note: >-
+          Production runtime proof 2026-08-27 after #3416 deployed (dd65c57eb):
+          MIRA_ENFORCE_APPROVED_RETRIEVAL=true inside all five consumer
+          containers; approval_gate_enabled() True in-process; recall_knowledge
+          in mira-ask-saas returned 28 verified=false rows across 162 with the
+          gate off and 0 with it on.
     rollback: >-
       Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd (the compose
       default is 'false'); redeploy the consumers.
     blocker: >-
       Was P0 #3328 (configured ON, enforced OFF: 'true' in Doppler prd, forwarded
-      by no compose file). Plumbed 2026-08-26 in docker-compose.saas.yml
-      (bot-common-env anchor → mira-ask; mira-pipeline; mira-bot-telegram;
-      mira-bot-slack; mira-hub) and docker-compose.staging-vps.yml. Remaining:
-      post-deploy runtime observation on prod (container env + a refusal on an
-      unverified chunk) before production_no_evidence is dropped.
-    acknowledged_rules:
-      - "production_no_evidence"
+      by no compose file). Plumbed in #3416 (merged dd65c57eb, v3.297.5) and
+      proven at runtime on prod 2026-08-27 (see evidence). Remaining: no owner.
+    acknowledged_rules: []
     promotion_criteria:
-      - "Post-deploy: observe the variable inside a prod consumer container and one unverified-chunk refusal; then drop the production_no_evidence acknowledgement."
+      - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
       - "Record an owner."
     review_by: "2026-09-05"
 
