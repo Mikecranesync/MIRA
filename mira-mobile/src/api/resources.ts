@@ -6,8 +6,9 @@ import {
   uploadMultipart,
   withAuthEventsSuppressed,
   clearAllLocalState,
+  requestStream,
 } from "./client";
-import { parseChatSse, type ChatTurn } from "../lib/sse";
+import { createChatSseParser, type ChatTurn } from "../lib/sse";
 
 // --- auth -------------------------------------------------------------------
 
@@ -1065,22 +1066,38 @@ export async function askNotebook(
     mode?: "general";
     /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
     history?: ChatHistoryTurn[];
+    /** STRM-1: called with the turn-so-far after every completed frame, so
+     *  the transcript can paint tokens as they arrive. The resolved value is
+     *  the SAME object the last update produced (one parser, one truth). */
+    onUpdate?: (partial: ChatTurn) => void;
+    /** STRM-2: Stop. Rejects with the signal's reason (an AbortError). */
+    signal?: AbortSignal;
   } = {},
 ): Promise<ChatTurn> {
-  const r = await request(
+  const parser = createChatSseParser();
+  const r = await requestStream(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
     {
-      method: "POST",
       json: {
         message,
         sourceDocIds,
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
       },
+      onChunk: (chunk) => {
+        const before = parser.turn().answer;
+        const partial = parser.push(chunk);
+        if (partial.answer !== before) opts.onUpdate?.(partial);
+      },
+      signal: opts.signal,
       timeoutMs: 120_000,
     },
   );
-  return parseChatSse(r.text, r.status);
+  const turn = parser.finish();
+  // Non-200 bodies never reach here (requestStream throws), but keep the
+  // status-tagging contract of the old one-shot parse for a 2xx that isn't 200.
+  if (r.status !== 200 && !turn.status) turn.status = `http ${r.status}`;
+  return turn;
 }
 
 /** Pure helper (unit-tested): the doc ids chat retrieval is scoped to. */

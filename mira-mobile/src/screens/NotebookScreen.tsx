@@ -29,6 +29,8 @@ import {
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
+import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
+import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { AttachFileSheet } from "./AttachFileSheet";
@@ -39,6 +41,8 @@ import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
+
+const EMPTY_TURN: ChatTurn = { answer: "", citations: [], status: "" };
 
 const QUICK_STARTS = [
   "Diagnose a fault",
@@ -125,6 +129,16 @@ export function NotebookScreen({
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<unknown>(null);
+  // In-flight turn (STRM-1); mirrored in a ref so the abort path can read the
+  // last painted partial without a stale closure.
+  const [pending, setPendingState] = useState<{ q: string; a: ChatTurn } | null>(null);
+  const pendingRef = useRef<{ q: string; a: ChatTurn } | null>(null);
+  const setPending = (p: { q: string; a: ChatTurn } | null) => {
+    pendingRef.current = p;
+    setPendingState(p);
+  };
+  const abortRef = useRef<AbortController | null>(null);
+  const [failedSend, setFailedSend] = useState<PendingSend | null>(null);
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -160,7 +174,7 @@ export function NotebookScreen({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [liveTurns, busy, panel]);
+  }, [liveTurns, busy, panel, pending]);
 
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
@@ -178,24 +192,60 @@ export function NotebookScreen({
   // labels it as such; with sources present this stays the strict grounded
   // path — the mode is never sent as a fallback when retrieval comes back
   // empty. CONV-3: the recent thread rides along so a follow-up has memory.
-  const sendQuestion = async (raw: string) => {
-    const question = raw.trim();
+  //
+  // STRM-1: the answer paints as frames arrive (`pending` is the in-flight
+  // turn; `onUpdate` replaces it per content frame). STRM-2: Stop aborts the
+  // request; the partial text is kept with status "stopped" — no citations, no
+  // follow-ups, because a stopped answer is not an answer. CMPS-2: a failed
+  // send puts the question back in the composer and keeps the exact body for
+  // Retry, so the retry is byte-identical rather than recomputed.
+  const sendQuestion = async (raw: string, replay?: PendingSend) => {
+    const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
+    const body: PendingSend = replay ?? {
+      question,
+      scope,
+      mode: scope.length === 0 ? "general" : undefined,
+      // A stopped turn is not an answer: it never enters the thread memory.
+      history: buildChatHistory(
+        turns,
+        liveTurns.filter((t) => t.a.status !== "stopped"),
+      ),
+    };
+    const ctl = new AbortController();
+    abortRef.current = ctl;
     setQ("");
+    setFailedSend(null);
     setBusy(true);
     setChatError(null);
+    setPending({ q: question, a: EMPTY_TURN });
     try {
-      const a = await askNotebook(id, question, scope, {
-        mode: scope.length === 0 ? "general" : undefined,
-        history: buildChatHistory(turns, liveTurns),
+      const a = await askNotebook(id, body.question, body.scope, {
+        mode: body.mode,
+        history: body.history,
+        signal: ctl.signal,
+        onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
       setLiveTurns((t) => [...t, { q: question, a }]);
     } catch (e) {
-      setChatError(e);
+      if (ctl.signal.aborted) {
+        const partial = pendingRef.current?.a ?? EMPTY_TURN;
+        setLiveTurns((t) => [
+          ...t,
+          { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
+        ]);
+      } else {
+        setQ(question);
+        setFailedSend(body);
+        setChatError(e);
+      }
     } finally {
+      abortRef.current = null;
+      setPending(null);
       setBusy(false);
     }
   };
+  const stopGeneration = () => abortRef.current?.abort();
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
@@ -472,7 +522,11 @@ export function NotebookScreen({
             {turns.map((t) => (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
-                <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                <AnswerMarkdown
+                  text={answerBody(t.answerText, t.answerStatus)}
+                  citations={citationsFromEvidence(t.evidence)}
+                  onCitation={setViewCitation}
+                />
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
@@ -499,7 +553,20 @@ export function NotebookScreen({
             {liveTurns.map((t, i) => (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
-                <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {t.a.status === "stopped" ? (
+                  <>
+                    {t.a.answer.trim() && (
+                      <AnswerMarkdown text={t.a.answer} citations={[]} />
+                    )}
+                    <div className="meta answer-stopped">Stopped</div>
+                  </>
+                ) : (
+                  <AnswerMarkdown
+                    text={answerBody(t.a.answer, t.a.status)}
+                    citations={t.a.citations}
+                    onCitation={setViewCitation}
+                  />
+                )}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
                     last turn only — tapping one sends it as the next turn. */}
                 {!busy &&
@@ -538,27 +605,78 @@ export function NotebookScreen({
                 </div>
               </div>
             ))}
-            {busy && <div className="empty">Searching your docs…</div>}
-            {chatError != null && <ErrorState error={chatError} />}
+            {/* In-flight turn (STRM-1): the question posts immediately; the
+                answer paints per content frame. No chips until the turn is
+                final — citations arrive AFTER the content on the wire. */}
+            {pending && (
+              <div aria-live="polite" aria-busy="true">
+                <div className="msg-user">{pending.q}</div>
+                {pending.a.answer ? (
+                  <AnswerMarkdown text={pending.a.answer} citations={[]} />
+                ) : (
+                  <div className="empty">Searching your docs…</div>
+                )}
+              </div>
+            )}
+            {chatError != null && (
+              <>
+                <ErrorState error={chatError} />
+                {failedSend && !busy && (
+                  <div className="chip-row">
+                    <button
+                      className="chip"
+                      onClick={() => void sendQuestion("", failedSend)}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <div className="composer">
-            <input
+            <textarea
+              rows={1}
+              enterKeyHint="send"
+              aria-label="Ask a question"
               placeholder={
                 scope.length === 0 ? "Ask anything — no manual loaded yet" : "Ask a question…"
               }
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                autoGrow(e.target, 20);
+              }}
+              onKeyDown={(e) => {
+                if (
+                  composerKeyAction({
+                    key: e.key,
+                    shiftKey: e.shiftKey,
+                    isComposing: e.nativeEvent.isComposing,
+                    keyCode: e.keyCode,
+                  }) === "send"
+                ) {
+                  e.preventDefault();
+                  if (!busy && q.trim()) void sendQuestion(q);
+                }
+              }}
             />
             <span className="counter">
               {scope.length} source{scope.length === 1 ? "" : "s"}
             </span>
-            <button
-              className="btn-primary"
-              disabled={busy || !q.trim()}
-              onClick={() => void sendQuestion(q)}
-            >
-              Send
-            </button>
+            {busy ? (
+              <button className="btn-primary" aria-label="Stop generating" onClick={stopGeneration}>
+                Stop
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                disabled={!q.trim()}
+                onClick={() => void sendQuestion(q)}
+              >
+                Send
+              </button>
+            )}
           </div>
         </>
       )}
@@ -883,7 +1001,9 @@ function StudioPanel({
             <div className="meta" style={{ marginBottom: 6 }}>
               Generated {new Date(o.generatedAt).toLocaleString()} · grounded in your sources
             </div>
-            <div className="msg-answer">{o.answer}</div>
+            {/* Same renderer as chat: the "Spec & parts table" prompt asks for
+                a markdown table, so it now renders as one (RNDR-1). */}
+            <AnswerMarkdown text={o.answer} citations={o.citations} onCitation={onCitation} />
             <div>
               {o.citations.map((c) => (
                 <button
