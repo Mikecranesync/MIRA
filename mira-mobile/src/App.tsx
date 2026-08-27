@@ -20,6 +20,7 @@ import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
 import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
+import { closeTopViewer } from "./screens/FilePreview";
 import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
 import { MoreTab } from "./screens/More";
 
@@ -80,6 +81,9 @@ export default function App() {
   // Android hardware back: give the active tab's stack first refusal.
   useEffect(() => {
     const sub = CapApp.addListener("backButton", ({ canGoBack: _ }) => {
+      // An open fullscreen image viewer outranks every screen stack: BACK
+      // closes the viewer first, then the sheet under it, in order (#3427).
+      if (closeTopViewer()) return;
       const consumed = backHandler.current?.() ?? false;
       if (!consumed) void CapApp.minimizeApp();
     });
