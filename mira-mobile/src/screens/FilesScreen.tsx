@@ -50,8 +50,11 @@ export function formatSize(bytes: number): string {
 /** Processing state, stated honestly — "not searchable" is never dressed up as
  *  "processing" for a file the pipeline will never index. */
 export function processingLabel(f: Pick<WorkspaceFile, "capability" | "indexed">): string {
+  // `indexed` is the server's truth: a photo whose text was read (OCR, EVID-4)
+  // is searchable even though its capability stays "viewable".
+  if (f.indexed) return "Searchable source · indexed";
   if (f.capability !== "indexable") return fileCapabilityLabel(f.capability);
-  return f.indexed ? "Searchable source · indexed" : "Indexing—not searchable yet";
+  return "Indexing—not searchable yet";
 }
 
 export function attachedLabel(linkCount: number): string {
