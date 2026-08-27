@@ -226,6 +226,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       # OpenWebUI is not deployed in staging — pipeline will gracefully no-op
       # the legacy KB path. The cascade providers (Groq → Cerebras → Gemini)
       # are the real inference path and are env-driven, so they still work.
@@ -288,6 +289,7 @@ services:
       - "0.0.0.0:4101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       # Embedder for the Hub's OWN vector path — both halves of it:
       #   write: lib/node-knowledge-ingest.ts::embedPendingNodeChunks (embed-on-write)
       #   read:  lib/agents/asset-intelligence.ts::searchKB (query embedding)
@@ -433,6 +435,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_STG}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
       - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
       - MIRA_DB_PATH=/mira-db/mira.db
