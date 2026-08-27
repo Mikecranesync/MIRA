@@ -23,6 +23,9 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   attachSource: vi.fn(),
   setSourceState: vi.fn(),
   updateNotebook: vi.fn(),
+  // 085 provenance contract
+  findVisibleOriginSource: vi.fn(async () => null),
+  supersedePriorOriginSources: vi.fn(async () => []),
 }));
 vi.mock("@/lib/workspace-files", () => ({
   getFile: vi.fn(),
@@ -65,7 +68,14 @@ vi.mock("@/lib/safe-download", () => ({
 import { POST } from "../confirm/route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { getNotebook, attachSource, setSourceState, updateNotebook } from "@/lib/equipment-notebooks";
+import {
+  getNotebook,
+  attachSource,
+  setSourceState,
+  updateNotebook,
+  findVisibleOriginSource,
+  supersedePriorOriginSources,
+} from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
@@ -163,6 +173,8 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.mocked(sessionOr401).mockResolvedValue(session);
   vi.mocked(getNotebook).mockResolvedValue(notebook);
+  vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
+  vi.mocked(supersedePriorOriginSources).mockResolvedValue([]);
   vi.mocked(getFile).mockResolvedValue({
     file: { id: PHOTO_FILE_ID } as never,
     links: [
@@ -812,5 +824,97 @@ describe("#3400 — unvalidated OEM candidate is probed, never trusted", () => {
       await POST(makeReq(siemensBody), makeParams(NOTEBOOK_ID))
     ).json()) as Record<string, never>;
     expect(KNOWN.has(String(b.status))).toBe(true);
+  });
+});
+
+// ── 085: logical-evidence idempotency + supersede (Commodity PRD Phase 2) ────
+describe("canonical-evidence contract (085)", () => {
+  function happyIngestMocks() {
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "f11e0000-0000-4000-8000-000000000001",
+      uploadId: null,
+      reused: false,
+    } as never);
+    vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" } as never);
+    vi.mocked(ingestTextToNode).mockResolvedValue({
+      uploadId: NAMEPLATE_DOC_ID,
+      chunkCount: 3,
+    } as never);
+    vi.mocked(linkFileToUpload).mockResolvedValue(true);
+    vi.mocked(attachSource).mockResolvedValue({ ok: true });
+  }
+
+  it("supersedes prior readings of the SAME photo after attaching the new derived doc", async () => {
+    happyIngestMocks();
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(supersedePriorOriginSources).toHaveBeenCalledWith(
+      TENANT_ID,
+      NOTEBOOK_ID,
+      PHOTO_FILE_ID,
+      NAMEPLATE_DOC_ID,
+    );
+    // supersede runs only AFTER a successful attach
+    const attachOrder = vi.mocked(attachSource).mock.invocationCallOrder[0];
+    const supersedeOrder = vi.mocked(supersedePriorOriginSources).mock.invocationCallOrder[0];
+    expect(supersedeOrder).toBeGreaterThan(attachOrder);
+  });
+
+  it("records the clientKey on the source row as audit evidence", async () => {
+    happyIngestMocks();
+    await POST(
+      makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(attachSource).toHaveBeenCalledWith(
+      TENANT_ID,
+      NOTEBOOK_ID,
+      NAMEPLATE_DOC_ID,
+      expect.objectContaining({
+        originFileId: PHOTO_FILE_ID,
+        matchEvidence: { confirm_client_key: "ck-abc" },
+      }),
+    );
+  });
+
+  it("a replay carrying the SAME clientKey reuses the existing derived doc — no re-park, no re-ingest, no supersede", async () => {
+    vi.mocked(findVisibleOriginSource).mockResolvedValue({
+      docId: NAMEPLATE_DOC_ID,
+      matchEvidence: { confirm_client_key: "ck-abc" },
+    });
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
+  });
+
+  it("a DIFFERENT clientKey against an existing reading processes normally (an edited re-confirm)", async () => {
+    vi.mocked(findVisibleOriginSource).mockResolvedValue({
+      docId: "eeeeeeee-0000-4000-8000-000000000009",
+      matchEvidence: { confirm_client_key: "ck-old" },
+    });
+    happyIngestMocks();
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, clientKey: "ck-new" }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(parkOrReuseFile).toHaveBeenCalled();
+    expect(supersedePriorOriginSources).toHaveBeenCalled();
+  });
+
+  it("a supersede failure does not fail a confirm that already attached its source", async () => {
+    happyIngestMocks();
+    vi.mocked(supersedePriorOriginSources).mockRejectedValue(new Error("db down"));
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; status: string };
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe("complete"); // the confirm still completed
   });
 });

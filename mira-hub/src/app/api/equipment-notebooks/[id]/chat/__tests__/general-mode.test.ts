@@ -30,6 +30,8 @@ const nbMock = vi.hoisted(() => ({
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
+  // 085: chat citations resolve canonical origin server-side
+  originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => nbMock);
 

@@ -927,6 +927,70 @@ jobs:
         working-directory: mira-fault-sim
         run: pytest tests/ -q
 
+  module-suites:
+    name: Module Suites (relay · plc-parser · contextualizer · pipeline · connect)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    # Five packages shipped test suites that NO workflow ran — the
+    # ci.yml-enumerates-test-paths trap (#3089) again, found by the 2026-08-25
+    # tech-debt audit (docs/tech-debt/2026-08-25-tech-debt-audit.md row 4):
+    # mira-relay (240 tests), mira-plc-parser (134), mira-contextualizer (85),
+    # mira-pipeline (66), mira-connect (3). "CI green" said nothing about them.
+    #
+    # First-run policy: INFORMATIVE, not blocking. The two genuine defects the
+    # first local run exposed are NOT excluded here — they are xfail-marked
+    # in-tree with their issue numbers (#3423 order-dependent gate pollution in
+    # mira-pipeline; #3424 contextualizer .xml fallback) so they show up as
+    # XFAIL in every run until fixed. Like bench-harness-tests, this job stays
+    # out of ci-gate until it has a run of consecutive greens on main.
+    #
+    # One invocation per package, from its own directory: each ships its own
+    # tests/conftest.py + sys.path setup, and several import their module under
+    # test by bare name, so a combined run would collide on `tests.test_*`.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            mira-pipeline/requirements.txt
+            mira-bots/telegram/requirements.txt
+
+      - name: Install deps
+        # relay/connect: their pyproject `dependencies` (no build-system, so
+        # not pip-installable as packages). pipeline: its requirements + the
+        # engine's (its conftest puts mira-bots/ on sys.path and imports
+        # shared.*). plc-parser/contextualizer: stdlib-only.
+        run: |
+          pip install "starlette>=0.45,<1" "uvicorn[standard]>=0.34,<1" "sqlalchemy>=2,<3" "psycopg2-binary>=2.9,<3"
+          pip install "pymodbus>=3.7,<4" "websockets>=13,<14" "httpx>=0.28,<1" "pyyaml>=6,<7"
+          pip install -r mira-pipeline/requirements.txt
+          pip install -r mira-bots/telegram/requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: mira-relay
+        working-directory: mira-relay
+        run: pytest tests -q
+
+      - name: mira-plc-parser
+        working-directory: mira-plc-parser
+        run: pytest tests -q
+
+      - name: mira-contextualizer
+        working-directory: mira-contextualizer
+        run: pytest tests -q -rxX
+
+      - name: mira-pipeline
+        working-directory: mira-pipeline
+        run: pytest tests -q -rxX
+
+      - name: mira-connect
+        working-directory: mira-connect
+        run: pytest tests -q
+
   docs-fault-codes:
     name: Docs vs Shipped Fault Table
     runs-on: ubuntu-latest
@@ -992,7 +1056,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install pyyaml + pytest
-        run: pip install pyyaml pytest
+        # sqlalchemy: tests/test_approved_retrieval_plumbing.py imports
+        # mira-bots/shared/neon_recall.py to capture the SQL it emits (#3328).
+        run: pip install pyyaml pytest sqlalchemy
 
       - name: Validate the capability-closure registry
         run: python tools/capability_closure.py
@@ -1002,6 +1068,9 @@ jobs:
 
       - name: Validator rule tests (incl. negative fixtures)
         run: pytest tests/test_capability_closure.py -q
+
+      - name: Approved-retrieval gate is plumbed and enforced (#3328)
+        run: pytest tests/test_approved_retrieval_plumbing.py -q
 
   drive-pack-extract-tests:
     name: Drive Pack Extract Tests
@@ -1284,12 +1353,14 @@ jobs:
   # Gated (must pass to merge): actionlint, migration-order-check,
   #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
   #   architecture-check, license-check, sast-semgrep, sast-bandit,
-  #   precommit-hook-tests, capability-closure.
+  #   precommit-hook-tests, capability-closure, docs-fault-codes,
+  #   bench-harness-tests (promoted 2026-08-26 after 8 consecutive greens on
+  #   main — the criterion stated below).
   # Intentionally NOT in the gate yet (stay visible; promote once reliable):
   #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
   #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
   #   ocr-recall-gate / drive-pack-extract-tests / test-eval-offline.
-  #   bench-harness-tests joins that list on arrival (#3311): it is fast and
+  #   module-suites joins that list on arrival (2026-08-26): fast and
   #   pure-offline, so the usual "heavy/flaky" rationale does NOT apply to it —
   #   it is out of the gate only because a brand-new job has no reliability
   #   record yet, which is this list's stated promotion criterion. Promote it
@@ -1314,10 +1385,16 @@ jobs:
       - sast-bandit
       - capability-closure
       - docs-fault-codes
+      - bench-harness-tests
+      # module-suites is waited on (visible in the gate's timeline) but NOT
+      # yet required — see the promotion note above.
+      - module-suites
     steps:
       - name: Evaluate gate (fail-closed)
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
+          BENCH_HARNESS_RESULT: ${{ needs.bench-harness-tests.result }}
+          MODULE_SUITES_RESULT: ${{ needs.module-suites.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
           ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
           PRECOMMIT_HOOK_RESULT: ${{ needs.precommit-hook-tests.result }}
@@ -1375,11 +1452,15 @@ jobs:
           # *gate*.
           require_success capability-closure    "$CAPABILITY_RESULT"
           require_success docs-fault-codes      "$DOCS_FAULT_CODES_RESULT"
+          # Informative only until promoted: print, never fail.
+          echo "module-suites: '$MODULE_SUITES_RESULT' (not yet gated — see promotion note)"
 
           # test-unit: the only gated job allowed to skip, and ONLY on a genuine
           # docs-only PR (changes succeeded AND code did not change).
           if [ "$CODE_CHANGED" = "true" ]; then
             require_success test-unit "$TEST_UNIT_RESULT"
+            # Same `code == 'true'` condition as test-unit, so gated the same way.
+            require_success bench-harness-tests "$BENCH_HARNESS_RESULT"
           elif [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "false" ]; then
             case "$TEST_UNIT_RESULT" in
               success|skipped) echo "test-unit: '$TEST_UNIT_RESULT' (allowed — docs-only PR)" ;;

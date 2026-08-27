@@ -154,12 +154,11 @@ def test_disabled_flag_is_not_required_to_be_plumbed():
     assert cc.check_enabled_flags_are_plumbed(cap, plumbed=set()) == []
 
 
-def test_the_real_registry_still_exhibits_the_3328_defect():
-    """Guard against the registry being 'fixed' by editing it instead of the plumbing.
-
-    While #3328 is open, the approved-context capability MUST still produce this
-    finding. If someone quietly flips the recorded environment value to make the
-    validator green, this test goes red and says why.
+def test_the_3328_defect_stays_fixed():
+    """#3328 was fixed by plumbing (compose forwards the flag), not by editing the
+    registry. The registry still records production: "true" as the intent, so if
+    the compose lines are ever removed the enabled_but_unplumbed rule fires again
+    — and it must fire UNACKNOWLEDGED, so it blocks rather than hides.
     """
     findings = cc.validate(_registry(), _ROOT)
     hits = [
@@ -167,13 +166,11 @@ def test_the_real_registry_still_exhibits_the_3328_defect():
         for f in findings
         if f.rule == "enabled_but_unplumbed" and f.cap == "approved_context_retrieval"
     ]
-    assert hits, (
-        "approved_context_retrieval no longer reports enabled_but_unplumbed. If "
-        "#3328 was fixed by adding the variable to the consuming services' compose "
-        "environment blocks, delete this test and the acknowledgement. If it was "
-        "'fixed' by editing the registry, put it back."
+    assert not hits, (
+        "approved_context_retrieval reports enabled_but_unplumbed again — the "
+        "compose forwarding added for #3328 was removed. Restore it; do not "
+        "re-acknowledge the rule. Details: tests/test_approved_retrieval_plumbing.py"
     )
-    assert hits[0].acknowledged, "the finding must be acknowledged (filed as #3328), not silent"
 
 
 # --------------------------------------------------------------------------
