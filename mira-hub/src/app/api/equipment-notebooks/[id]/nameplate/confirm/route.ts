@@ -32,6 +32,7 @@ import {
   attachSource,
   setSourceState,
   findVisibleOriginSource,
+  markNameplateDocVerified,
   supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
@@ -324,6 +325,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // attachSource reports failure by RETURN VALUE, not throw. Without the
       // source row the doc is not citable in this notebook — fail closed.
       if (!att.ok) throw new Error(`attach_source_failed: ${att.error}`);
+      // #3437 nameplate lane: the technician just reviewed and confirmed this
+      // content — record that human approval on the doc's own chunks so the
+      // retrieval approval gate (verified = true) admits them. Best-effort:
+      // a failure leaves the doc attached but unverified (refusal, not a 500).
+      try {
+        const marked = await markNameplateDocVerified(ctx.tenantId, nameplateDocId);
+        if (marked > 0) {
+          console.log(
+            `[nameplate-confirm] marked ${marked} chunk(s) verified for doc ${nameplateDocId}`,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[nameplate-confirm] verified-mark failed doc=${nameplateDocId}: ${(err as Error).message}`,
+        );
+      }
       // 085 Invariant 1: one photograph = one visible source. An edited
       // re-confirm produced a NEW derived doc — the prior readings of the
       // same photo are superseded (hidden, retained for citation resolution).

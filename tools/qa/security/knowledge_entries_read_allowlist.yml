@@ -348,7 +348,7 @@ approved:
       FROM knowledge_entries
              WHERE ${where.join(" AND ")}
              GROUP BY source_url
-  "mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/confirm/route.ts:155":
+  "mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/confirm/route.ts:156":
     approved_classification: TENANT-ONLY
     query_sha256: "f72b5d871fc782743203dec1b8745e520c3ae095193ec06db47fd4f01ecb2804"
     reason: "chunksForDoc: the nameplate confirm route's applicability assessor reads ONLY the caller's own uploaded document's chunks by (tenant_id, doc_id) under withTenantContext RLS, ordered by chunk_index, to prove the discovered manual actually covers the recognized component. Pure-tenant is the security property: it must never read another tenant's doc, and shared OEM rows are not confirm targets (no per-tenant doc_id flow reaches them). Same doctrine as retrieveNodeChunks above; a read failure degrades to zero chunks, never a false verified."
@@ -480,7 +480,7 @@ approved:
       rather than widening that skip list, so a REAL knowledge_entries read added to this
       file later would still fail the gate on a hash mismatch. Deleting this test would
       remove the only guard that notebook deletion does not destroy shared documents."
-  "mira-hub/src/lib/equipment-notebooks.ts:1001":
+  "mira-hub/src/lib/equipment-notebooks.ts:1025":
     approved_classification: TENANT-ONLY
     query_sha256: "dbf369caa36584dcb8c49bfef0c788d99bd8d9315eb97770e28064e30d49777b"
     reason: "listSources readiness facts — counts chunks / embedded / page-anchored for

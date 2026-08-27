@@ -630,6 +630,30 @@ export async function getSourceResolution(
 }
 
 /**
+ * Record the technician's confirmation on the materialized nameplate doc's own
+ * chunks (#3437 nameplate lane). `verified = true` is the retrieval-approval
+ * gate under MIRA_ENFORCE_APPROVED_RETRIEVAL; for THIS doc it is an honest
+ * record of a human decision — the technician reviewed the extracted identity
+ * in the confirm form and pressed confirm. Scope is strictly (tenant, doc):
+ * crawled manuals, PDFs, and OCR photos keep their unverified state and the
+ * general gate stays intact. Returns the number of chunks marked.
+ */
+export async function markNameplateDocVerified(
+  tenantId: string,
+  docId: string,
+): Promise<number> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `UPDATE knowledge_entries
+          SET verified = true
+        WHERE tenant_id = $1 AND doc_id = $2::uuid AND verified = false`,
+      [tenantId, docId],
+    );
+    return res.rowCount ?? 0;
+  });
+}
+
+/**
  * Canonical-evidence supersede (085 / Commodity PRD Phase 2, Invariants 1+4).
  * A new derived reading of the SAME origin photo replaces older readings:
  * every other photo-derived row in this notebook with the same origin_file_id
