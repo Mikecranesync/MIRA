@@ -26,3 +26,19 @@ describe("safeHandoffName", () => {
     expect(safeHandoffName("///")).toBe("document");
   });
 });
+
+// isText routing lives in FilePreview (same PR): text/* + JSON render
+// in-app; parameters and case don't break the match.
+import { isText } from "../../screens/FilePreview";
+
+describe("isText", () => {
+  it("matches text/* with charset params and JSON", () => {
+    expect(isText("text/plain; charset=utf-8")).toBe(true);
+    expect(isText("Text/Plain")).toBe(true);
+    expect(isText("application/json")).toBe(true);
+  });
+  it("rejects images and PDFs", () => {
+    expect(isText("image/jpeg")).toBe(false);
+    expect(isText("application/pdf")).toBe(false);
+  });
+});

@@ -79,6 +79,11 @@ export function isPdf(mimeType: string): boolean {
   return mimeType === "application/pdf" || mimeType.endsWith("/pdf");
 }
 
+export function isText(mimeType: string): boolean {
+  const base = mimeType.split(";")[0].trim().toLowerCase();
+  return base.startsWith("text/") || base === "application/json";
+}
+
 /** Inline image — photos of nameplates/panels render here. Tapping opens the
  *  approved MediaViewer (commodity lightbox: pinch/zoom/double-tap); closing
  *  it lands back exactly here, sheet and scroll untouched. */
@@ -185,6 +190,56 @@ function PdfPreview({
   );
 }
 
+/** Plain text renders directly (PRD §8 allows; audit gap "Text viewing").
+ *  Provenance sidecars and pasted notes are small; anything bigger is
+ *  truncated honestly with the handoff door still available below. */
+const TEXT_PREVIEW_MAX_CHARS = 20_000;
+
+function TextPreview({ url, filename }: { url: string; filename: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(url)
+      .then((r) => r.text())
+      .then((t) => {
+        if (!cancelled) setText(t);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  if (failed) return <OpaquePreview url={url} filename={filename} contentType="text/plain" />;
+  if (text === null) return <Loading what="the text" />;
+  const truncated = text.length > TEXT_PREVIEW_MAX_CHARS;
+  return (
+    <div className="card" style={{ marginBottom: 0 }}>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontSize: 13,
+          lineHeight: 1.45,
+          maxHeight: "60vh",
+          overflowY: "auto",
+          margin: 0,
+        }}
+      >
+        {truncated ? text.slice(0, TEXT_PREVIEW_MAX_CHARS) : text}
+      </pre>
+      {truncated && (
+        <div className="meta" style={{ marginTop: 8 }}>
+          Showing the first part of {filename} — open it with another app for the full file.
+        </div>
+      )}
+      {truncated && <OpenWithButton url={url} filename={filename} label="Open with another app" />}
+    </div>
+  );
+}
+
 /** Anything we can neither render nor sensibly hand off. */
 function OpaquePreview({
   url,
@@ -227,6 +282,7 @@ export function FilePreview({
   const type = mimeType || bytes.contentType;
   if (isImage(type)) return <ImagePreview url={bytes.url} filename={filename} />;
   if (isPdf(type)) return <PdfPreview url={bytes.url} filename={filename} page={page} />;
+  if (isText(type)) return <TextPreview url={bytes.url} filename={filename} />;
   return <OpaquePreview url={bytes.url} filename={filename} contentType={type} />;
 }
 
