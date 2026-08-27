@@ -786,3 +786,79 @@ jobs:
            WHERE service = 'kb_cron' AND category = 'data'
            ORDER BY ts DESC LIMIT 3;
           SQL
+
+      - name: 085 canonical-provenance probe (nameplate origin + duplicates) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. Evidence gate for migration 085 (PR #3432, Commodity PRD
+          # Phase 2): run BEFORE apply to count what will change, and AFTER to
+          # verify. See db/migrations/085_notebook_source_canonical_provenance.sql
+          # header for the contract. All counts, no content.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === 085 canonical-provenance probe ===
+          \echo '--- schema state ---'
+          SELECT 'equipment_notebook_sources.superseded_at' AS col, EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='equipment_notebook_sources'
+              AND column_name='superseded_at') AS present
+          UNION ALL SELECT 'equipment_notebook_sources.origin_file_id', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='equipment_notebook_sources'
+              AND column_name='origin_file_id');
+          \echo
+          \echo '--- 085 in the ledger? ---'
+          SELECT migration_name, applied_at FROM schema_migrations
+           WHERE migration_name LIKE '085%';
+          \echo
+          \echo '--- source rows: totals / photo-role / missing origin / superseded ---'
+          SELECT count(*) AS total_rows,
+                 count(*) FILTER (WHERE source_role = 'photo')      AS photo_rows,
+                 count(*) FILTER (WHERE origin_file_id IS NOT NULL) AS with_origin,
+                 count(*) FILTER (WHERE origin_file_id IS NULL AND source_role = 'photo') AS photo_missing_origin
+            FROM equipment_notebook_sources;
+          SELECT CASE WHEN EXISTS(
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_name='equipment_notebook_sources' AND column_name='superseded_at')
+                 THEN (SELECT count(*) FROM equipment_notebook_sources WHERE superseded_at IS NOT NULL)
+                 ELSE NULL END AS superseded_rows;
+          \echo
+          \echo '--- nameplate-derived docs missing provenance (backfill candidates) ---'
+          SELECT count(*) AS candidates
+            FROM equipment_notebook_sources s
+            JOIN hub_uploads u ON u.id = s.doc_id AND u.tenant_id = s.tenant_id::text
+           WHERE s.origin_file_id IS NULL
+             AND u.filename ~ '^nameplate-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.txt$';
+          \echo '--- of those, PROVABLE (photo exists in-tenant) -> 085 will backfill ---'
+          SELECT count(*) AS provable
+            FROM equipment_notebook_sources s
+            JOIN hub_uploads u ON u.id = s.doc_id AND u.tenant_id = s.tenant_id::text
+            JOIN namespace_direct_uploads f
+              ON f.id = substring(u.filename FROM '^nameplate-([0-9a-f-]{36})\.txt$')::uuid
+             AND f.tenant_id = s.tenant_id
+           WHERE s.origin_file_id IS NULL;
+          \echo
+          \echo '--- duplicate logical-evidence groups (notebook, origin) with >1 visible row ---'
+          SELECT count(*) AS dup_groups, COALESCE(sum(n - 1), 0) AS rows_085_will_supersede
+            FROM (
+              SELECT notebook_id, origin_file_id, count(*) AS n
+                FROM equipment_notebook_sources
+               WHERE origin_file_id IS NOT NULL AND source_role = 'photo'
+                 AND (NOT EXISTS(
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='equipment_notebook_sources' AND column_name='superseded_at')
+                      OR superseded_at IS NULL)
+               GROUP BY 1, 2 HAVING count(*) > 1
+            ) g;
+          \echo
+          \echo '--- duplicate-FILENAME groups still lacking origin (pre-backfill visibility of the Harrington shape) ---'
+          SELECT count(*) AS dup_filename_groups
+            FROM (
+              SELECT s.notebook_id, u.filename
+                FROM equipment_notebook_sources s
+                JOIN hub_uploads u ON u.id = s.doc_id AND u.tenant_id = s.tenant_id::text
+               WHERE u.filename LIKE 'nameplate-%.txt'
+               GROUP BY 1, 2 HAVING count(*) > 1
+            ) g;
+          SQL

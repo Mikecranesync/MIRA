@@ -553,6 +553,9 @@ export async function attachSource(
     /** Canonical workspace file this doc was DERIVED from (084) — e.g. the
      *  nameplate photograph behind the materialized nameplate text. */
     originFileId?: string | null;
+    /** Audit metadata (085) — e.g. { confirm_client_key } from the confirm
+     *  route's idempotency contract. Set-if-provided in the upsert. */
+    matchEvidence?: unknown;
   } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
@@ -576,8 +579,158 @@ export async function attachSource(
       sourceRole: opts.sourceRole ?? null,
       addedBy: opts.addedBy ?? null,
       originFileId: opts.originFileId ?? null,
+      matchEvidence: opts.matchEvidence,
     });
     return { ok: true };
+  });
+}
+
+/**
+ * Resolve ONE source for the viewer, INCLUDING superseded rows (085): a
+ * historical citation whose derived doc was superseded must still open, and
+ * must still reach its canonical origin photograph. Returns null only when the
+ * doc was never a source of this notebook.
+ */
+export async function getSourceResolution(
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+): Promise<{
+  docId: string;
+  filename: string | null;
+  fileId: string | null;
+  originFileId: string | null;
+  superseded: boolean;
+} | null> {
+  const memb = await withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT doc_id::text AS doc_id, origin_file_id::text AS origin_file_id,
+              superseded_at
+         FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+      [tenantId, notebookId, docId],
+    );
+    return res.rows[0] as Record<string, unknown> | undefined;
+  });
+  if (!memb) return null;
+  const doc = await pool.query(
+    `SELECT u.filename, d.id::text AS file_id
+       FROM hub_uploads u
+       LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id
+      WHERE u.tenant_id = $1 AND u.id = $2::uuid`,
+    [tenantId, docId],
+  );
+  return {
+    docId,
+    filename: doc.rows[0] ? ((doc.rows[0].filename as string) ?? null) : null,
+    fileId: doc.rows[0] ? ((doc.rows[0].file_id as string) ?? null) : null,
+    originFileId: (memb.origin_file_id as string) ?? null,
+    superseded: memb.superseded_at != null,
+  };
+}
+
+/**
+ * Canonical-evidence supersede (085 / Commodity PRD Phase 2, Invariants 1+4).
+ * A new derived reading of the SAME origin photo replaces older readings:
+ * every other photo-derived row in this notebook with the same origin_file_id
+ * is marked superseded (hidden from lists/scope, retained for citation origin
+ * resolution + audit — never deleted). Returns the superseded doc ids.
+ */
+export async function supersedePriorOriginSources(
+  tenantId: string,
+  notebookId: string,
+  originFileId: string,
+  keepDocId: string,
+): Promise<string[]> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `UPDATE equipment_notebook_sources
+          SET superseded_at = now()
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND origin_file_id = $3::uuid
+          AND doc_id <> $4::uuid
+          AND superseded_at IS NULL
+        RETURNING doc_id::text AS doc_id`,
+      [tenantId, notebookId, originFileId, keepDocId],
+    );
+    return res.rows.map((r: Record<string, unknown>) => String(r.doc_id));
+  });
+}
+
+/**
+ * The currently-visible photo-derived source for an origin photo, if any —
+ * the logical-evidence identity anchor the confirm route keys idempotency on.
+ * match_evidence rides along so the route can compare the stored
+ * confirm_client_key without a second query.
+ */
+export async function findVisibleOriginSource(
+  tenantId: string,
+  notebookId: string,
+  originFileId: string,
+): Promise<{ docId: string; matchEvidence: unknown } | null> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT doc_id::text AS doc_id, match_evidence
+         FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND origin_file_id = $3::uuid
+          AND superseded_at IS NULL
+        ORDER BY created_at DESC, doc_id DESC
+        LIMIT 1`,
+      [tenantId, notebookId, originFileId],
+    );
+    if (res.rows.length === 0) return null;
+    return {
+      docId: String(res.rows[0].doc_id),
+      matchEvidence: res.rows[0].match_evidence ?? null,
+    };
+  });
+}
+
+/**
+ * Canonical-origin map for a set of cited docs (Invariant 3: citation ->
+ * original is server-resolvable). Deliberately INCLUDES superseded rows: a
+ * historical citation keeps resolving its photograph after the visible row
+ * moved to a newer derived doc.
+ */
+export async function originFileIdsByDoc(
+  tenantId: string,
+  notebookId: string,
+  docIds: string[],
+): Promise<Map<string, string>> {
+  if (docIds.length === 0) return new Map();
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT doc_id::text AS doc_id, origin_file_id::text AS origin_file_id
+         FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND doc_id = ANY($3::uuid[])
+          AND origin_file_id IS NOT NULL`,
+      [tenantId, notebookId, docIds],
+    );
+    return new Map(
+      res.rows.map((r: Record<string, unknown>) => [String(r.doc_id), String(r.origin_file_id)]),
+    );
+  });
+}
+
+/**
+ * Patch persisted evidence citations with the canonical origin at read time
+ * (pure; unit-tested). Pre-085 turns carry no originFileId in their JSONB —
+ * the origin map (which includes superseded rows) supplies it. An origin
+ * already present is never overwritten.
+ */
+export function enrichCitationsWithOrigin(
+  evidence: unknown[],
+  originByDoc: Map<string, string>,
+): unknown[] {
+  return evidence.map((e) => {
+    if (typeof e !== "object" || e === null) return e;
+    const c = e as Record<string, unknown>;
+    if (typeof c.docId !== "string" || !c.docId) return e;
+    if (typeof c.originFileId === "string" && c.originFileId) return e;
+    const origin = originByDoc.get(c.docId);
+    return origin ? { ...c, originFileId: origin } : e;
   });
 }
 
@@ -809,6 +962,7 @@ export async function listSources(
               match_evidence, origin_file_id::text AS origin_file_id
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND superseded_at IS NULL
         ORDER BY created_at`,
       [tenantId, notebookId],
     );
@@ -922,7 +1076,8 @@ export async function validateChatSources(
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND doc_id = ANY($3::uuid[])
           AND match_state IN ('user_confirmed', 'verified')
-          AND enabled_by_default = true`,
+          AND enabled_by_default = true
+          AND superseded_at IS NULL`,
       [tenantId, notebookId, requestedDocIds],
     );
     const valid = new Set(res.rows.map((r: Record<string, unknown>) => String(r.doc_id)));
@@ -1068,7 +1223,7 @@ export async function listTurns(
     createdAt: string;
   }[]
 > {
-  return withTenantContext(tenantId, async (c) => {
+  const turns = await withTenantContext(tenantId, async (c) => {
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
     // returns the OLDEST n — so past n turns the recent conversation vanishes
@@ -1096,4 +1251,32 @@ export async function listTurns(
       createdAt: String(r.created_at),
     }));
   });
+
+  // Invariant 3 (085): persisted citations resolve their canonical origin
+  // server-side at read time — pre-085 turns carry no originFileId in their
+  // JSONB, and the origin map includes superseded rows so historical
+  // citations keep opening the photograph after a re-confirm.
+  const citedDocIds = [
+    ...new Set(
+      turns.flatMap((t) =>
+        t.evidence
+          .map((e) =>
+            typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string"
+              ? String((e as { docId: string }).docId)
+              : "",
+          )
+          .filter(Boolean),
+      ),
+    ),
+  ];
+  if (citedDocIds.length === 0) return turns;
+  try {
+    const originByDoc = await originFileIdsByDoc(tenantId, notebookId, citedDocIds);
+    if (originByDoc.size === 0) return turns;
+    return turns.map((t) => ({ ...t, evidence: enrichCitationsWithOrigin(t.evidence, originByDoc) }));
+  } catch {
+    // Origin enrichment is an affordance, not the conversation — never let it
+    // take down history reads.
+    return turns;
+  }
 }

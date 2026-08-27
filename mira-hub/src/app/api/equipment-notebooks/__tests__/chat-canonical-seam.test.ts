@@ -37,6 +37,8 @@ const domainMock = vi.hoisted(() => ({
     model: "PowerFlex 525",
   })),
   listSources: vi.fn(async () => [{ filename: "PF525.pdf", docId: "33333333-3333-4333-8333-333333333333" }]),
+  // 085: chat citations resolve canonical origin server-side
+  originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 

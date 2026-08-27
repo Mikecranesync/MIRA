@@ -508,7 +508,7 @@ export async function retrieveNodeChunks(
           ${nodeClauseMain}
           ${docClause}
           AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC
+        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST
         LIMIT $4`,
       [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams],
     );
@@ -544,6 +544,7 @@ export async function retrieveNodeChunks(
           ${nodeClauseExact}
           ${exactDocClause}
           AND content ILIKE ANY($3::text[])
+        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST
         LIMIT $4`,
       exactParams,
     );
