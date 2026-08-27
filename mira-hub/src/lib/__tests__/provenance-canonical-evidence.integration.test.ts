@@ -134,9 +134,11 @@ async function seed() {
        ADD COLUMN IF NOT EXISTS doc_id uuid,
        ADD COLUMN IF NOT EXISTS embedding text`,
   );
+  // is_private declared explicitly (Contract 13 / #1833 leak shape): these are
+  // tenant-scoped fixture rows, the per-tenant-upload shape.
   await c.query(
-    `INSERT INTO knowledge_entries (tenant_id, doc_id, content, source_page)
-     SELECT $1::uuid, d::uuid, 'Serial number 49849', 1
+    `INSERT INTO knowledge_entries (tenant_id, doc_id, content, source_page, is_private)
+     SELECT $1::uuid, d::uuid, 'Serial number 49849', 1, true
        FROM unnest($2::uuid[]) AS d`,
     [TENANT, [D1, D2, D3, D_MANUAL, D4]],
   );
