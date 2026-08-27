@@ -235,6 +235,47 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     await vi.waitFor(() => expect(provider.state.cancelled).toBe(true));
   });
 
+  it("a stop during the connect phase never falls through to the next provider (non-throwing continue path)", async () => {
+    // Regression for the fix-pass finding: Groq is slow to answer, the
+    // technician taps Stop, THEN Groq resolves 429/500. The non-OK branch
+    // `continue`s without throwing, so the abort check in the catch block
+    // never ran and Cerebras was opened for a turn that was already stopped.
+    process.env.MIRA_CANONICAL_SEAM = "1";
+    let resolveFirst: ((r: Response) => void) | null = null;
+    const signals: (AbortSignal | undefined)[] = [];
+    const second = hangingProvider(["x "]);
+    const fetchMock = vi.fn((_url: string, init?: { signal?: AbortSignal }) => {
+      signals.push(init?.signal);
+      if (fetchMock.mock.calls.length === 1) {
+        return new Promise<Response>((r) => {
+          resolveFirst = r;
+        });
+      }
+      return Promise.resolve(second.res);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ac = new AbortController();
+    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }, { signal: ac.signal }), params);
+    // Let the route reach fetch #1 (still pending).
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    ac.abort();
+    // The upstream request carries the client-stop signal: a stop during the
+    // connect phase aborts the provider call rather than waiting on it.
+    expect(signals[0]?.aborted).toBe(true);
+    // Now the first provider answers non-OK — the path that used to `continue`.
+    resolveFirst!(new Response(null, { status: 500 }));
+    await res.text().catch(() => "");
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    // No provider ever streamed — nothing to attribute the stopped turn to.
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: null, model: null, evidence: [] });
+    // The fallback provider was NEVER called.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(second.state.cancelled).toBe(false);
+  });
+
   it("stopping with nothing streamed yet persists answer_text null", async () => {
     const provider = hangingProvider([]);
     vi.stubGlobal("fetch", vi.fn(async () => provider.res));

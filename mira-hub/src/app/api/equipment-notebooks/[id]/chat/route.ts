@@ -29,6 +29,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -726,6 +727,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
+        // STRM-2: a stopped turn must never open a second provider stream.
+        // The catch block below breaks on abort, but the two NON-throwing
+        // `continue` paths (non-OK / empty-body response, empty responseBuffer)
+        // also land here — checking once at the top of the loop covers all of
+        // them (e.g. Groq 429 arriving after the technician tapped Stop).
+        if (clientAbort.signal.aborted) break cascade;
         try {
           const res = await fetch(provider.url, {
             method: "POST",
@@ -757,7 +764,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                       : {}),
                   },
             ),
-            signal: AbortSignal.timeout(30_000),
+            // The client-stop signal is composed with the timeout so a stop
+            // during the connect phase aborts the upstream request instead
+            // of waiting on the provider to answer first.
+            signal: composeTimeout(clientAbort.signal, 30_000),
           });
           if (!res.ok || !res.body) {
             // Record the attempt BEFORE continuing: an HTTP-level rejection is
