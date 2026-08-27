@@ -22,6 +22,7 @@ import { ApiError } from "../api/client";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { FilePreview } from "./FilePreview";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+import { Sheet } from "./Sheet";
 
 export type FilesRoute = { name: "list" } | { name: "detail"; fileId: string };
 
@@ -106,8 +107,7 @@ export function PickWorkspaceFileSheet({
   const rows = state.state === "ready" ? state.data.filter((f) => !exclude.has(f.id)) : [];
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet label={title} onClose={onClose}>
         <h3>{title}</h3>
         {hint && (
           <div className="meta" style={{ marginBottom: 8 }}>
@@ -150,8 +150,7 @@ export function PickWorkspaceFileSheet({
         <button style={{ marginTop: 6 }} onClick={onClose}>
           Cancel
         </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

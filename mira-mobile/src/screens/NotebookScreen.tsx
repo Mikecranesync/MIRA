@@ -34,6 +34,7 @@ import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
+import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -140,26 +141,11 @@ export function NotebookScreen({
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Sheets/dialogs no longer appear here: every open transient surface
+  // registers in lib/transient-layer.ts, and the app-level backButton listener
+  // drains that stack BEFORE this handler runs (PRD §11 — one BACK model
+  // instead of per-screen enumeration, which had already missed two surfaces).
   backRef.current = () => {
-    if (attachSource) {
-      setAttachSource(null);
-      return true;
-    }
-    if (openSource) {
-      setOpenSource(null);
-      return true;
-    }
-    if (viewCitation) {
-      setViewCitation(null);
-      setPassages(null);
-      setShowOriginal(false);
-      setShowDetails(false);
-      return true;
-    }
-    if (sheetOpen) {
-      setSheetOpen(false);
-      return true;
-    }
     return false; // let the tab pop back to home
   };
 
@@ -265,6 +251,8 @@ export function NotebookScreen({
       </div>
 
       {confirmDelete && (
+        <>
+        <BackDismiss onDismiss={() => !deleting && setConfirmDelete(false)} />
         <div
           role="alertdialog"
           aria-modal="true"
@@ -340,6 +328,7 @@ export function NotebookScreen({
             </div>
           </div>
         </div>
+        </>
       )}
 
       {panel === "sources" && (
@@ -586,16 +575,15 @@ export function NotebookScreen({
       )}
 
       {viewCitation && (
-        <div
-          className="sheet-backdrop"
-          onClick={() => {
+        <Sheet
+          label="Citation"
+          onClose={() => {
             setViewCitation(null);
             setPassages(null);
             setShowOriginal(false);
             setShowDetails(false);
           }}
         >
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h3>
               [{viewCitation.citationId}] {viewCitation.sourceTitle}
               {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
@@ -714,13 +702,11 @@ export function NotebookScreen({
             >
               Close
             </button>
-          </div>
-        </div>
+        </Sheet>
       )}
 
       {openSource?.fileId && (
-        <div className="sheet-backdrop" onClick={() => setOpenSource(null)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <Sheet label={openSource.filename ?? "Source"} onClose={() => setOpenSource(null)}>
             <h3>{openSource.filename ?? "Source"}</h3>
             <div className="meta" style={{ marginBottom: 10 }}>
               {sourceKindLabel(openSource)}
@@ -734,8 +720,7 @@ export function NotebookScreen({
             <button style={{ marginTop: 12 }} onClick={() => setOpenSource(null)}>
               Close
             </button>
-          </div>
-        </div>
+        </Sheet>
       )}
 
       {attachSource?.fileId && (
@@ -783,20 +768,16 @@ function NotebookSourceAttachSheet({
 
   if (links.state === "loading")
     return (
-      <div className="sheet-backdrop" onClick={onClose}>
-        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet label="Attach source" onClose={onClose}>
           <Loading what="where this file is filed" />
-        </div>
-      </div>
+      </Sheet>
     );
   if (links.state === "error")
     return (
-      <div className="sheet-backdrop" onClick={onClose}>
-        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet label="Attach source" onClose={onClose}>
           <ErrorState error={links.error} />
           <button onClick={onClose}>Close</button>
-        </div>
-      </div>
+      </Sheet>
     );
   return (
     <AttachFileSheet
@@ -1027,8 +1008,7 @@ function AddSourcesSheet({
     );
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet label="Add sources" onClose={onClose}>
         {mode === "menu" && (
           <>
             <h3>Add sources</h3>
@@ -1173,7 +1153,6 @@ function AddSourcesSheet({
             setMode("nameplate");
           }}
         />
-      </div>
-    </div>
+    </Sheet>
   );
 }
