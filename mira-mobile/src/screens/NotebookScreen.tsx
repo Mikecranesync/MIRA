@@ -7,7 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick";
+import { canPickNatively, captureNameplatePhoto, pickPdf } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -945,10 +945,10 @@ function AddSourcesSheet({
   // web build, which has no native picker to call.
   const cameraRef = useRef<HTMLInputElement | null>(null);
 
-  /** Nameplate photo: phone picker on device, hidden input on web. */
+  /** Nameplate photo: the phone's CAMERA on device (#3353), hidden input on web. */
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    const f = await pickNameplatePhoto();
+    const f = await captureNameplatePhoto();
     if (!f) return; // backed out
     setNote(null);
     setPhoto(f);
