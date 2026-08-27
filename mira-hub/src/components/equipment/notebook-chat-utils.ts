@@ -91,6 +91,110 @@ export async function readNotebookStream(
   return out;
 }
 
+/** The exact request body the chat route receives. Kept as one object so a
+ *  Retry (CMPS-2) re-posts it byte-identically — same message, same scope,
+ *  same history window — instead of recomputing anything. */
+export type ChatBody = {
+  message: string;
+  sourceDocIds: string[];
+  history: { role: "user" | "assistant"; content: string }[];
+};
+
+type HistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+  status?: "answered" | "insufficient_evidence" | "error";
+  stopped?: boolean;
+};
+
+/** Recent thread → multi-turn memory for the server (the route caps it again
+ *  at 12 / 2000 chars). Only completed turns with content. A stopped turn
+ *  (Stop pressed mid-stream, live or rehydrated — see `persistedTurns`) is
+ *  NOT an answer and never enters the history the model sees. */
+export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
+  return turns
+    .filter((t) => t.content && !t.stopped && (t.role === "user" || t.role === "assistant"))
+    .slice(-12)
+    .map((t) => ({ role: t.role, content: t.content }));
+}
+
+export function buildChatBody(message: string, sourceDocIds: string[], turns: HistoryTurn[]): ChatBody {
+  return { message, sourceDocIds, history: historyFromTurns(turns) };
+}
+
+/** After a failed send the technician's question goes back into the composer
+ *  — unless they already started typing something else. */
+export function restoreComposer(current: string, failedMessage: string): string {
+  return current.trim() ? current : failedMessage;
+}
+
+/** POST one chat body and consume the stream. A non-2xx response throws
+ *  `http_<status>` (never a fabricated answer); the caller decides whether to
+ *  offer Retry. `fetchImpl` is injectable for tests only. */
+export async function postNotebookChat(
+  url: string,
+  body: ChatBody,
+  signal: AbortSignal,
+  onContent: (content: string, citations: EvidenceCitation[]) => void,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StreamResult> {
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  if (!res.body) throw new Error("no_stream");
+  return readNotebookStream(res.body.getReader(), onContent);
+}
+
+/** One persisted turn row as the GET route returns it. */
+export type PersistedTurn = {
+  id: string;
+  question: string;
+  answerStatus: string;
+  answerText: string | null;
+  evidence: EvidenceCitation[];
+  basis?: string | null;
+};
+
+type HydratedTurn = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  status?: "answered" | "insufficient_evidence" | "error";
+  citations?: EvidenceCitation[];
+  basis?: string | null;
+  stopped?: boolean;
+};
+
+/** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
+ *  change): the server persists a client-stopped turn as
+ *  `answer_status='error'` + `answer_text=<partial>`, evidence=[], basis=null;
+ *  a provider-failure turn is `error` + `answer_text=NULL`. So on the client:
+ *  error + text ⇒ a stopped turn (partial shown, "Stopped" caption, no
+ *  citations, excluded from history); error + null ⇒ the existing error copy.
+ *  Same rule the live path applies via `stoppedTurn`. */
+export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
+  return rows.flatMap((t) => {
+    const stopped = t.answerStatus === "error" && !!t.answerText;
+    return [
+      { id: `${t.id}-q`, role: "user" as const, content: t.question },
+      {
+        id: `${t.id}-a`,
+        role: "assistant" as const,
+        content: t.answerText ?? "I couldn't find that in the selected sources.",
+        status: t.answerStatus as HydratedTurn["status"],
+        citations: stopped ? [] : t.evidence,
+        // 084 (#3387): the persisted basis — the badge survives reload.
+        basis: stopped ? null : (t.basis ?? null),
+        ...(stopped ? { stopped: true } : {}),
+      },
+    ];
+  });
+}
+
 /** What a stopped generation becomes: the partial text stays, the turn is an
  *  `error` (never `answered`), and it carries no citations / basis / follow-ups
  *  — a stopped answer is not an answer (STRM-2). */

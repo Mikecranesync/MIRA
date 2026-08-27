@@ -5,16 +5,19 @@
 // (hub has no jsdom/RTL — audit §11).
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Send, Loader2, FileText, ChevronDown, Square } from "lucide-react";
+import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { AnswerMarkdown } from "./notebook-markdown";
 import {
+  buildChatBody,
   growTextarea,
   isAbortError,
   isEnterToSend,
-  readNotebookStream,
+  postNotebookChat,
+  restoreComposer,
   stoppedTurn,
+  type ChatBody,
 } from "./notebook-chat-utils";
 
 /** Collapse citations to distinct (doc, page) passages — repeated cites from the
@@ -200,6 +203,8 @@ export function NotebookChat({
   const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
+  const [failed, setFailed] = useState<ChatBody | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -232,47 +237,22 @@ export function NotebookChat({
     growTextarea(inputRef.current, COMPOSER_MAX_PX);
   }, [input]);
 
-  const sendText = useCallback(async (raw: string) => {
-    const message = raw.trim();
-    if (!message || busy) return;
-    if (enabledDocIds.length === 0) {
-      setTurns((t) => [
-        ...t,
-        { id: `u${Date.now()}`, role: "user", content: message },
-        {
-          id: `a${Date.now()}`,
-          role: "assistant",
-          content: "Select at least one source for a grounded answer.",
-          status: "insufficient_evidence",
-        },
-      ]);
-      setInput("");
-      return;
-    }
-    setInput("");
+  // Post one body and stream the answer. Shared by a fresh send and Retry so
+  // the retried request is byte-identical to the one that failed.
+  const post = useCallback(async (body: ChatBody) => {
+    setFailed(null);
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    // Recent thread (before this exchange) → multi-turn memory for the server.
-    // Only completed user/assistant turns with content; the route caps it again.
-    const history = turnsRef.current
-      .filter((t) => t.content && (t.role === "user" || t.role === "assistant"))
-      .slice(-12)
-      .map((t) => ({ role: t.role, content: t.content }));
-    const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: message };
+    const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: body.message };
     const aId = `a${Date.now()}`;
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, sourceDocIds: enabledDocIds, history }),
-        signal: controller.signal,
-      });
-      if (!res.body) throw new Error("no_stream");
-      const { content, citations, status, basis, followups } = await readNotebookStream(
-        res.body.getReader(),
+      const { content, citations, status, basis, followups } = await postNotebookChat(
+        `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
+        body,
+        controller.signal,
         (partial, cites) => {
           setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
         },
@@ -304,17 +284,47 @@ export function NotebookChat({
         const partial = (err as { partial?: string }).partial ?? "";
         setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurn(x, partial) : x)));
       } else {
-        setTurns((prev) =>
-          prev.map((x) =>
-            x.id === aId ? { ...x, content: "Something went wrong. Try again.", status: "error" } : x,
-          ),
-        );
+        // Failure keeps the question (CMPS-2): roll back the optimistic
+        // exchange, put the text back in the composer, offer Retry with the
+        // identical body. Nothing is fabricated in the transcript.
+        setTurns((prev) => prev.filter((x) => x.id !== aId && x.id !== userTurn.id));
+        setInput((cur) => restoreComposer(cur, body.message));
+        setFailed(body);
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
-  }, [busy, enabledDocIds, notebookId]);
+  }, [notebookId]);
+
+  const sendText = useCallback(async (raw: string) => {
+    const message = raw.trim();
+    if (!message || busy) return;
+    if (enabledDocIds.length === 0) {
+      setTurns((t) => [
+        ...t,
+        { id: `u${Date.now()}`, role: "user", content: message },
+        {
+          id: `a${Date.now()}`,
+          role: "assistant",
+          content: "Select at least one source for a grounded answer.",
+          status: "insufficient_evidence",
+        },
+      ]);
+      setInput("");
+      return;
+    }
+    setInput("");
+    // Recent thread (before this exchange) → multi-turn memory; stopped turns
+    // are excluded (historyFromTurns).
+    await post(buildChatBody(message, enabledDocIds, turnsRef.current));
+  }, [busy, enabledDocIds, post]);
+
+  const retry = useCallback(() => {
+    if (!failed || busy) return;
+    setInput((cur) => (cur === failed.message ? "" : cur));
+    void post(failed);
+  }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
   const stop = useCallback(() => abortRef.current?.abort(), []);
@@ -367,6 +377,20 @@ export function NotebookChat({
         {busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-subtle)" }}>
             <Loader2 size={14} className="animate-spin" aria-hidden /> Thinking…
+          </div>
+        )}
+        {failed && !busy && (
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }} data-testid="send-failed">
+            <span>Couldn&apos;t send — your question is still in the box.</span>
+            <button
+              type="button"
+              onClick={retry}
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium"
+              style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
+              data-testid="retry-chip"
+            >
+              <RotateCcw size={12} aria-hidden /> Retry
+            </button>
           </div>
         )}
         <div ref={endRef} />
