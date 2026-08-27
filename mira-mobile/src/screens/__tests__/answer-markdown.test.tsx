@@ -93,6 +93,27 @@ describe("AnswerMarkdown", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  it("markdown image syntax never renders an <img> (no remote fetch from answer text)", () => {
+    // Reviewer probe: `![pixel](https://evil.example/t.png)` used to render a
+    // live <img> — react-markdown's url transform only blocks non-http(s)
+    // schemes. ADR-0034: no remote content in the shell.
+    const { container } = render(
+      <AnswerMarkdown
+        text={"Before ![pixel](https://evil.example/t.png) after ![](https://evil.example/x.png)"}
+        citations={[]}
+      />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.innerHTML).not.toContain("<img");
+    const spans = container.querySelectorAll(".answer-image");
+    expect(spans).toHaveLength(2);
+    expect(spans[0].textContent).toBe("pixel (https://evil.example/t.png)");
+    expect(spans[1].textContent).toBe("image (https://evil.example/x.png)");
+    expect(container.querySelector("p")?.textContent).toBe(
+      "Before pixel (https://evil.example/t.png) after image (https://evil.example/x.png)",
+    );
+  });
+
   it("refusal and error copy render byte-identical as plain text", () => {
     for (const status of ["insufficient_evidence", "error", "http 502"]) {
       const copy = humanizeAnswerStatus(status);

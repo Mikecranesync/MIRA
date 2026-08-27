@@ -8,6 +8,10 @@
 //   - links never `window.open` (client.ts trust boundary): they render as
 //     their visible text plus the URL in parentheses, so a technician can
 //     still read where it pointed;
+//   - images never render as `<img>` (ADR-0034: no remote content in the
+//     shell). `![alt](url)` in model text would otherwise make the WebView
+//     fetch an arbitrary host — a tracking pixel or an unbounded download.
+//     They render like links: alt text plus the URL, nothing fetched;
 //   - code blocks get a language label and a copy button (platform clipboard).
 // Refusal / safety / error copy is plain text and renders unchanged — a
 // status sentence contains no markdown.
@@ -100,6 +104,16 @@ export function AnswerMarkdown({
       const url = typeof href === "string" ? href : "";
       return (
         <span className="answer-link">
+          {label}
+          {url && url !== label ? ` (${url})` : ""}
+        </span>
+      );
+    },
+    img: ({ alt, src }) => {
+      const url = typeof src === "string" ? src : "";
+      const label = alt || "image";
+      return (
+        <span className="answer-link answer-image">
           {label}
           {url && url !== label ? ` (${url})` : ""}
         </span>

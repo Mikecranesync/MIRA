@@ -44,11 +44,19 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       // JSON/text calls go through CapacitorHttp.request explicitly
       // (src/api/client.ts owns the cookie jar). The fetch patch is enabled
-      // ONLY because multipart uploads (notebook source PDFs, nameplate
-      // photos) cannot cross the plugin bridge as FormData — the patch is the
-      // one path that rebuilds real multipart natively. Upload calls pass the
-      // session Cookie header explicitly; nothing else uses window.fetch on
-      // native. Trust boundary unchanged: packaged bundle only, no remote UI.
+      // because multipart uploads (notebook source PDFs, nameplate photos)
+      // cannot cross the plugin bridge as FormData — the patch is the one
+      // path that rebuilds real multipart natively. Two callers use
+      // window.fetch on native, both passing the session Cookie header
+      // explicitly from OUR jar: `uploadMultipart` (multipart) and
+      // `requestStream` (chat SSE, STRM-1). Known limit: the patch fulfils a
+      // request natively and hands the WebView ONE buffered Response and
+      // ignores AbortSignal, so on device the SSE body arrives in one chunk.
+      // Per-token delivery on device needs the raw WebView fetch, which
+      // needs the Hub to CORS-allow the app origin (https://localhost) and
+      // the session cookie in the WebView cookie store — a Hub change,
+      // tracked separately. Trust boundary unchanged: packaged bundle only,
+      // no remote UI.
       enabled: true,
     },
   },
