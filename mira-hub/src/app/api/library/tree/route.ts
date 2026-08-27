@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,15 @@ export const dynamic = "force-dynamic";
  * Returns the KB library tree grouped by manufacturer → model → source.
  * Reads `knowledge_entries` (the real 74K-row vector store, not the
  * empty kb_chunks stub).
+ *
+ * Tenant scoping — the hybrid-corpus law
+ * (.claude/rules/knowledge-entries-tenant-scoping.md): `knowledge_entries`
+ * mixes the shared OEM corpus (`is_private = false`, system tenant) with each
+ * tenant's private uploads (`is_private = true`). The read filter is
+ * `(is_private = false OR tenant_id = $caller)` on the RAW owner pool —
+ * `withTenantContext`'s RLS policy is pure `tenant_id = app.tenant_id`, which
+ * hides every OEM row (the #1761 bug this route shipped with: a customer's
+ * library showed only their own uploads, never the 83K-row OEM corpus).
  *
  * Response shape:
  *   {
@@ -57,12 +66,12 @@ export async function GET() {
   if (ctx instanceof NextResponse) return ctx;
 
   try {
-    const data = await withTenantContext(ctx.tenantId, async (c) => {
+    const data = await (async () => {
       // Pull every (manufacturer, model, source_url, title) bucket once
       // and shape it client-side. With ~74K rows and roughly hundreds of
       // distinct sources, this is well under 1 round-trip's worth of
       // payload — and it lets the tree render without N+1 follow-ups.
-      const { rows: sources } = await c.query(
+      const { rows: sources } = await pool.query(
         `SELECT
             COALESCE(NULLIF(TRIM(manufacturer), ''), '__unknown__') AS manufacturer,
             COALESCE(NULLIF(TRIM(model_number), ''), '__unknown__') AS model_number,
@@ -71,17 +80,18 @@ export async function GET() {
             metadata->>'title' AS title,
             COUNT(*)::text AS chunk_count
           FROM knowledge_entries
-          WHERE tenant_id = $1
+          WHERE (is_private = false OR tenant_id = $1)
           GROUP BY manufacturer, model_number, source_url, source_type, metadata->>'title'
           ORDER BY chunk_count DESC NULLS LAST`,
         [ctx.tenantId],
       );
-      const { rows: totals } = await c.query(
-        `SELECT COUNT(*)::text AS total_chunks FROM knowledge_entries WHERE tenant_id = $1`,
+      const { rows: totals } = await pool.query(
+        `SELECT COUNT(*)::text AS total_chunks FROM knowledge_entries
+          WHERE (is_private = false OR tenant_id = $1)`,
         [ctx.tenantId],
       );
       return { sources: sources as SourceRow[], totalChunks: Number(totals[0]?.total_chunks ?? 0) };
-    });
+    })();
 
     // Shape: manufacturer → model → source
     const mfrMap = new Map<
