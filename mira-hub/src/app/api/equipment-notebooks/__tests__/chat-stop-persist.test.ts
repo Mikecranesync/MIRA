@@ -276,6 +276,56 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     expect(second.state.cancelled).toBe(false);
   });
 
+  it("provider failure AFTER partial streaming persists answer_text NULL (contrast: a client stop keeps the partial)", async () => {
+    // STOPPED-TURN CONTRACT: only a CLIENT stop may persist partial text. When
+    // the provider dies mid-answer and the cascade is exhausted, the client has
+    // already received content frames, but the row must say answer_text=NULL
+    // so the client's `error && answer_text` rule cannot mistake it for a stop.
+    // pull-driven so the two deltas are READ by the route before the stream
+    // errors (an errored stream discards anything still queued).
+    const dyingProvider = () => {
+      const script = [delta("DC bus "), delta("undervoltage ")];
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            const next = script.shift();
+            if (next) c.enqueue(enc.encode(next));
+            // undici reports a dropped connection as TypeError("fetch failed").
+            else c.error(new TypeError("fetch failed"));
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const fetchMock = vi.fn(async () => dyingProvider());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const text = await res.text();
+    const frames = parseFrames(text);
+    const kinds = frames.map((f) => f.kind as string);
+    // The partial DID reach the client before the failure...
+    expect(kinds.slice(0, 2)).toEqual(["content", "content"]);
+    // ...and the turn still closed honestly as a provider failure.
+    const status = frames.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status).toMatchObject({ status: "error", message: "No answer provider available." });
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+    // Every keyed provider was tried (legacy list here = Groq + Cerebras; a
+    // provider failure DOES cascade — unlike a client stop, which breaks it).
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn).toMatchObject({
+      question: "what is F004",
+      answerStatus: "error",
+      answerText: null,
+      evidence: [],
+      basis: null,
+      model: null,
+    });
+  });
+
   it("stopping with nothing streamed yet persists answer_text null", async () => {
     const provider = hangingProvider([]);
     vi.stubGlobal("fetch", vi.fn(async () => provider.res));
