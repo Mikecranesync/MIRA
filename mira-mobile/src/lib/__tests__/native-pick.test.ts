@@ -12,10 +12,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // vi.mock factories are hoisted above every const, so the shared handles have
 // to be hoisted too.
-const { state, pickImages, pickFiles } = vi.hoisted(() => ({
+const { state, pickImages, pickFiles, getPhoto } = vi.hoisted(() => ({
   state: { native: true },
   pickImages: vi.fn(),
   pickFiles: vi.fn(),
+  getPhoto: vi.fn(),
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -27,8 +28,13 @@ vi.mock("@capacitor/core", () => ({
 vi.mock("@capawesome/capacitor-file-picker", () => ({
   FilePicker: { pickImages, pickFiles },
 }));
+vi.mock("@capacitor/camera", () => ({
+  Camera: { getPhoto },
+  CameraSource: { Camera: "CAMERA", Photos: "PHOTOS", Prompt: "PROMPT" },
+  CameraResultType: { Uri: "uri", Base64: "base64", DataUrl: "dataUrl" },
+}));
 
-import { pickNameplatePhoto, pickPdf, PDF_MIME } from "../native-pick";
+import { pickNameplatePhoto, captureNameplatePhoto, pickPdf, PDF_MIME } from "../native-pick";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -105,6 +111,48 @@ describe("pickNameplatePhoto — native", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]))));
     const f = await pickNameplatePhoto();
     expect(f?.name).toBeTruthy();
+  });
+});
+
+describe("captureNameplatePhoto — the CAMERA, not the gallery (#3353)", () => {
+  it("opens the camera viewfinder (source Camera), never the photo picker", async () => {
+    getPhoto.mockResolvedValue({ path: "file:///data/user/0/app/cache/CAM1.jpg", webPath: "http://localhost/_capacitor_file_/x", format: "jpeg" });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ blob: async () => new Blob([new Uint8Array([1, 2, 3])]) })));
+    const f = await captureNameplatePhoto();
+    expect(getPhoto).toHaveBeenCalledTimes(1);
+    expect(getPhoto.mock.calls[0][0]).toMatchObject({ source: "CAMERA", resultType: "uri", saveToGallery: false });
+    expect(pickImages).not.toHaveBeenCalled();
+    expect(f?.name).toBe("nameplate.jpeg");
+    expect(f?.type).toBe("image/jpeg");
+    expect(f?.size).toBe(3);
+  });
+
+  it("goes through the same native read path as a picked file (convertFileSrc on the path)", async () => {
+    getPhoto.mockResolvedValue({ path: "file:///cache/CAM2.jpg", format: "jpg" });
+    const fetchSpy = vi.fn(async () => ({ blob: async () => new Blob([new Uint8Array([9])]) }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const f = await captureNameplatePhoto();
+    expect(String((fetchSpy.mock.calls[0] as unknown[])[0])).toContain("_capacitor_file_");
+    expect(f?.type).toBe("image/jpeg"); // "jpg" format -> image/jpeg, never image/jpg
+  });
+
+  it("falls back to webPath when the host gives no file path", async () => {
+    getPhoto.mockResolvedValue({ webPath: "blob:http://localhost/abc", format: "png" });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ blob: async () => new Blob([new Uint8Array([1, 1])]) })));
+    const f = await captureNameplatePhoto();
+    expect(f?.type).toBe("image/png");
+    expect(f?.size).toBe(2);
+  });
+
+  it("returns null when the technician backs out of the camera", async () => {
+    getPhoto.mockRejectedValue(new Error("User cancelled photos app"));
+    expect(await captureNameplatePhoto()).toBeNull();
+  });
+
+  it("does NOT open the camera off-device", async () => {
+    state.native = false;
+    expect(await captureNameplatePhoto()).toBeNull();
+    expect(getPhoto).not.toHaveBeenCalled();
   });
 });
 

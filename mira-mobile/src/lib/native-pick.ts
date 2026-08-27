@@ -25,6 +25,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { FilePicker } from "@capawesome/capacitor-file-picker";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 export const PDF_MIME = "application/pdf";
 
@@ -127,6 +128,39 @@ async function pickOne(
  *  resolved (never trusted raw): see `imageMimeOf`. */
 export function pickNameplatePhoto(): Promise<File | null> {
   return pickOne(() => FilePicker.pickImages({ limit: 1 }), "nameplate.jpg", imageMimeOf);
+}
+
+/**
+ * The nameplate photo, from the phone's CAMERA (#3353). "Photograph a
+ * component nameplate" must open a viewfinder: a technician at the machine
+ * cannot browse to a photo they haven't taken. Capture goes through the same
+ * pickOne/toFile seam as the gallery path — one conversion, one MIME rule —
+ * so the captured file enters the recognizer + evidence/OCR pipeline exactly
+ * like a picked one. Not saved to the gallery (no storage permission needed;
+ * the workspace parks the original). Cancel → null, like every pick.
+ */
+export function captureNameplatePhoto(): Promise<File | null> {
+  return pickOne(
+    async () => {
+      const shot = await Camera.getPhoto({
+        source: CameraSource.Camera,
+        resultType: CameraResultType.Uri,
+        quality: 90,
+        correctOrientation: true,
+        saveToGallery: false,
+      });
+      const fmt = (shot.format || "jpeg").toLowerCase();
+      const ext = fmt === "jpg" ? "jpeg" : fmt;
+      // `path` is a file:// URI (convertFileSrc'd by toFile); `webPath` is
+      // already WebView-readable and is what web/PWA hosts return.
+      const file: PickedFile = { name: `nameplate.${fmt}`, mimeType: `image/${ext}` };
+      if (shot.path) file.path = shot.path;
+      else if (shot.webPath) file.blob = await (await fetch(shot.webPath)).blob();
+      return { files: [file] };
+    },
+    "nameplate.jpg",
+    imageMimeOf,
+  );
 }
 
 /**
