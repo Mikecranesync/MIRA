@@ -2,7 +2,8 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, validateMagicToken } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 
 declare module "next-auth" {
   interface Session {
@@ -14,6 +15,8 @@ declare module "next-auth" {
       tenantId: string;
       status: string;
       trialExpiresAt?: string | null;
+      /** Derived fresh from hub_users.role on every session read (#2360); "" = least privilege. */
+      role: ResolvedRole;
     };
   }
   interface User {
@@ -109,6 +112,16 @@ if (googleClientId && googleClientSecret) {
   console.warn("[auth] HUB_AUTH_GOOGLE_CLIENT_ID or HUB_AUTH_GOOGLE_CLIENT_SECRET unset — Google sign-in disabled");
 }
 
+export async function resolveRoleFromDb(userId: string | undefined): Promise<ResolvedRole> {
+  if (!userId) return NO_ROLE;
+  try {
+    const user = await findUserById(userId);
+    return normalizeRole(user?.role);
+  } catch {
+    return NO_ROLE;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   providers,
@@ -144,6 +157,11 @@ export const authOptions: NextAuthOptions = {
         session.user.tenantId = token.tid ?? "";
         session.user.status = token.status ?? "trial";
         session.user.trialExpiresAt = token.trialExpiresAt ?? null;
+        // Same rule as lib/session.ts requireSession (#2360): the role is a DB
+        // read, not a JWT claim, so revocation is instant; a failed lookup is
+        // least-privilege, never a default up. Without this the client-side
+        // providers saw no role at all and defaulted every user to owner.
+        session.user.role = await resolveRoleFromDb(token.uid);
       }
       return session;
     },

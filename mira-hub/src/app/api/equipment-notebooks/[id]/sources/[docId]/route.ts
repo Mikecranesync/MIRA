@@ -1,14 +1,31 @@
 /**
+ * GET    — resolve one source for the viewer (085): filename + byte-door file
+ *          id + canonical ORIGIN file id, INCLUDING superseded rows so
+ *          historical citations keep opening their photograph.
  * PATCH  — enable/disable or change match state of a notebook source.
  * DELETE — detach the source from the notebook (does NOT delete the document).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { detachSource, setSourceState, type MatchState } from "@/lib/equipment-notebooks";
+import {
+  detachSource,
+  getSourceResolution,
+  setSourceState,
+  type MatchState,
+} from "@/lib/equipment-notebooks";
 
 export const dynamic = "force-dynamic";
 
 type P = { params: Promise<{ id: string; docId: string }> };
+
+export async function GET(_req: NextRequest, { params }: P) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
+  const { id, docId } = await params;
+  const source = await getSourceResolution(ctx.tenantId, id, docId);
+  if (!source) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  return NextResponse.json(source);
+}
 
 export async function PATCH(req: NextRequest, { params }: P) {
   const ctx = await sessionOr401();

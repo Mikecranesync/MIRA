@@ -3,8 +3,7 @@
 import type { AccessControlProvider } from "@refinedev/core";
 import { getSession } from "next-auth/react";
 import type { Capability } from "@/lib/capabilities";
-
-type Role = "technician" | "manager" | "scheduler" | "admin" | "operator" | "owner";
+import { NO_ROLE, sessionRole, type Role } from "@/lib/role";
 
 type ResourcePermissions = {
   actions: string[];
@@ -44,7 +43,11 @@ export const accessControlProvider: AccessControlProvider = {
     if (!resource) return { can: false };
 
     const session = await getSession();
-    const role = ((session?.user as { role?: Role } | undefined)?.role ?? "owner") as Role;
+    const role = sessionRole(session);
+    if (role === NO_ROLE) {
+      // Absent, malformed, or unknown role → fail closed (#2360 doctrine).
+      return { can: false, reason: `No resolved role can ${action} on ${resource}` };
+    }
     if (role === "owner") {
       return { can: true };
     }

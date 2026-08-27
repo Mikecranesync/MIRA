@@ -14,6 +14,11 @@ export interface ChatCitation {
    *  cited page" (`/api/namespace/files/{fileId}/`). Present on live sources
    *  frames AND on persisted turn evidence; never invented client-side. */
   fileId?: string | null;
+  /** Canonical ORIGIN file the cited doc was DERIVED from (server-resolved,
+   *  085) — the nameplate photograph behind a materialized text doc. When
+   *  present, THIS is the technician's original; `fileId` is the derived
+   *  sidecar. Null/absent for ordinary uploads. */
+  originFileId?: string | null;
 }
 
 export interface ChatTurn {
@@ -47,6 +52,7 @@ export function normalizeCitations(raw: unknown): ChatCitation[] {
       quote: typeof c.quote === "string" ? c.quote : null,
       docId: c.docId != null ? String(c.docId) : null,
       fileId: c.fileId != null ? String(c.fileId) : null,
+      originFileId: c.originFileId != null ? String(c.originFileId) : null,
     }));
 }
 

@@ -131,25 +131,33 @@ capabilities:
     state: production_enabled
     owner: null
     owner_missing: "No owner recorded for a security-relevant control."
-    ci_jobs: []
+    ci_jobs:
+      - capability-closure
     required_checks: []
-    evidence: []
+    evidence:
+      - path: tests/test_approved_retrieval_plumbing.py
+        note: >-
+          Every consumer's compose environment forwards the flag; with the
+          container-shaped value 'true' recall_knowledge emits 'AND verified = true'
+          on every knowledge_entries stream (hermetic, captured SQL). Direction
+          check, staging 2026-08-26: 83,540 verified public (OEM corpus
+          backfilled), 255 verified private, 711 UNverified private — gate-on
+          hides only unapproved uploads, the designed direction.
     rollback: >-
-      Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd. Note the
-      flag currently has no runtime effect — see blocker.
+      Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd (the compose
+      default is 'false'); redeploy the consumers.
     blocker: >-
-      P0 #3328 — CONFIGURED ON, ENFORCED OFF. The flag is 'true' in Doppler prd
-      and appears in ZERO docker-compose files, so it is never forwarded into a
-      container; neon_recall.py:136 reads its "false" default. The registry
-      records the INTENT (production: "true") deliberately, so the
-      enabled_but_unplumbed rule fires and stays visible until #3328 is fixed.
+      Was P0 #3328 (configured ON, enforced OFF: 'true' in Doppler prd, forwarded
+      by no compose file). Plumbed 2026-08-26 in docker-compose.saas.yml
+      (bot-common-env anchor → mira-ask; mira-pipeline; mira-bot-telegram;
+      mira-bot-slack; mira-hub) and docker-compose.staging-vps.yml. Remaining:
+      post-deploy runtime observation on prod (container env + a refusal on an
+      unverified chunk) before production_no_evidence is dropped.
     acknowledged_rules:
-      - "enabled_but_unplumbed"
       - "production_no_evidence"
     promotion_criteria:
-      - "Fix #3328 — forward the variable in each consuming service's environment block."
-      - "Confirm the intended enforcement direction before it takes effect; turning it genuinely on changes retrieval for any tenant with unverified rows."
-      - "Add a test asserting the gate is reachable from a container-shaped environment."
+      - "Post-deploy: observe the variable inside a prod consumer container and one unverified-chunk refusal; then drop the production_no_evidence acknowledgement."
+      - "Record an owner."
     review_by: "2026-09-05"
 
   # =========================================================================

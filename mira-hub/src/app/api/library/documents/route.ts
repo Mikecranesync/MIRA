@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
  * Returns the document list (one row per source_url) for the given
  * manufacturer + model. The Library page uses this on a deep link or
  * to lazy-load model details.
+ *
+ * Tenant scoping: hybrid-corpus filter `(is_private = false OR tenant_id =
+ * $caller)` on the raw owner pool — see /api/library/tree and
+ * .claude/rules/knowledge-entries-tenant-scoping.md.
  *
  * Both `manufacturer` and `model` may be the literal string "Unknown
  * manufacturer" / "Unspecified model" — these correspond to NULL/empty
@@ -53,28 +57,26 @@ export async function GET(req: Request) {
   if (model && model !== SENTINEL_MODEL) params.push(model);
 
   try {
-    const rows = await withTenantContext(ctx.tenantId, (c) =>
-      c
-        .query(
-          `SELECT
-              source_url,
-              source_type,
-              data_type,
-              metadata->>'title'  AS title,
-              MIN(equipment_entity_id::text) AS equipment_entity_id,
-              MIN(created_at)     AS first_seen,
-              MAX(created_at)     AS last_seen,
-              COUNT(*)::text      AS chunk_count
-            FROM knowledge_entries
-            WHERE tenant_id = $1
-              AND ${mfrPredicate}
-              ${modelPredicate}
-            GROUP BY source_url, source_type, data_type, metadata->>'title'
-            ORDER BY chunk_count DESC NULLS LAST`,
-          params,
-        )
-        .then((r) => r.rows),
-    );
+    const rows = await pool
+      .query(
+        `SELECT
+            source_url,
+            source_type,
+            data_type,
+            metadata->>'title'  AS title,
+            MIN(equipment_entity_id::text) AS equipment_entity_id,
+            MIN(created_at)     AS first_seen,
+            MAX(created_at)     AS last_seen,
+            COUNT(*)::text      AS chunk_count
+          FROM knowledge_entries
+          WHERE (is_private = false OR tenant_id = $1)
+            AND ${mfrPredicate}
+            ${modelPredicate}
+          GROUP BY source_url, source_type, data_type, metadata->>'title'
+          ORDER BY chunk_count DESC NULLS LAST`,
+        params,
+      )
+      .then((r) => r.rows);
 
     const docs = rows.map((r: Record<string, unknown>, i: number) => ({
       // Stable id derived from the source_url (or a row-index fallback)
