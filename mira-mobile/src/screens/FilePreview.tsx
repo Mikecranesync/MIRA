@@ -22,6 +22,7 @@ import { requestBinary } from "../api/client";
 import { fileBytesPath } from "../api/resources";
 import { Loading, ErrorState } from "./common";
 import { MediaViewer } from "./MediaViewer";
+import { canHandOffNatively, openWithDevice, type HandoffResult } from "../lib/open-with";
 
 interface Bytes {
   url: string;
@@ -78,6 +79,11 @@ export function isPdf(mimeType: string): boolean {
   return mimeType === "application/pdf" || mimeType.endsWith("/pdf");
 }
 
+export function isText(mimeType: string): boolean {
+  const base = mimeType.split(";")[0].trim().toLowerCase();
+  return base.startsWith("text/") || base === "application/json";
+}
+
 /** Inline image — photos of nameplates/panels render here. Tapping opens the
  *  approved MediaViewer (commodity lightbox: pinch/zoom/double-tap); closing
  *  it lands back exactly here, sheet and scroll untouched. */
@@ -100,6 +106,57 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
         }}
       />
       {full && <MediaViewer url={url} filename={filename} onClose={() => setFull(false)} />}
+    </>
+  );
+}
+
+
+/** The one "open this with the device" control (Phase 3 item 3). On device
+ *  the old blob-URL `<a download>` did NOTHING (no DownloadListener in the
+ *  shell — audit §3.2), so native uses the OS share sheet via open-with.ts;
+ *  the web build keeps the anchor, which browsers handle natively. */
+function OpenWithButton({ url, filename, label }: { url: string; filename: string; label: string }) {
+  const [state, setState] = useState<"idle" | "busy" | HandoffResult>("idle");
+  const style = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    width: "auto",
+    padding: "0 18px",
+    textDecoration: "none",
+    color: "var(--fl-accent)",
+  } as const;
+  if (!canHandOffNatively()) {
+    return (
+      <a className="btn" href={url} download={filename} style={style}>
+        {label}
+      </a>
+    );
+  }
+  return (
+    <>
+      <button
+        className="btn"
+        style={style}
+        disabled={state === "busy"}
+        onClick={async () => {
+          setState("busy");
+          setState(await openWithDevice(url, filename));
+        }}
+      >
+        {state === "busy" ? "Preparing…" : label}
+      </button>
+      {state === "too_large" && (
+        <div className="meta" style={{ marginTop: 6 }}>
+          This file is too large to hand off to another app on the phone.
+        </div>
+      )}
+      {state === "failed" && (
+        <div className="meta" style={{ marginTop: 6 }}>
+          Couldn&apos;t hand this file to the device — try again.
+        </div>
+      )}
     </>
   );
 }
@@ -128,23 +185,57 @@ function PdfPreview({
         The original opened successfully, but this app can't render PDF pages
         in-app yet — open it with your device's PDF viewer to see the page.
       </div>
-      <a
-        className="btn"
-        href={url}
-        download={filename}
+      <OpenWithButton url={url} filename={filename} label="Open in your PDF viewer" />
+    </div>
+  );
+}
+
+/** Plain text renders directly (PRD §8 allows; audit gap "Text viewing").
+ *  Provenance sidecars and pasted notes are small; anything bigger is
+ *  truncated honestly with the handoff door still available below. */
+const TEXT_PREVIEW_MAX_CHARS = 20_000;
+
+function TextPreview({ url, filename }: { url: string; filename: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(url)
+      .then((r) => r.text())
+      .then((t) => {
+        if (!cancelled) setText(t);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  if (failed) return <OpaquePreview url={url} filename={filename} contentType="text/plain" />;
+  if (text === null) return <Loading what="the text" />;
+  const truncated = text.length > TEXT_PREVIEW_MAX_CHARS;
+  return (
+    <div className="card" style={{ marginBottom: 0 }}>
+      <pre
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 12,
-          width: "auto",
-          padding: "0 18px",
-          textDecoration: "none",
-          color: "var(--fl-accent)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontSize: 13,
+          lineHeight: 1.45,
+          maxHeight: "60vh",
+          overflowY: "auto",
+          margin: 0,
         }}
       >
-        Open in your PDF viewer
-      </a>
+        {truncated ? text.slice(0, TEXT_PREVIEW_MAX_CHARS) : text}
+      </pre>
+      {truncated && (
+        <div className="meta" style={{ marginTop: 8 }}>
+          Showing the first part of {filename} — open it with another app for the full file.
+        </div>
+      )}
+      {truncated && <OpenWithButton url={url} filename={filename} label="Open with another app" />}
     </div>
   );
 }
@@ -166,23 +257,7 @@ function OpaquePreview({
         {filename}
       </div>
       <div className="meta">No in-app preview for {contentType}.</div>
-      <a
-        className="btn"
-        href={url}
-        download={filename}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 12,
-          width: "auto",
-          padding: "0 18px",
-          textDecoration: "none",
-          color: "var(--fl-accent)",
-        }}
-      >
-        Open with another app
-      </a>
+      <OpenWithButton url={url} filename={filename} label="Open with another app" />
     </div>
   );
 }
@@ -207,6 +282,7 @@ export function FilePreview({
   const type = mimeType || bytes.contentType;
   if (isImage(type)) return <ImagePreview url={bytes.url} filename={filename} />;
   if (isPdf(type)) return <PdfPreview url={bytes.url} filename={filename} page={page} />;
+  if (isText(type)) return <TextPreview url={bytes.url} filename={filename} />;
   return <OpaquePreview url={bytes.url} filename={filename} contentType={type} />;
 }
 
