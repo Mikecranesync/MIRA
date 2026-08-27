@@ -24,6 +24,7 @@ import {
 import { resolveScan, type ScanOutcome } from "../lib/scan-landing";
 import { extractAssetTag } from "../lib/tags";
 import { AttachFileSheet } from "./AttachFileSheet";
+import { Sheet } from "./Sheet";
 import { FilePreview } from "./FilePreview";
 import {
   fileTypeIcon,
@@ -430,8 +431,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
       )}
 
       {openFile && (
-        <div className="sheet-backdrop" onClick={() => setOpenFile(null)}>
-          <div className="sheet" onClick={(ev) => ev.stopPropagation()}>
+        <Sheet label={openFile.filename} onClose={() => setOpenFile(null)}>
             <h3>{openFile.filename}</h3>
             <FilePreview
               fileId={openFile.fileId}
@@ -441,8 +441,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
             <button style={{ marginTop: 12 }} onClick={() => setOpenFile(null)}>
               Close
             </button>
-          </div>
-        </div>
+        </Sheet>
       )}
       {pickOpen && (
         <PickWorkspaceFileSheet

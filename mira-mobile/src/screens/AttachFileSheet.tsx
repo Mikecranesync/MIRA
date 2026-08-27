@@ -24,6 +24,7 @@ import {
   type ExistingAttachment,
 } from "../lib/attach-selection";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+import { Sheet } from "./Sheet";
 
 const SEGMENTS: { id: AttachTargetType; title: string }[] = [
   { id: "cmms_asset", title: "Assets" },
@@ -115,8 +116,7 @@ export function AttachFileSheet({
   const toAdd = attachCount(selection, existing);
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet label={`Attach ${filename}`} onClose={onClose}>
         <h3>Attach “{filename}”</h3>
         <div className="meta" style={{ marginBottom: 8 }}>
           The file stays where it is — attaching files it in another place too.
@@ -194,7 +194,6 @@ export function AttachFileSheet({
         <button style={{ marginTop: 8 }} onClick={onClose}>
           Cancel
         </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }

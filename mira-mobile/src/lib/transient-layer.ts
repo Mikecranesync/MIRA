@@ -11,6 +11,8 @@
 // Grew out of #3429's viewer-only registry; renamed and moved here so it is
 // the ONE home for BACK-ordering state instead of a per-component invention.
 
+import { useEffect, useRef } from "react";
+
 let stack: Array<() => void> = [];
 
 /** Register an open layer's closer; returns an idempotent unregister. */
@@ -32,4 +34,16 @@ export function closeTopTransientLayer(): boolean {
 
 export function _resetTransientLayersForTest(): void {
   stack = [];
+}
+
+/**
+ * Hook form for components that keep their own chrome (e.g. the centered
+ * delete-confirm alertdialog): registers this mounted surface as a transient
+ * layer for the hardware-BACK stack. Registers once; the latest `close` is
+ * read through a ref so re-renders never reorder the LIFO stack.
+ */
+export function useTransientLayer(close: () => void): void {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => registerTransientLayer(() => closeRef.current()), []);
 }

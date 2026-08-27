@@ -20,13 +20,13 @@
 // MIRA domain (what to show, where bytes come from — authenticated blob URLs
 // via requestBinary) stays in FilePreview; this component owns only "view it
 // fullscreen".
-import { useEffect, useRef } from "react";
+
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import Captions from "yet-another-react-lightbox/plugins/captions";
 import "yet-another-react-lightbox/styles.css";
 import "yet-another-react-lightbox/plugins/captions.css";
-import { registerTransientLayer } from "../lib/transient-layer";
+import { useTransientLayer } from "../lib/transient-layer";
 
 export function MediaViewer({
   url,
@@ -38,11 +38,8 @@ export function MediaViewer({
   filename: string;
   onClose: () => void;
 }) {
-  // Register once; read the latest onClose through a ref so re-renders don't
-  // reorder the LIFO stack (same pattern the #3429 viewer proved on device).
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => registerTransientLayer(() => closeRef.current()), []);
+  // BACK closes the viewer before anything beneath it (#3429's contract).
+  useTransientLayer(onClose);
 
   return (
     <Lightbox
