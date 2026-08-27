@@ -542,6 +542,10 @@ services:
       NAMEPLATE_DETECT_ENABLED: "${NAMEPLATE_DETECT_ENABLED:-0}"
       NAMEPLATE_DET_MODEL: "${NAMEPLATE_DET_MODEL:-PP-OCRv5_mobile_det}"
       NAMEPLATE_DETECT_TIMEOUT: "${NAMEPLATE_DETECT_TIMEOUT:-30}"
+      # Photo OCR (POST /ocr/extract, EVID-4). Tesseract, no preload; default
+      # off — the hub keeps photos viewable-only until this is "1" on BOTH sides.
+      PHOTO_OCR_ENABLED: "${PHOTO_OCR_ENABLED:-0}"
+      PHOTO_OCR_TIMEOUT: "${PHOTO_OCR_TIMEOUT:-45}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
@@ -845,6 +849,10 @@ services:
       # /nameplate/detect when this is "1", so a single Doppler flip turns the
       # whole path on/off. Any detector failure reads the original photo.
       - NAMEPLATE_DETECT_ENABLED=${NAMEPLATE_DETECT_ENABLED:-0}
+      # Photo OCR shares one switch with mira-ask's /ocr/extract: when "1", a
+      # photo filed at a node/notebook is read by tesseract and its text is
+      # indexed as a citable source (EVID-4). Off = photos stay viewable-only.
+      - PHOTO_OCR_ENABLED=${PHOTO_OCR_ENABLED:-0}
       # Nameplate recognition runs IN THE HUB (src/lib/nameplate). TOGETHERAI_API_KEY
       # is already supplied further down with the AI-Reports LLM cascade, so the
       # recognizer is configured — but the VISION MODEL selectors were missing,

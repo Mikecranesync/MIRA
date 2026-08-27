@@ -18,6 +18,14 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 import {
+  isPhotoOcrEnabled,
+  ocrPhotoText,
+  ocrQuality,
+  ocrSourceText,
+  type PhotoOcrQuality,
+  type PhotoOcrResult,
+} from "@/lib/photo-ocr";
+import {
   listFiles,
   parkOrReuseFile,
   linkFileToUpload,
@@ -223,7 +231,30 @@ export async function POST(req: Request) {
     }
 
     const capability = fileCapability(mimeRaw, file.name);
-    if (nodeId && (isPdf || isText)) {
+
+    // EVID-4 — a photo filed somewhere with a node becomes searchable evidence:
+    // read its text through mira-ask (tesseract) and index THAT text against
+    // this same file via the ordinary text writer. OCR is an added layer, never
+    // a dependency: off / unavailable / no readable text all leave the photo
+    // exactly as before (parked, viewable) and the response says which.
+    let photoOcr: { result: PhotoOcrResult; quality: PhotoOcrQuality } | null = null;
+    let photoOcrOutcome: "off" | "unavailable" | "no_text" | null = null;
+    if (nodeId && capability === "viewable" && !isPdf && !isText) {
+      if (!isPhotoOcrEnabled()) {
+        photoOcrOutcome = "off";
+      } else {
+        const result = await ocrPhotoText(buffer);
+        if (!result) {
+          photoOcrOutcome = "unavailable";
+        } else {
+          const quality = ocrQuality(result);
+          if (quality === "none") photoOcrOutcome = "no_text";
+          else photoOcr = { result, quality };
+        }
+      }
+    }
+
+    if (nodeId && (isPdf || isText || photoOcr)) {
       // Atomic ingestion claim (Codex round 2, 2026-08-16): the same
       // check-then-ingest race the confirm route had — a concurrent identical
       // upload could double-ingest into hub_uploads + knowledge_entries. One
@@ -281,7 +312,10 @@ export async function POST(req: Request) {
           filename: file.name,
           mimeType: mimeRaw,
           sizeBytes: file.size,
-          buffer,
+          // A photo's chunks are its OCR text (with a provenance header); the
+          // document still IS the photo — linked below to this file, so a
+          // citation opens the photograph, not a transcript.
+          buffer: photoOcr ? Buffer.from(ocrSourceText(file.name, photoOcr.result), "utf-8") : buffer,
         });
         const won = await linkFileToUpload(ctx.tenantId, park.fileId, uploadId, claim.claimToken);
         if (!won) {
@@ -318,6 +352,22 @@ export async function POST(req: Request) {
             uploadId,
             chunkCount,
             file: { id: park.fileId, filename: file.name, size_bytes: file.size, capability },
+            ...(photoOcr
+              ? {
+                  ocr: {
+                    quality: photoOcr.quality,
+                    meanConfidence: photoOcr.result.meanConfidence,
+                    wordCount: photoOcr.result.wordCount,
+                    engine: photoOcr.result.engine,
+                  },
+                  ...(photoOcr.quality === "weak"
+                    ? {
+                        warning:
+                          "Text was read from this photo at low confidence — it's searchable in chat, but check the photo before trusting a number from it.",
+                      }
+                    : {}),
+                }
+              : {}),
           },
           { status: 201 },
         );
@@ -341,12 +391,19 @@ export async function POST(req: Request) {
       }
     }
 
+    const photoWarning =
+      photoOcrOutcome === "no_text"
+        ? "No readable text was found in this photo — it's kept and viewable, but can't be searched in chat."
+        : photoOcrOutcome === "unavailable"
+          ? "Text recognition isn't available right now — the photo is kept and viewable, but not searchable in chat."
+          : null;
     return NextResponse.json(
       {
         ok: true,
         indexed: false,
         fileId: park.fileId,
         file: { id: park.fileId, filename: file.name, size_bytes: file.size, capability },
+        ...(photoWarning ? { warning: photoWarning } : {}),
       },
       { status: 201 },
     );

@@ -110,6 +110,9 @@ def _install_app_import_stubs(monkeypatch):
     ask_nameplate_detect = types.ModuleType("ask_api.nameplate_detect")
     ask_nameplate_detect.router = object()
 
+    ask_ocr_extract = types.ModuleType("ask_api.ocr_extract")
+    ask_ocr_extract.router = object()
+
     monkeypatch.setitem(sys.modules, "fastapi", fastapi)
     monkeypatch.setitem(sys.modules, "pydantic", pydantic)
     monkeypatch.setitem(sys.modules, "shared.engine", shared_engine)
@@ -118,6 +121,7 @@ def _install_app_import_stubs(monkeypatch):
     monkeypatch.setitem(sys.modules, "ask_api.workspace", ask_workspace)
     monkeypatch.setitem(sys.modules, "ask_api.manual_discovery", ask_manual_discovery)
     monkeypatch.setitem(sys.modules, "ask_api.nameplate_detect", ask_nameplate_detect)
+    monkeypatch.setitem(sys.modules, "ask_api.ocr_extract", ask_ocr_extract)
     sys.modules.pop("ask_api.app", None)
 
 
