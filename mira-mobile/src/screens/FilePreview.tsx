@@ -17,7 +17,7 @@
 // the citation points at, offers the bytes to the device's own PDF viewer, and
 // says plainly that in-app page rendering isn't available. Swapping in a
 // renderer means replacing this one component; nothing else changes.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requestBinary } from "../api/client";
 import { fileBytesPath } from "../api/resources";
 import { Loading, ErrorState } from "./common";
@@ -274,6 +274,49 @@ export function doubleTapZoom(
   return pinchZoom(z, 2.5, x, y, viewportW, viewportH);
 }
 
+// ── Close-tap + hardware-back plumbing (#3427) ─────────────────────────────
+// On the Pixel the ✕ was dead to taps: the browser refuses to synthesize a
+// click when the finger's micro-movement exceeds its tap slop (proven in a
+// Chromium touch harness at ~20px; worse on glass, worse while zoomed) — but
+// pointerup still reaches the button every time. So the button decides
+// "was that a tap?" itself, on pointerup, with a slop generous enough for a
+// real thumb. Pure function so it is unit-testable without a DOM.
+
+export const CLOSE_TAP_SLOP = 32;
+
+export function isCloseTap(downX: number, downY: number, upX: number, upY: number): boolean {
+  return Math.hypot(upX - downX, upY - downY) <= CLOSE_TAP_SLOP;
+}
+
+// The viewer lives in private state deep inside whichever screen rendered the
+// preview, so the per-screen backRef chains can't see it. Open viewers
+// register here; the app-level backButton listener consults this FIRST, so
+// hardware BACK closes viewer-then-sheet in order instead of tearing down the
+// whole sheet with the viewer inside it.
+
+let viewerBackStack: Array<() => void> = [];
+
+/** Register an open viewer's closer; returns an idempotent unregister. */
+export function registerViewerBack(close: () => void): () => void {
+  const entry = () => close();
+  viewerBackStack.push(entry);
+  return () => {
+    viewerBackStack = viewerBackStack.filter((e) => e !== entry);
+  };
+}
+
+/** Close the most recently opened viewer. True if BACK was consumed. */
+export function closeTopViewer(): boolean {
+  const top = viewerBackStack[viewerBackStack.length - 1];
+  if (!top) return false;
+  top();
+  return true;
+}
+
+export function _resetViewerBackForTest(): void {
+  viewerBackStack = [];
+}
+
 export function FullscreenImageViewer({
   url,
   filename,
@@ -284,6 +327,15 @@ export function FullscreenImageViewer({
   onClose: () => void;
 }) {
   const [zoom, setZoom] = useState<ZoomState>({ scale: 1, tx: 0, ty: 0 });
+  // Hardware BACK closes the viewer (not the sheet under it). Register once;
+  // read the latest onClose through a ref so re-renders don't reorder the
+  // LIFO stack.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => registerViewerBack(() => closeRef.current()), []);
+  // The ✕ decides "tap or drag?" itself on pointerup — click synthesis is
+  // unreliable on this surface (#3427).
+  const closeDown = useRef<{ x: number; y: number } | null>(null);
   // Pointer bookkeeping for pinch/pan without any gesture library.
   const pointers = useState(() => new Map<number, { x: number; y: number }>())[0];
   const lastTap = useState(() => ({ t: 0 }))[0];
@@ -309,49 +361,6 @@ export function FullscreenImageViewer({
         background: "rgba(0,0,0,0.92)",
         display: "flex",
         flexDirection: "column",
-        touchAction: "none",
-      }}
-      onPointerDown={(e) => {
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (pointers.size === 2) pinchDist.d = dist();
-        if (pointers.size === 1) {
-          const now = Date.now();
-          if (now - lastTap.t < 300) {
-            setZoom((z) =>
-              doubleTapZoom(z, e.clientX, e.clientY, window.innerWidth, window.innerHeight),
-            );
-            lastTap.t = 0;
-          } else {
-            lastTap.t = now;
-          }
-        }
-      }}
-      onPointerMove={(e) => {
-        const prev = pointers.get(e.pointerId);
-        if (!prev) return;
-        const dx = e.clientX - prev.x;
-        const dy = e.clientY - prev.y;
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (pointers.size === 2) {
-          const d = dist();
-          if (pinchDist.d > 0 && d > 0) {
-            const m = mid();
-            setZoom((z) =>
-              pinchZoom(z, d / pinchDist.d, m.x, m.y, window.innerWidth, window.innerHeight),
-            );
-          }
-          pinchDist.d = d;
-        } else if (pointers.size === 1) {
-          setZoom((z) => (z.scale > 1.01 ? panBy(z, dx, dy) : z));
-        }
-      }}
-      onPointerUp={(e) => {
-        pointers.delete(e.pointerId);
-        pinchDist.d = pointers.size === 2 ? dist() : 0;
-      }}
-      onPointerCancel={(e) => {
-        pointers.delete(e.pointerId);
-        pinchDist.d = 0;
       }}
     >
       <div
@@ -378,6 +387,16 @@ export function FullscreenImageViewer({
         <button
           aria-label="Close"
           onClick={onClose}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            closeDown.current = { x: e.clientX, y: e.clientY };
+          }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            const d = closeDown.current;
+            closeDown.current = null;
+            if (d && isCloseTap(d.x, d.y, e.clientX, e.clientY)) onClose();
+          }}
           style={{
             background: "rgba(255,255,255,0.12)",
             color: "#fff",
@@ -392,7 +411,51 @@ export function FullscreenImageViewer({
           ✕
         </button>
       </div>
-      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+      <div
+        style={{ flex: 1, overflow: "hidden", display: "flex", touchAction: "none" }}
+        onPointerDown={(e) => {
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.size === 2) pinchDist.d = dist();
+          if (pointers.size === 1) {
+            const now = Date.now();
+            if (now - lastTap.t < 300) {
+              setZoom((z) =>
+                doubleTapZoom(z, e.clientX, e.clientY, window.innerWidth, window.innerHeight),
+              );
+              lastTap.t = 0;
+            } else {
+              lastTap.t = now;
+            }
+          }
+        }}
+        onPointerMove={(e) => {
+          const prev = pointers.get(e.pointerId);
+          if (!prev) return;
+          const dx = e.clientX - prev.x;
+          const dy = e.clientY - prev.y;
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.size === 2) {
+            const d = dist();
+            if (pinchDist.d > 0 && d > 0) {
+              const m = mid();
+              setZoom((z) =>
+                pinchZoom(z, d / pinchDist.d, m.x, m.y, window.innerWidth, window.innerHeight),
+              );
+            }
+            pinchDist.d = d;
+          } else if (pointers.size === 1) {
+            setZoom((z) => (z.scale > 1.01 ? panBy(z, dx, dy) : z));
+          }
+        }}
+        onPointerUp={(e) => {
+          pointers.delete(e.pointerId);
+          pinchDist.d = pointers.size === 2 ? dist() : 0;
+        }}
+        onPointerCancel={(e) => {
+          pointers.delete(e.pointerId);
+          pinchDist.d = 0;
+        }}
+      >
         <img
           src={url}
           alt={filename}
