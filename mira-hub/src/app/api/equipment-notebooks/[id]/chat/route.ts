@@ -33,6 +33,7 @@ import {
   resolveBoundAsset,
   validateChatSources,
   type ResolvedAsset,
+  originFileIdsByDoc,
 } from "@/lib/equipment-notebooks";
 import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
 import {
@@ -168,6 +169,7 @@ function providers(): CascadeProvider[] {
  *  blocks (same ordering source: the chunk array). */
 async function buildCitations(
   tenantId: string,
+  notebookId: string,
   chunks: ManualChunk[],
   question: string,
 ): Promise<EvidenceCitation[]> {
@@ -199,6 +201,11 @@ async function buildCitations(
       files.rows.map((r: Record<string, unknown>) => [String(r.doc_id), String(r.file_id)]),
     );
     for (const c of citations) c.fileId = fileByDoc.get(c.docId) ?? null;
+    // Invariant 3 (085): the CANONICAL origin is resolved server-side — a
+    // photo-derived doc's citation carries the photograph's file id, so no
+    // client ever reconstructs provenance by joining duplicate source rows.
+    const originByDoc = await originFileIdsByDoc(tenantId, notebookId, docIds);
+    for (const c of citations) c.originFileId = originByDoc.get(c.docId) ?? null;
   }
   return citations;
 }
@@ -574,7 +581,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const citations = await buildCitations(ctx.tenantId, chunks, message);
+  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
 
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers

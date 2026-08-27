@@ -16,6 +16,12 @@ export type EvidenceCitation = {
   /** namespace_direct_uploads id — byte-serving door for the viewer; null when
    *  the original file was not parked (chunks-only doc). */
   fileId: string | null;
+  /** Canonical ORIGIN file this doc was derived from (085) — e.g. the
+   *  nameplate photograph behind a materialized nameplate text doc. The
+   *  technician-facing "original". Null/absent for ordinary uploads (the
+   *  doc's own file IS the original) and on pre-085 persisted turns (the
+   *  read path enriches those server-side). */
+  originFileId?: string | null;
   quote: string | null;
   /** Room for richer selectors later without changing the API shape (PRD §14). */
   selector?: { type: "page" | "text" | "bbox" | "section"; value: unknown };

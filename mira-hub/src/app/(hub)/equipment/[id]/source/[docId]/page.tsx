@@ -11,7 +11,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
-type Source = { docId: string; filename: string | null; fileId: string | null };
+type Source = {
+  docId: string;
+  filename: string | null;
+  fileId: string | null;
+  /** Canonical origin (085) — the photograph a derived doc came from. When
+   *  present it IS the original the technician should see. */
+  originFileId: string | null;
+};
 
 export default function SourceViewerPage() {
   const { id, docId } = useParams<{ id: string; docId: string }>();
@@ -21,17 +28,26 @@ export default function SourceViewerPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
+      // Server-resolved (085, Invariant 3): one endpoint returns the byte door
+      // AND the canonical origin, including superseded derived docs — a
+      // historical citation must keep opening, and must open the photograph.
+      // The old sources-list join broke on any doc no longer listed.
+      const res = await fetch(
+        `${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`,
+        { cache: "no-store" },
+      );
+      if (res.status === 404) return setError("This source isn't in the notebook.");
       if (!res.ok) return setError("Couldn't load the source.");
-      const data = await res.json();
-      const s = (data.sources ?? []).find((x: Source) => x.docId === docId);
-      if (!s) return setError("This source isn't in the notebook.");
-      setSource(s);
+      setSource(await res.json());
     })();
   }, [id, docId]);
 
-  const fileHref = source?.fileId
-    ? `${API_BASE}/api/namespace/files/${source.fileId}/${page ? `#page=${page}` : ""}`
+  // The canonical ORIGIN wins (085): for a photo-derived doc the technician's
+  // original is the photograph, never the OCR sidecar. Page anchors only make
+  // sense on the doc's own file (a photo has no cited page).
+  const viewFileId = source?.originFileId ?? source?.fileId ?? null;
+  const fileHref = viewFileId
+    ? `${API_BASE}/api/namespace/files/${viewFileId}/${!source?.originFileId && page ? `#page=${page}` : ""}`
     : null;
 
   return (

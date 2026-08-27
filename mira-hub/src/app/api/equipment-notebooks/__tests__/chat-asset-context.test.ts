@@ -28,6 +28,8 @@ const domainMock = vi.hoisted(() => ({
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({ manufacturer: "Automation Direct", model: "GS10", displayName: "Bench rig" })),
   listSources: vi.fn(async () => [{ filename: "Conv_Simple_Anomaly_Catalog.pdf" }]),
+  // 085: chat citations resolve canonical origin server-side
+  originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 

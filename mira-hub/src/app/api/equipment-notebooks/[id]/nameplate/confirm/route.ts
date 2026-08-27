@@ -27,7 +27,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
+import {
+  getNotebook,
+  attachSource,
+  setSourceState,
+  findVisibleOriginSource,
+  supersedePriorOriginSources,
+} from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
@@ -204,6 +210,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     typeof body.confidence === "number" && Number.isFinite(body.confidence)
       ? Math.min(1, Math.max(0, body.confidence))
       : null;
+  // 085 Invariant 4: the mobile client has always sent this; the route used to
+  // drop it. It names the logical confirmation, so a retry of the SAME
+  // confirmation never reprocesses (vision drift on a retry must not mint a
+  // new derived reading). The evidence identity itself is (notebook, photo) —
+  // never the derived text bytes.
+  const clientKey =
+    typeof body.clientKey === "string" && body.clientKey.length > 0 && body.clientKey.length <= 128
+      ? body.clientKey
+      : null;
 
   // ── (b) Materialize the confirmed nameplate as a citable source ────────────
   const text = buildNameplateText({
@@ -224,6 +239,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let nameplateDocId: string | null = null;
   let nameplateChunks = 0;
   let nameplateIngestFailed = false;
+  // Same clientKey + an existing visible derived doc for this photo = a replay
+  // of the SAME logical confirmation. Reuse the existing doc verbatim — no
+  // re-park, no re-ingest, no new reading.
+  const existingOrigin = await findVisibleOriginSource(ctx.tenantId, notebookId, fileId).catch(
+    () => null,
+  );
+  const replayOfSameConfirm = Boolean(
+    clientKey &&
+      existingOrigin &&
+      (existingOrigin.matchEvidence as { confirm_client_key?: unknown } | null)
+        ?.confirm_client_key === clientKey,
+  );
+  if (replayOfSameConfirm) {
+    nameplateDocId = existingOrigin!.docId;
+  } else
   try {
     const parkedText = await parkOrReuseFile({
       tenantId: ctx.tenantId,
@@ -288,10 +318,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // becomes "source details". Re-confirming (idempotent replay) heals
         // pre-084 rows via the upsert's set-if-provided semantics.
         originFileId: fileId,
+        // 085: audit trail — which logical confirmation produced this reading.
+        matchEvidence: clientKey ? { confirm_client_key: clientKey } : undefined,
       });
       // attachSource reports failure by RETURN VALUE, not throw. Without the
       // source row the doc is not citable in this notebook — fail closed.
       if (!att.ok) throw new Error(`attach_source_failed: ${att.error}`);
+      // 085 Invariant 1: one photograph = one visible source. An edited
+      // re-confirm produced a NEW derived doc — the prior readings of the
+      // same photo are superseded (hidden, retained for citation resolution).
+      // Best-effort: a supersede failure leaves an extra visible row, which
+      // must not fail a confirm that already attached its source.
+      try {
+        const superseded = await supersedePriorOriginSources(
+          ctx.tenantId,
+          notebookId,
+          fileId,
+          nameplateDocId,
+        );
+        if (superseded.length > 0) {
+          console.log(
+            `[nameplate-confirm] superseded ${superseded.length} prior reading(s) of photo ${fileId}: ${superseded.join(", ")}`,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[nameplate-confirm] supersede failed notebook=${notebookId} photo=${fileId}: ${(err as Error).message}`,
+        );
+      }
     }
   } catch (err) {
     console.warn(

@@ -216,8 +216,14 @@ export function NotebookScreen({
   // One object, two doors (084): when the cited doc DERIVES from a canonical
   // file (the nameplate photograph behind the materialized text), the viewer
   // leads with that file. The derived text demotes to "Source details".
+  // Canonical origin, server-resolved on the citation itself (085). The old
+  // sources-list join stays only as a fallback for turns cached before the
+  // server carried originFileId — it breaks whenever the cited doc's row was
+  // superseded or never listed, which is exactly the defect 085 closed.
   const citedOriginFileId = viewCitation
-    ? (sources.find((s) => s.docId === viewCitation.docId)?.originFileId ?? null)
+    ? (viewCitation.originFileId ??
+      sources.find((s) => s.docId === viewCitation.docId)?.originFileId ??
+      null)
     : null;
 
   return (
@@ -675,9 +681,12 @@ export function NotebookScreen({
             {viewCitation.fileId && showOriginal && (
               <div style={{ marginTop: 12 }}>
                 <FilePreview
-                  fileId={viewCitation.fileId}
+                  // "Open original" means the ORIGINAL: for a photo-derived
+                  // doc that is the photograph, never the OCR sidecar (085 —
+                  // same rule as the Sources sheet below).
+                  fileId={citedOriginFileId ?? viewCitation.fileId}
                   filename={viewCitation.sourceTitle}
-                  page={viewCitation.page ?? null}
+                  page={citedOriginFileId ? null : (viewCitation.page ?? null)}
                 />
               </div>
             )}
