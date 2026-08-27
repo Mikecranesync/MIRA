@@ -161,6 +161,10 @@ export function AnswerMarkdown({
         </a>
       );
     },
+    // Images never render as <img>: an LLM- or manual-authored
+    // `![alt](https://…)` would otherwise be a network beacon on every render
+    // (the plain-text renderer this replaces made no requests). Alt text only.
+    img: ({ alt }) => <span>{alt ? `[image: ${alt}]` : ""}</span>,
     pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
     code: ({ className, children, ...rest }) => (
       <code

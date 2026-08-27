@@ -147,4 +147,13 @@ describe("Bubble through markdown — existing copy is unchanged", () => {
     expect(html).not.toContain("<table");
     expect(html).toContain("| not | a table |");
   });
+  it("markdown images never become <img> (no network egress from answer/manual text)", () => {
+    const html = renderToStaticMarkup(
+      <AnswerMarkdown content="![tracker](https://evil.example/track.png) ![y](javascript:alert(1)) ![](https://evil.example/blank)" citations={[]} />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<link");
+    expect(html).not.toContain("evil.example");
+    expect(html).toContain("[image: tracker]");
+  });
 });
