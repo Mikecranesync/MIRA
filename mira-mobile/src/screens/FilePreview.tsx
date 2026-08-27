@@ -373,7 +373,13 @@ export function FullscreenImageViewer({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "10px 14px",
+          // Device acceptance 2026-08-27: the overlay is position:fixed under
+          // viewport-fit=cover, so without this inset the header renders inside
+          // the Android status bar's input frame ([0,0][1080,152] on the Pixel
+          // 9a) and the system consumes every tap on the ✕ before the WebView
+          // sees it — the button was structurally unreachable (#3427's real
+          // device mechanism, on top of the click-synthesis slop issue).
+          padding: "calc(10px + env(safe-area-inset-top, 0px)) 14px 10px",
           color: "#fff",
           gap: 10,
         }}
