@@ -4,8 +4,12 @@
  * ad-hoc shapes on both sides).
  *
  * Wire format: `data: <json>\n\n` frames on text/event-stream, terminated by
- * the literal `data: [DONE]`. The evidence frame is emitted FIRST so the UI
- * can render citations while the answer streams.
+ * the literal `data: [DONE]`. Real order on an answered turn:
+ * `content`* → `sources` → `evidence` → [`usage`] → `status` → [`followups`].
+ * `sources` arrives AFTER the content deltas (citations are filtered to the
+ * [n] the answer actually used), so a client must buffer content and attach
+ * citations when `sources` lands. Abstain: `sources` (empty) → `status`.
+ * Safety: `sources` (empty) → `content`* → `safety` → `status`.
  */
 
 export type EvidenceCitation = {

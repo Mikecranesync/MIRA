@@ -8,11 +8,17 @@
  * evidence → structured `insufficient_evidence`, no provider call, no invented
  * answer (Gate G). Every turn persists its source snapshot + evidence (§8.3).
  *
- * Frames (typed — src/lib/notebook-chat-types.ts): `sources` first, `content`
- * deltas, `status` last, then `data: [DONE]`. Under MIRA_CANONICAL_SEAM a
- * `usage` frame carrying per-turn spend is emitted before `status`; existing
- * clients ignore unknown kinds (mira-mobile sse.ts is an if/else-if chain),
- * so the addition is backward compatible.
+ * Frames (typed — src/lib/notebook-chat-types.ts). REAL wire order, per path:
+ *   answered : `content`* → `sources` → `evidence` → [`usage`] → `status`
+ *              → [`followups`] → `data: [DONE]`
+ *   abstain  : `sources` (empty) → `status` → `[DONE]`
+ *   safety   : `sources` (empty) → `content`* → `safety` → `status` → `[DONE]`
+ * `sources` is emitted AFTER generation on the answered path — citations are
+ * filtered to the [n] the answer actually used, which is unknowable before
+ * the model finishes. `usage` (MIRA_CANONICAL_SEAM only) rides before
+ * `status`; existing clients ignore unknown kinds (mira-mobile sse.ts is an
+ * if/else-if chain), so additive frames are backward compatible.
+ * chat-stop-persist.test.ts pins this order so the comment cannot drift again.
  *
  * PROVIDER SELECTION: `providers()` below is the LEGACY inline cascade and is
  * the fallback path. When MIRA_CANONICAL_SEAM=1 the turn is served by the
@@ -663,7 +669,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
   );
 
+  // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
+  // the request signal (client aborted the fetch / socket closed) and the
+  // response stream being cancelled by the runtime — both fold into ONE
+  // signal. `abortedRead` is a handled-rejection sentinel raced against the
+  // provider read so a stalled upstream cannot keep a stopped turn alive; it
+  // is created once and never awaited on its own, so it can't leak as an
+  // unhandled rejection.
+  const clientAbort = new AbortController();
+  const onClientGone = () => clientAbort.abort();
+  req.signal?.addEventListener("abort", onClientGone, { once: true });
+  const abortedRead = new Promise<never>((_, reject) =>
+    clientAbort.signal.addEventListener(
+      "abort",
+      () => reject(new DOMException("client stopped generation", "AbortError")),
+      { once: true },
+    ),
+  );
+  abortedRead.catch(() => {});
+
   const stream = new ReadableStream<Uint8Array>({
+    cancel() {
+      clientAbort.abort();
+    },
     async start(controller) {
       // Citations are emitted AFTER generation, filtered to what the answer
       // actually cited — so a refusal ships no pages and a grounded answer ships
@@ -690,6 +718,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const turnStartedAt = Date.now();
       let rawUsage: unknown = null;
       let capped = false;
+      // The provider whose stream was open when the client stopped — the
+      // partial turn is recorded against it, and its upstream read is
+      // cancelled so a stopped answer costs no further tokens.
+      let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+      let activeProvider: { name: string; model: string } | null = null;
 
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
@@ -734,11 +767,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             continue;
           }
           const reader = res.body.getReader();
+          activeReader = reader;
+          activeProvider = { name: provider.name, model: provider.model };
           const dec = new TextDecoder();
           let buffer = "";
           let finished = false;
           while (!finished) {
-            const { done, value } = await reader.read();
+            // Race the upstream read against the client-stop signal: a stop
+            // must interrupt a read that is waiting on a slow provider, not
+            // wait for the next delta to notice it.
+            const { done, value } = await Promise.race([reader.read(), abortedRead]);
             if (done) break;
             buffer += dec.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -807,6 +845,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
           if (seam) attempted.push(provider.name);
         } catch (err) {
+          // Client stopped generation (STRM-2). Checked BEFORE the cascade
+          // classifier: the race rejects with an AbortError, and a cancelled
+          // controller makes enqueue throw a TypeError — neither is a
+          // provider failure, and a stopped turn must never retry on the
+          // next provider.
+          if (clientAbort.signal.aborted) break cascade;
           if (!isProviderCascadeError(err)) {
             // A bug in this route, not a provider outage — fail loud with a
             // DISTINCT status so it can never read as provider exhaustion.
@@ -822,6 +866,68 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           continue; // cascade to next provider
         }
       }
+
+      // STRM-2: the technician stopped the answer. Nothing more is written to
+      // the (already cancelled) stream. The partial text is persisted as an
+      // `error` turn — a stopped answer is not an answer — with no citations,
+      // no basis and no follow-ups, so nothing downstream can mistake it for
+      // a grounded reply. Spend is still recorded when the seam is on: the
+      // tokens were consumed whether or not the technician read them.
+      if (clientAbort.signal.aborted) {
+        req.signal?.removeEventListener("abort", onClientGone);
+        activeReader?.cancel().catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          // already cancelled by the consumer
+        }
+        let partial = responseBuffer.join("");
+        // Same second bracket guard as the answered path: a general partial
+        // must not carry [n] markers that resolve to no document.
+        if (general) partial = partial.replace(/\s*\[\d+\]/g, "");
+        const partialText = partial.length ? partial : null;
+        const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
+        try {
+          await recordTurn(ctx.tenantId, notebookId, {
+            question: message,
+            answerStatus: "error",
+            answerText: partialText,
+            enabledSourceDocIds: docIds,
+            evidence: [],
+            model: stoppedModel,
+            basis: null,
+            ...assetSnapshot,
+          });
+        } catch (err) {
+          console.error("[notebook-chat] recordTurn (stopped) failed:", err instanceof Error ? err.message : err);
+        }
+        if (seam) {
+          const stoppedUsage: TurnUsage = activeProvider
+            ? usageFromRaw(
+                activeProvider.name,
+                activeProvider.model,
+                rawUsage as never,
+                routeReasonFor(attempted),
+                attempted,
+                "error",
+              )
+            : exhaustedUsage(attempted);
+          logTurnUsage({ tenantId: ctx.tenantId, notebookId }, stoppedUsage);
+          await persistTurnUsage(
+            {
+              tenantId: ctx.tenantId,
+              notebookId,
+              question: message,
+              answerText: partialText,
+              citationsPresent: false,
+              latencyMs: Date.now() - turnStartedAt,
+            },
+            stoppedUsage,
+          );
+        }
+        return;
+      }
+      req.signal?.removeEventListener("abort", onClientGone);
 
       let answerText = responseBuffer.join("");
 
