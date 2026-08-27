@@ -22,6 +22,7 @@ import { requestBinary } from "../api/client";
 import { fileBytesPath } from "../api/resources";
 import { Loading, ErrorState } from "./common";
 import { MediaViewer } from "./MediaViewer";
+import { canHandOffNatively, openWithDevice, type HandoffResult } from "../lib/open-with";
 
 interface Bytes {
   url: string;
@@ -104,6 +105,57 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
   );
 }
 
+
+/** The one "open this with the device" control (Phase 3 item 3). On device
+ *  the old blob-URL `<a download>` did NOTHING (no DownloadListener in the
+ *  shell — audit §3.2), so native uses the OS share sheet via open-with.ts;
+ *  the web build keeps the anchor, which browsers handle natively. */
+function OpenWithButton({ url, filename, label }: { url: string; filename: string; label: string }) {
+  const [state, setState] = useState<"idle" | "busy" | HandoffResult>("idle");
+  const style = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    width: "auto",
+    padding: "0 18px",
+    textDecoration: "none",
+    color: "var(--fl-accent)",
+  } as const;
+  if (!canHandOffNatively()) {
+    return (
+      <a className="btn" href={url} download={filename} style={style}>
+        {label}
+      </a>
+    );
+  }
+  return (
+    <>
+      <button
+        className="btn"
+        style={style}
+        disabled={state === "busy"}
+        onClick={async () => {
+          setState("busy");
+          setState(await openWithDevice(url, filename));
+        }}
+      >
+        {state === "busy" ? "Preparing…" : label}
+      </button>
+      {state === "too_large" && (
+        <div className="meta" style={{ marginTop: 6 }}>
+          This file is too large to hand off to another app on the phone.
+        </div>
+      )}
+      {state === "failed" && (
+        <div className="meta" style={{ marginTop: 6 }}>
+          Couldn&apos;t hand this file to the device — try again.
+        </div>
+      )}
+    </>
+  );
+}
+
 /** See the PDF SEAM note at the top of this file. */
 function PdfPreview({
   url,
@@ -128,23 +180,7 @@ function PdfPreview({
         The original opened successfully, but this app can't render PDF pages
         in-app yet — open it with your device's PDF viewer to see the page.
       </div>
-      <a
-        className="btn"
-        href={url}
-        download={filename}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 12,
-          width: "auto",
-          padding: "0 18px",
-          textDecoration: "none",
-          color: "var(--fl-accent)",
-        }}
-      >
-        Open in your PDF viewer
-      </a>
+      <OpenWithButton url={url} filename={filename} label="Open in your PDF viewer" />
     </div>
   );
 }
@@ -166,23 +202,7 @@ function OpaquePreview({
         {filename}
       </div>
       <div className="meta">No in-app preview for {contentType}.</div>
-      <a
-        className="btn"
-        href={url}
-        download={filename}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 12,
-          width: "auto",
-          padding: "0 18px",
-          textDecoration: "none",
-          color: "var(--fl-accent)",
-        }}
-      >
-        Open with another app
-      </a>
+      <OpenWithButton url={url} filename={filename} label="Open with another app" />
     </div>
   );
 }
