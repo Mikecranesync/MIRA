@@ -361,6 +361,11 @@ export function FullscreenImageViewer({
         background: "rgba(0,0,0,0.92)",
         display: "flex",
         flexDirection: "column",
+        // Root keeps touch-action none (no handlers): without it the browser
+        // claims a jittery header tap as a native gesture and pointerup never
+        // reaches the ✕ at all. The gesture HANDLERS live on the content
+        // container below so header taps never enter pan/double-tap state.
+        touchAction: "none",
       }}
     >
       <div
