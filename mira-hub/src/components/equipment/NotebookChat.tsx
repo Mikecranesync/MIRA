@@ -4,10 +4,18 @@
 // The leaf renderer (Bubble) is exported for renderToStaticMarkup unit tests
 // (hub has no jsdom/RTL — audit §11).
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Loader2, FileText, ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Send, Loader2, FileText, ChevronDown, Square } from "lucide-react";
 import { API_BASE } from "@/lib/config";
-import { parseFrame, type EvidenceCitation } from "@/lib/notebook-chat-types";
+import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import { AnswerMarkdown } from "./notebook-markdown";
+import {
+  growTextarea,
+  isAbortError,
+  isEnterToSend,
+  readNotebookStream,
+  stoppedTurn,
+} from "./notebook-chat-utils";
 
 /** Collapse citations to distinct (doc, page) passages — repeated cites from the
  *  same page count once, so "6 filename pills" becomes "3 supporting passages". */
@@ -35,6 +43,9 @@ export type ChatTurn = {
   basis?: string | null;
   /** Deterministic follow-up questions from the server (answered turns only). */
   followups?: string[];
+  /** The technician pressed Stop mid-stream (STRM-2): `content` is what had
+   *  streamed; status is `error`, never `answered`. */
+  stopped?: boolean;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -45,6 +56,9 @@ export const SUGGESTED_QUESTIONS = [
   "What are the motor specs?",
 ] as const;
 
+/** Composer auto-grow cap: ~6 rows at text-sm/leading-relaxed (≈24px) + padding. */
+const COMPOSER_MAX_PX = 160;
+
 /** Pure hydration rule (unit-tested): persisted turns fill the chat exactly
  *  once — only while the conversation is still empty. A live conversation is
  *  never clobbered by a late (or repeated) load of the same history. */
@@ -52,8 +66,8 @@ export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] 
   return prev.length === 0 && initial.length > 0 ? initial : prev;
 }
 
-/** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text with
- *  clickable [n] markers wired to the matching citation. */
+/** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text as
+ *  GFM markdown with clickable [n] markers wired to the matching citation. */
 export function Bubble({
   turn,
   onCite,
@@ -68,56 +82,37 @@ export function Bubble({
 }) {
   const isUser = turn.role === "user";
   const cites = turn.citations ?? [];
-  const parts = turn.content.split(/(\[\d+\])/g);
   const passages = distinctPassages(cites);
   const [showSources, setShowSources] = useState(false);
 
-  // Answer body: inline [n] citation chips, whitespace preserved so multi-step
-  // answers keep their line breaks (no unbroken blob). User turns render as a
-  // compact right-aligned bubble; assistant answers use the full column width.
-  const body = (
-    <div className="whitespace-pre-wrap text-sm leading-relaxed" style={{ color: isUser ? "white" : "var(--foreground)" }}>
-      {parts.map((p, i) => {
-        const m = p.match(/^\[(\d+)\]$/);
-        if (m) {
-          const c = cites.find((x) => x.citationId === m[1]);
-          if (c) {
-            // Rounded numbered chip ≥24px — PRD §26 forbids tiny hit targets.
-            return (
-              <button
-                key={i}
-                onClick={() => onCite?.(c)}
-                className="mx-0.5 inline-flex min-h-[24px] min-w-[24px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
-                style={{ background: "var(--brand-blue)", color: "white" }}
-                aria-label={`Open citation ${m[1]}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
-              >
-                {m[1]}
-              </button>
-            );
-          }
-        }
-        return <span key={i}>{p}</span>;
-      })}
-    </div>
-  );
-
   if (isUser) {
+    // User turns are the technician's own text — plain, whitespace preserved,
+    // never interpreted as markdown. Compact right-aligned bubble.
     return (
       <div className="flex justify-end">
         <div
-          className="max-w-[85%] rounded-2xl px-3 py-2"
-          style={{ background: "var(--brand-blue)" }}
+          className="max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-relaxed"
+          style={{ background: "var(--brand-blue)", color: "white" }}
         >
-          {body}
+          {turn.content}
         </div>
       </div>
     );
   }
 
   // Assistant: full-width, no avatar, no bubble chrome — NotebookLM-style.
+  // Answer body renders as markdown (RNDR-1); [n] chips work inside tables and
+  // lists because the split happens in the markdown tree, not on the string.
   return (
     <div className="w-full">
-      {body}
+      <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
+        <AnswerMarkdown content={turn.content} citations={cites} onCite={onCite} />
+      </div>
+      {turn.stopped && (
+        <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="stopped-caption">
+          Stopped
+        </p>
+      )}
       {turn.status === "insufficient_evidence" && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }}>
           Not found in the selected sources. Add a source or rephrase.
@@ -207,6 +202,8 @@ export function NotebookChat({
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
+  const abortRef = useRef<AbortController | null>(null);
   // Always-current view of the thread for send() — `turns` is not in send()'s
   // dep array, so a closure capture would be stale. This ref lets us send the
   // recent history (multi-turn memory) without re-creating the callback per turn.
@@ -225,6 +222,15 @@ export function NotebookChat({
     turnsRef.current = turns; // keep send()'s history source current
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
+
+  // Abort an in-flight stream if the notebook unmounts mid-answer.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Composer auto-grow (CMPS-1): `field-sizing: content` where supported, with
+  // a scrollHeight fallback run on every input change.
+  useEffect(() => {
+    growTextarea(inputRef.current, COMPOSER_MAX_PX);
+  }, [input]);
 
   const sendText = useCallback(async (raw: string) => {
     const message = raw.trim();
@@ -245,6 +251,8 @@ export function NotebookChat({
     }
     setInput("");
     setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
     // Recent thread (before this exchange) → multi-turn memory for the server.
     // Only completed user/assistant turns with content; the route caps it again.
     const history = turnsRef.current
@@ -260,40 +268,15 @@ export function NotebookChat({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, sourceDocIds: enabledDocIds, history }),
+        signal: controller.signal,
       });
       if (!res.body) throw new Error("no_stream");
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      let citations: EvidenceCitation[] = [];
-      let status: ChatTurn["status"] = "answered";
-      let basis: string | null = null;
-      let followups: string[] = [];
-      let content = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t.startsWith("data:")) continue;
-          const data = t.slice(5).trim();
-          if (data === "[DONE]") continue;
-          const frame = parseFrame(data);
-          if (!frame) continue;
-          if (frame.kind === "sources") citations = frame.citations;
-          else if (frame.kind === "evidence") basis = frame.basis;
-          else if (frame.kind === "followups") followups = frame.suggestions;
-          else if (frame.kind === "content") {
-            content += frame.content;
-            setTurns((prev) =>
-              prev.map((x) => (x.id === aId ? { ...x, content, citations } : x)),
-            );
-          } else if (frame.kind === "status") status = frame.status;
-        }
-      }
+      const { content, citations, status, basis, followups } = await readNotebookStream(
+        res.body.getReader(),
+        (partial, cites) => {
+          setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
+        },
+      );
       setTurns((prev) =>
         prev.map((x) =>
           x.id === aId
@@ -314,18 +297,27 @@ export function NotebookChat({
             : x,
         ),
       );
-    } catch {
-      setTurns((prev) =>
-        prev.map((x) =>
-          x.id === aId ? { ...x, content: "Something went wrong. Try again.", status: "error" } : x,
-        ),
-      );
+    } catch (err) {
+      if (isAbortError(err)) {
+        // Stopped by the technician: keep the partial text, mark it as not an
+        // answer (STRM-2). No retry, no provider call.
+        const partial = (err as { partial?: string }).partial ?? "";
+        setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurn(x, partial) : x)));
+      } else {
+        setTurns((prev) =>
+          prev.map((x) =>
+            x.id === aId ? { ...x, content: "Something went wrong. Try again.", status: "error" } : x,
+          ),
+        );
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
   }, [busy, enabledDocIds, notebookId]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
+  const stop = useCallback(() => abortRef.current?.abort(), []);
 
   return (
     <div className="flex h-full flex-col">
@@ -395,26 +387,49 @@ export function NotebookChat({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (isEnterToSend(e)) {
               e.preventDefault();
               void send();
             }
           }}
           placeholder="Ask this machine anything…"
           rows={1}
-          className="max-h-32 flex-1 resize-none rounded-lg px-3 py-2 text-sm outline-none"
-          style={{ border: "1px solid var(--border)", background: "var(--surface-0)", color: "var(--foreground)" }}
+          enterKeyHint="send"
+          className="flex-1 resize-none rounded-lg px-3 py-2 text-sm leading-relaxed outline-none"
+          style={{
+            border: "1px solid var(--border)",
+            background: "var(--surface-0)",
+            color: "var(--foreground)",
+            maxHeight: COMPOSER_MAX_PX,
+            // Auto-grow natively where supported (Chromium 123+); the effect
+            // above is the fallback for the rest.
+            fieldSizing: "content",
+          } as CSSProperties}
           aria-label="Ask this machine anything"
         />
-        <button
-          onClick={() => void send()}
-          disabled={busy || !input.trim()}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: "var(--brand-blue)", color: "white", opacity: busy || !input.trim() ? 0.5 : 1 }}
-          aria-label="Send"
-        >
-          <Send size={16} aria-hidden />
-        </button>
+        {busy ? (
+          <button
+            type="button"
+            onClick={stop}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+            style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
+            aria-label="Stop generating"
+            data-testid="stop-button"
+          >
+            <Square size={14} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={!input.trim()}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--brand-blue)", color: "white", opacity: !input.trim() ? 0.5 : 1 }}
+            aria-label="Send"
+          >
+            <Send size={16} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   );
