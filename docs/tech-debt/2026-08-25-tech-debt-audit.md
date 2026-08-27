@@ -88,3 +88,28 @@ No P1s. Repo is effectively cluster-infra + frozen predecessors, consistent with
 - Agent claim `blog.py:136` / `smoke_proposal_writer.py` SQL f-strings — **not reproduced**, dropped to unverified.
 - Agent claim "4,191 test functions" — not independently recounted; the direction (CLAUDE.md "76" is stale) is certain, the magnitude is not.
 - Worktree/branch deletion **not performed** — human confirms per `dangerous-commands-safety.md`.
+
+---
+
+## Re-rank 2026-08-27 — rows 5–10 after remediation PRs 1–4 landed
+
+Rows 1–4 are closed: #3416 (`dd65c57eb`, v3.297.5; prod runtime proof in
+`docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md`),
+#3420 (`66c65435c`, v3.297.6), #3422 (`2ac2e39e2`, v3.297.7), #3425 (`cb98ab644`, v3.297.8).
+The first **main** run of the new `module-suites` job (run 33061187661) executed 517 tests —
+relay 240 · plc-parser 134 · contextualizer 81 + 3 skipped + 1 xfail · pipeline 59 + 7 xfail ·
+connect 3 — identical to the branch run. Re-measured evidence, then the new order.
+
+| Was | Debt | Re-measured 2026-08-27 | Sev | Now |
+|---|---|---|---|---|
+| 5 | Nightly eval truth broken | **Worse.** 2026-08-26 eval-fixer: **20/65 (31%)**; 45 failures = **33 timeout placeholders** (30 s `MIRA_PROCESS_TIMEOUT`) + 12 genuine (5 stuck at `AWAITING_UNS_CONFIRMATION`); autopatch skipped again. #2759/#2952/#3301/#2258 all still open. | **P1** | **1** — the timeout alone hides 73% of the signal; fix the plist timeout first, then record/replay |
+| 6 | `engine.py` 8,428 / `bot.py` 2,805 lines | Unchanged (`wc -l` on `origin/main`) | **P1** | **2** — gated convergence unit (R0 + Gate 7), not a drive-by |
+| 7 | Three diagnostic engines coexist | Unchanged; #2442/#2444/#2445/#2446 open | **P1** | **3** — needs Mike's product decision before any code |
+| new | **Latent reds the new gate now carries:** #3423 `test_ignition_chat_gate.py` fails 7/12 when run after `test_ignition_chat_direct_connection.py` (order-dependent pollution — green today only because the job's file order is fixed); #3417 golden path 3/9 red on pristine main (stale seed rows, `approved_source_count` 10 ≠ 3); #3424 contextualizer `.xml` fallback never fires (1 xfail) | Surfaced by PR 4 | P2 | **4** — cheap, and each is a flake waiting to fire in the gate |
+| 10 | `CLAUDE.md` over budget + stale numbers | **Worse:** 373 lines (was 347, +26 in two days) | P2 | **5** — drift is accelerating; add the CI drift check with the cut |
+| 8 | Worktrees / remote branches | 48 worktrees (was 52); **944** remote branches (was 922, +22) | P2 | **6** — held: deletes need human confirmation (Mike, 2026-08-27) |
+| 9 | 26 "P0" issues | Unchanged: 26 | P2 | **7** — held: relabel sweep deferred (Mike, 2026-08-27) |
+| new | **PrintSense Production Activation fails closed on every `main` deploy** (`printsense-activation` `workflow_run`; every run since ≤2026-08-26 23:54; posts "❌ failed closed" to #2903 each time) | Pre-existing, observed during tonight's merges | P2 | **8** — red noise on every push masks a real activation failure; either satisfy the checks or gate the workflow on a manual dispatch |
+
+Sequencing unchanged in spirit: row 5 is the only one that changes what every other
+eval claim means; 6/7 are decisions + gated units; the rest are hygiene.
