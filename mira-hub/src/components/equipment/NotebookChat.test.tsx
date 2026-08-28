@@ -177,9 +177,10 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
       identified_component: "Grounded in the identified component.",
       oem_documentation: "Grounded in this notebook",
       workspace_evidence: "Grounded in workspace evidence.",
-      // S5 D5 cross-lane contract: exact strings, shared with mobile (no trailing period).
-      machine_history: "Grounded in recorded machine history — not live",
-      live_machine_evidence: "Grounded in live machine evidence",
+      // S5 D5 cross-lane contract: exact strings, shared with mobile. m9: the
+      // two machine bases end with a period like every other caption.
+      machine_history: "Grounded in recorded machine history — not live.",
+      live_machine_evidence: "Grounded in live machine evidence.",
     };
     for (const [basis, text] of Object.entries(expected)) {
       const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis }} />);
@@ -195,7 +196,7 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     expect(html).not.toContain('data-testid="basis-caption"');
   });
 
-  it("renders a 'Machine Replay · N observed changes around <time> · <freshness>' card for a machine_evidence entry, never as a citation", () => {
+  it("renders a 'Machine Replay · N recorded observations around <time> · <freshness>' card for a machine_evidence entry, never as a citation", () => {
     const turn: ChatTurn = {
       ...base,
       basis: "machine_history",
@@ -206,8 +207,9 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     expect(html).toContain('data-testid="machine-replay-card"');
     expect(html).toContain('data-freshness="stale"');
-    expect(html).toMatch(/Machine Replay · 7 observed changes around \d{2}:\d{2}:\d{2} · Stale</);
-    expect(html).toContain("Grounded in recorded machine history — not live</p>");
+    expect(html).toMatch(/Machine Replay · 7 recorded observations around \d{2}:\d{2}:\d{2} · Stale</);
+    expect(html).not.toContain("observed change");
+    expect(html).toContain("Grounded in recorded machine history — not live.</p>");
     // Not a citation: no supporting-passage chip, no [n] button.
     expect(html).not.toContain("supporting passage");
   });
@@ -222,15 +224,15 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
           }}
         />,
       );
-    expect(mk("live")).toContain("1 observed change around");
+    expect(mk("live")).toContain("1 recorded observation around");
     expect(mk("live")).toContain("· Live</span>");
     expect(mk("simulated")).toContain("· Simulated</span>");
     expect(mk("simulated")).not.toContain("· Live</span>");
   });
 
-  // §2.8: an empty card must say WHICH empty it is. "0 observed changes" reads
-  // as a real, quiet window and would hide a missing machine-history backend.
-  it("an unavailable window and an empty one get their own captions — never '0 observed changes'", () => {
+  // §2.8: an empty card must say WHICH empty it is. A "0 recorded observations"
+  // count reads as a real, quiet window and would hide a missing backend.
+  it("an unavailable window and an empty one get their own captions — never a zero count", () => {
     const mk = (entry: Record<string, unknown>) =>
       renderToStaticMarkup(
         <Bubble
@@ -245,10 +247,10 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
       );
     const unavailable = mk({ reason: "unavailable" });
     expect(unavailable).toContain("Machine Replay · Machine history unavailable");
-    expect(unavailable).not.toContain("observed change");
+    expect(unavailable).not.toContain("recorded observation");
     const empty = mk({});
     expect(empty).toContain("Machine Replay · No machine changes recorded in this window");
-    expect(empty).not.toContain("observed change");
+    expect(empty).not.toContain("recorded observation");
     // Neither claims a machine basis — the turn keeps the basis it earned.
     expect(unavailable).toContain("Grounded in this notebook's sources".replace(/'/g, "&#x27;"));
   });

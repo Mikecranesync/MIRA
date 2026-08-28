@@ -202,6 +202,14 @@ describe("grounded turn + machineEvidence (stale signals)", () => {
     // never "observed now" for a replay; stale is said out loud
     expect(sys).not.toContain("Live Machine Evidence (observed now)");
     expect(sys).toContain("current signals stale");
+    // MAJOR-2: the asset's CURRENT tags are not part of the replayed window and
+    // must never read as the fault state.
+    expect(sys).not.toContain("- Live signals (observed now):");
+    expect(sys).toContain(
+      "- Current signals (stale, NOT part of the replayed window — do not treat as the fault state):",
+    );
+    // m6: the leaf name in the prompt is the same one the timeline shows.
+    expect(sys).toContain("vfd_dc_bus:");
     // ordering: base prompt → machine section → manual rules
     expect(sys.indexOf("You are MIRA")).toBeLessThan(sys.indexOf("## Machine Evidence"));
     expect(sys.indexOf("## Machine Evidence")).toBeLessThan(sys.indexOf("[MANUAL RULES]"));
@@ -344,13 +352,65 @@ describe("honest degradation", () => {
     expect(sentSystemPrompt()).toContain("## Machine Evidence");
   });
 
-  it("Gate G is untouched: sources selected + zero chunks abstains WITHOUT a provider call, even with machine evidence", async () => {
+});
+
+// -- BLOCKER-1: a served machine window IS grounding at Gate G ---------------
+//
+// The REPLAY question ("what happened around the fault at ...") retrieves ZERO
+// manual chunks. With Gate G evaluated before the window was fetched, every
+// notebook that had at least one enabled source abstained on it: the window was
+// never fetched, never grounded, never persisted. Gate G still owns DOCUMENT
+// refusal -- these tests pin the exact line between the two.
+describe("Gate G -- a non-empty machine window is grounding (BLOCKER-1)", () => {
+  it("sourced notebook + zero chunks + NON-EMPTY window: answered from the machine, provider called, MACHINE section present", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE];
+    const res = await POST(req({ message: "what happened around the fault?", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    // the provider IS called -- the turn is not skipped
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("answered");
+    const evidence = fr.find((f) => f.kind === "evidence")!;
+    expect(evidence.basis).toBe("machine_history");
+    expect((evidence.machineEvidence as { rowCount: number }).rowCount).toBe(3);
+    expect(sentSystemPrompt()).toContain("## Machine Evidence (replayed history");
+    // grounding is the WINDOW, not documents: no chunks retrieved -> no citations
+    expect(fr.find((f) => f.kind === "sources")!.citations).toEqual([]);
+    expect(persistedTurn<{ basis: string }>().basis).toBe("machine_history");
+  });
+
+  it("sourced notebook + zero chunks + EMPTY window: the abstain is byte-identical (no provider call, no evidence frame)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
+    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
+    expect(fr.find((f) => f.kind === "status")!.message).toBe("I couldn't find that in the selected sources.");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();
+    expect(persistedTurn<{ answerStatus: string }>().answerStatus).toBe("insufficient_evidence");
+  });
+
+  it("sourced notebook + zero chunks + UNAVAILABLE window (033 missing): the abstain is unchanged", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [
+      KG_HIT,
+      [/FROM tag_events/, () => { const e = new Error("no relation") as Error & { code?: string }; e.code = "42P01"; throw e; }],
+      STALE,
+    ];
     const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
     expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("NO machineEvidence at all + zero chunks: the abstain is untouched (the document lane never changed)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A] }), params));
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();
+    // and no machine SQL was issued at all
+    expect(dbMock.calls.filter((c) => /tag_events|kg_entities|live_signal_cache/.test(c.sql))).toHaveLength(0);
   });
 });
 
@@ -359,19 +419,56 @@ describe("approved-context gate — machine evidence only (D3)", () => {
     process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
   });
 
-  it("general turn + stale machine evidence + no approved sources → 412 approved_context (a sentence in `error`)", async () => {
+  // BLOCKER-2. A replayed window is by definition NOT live, so it can never
+  // raise approvedLiveSignalCount -- on prod (MIRA_ENFORCE_APPROVED_RETRIEVAL=
+  // true) every stale replay refused 412. A window the SERVER re-fetched from
+  // its own tenant-scoped tables IS approved context.
+  it("stale NON-EMPTY window + no approved sources: answered, NOT 412 (the server-fetched window is approved context)", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE];
+    const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "evidence")!.basis).toBe("machine_history");
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("sourced notebook + zero chunks + stale NON-EMPTY window: answered under enforcement (BLOCKER-1 + BLOCKER-2 together)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE];
+    const res = await POST(req({ message: "what happened around the fault?", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(200);
+    expect((await frames(res)).find((f) => f.kind === "evidence")!.basis).toBe("machine_history");
+  });
+
+  it("the gate keeps its teeth: UNAVAILABLE window + no approved context: 412 approved_context (a sentence in `error`)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [
+      KG_HIT,
+      [/FROM tag_events/, () => { const e = new Error("no relation") as Error & { code?: string }; e.code = "42P01"; throw e; }],
+      STALE,
+    ];
     const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
     expect(res.status).toBe(412);
     const body = await res.json();
     expect(body.code).toBe("approved_context");
     expect(body.gate).toBe("approved_context");
+    expect(body.approved_machine_evidence_count).toBe(0);
     expect(typeof body.error).toBe("string");
     expect(body.error.length).toBeGreaterThan(10);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("an EMPTY window + no approved context: 412 too (nothing observed is not approved context)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
+    const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
+    expect(res.status).toBe(412);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it("stale machine evidence + a validated notebook source → passes (the source is approved context)", async () => {

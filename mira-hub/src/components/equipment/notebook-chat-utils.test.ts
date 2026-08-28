@@ -267,6 +267,7 @@ import {
   MACHINE_HISTORY_UNAVAILABLE_CAPTION,
   MACHINE_NO_CHANGES_CAPTION,
   machineReplayCaption,
+  recordedObservationsPhrase,
   splitEvidence,
 } from "./notebook-chat-utils";
 
@@ -407,17 +408,13 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
   });
 });
 
-describe("buildChatBody — optional machineEvidence selection", () => {
-  it("omits the key entirely when no window is selected (byte-identical body)", () => {
-    expect(buildChatBody("q", ["d"], [])).toEqual({ message: "q", sourceDocIds: ["d"], history: [] });
-  });
-  it("carries only the selection, never rows", () => {
-    expect(buildChatBody("q", ["d"], [], { assetId: "a1", anchorAt: machine.anchorAt, pre: 5, post: 2 })).toEqual({
-      message: "q",
-      sourceDocIds: ["d"],
-      history: [],
-      machineEvidence: { assetId: "a1", anchorAt: machine.anchorAt, pre: 5, post: 2 },
-    });
+describe("buildChatBody — the web body carries no window selection", () => {
+  // The web notebook renders machine evidence; it never selects a window (the
+  // mobile lane owns REPLAY selection). The body stays exactly three keys.
+  it("is the three-key body, with no machineEvidence key", () => {
+    const body = buildChatBody("q", ["d"], []);
+    expect(body).toEqual({ message: "q", sourceDocIds: ["d"], history: [] });
+    expect(Object.keys(body)).toEqual(["message", "sourceDocIds", "history"]);
   });
 });
 
@@ -425,21 +422,26 @@ describe("machineReplayCaption", () => {
   const clock = () => "23:16:31";
   it("counts, anchors and names freshness honestly", () => {
     // S5 D5 cross-lane contract: mobile's replayCardTitle shape + the shared FRESHNESS_LABEL vocabulary.
-    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Stale");
-    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 observed change around 23:16:31 · Live");
-    expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Simulated");
+    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · Stale");
+    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 recorded observation around 23:16:31 · Live");
+    expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · Simulated");
+    // m1: the rows are not all CHANGES — a kind:"event" row is a periodic
+    // sample with no prev_value, so the caption must not claim otherwise.
+    expect(machineReplayCaption(machine, clock)).not.toContain("observed change");
+    expect(recordedObservationsPhrase(1)).toBe("1 recorded observation");
+    expect(recordedObservationsPhrase(0)).toBe("0 recorded observations");
   });
 
-  // §2.8: "0 observed changes" reads like a real, quiet window — so it must
+  // §2.8: a "0 recorded observations" count reads like a real, quiet window — so it must
   // never stand in for "the backend isn't there". Two distinct sentences.
   it("an unavailable window says so instead of counting zero", () => {
     expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).toBe(
       MACHINE_HISTORY_UNAVAILABLE_CAPTION,
     );
-    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).not.toContain("observed change");
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).not.toContain("recorded observation");
   });
 
-  it("a genuinely empty window says nothing was recorded, not '0 observed changes'", () => {
+  it("a genuinely empty window says nothing was recorded, not a zero count", () => {
     expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
     expect(machineReplayCaption({ ...machine, rowCount: 0, reason: null }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
   });
