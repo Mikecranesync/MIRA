@@ -204,9 +204,9 @@ function LookPanel({
               {state.result.observation.text}
             </div>
           ) : (
-            <div className="meta" style={{ marginTop: 8 }}>
-              The photo is saved, but no description came back. You can still
-              ask MIRA about it.
+            <div className="meta" style={{ marginTop: 8 }} data-testid="look-no-observation">
+              {state.result.message ?? "The photo is saved, but no description came back."}{" "}
+              You can still ask MIRA about it.
             </div>
           )}
           <label style={{ marginTop: 10 }}>Your question (optional)</label>
@@ -328,12 +328,20 @@ function ReadPanel({
       via,
     );
     switch (out.kind) {
-      case "bound":
+      case "bound": {
         onChanged();
+        // Confirmation is the SERVER's verdict, read off the returned binding:
+        // a scan comes back unconfirmed; a signed-in typed tag comes back
+        // confirmed by that user. The note never contradicts the chip.
+        const from = via === "qr" ? "the QR sticker" : "the typed tag";
+        const confirmed = out.notebook.asset?.confirmedAt != null;
         return setState({
           name: "menu",
-          note: `${out.asset.name || tag} is now this notebook's machine — selected from the ${via === "qr" ? "QR sticker" : "typed tag"}, not yet confirmed.`,
+          note: confirmed
+            ? `${out.asset.name || tag} is now this notebook's machine — confirmed, selected from ${from}.`
+            : `${out.asset.name || tag} is now this notebook's machine — selected from ${from}, not yet confirmed.`,
         });
+      }
       case "same_machine":
         return setState({ name: "menu", note: `That's this notebook's machine (${out.asset.name || tag}).` });
       case "notebook":
@@ -468,10 +476,20 @@ function ReplayPanel({
   if (state.name === "error") return <ErrorState error={state.error} />;
 
   const { result } = state;
+  // Three server-stated empties, each its own sentence — none is a route
+  // failure (that throws and renders ErrorState above).
+  if (!result.ok && result.reason === "no_uns_path")
+    return (
+      <div className="meta" role="status">
+        This machine has no Machine Memory yet (no UNS path), so there is nothing to replay.
+      </div>
+    );
   if (!result.ok)
     return (
       <div className="meta" role="status">
-        No fault window recorded for this machine, so there is nothing to replay.
+        {result.windowsAvailable
+          ? "No fault window recorded for this machine, so there is nothing to replay."
+          : "Machine state windows aren't available in this workspace yet, so there is nothing to replay."}
         {result.latest
           ? ` Latest recorded state: ${result.latest.state}${result.latest.at ? ` at ${hhmmss(result.latest.at)}` : ""}.`
           : ""}

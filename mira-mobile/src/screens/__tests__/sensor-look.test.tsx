@@ -123,6 +123,29 @@ describe("Sensor LOOK (S2)", () => {
     await screen.findByText("ok");
   });
 
+  it("§4.1: provider failure with the parked file renders the evidence card (no description) + Ask MIRA", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: { linkId: "l1", notebookId: "nb1" },
+      observation: null,
+      quality: null,
+      reason: "provider_error",
+      message: "Could not describe the photo. The photo has been saved to this notebook.",
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByTestId("thumb").textContent).toBe("f-park");
+    const note = screen.getByTestId("look-no-observation").textContent ?? "";
+    expect(note).toContain("Could not describe the photo. The photo has been saved to this notebook.");
+    expect(note).toMatch(/still ask MIRA/);
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][1]).toContain("(no description available)");
+  });
+
   it("an intake failure shows the server's reason (415), not an invented one", async () => {
     lookAtPhoto.mockRejectedValue(new ApiError("client", 415, "unsupported_image_type"));
     mount();

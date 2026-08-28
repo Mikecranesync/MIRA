@@ -106,9 +106,12 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
       } else if (frame.kind === "evidence") {
         evidenceBasis = String(frame.basis ?? "");
         evidenceLabel = String(frame.label ?? "");
-        // Same frame kind (no new SSE frame, D5): if the server echoes the
-        // turn's evidence[] here, keep only the machine-evidence entries.
-        const entries = machineEvidenceEntries(frame.evidence ?? frame.entries);
+        // Same frame kind (no new SSE frame, D5). The Hub puts the entry on
+        // the frame as ONE object (`machineEvidence: {kind:"machine_evidence",…}`,
+        // chat/route.ts evidenceFrame); an echoed evidence[] array is also
+        // read. Either way only machine-evidence entries are kept.
+        const raw = frame.machineEvidence ?? frame.evidence ?? frame.entries;
+        const entries = machineEvidenceEntries(raw == null || Array.isArray(raw) ? raw : [raw]);
         if (entries.length) machineEvidence = entries;
       }
     } catch {

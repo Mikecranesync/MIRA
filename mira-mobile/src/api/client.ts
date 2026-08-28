@@ -199,7 +199,10 @@ async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse>
   return { status: res.status, data, text };
 }
 
-function errorFromStatus(status: number, data: unknown): ApiError {
+/** Typed error for a non-2xx status. Exported so a resource that ACCEPTS some
+ *  statuses (a body that is the answer) can still throw the same error for
+ *  the rest — one status→error mapping. */
+export function errorFromStatus(status: number, data: unknown): ApiError {
   const detail =
     (typeof data === "object" && data !== null && "error" in data
       ? String((data as { error: unknown }).error)
@@ -215,8 +218,15 @@ function errorFromStatus(status: number, data: unknown): ApiError {
  *  fetch patch rebuilds real multipart in native code (FormData cannot cross
  *  the plugin bridge) and we attach the session Cookie explicitly from OUR
  *  jar; in the dev browser it is a plain fetch through the vite proxy with
- *  browser cookies. NOT retried — callers own replay semantics. */
-export async function uploadMultipart(path: string, form: FormData): Promise<ApiResponse> {
+ *  browser cookies. NOT retried — callers own replay semantics.
+ *  `acceptStatuses`: same contract as `request()` — a non-2xx whose BODY is
+ *  the answer (e.g. LOOK's 502/503 that still carries the parked file) is
+ *  returned instead of thrown. Default: none (existing callers unchanged). */
+export async function uploadMultipart(
+  path: string,
+  form: FormData,
+  opts: { acceptStatuses?: number[] } = {},
+): Promise<ApiResponse> {
   await loadJar();
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = {};
@@ -245,7 +255,8 @@ export async function uploadMultipart(path: string, form: FormData): Promise<Api
   if (res.status === 401 && !suppressAuthEvents) {
     for (const fn of authExpiredListeners) fn();
   }
-  if (res.status >= 200 && res.status < 300) return { status: res.status, data, text };
+  if ((res.status >= 200 && res.status < 300) || opts.acceptStatuses?.includes(res.status))
+    return { status: res.status, data, text };
   throw errorFromStatus(res.status, data);
 }
 

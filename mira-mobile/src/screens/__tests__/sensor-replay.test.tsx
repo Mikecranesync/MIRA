@@ -40,6 +40,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
 });
 
 import { NotebookScreen } from "../NotebookScreen";
+import { ApiError } from "../../api/client";
 import { hhmmss } from "../../lib/sensor";
 
 const ANCHOR = "2026-08-28T23:16:31.000Z";
@@ -149,7 +150,7 @@ describe("Sensor REPLAY (S4)", () => {
 
   it("no fault window → honest empty with the latest recorded state; no rows drawn", async () => {
     getNotebookDetail.mockResolvedValue(bound());
-    getAssetHistory.mockResolvedValue({ ok: false, reason: "no_fault_window", latest: { state: "running", at: "2026-08-28T22:00:00Z" } });
+    getAssetHistory.mockResolvedValue({ ok: false, reason: "no_fault_window", windowsAvailable: true, latest: { state: "running", at: "2026-08-28T22:00:00Z" } });
     mount();
     await openReplay();
     const s = await screen.findByRole("status");
@@ -157,6 +158,39 @@ describe("Sensor REPLAY (S4)", () => {
     expect(s.textContent).toContain(`running at ${hhmmss("2026-08-28T22:00:00Z")}`);
     expect(screen.queryByRole("listitem")).toBeNull();
     expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
+  });
+
+  it("no_fault_window with windowsAvailable=false says the windows are absent, not that none was recorded", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockResolvedValue({ ok: false, reason: "no_fault_window", windowsAvailable: false, latest: null });
+    mount();
+    await openReplay();
+    const s = await screen.findByRole("status");
+    expect(s.textContent).toMatch(/state windows aren't available/);
+    expect(s.textContent).not.toMatch(/No fault window recorded/);
+  });
+
+  it("no_uns_path is its own sentence — no machine memory, not 'no fault window'", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockResolvedValue({ ok: false, reason: "no_uns_path" });
+    mount();
+    await openReplay();
+    const s = await screen.findByRole("status");
+    expect(s.textContent).toMatch(/no Machine Memory yet \(no UNS path\)/);
+    expect(s.textContent).not.toMatch(/No fault window recorded/);
+  });
+
+  it("a route failure (bare 404 → thrown) renders the error state, never a statement about the machine", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    const err = new ApiError("not_found", 404, "HTTP 404");
+    getAssetHistory.mockRejectedValue(err);
+    const { container } = mount();
+    await openReplay();
+    await waitFor(() => expect(screen.queryByText(/Reading Machine Memory/)).toBeNull());
+    expect(screen.queryByText(/No fault window recorded/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    // The existing ErrorState (common.tsx): `.error` carrying the typed message.
+    expect(container.querySelector(".error")?.textContent).toBe(err.userMessage);
   });
 
   it("tables unavailable → says so; no fabricated timeline", async () => {

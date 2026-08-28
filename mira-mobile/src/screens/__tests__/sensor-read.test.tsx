@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 // Sensor v0 S3 — READ in the notebook (contract §4.2):
-//   • identity chip reflects the notebook's binding (unbound → amber after a
-//     typed/QR selection; never "confirmed" from a scan)
+//   • identity chip reflects the notebook's binding as the SERVER returns it:
+//     a scan (qr/nfc) stays unconfirmed (amber); a signed-in typed tag is
+//     confirmed by that user (green) — mira-hub bindNotebookAsset's rule. The
+//     phone never asserts either; it renders `asset.confirmedAt`.
 //   • "Scan FactoryLM QR" mounts the EXISTING ScanView with a Sensor cancel
 //     label; a typed tag binds this notebook in place (manual_entry)
 //   • BACK unwinds viewfinder → Sensor sheet → notebook
@@ -63,7 +65,20 @@ const boundByTyping = () => ({
     displayName: "Discharge Conveyor",
     manufacturer: null,
     model: null,
-    asset: { entityId: "asset-1", selectedVia: "manual_entry", confirmedBy: null, confirmedAt: null },
+    // What the Hub actually returns for a signed-in manual_entry bind:
+    // confirmedBy = the session user, confirmedAt = now() (equipment-notebooks.ts:506-514).
+    asset: { entityId: "asset-1", selectedVia: "manual_entry", confirmedBy: "user-1", confirmedAt: "2026-08-28T01:00:00.000Z" },
+  },
+  sources: [],
+  turns: [],
+});
+const boundByScan = () => ({
+  notebook: {
+    id: "nb1",
+    displayName: "Discharge Conveyor",
+    manufacturer: null,
+    model: null,
+    asset: { entityId: "asset-1", selectedVia: "qr", confirmedBy: null, confirmedAt: null },
   },
   sources: [],
   turns: [],
@@ -89,7 +104,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Sensor READ (S3)", () => {
-  it("a typed tag upgrades THIS notebook (L1→L2) and the chip turns amber, not green", async () => {
+  it("a typed tag upgrades THIS notebook (L1→L2); the chip + note follow the server's confirmedAt (green for a signed-in typed tag)", async () => {
     getAssetByTag.mockResolvedValue({ id: "asset-1", tag: "CV-101", name: "Discharge Conveyor" });
     bindNotebookAsset.mockResolvedValue(boundByTyping().notebook);
     mount();
@@ -107,9 +122,27 @@ describe("Sensor READ (S3)", () => {
     await waitFor(() => expect(bindNotebookAsset).toHaveBeenCalledWith("nb1", "asset-1", "manual_entry"));
     // Stayed in this notebook: no navigation to another machine's notebook.
     expect(openAssetNotebook).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("asset-chip").getAttribute("data-tone")).toBe("confirmed"));
+    expect(screen.getByTestId("asset-chip").textContent).toMatch(/Confirmed — selected from the typed in/);
+    const note = (await screen.findByRole("status")).textContent ?? "";
+    expect(note).toMatch(/now this notebook's machine — confirmed, selected from the typed tag/);
+    expect(note).not.toMatch(/not yet confirmed/);
+  });
+
+  it("a bind the server leaves UNCONFIRMED renders amber and the note says so (never contradicts the chip)", async () => {
+    getAssetByTag.mockResolvedValue({ id: "asset-1", tag: "CV-101", name: "Discharge Conveyor" });
+    // e.g. a scan, or a server that did not confirm this selection.
+    bindNotebookAsset.mockResolvedValue(boundByScan().notebook);
+    mount();
+    await openRead();
+    fireEvent.click(screen.getByRole("button", { name: /Scan FactoryLM QR/ }));
+    await screen.findByRole("dialog", { name: "Scan FactoryLM QR" });
+    getNotebookDetail.mockResolvedValue(boundByScan());
+    fireEvent.change(screen.getByPlaceholderText("e.g. ALLE-MMDHMQV0"), { target: { value: "CV-101" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
     await waitFor(() => expect(screen.getByTestId("asset-chip").getAttribute("data-tone")).toBe("unconfirmed"));
-    expect(screen.getByTestId("asset-chip").textContent).toMatch(/typed in — not yet confirmed/);
-    expect((await screen.findByRole("status")).textContent).toMatch(/now this notebook's machine/);
+    expect(screen.getByTestId("asset-chip").textContent).toMatch(/not yet confirmed/);
+    expect((await screen.findByRole("status")).textContent).toMatch(/selected from the typed tag, not yet confirmed/);
   });
 
   it("scanning a DIFFERENT machine from a bound notebook opens that notebook", async () => {

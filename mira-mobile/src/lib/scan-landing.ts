@@ -43,8 +43,10 @@ export function messageFrom(err: unknown, fallback: string): string {
 
 /**
  * `via` records HOW the tag arrived — a camera decode is `qr`, a typed tag is
- * `manual_entry`. Both are SELECTIONS (never confirmations); the server keeps
- * the distinction so the identity chip can say "typed in" vs "QR sticker".
+ * `manual_entry`. The phone never asserts confirmation; the server decides it
+ * (a scan stays unconfirmed, a signed-in typed tag is confirmed by that user)
+ * and keeps the distinction so the identity chip can say "typed in" vs "QR
+ * sticker".
  */
 export async function resolveScan(
   tag: string,

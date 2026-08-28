@@ -2,6 +2,7 @@
 // no screen builds its own requests. All paths trailing-slash (Hub canonical).
 
 import {
+  errorFromStatus,
   request,
   uploadMultipart,
   withAuthEventsSuppressed,
@@ -236,12 +237,15 @@ export async function getAssetByTag(tag: string): Promise<Asset | null> {
  * second one. Two notebooks on one machine would have disjoint document sets
  * and split history, and the duplicate is invisible in a list.
  *
- * `via` records HOW the machine was chosen — a scan is a selection, never a
- * confirmation — so the notebook can show identity as unconfirmed until a
- * human says otherwise.
+ * `via` records HOW the machine was chosen. Confirmation is decided by the
+ * server, never asserted by the phone: a scan (`qr` / `nfc`) is a selection
+ * only, while a signed-in human choosing on a non-scan path (typed tag,
+ * picker, nameplate) is recorded as confirmed by that user
+ * (`mira-hub/src/lib/equipment-notebooks.ts` bindNotebookAsset).
  */
-/** How a machine was chosen — mirrors the Hub's ASSET_SELECTION_METHODS. A
- *  scan or a typed tag is a SELECTION, never a confirmation. */
+/** How a machine was chosen — mirrors the Hub's ASSET_SELECTION_METHODS. The
+ *  phone reports the method; whether it counts as a confirmation is the
+ *  server's rule (scan → unconfirmed; signed-in non-scan → confirmed). */
 export type AssetSelectionMethod =
   | "qr"
   | "nfc"
@@ -908,6 +912,11 @@ export interface LookResult {
   /** Null when the provider failed: the file is kept, the observation is not
    *  invented. */
   observation: LookObservation | null;
+  /** Server reason when `observation` is null (`provider_error` /
+   *  `recognizer_not_configured`), else null. */
+  reason: string | null;
+  /** The server's technician-facing sentence for that reason, else null. */
+  message: string | null;
   /** Opaque capture-quality assessment (blur/glare hint) — preserved verbatim. */
   quality: unknown | null;
 }
@@ -929,11 +938,18 @@ export async function lookAtPhoto(
   fd.append("image", image);
   fd.append("clientKey", clientKey);
   if (question?.trim()) fd.append("question", question.trim());
+  // §4.1: the server parks + links the photo BEFORE vision, and a provider
+  // failure (502) or an unconfigured recognizer (503) still returns that
+  // parked file with `observation: null`. Those bodies are answers — the
+  // evidence card renders from them; anything else (or a 5xx without a
+  // file) is the same typed error as before.
   const r = await uploadMultipart(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/look/`,
     fd,
+    { acceptStatuses: [502, 503] },
   );
   const d = (r.data ?? {}) as Record<string, unknown>;
+  if (r.status >= 400 && !d.fileId) throw errorFromStatus(r.status, d);
   const att = d.attachment as Record<string, unknown> | undefined;
   const obs = d.observation as Record<string, unknown> | null | undefined;
   return {
@@ -950,6 +966,8 @@ export async function lookAtPhoto(
           }
         : null,
     quality: d.quality ?? null,
+    reason: typeof d.reason === "string" ? d.reason : null,
+    message: typeof d.message === "string" ? d.message : null,
   };
 }
 
@@ -1270,15 +1288,27 @@ export async function getAssetHistory(
   );
   const d = (r.data ?? {}) as Record<string, unknown>;
   if (r.status === 404) {
-    const latest = d.latest as Record<string, unknown> | null | undefined;
-    return {
-      ok: false,
-      reason: "no_fault_window",
-      latest:
-        latest && latest.state
-          ? { state: String(latest.state), at: String(latest.at ?? latest.started_at ?? "") }
-          : null,
-    };
+    // Only the server's OWN discriminators are answers about the machine. A
+    // bare 404 (route missing, asset not in this tenant, bad id) is a
+    // transport/route failure and must never read as "no fault window
+    // recorded" (§2.8 honesty).
+    const error = typeof d.error === "string" ? d.error : "";
+    if (error === "no_uns_path") return { ok: false, reason: "no_uns_path" };
+    if (error === "no_fault_window") {
+      // Hub shape: `latestWindow: {state, started_at, ended_at}` +
+      // `windowsAvailable`; `latest.at` tolerated for older bodies.
+      const latest = (d.latestWindow ?? d.latest) as Record<string, unknown> | null | undefined;
+      return {
+        ok: false,
+        reason: "no_fault_window",
+        windowsAvailable: d.windowsAvailable !== false,
+        latest:
+          latest && latest.state
+            ? { state: String(latest.state), at: String(latest.started_at ?? latest.at ?? "") }
+            : null,
+      };
+    }
+    throw errorFromStatus(404, d);
   }
   const anchor = (d.anchor ?? {}) as Record<string, unknown>;
   const freshness = (d.freshness ?? {}) as Record<string, unknown>;

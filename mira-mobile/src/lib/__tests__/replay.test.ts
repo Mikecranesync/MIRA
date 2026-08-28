@@ -108,13 +108,36 @@ describe("getAssetHistory", () => {
     expect(r.history.reason).toBeNull();
   });
 
-  it("404 no_fault_window is an answer, with the latest state when the server gives one", async () => {
+  it("404 no_fault_window is an answer, with the Hub's latestWindow {state, started_at} + windowsAvailable", async () => {
     request.mockResolvedValue({
       status: 404,
-      data: { error: "no_fault_window", latest: { state: "running", at: "2026-08-28T22:00:00Z" } },
+      data: {
+        error: "no_fault_window",
+        message: "No recorded fault or e-stop window for this asset.",
+        latestWindow: { state: "idle", started_at: "2026-08-27T22:00:00.000Z", ended_at: null },
+        windowsAvailable: true,
+      },
     });
     const r = await getAssetHistory("asset-1");
-    expect(r).toEqual({ ok: false, reason: "no_fault_window", latest: { state: "running", at: "2026-08-28T22:00:00Z" } });
+    expect(r).toEqual({ ok: false, reason: "no_fault_window", windowsAvailable: true, latest: { state: "idle", at: "2026-08-27T22:00:00.000Z" } });
+  });
+
+  it("404 no_fault_window with windowsAvailable=false and no latest window is the 'tables absent' answer", async () => {
+    request.mockResolvedValue({ status: 404, data: { error: "no_fault_window", latestWindow: null, windowsAvailable: false } });
+    const r = await getAssetHistory("asset-1");
+    expect(r).toEqual({ ok: false, reason: "no_fault_window", windowsAvailable: false, latest: null });
+  });
+
+  it("404 no_uns_path is its OWN answer — never 'no fault window'", async () => {
+    request.mockResolvedValue({ status: 404, data: { error: "no_uns_path", message: "This asset has no machine memory (no UNS path)." } });
+    expect(await getAssetHistory("asset-1")).toEqual({ ok: false, reason: "no_uns_path" });
+  });
+
+  it("a bare 404 (missing route / asset not in tenant) THROWS — a route failure is never a statement about the machine", async () => {
+    request.mockResolvedValue({ status: 404, data: null });
+    await expect(getAssetHistory("asset-1")).rejects.toMatchObject({ kind: "not_found", status: 404 });
+    request.mockResolvedValue({ status: 404, data: { error: "asset_not_found" } });
+    await expect(getAssetHistory("asset-1")).rejects.toMatchObject({ kind: "not_found", status: 404, detail: "asset_not_found" });
   });
 
   it("200 with reason unavailable is distinct from 'no rows' — never a fake timeline", async () => {
@@ -187,6 +210,20 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
     // A frame without entries leaves the field absent — never an empty claim.
     const plain = parseChatSse('data: {"kind":"evidence","basis":"oem_documentation","label":"y"}\n\n');
     expect("machineEvidence" in plain).toBe(false);
+  });
+
+  it("the live evidence frame reads the Hub's SINGLE-object `machineEvidence` (chat/route.ts evidenceFrame)", () => {
+    const body =
+      'data: {"kind":"content","content":"A"}\n\n' +
+      `data: {"kind":"evidence","basis":"live_machine_evidence","label":"x","machineEvidence":${JSON.stringify({ ...entry, freshness: "live" })}}\n\n` +
+      'data: {"kind":"status","status":"answered"}\n\n';
+    const t = parseChatSse(body);
+    expect(t.evidenceBasis).toBe("live_machine_evidence");
+    expect(t.machineEvidence).toHaveLength(1);
+    expect(t.machineEvidence?.[0]).toMatchObject({ assetId: "asset-1", rowCount: 7, freshness: "live", windowId: "w-1" });
+    // An object without the discriminator is not machine evidence.
+    const none = parseChatSse('data: {"kind":"evidence","basis":"machine_history","label":"x","machineEvidence":{"assetId":"a"}}\n\n');
+    expect("machineEvidence" in none).toBe(false);
   });
 
   it("replayQuestion names the fault time", () => {

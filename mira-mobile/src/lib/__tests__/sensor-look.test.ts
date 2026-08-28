@@ -47,11 +47,53 @@ describe("lookAtPhoto request shape", () => {
     expect(fd.get("image")).toBe(file);
     expect(fd.get("clientKey")).toBe("key-1");
     expect(fd.get("question")).toBe("read these LEDs");
+    expect(uploadMultipart.mock.calls[0][2]).toEqual({ acceptStatuses: [502, 503] });
     expect(r).toEqual({
       fileId: "f-1",
       attachment: { linkId: "l-1", notebookId: "nb-1" },
       observation: { text: "Green LED lit, contactor coil energized.", capturedAt: "2026-08-28T14:21:09Z", provenance: "phone_photo" },
       quality: { blur: 0.1 },
+      reason: null,
+      message: null,
+    });
+  });
+
+  it("§4.1: a provider failure (502) STILL returns the parked file — observation null, server reason kept", async () => {
+    uploadMultipart.mockResolvedValue({
+      status: 502,
+      data: {
+        error: "vision_failed",
+        reason: "provider_error",
+        message: "Could not describe the photo. The photo has been saved to this notebook.",
+        fileId: "f-park",
+        attachment: { linkId: "l-9", notebookId: "nb-1" },
+        observation: null,
+      },
+    });
+    const r = await lookAtPhoto("nb-1", new File(["x"], "a.jpg", { type: "image/jpeg" }), "k");
+    expect(r.fileId).toBe("f-park");
+    expect(r.attachment).toEqual({ linkId: "l-9", notebookId: "nb-1" });
+    expect(r.observation).toBeNull();
+    expect(r.reason).toBe("provider_error");
+    expect(r.message).toMatch(/has been saved/);
+  });
+
+  it("a 503 recognizer_not_configured body with the parked file is likewise an answer", async () => {
+    uploadMultipart.mockResolvedValue({
+      status: 503,
+      data: { error: "recognizer_not_configured", reason: "recognizer_not_configured", message: "Visual inspection is not available.", fileId: "f-3", observation: null },
+    });
+    const r = await lookAtPhoto("nb-1", new File(["x"], "a.jpg", { type: "image/jpeg" }), "k");
+    expect(r.fileId).toBe("f-3");
+    expect(r.reason).toBe("recognizer_not_configured");
+  });
+
+  it("an accepted 5xx WITHOUT a parked file is still a typed error (nothing to show)", async () => {
+    uploadMultipart.mockResolvedValue({ status: 503, data: { error: "recognizer_not_configured" } });
+    await expect(lookAtPhoto("nb-1", new File(["x"], "a.jpg", { type: "image/jpeg" }), "k")).rejects.toMatchObject({
+      kind: "server",
+      status: 503,
+      detail: "recognizer_not_configured",
     });
   });
 

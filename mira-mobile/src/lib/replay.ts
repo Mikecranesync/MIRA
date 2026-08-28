@@ -60,8 +60,17 @@ export interface AssetHistory {
 
 export type HistoryResult =
   | { ok: true; history: AssetHistory }
-  /** 404: no faulted/estopped window to anchor on — never a synthesized one. */
-  | { ok: false; reason: "no_fault_window"; latest: { state: string; at: string } | null };
+  /** 404 `no_fault_window`: no faulted/estopped window to anchor on — never a
+   *  synthesized one. `windowsAvailable=false` means the state-window table
+   *  itself is absent in this environment (a different sentence). */
+  | {
+      ok: false;
+      reason: "no_fault_window";
+      windowsAvailable: boolean;
+      latest: { state: string; at: string } | null;
+    }
+  /** 404 `no_uns_path`: the asset has no machine memory at all. */
+  | { ok: false; reason: "no_uns_path" };
 
 /**
  * Freshness label vocabulary — PORTED from
