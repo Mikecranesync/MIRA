@@ -40,3 +40,25 @@ describe("enrichCitationsWithOrigin", () => {
     expect(out[3]).toEqual({ noDocId: true });
   });
 });
+
+describe("machine evidence entries (Sensor S4, D5) ride in evidence[] and are skipped", () => {
+  const machine = {
+    kind: "machine_evidence",
+    assetId: "a1",
+    anchorAt: "2026-08-27T23:16:31.000Z",
+    pre: 5,
+    post: 2,
+    rowCount: 7,
+    freshness: "stale",
+  };
+
+  it("enrichCitationsWithOrigin passes a machine entry through untouched (no docId → never enriched)", () => {
+    const out = enrichCitationsWithOrigin(
+      [{ citationId: "1", docId: DOC, fileId: "txt-file" }, machine],
+      new Map([[DOC, PHOTO]]),
+    ) as Array<Record<string, unknown>>;
+    expect(out[0].originFileId).toBe(PHOTO);
+    expect(out[1]).toBe(machine); // same reference — not a citation, not touched
+    expect(out[1]).not.toHaveProperty("originFileId");
+  });
+});

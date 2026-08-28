@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
 import { fetchMachineMemory, isUndefinedRelationOrColumn } from "@/lib/machine-memory";
+import { resolveAssetUnsPath } from "@/lib/asset-uns-path";
 
 export const dynamic = "force-dynamic";
 
@@ -57,17 +58,7 @@ export async function GET(
       // kg_entities.tenant_id is UUID, so a direct column compare errors
       // (uuid = text). Param-binding compares each in its own type. Null when the
       // asset has no kg_entities row (the common CMMS-only case).
-      const unsPath = await c
-        .query(
-          `SELECT uns_path::text AS uns_path
-             FROM kg_entities
-            WHERE tenant_id = $1
-              AND entity_type = 'equipment'
-              AND (id::text = $2 OR entity_id = $2)
-            LIMIT 1`,
-          [ctx.tenantId, id],
-        )
-        .then((r) => r.rows[0]?.uns_path ?? null);
+      const unsPath = await resolveAssetUnsPath(c, ctx.tenantId, id);
 
       // Machine memory (T2 / seam 3): latest run, state window, and up to 3
       // recent anomaly diffs, so the confirmation card can show what the

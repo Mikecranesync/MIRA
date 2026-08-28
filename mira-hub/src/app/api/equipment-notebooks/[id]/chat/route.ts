@@ -71,8 +71,21 @@ import {
   facetEvidencePages,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
+import {
+  packetFromMachineMemoryResponse,
+  renderMachineEvidenceSection,
+  type MachineContextPacket,
+} from "@/lib/machine-context-packet";
+import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
+import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 import type {
   EvidenceCitation,
+  MachineEvidenceEntry,
   NotebookContentFrame,
   NotebookEvidenceFrame,
   NotebookFollowupsFrame,
@@ -394,11 +407,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
-  let body: { message?: string; sourceDocIds?: string[]; history?: unknown; mode?: string };
+  let body: {
+    message?: string;
+    sourceDocIds?: string[];
+    history?: unknown;
+    mode?: string;
+    /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
+     *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
+    machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  // Machine-evidence selection (§4.4). Validated up front so a malformed
+  // window is a 400, never a silent "answered without the machine".
+  let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
+  if (body.machineEvidence !== undefined && body.machineEvidence !== null) {
+    const me = body.machineEvidence;
+    const assetId = typeof me?.assetId === "string" ? me.assetId.trim() : "";
+    const at = parseAnchor(me?.anchorAt);
+    if (!assetId || !at) {
+      return NextResponse.json(
+        { error: "machine_evidence_invalid", message: "machineEvidence needs assetId and an ISO-8601 anchorAt." },
+        { status: 400 },
+      );
+    }
+    machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
   }
   // Spec §1.1 — a technician with nothing configured must still get help, and
   // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
@@ -590,6 +626,81 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
 
+  // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
+  // window through the SAME reader the history route uses (fetchMachineHistory
+  // — never client-supplied rows), reshapes the Machine Memory header into the
+  // context packet, and attaches the recorded observations as the packet's
+  // replay window. This is the block assets/[id]/chat/route.ts already runs
+  // for live turns (buildMachineContextPacket + renderMachineEvidenceSection
+  // with sanitizeMachineMemoryField), ported here; document retrieval above
+  // is untouched. Own try/catch, same as the asset route: a missing 033/037/
+  // 040 env or any error never drops the notebook context already built.
+  let machinePacket: MachineContextPacket | null = null;
+  let machineEntry: MachineEvidenceEntry | null = null;
+  if (machineRequest) {
+    const mr = machineRequest;
+    try {
+      const result = await withTenantContext(ctx.tenantId, (c) =>
+        fetchMachineHistory(c, ctx.tenantId, mr.assetId, { at: mr.at, pre: mr.pre, post: mr.post }),
+      );
+      if (result.ok) {
+        const h = result.history;
+        machinePacket = packetFromMachineMemoryResponse(ctx.tenantId, mr.assetId, h.summary);
+        machinePacket.replay = {
+          anchor_at: h.anchor.at,
+          started_at: h.from,
+          stopped_at: h.to,
+          freshness: h.freshness.overall,
+          rows: h.rows,
+        };
+        // Anchored-window variant of the evidence window (same EvidenceWindow
+        // shape the card uses) so the prompt names the replayed bounds.
+        machinePacket.evidence.window = { started_at: h.from, stopped_at: h.to, uns_path: h.uns_path };
+        machineEntry = {
+          kind: "machine_evidence",
+          assetId: mr.assetId,
+          anchorAt: h.anchor.at,
+          pre: h.pre,
+          post: h.post,
+          rowCount: h.rows.length,
+          freshness: h.freshness.overall,
+          runId: h.anchor.runId ?? null,
+          windowId: h.anchor.windowId ?? null,
+        };
+      } else {
+        console.warn("[notebook-chat] machine evidence not available:", result.error);
+      }
+    } catch (err) {
+      console.error("[notebook-chat] machine evidence fetch failed (continuing without it):", err);
+      machinePacket = null;
+      machineEntry = null;
+    }
+  }
+
+  // Approved-context gate — for MACHINE evidence only (D3). Mirrors the asset
+  // chat route's summary: live real signals count as approved context; the
+  // notebook's validated (user_confirmed/verified) sources are its approved
+  // documents. Verified kg relationships are not counted on this route (the
+  // asset route's inline SQL is not extracted; 0 is the conservative value).
+  // Turns WITHOUT machine evidence never reach this gate, so document
+  // retrieval behaviour is byte-identical to before.
+  if (machinePacket && approvedAskEnforcementEnabled()) {
+    const approvedSummary = {
+      approvedSourceCount: new Set(chunks.map((c) => c.docId).filter(Boolean)).size,
+      verifiedRelationshipCount: 0,
+      approvedLiveSignalCount: machinePacket.freshness.live,
+    };
+    if (!approvedContextReady(approvedSummary)) {
+      const refusal = buildApprovedContextRefusal(approvedSummary);
+      // `error` is a sentence (mira-mobile renders it verbatim); `code` is the
+      // discriminator.
+      return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
+    }
+  }
+  const machineSection = machinePacket
+    ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
+    : "";
+
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers
   // from notebook facts (identity + coverage) instead of the first excerpt, and
@@ -651,9 +762,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } else if (classifyBroad(message).broad) {
     coverageDirective = `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`;
   }
+  // Machine evidence rides after the base prompt and BEFORE appendManualContext
+  // — the exact order the asset chat route uses. With no machine evidence the
+  // string is byte-identical to before.
+  const basePrompt = general ? GENERAL_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
+  const withMachine = machineSection ? `${basePrompt}\n\n${machineSection}` : basePrompt;
   const systemPrompt = general
-    ? GENERAL_SYSTEM_PROMPT + machineContext
-    : appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + coverageDirective;
+    ? withMachine + machineContext
+    : appendManualContext(withMachine, chunks) + machineContext + coverageDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -980,17 +1096,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // stops at `status` has still received it, same discipline as `usage`.
       // Says out loud what the answer rests on, so general reasoning can never
       // be mistaken for a manual.
-      const evidenceFrame: NotebookEvidenceFrame = general
-        ? {
-            kind: "evidence",
-            basis: "general_reasoning",
-            label: "General guidance — not grounded in this machine's documents.",
-          }
-        : {
-            kind: "evidence",
-            basis: "oem_documentation",
-            label: "Grounded in this notebook's sources.",
-          };
+      // With machine evidence (§4.4): `live_machine_evidence` only when the
+      // asset's CURRENT signals roll up fresh; anything else is
+      // `machine_history` — a replay is never labelled live (contract §2.8).
+      const evidenceFrame: NotebookEvidenceFrame = machineEntry
+        ? machineEntry.freshness === "live"
+          ? {
+              kind: "evidence",
+              basis: "live_machine_evidence",
+              label: general
+                ? "Grounded in live machine evidence — no documents for this machine."
+                : "Grounded in live machine evidence and this notebook's sources.",
+              machineEvidence: machineEntry,
+            }
+          : {
+              kind: "evidence",
+              basis: "machine_history",
+              label: general
+                ? "Grounded in recorded machine history — not live, no documents for this machine."
+                : "Grounded in recorded machine history and this notebook's sources — not live.",
+              machineEvidence: machineEntry,
+            }
+        : general
+          ? {
+              kind: "evidence",
+              basis: "general_reasoning",
+              label: "General guidance — not grounded in this machine's documents.",
+            }
+          : {
+              kind: "evidence",
+              basis: "oem_documentation",
+              label: "Grounded in this notebook's sources.",
+            };
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
@@ -1046,7 +1183,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerStatus,
           answerText: served ? answerText : null,
           enabledSourceDocIds: docIds,
-          evidence: emittedCitations,
+          // D5: the machine window rides INSIDE evidence[] next to the
+          // citations, discriminated by `kind`. Never in `citations` or
+          // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
+          evidence: served && machineEntry ? [...emittedCitations, machineEntry] : emittedCitations,
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.
