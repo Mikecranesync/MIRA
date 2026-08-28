@@ -4,8 +4,30 @@
  * ad-hoc shapes on both sides).
  *
  * Wire format: `data: <json>\n\n` frames on text/event-stream, terminated by
- * the literal `data: [DONE]`. The evidence frame is emitted FIRST so the UI
- * can render citations while the answer streams.
+ * the literal `data: [DONE]`. Real order on an answered turn:
+ * `content`* → `sources` → `evidence` → [`usage`] → `status` → [`followups`].
+ * `sources` arrives AFTER the content deltas (citations are filtered to the
+ * [n] the answer actually used), so a client must buffer content and attach
+ * citations when `sources` lands. Abstain: `sources` (empty) → `status`.
+ * Safety: `sources` (empty) → `content`* → `safety` → `status`.
+ *
+ * STOPPED-TURN CONTRACT (STRM-2, no schema change — `answer_status` is the
+ * three-value CHECK from migration 073; a first-class 'stopped' value would
+ * need a migration and is Mike's call, mira-hub-migrations rule 8):
+ *   - Client-stopped turn (request signal aborted / response cancelled):
+ *     the server persists `answer_status='error'`, `answer_text` = the
+ *     content streamed so far (or NULL if nothing streamed), `evidence=[]`,
+ *     `basis=NULL`. No further frames are written; no fallback provider runs.
+ *   - Provider/cascade failure (every provider failed, or an internal error):
+ *     the server persists `answer_status='error'` with `answer_text=NULL` —
+ *     NEVER the partial text a failed provider may have streamed before it
+ *     died. The wire still ends `sources`(empty) → `evidence` → [`usage`] →
+ *     `status: error` → `[DONE]`.
+ * So the client rule, applied identically live and on reload (hydration):
+ *   `answer_status==='error' && answer_text` non-empty ⇒ render the partial
+ *     with the "Stopped" caption, no citations, no follow-ups, and EXCLUDE
+ *     it from the history sent to the server;
+ *   `answer_status==='error' && answer_text` null ⇒ the existing error copy.
  */
 
 export type EvidenceCitation = {
