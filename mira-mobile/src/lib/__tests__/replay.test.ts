@@ -30,6 +30,7 @@ import {
   formatRelativeSeconds,
   liveUnavailable,
   machineEvidenceEntries,
+  recordedObservations,
   replayCardTitle,
   replayQuestion,
   replayWindowHeader,
@@ -138,7 +139,7 @@ describe("getAssetHistory", () => {
     // The timeline header names the fetched window …
     expect(r.history.pre).toBe(60);
     expect(replayWindowHeader(r.history.rows.length, { pre: r.history.pre, post: r.history.post })).toBe(
-      "0 observed changes in −60 s … +10 s",
+      "0 recorded observations in −60 s … +10 s",
     );
     // … and so does the window Ask MIRA is handed (SensorSheet builds
     // machineEvidence from history.pre/post), so the two can never disagree.
@@ -266,10 +267,13 @@ describe("the window the technician is looking at (S5 D2)", () => {
     expect(REPLAY_WINDOW_PRESETS[2].pre).toBe(REPLAY_WINDOW_CAP);
   });
 
-  it("header names the fetched window: 'N observed changes in −60 s … +10 s'", () => {
-    expect(replayWindowHeader(7, { pre: 60, post: 10 })).toBe("7 observed changes in −60 s … +10 s");
-    expect(replayWindowHeader(1, { pre: 120, post: 10 })).toBe("1 observed change in −120 s … +10 s");
-    expect(replayWindowHeader(0, { pre: 5, post: 5 })).toBe("0 observed changes in −5 s … +5 s");
+  it("header names the fetched window: 'N recorded observations in −60 s … +10 s'", () => {
+    expect(replayWindowHeader(7, { pre: 60, post: 10 })).toBe("7 recorded observations in −60 s … +10 s");
+    expect(replayWindowHeader(1, { pre: 120, post: 10 })).toBe("1 recorded observation in −120 s … +10 s");
+    expect(replayWindowHeader(0, { pre: 5, post: 5 })).toBe("0 recorded observations in −5 s … +5 s");
+    // The rows are periodic samples as well as diffs, so the header must not
+    // call them changes — a repeated value is an observation, not a change.
+    expect(replayWindowHeader(7, { pre: 60, post: 10 })).not.toMatch(/observed change/);
   });
 });
 
@@ -287,12 +291,25 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
     expect(chips[0].citationId).toBe("1");
   });
 
-  it("card title: Machine Replay · N observed changes around <time> · <freshness>", () => {
+  it("card title: Machine Replay · N recorded observations around <time> · <freshness>", () => {
     const e = machineEvidenceEntries([entry])[0];
-    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 observed changes around ${hhmmss(ANCHOR)} · Stale`);
-    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 observed change around ${hhmmss(ANCHOR)} · Live`);
+    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Stale`);
+    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 recorded observation around ${hhmmss(ANCHOR)} · Live`);
     // Unknown freshness is omitted, never guessed.
-    expect(replayCardTitle({ rowCount: 3, anchorAt: ANCHOR, freshness: null })).toBe(`Machine Replay · 3 observed changes around ${hhmmss(ANCHOR)}`);
+    expect(replayCardTitle({ rowCount: 3, anchorAt: ANCHOR, freshness: null })).toBe(`Machine Replay · 3 recorded observations around ${hhmmss(ANCHOR)}`);
+    // Never "observed changes": /history rows include periodic tag_events
+    // samples, so a row is an observation, not necessarily a change.
+    expect(replayCardTitle(e)).not.toMatch(/observed change/);
+  });
+
+  it("recordedObservations is the ONE phrase both the header and the card use", () => {
+    expect(recordedObservations(0)).toBe("0 recorded observations");
+    expect(recordedObservations(1)).toBe("1 recorded observation");
+    expect(recordedObservations(7)).toBe("7 recorded observations");
+    expect(replayWindowHeader(7, { pre: 60, post: 10 })).toContain(recordedObservations(7));
+    expect(replayCardTitle({ rowCount: 7, anchorAt: ANCHOR, freshness: "live" })).toContain(
+      recordedObservations(7),
+    );
   });
 
   it("reason:'unavailable' → 'Machine history unavailable': no count, no freshness label", () => {
@@ -304,7 +321,7 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
     expect(replayCardTitle({ rowCount: 7, anchorAt: ANCHOR, freshness: "stale", reason: "unavailable" })).toBe(
       "Machine history unavailable",
     );
-    expect(replayCardTitle(e)).not.toMatch(/observed change|Stale|Live/);
+    expect(replayCardTitle(e)).not.toMatch(/recorded observation|Stale|Live/);
   });
 
   it("rowCount 0 with no reason → 'No machine changes recorded in this window'", () => {
@@ -317,8 +334,10 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
   });
 
   it("basis captions exist for the two machine bases only; history says 'not live'", () => {
-    expect(basisCaption("live_machine_evidence")).toMatch(/live machine evidence/);
-    expect(basisCaption("machine_history")).toMatch(/not live/);
+    // Byte-identical to the hub lane's captions (#3461), trailing period
+    // included — one answer must not read differently on two surfaces.
+    expect(basisCaption("live_machine_evidence")).toBe("Grounded in live machine evidence.");
+    expect(basisCaption("machine_history")).toBe("Grounded in recorded machine history — not live.");
     expect(basisCaption("general_reasoning")).toBeNull();
     expect(basisCaption("oem_documentation")).toBeNull();
     expect(basisCaption(null)).toBeNull();

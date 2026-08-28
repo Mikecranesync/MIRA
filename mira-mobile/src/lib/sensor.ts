@@ -64,6 +64,25 @@ export function visualCardTitle(capturedAt: Date | string): string {
  *  "sources" (S5 D1). */
 export const LOOK_SAVED_COPY = "Phone photo — saved to this notebook's files.";
 
+/** Title for a LOOK card restored from earlier in the SESSION (the observation
+ *  text lives in memory only — the photo is what is persisted). Named
+ *  differently from `visualCardTitle` on purpose: "Visual observation · Photo
+ *  captured" reads as something that just happened. */
+export function lastObservationTitle(capturedAt: Date | string): string {
+  return `Last observation · ${hhmmss(capturedAt)}`;
+}
+
+export const PHOTO_CAPTURE_UNKNOWN = "Photo capture time unknown";
+
+/** "Photo captured · 02:14:21" for a linked-photo row. An absent or
+ *  unparseable timestamp says so instead of rendering a placeholder clock —
+ *  "--:--:--" would look like a real reading. */
+export function photoCapturedLabel(at: string | null | undefined): string {
+  if (!at) return PHOTO_CAPTURE_UNKNOWN;
+  const t = hhmmss(at);
+  return t === "--:--:--" ? PHOTO_CAPTURE_UNKNOWN : `Photo captured · ${t}`;
+}
+
 // --- the Ask-MIRA hand-off (S5 cross-lane contract, D3) ----------------------
 
 /** Sent as `body.visualEvidence`: which parked photo this question is about.

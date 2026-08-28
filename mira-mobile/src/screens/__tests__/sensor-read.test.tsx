@@ -159,7 +159,11 @@ describe("Sensor READ (S3)", () => {
     expect(screen.queryByRole("dialog", { name: "Sensor" })).toBeNull();
   });
 
-  it("BACK unwinds viewfinder → Sensor sheet → notebook, one layer per press", async () => {
+  // BACK from inside a mode used to close the WHOLE sheet, discarding the
+  // panel the technician was working in (a LOOK card, a resolved scan note).
+  // The mode is now its own transient layer, so the ladder unwinds one rung
+  // per press: viewfinder → mode picker → Sensor sheet → notebook.
+  it("BACK unwinds viewfinder → mode picker → Sensor sheet → notebook, one layer per press", async () => {
     mount();
     await openRead();
     fireEvent.click(screen.getByRole("button", { name: /Scan FactoryLM QR/ }));
@@ -168,7 +172,15 @@ describe("Sensor READ (S3)", () => {
       expect(closeTopTransientLayer()).toBe(true);
     });
     expect(screen.queryByRole("dialog", { name: "Scan FactoryLM QR" })).toBeNull();
+    // Still inside READ — the viewfinder closed, not the mode.
+    expect(screen.getByRole("heading", { name: "READ" })).toBeTruthy();
+    await act(async () => {
+      expect(closeTopTransientLayer()).toBe(true);
+    });
+    // Back at the mode picker, sheet still open.
     expect(screen.getByRole("dialog", { name: "Sensor" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "LOOK" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "READ" })).toBeNull();
     await act(async () => {
       expect(closeTopTransientLayer()).toBe(true);
     });

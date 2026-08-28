@@ -210,8 +210,8 @@ describe("Sensor REPLAY (S4)", () => {
     expect(screen.getByText(/isn't available for this workspace yet/)).toBeTruthy();
     expect(screen.queryByRole("listitem")).toBeNull();
     // Nothing was read, so nothing is counted and nothing is labelled: an
-    // "0 observed changes · Stale" header would claim the machine was quiet.
-    expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/observed change/);
+    // "0 recorded observations · Stale" header would claim it was quiet.
+    expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/recorded observation/);
     expect(screen.queryByTestId("freshness-label")).toBeNull();
     expect(screen.queryByText(/Live unavailable/)).toBeNull();
   });
@@ -224,7 +224,7 @@ describe("Sensor REPLAY (S4)", () => {
     await screen.findByTestId("replay-timeline");
     expect(getAssetHistory).toHaveBeenCalledTimes(1);
     expect(getAssetHistory.mock.calls[0]).toEqual(["asset-1", { pre: 60, post: 10 }]);
-    expect(screen.getByTestId("replay-window-header").textContent).toBe("3 observed changes in −60 s … +10 s");
+    expect(screen.getByTestId("replay-window-header").textContent).toBe("3 recorded observations in −60 s … +10 s");
     const group = screen.getByRole("group", { name: "Replay window" });
     const buttons = Array.from(group.querySelectorAll("button"));
     expect(buttons.map((b) => b.textContent)).toEqual(["±5 s", "60 s", "120 s"]);
@@ -237,7 +237,7 @@ describe("Sensor REPLAY (S4)", () => {
     await waitFor(() => expect(getAssetHistory).toHaveBeenCalledTimes(2));
     expect(getAssetHistory.mock.calls[1]).toEqual(["asset-1", { pre: 120, post: 10 }]);
     await waitFor(() =>
-      expect(screen.getByTestId("replay-window-header").textContent).toBe("3 observed changes in −120 s … +10 s"),
+      expect(screen.getByTestId("replay-window-header").textContent).toBe("3 recorded observations in −120 s … +10 s"),
     );
     expect(screen.getByRole("button", { name: "120 s" }).getAttribute("aria-pressed")).toBe("true");
     // Narrow to ±5 s → re-fetch again.
@@ -279,8 +279,8 @@ describe("Sensor REPLAY (S4)", () => {
     expect(opts.visualEvidence).toBeUndefined();
     // The live turn renders its card + muted caption from the server's frame.
     await screen.findByText("Drive inhibit preceded the fault.");
-    expect(screen.getByTestId("machine-replay-card").textContent).toContain("3 observed changes");
-    expect(screen.getByText(/recorded machine history — not live/)).toBeTruthy();
+    expect(screen.getByTestId("machine-replay-card").textContent).toContain("3 recorded observations");
+    expect(screen.getByText("Grounded in recorded machine history — not live.")).toBeTruthy();
     expect(screen.queryByText(/General guidance/)).toBeNull();
   });
 
@@ -303,9 +303,10 @@ describe("Sensor REPLAY (S4)", () => {
     mount();
     const card = await screen.findByTestId("machine-replay-card");
     // S5 D5 cross-lane copy, exact: title + fault-window suffix gated on windowId.
-    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 observed changes around ${hhmmss(ANCHOR)} · Live`);
+    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Live`);
     expect(card.textContent).toContain("· fault window");
-    expect(screen.getByText("Grounded in live machine evidence")).toBeTruthy();
+    // Byte-identical to the hub caption, trailing period included (#3461).
+    expect(screen.getByText("Grounded in live machine evidence.")).toBeTruthy();
     // Exactly one citation chip — the document one; the machine entry is not a chip.
     const chips = screen.getAllByRole("button", { name: /gs10\.pdf/ });
     expect(chips).toHaveLength(1);

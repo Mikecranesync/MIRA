@@ -99,6 +99,27 @@ describe("Sensor shell (S1)", () => {
     expect(closeTopTransientLayer()).toBe(false);
   });
 
+  // BACK used to close the ENTIRE sheet from inside a mode, taking the LOOK
+  // card / scan result with it. The mode is a transient layer of its own now,
+  // so the stack unwinds one rung per press.
+  it("hardware BACK inside a mode returns to the mode picker before closing the sheet", async () => {
+    mount(false);
+    fireEvent.click(await screen.findByRole("button", { name: "Open Sensor" }));
+    fireEvent.click(await screen.findByRole("button", { name: "REPLAY" }));
+    expect(screen.getByRole("heading", { name: "REPLAY" })).toBeTruthy();
+    await act(async () => {
+      expect(closeTopTransientLayer()).toBe(true);
+    });
+    expect(screen.getByRole("dialog", { name: "Sensor" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "LOOK" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "REPLAY" })).toBeNull();
+    await act(async () => {
+      expect(closeTopTransientLayer()).toBe(true);
+    });
+    expect(screen.queryByRole("dialog", { name: "Sensor" })).toBeNull();
+    expect(closeTopTransientLayer()).toBe(false);
+  });
+
   it("a mode opens and ← Modes returns to the picker", async () => {
     mount(false);
     fireEvent.click(await screen.findByRole("button", { name: "Open Sensor" }));

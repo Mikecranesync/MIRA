@@ -441,10 +441,43 @@ export interface NotebookServerTurn {
   basis?: string | null;
 }
 
+/** A photograph LINKED to this notebook (`workspace_file_links`, role
+ *  "photo") — what Sensor LOOK parks. It is deliberately NOT an
+ *  `equipment_notebook_sources` row and the Hub returns it in its own
+ *  `photos[]` array for that reason: a linked photo is viewable evidence in
+ *  the notebook's files, never chat scope. Rendering it under Sources would
+ *  be the same lie the LOOK card avoids by saying "files", not "sources". */
+export interface NotebookPhoto {
+  fileId: string;
+  filename: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  /** When the file was parked — the capture time we can honestly show. */
+  createdAt: string | null;
+  /** When it was linked to THIS notebook (a re-used file can predate it). */
+  linkedAt: string | null;
+}
+
+export function toNotebookPhoto(d: Record<string, unknown>): NotebookPhoto {
+  return {
+    // The Hub sends `fileId`; `id` is accepted because that is the column
+    // name on the underlying workspace-file row and both have shipped.
+    fileId: String(d.fileId ?? d.id ?? ""),
+    filename: (d.filename as string) ?? null,
+    mimeType: d.mimeType != null ? String(d.mimeType) : null,
+    sizeBytes: d.sizeBytes != null ? Number(d.sizeBytes) : null,
+    createdAt: d.createdAt != null ? String(d.createdAt) : null,
+    linkedAt: d.linkedAt != null ? String(d.linkedAt) : null,
+  };
+}
+
 export interface NotebookDetail {
   notebook: Notebook;
   sources: NotebookSource[];
   turns: NotebookServerTurn[];
+  /** Linked LOOK photographs. Absent on an older server → `[]`, never a
+   *  fabricated row; the Photos group simply doesn't render. */
+  photos: NotebookPhoto[];
 }
 
 export async function getNotebookDetail(id: string): Promise<NotebookDetail> {
@@ -453,11 +486,15 @@ export async function getNotebookDetail(id: string): Promise<NotebookDetail> {
     notebook: Record<string, unknown>;
     sources?: Record<string, unknown>[];
     turns?: NotebookServerTurn[];
+    photos?: Record<string, unknown>[];
   };
   return {
     notebook: toNotebook(d.notebook),
     sources: (d.sources ?? []).map(toNotebookSource),
     turns: d.turns ?? [],
+    // A photo row with no file id cannot be shown or opened, so it is dropped
+    // rather than rendered as an untappable placeholder.
+    photos: (d.photos ?? []).map(toNotebookPhoto).filter((p) => p.fileId !== ""),
   };
 }
 
