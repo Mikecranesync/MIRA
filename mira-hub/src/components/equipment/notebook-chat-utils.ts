@@ -2,7 +2,82 @@
 // has no jsdom). Streaming / stop / composer mechanics live here so the
 // component stays a thin view.
 
-import { parseFrame, type EvidenceCitation, type NotebookChatFrame } from "@/lib/notebook-chat-types";
+import {
+  isMachineEvidenceEntry,
+  isVisualObservationEntry,
+  parseFrame,
+  type EvidenceBasis,
+  type EvidenceCitation,
+  type MachineEvidenceEntry,
+  type NotebookChatFrame,
+  type VisualObservationEntry,
+} from "@/lib/notebook-chat-types";
+
+/** Evidence-ladder caption per basis (spec §1.3). Every basis gets a caption;
+ *  only `general_reasoning` is the amber warning — the rest are muted facts. */
+export const BASIS_LABEL: Record<EvidenceBasis, string> = {
+  general_reasoning: "General guidance — not grounded in this machine's documents.",
+  identified_component: "Grounded in the identified component.",
+  oem_documentation: "Grounded in this notebook's sources.",
+  workspace_evidence: "Grounded in workspace evidence.",
+  // S5 D5 cross-lane contract: the two machine bases use mobile's exact
+  // strings (mira-mobile/src/lib/replay.ts basisCaption) — one copy, both clients.
+  machine_history: "Grounded in recorded machine history — not live",
+  live_machine_evidence: "Grounded in live machine evidence",
+};
+
+export function basisLabel(basis: string | null | undefined): string | null {
+  if (!basis) return null;
+  return (BASIS_LABEL as Record<string, string>)[basis] ?? null;
+}
+
+/** The shared FRESHNESS_LABEL vocabulary (S5 D5 cross-lane contract): the same
+ *  four strings as mira-mobile/src/lib/replay.ts FRESHNESS_LABEL and the
+ *  command-center page — stale/simulated is never "live". */
+export const FRESHNESS_LABEL: Record<MachineEvidenceEntry["freshness"], string> = {
+  live: "Live",
+  stale: "Stale",
+  simulated: "Simulated",
+  unknown: "No tags",
+};
+
+function defaultClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, { hour12: false });
+}
+
+/** The two honest empty-window captions (contract §2.8). "Nothing was
+ *  recorded" and "nothing COULD be recorded" are different sentences, and
+ *  neither is "0 observed changes" — which reads like a real, quiet window and
+ *  hides a missing backend. Kept as constants so both clients can share the
+ *  exact strings. */
+export const MACHINE_HISTORY_UNAVAILABLE_CAPTION = "Machine Replay · Machine history unavailable";
+export const MACHINE_NO_CHANGES_CAPTION = "Machine Replay · No machine changes recorded in this window";
+
+/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" — the S5 D5
+ *  cross-lane shape (mobile's replayCardTitle). `clock` is injectable so the
+ *  caption is deterministic in tests.
+ *
+ *  An empty window never renders as "0 observed changes": `reason:
+ *  "unavailable"` (tables missing) and a genuinely quiet window get their own
+ *  captions, and neither claims a freshness for a replay that has no rows. */
+export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: string) => string = defaultClock): string {
+  if (e.reason === "unavailable") return MACHINE_HISTORY_UNAVAILABLE_CAPTION;
+  if (e.rowCount === 0) return MACHINE_NO_CHANGES_CAPTION;
+  const n = e.rowCount;
+  const changes = `${n} observed change${n === 1 ? "" : "s"}`;
+  const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
+  return `Machine Replay · ${changes} around ${clock(e.anchorAt)} · ${fresh}`;
+}
+
+/** "Visual observation · Photo captured · 02:14:21" (contract §4.5, S5 D3). */
+export function visualObservationCaption(
+  e: VisualObservationEntry,
+  clock: (iso: string) => string = defaultClock,
+): string {
+  return `Visual observation · Photo captured · ${clock(e.capturedAt)}`;
+}
 
 /** Enter sends; Shift+Enter is a newline; an in-progress IME composition
  *  (Japanese / Chinese / Korean keyboards, keyCode 229) never sends (CMPS-1). */
@@ -45,6 +120,10 @@ export type StreamResult = {
   status: "answered" | "insufficient_evidence" | "error";
   basis: string | null;
   followups: string[];
+  /** Sensor REPLAY (D5): the machine window the turn was grounded on, if any. */
+  machineEvidence: MachineEvidenceEntry | null;
+  /** Sensor LOOK (S5 D3): the server-verified photo the turn was asked with. */
+  visualEvidence: VisualObservationEntry | null;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -61,7 +140,15 @@ export async function readNotebookStream(
 ): Promise<StreamResult> {
   const dec = new TextDecoder();
   let buf = "";
-  const out: StreamResult = { content: "", citations: [], status: "answered", basis: null, followups: [] };
+  const out: StreamResult = {
+    content: "",
+    citations: [],
+    status: "answered",
+    basis: null,
+    followups: [],
+    machineEvidence: null,
+    visualEvidence: null,
+  };
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -77,7 +164,11 @@ export async function readNotebookStream(
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
         if (frame.kind === "sources") out.citations = frame.citations;
-        else if (frame.kind === "evidence") out.basis = frame.basis;
+        else if (frame.kind === "evidence") {
+          out.basis = frame.basis;
+          out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
+          out.visualEvidence = isVisualObservationEntry(frame.visualEvidence) ? frame.visualEvidence : null;
+        }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
           out.content += frame.content;
@@ -98,7 +189,12 @@ export type ChatBody = {
   message: string;
   sourceDocIds: string[];
   history: { role: "user" | "assistant"; content: string }[];
+  /** Sensor REPLAY (contract §4.4): the selected fault window. The server
+   *  re-fetches the rows itself — only the selection travels. */
+  machineEvidence?: MachineEvidenceSelection;
 };
+
+export type MachineEvidenceSelection = { assetId: string; anchorAt: string; pre?: number; post?: number };
 
 type HistoryTurn = {
   role: "user" | "assistant";
@@ -118,8 +214,18 @@ export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
     .map((t) => ({ role: t.role, content: t.content }));
 }
 
-export function buildChatBody(message: string, sourceDocIds: string[], turns: HistoryTurn[]): ChatBody {
-  return { message, sourceDocIds, history: historyFromTurns(turns) };
+export function buildChatBody(
+  message: string,
+  sourceDocIds: string[],
+  turns: HistoryTurn[],
+  machineEvidence?: MachineEvidenceSelection | null,
+): ChatBody {
+  return {
+    message,
+    sourceDocIds,
+    history: historyFromTurns(turns),
+    ...(machineEvidence ? { machineEvidence } : {}),
+  };
 }
 
 /** After a failed send the technician's question goes back into the composer
@@ -155,7 +261,10 @@ export type PersistedTurn = {
   question: string;
   answerStatus: string;
   answerText: string | null;
-  evidence: EvidenceCitation[];
+  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries riding in
+   *  the same JSONB. Non-document entries are split out, never rendered as
+   *  citations. */
+  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry>;
   basis?: string | null;
 };
 
@@ -166,8 +275,30 @@ type HydratedTurn = {
   status?: "answered" | "insufficient_evidence" | "error";
   citations?: EvidenceCitation[];
   basis?: string | null;
+  machineEvidence?: MachineEvidenceEntry[];
+  visualEvidence?: VisualObservationEntry[];
   stopped?: boolean;
 };
+
+/** Split a persisted evidence[] into citations vs machine entries. Anything
+ *  without a docId that is not machine evidence is dropped (never a dead chip). */
+export function splitEvidence(evidence: unknown[]): {
+  citations: EvidenceCitation[];
+  machineEvidence: MachineEvidenceEntry[];
+  visualEvidence: VisualObservationEntry[];
+} {
+  const citations: EvidenceCitation[] = [];
+  const machineEvidence: MachineEvidenceEntry[] = [];
+  const visualEvidence: VisualObservationEntry[] = [];
+  for (const e of Array.isArray(evidence) ? evidence : []) {
+    if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
+    else if (isVisualObservationEntry(e)) visualEvidence.push(e);
+    else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
+      citations.push(e as EvidenceCitation);
+    }
+  }
+  return { citations, machineEvidence, visualEvidence };
+}
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
  *  change): the server persists a client-stopped turn as
@@ -179,6 +310,7 @@ type HydratedTurn = {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
+    const { citations, machineEvidence, visualEvidence } = splitEvidence(t.evidence);
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -186,9 +318,13 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         role: "assistant" as const,
         content: t.answerText ?? "I couldn't find that in the selected sources.",
         status: t.answerStatus as HydratedTurn["status"],
-        citations: stopped ? [] : t.evidence,
+        citations: stopped ? [] : citations,
         // 084 (#3387): the persisted basis — the badge survives reload.
         basis: stopped ? null : (t.basis ?? null),
+        // D5: the Machine Replay card survives reload too (stopped turns carry none).
+        ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
+        // D3 (S5): the Visual observation card survives reload the same way.
+        ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

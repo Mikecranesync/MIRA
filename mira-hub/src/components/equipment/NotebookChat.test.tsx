@@ -166,3 +166,129 @@ describe("Bubble — rehydrated stopped turn (STRM-2 on reload)", () => {
     expect(html).not.toContain("General guidance");
   });
 });
+
+// ── Sensor S4 (contract §4.5): basis caption for EVERY basis + Machine Replay card ──
+describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () => {
+  const base: ChatTurn = { id: "b", role: "assistant", content: "Check the DC bus.", status: "answered" };
+
+  it("renders a caption for every basis value; amber is reserved for general_reasoning", () => {
+    const expected: Record<string, string> = {
+      general_reasoning: "General guidance — not grounded in this machine",
+      identified_component: "Grounded in the identified component.",
+      oem_documentation: "Grounded in this notebook",
+      workspace_evidence: "Grounded in workspace evidence.",
+      // S5 D5 cross-lane contract: exact strings, shared with mobile (no trailing period).
+      machine_history: "Grounded in recorded machine history — not live",
+      live_machine_evidence: "Grounded in live machine evidence",
+    };
+    for (const [basis, text] of Object.entries(expected)) {
+      const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis }} />);
+      expect(html, basis).toContain(`data-basis="${basis}"`);
+      expect(html.replace(/&#x27;/g, "'"), basis).toContain(text);
+      if (basis === "general_reasoning") expect(html, basis).toContain("var(--status-yellow)");
+      else expect(html, basis).not.toContain("var(--status-yellow)");
+    }
+  });
+
+  it("no basis → no caption (a stopped or failed turn makes no basis claim)", () => {
+    const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: null }} />);
+    expect(html).not.toContain('data-testid="basis-caption"');
+  });
+
+  it("renders a 'Machine Replay · N observed changes around <time> · <freshness>' card for a machine_evidence entry, never as a citation", () => {
+    const turn: ChatTurn = {
+      ...base,
+      basis: "machine_history",
+      machineEvidence: [
+        { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 7, freshness: "stale" },
+      ],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={turn} />);
+    expect(html).toContain('data-testid="machine-replay-card"');
+    expect(html).toContain('data-freshness="stale"');
+    expect(html).toMatch(/Machine Replay · 7 observed changes around \d{2}:\d{2}:\d{2} · Stale</);
+    expect(html).toContain("Grounded in recorded machine history — not live</p>");
+    // Not a citation: no supporting-passage chip, no [n] button.
+    expect(html).not.toContain("supporting passage");
+  });
+
+  it("a live window says so; a simulated one is never called live", () => {
+    const mk = (freshness: "live" | "simulated") =>
+      renderToStaticMarkup(
+        <Bubble
+          turn={{
+            ...base,
+            machineEvidence: [{ kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 1, freshness }],
+          }}
+        />,
+      );
+    expect(mk("live")).toContain("1 observed change around");
+    expect(mk("live")).toContain("· Live</span>");
+    expect(mk("simulated")).toContain("· Simulated</span>");
+    expect(mk("simulated")).not.toContain("· Live</span>");
+  });
+
+  // §2.8: an empty card must say WHICH empty it is. "0 observed changes" reads
+  // as a real, quiet window and would hide a missing machine-history backend.
+  it("an unavailable window and an empty one get their own captions — never '0 observed changes'", () => {
+    const mk = (entry: Record<string, unknown>) =>
+      renderToStaticMarkup(
+        <Bubble
+          turn={{
+            ...base,
+            basis: "oem_documentation",
+            machineEvidence: [
+              { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 0, freshness: "unknown", ...entry },
+            ] as ChatTurn["machineEvidence"],
+          }}
+        />,
+      );
+    const unavailable = mk({ reason: "unavailable" });
+    expect(unavailable).toContain("Machine Replay · Machine history unavailable");
+    expect(unavailable).not.toContain("observed change");
+    const empty = mk({});
+    expect(empty).toContain("Machine Replay · No machine changes recorded in this window");
+    expect(empty).not.toContain("observed change");
+    // Neither claims a machine basis — the turn keeps the basis it earned.
+    expect(unavailable).toContain("Grounded in this notebook's sources".replace(/'/g, "&#x27;"));
+  });
+});
+
+// ── S5 D3 (contract §4.5): the persisted Visual observation card ────────────
+describe("Bubble — Visual observation card", () => {
+  const base: ChatTurn = { id: "v", role: "assistant", content: "The green LED is the run indicator.", status: "answered" };
+  const visual = {
+    kind: "visual_observation" as const,
+    fileId: "f0000000-0000-4000-8000-000000000001",
+    capturedAt: "2026-08-27T23:14:21.000Z",
+    provenance: "phone_photo" as const,
+  };
+
+  it("renders 'Visual observation · Photo captured · HH:MM:SS' with the thumb from the file door — never markdown, never a citation", () => {
+    const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: "oem_documentation", visualEvidence: [visual] }} />);
+    expect(html).toContain('data-testid="visual-observation-card"');
+    expect(html).toMatch(/Visual observation · Photo captured · \d{2}:\d{2}:\d{2}/);
+    // the thumbnail is the existing byte-serving file door for this fileId
+    expect(html).toMatch(new RegExp(`<img[^>]+src="[^"]*/api/namespace/files/${visual.fileId}"`));
+    expect(html).toContain(`data-file-id="${visual.fileId}"`);
+    // not a citation, and the basis is untouched by the photo
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Open citation");
+    expect(html).toContain('data-basis="oem_documentation"');
+  });
+
+  it("survives reload: a persisted turn with a visual entry in evidence[] renders the card", () => {
+    const [, a] = persistedTurns([
+      { id: "t1", question: "what is this LED?", answerStatus: "answered", answerText: "Run indicator. [1]", evidence: [citation, visual], basis: "oem_documentation" },
+    ]);
+    const html = renderToStaticMarkup(<Bubble turn={a as ChatTurn} />);
+    expect(html).toContain('data-testid="visual-observation-card"');
+    expect(html).toContain("Open citation 1: PF525 User Manual, page 87");
+  });
+
+  it("no visual entry → no card (byte-identical to before)", () => {
+    const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: "oem_documentation" }} />);
+    expect(html).not.toContain("visual-observation");
+    expect(html).not.toContain("<img");
+  });
+});

@@ -840,6 +840,60 @@ export async function linkedDocIdsForTarget(
   });
 }
 
+/** A verified LOOK photo: the file id, plus the capture time DERIVED from the
+ *  stored file row (never the client's claim). */
+export type LinkedPhoto = { fileId: string; capturedAt: string };
+
+/**
+ * Photo-membership check for ONE file against ONE target (Sensor LOOK, S5 D3):
+ * is `fileId` a workspace file linked to this exact target, in this tenant,
+ * **as a photo**? One SELECT, same predicate shape as
+ * {@link listFilesForTarget}, plus two narrowings the chat route depends on:
+ *
+ *   - `l.role = 'photo'` — a file linked in some OTHER role (a `manual` PDF
+ *     filed by the nameplate/confirm path) must not be claimable as visual
+ *     evidence just because *a* link exists.
+ *   - the file's own MIME must be a `viewable` raster ({@link fileCapability},
+ *     the one safelist — SVG and PDF are deliberately not viewable). The
+ *     capability is DERIVED, so it is applied in TS, not as a SQL predicate.
+ *
+ * On success it returns the file's `created_at` as `capturedAt`, so the caller
+ * never has to take a timestamp from the client either. A non-photo, foreign,
+ * or non-image file returns null and the caller ignores it silently.
+ */
+export async function photoLinkedToTarget(
+  tenantId: string,
+  fileId: string,
+  targetType: LinkTargetType,
+  targetId: string,
+): Promise<LinkedPhoto | null> {
+  if (!UUID_RE.test(fileId) || !UUID_RE.test(targetId)) return null;
+  return withTenantContext(tenantId, async (c) => {
+    const r = await c.query<{
+      file_id: string;
+      mime_type: string | null;
+      filename: string | null;
+      created_at: string;
+    }>(
+      `SELECT l.file_id::text AS file_id, f.mime_type, f.filename, f.created_at
+         FROM workspace_file_links l
+         JOIN namespace_direct_uploads f
+           ON f.id = l.file_id AND f.tenant_id = l.tenant_id
+        WHERE l.tenant_id = $1::uuid AND l.file_id = $2::uuid
+          AND l.target_type = $3 AND l.target_id = $4::uuid
+          AND l.role = 'photo'
+        LIMIT 1`,
+      [tenantId, fileId, targetType, targetId],
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    if (fileCapability(row.mime_type, row.filename) !== "viewable") return null;
+    const ms = new Date(row.created_at as unknown as string).getTime();
+    if (Number.isNaN(ms)) return null;
+    return { fileId: row.file_id, capturedAt: new Date(ms).toISOString() };
+  });
+}
+
 /** Namespace-node specialization of {@link linkedDocIdsForTarget}. */
 export async function linkedDocIdsForNode(
   tenantId: string,
