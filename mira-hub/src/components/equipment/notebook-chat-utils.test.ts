@@ -259,3 +259,96 @@ describe("persistedTurns — reload applies the STOPPED-TURN CONTRACT", () => {
     });
   });
 });
+
+// ── Sensor S4 (D5): machine evidence rides in evidence[] / the evidence frame ──
+import { machineReplayCaption, splitEvidence } from "./notebook-chat-utils";
+
+const machine = {
+  kind: "machine_evidence" as const,
+  assetId: "a1",
+  anchorAt: "2026-08-27T23:16:31.000Z",
+  pre: 5,
+  post: 2,
+  rowCount: 7,
+  freshness: "stale" as const,
+};
+
+describe("persistedTurns tolerates non-document evidence entries (D5)", () => {
+  const cite = { citationId: "1", docId: "d", sourceTitle: "M", page: 1, fileId: null, quote: null };
+
+  it("splits the machine entry out of citations and keeps it on the turn", () => {
+    const [, a] = persistedTurns([
+      { id: "t9", question: "what happened?", answerStatus: "answered", answerText: "A. [1]", evidence: [cite, machine], basis: "machine_history" },
+    ]);
+    expect(a.citations).toEqual([cite]);
+    expect(a.machineEvidence).toEqual([machine]);
+    expect(a.basis).toBe("machine_history");
+  });
+
+  it("a turn without machine evidence is byte-identical to before (no machineEvidence key)", () => {
+    const [, a] = persistedTurns([
+      { id: "t10", question: "q", answerStatus: "answered", answerText: "A. [1]", evidence: [cite], basis: "oem_documentation" },
+    ]);
+    expect(a).toEqual({ id: "t10-a", role: "assistant", content: "A. [1]", status: "answered", citations: [cite], basis: "oem_documentation" });
+  });
+
+  it("a stopped turn drops machine evidence along with citations and basis", () => {
+    const [, a] = persistedTurns([
+      { id: "t11", question: "q", answerStatus: "error", answerText: "partial", evidence: [cite, machine], basis: "machine_history" },
+    ]);
+    expect(a).toEqual({ id: "t11-a", role: "assistant", content: "partial", status: "error", citations: [], basis: null, stopped: true });
+  });
+
+  it("splitEvidence drops junk that is neither a citation nor machine evidence", () => {
+    expect(splitEvidence([cite, machine, null, "junk", { kind: "machine_evidence" }, { noDocId: true }])).toEqual({
+      citations: [cite],
+      machineEvidence: [machine],
+    });
+  });
+});
+
+describe("readNotebookStream picks the machine entry off the evidence frame", () => {
+  it("machineEvidence is exposed alongside basis; absent → null", async () => {
+    const withMachine = await readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "A." }),
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "evidence", basis: "machine_history", label: "x", machineEvidence: machine }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(withMachine.basis).toBe("machine_history");
+    expect(withMachine.machineEvidence).toEqual(machine);
+
+    const without = await readNotebookStream(
+      streamOf([frame({ kind: "evidence", basis: "oem_documentation", label: "x" }), frame({ kind: "status", status: "answered" }), "data: [DONE]\n\n"]),
+      () => {},
+    );
+    expect(without.machineEvidence).toBeNull();
+  });
+});
+
+describe("buildChatBody — optional machineEvidence selection", () => {
+  it("omits the key entirely when no window is selected (byte-identical body)", () => {
+    expect(buildChatBody("q", ["d"], [])).toEqual({ message: "q", sourceDocIds: ["d"], history: [] });
+  });
+  it("carries only the selection, never rows", () => {
+    expect(buildChatBody("q", ["d"], [], { assetId: "a1", anchorAt: machine.anchorAt, pre: 5, post: 2 })).toEqual({
+      message: "q",
+      sourceDocIds: ["d"],
+      history: [],
+      machineEvidence: { assetId: "a1", anchorAt: machine.anchorAt, pre: 5, post: 2 },
+    });
+  });
+});
+
+describe("machineReplayCaption", () => {
+  const clock = () => "23:16:31";
+  it("counts, anchors and names freshness honestly", () => {
+    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Recorded history — not live");
+    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 observed change around 23:16:31 · Live signals");
+    expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe("Machine Replay · 0 observed changes around 23:16:31 · No current signals");
+  });
+});

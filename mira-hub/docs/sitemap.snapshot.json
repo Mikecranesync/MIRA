@@ -93,6 +93,7 @@
     "/api/assets/[id]/context",
     "/api/assets/[id]/documents",
     "/api/assets/[id]/enrich",
+    "/api/assets/[id]/history",
     "/api/assets/[id]/machine-memory",
     "/api/assets/[id]/machine-memory/stream",
     "/api/assets/[id]/notebook",

@@ -136,7 +136,45 @@ export type NotebookEvidenceFrame = {
   basis: EvidenceBasis;
   /** One short sentence the UI may render verbatim as a badge/caption. */
   label: string;
+  /** Sensor REPLAY (contract §4.4, D5): the machine window this turn was
+   *  grounded on. Additive — same frame kind, so FRAME_KINDS is untouched and
+   *  older clients simply ignore the field. */
+  machineEvidence?: MachineEvidenceEntry;
 };
+
+/**
+ * Machine evidence attached to a turn (Sensor REPLAY, contract §4.4 / D5).
+ * Rides INSIDE the turn's existing `evidence[]` JSONB next to
+ * `EvidenceCitation` entries, discriminated by `kind` — no new table, no new
+ * frame kind. It is NOT a citation: it never carries a `docId`, never appears
+ * in `sources.citations` or `sourceSnapshot`, and every `evidence[]` reader
+ * that assumes `{docId}` must skip it (enrichCitationsWithOrigin / listTurns
+ * do; `persistedTurns` on web splits it out).
+ */
+export type MachineEvidenceEntry = {
+  kind: "machine_evidence";
+  assetId: string;
+  /** Canonical ISO anchor (the fault time the window is centred on). */
+  anchorAt: string;
+  pre: number;
+  post: number;
+  /** Recorded observations in the window — the "N observed changes" count. */
+  rowCount: number;
+  /** Roll-up of the asset's CURRENT signals when the turn was served. */
+  freshness: "live" | "stale" | "simulated" | "unknown";
+  runId?: string | null;
+  windowId?: string | null;
+};
+
+/** Type guard: an `evidence[]` entry that is machine evidence, not a citation. */
+export function isMachineEvidenceEntry(e: unknown): e is MachineEvidenceEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "machine_evidence" &&
+    typeof (e as { anchorAt?: unknown }).anchorAt === "string"
+  );
+}
 
 export type NotebookChatFrame =
   | NotebookSourcesFrame

@@ -2,7 +2,53 @@
 // has no jsdom). Streaming / stop / composer mechanics live here so the
 // component stays a thin view.
 
-import { parseFrame, type EvidenceCitation, type NotebookChatFrame } from "@/lib/notebook-chat-types";
+import {
+  isMachineEvidenceEntry,
+  parseFrame,
+  type EvidenceBasis,
+  type EvidenceCitation,
+  type MachineEvidenceEntry,
+  type NotebookChatFrame,
+} from "@/lib/notebook-chat-types";
+
+/** Evidence-ladder caption per basis (spec §1.3). Every basis gets a caption;
+ *  only `general_reasoning` is the amber warning — the rest are muted facts. */
+export const BASIS_LABEL: Record<EvidenceBasis, string> = {
+  general_reasoning: "General guidance — not grounded in this machine's documents.",
+  identified_component: "Grounded in the identified component.",
+  oem_documentation: "Grounded in this notebook's sources.",
+  workspace_evidence: "Grounded in workspace evidence.",
+  machine_history: "Grounded in recorded machine history — not live.",
+  live_machine_evidence: "Grounded in live machine evidence.",
+};
+
+export function basisLabel(basis: string | null | undefined): string | null {
+  if (!basis) return null;
+  return (BASIS_LABEL as Record<string, string>)[basis] ?? null;
+}
+
+/** Freshness copy for the Machine Replay card — stale/simulated is never "live". */
+export const REPLAY_FRESHNESS_LABEL: Record<MachineEvidenceEntry["freshness"], string> = {
+  live: "Live signals",
+  stale: "Recorded history — not live",
+  simulated: "Simulated data — not live",
+  unknown: "No current signals",
+};
+
+function defaultClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, { hour12: false });
+}
+
+/** "Machine Replay · 7 observed changes around 23:16:31 · Recorded history — not live".
+ *  `clock` is injectable so the caption is deterministic in tests. */
+export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: string) => string = defaultClock): string {
+  const n = e.rowCount;
+  const changes = `${n} observed ${n === 1 ? "change" : "changes"}`;
+  const fresh = REPLAY_FRESHNESS_LABEL[e.freshness] ?? REPLAY_FRESHNESS_LABEL.unknown;
+  return `Machine Replay · ${changes} around ${clock(e.anchorAt)} · ${fresh}`;
+}
 
 /** Enter sends; Shift+Enter is a newline; an in-progress IME composition
  *  (Japanese / Chinese / Korean keyboards, keyCode 229) never sends (CMPS-1). */
@@ -45,6 +91,8 @@ export type StreamResult = {
   status: "answered" | "insufficient_evidence" | "error";
   basis: string | null;
   followups: string[];
+  /** Sensor REPLAY (D5): the machine window the turn was grounded on, if any. */
+  machineEvidence: MachineEvidenceEntry | null;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -61,7 +109,14 @@ export async function readNotebookStream(
 ): Promise<StreamResult> {
   const dec = new TextDecoder();
   let buf = "";
-  const out: StreamResult = { content: "", citations: [], status: "answered", basis: null, followups: [] };
+  const out: StreamResult = {
+    content: "",
+    citations: [],
+    status: "answered",
+    basis: null,
+    followups: [],
+    machineEvidence: null,
+  };
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -77,7 +132,10 @@ export async function readNotebookStream(
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
         if (frame.kind === "sources") out.citations = frame.citations;
-        else if (frame.kind === "evidence") out.basis = frame.basis;
+        else if (frame.kind === "evidence") {
+          out.basis = frame.basis;
+          out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
+        }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
           out.content += frame.content;
@@ -98,7 +156,12 @@ export type ChatBody = {
   message: string;
   sourceDocIds: string[];
   history: { role: "user" | "assistant"; content: string }[];
+  /** Sensor REPLAY (contract §4.4): the selected fault window. The server
+   *  re-fetches the rows itself — only the selection travels. */
+  machineEvidence?: MachineEvidenceSelection;
 };
+
+export type MachineEvidenceSelection = { assetId: string; anchorAt: string; pre?: number; post?: number };
 
 type HistoryTurn = {
   role: "user" | "assistant";
@@ -118,8 +181,18 @@ export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
     .map((t) => ({ role: t.role, content: t.content }));
 }
 
-export function buildChatBody(message: string, sourceDocIds: string[], turns: HistoryTurn[]): ChatBody {
-  return { message, sourceDocIds, history: historyFromTurns(turns) };
+export function buildChatBody(
+  message: string,
+  sourceDocIds: string[],
+  turns: HistoryTurn[],
+  machineEvidence?: MachineEvidenceSelection | null,
+): ChatBody {
+  return {
+    message,
+    sourceDocIds,
+    history: historyFromTurns(turns),
+    ...(machineEvidence ? { machineEvidence } : {}),
+  };
 }
 
 /** After a failed send the technician's question goes back into the composer
@@ -155,7 +228,10 @@ export type PersistedTurn = {
   question: string;
   answerStatus: string;
   answerText: string | null;
-  evidence: EvidenceCitation[];
+  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries riding in
+   *  the same JSONB. Non-document entries are split out, never rendered as
+   *  citations. */
+  evidence: Array<EvidenceCitation | MachineEvidenceEntry>;
   basis?: string | null;
 };
 
@@ -166,8 +242,26 @@ type HydratedTurn = {
   status?: "answered" | "insufficient_evidence" | "error";
   citations?: EvidenceCitation[];
   basis?: string | null;
+  machineEvidence?: MachineEvidenceEntry[];
   stopped?: boolean;
 };
+
+/** Split a persisted evidence[] into citations vs machine entries. Anything
+ *  without a docId that is not machine evidence is dropped (never a dead chip). */
+export function splitEvidence(evidence: unknown[]): {
+  citations: EvidenceCitation[];
+  machineEvidence: MachineEvidenceEntry[];
+} {
+  const citations: EvidenceCitation[] = [];
+  const machineEvidence: MachineEvidenceEntry[] = [];
+  for (const e of Array.isArray(evidence) ? evidence : []) {
+    if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
+    else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
+      citations.push(e as EvidenceCitation);
+    }
+  }
+  return { citations, machineEvidence };
+}
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
  *  change): the server persists a client-stopped turn as
@@ -179,6 +273,7 @@ type HydratedTurn = {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
+    const { citations, machineEvidence } = splitEvidence(t.evidence);
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -186,9 +281,11 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         role: "assistant" as const,
         content: t.answerText ?? "I couldn't find that in the selected sources.",
         status: t.answerStatus as HydratedTurn["status"],
-        citations: stopped ? [] : t.evidence,
+        citations: stopped ? [] : citations,
         // 084 (#3387): the persisted basis — the badge survives reload.
         basis: stopped ? null : (t.basis ?? null),
+        // D5: the Machine Replay card survives reload too (stopped turns carry none).
+        ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

@@ -11,7 +11,6 @@ import {
   appendManualContext,
   buildManualUserContent,
   chunksToSources,
-  neutralizeReferenceText,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -27,6 +26,7 @@ import {
   renderMachineEvidenceSection,
   type MachineContextPacket,
 } from "@/lib/machine-context-packet";
+import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import {
   KB_GAP_ADMISSION,
   KB_GAP_SYSTEM_INSTRUCTION,
@@ -191,17 +191,8 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 // route returns these same fields as raw JSON *data* for a client to render —
 // not interpolated into an LLM prompt — so it does not need this treatment.
 // Only prompt interpolations (this file) require neutralizing.
-const MACHINE_MEMORY_FIELD_MAX_CHARS = 120;
-
-// Accepts `unknown` because these fields come off `Record<string, unknown>`
-// rows straight from the DB driver (machine_run/machine_state_window/run_diff
-// columns aren't narrowed to `string`) — coerce defensively rather than trust
-// the column type.
-function sanitizeMachineMemoryField(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "";
-  const str = typeof value === "string" ? value : String(value);
-  return neutralizeReferenceText(str.slice(0, MACHINE_MEMORY_FIELD_MAX_CHARS));
-}
+// sanitizeMachineMemoryField lives in @/lib/machine-memory-sanitize (Sensor S4
+// moved it there verbatim so the notebook chat route shares the ONE scrub).
 
 // Live machine evidence section is rendered by renderMachineEvidenceSection in
 // @/lib/machine-context-packet (pure + unit-tested); the route passes its

@@ -166,3 +166,63 @@ describe("Bubble — rehydrated stopped turn (STRM-2 on reload)", () => {
     expect(html).not.toContain("General guidance");
   });
 });
+
+// ── Sensor S4 (contract §4.5): basis caption for EVERY basis + Machine Replay card ──
+describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () => {
+  const base: ChatTurn = { id: "b", role: "assistant", content: "Check the DC bus.", status: "answered" };
+
+  it("renders a caption for every basis value; amber is reserved for general_reasoning", () => {
+    const expected: Record<string, string> = {
+      general_reasoning: "General guidance — not grounded in this machine",
+      identified_component: "Grounded in the identified component.",
+      oem_documentation: "Grounded in this notebook",
+      workspace_evidence: "Grounded in workspace evidence.",
+      machine_history: "Grounded in recorded machine history — not live.",
+      live_machine_evidence: "Grounded in live machine evidence.",
+    };
+    for (const [basis, text] of Object.entries(expected)) {
+      const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis }} />);
+      expect(html, basis).toContain(`data-basis="${basis}"`);
+      expect(html.replace(/&#x27;/g, "'"), basis).toContain(text);
+      if (basis === "general_reasoning") expect(html, basis).toContain("var(--status-yellow)");
+      else expect(html, basis).not.toContain("var(--status-yellow)");
+    }
+  });
+
+  it("no basis → no caption (a stopped or failed turn makes no basis claim)", () => {
+    const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: null }} />);
+    expect(html).not.toContain('data-testid="basis-caption"');
+  });
+
+  it("renders a 'Machine Replay · N observed changes around <time> · <freshness>' card for a machine_evidence entry, never as a citation", () => {
+    const turn: ChatTurn = {
+      ...base,
+      basis: "machine_history",
+      machineEvidence: [
+        { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 7, freshness: "stale" },
+      ],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={turn} />);
+    expect(html).toContain('data-testid="machine-replay-card"');
+    expect(html).toContain('data-freshness="stale"');
+    expect(html).toMatch(/Machine Replay · 7 observed changes around \d{2}:\d{2}:\d{2} · Recorded history — not live/);
+    // Not a citation: no supporting-passage chip, no [n] button.
+    expect(html).not.toContain("supporting passage");
+  });
+
+  it("a live window says so; a simulated one is never called live", () => {
+    const mk = (freshness: "live" | "simulated") =>
+      renderToStaticMarkup(
+        <Bubble
+          turn={{
+            ...base,
+            machineEvidence: [{ kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 1, freshness }],
+          }}
+        />,
+      );
+    expect(mk("live")).toContain("1 observed change around");
+    expect(mk("live")).toContain("· Live signals");
+    expect(mk("simulated")).toContain("Simulated data — not live");
+    expect(mk("simulated")).not.toContain("Live signals");
+  });
+});
