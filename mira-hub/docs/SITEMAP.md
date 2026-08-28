@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **69** (12 dynamic) |
-| API routes | **178** (65 dynamic) |
+| API routes | **179** (66 dynamic) |
 
 ## Pages (69)
 
@@ -87,7 +87,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (178)
+## API routes (179)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -108,6 +108,7 @@
 | `/api/assets/[id]/context` | dynamic | `api/assets/[id]/context/route.ts` |
 | `/api/assets/[id]/documents` | dynamic | `api/assets/[id]/documents/route.ts` |
 | `/api/assets/[id]/enrich` | dynamic | `api/assets/[id]/enrich/route.ts` |
+| `/api/assets/[id]/history` | dynamic | `api/assets/[id]/history/route.ts` |
 | `/api/assets/[id]/machine-memory` | dynamic | `api/assets/[id]/machine-memory/route.ts` |
 | `/api/assets/[id]/machine-memory/stream` | dynamic | `api/assets/[id]/machine-memory/stream/route.ts` |
 | `/api/assets/[id]/notebook` | dynamic | `api/assets/[id]/notebook/route.ts` |
