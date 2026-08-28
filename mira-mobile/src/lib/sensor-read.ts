@@ -34,6 +34,23 @@ export type ReadOutcome =
 
 const FALLBACK_BIND = "Could not attach that machine to this notebook.";
 
+/**
+ * S5 D6: the tag RESOLVED — so a refused bind must read as a bind refusal,
+ * never as "Not found (or no access)". The Hub's PUT …/asset puts its sentence
+ * in `error` (BIND_ERRORS: "That asset isn't in this account.", "Notebook not
+ * found.", …) but `ApiError.userMessage` throws the detail away for the
+ * `not_found` kind. Read the server's sentence off `detail` directly; a bare
+ * discriminator or "HTTP 404" falls back to the bind-refusal sentence.
+ */
+export function bindRefusalMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const d = (err.detail ?? "").trim();
+    const bare = /^[a-z0-9]+(_[a-z0-9]+)+$/.test(d) || /^HTTP \d{3}$/.test(d);
+    if (d && !bare) return d;
+  }
+  return FALLBACK_BIND;
+}
+
 export async function readScan(
   tag: string,
   ctx: { notebookId: string; boundEntityId: string | null },
@@ -58,7 +75,7 @@ export async function readScan(
       // Another notebook already owns that machine: go there instead of
       // failing — that notebook is where its history lives.
       const conflict = err instanceof ApiError && err.status === 409;
-      if (!conflict) return { kind: "failed", message: messageFrom(err, FALLBACK_BIND) };
+      if (!conflict) return { kind: "failed", message: bindRefusalMessage(err) };
     }
   }
 

@@ -60,6 +60,12 @@ const unbound = () => ({
   sources: [],
   turns: [],
 });
+/** Server echo of the requested window (§4.3 returns pre/post as applied). */
+const echoWindow = (overall: "live" | "stale") => (_id: string, opts?: { pre?: number; post?: number }) =>
+  Promise.resolve({
+    ...history(overall),
+    history: { ...history(overall).history, pre: opts?.pre ?? 5, post: opts?.post ?? 2 },
+  });
 const history = (overall: "live" | "stale") => ({
   ok: true,
   history: {
@@ -119,7 +125,8 @@ describe("Sensor REPLAY (S4)", () => {
     mount();
     await openReplay();
     const tl = await screen.findByTestId("replay-timeline");
-    expect(getAssetHistory).toHaveBeenCalledWith("asset-1");
+    // S5 D2: the phone names its window; the server default (5 s / 2 s) is never relied on.
+    expect(getAssetHistory).toHaveBeenCalledWith("asset-1", { pre: 60, post: 10 });
     expect(tl.getAttribute("data-freshness")).toBe("stale");
     expect(screen.getByTestId("freshness-label").textContent).toBe("Stale");
     expect(screen.getByText("Live unavailable — showing recorded history")).toBeTruthy();
@@ -202,11 +209,62 @@ describe("Sensor REPLAY (S4)", () => {
     await screen.findByTestId("replay-timeline");
     expect(screen.getByText(/isn't available for this workspace yet/)).toBeTruthy();
     expect(screen.queryByRole("listitem")).toBeNull();
+    // Nothing was read, so nothing is counted and nothing is labelled: an
+    // "0 observed changes · Stale" header would claim the machine was quiet.
+    expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/observed change/);
+    expect(screen.queryByTestId("freshness-label")).toBeNull();
+    expect(screen.queryByText(/Live unavailable/)).toBeNull();
+  });
+
+  it("S5 D2: the header names the fetched window and the segmented control re-fetches on widen", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockImplementation(echoWindow("stale"));
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(getAssetHistory).toHaveBeenCalledTimes(1);
+    expect(getAssetHistory.mock.calls[0]).toEqual(["asset-1", { pre: 60, post: 10 }]);
+    expect(screen.getByTestId("replay-window-header").textContent).toBe("3 observed changes in −60 s … +10 s");
+    const group = screen.getByRole("group", { name: "Replay window" });
+    const buttons = Array.from(group.querySelectorAll("button"));
+    expect(buttons.map((b) => b.textContent)).toEqual(["±5 s", "60 s", "120 s"]);
+    expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true", "false"]);
+    // The active segment is a no-op — no duplicate fetch.
+    fireEvent.click(buttons[1]);
+    expect(getAssetHistory).toHaveBeenCalledTimes(1);
+    // Widen to the 120 s cap → one re-fetch with that window; header follows.
+    fireEvent.click(screen.getByRole("button", { name: "120 s" }));
+    await waitFor(() => expect(getAssetHistory).toHaveBeenCalledTimes(2));
+    expect(getAssetHistory.mock.calls[1]).toEqual(["asset-1", { pre: 120, post: 10 }]);
+    await waitFor(() =>
+      expect(screen.getByTestId("replay-window-header").textContent).toBe("3 observed changes in −120 s … +10 s"),
+    );
+    expect(screen.getByRole("button", { name: "120 s" }).getAttribute("aria-pressed")).toBe("true");
+    // Narrow to ±5 s → re-fetch again.
+    fireEvent.click(screen.getByRole("button", { name: "±5 s" }));
+    await waitFor(() => expect(getAssetHistory).toHaveBeenCalledTimes(3));
+    expect(getAssetHistory.mock.calls[2]).toEqual(["asset-1", { pre: 5, post: 5 }]);
+  });
+
+  it("S5 D2: Ask MIRA sends the window the technician is looking at — after a widen, the widened one", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockImplementation(echoWindow("stale"));
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    fireEvent.click(screen.getByRole("button", { name: "120 s" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("replay-window-header").textContent).toContain("−120 s … +10 s"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA what happened" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][3].machineEvidence).toEqual({ assetId: "asset-1", anchorAt: ANCHOR, pre: 120, post: 10 });
   });
 
   it("Ask MIRA what happened closes the sheet and sends body.machineEvidence via askNotebook", async () => {
     getNotebookDetail.mockResolvedValue(bound());
-    getAssetHistory.mockResolvedValue(history("stale"));
+    getAssetHistory.mockImplementation(echoWindow("stale"));
     askNotebook.mockResolvedValue({ answer: "Drive inhibit preceded the fault.", citations: [], status: "answered", evidenceBasis: "machine_history", evidenceLabel: "x", machineEvidence: [{ kind: "machine_evidence", assetId: "asset-1", anchorAt: ANCHOR, pre: 5, post: 2, rowCount: 3, freshness: "stale" }] });
     mount();
     await openReplay();
@@ -217,7 +275,8 @@ describe("Sensor REPLAY (S4)", () => {
     expect(nbId).toBe("nb1");
     expect(question).toContain(`fault at ${hhmmss(ANCHOR)}`);
     expect(scope).toEqual([]);
-    expect(opts.machineEvidence).toEqual({ assetId: "asset-1", anchorAt: ANCHOR, pre: 5, post: 2 });
+    expect(opts.machineEvidence).toEqual({ assetId: "asset-1", anchorAt: ANCHOR, pre: 60, post: 10 });
+    expect(opts.visualEvidence).toBeUndefined();
     // The live turn renders its card + muted caption from the server's frame.
     await screen.findByText("Drive inhibit preceded the fault.");
     expect(screen.getByTestId("machine-replay-card").textContent).toContain("3 observed changes");
@@ -243,7 +302,9 @@ describe("Sensor REPLAY (S4)", () => {
     );
     mount();
     const card = await screen.findByTestId("machine-replay-card");
-    expect(card.textContent).toContain(`Machine Replay · 7 observed changes around ${hhmmss(ANCHOR)} · Live`);
+    // S5 D5 cross-lane copy, exact: title + fault-window suffix gated on windowId.
+    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 observed changes around ${hhmmss(ANCHOR)} · Live`);
+    expect(card.textContent).toContain("· fault window");
     expect(screen.getByText("Grounded in live machine evidence")).toBeTruthy();
     // Exactly one citation chip — the document one; the machine entry is not a chip.
     const chips = screen.getAllByRole("button", { name: /gs10\.pdf/ });

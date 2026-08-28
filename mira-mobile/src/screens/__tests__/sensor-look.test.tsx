@@ -92,6 +92,10 @@ describe("Sensor LOOK (S2)", () => {
     expect(screen.getByTestId("thumb").textContent).toBe("f-park");
     expect(screen.getByText("Amber LED on the drive, DC bus indicator lit.")).toBeTruthy();
     expect(screen.getByText(/Visual observation · Photo captured · 02:14:21/)).toBeTruthy();
+    // S5 D1: LOOK links the file (workspace_file_links, role photo) — it is
+    // NOT an equipment_notebook_sources row, so the card must not say "sources".
+    expect(screen.getByText("Phone photo — saved to this notebook's files.")).toBeTruthy();
+    expect(screen.queryByText(/notebook's sources/)).toBeNull();
     // The sources list is re-read: the photo is a linked source now.
     expect(getNotebookDetail.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -103,7 +107,14 @@ describe("Sensor LOOK (S2)", () => {
       observation: { text: "Contactor K1 pulled in.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
       quality: null,
     });
-    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    askNotebook.mockResolvedValue({
+      answer: "ok",
+      citations: [],
+      status: "answered",
+      // The server re-derived the entry from body.visualEvidence and echoed it
+      // on the evidence frame; the live turn renders the card from that.
+      visualEvidence: [{ kind: "visual_observation", fileId: "f-park", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" }],
+    });
     mount();
     await openLook();
     await screen.findByTestId("look-card");
@@ -113,14 +124,76 @@ describe("Sensor LOOK (S2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("dialog", { name: "Sensor" })).toBeNull();
-    const [nbId, question, scope] = askNotebook.mock.calls[0];
+    const [nbId, question, scope, opts] = askNotebook.mock.calls[0];
     expect(nbId).toBe("nb1");
     expect(scope).toEqual([]);
     expect(question).toBe(
       "Visual observation (02:14:21, phone photo): Contactor K1 pulled in.\n\nIs that normal at idle?",
     );
+    // S5 D3: the parked photo rides as identifiers only — the server verifies
+    // the link and re-derives the evidence entry.
+    expect(opts.visualEvidence).toEqual({ fileId: "f-park", capturedAt: "2026-08-28T02:14:21" });
+    expect(opts.machineEvidence).toBeUndefined();
     // The question posts in the conversation like any other turn.
     await screen.findByText("ok");
+    // …and the live turn renders the Visual observation card with the thumb.
+    const card = screen.getByTestId("visual-observation-card");
+    expect(card.querySelector(".title")?.textContent).toBe("Visual observation · Photo captured · 02:14:21");
+    expect(card.querySelector('[data-testid="thumb"]')?.textContent).toBe("f-park");
+    expect(screen.queryByRole("button", { name: /f-park/ })).toBeNull();
+  });
+
+  it("S5 D3: a failed send keeps visualEvidence on the pending body so Retry is byte-identical", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: null,
+      observation: { text: "Contactor K1 pulled in.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+      quality: null,
+    });
+    askNotebook
+      .mockRejectedValueOnce(new ApiError("server", 500, "HTTP 500"))
+      .mockResolvedValueOnce({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
+    const [, q1, s1, o1] = askNotebook.mock.calls[0];
+    const [, q2, s2, o2] = askNotebook.mock.calls[1];
+    expect(q2).toBe(q1);
+    expect(s2).toEqual(s1);
+    expect(o2.visualEvidence).toEqual({ fileId: "f-park", capturedAt: "2026-08-28T02:14:21" });
+    expect(o2.visualEvidence).toEqual(o1.visualEvidence);
+    expect(o2.history).toEqual(o1.history);
+  });
+
+  it("S5 D3: a persisted turn renders the Visual observation card from evidence[] — no chip, no basis change", async () => {
+    getNotebookDetail.mockResolvedValue({
+      ...detail(),
+      turns: [
+        {
+          id: "t1",
+          question: "Visual observation (02:14:21, phone photo): Contactor K1 pulled in.\n\nIs that normal?",
+          answerStatus: "answered",
+          answerText: "Yes at idle [1].",
+          basis: "oem_documentation",
+          evidence: [
+            { citationId: "1", sourceTitle: "gs10.pdf", page: 12, docId: "d1" },
+            { kind: "visual_observation", fileId: "f-park", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+          ],
+        },
+      ],
+    });
+    mount();
+    const card = await screen.findByTestId("visual-observation-card");
+    expect(card.querySelector(".title")?.textContent).toBe("Visual observation · Photo captured · 02:14:21");
+    expect(card.querySelector('[data-testid="thumb"]')?.textContent).toBe("f-park");
+    expect(card.textContent).toContain("saved to this notebook's files");
+    // Exactly one citation chip — the document one; the photo is not a chip.
+    expect(screen.getAllByRole("button", { name: /gs10\.pdf/ })).toHaveLength(1);
+    expect(screen.queryByText(/General guidance/)).toBeNull();
+    expect(screen.queryByTestId("machine-replay-card")).toBeNull();
   });
 
   it("§4.1: provider failure with the parked file renders the evidence card (no description) + Ask MIRA", async () => {

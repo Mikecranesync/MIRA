@@ -16,6 +16,8 @@ import {
   stoppedTurn,
 } from "./notebook-chat-utils";
 
+import { visualObservationCaption } from "./notebook-chat-utils";
+
 const enc = new TextEncoder();
 const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
 
@@ -261,7 +263,12 @@ describe("persistedTurns — reload applies the STOPPED-TURN CONTRACT", () => {
 });
 
 // ── Sensor S4 (D5): machine evidence rides in evidence[] / the evidence frame ──
-import { machineReplayCaption, splitEvidence } from "./notebook-chat-utils";
+import {
+  MACHINE_HISTORY_UNAVAILABLE_CAPTION,
+  MACHINE_NO_CHANGES_CAPTION,
+  machineReplayCaption,
+  splitEvidence,
+} from "./notebook-chat-utils";
 
 const machine = {
   kind: "machine_evidence" as const,
@@ -303,7 +310,77 @@ describe("persistedTurns tolerates non-document evidence entries (D5)", () => {
     expect(splitEvidence([cite, machine, null, "junk", { kind: "machine_evidence" }, { noDocId: true }])).toEqual({
       citations: [cite],
       machineEvidence: [machine],
+      visualEvidence: [],
     });
+  });
+});
+
+// ── S5 D3: the persisted Visual observation card ────────────────────────────
+const visual = {
+  kind: "visual_observation" as const,
+  fileId: "f0000000-0000-4000-8000-000000000001",
+  capturedAt: "2026-08-27T23:14:21.000Z",
+  provenance: "phone_photo" as const,
+};
+
+describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () => {
+  const cite = { citationId: "1", docId: "d", sourceTitle: "M", page: 1, fileId: null, quote: null };
+
+  it("splits the visual entry out of citations and keeps it on the turn, next to the machine entry", () => {
+    const [, a] = persistedTurns([
+      { id: "t12", question: "what is this LED?", answerStatus: "answered", answerText: "A. [1]", evidence: [cite, machine, visual], basis: "oem_documentation" },
+    ]);
+    expect(a.citations).toEqual([cite]);
+    expect(a.machineEvidence).toEqual([machine]);
+    expect(a.visualEvidence).toEqual([visual]);
+    // the photo never moves the basis
+    expect(a.basis).toBe("oem_documentation");
+  });
+
+  it("a turn without a photo carries no visualEvidence key (byte-identical to before)", () => {
+    const [, a] = persistedTurns([
+      { id: "t13", question: "q", answerStatus: "answered", answerText: "A.", evidence: [cite], basis: "oem_documentation" },
+    ]);
+    expect(a).not.toHaveProperty("visualEvidence");
+  });
+
+  it("a stopped turn drops the photo along with citations and basis", () => {
+    const [, a] = persistedTurns([
+      { id: "t14", question: "q", answerStatus: "error", answerText: "partial", evidence: [cite, visual], basis: "oem_documentation" },
+    ]);
+    expect(a).toEqual({ id: "t14-a", role: "assistant", content: "partial", status: "error", citations: [], basis: null, stopped: true });
+  });
+
+  it("a malformed visual entry (no fileId / no capturedAt) is dropped, never a dead card", () => {
+    expect(splitEvidence([{ kind: "visual_observation" }, { kind: "visual_observation", fileId: "f" }])).toEqual({
+      citations: [],
+      machineEvidence: [],
+      visualEvidence: [],
+    });
+  });
+
+  it("readNotebookStream picks the visual entry off the evidence frame; absent → null", async () => {
+    const withPhoto = await readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "A." }),
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "evidence", basis: "oem_documentation", label: "x", visualEvidence: visual }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(withPhoto.visualEvidence).toEqual(visual);
+    expect(withPhoto.machineEvidence).toBeNull();
+    const without = await readNotebookStream(
+      streamOf([frame({ kind: "evidence", basis: "oem_documentation", label: "x" }), frame({ kind: "status", status: "answered" }), "data: [DONE]\n\n"]),
+      () => {},
+    );
+    expect(without.visualEvidence).toBeNull();
+  });
+
+  it("visualObservationCaption is the contract string", () => {
+    expect(visualObservationCaption(visual, () => "02:14:21")).toBe("Visual observation · Photo captured · 02:14:21");
   });
 });
 
@@ -347,8 +424,23 @@ describe("buildChatBody — optional machineEvidence selection", () => {
 describe("machineReplayCaption", () => {
   const clock = () => "23:16:31";
   it("counts, anchors and names freshness honestly", () => {
-    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Recorded history — not live");
-    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 observed change around 23:16:31 · Live signals");
-    expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe("Machine Replay · 0 observed changes around 23:16:31 · No current signals");
+    // S5 D5 cross-lane contract: mobile's replayCardTitle shape + the shared FRESHNESS_LABEL vocabulary.
+    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Stale");
+    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 observed change around 23:16:31 · Live");
+    expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Simulated");
+  });
+
+  // §2.8: "0 observed changes" reads like a real, quiet window — so it must
+  // never stand in for "the backend isn't there". Two distinct sentences.
+  it("an unavailable window says so instead of counting zero", () => {
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).toBe(
+      MACHINE_HISTORY_UNAVAILABLE_CAPTION,
+    );
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).not.toContain("observed change");
+  });
+
+  it("a genuinely empty window says nothing was recorded, not '0 observed changes'", () => {
+    expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: null }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
   });
 });

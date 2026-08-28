@@ -126,6 +126,31 @@ export async function fetchMachineHistory(
   let anchor: HistoryAnchor;
   if (opts.at) {
     anchor = { at: opts.at, source: "explicit" };
+    // S5 D4: an explicit anchor still names the machine_state_window that
+    // CONTAINS it (same tenant / uns_path) when one exists — SELECT only, the
+    // same table the fault-window anchor reads. No window → no windowId; a
+    // missing 040 table is not an error here (the anchor is already known).
+    try {
+      const containing = await client
+        .query(
+          `SELECT window_id::text AS window_id, state, started_at, ended_at
+             FROM machine_state_window
+            WHERE tenant_id = $1::uuid AND uns_path = $2::ltree
+              AND started_at <= $3::timestamptz
+              AND (ended_at IS NULL OR ended_at >= $3::timestamptz)
+            ORDER BY started_at DESC
+            LIMIT 1`,
+          [tenantId, unsPath, opts.at],
+        )
+        .then((r) => r.rows[0] ?? null);
+      if (containing) {
+        anchor.windowId = String(containing.window_id);
+        anchor.state = String(containing.state);
+      }
+    } catch (err) {
+      if (!isUndefinedRelationOrColumn(err)) throw err;
+      console.error("[lib/machine-history] machine_state_window unavailable (040 not applied?)", err);
+    }
   } else {
     let faultWindow: Record<string, unknown> | null = null;
     let latestWindow: Record<string, unknown> | null = null;

@@ -26,7 +26,13 @@ import {
   type Notebook,
 } from "../api/resources";
 import { ReplayTimeline } from "./ReplayTimeline";
-import { replayQuestion, type HistoryResult, type MachineEvidenceWindow } from "../lib/replay";
+import {
+  REPLAY_DEFAULT_WINDOW,
+  replayQuestion,
+  type HistoryResult,
+  type MachineEvidenceWindow,
+  type ReplayWindow,
+} from "../lib/replay";
 import { ErrorState } from "./common";
 import { extractAssetTag } from "../lib/tags";
 import { readScan, type ReadOutcome } from "../lib/sensor-read";
@@ -37,9 +43,20 @@ import {
   hhmmss,
   lookErrorCopy,
   lookQuestion,
+  visualCardTitle,
   LOOK_DEFAULT_QUESTION,
+  LOOK_SAVED_COPY,
   type SensorMode,
+  type VisualEvidence,
 } from "../lib/sensor";
+
+/** What a Sensor "Ask MIRA" hands the ONE conversation alongside the
+ *  question: the REPLAY window (§4.4) and/or the LOOK photo (S5 D3). The
+ *  server verifies and re-derives both; the client sends identifiers only. */
+export interface SensorAskEvidence {
+  machineEvidence?: MachineEvidenceWindow;
+  visualEvidence?: VisualEvidence;
+}
 
 export function SensorSheet({
   notebook,
@@ -56,8 +73,9 @@ export function SensorSheet({
   onChanged: () => void;
   /** Send a question through the notebook's ONE conversation. The caller
    *  closes the sheet and switches to the chat panel. REPLAY passes the
-   *  selected Machine Memory window (contract §4.4) alongside. */
-  onAsk: (question: string, machineEvidence?: MachineEvidenceWindow) => void;
+   *  selected Machine Memory window (contract §4.4); LOOK passes the parked
+   *  photo (S5 D3). */
+  onAsk: (question: string, evidence?: SensorAskEvidence) => void;
   /** A scan resolved to a DIFFERENT machine's notebook — go there (the
    *  existing scan → notebook transition). */
   onOpenNotebook: (notebookId: string) => void;
@@ -144,7 +162,7 @@ function LookPanel({
 }: {
   notebookId: string;
   onChanged: () => void;
-  onAsk: (question: string) => void;
+  onAsk: (question: string, evidence?: SensorAskEvidence) => void;
 }) {
   const [state, setState] = useState<LookState>({ name: "idle" });
   const [question, setQuestion] = useState("");
@@ -193,10 +211,9 @@ function LookPanel({
             {state.result.fileId && <SourceThumb fileId={state.result.fileId} />}
             <div className="grow">
               <div className="title">
-                Visual observation · Photo captured ·{" "}
-                {hhmmss(state.result.observation?.capturedAt ?? new Date())}
+                {visualCardTitle(state.result.observation?.capturedAt ?? new Date())}
               </div>
-              <div className="meta">Phone photo — saved to this notebook&apos;s sources.</div>
+              <div className="meta">{LOOK_SAVED_COPY}</div>
             </div>
           </div>
           {state.result.observation ? (
@@ -220,15 +237,21 @@ function LookPanel({
           <button
             className="btn-primary"
             style={{ marginTop: 10 }}
-            onClick={() =>
+            onClick={() => {
+              const capturedAt = state.result.observation?.capturedAt ?? new Date().toISOString();
               onAsk(
                 lookQuestion(
                   state.result.observation?.text ?? "(no description available)",
-                  state.result.observation?.capturedAt ?? new Date(),
+                  capturedAt,
                   question,
                 ),
-              )
-            }
+                // S5 D3: the parked photo rides as {fileId, capturedAt} so the
+                // server can verify the link and persist the visual entry.
+                state.result.fileId
+                  ? { visualEvidence: { fileId: state.result.fileId, capturedAt } }
+                  : undefined,
+              );
+            }}
           >
             Ask MIRA about this
           </button>
@@ -244,7 +267,7 @@ function LookPanel({
           </div>
           <div className="meta" style={{ marginBottom: 8 }}>
             If the upload reached the server, the photo is already saved in this
-            notebook&apos;s sources.
+            notebook&apos;s files.
           </div>
           <button onClick={() => void look(state.photo)}>Try again</button>
           <button style={{ marginTop: 8 }} onClick={() => setState({ name: "idle" })}>
@@ -442,23 +465,27 @@ function ReplayPanel({
   onIdentify,
 }: {
   notebook: Pick<Notebook, "asset">;
-  onAsk: (question: string, machineEvidence?: MachineEvidenceWindow) => void;
+  onAsk: (question: string, evidence?: SensorAskEvidence) => void;
   onIdentify: () => void;
 }) {
   const assetId = notebook.asset?.entityId ?? null;
   const [state, setState] = useState<ReplayState>({ name: "loading" });
+  // S5 D2: the phone always names its window (the server default of 5 s / 2 s
+  // cannot reach a cause seconds before the fault); the header control
+  // re-fetches with a different one.
+  const [window, setWindow] = useState<ReplayWindow>({ ...REPLAY_DEFAULT_WINDOW });
 
   useEffect(() => {
     if (!assetId) return;
     let cancelled = false;
     setState({ name: "loading" });
-    getAssetHistory(assetId)
+    getAssetHistory(assetId, { pre: window.pre, post: window.post })
       .then((result) => !cancelled && setState({ name: "ready", result }))
       .catch((error) => !cancelled && setState({ name: "error", error }));
     return () => {
       cancelled = true;
     };
-  }, [assetId]);
+  }, [assetId, window.pre, window.post]);
 
   if (!assetId)
     return (
@@ -497,7 +524,9 @@ function ReplayPanel({
     );
 
   const { history } = result;
-  const window: MachineEvidenceWindow = {
+  // The window MIRA is asked about is the window the technician is looking
+  // at: the one the rows were fetched for, as the server echoed it.
+  const machineEvidence: MachineEvidenceWindow = {
     assetId,
     anchorAt: history.anchor.at,
     pre: history.pre,
@@ -505,10 +534,10 @@ function ReplayPanel({
   };
   return (
     <>
-      <ReplayTimeline history={history} />
+      <ReplayTimeline history={history} onWindowChange={setWindow} />
       <button
         className="btn-primary"
-        onClick={() => onAsk(replayQuestion(history.anchor.at), window)}
+        onClick={() => onAsk(replayQuestion(history.anchor.at), { machineEvidence })}
       >
         Ask MIRA what happened
       </button>

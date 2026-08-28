@@ -72,6 +72,26 @@ describe("listTurns with machine evidence in evidence[]", () => {
     expect(turns[0].evidence[1]).toEqual(machine);
   });
 
+  it("a visual_observation entry (S5 D3) rides beside the citation intact and is never enriched", async () => {
+    const visual = { kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-08-27T23:14:21.000Z", provenance: "phone_photo" };
+    wire(
+      [
+        {
+          id: "t3",
+          question: "what is this LED?",
+          answer_status: "answered",
+          answer_text: "Run indicator.",
+          evidence: [{ citationId: "1", docId: DOC, fileId: "txt" }, machine, visual],
+          basis: "oem_documentation",
+          created_at: "2026-08-27T23:22:00.000Z",
+        },
+      ],
+      [{ doc_id: DOC, origin_file_id: PHOTO }],
+    );
+    const turns = await listTurns(TENANT, NB);
+    expect(turns[0].evidence).toEqual([{ citationId: "1", docId: DOC, fileId: "txt", originFileId: PHOTO }, machine, visual]);
+  });
+
   it("a turn whose ONLY evidence is machine evidence skips the origin lookup entirely", async () => {
     const calls = wire([
       {
