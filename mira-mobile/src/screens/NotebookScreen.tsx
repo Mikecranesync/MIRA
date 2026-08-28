@@ -39,6 +39,7 @@ import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
+import { SensorSheet } from "./SensorSheet";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -126,6 +127,9 @@ export function NotebookScreen({
   const [detail, setDetail] = useState<Loadable<NotebookDetail>>({ state: "loading" });
   const [panel, setPanel] = useState<Panel>(openAddSources ? "sources" : "chat");
   const [sheetOpen, setSheetOpen] = useState(Boolean(openAddSources));
+  // Sensor (LOOK / READ / REPLAY) — a transient instrument in the same Sheet
+  // chrome, never a panel. Opens from the header or the Add-sources sheet.
+  const [sensorOpen, setSensorOpen] = useState(false);
   const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -271,6 +275,16 @@ export function NotebookScreen({
         </button>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
+          {/* Compact Sensor door in the existing header row — no new chrome.
+              The same instrument is reachable from the Add-sources sheet. */}
+          <button
+            className="btn-link"
+            aria-label="Open Sensor"
+            onClick={() => setSensorOpen(true)}
+            style={{ flex: "none" }}
+          >
+            Sensor
+          </button>
           <button
             className="btn-link"
             aria-label="Delete notebook"
@@ -873,8 +887,16 @@ export function NotebookScreen({
           onChanged={() => {
             refresh();
           }}
+          onOpenSensor={() => {
+            // One sheet at a time: the Add-sources sheet hands off to Sensor,
+            // so BACK from Sensor lands on the notebook, not on a stale sheet.
+            setSheetOpen(false);
+            setSensorOpen(true);
+          }}
         />
       )}
+
+      {sensorOpen && <SensorSheet onClose={() => setSensorOpen(false)} />}
     </>
   );
 }
@@ -1041,11 +1063,15 @@ function AddSourcesSheet({
   attachedFileIds,
   onClose,
   onChanged,
+  onOpenSensor,
 }: {
   notebook: NotebookDetail["notebook"];
   attachedFileIds: string[];
   onClose: () => void;
   onChanged: () => void;
+  /** Sensor entry point (contract §5 S1): one row beside the four source
+   *  types, opening the LOOK / READ / REPLAY instrument. */
+  onOpenSensor: () => void;
 }) {
   const [mode, setMode] = useState<"menu" | "files" | "paste" | "nameplate">("menu");
   const [note, setNote] = useState<string | null>(null);
@@ -1167,6 +1193,9 @@ function AddSourcesSheet({
             </button>
             <button className="sheet-option" onClick={() => setMode("paste")}>
               📋 Paste text (error notes, nameplate data…)
+            </button>
+            <button className="sheet-option" onClick={onOpenSensor}>
+              📡 Sensor — look, read, or replay this machine
             </button>
             {note && <div className="meta">{note}</div>}
             <button style={{ marginTop: 6 }} onClick={onClose}>

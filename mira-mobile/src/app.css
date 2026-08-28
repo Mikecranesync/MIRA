@@ -370,6 +370,11 @@ textarea {
 }
 .sheet-option:disabled { color: var(--fl-ink-muted); opacity: 0.6; }
 
+/* Sensor (LOOK / READ / REPLAY) — a mode row is a sheet-option with a bold
+   label over a one-line description. Tokens only; colour never carries mode. */
+.sensor-mode { flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 18px; }
+.sensor-mode-label { font-weight: 600; letter-spacing: 0.04em; }
+
 .studio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
 .studio-tile {
   border: 1px solid var(--fl-line); border-radius: var(--flm-radius-card);
