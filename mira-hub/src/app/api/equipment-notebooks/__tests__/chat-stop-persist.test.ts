@@ -340,3 +340,89 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     expect(turn).toMatchObject({ answerStatus: "error", answerText: null, evidence: [] });
   });
 });
+
+describe("STRM-2 — Stop vs normal completion (race) and stopped-turn spend", () => {
+  it("a stop landing in the same tick as the provider's final chunk records EXACTLY ONE turn", async () => {
+    // The interleaving the stop block is most exposed to: the provider stream
+    // finished, and Stop arrives right at the boundary between the read loop
+    // and the post-loop `if (clientAbort.signal.aborted)` check. Whichever
+    // settles first (the abort race or the final read), exactly one recordTurn
+    // must run — the stop block `return`s, so it and the answered tail are
+    // mutually exclusive — and the turn must never ship citations.
+    process.env.MIRA_CANONICAL_SEAM = "1";
+    const ac = new AbortController();
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulls += 1;
+        if (pulls === 1) {
+          c.enqueue(enc.encode(delta("DC bus undervoltage [1] ")));
+          return;
+        }
+        // Stop and the provider's clean finish, in the SAME tick.
+        ac.abort();
+        c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`));
+        c.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }, { signal: ac.signal }),
+      params,
+    );
+    const text = await res.text().catch(() => "");
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    // Give an illegal SECOND write (answered tail running after the stop
+    // block, or vice versa) time to land before asserting there wasn't one.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn).toMatchObject({ answerStatus: "error", evidence: [], basis: null });
+    expect(String(turn.answerText)).toContain("DC bus");
+    // A stopped turn never ships citations, however complete the answer was.
+    expect(parseFrames(text).some((f) => f.kind === "sources")).toBe(false);
+    expect(parseFrames(text).some((f) => f.kind === "status")).toBe(false);
+  });
+
+  it("a stopped turn whose provider never reported usage persists cost NULL, not a fabricated 0", async () => {
+    // The provider `usage` block rides the FINAL chunk, which a stopped turn
+    // never receives — so token counts are unknown. estimateCostUsd() turns
+    // all-null counts into 0.000000, which is a positive claim that a turn
+    // that really did burn tokens was FREE: it vanishes into SUM(cost) and is
+    // NOT counted by tenantSpendSince's `unpriced_turns` filter
+    // (cost_usd_estimate IS NULL). Unknown cost must stay NULL — the rule
+    // persist-usage.ts states explicitly ("Never coalesce to 0").
+    process.env.MIRA_CANONICAL_SEAM = "1";
+    const provider = hangingProvider(["Check ", "terminal 07 "]);
+    vi.stubGlobal("fetch", vi.fn(async () => provider.res));
+
+    const ac = new AbortController();
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }, { signal: ac.signal }),
+      params,
+    );
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let received = "";
+    while (!received.includes("terminal 07")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += dec.decode(value, { stream: true });
+    }
+    ac.abort();
+
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(usage).toMatchObject({ provider: "Groq", status: "error" });
+    expect(usage.inputTokens).toBeNull();
+    expect(usage.outputTokens).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
+  });
+});

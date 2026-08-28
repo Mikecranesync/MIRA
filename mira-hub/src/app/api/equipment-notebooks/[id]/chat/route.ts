@@ -913,14 +913,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         if (seam) {
           const stoppedUsage: TurnUsage = activeProvider
-            ? usageFromRaw(
-                activeProvider.name,
-                activeProvider.model,
-                rawUsage as never,
-                routeReasonFor(attempted),
-                attempted,
-                "error",
-              )
+            ? {
+                ...usageFromRaw(
+                  activeProvider.name,
+                  activeProvider.model,
+                  rawUsage as never,
+                  routeReasonFor(attempted),
+                  attempted,
+                  "error",
+                ),
+                // The provider `usage` block rides the FINAL chunk, which a
+                // stopped turn never receives — so on a stop the token counts
+                // are UNKNOWN, not zero. estimateCostUsd() turns all-null
+                // counts into 0.000000, which is a positive claim that a turn
+                // that really did burn tokens was free: it disappears into
+                // SUM(cost_usd_estimate) and is NOT caught by
+                // tenantSpendSince's `unpriced_turns` (… IS NULL) filter.
+                // Unknown cost stays NULL — persist-usage.ts's own rule.
+                ...(rawUsage ? {} : { costUsdEstimate: null }),
+              }
             : exhaustedUsage(attempted);
           logTurnUsage({ tenantId: ctx.tenantId, notebookId }, stoppedUsage);
           await persistTurnUsage(
