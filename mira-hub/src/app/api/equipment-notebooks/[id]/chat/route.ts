@@ -598,53 +598,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const enc = new TextEncoder();
 
-  // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
-  // is the one path allowed past this gate. Gate G itself is unchanged: with
-  // sources selected and nothing retrieved, MIRA still refuses without calling
-  // a provider.
-  if (chunks.length === 0 && !general) {
-    // Gate G — abstain honestly, persist the turn, never call the provider.
-    await recordTurn(ctx.tenantId, notebookId, {
-      question: message,
-      answerStatus: "insufficient_evidence",
-      answerText: null,
-      enabledSourceDocIds: docIds,
-      evidence: [],
-      model: null,
-      // An abstain about a specific machine is still a record about that
-      // machine — omitting the snapshot here would make "what has MIRA been
-      // asked about this conveyor" silently under-count refusals.
-      ...assetSnapshot,
-    });
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const sources: NotebookSourcesFrame = {
-          kind: "sources",
-          citations: [],
-          sourceSnapshot: docIds,
-        };
-        const status: NotebookStatusFrame = {
-          kind: "status",
-          status: "insufficient_evidence",
-          message: "I couldn't find that in the selected sources.",
-        };
-        controller.enqueue(enc.encode(sse(sources)));
-        controller.enqueue(enc.encode(sse(status)));
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-      },
-    });
-  }
-
-  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
-
   // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
   // window through the SAME reader the history route uses (fetchMachineHistory
   // — never client-supplied rows), reshapes the Machine Memory header into the
@@ -712,6 +665,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
   if (!groundedMachineEntry) machinePacket = null;
 
+  // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
+  // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
+  // with sources selected and nothing retrieved and nothing else grounding the
+  // turn, MIRA still refuses without calling a provider.
+  //
+  // The third clause is the Sensor REPLAY correction. A served, non-empty
+  // machine window IS grounding — it is recorded observation, re-fetched by the
+  // server from its own tenant-scoped tables. Before it, the REPLAY question
+  // ("what happened around the fault at …") abstained on every notebook that
+  // had at least one enabled source, because a fault-window question retrieves
+  // no manual chunks: the window was fetched, then thrown away unanswered.
+  // `groundedMachineEntry` is non-null ONLY for a window with rows that is not
+  // `unavailable` (see above), so an empty or unavailable window leaves this
+  // gate exactly as it was — and a turn with no `machineEvidence` at all can
+  // never reach the third clause, which is what keeps document refusal
+  // behaviour byte-identical.
+  if (chunks.length === 0 && !general && !groundedMachineEntry) {
+    // Gate G — abstain honestly, persist the turn, never call the provider.
+    await recordTurn(ctx.tenantId, notebookId, {
+      question: message,
+      answerStatus: "insufficient_evidence",
+      answerText: null,
+      enabledSourceDocIds: docIds,
+      evidence: [],
+      model: null,
+      // An abstain about a specific machine is still a record about that
+      // machine — omitting the snapshot here would make "what has MIRA been
+      // asked about this conveyor" silently under-count refusals.
+      ...assetSnapshot,
+    });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const sources: NotebookSourcesFrame = {
+          kind: "sources",
+          citations: [],
+          sourceSnapshot: docIds,
+        };
+        const status: NotebookStatusFrame = {
+          kind: "status",
+          status: "insufficient_evidence",
+          message: "I couldn't find that in the selected sources.",
+        };
+        controller.enqueue(enc.encode(sse(sources)));
+        controller.enqueue(enc.encode(sse(status)));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+
+  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
+
   // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
   // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
   // raster MIME), then re-derive the WHOLE entry server-side — including
@@ -746,11 +758,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // asset route's inline SQL is not extracted; 0 is the conservative value).
   // Turns WITHOUT machine evidence never reach this gate, so document
   // retrieval behaviour is byte-identical to before.
-  if (machinePacket && approvedAskEnforcementEnabled()) {
+  //
+  // `approvedMachineEvidenceCount` is the fourth counter (approved-context.ts):
+  // a REPLAYED window is never live, so `approvedLiveSignalCount` is 0 for it —
+  // on prod, where MIRA_ENFORCE_APPROVED_RETRIEVAL=true, every replay of a
+  // notebook without retrieved chunks was refusing 412. Recorded observations
+  // the SERVER re-fetched from its own tenant-scoped tables are approved
+  // context; that is what "the server re-derives" means. The gate keeps its
+  // teeth: it now runs for ANY turn that asked for machine grounding, so a
+  // window that came back empty or unavailable with no approved documents
+  // still refuses.
+  if (machineRequest && approvedAskEnforcementEnabled()) {
     const approvedSummary = {
       approvedSourceCount: new Set(chunks.map((c) => c.docId).filter(Boolean)).size,
       verifiedRelationshipCount: 0,
-      approvedLiveSignalCount: machinePacket.freshness.live,
+      approvedLiveSignalCount: machinePacket ? machinePacket.freshness.live : 0,
+      approvedMachineEvidenceCount: groundedMachineEntry ? groundedMachineEntry.rowCount : 0,
     };
     if (!approvedContextReady(approvedSummary)) {
       const refusal = buildApprovedContextRefusal(approvedSummary);

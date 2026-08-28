@@ -8,29 +8,38 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { uploadMultipart } = vi.hoisted(() => ({ uploadMultipart: vi.fn() }));
+const { uploadMultipart, request } = vi.hoisted(() => ({
+  uploadMultipart: vi.fn(),
+  request: vi.fn(),
+}));
 vi.mock("../../api/client", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/client")>();
-  return { ...real, uploadMultipart };
+  return { ...real, uploadMultipart, request };
 });
 
 import { ApiError } from "../../api/client";
-import { lookAtPhoto } from "../../api/resources";
+import { getNotebookDetail, lookAtPhoto, toNotebookPhoto } from "../../api/resources";
 import {
   hhmmss,
+  lastObservationTitle,
   lookErrorCopy,
   lookQuestion,
+  photoCapturedLabel,
   visualCardTitle,
   visualObservationEntries,
   LOOK_DEFAULT_QUESTION,
   LOOK_SAVED_COPY,
+  PHOTO_CAPTURE_UNKNOWN,
   SENSOR_MODES,
 } from "../sensor";
 import { machineEvidenceEntries } from "../replay";
 import { normalizeCitations, parseChatSse } from "../sse";
 import { nameplateErrorCopy } from "../nameplate-flow";
 
-beforeEach(() => uploadMultipart.mockReset());
+beforeEach(() => {
+  uploadMultipart.mockReset();
+  request.mockReset();
+});
 
 describe("SENSOR_MODES", () => {
   it("is exactly LOOK / READ / REPLAY, each with a description", () => {
@@ -216,5 +225,80 @@ describe("S5 D3: the persisted {kind:\"visual_observation\"} entry", () => {
     // No entry → the field is absent, never an empty claim.
     const plain = parseChatSse('data: {"kind":"evidence","basis":"oem_documentation","label":"y"}\n\n');
     expect("visualEvidence" in plain).toBe(false);
+  });
+});
+
+// S5 D1 (mobile half): the Hub returns LOOK photographs in their own
+// `photos[]` array (workspace_file_links, role "photo"). Before this, the
+// client dropped them on the floor and the LOOK card's "saved to this
+// notebook's files" pointed at nothing the technician could open.
+describe("notebook photos mapping", () => {
+  it("maps the Hub's photo row and never invents a missing field", () => {
+    const p = toNotebookPhoto({
+      fileId: "f-1",
+      filename: "panel.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 40123,
+      createdAt: "2026-08-28T02:14:21.000Z",
+      linkedAt: "2026-08-28T02:14:22.000Z",
+    });
+    expect(p).toEqual({
+      fileId: "f-1",
+      filename: "panel.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 40123,
+      createdAt: "2026-08-28T02:14:21.000Z",
+      linkedAt: "2026-08-28T02:14:22.000Z",
+    });
+    const bare = toNotebookPhoto({ id: "f-2" });
+    expect(bare.fileId).toBe("f-2"); // `id` is accepted as the file id
+    expect(bare.filename).toBeNull();
+    expect(bare.mimeType).toBeNull();
+    expect(bare.sizeBytes).toBeNull();
+    expect(bare.createdAt).toBeNull();
+  });
+
+  it("getNotebookDetail carries photos[] through and drops id-less rows", async () => {
+    request.mockResolvedValue({
+      status: 200,
+      data: {
+        notebook: { id: "nb1", displayName: "CV-101" },
+        sources: [],
+        turns: [],
+        photos: [
+          { fileId: "f-1", filename: "panel.jpg", mimeType: "image/jpeg", createdAt: "2026-08-28T02:14:21.000Z" },
+          { filename: "orphan.jpg" },
+        ],
+      },
+    });
+    const d = await getNotebookDetail("nb1");
+    expect(d.photos.map((p) => p.fileId)).toEqual(["f-1"]);
+  });
+
+  it("a server with no photos[] yields [] — never a fabricated row", async () => {
+    request.mockResolvedValue({
+      status: 200,
+      data: { notebook: { id: "nb1", displayName: "CV-101" }, sources: [], turns: [] },
+    });
+    const d = await getNotebookDetail("nb1");
+    expect(d.photos).toEqual([]);
+  });
+});
+
+describe("photo + restored-card copy", () => {
+  it("photoCapturedLabel names the capture clock, or says it is unknown", () => {
+    expect(photoCapturedLabel("2026-08-28T02:14:21")).toBe(
+      `Photo captured · ${hhmmss("2026-08-28T02:14:21")}`,
+    );
+    // Never a placeholder clock: "--:--:--" would read as a real reading.
+    expect(photoCapturedLabel(null)).toBe(PHOTO_CAPTURE_UNKNOWN);
+    expect(photoCapturedLabel("")).toBe(PHOTO_CAPTURE_UNKNOWN);
+    expect(photoCapturedLabel("garbage")).toBe(PHOTO_CAPTURE_UNKNOWN);
+  });
+
+  it("a session-restored LOOK card is titled as the LAST observation, not a fresh one", () => {
+    const at = "2026-08-28T02:14:21";
+    expect(lastObservationTitle(at)).toBe(`Last observation · ${hhmmss(at)}`);
+    expect(lastObservationTitle(at)).not.toBe(visualCardTitle(at));
   });
 });

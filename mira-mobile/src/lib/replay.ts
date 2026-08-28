@@ -15,7 +15,9 @@
  */
 import { hhmmss } from "./sensor";
 
-/** One observed change. `kind` = "event" (tag_events) | "diff" (tag_event_diffs). */
+/** One recorded observation. `kind` = "event" (a `tag_events` sample) | "diff"
+ *  (a `tag_event_diffs` row). Only a "diff" is guaranteed to be a change —
+ *  which is why the row count is never called a count of changes. */
 export interface HistoryRow {
   event_timestamp: string;
   ingested_at: string;
@@ -171,11 +173,29 @@ export function sameWindow(a: ReplayWindow, b: ReplayWindow): boolean {
   return a.pre === b.pre && a.post === b.post;
 }
 
-/** "7 observed changes in −60 s … +10 s" — the header names the window the
+/** "7 recorded observations" / "1 recorded observation" — the ONE phrase for a
+ *  row count, shared by the timeline header and the persisted card.
+ *
+ *  It used to read "observed changes". That overclaimed: `/history` returns
+ *  `tag_events` rows (periodic samples of what Machine Memory recorded) as
+ *  well as `tag_event_diffs`, so a row is an observation that may or may not
+ *  differ from the one before it. Calling every row a "change" told the
+ *  technician the machine did something N times when the honest statement is
+ *  that N observations were recorded.
+ *
+ *  Mirrors the hub lane's `machineReplayCaption`
+ *  (`mira-hub/src/components/equipment/notebook-chat-utils.ts`, alongside
+ *  MACHINE_HISTORY_UNAVAILABLE_CAPTION / MACHINE_NO_CHANGES_CAPTION) so the
+ *  two surfaces name the same rows with the same words. */
+export function recordedObservations(rowCount: number): string {
+  return `${rowCount} recorded observation${rowCount === 1 ? "" : "s"}`;
+}
+
+/** "7 recorded observations in −60 s … +10 s" — the header names the window the
  *  rows were fetched for, so what the technician sees and what Ask MIRA sends
  *  are the same numbers. */
 export function replayWindowHeader(rowCount: number, w: ReplayWindow): string {
-  return `${rowCount} observed change${rowCount === 1 ? "" : "s"} in −${w.pre} s … +${w.post} s`;
+  return `${recordedObservations(rowCount)} in −${w.pre} s … +${w.post} s`;
 }
 
 // --- the Ask-MIRA hand-off (§4.4) -------------------------------------------
@@ -248,14 +268,14 @@ function overallOf(f: MachineEvidenceEntry["freshness"]): Freshness | null {
 export const REPLAY_CARD_UNAVAILABLE = "Machine history unavailable";
 export const REPLAY_CARD_EMPTY = "No machine changes recorded in this window";
 
-/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" (§4.5) — but
- *  only when there is something to count. Three honest titles, matching the
+/** "Machine Replay · 7 recorded observations around 23:16:31 · Stale" (§4.5) —
+ *  but only when there is something to count. Three honest titles, matching the
  *  Hub's `reason` / `rowCount` semantics:
  *    • `reason === "unavailable"` — the machine-history tables are missing, so
- *      neither a change count nor a freshness label would be a fact. Saying
- *      "0 observed changes · Stale" here would claim the machine was quiet.
+ *      neither an observation count nor a freshness label would be a fact.
+ *      "0 recorded observations · Stale" would claim the machine was quiet.
  *    • `rowCount === 0` with no reason — the tables answered, and the answer
- *      was "nothing changed in this window". That IS a finding, so it gets its
+ *      was "nothing recorded in this window". That IS a finding, so it gets its
  *      own sentence rather than a zero.
  *    • otherwise the count + the Hub's freshness label; a missing freshness is
  *      left out rather than guessed. */
@@ -264,11 +284,10 @@ export function replayCardTitle(
 ): string {
   if (e.reason === "unavailable") return REPLAY_CARD_UNAVAILABLE;
   if (e.rowCount === 0) return REPLAY_CARD_EMPTY;
-  const n = e.rowCount;
   const overall = overallOf(e.freshness);
   const parts = [
     "Machine Replay",
-    `${n} observed change${n === 1 ? "" : "s"} around ${hhmmss(e.anchorAt)}`,
+    `${recordedObservations(e.rowCount)} around ${hhmmss(e.anchorAt)}`,
   ];
   if (overall) parts.push(FRESHNESS_LABEL[overall]);
   return parts.join(" · ");
@@ -276,13 +295,16 @@ export function replayCardTitle(
 
 /** Basis caption for the machine-evidence bases (mig 084). Muted, never amber:
  *  amber is reserved for `general_reasoning` (an ungrounded answer). Other
- *  bases return null — a grounded document answer shows its chips instead. */
+ *  bases return null — a grounded document answer shows its chips instead.
+ *
+ *  Byte-identical to the hub lane's captions (PR #3461) — trailing period
+ *  included — so the same answer reads the same on the phone and in the Hub. */
 export function basisCaption(basis: string | null | undefined): string | null {
   switch (basis) {
     case "live_machine_evidence":
-      return "Grounded in live machine evidence";
+      return "Grounded in live machine evidence.";
     case "machine_history":
-      return "Grounded in recorded machine history — not live";
+      return "Grounded in recorded machine history — not live.";
     default:
       return null;
   }

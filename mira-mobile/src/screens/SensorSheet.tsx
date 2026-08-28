@@ -44,6 +44,7 @@ import {
   lookErrorCopy,
   lookQuestion,
   visualCardTitle,
+  lastObservationTitle,
   LOOK_DEFAULT_QUESTION,
   LOOK_SAVED_COPY,
   type SensorMode,
@@ -58,6 +59,22 @@ export interface SensorAskEvidence {
   visualEvidence?: VisualEvidence;
 }
 
+/** The last LOOK of THIS SESSION, held by the notebook screen so closing the
+ *  sheet without asking doesn't throw the observation away.
+ *
+ *  Known v0 limit (documented, not hidden): the observation TEXT is memory
+ *  only — it is conversation context, not a stored row, so it does not survive
+ *  leaving the notebook or restarting the app. The PHOTO is persisted (parked
+ *  + linked, role "photo") and stays in the notebook's files either way.
+ *  Persisting the text needs a store, and a Sensor store is forbidden in v0
+ *  (contract §2.3/§2.4). */
+export interface RememberedLook {
+  result: LookResult;
+  /** Resolved once, when the look happened — so a restored card shows the
+   *  capture time, not the time it was re-rendered. */
+  capturedAt: string;
+}
+
 export function SensorSheet({
   notebook,
   onClose,
@@ -65,6 +82,8 @@ export function SensorSheet({
   onAsk,
   onOpenNotebook,
   onUploadInstead,
+  lastLook,
+  onLook,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
   onClose: () => void;
@@ -82,6 +101,10 @@ export function SensorSheet({
   /** The nameplate flow found a manual it could not import; the technician
    *  will add the PDF themselves via the Add-sources sheet. */
   onUploadInstead: () => void;
+  /** This session's last LOOK, if any — reopening LOOK shows it again. */
+  lastLook?: RememberedLook | null;
+  /** A new LOOK landed; the caller remembers it for the session. */
+  onLook?: (look: RememberedLook) => void;
 }) {
   const notebookId = notebook.id;
   const [mode, setMode] = useState<SensorMode | null>(null);
@@ -115,12 +138,26 @@ export function SensorSheet({
       )}
       {current !== null && (
         <>
+          {/* Hardware BACK inside a mode returns to the mode picker — it does
+              NOT close the whole sheet and throw away the LOOK card the
+              technician is looking at. Registered as a transient layer (the
+              same primitive the delete-confirm dialog and the READ viewfinder
+              use), so the LIFO stack unwinds one layer per press:
+              viewfinder → mode → Sensor sheet → notebook → tab. No custom
+              back stack, no per-screen enumeration. */}
+          <BackDismiss onDismiss={() => setMode(null)} />
           <h3>{current.label}</h3>
           <div className="meta" style={{ marginBottom: 10 }}>
             {current.description}
           </div>
           {current.id === "look" && (
-            <LookPanel notebookId={notebookId} onChanged={onChanged} onAsk={onAsk} />
+            <LookPanel
+              notebookId={notebookId}
+              onChanged={onChanged}
+              onAsk={onAsk}
+              lastLook={lastLook ?? null}
+              onLook={onLook}
+            />
           )}
           {current.id === "read" && (
             <ReadPanel
@@ -152,19 +189,32 @@ export function SensorSheet({
 type LookState =
   | { name: "idle" }
   | { name: "looking"; photo: File }
-  | { name: "card"; photo: File; result: LookResult }
+  /** `photo` is null for a card restored from the session (there is no File to
+   *  retry with — the bytes are already parked on the server). `restored`
+   *  only changes the title, never the actions. */
+  | { name: "card"; photo: File | null; result: LookResult; capturedAt: string; restored: boolean }
   | { name: "error"; photo: File; error: unknown };
 
 function LookPanel({
   notebookId,
   onChanged,
   onAsk,
+  lastLook,
+  onLook,
 }: {
   notebookId: string;
   onChanged: () => void;
   onAsk: (question: string, evidence?: SensorAskEvidence) => void;
+  lastLook: RememberedLook | null;
+  onLook?: (look: RememberedLook) => void;
 }) {
-  const [state, setState] = useState<LookState>({ name: "idle" });
+  // Reopening LOOK shows this session's last observation instead of an empty
+  // picker — closing the sheet to read a manual no longer costs the card.
+  const [state, setState] = useState<LookState>(
+    lastLook
+      ? { name: "card", photo: null, result: lastLook.result, capturedAt: lastLook.capturedAt, restored: true }
+      : { name: "idle" },
+  );
   const [question, setQuestion] = useState("");
   // Web build only — on device the phone's own picker is used (#3353).
   const cameraRef = useRef<HTMLInputElement | null>(null);
@@ -178,7 +228,9 @@ function LookPanel({
       const result = await lookAtPhoto(notebookId, photo, clientKey);
       // The photo is a linked source now (role "photo") whatever vision said.
       onChanged();
-      setState({ name: "card", photo, result });
+      const capturedAt = result.observation?.capturedAt ?? new Date().toISOString();
+      setState({ name: "card", photo, result, capturedAt, restored: false });
+      onLook?.({ result, capturedAt });
     } catch (e) {
       // The server parks the photo before vision, so on a provider failure it
       // may already be a linked source — refresh so the Sources list is truthful.
@@ -211,7 +263,9 @@ function LookPanel({
             {state.result.fileId && <SourceThumb fileId={state.result.fileId} />}
             <div className="grow">
               <div className="title">
-                {visualCardTitle(state.result.observation?.capturedAt ?? new Date())}
+                {state.restored
+                  ? lastObservationTitle(state.capturedAt)
+                  : visualCardTitle(state.capturedAt)}
               </div>
               <div className="meta">{LOOK_SAVED_COPY}</div>
             </div>
@@ -238,7 +292,7 @@ function LookPanel({
             className="btn-primary"
             style={{ marginTop: 10 }}
             onClick={() => {
-              const capturedAt = state.result.observation?.capturedAt ?? new Date().toISOString();
+              const { capturedAt } = state;
               onAsk(
                 lookQuestion(
                   state.result.observation?.text ?? "(no description available)",

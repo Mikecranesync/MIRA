@@ -25,6 +25,47 @@ describe("approved context gate", () => {
     expect(approvedContextReady({ approvedSourceCount: 0, verifiedRelationshipCount: 0, approvedLiveSignalCount: 0 })).toBe(false);
   });
 
+  // BLOCKER-2: a REPLAYED window is never live, so approvedLiveSignalCount is 0
+  // for it. Recorded observations the server re-fetched from its own
+  // tenant-scoped tables are approved context in their own right.
+  it("counts server-fetched machine evidence as approved context", () => {
+    expect(
+      approvedContextReady({
+        approvedSourceCount: 0,
+        verifiedRelationshipCount: 0,
+        approvedLiveSignalCount: 0,
+        approvedMachineEvidenceCount: 3,
+      }),
+    ).toBe(true);
+    expect(
+      approvedContextReady({
+        approvedSourceCount: 0,
+        verifiedRelationshipCount: 0,
+        approvedLiveSignalCount: 0,
+        approvedMachineEvidenceCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("is additive: callers that omit the machine counter behave exactly as before", () => {
+    expect(approvedContextReady({ approvedSourceCount: 0, verifiedRelationshipCount: 0, approvedLiveSignalCount: 0 })).toBe(false);
+    const refusal = buildApprovedContextRefusal({
+      approvedSourceCount: 0,
+      verifiedRelationshipCount: 0,
+      approvedLiveSignalCount: 0,
+    });
+    // no new key on a payload whose caller never supplied one
+    expect(refusal).not.toHaveProperty("approved_machine_evidence_count");
+    expect(
+      buildApprovedContextRefusal({
+        approvedSourceCount: 0,
+        verifiedRelationshipCount: 0,
+        approvedLiveSignalCount: 0,
+        approvedMachineEvidenceCount: 0,
+      }).approved_machine_evidence_count,
+    ).toBe(0);
+  });
+
   it("builds the existing missing-context checklist shape for refusal", () => {
     const refusal = buildApprovedContextRefusal({
       approvedSourceCount: 0,

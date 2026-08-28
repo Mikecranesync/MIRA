@@ -9,7 +9,7 @@
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/sensor-look
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false, convertFileSrc: (p: string) => p },
@@ -226,5 +226,80 @@ describe("Sensor LOOK (S2)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/format isn't supported/);
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  // S5 D1 (mobile half): the Hub returns linked LOOK photographs in `photos[]`.
+  // The client used to drop that array, so "saved to this notebook's files"
+  // was copy with no surface behind it — the technician could not find, open,
+  // or verify the photo they had just taken.
+  it("S5 D1: linked photos render as their own group under Sources and open in the EXISTING viewer", async () => {
+    getNotebookDetail.mockResolvedValue({
+      ...detail(),
+      photos: [
+        {
+          fileId: "f-1",
+          filename: "panel.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 40123,
+          createdAt: "2026-08-28T02:14:21",
+          linkedAt: null,
+        },
+      ],
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
+    const group = await screen.findByTestId("notebook-photos");
+    expect(group.textContent).toContain("Photos (1)");
+    expect(group.textContent).toContain("panel.jpg");
+    expect(group.textContent).toContain("Photo captured · 02:14:21");
+    // A linked photo is a FILE, not a source: it can never be chat scope, so
+    // there is no include-in-chat checkbox to imply otherwise.
+    expect(group.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(within(group).getByTestId("thumb").textContent).toBe("f-1");
+    // Tap → the same FilePreview door a source uses. No second viewer.
+    fireEvent.click(within(group).getByRole("button", { name: "Open" }));
+    expect(await screen.findByRole("dialog", { name: "panel.jpg" })).toBeTruthy();
+  });
+
+  it("no linked photos → no Photos group at all (never an empty 'Photos (0)')", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
+    expect(await screen.findByRole("button", { name: "+ Add sources" })).toBeTruthy();
+    expect(screen.queryByTestId("notebook-photos")).toBeNull();
+  });
+
+  // MAJOR-3 mitigation: the observation TEXT is session state (no Sensor store
+  // in v0), but closing the sheet to check something must not destroy it.
+  it("reopening Sensor → LOOK restores this session's last observation, still askable", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: null,
+      observation: { text: "Contactor K1 pulled in.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+      quality: null,
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    // Leave WITHOUT asking — the case that used to lose the observation.
+    fireEvent.click(screen.getByRole("button", { name: "← Modes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Sensor" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Sensor" }));
+    fireEvent.click(await screen.findByRole("button", { name: "LOOK" }));
+    const card = await screen.findByTestId("look-card");
+    // Labelled as the one already taken, not as a fresh capture — and no
+    // second upload happened.
+    expect(card.querySelector(".title")?.textContent).toBe("Last observation · 02:14:21");
+    expect(card.textContent).toContain("Contactor K1 pulled in.");
+    expect(lookAtPhoto).toHaveBeenCalledTimes(1);
+    // The restored card is fully live: asking sends the SAME parked photo.
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][3].visualEvidence).toEqual({
+      fileId: "f-park",
+      capturedAt: "2026-08-28T02:14:21",
+    });
   });
 });

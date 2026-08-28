@@ -39,8 +39,8 @@ export function ReplayTimeline({
   // Server degradation (§4.3): the machine-history tables are missing. There is
   // nothing to count and nothing whose freshness could be labelled, so the
   // count, the freshness label and the "showing recorded history" banner are
-  // all withheld — "0 observed changes · Stale" would claim the machine was
-  // quiet when we simply never looked.
+  // all withheld — "0 recorded observations · Stale" would claim the machine
+  // was quiet when we simply never looked.
   const unavailable = history.reason === "unavailable";
   return (
     <div className="card replay" data-testid="replay-timeline" data-freshness={freshness.overall}>
@@ -98,7 +98,7 @@ export function ReplayTimeline({
         </div>
       )}
       {rows.length > 0 && (
-        <ol className="replay-rows" aria-label="Observed machine changes">
+        <ol className="replay-rows" aria-label="Recorded machine observations">
           {rows.map((r, i) => {
             const diverges = clocksDiverge(r.event_timestamp, r.ingested_at);
             return (

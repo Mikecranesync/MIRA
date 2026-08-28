@@ -226,5 +226,53 @@ describe("renderMachineEvidenceSection (the Ask-MIRA bridge)", () => {
     expect(section.startsWith(LIVE_HEADING)).toBe(true);
     expect(section).not.toContain("RECORDED HISTORY");
     expect(section).not.toContain("RULES FOR THE RECORDED ROWS");
+    // MAJOR-2 regression guard: the live label is untouched off the replay path.
+    expect(section).toContain("- Live signals (observed now):");
+    expect(section).not.toContain("Current signals (");
+  });
+
+  // MAJOR-2: on a replay packet the asset's CURRENT tags are still rendered
+  // (they are useful context) but they are NOT the fault state, and the old
+  // "observed now" label invited exactly that reading next to a replayed fault.
+  it("replay variant relabels the current-signal block and names its freshness", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    packet.replay = {
+      anchor_at: "2026-07-04T11:30:00.000Z",
+      started_at: "2026-07-04T11:29:55.000Z",
+      stopped_at: "2026-07-04T11:30:02.000Z",
+      freshness: "stale",
+      rows: [
+        { kind: "event", event_timestamp: "2026-07-04T11:29:58.000Z", ingested_at: null, tag: "Conveyor/photo_eye", value: "true", quality: "good" },
+      ],
+    };
+    const section = renderMachineEvidenceSection(packet);
+    expect(section).toContain(
+      "- Current signals (stale, NOT part of the replayed window — do not treat as the fault state):",
+    );
+    expect(section).not.toContain("- Live signals (observed now):");
+    // the current values themselves are unchanged
+    expect(section).toMatch(/vfd_dc_bus: 328\.6 V/);
+  });
+
+  // m6: the prompt names the same leaf the mobile timeline shows. A '/'-only
+  // split left a dotted UNS tag whole in the prompt while the UI showed the leaf.
+  it("replay rows take their leaf name from BOTH separators ('.' and '/')", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    packet.replay = {
+      anchor_at: "2026-07-04T11:30:00.000Z",
+      started_at: "2026-07-04T11:29:55.000Z",
+      stopped_at: "2026-07-04T11:30:02.000Z",
+      freshness: "stale",
+      rows: [
+        { kind: "event", event_timestamp: "2026-07-04T11:29:58.000Z", ingested_at: null, tag: "enterprise.garage.demo_cell.cv_101.fault_alarm", value: "true", quality: "good" },
+        { kind: "event", event_timestamp: "2026-07-04T11:29:59.000Z", ingested_at: null, tag: "Conveyor/photo_eye", value: "true", quality: "good" },
+        { kind: "diff", event_timestamp: "2026-07-04T11:30:00.000Z", ingested_at: null, tag: "enterprise.garage.cv_101/run_cmd", prev_value: "false", value: "true", quality: null },
+      ],
+    };
+    const section = renderMachineEvidenceSection(packet);
+    expect(section).toContain(" fault_alarm: true");
+    expect(section).not.toContain("enterprise.garage.demo_cell.cv_101.fault_alarm:");
+    expect(section).toContain(" photo_eye: true");
+    expect(section).toContain(" run_cmd: false → true");
   });
 });

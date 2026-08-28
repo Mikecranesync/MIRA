@@ -20,10 +20,12 @@ export const BASIS_LABEL: Record<EvidenceBasis, string> = {
   identified_component: "Grounded in the identified component.",
   oem_documentation: "Grounded in this notebook's sources.",
   workspace_evidence: "Grounded in workspace evidence.",
-  // S5 D5 cross-lane contract: the two machine bases use mobile's exact
-  // strings (mira-mobile/src/lib/replay.ts basisCaption) — one copy, both clients.
-  machine_history: "Grounded in recorded machine history — not live",
-  live_machine_evidence: "Grounded in live machine evidence",
+  // S5 D5 cross-lane contract: the two machine bases share their exact strings
+  // with mira-mobile/src/lib/replay.ts `basisCaption` — one wording, both
+  // clients. m9: they end with a period like every other caption in this map;
+  // the mobile lane mirrors the trailing period.
+  machine_history: "Grounded in recorded machine history — not live.",
+  live_machine_evidence: "Grounded in live machine evidence.",
 };
 
 export function basisLabel(basis: string | null | undefined): string | null {
@@ -49,26 +51,35 @@ function defaultClock(iso: string): string {
 
 /** The two honest empty-window captions (contract §2.8). "Nothing was
  *  recorded" and "nothing COULD be recorded" are different sentences, and
- *  neither is "0 observed changes" — which reads like a real, quiet window and
- *  hides a missing backend. Kept as constants so both clients can share the
- *  exact strings. */
+ *  neither is a "0 …" count — which reads like a real, quiet window and hides a
+ *  missing backend. Kept as constants so both clients can share the exact
+ *  strings. */
 export const MACHINE_HISTORY_UNAVAILABLE_CAPTION = "Machine Replay · Machine history unavailable";
 export const MACHINE_NO_CHANGES_CAPTION = "Machine Replay · No machine changes recorded in this window";
 
-/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" — the S5 D5
- *  cross-lane shape (mobile's replayCardTitle). `clock` is injectable so the
- *  caption is deterministic in tests.
+/** "7 recorded observations" / "1 recorded observation" — the count phrase in
+ *  the replay caption, exported so the mobile lane mirrors the exact words.
  *
- *  An empty window never renders as "0 observed changes": `reason:
- *  "unavailable"` (tables missing) and a genuinely quiet window get their own
- *  captions, and neither claims a freshness for a replay that has no rows. */
+ *  It deliberately does NOT say "observed changes". A window's rows are not all
+ *  changes: a `kind:"event"` row is a periodic sample with `prev_value` null,
+ *  so calling every row a change over-claimed what the machine actually did —
+ *  the honesty law (§2.8) applies to the caption as much as to the timeline. */
+export function recordedObservationsPhrase(n: number): string {
+  return `${n} recorded observation${n === 1 ? "" : "s"}`;
+}
+
+/** "Machine Replay · 7 recorded observations around 23:16:31 · Stale" — the
+ *  S5 D5 cross-lane shape (mobile's replayCardTitle). `clock` is injectable so
+ *  the caption is deterministic in tests.
+ *
+ *  An empty window never renders as a "0 …" count: `reason: "unavailable"`
+ *  (tables missing) and a genuinely quiet window get their own captions, and
+ *  neither claims a freshness for a replay that has no rows. */
 export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: string) => string = defaultClock): string {
   if (e.reason === "unavailable") return MACHINE_HISTORY_UNAVAILABLE_CAPTION;
   if (e.rowCount === 0) return MACHINE_NO_CHANGES_CAPTION;
-  const n = e.rowCount;
-  const changes = `${n} observed change${n === 1 ? "" : "s"}`;
   const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
-  return `Machine Replay · ${changes} around ${clock(e.anchorAt)} · ${fresh}`;
+  return `Machine Replay · ${recordedObservationsPhrase(e.rowCount)} around ${clock(e.anchorAt)} · ${fresh}`;
 }
 
 /** "Visual observation · Photo captured · 02:14:21" (contract §4.5, S5 D3). */
@@ -189,12 +200,7 @@ export type ChatBody = {
   message: string;
   sourceDocIds: string[];
   history: { role: "user" | "assistant"; content: string }[];
-  /** Sensor REPLAY (contract §4.4): the selected fault window. The server
-   *  re-fetches the rows itself — only the selection travels. */
-  machineEvidence?: MachineEvidenceSelection;
 };
-
-export type MachineEvidenceSelection = { assetId: string; anchorAt: string; pre?: number; post?: number };
 
 type HistoryTurn = {
   role: "user" | "assistant";
@@ -214,17 +220,16 @@ export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
     .map((t) => ({ role: t.role, content: t.content }));
 }
 
-export function buildChatBody(
-  message: string,
-  sourceDocIds: string[],
-  turns: HistoryTurn[],
-  machineEvidence?: MachineEvidenceSelection | null,
-): ChatBody {
+// The web notebook has no REPLAY selector — it RENDERS machine evidence on
+// persisted turns (the badge), it never selects a window. A `machineEvidence`
+// parameter here had no caller and was pinned only by its own test, so it is
+// gone: the mobile lane owns the selection, and the route's own parser is the
+// contract for the wire shape.
+export function buildChatBody(message: string, sourceDocIds: string[], turns: HistoryTurn[]): ChatBody {
   return {
     message,
     sourceDocIds,
     history: historyFromTurns(turns),
-    ...(machineEvidence ? { machineEvidence } : {}),
   };
 }
 

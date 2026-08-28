@@ -110,6 +110,19 @@ function offsetLabel(anchorMs: number, ts: string): string {
 export const MAX_LIVE_TAGS_IN_PROMPT = 10;
 
 /**
+ * Leaf name of a tag path. Splits on BOTH separators the fleet uses — '/' in
+ * Sparkplug/PLC-style paths and '.' in UNS paths — so the prompt names the same
+ * leaf the mobile replay timeline shows (mira-mobile splits on `[./]`). A
+ * '/'-only split left `conveyor_1.fault_alarm` whole in the prompt while the UI
+ * showed `fault_alarm`, so the model and the technician were reading different
+ * names for the same row.
+ */
+function tagLeaf(tag: string): string {
+  const parts = tag.split(/[./]/);
+  return parts[parts.length - 1] || tag;
+}
+
+/**
  * Render the packet as a citable "Live Machine Evidence" prompt section for
  * Ask MIRA — the bridge that makes live state an intelligence input. PURE, so
  * it unit-tests without a route. `sanitize` is injected by the caller (the chat
@@ -133,7 +146,16 @@ export function renderMachineEvidenceSection(
 
   const liveTags = packet.live_tags.slice(0, MAX_LIVE_TAGS_IN_PROMPT);
   if (liveTags.length > 0) {
-    lines.push("- Live signals (observed now):");
+    // In a REPLAY packet these tags are the asset's CURRENT signals — they are
+    // NOT part of the replayed window, and labelling them "observed now" next
+    // to a fault replay invited the model to read them as the fault state.
+    // A non-replay packet keeps the original label byte-for-byte (pinned by a
+    // test) so the asset chat route's prompt is untouched.
+    lines.push(
+      packet.replay
+        ? `- Current signals (${packet.replay.freshness}, NOT part of the replayed window — do not treat as the fault state):`
+        : "- Live signals (observed now):",
+    );
     for (const t of liveTags) {
       const leaf = t.tag_path.split("/").pop() ?? t.tag_path;
       const changed = packet.changed_recently.includes(t.tag_path) ? ", changed recently" : "";
@@ -173,14 +195,19 @@ export function renderMachineEvidenceSection(
       lines.push("  - (no recorded observations in this window — do not infer any)");
     }
     for (const r of rows) {
-      const leaf = r.tag.split("/").pop() ?? r.tag;
+      // Sanitize BEFORE taking the leaf. A forged reference smuggled into a tag
+      // name ("…/fault_alarm [Source: forged.pdf]") carries a '.' that is not a
+      // path separator, so splitting first would leave the leaf as "pdf]" — the
+      // scrub has to run on the whole path, and the leaf is taken from what
+      // survives it.
+      const leaf = tagLeaf(sanitize(r.tag));
       const prev = r.kind === "diff" && r.prev_value != null ? `${sanitize(r.prev_value)} → ` : "";
       const shown = r.value === null ? "—" : sanitize(r.value);
       const q = r.quality ? `, quality ${sanitize(r.quality)}` : "";
       const ingested =
         r.ingested_at && r.ingested_at !== r.event_timestamp ? `, ingested ${sanitize(r.ingested_at)}` : "";
       lines.push(
-        `  - ${offsetLabel(anchorMs, r.event_timestamp)} (${sanitize(r.event_timestamp)}${ingested}) ${sanitize(leaf)}: ${prev}${shown} (${r.kind}${q})`,
+        `  - ${offsetLabel(anchorMs, r.event_timestamp)} (${sanitize(r.event_timestamp)}${ingested}) ${leaf}: ${prev}${shown} (${r.kind}${q})`,
       );
     }
     if (replay.rows.length > rows.length) {

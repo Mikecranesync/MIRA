@@ -23,6 +23,7 @@ import {
   canBeChatSource,
   fileCapabilityLabel,
   type NotebookDetail,
+  type NotebookPhoto,
   type NotebookSource,
   type SourcePassage,
   type WorkspaceFile,
@@ -34,7 +35,12 @@ import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
-import { visualCardTitle, visualObservationEntries, type VisualObservationEntry } from "../lib/sensor";
+import {
+  photoCapturedLabel,
+  visualCardTitle,
+  visualObservationEntries,
+  type VisualObservationEntry,
+} from "../lib/sensor";
 import {
   basisCaption,
   machineEvidenceEntries,
@@ -46,7 +52,7 @@ import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
-import { SensorSheet, type SensorAskEvidence } from "./SensorSheet";
+import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -142,6 +148,15 @@ export function NotebookScreen({
   // Sensor (LOOK / READ / REPLAY) — a transient instrument in the same Sheet
   // chrome, never a panel. Opens from the header or the Add-sources sheet.
   const [sensorOpen, setSensorOpen] = useState(false);
+  // This session's last LOOK. Held HERE, not in the sheet, so closing Sensor
+  // (to read the manual, to check a source) doesn't discard the observation
+  // the technician just took. Deliberately NOT persisted: the observation text
+  // is conversation context, and a Sensor store is out of scope in v0 (§2.4).
+  // The photograph itself IS persisted — it is parked and linked server-side,
+  // and shows in Photos below whatever happens to this state.
+  const [lastLook, setLastLook] = useState<RememberedLook | null>(null);
+  // A linked photo opened for viewing (same FilePreview door as a source).
+  const [openPhoto, setOpenPhoto] = useState<NotebookPhoto | null>(null);
   const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,6 +219,8 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
+  // Absent on a server that predates the `photos[]` array — no group renders.
+  const photos = detail.data.photos ?? [];
   // One send path for the composer AND follow-up chips (CONV-4). With no
   // source attached the only honest answer is a general one, and the server
   // labels it as such; with sources present this stays the strict grounded
@@ -530,6 +547,7 @@ export function NotebookScreen({
               </div>
             );
           })}
+          <NotebookPhotos photos={photos} onOpen={setOpenPhoto} />
         </div>
       )}
 
@@ -898,6 +916,25 @@ export function NotebookScreen({
         </Sheet>
       )}
 
+      {openPhoto && (
+        <Sheet label={openPhoto.filename ?? "Photo"} onClose={() => setOpenPhoto(null)}>
+          <h3>{openPhoto.filename ?? "Photo"}</h3>
+          <div className="meta" style={{ marginBottom: 10 }}>
+            {photoCapturedLabel(openPhoto.createdAt ?? openPhoto.linkedAt)}
+          </div>
+          {/* The SAME viewer a source uses — bytes fetched with the session
+              (requestBinary), rendered in-app. No second viewer. */}
+          <FilePreview
+            fileId={openPhoto.fileId}
+            filename={openPhoto.filename ?? "photo"}
+            mimeType={openPhoto.mimeType}
+          />
+          <button style={{ marginTop: 12 }} onClick={() => setOpenPhoto(null)}>
+            Close
+          </button>
+        </Sheet>
+      )}
+
       {attachSource?.fileId && (
         <NotebookSourceAttachSheet
           source={attachSource}
@@ -941,6 +978,8 @@ export function NotebookScreen({
             setSensorOpen(false);
             setSheetOpen(true);
           }}
+          lastLook={lastLook}
+          onLook={setLastLook}
           onAsk={(question, evidence) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.
@@ -951,6 +990,57 @@ export function NotebookScreen({
         />
       )}
     </>
+  );
+}
+
+/** Photographs LINKED to this notebook (`workspace_file_links`, role "photo")
+ *  — what Sensor LOOK parks. They are files, not sources: no include
+ *  checkbox, because they can never be chat scope. The group is what makes the
+ *  LOOK card's "saved to this notebook's files" a checkable claim instead of
+ *  copy with nothing behind it.
+ *
+ *  Nothing to show → nothing rendered: an empty "Photos (0)" heading would
+ *  invite the technician to look for something that isn't there. */
+function NotebookPhotos({
+  photos,
+  onOpen,
+}: {
+  photos: NotebookPhoto[];
+  onOpen: (p: NotebookPhoto) => void;
+}) {
+  if (photos.length === 0) return null;
+  return (
+    <div data-testid="notebook-photos">
+      <div className="meta" style={{ margin: "14px 0 2px" }}>
+        Photos ({photos.length}) — phone photographs saved to this notebook&apos;s
+        files. Not chat sources.
+      </div>
+      {photos.map((p) => (
+        <div key={p.fileId} className="source-row" data-testid="notebook-photo-row">
+          {/* No checkbox: the box means "include in chat", and a linked photo
+              cannot be included — offering one would lie (same rule as a
+              non-searchable source row). */}
+          <span
+            aria-hidden
+            style={{ width: 22, textAlign: "center", color: "var(--fl-ink-muted)" }}
+          >
+            —
+          </span>
+          <SourceThumb fileId={p.fileId} />
+          <div className="grow">
+            <div className="title">{p.filename ?? "Photo"}</div>
+            <div className="meta">{photoCapturedLabel(p.createdAt ?? p.linkedAt)}</div>
+          </div>
+          <button
+            className="detach row-action"
+            title="Open the photo"
+            onClick={() => onOpen(p)}
+          >
+            Open
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
