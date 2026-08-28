@@ -103,7 +103,7 @@ export function groqVisionModel(): string {
   return process.env.NAMEPLATE_VISION_MODEL || process.env.GROQ_VISION_MODEL || "";
 }
 
-function fixtureSelected(): boolean {
+export function fixtureSelected(): boolean {
   return (process.env.NAMEPLATE_RECOGNIZER || "").toLowerCase() === "fixture";
 }
 
