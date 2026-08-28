@@ -2,6 +2,7 @@
 // no screen builds its own requests. All paths trailing-slash (Hub canonical).
 
 import {
+  errorFromStatus,
   request,
   uploadMultipart,
   withAuthEventsSuppressed,
@@ -9,6 +10,8 @@ import {
   requestStream,
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
+import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
+import type { VisualEvidence } from "../lib/sensor";
 
 // --- auth -------------------------------------------------------------------
 
@@ -235,13 +238,26 @@ export async function getAssetByTag(tag: string): Promise<Asset | null> {
  * second one. Two notebooks on one machine would have disjoint document sets
  * and split history, and the duplicate is invisible in a list.
  *
- * `via` records HOW the machine was chosen — a scan is a selection, never a
- * confirmation — so the notebook can show identity as unconfirmed until a
- * human says otherwise.
+ * `via` records HOW the machine was chosen. Confirmation is decided by the
+ * server, never asserted by the phone: a scan (`qr` / `nfc`) is a selection
+ * only, while a signed-in human choosing on a non-scan path (typed tag,
+ * picker, nameplate) is recorded as confirmed by that user
+ * (`mira-hub/src/lib/equipment-notebooks.ts` bindNotebookAsset).
  */
+/** How a machine was chosen — mirrors the Hub's ASSET_SELECTION_METHODS. The
+ *  phone reports the method; whether it counts as a confirmation is the
+ *  server's rule (scan → unconfirmed; signed-in non-scan → confirmed). */
+export type AssetSelectionMethod =
+  | "qr"
+  | "nfc"
+  | "asset_picker"
+  | "work_order"
+  | "nameplate"
+  | "manual_entry";
+
 export async function openAssetNotebook(
   assetId: string,
-  via: "qr" | "nfc" | "asset_picker" | "work_order" | "nameplate" | "manual_entry",
+  via: AssetSelectionMethod,
 ): Promise<Notebook> {
   const r = await request(`/api/assets/${encodeURIComponent(assetId)}/notebook/`, {
     method: "POST",
@@ -254,6 +270,17 @@ export async function openAssetNotebook(
 
 // --- equipment notebooks (NotebookLM-style workspaces; build spec §3–6) -----
 
+/** The notebook's canonical-asset binding (server `asset` field). Null
+ *  `confirmedAt` means selected-but-unconfirmed — the identity chip renders
+ *  that as amber, never as confirmed. */
+export interface NotebookAssetBinding {
+  /** kg_entities.entity_id — the asset UUID as text. */
+  entityId: string;
+  selectedVia: AssetSelectionMethod | null;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+}
+
 export interface Notebook {
   id: string;
   displayName: string;
@@ -264,9 +291,12 @@ export interface Notebook {
   nodeId: string;
   sourceCount: number;
   createdAt: string | null;
+  /** L2 machine binding, or null for a general (L0/L1) notebook. */
+  asset: NotebookAssetBinding | null;
 }
 
-function toNotebook(d: Record<string, unknown>): Notebook {
+export function toNotebook(d: Record<string, unknown>): Notebook {
+  const a = d.asset as Record<string, unknown> | null | undefined;
   return {
     id: String(d.id ?? ""),
     displayName: String(d.displayName ?? d.display_name ?? "Untitled"),
@@ -277,7 +307,40 @@ function toNotebook(d: Record<string, unknown>): Notebook {
     nodeId: String(d.nodeId ?? ""),
     sourceCount: Number(d.sourceCount ?? 0),
     createdAt: (d.createdAt as string) ?? null,
+    // Without this the client cannot see what the bind route stored — the
+    // binding would exist on the server and be invisible on the phone.
+    asset:
+      a && a.entityId
+        ? {
+            entityId: String(a.entityId),
+            selectedVia: a.selectedVia != null ? (String(a.selectedVia) as AssetSelectionMethod) : null,
+            confirmedBy: a.confirmedBy != null ? String(a.confirmedBy) : null,
+            confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,
+          }
+        : null,
   };
+}
+
+/**
+ * L1→L2: bind THIS notebook to a canonical asset (PUT
+ * /api/equipment-notebooks/[id]/asset). The client says WHICH asset and HOW it
+ * was selected; confirmation is derived server-side and never sent. Failures
+ * carry the server's technician-readable sentence in `error` (the mobile
+ * error layer surfaces it verbatim) and a `code` a caller may switch on
+ * (`asset_already_bound` → another notebook owns that machine).
+ */
+export async function bindNotebookAsset(
+  notebookId: string,
+  assetRef: string,
+  selectedVia: AssetSelectionMethod,
+): Promise<Notebook> {
+  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/asset/`, {
+    method: "PUT",
+    json: { assetRef, selectedVia },
+  });
+  const d = r.data as { notebook?: Record<string, unknown> } | null;
+  if (!d?.notebook) throw new Error("bind_asset_failed");
+  return toNotebook(d.notebook);
 }
 
 export async function listNotebooks(): Promise<Notebook[]> {
@@ -833,6 +896,82 @@ export async function recognizeComponentNameplate(
   };
 }
 
+// --- Sensor LOOK (notebook-scoped; contract §4.1) ---------------------------
+
+export interface LookObservation {
+  /** What the vision pass SAW — observations only, never a diagnosis. */
+  text: string;
+  capturedAt: string;
+  provenance: string; // "phone_photo"
+}
+
+export interface LookResult {
+  /** The parked photograph — retained and linked to the notebook (role
+   *  "photo") BEFORE vision runs, so it exists even when the provider fails. */
+  fileId: string;
+  attachment: { linkId: string; notebookId: string } | null;
+  /** Null when the provider failed: the file is kept, the observation is not
+   *  invented. */
+  observation: LookObservation | null;
+  /** Server reason when `observation` is null (`provider_error` /
+   *  `recognizer_not_configured`), else null. */
+  reason: string | null;
+  /** The server's technician-facing sentence for that reason, else null. */
+  message: string | null;
+  /** Opaque capture-quality assessment (blur/glare hint) — preserved verbatim. */
+  quality: unknown | null;
+}
+
+/**
+ * LOOK: photograph → parked once (SHA-256 dedup on the server; `clientKey`
+ * makes a retry replay the same link instead of filing a second one) →
+ * observation text. Same multipart seam as `recognizeComponentNameplate`.
+ * The observation is conversation context only — it becomes a citable source
+ * solely through the existing confirmation doors (§4.1), never from here.
+ */
+export async function lookAtPhoto(
+  notebookId: string,
+  image: File,
+  clientKey: string,
+  question?: string | null,
+): Promise<LookResult> {
+  const fd = new FormData();
+  fd.append("image", image);
+  fd.append("clientKey", clientKey);
+  if (question?.trim()) fd.append("question", question.trim());
+  // §4.1: the server parks + links the photo BEFORE vision, and a provider
+  // failure (502) or an unconfigured recognizer (503) still returns that
+  // parked file with `observation: null`. Those bodies are answers — the
+  // evidence card renders from them; anything else (or a 5xx without a
+  // file) is the same typed error as before.
+  const r = await uploadMultipart(
+    `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/look/`,
+    fd,
+    { acceptStatuses: [502, 503] },
+  );
+  const d = (r.data ?? {}) as Record<string, unknown>;
+  if (r.status >= 400 && !d.fileId) throw errorFromStatus(r.status, d);
+  const att = d.attachment as Record<string, unknown> | undefined;
+  const obs = d.observation as Record<string, unknown> | null | undefined;
+  return {
+    fileId: String(d.fileId ?? ""),
+    attachment: att
+      ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }
+      : null,
+    observation:
+      obs && typeof obs.text === "string" && obs.text.trim()
+        ? {
+            text: obs.text,
+            capturedAt: String(obs.capturedAt ?? new Date().toISOString()),
+            provenance: String(obs.provenance ?? "phone_photo"),
+          }
+        : null,
+    quality: d.quality ?? null,
+    reason: typeof d.reason === "string" ? d.reason : null,
+    message: typeof d.message === "string" ? d.message : null,
+  };
+}
+
 export type ConfirmComponentStatus =
   | "complete"
   | "candidate_review"
@@ -1087,6 +1226,15 @@ export async function askNotebook(
     onUpdate?: (partial: ChatTurn) => void;
     /** STRM-2: Stop. Rejects with the signal's reason (an AbortError). */
     signal?: AbortSignal;
+    /** Sensor REPLAY (contract §4.4): the selected Machine Memory window.
+     *  The server re-fetches the rows itself and grounds the answer on them;
+     *  the client never sends rows. Absent = unchanged document path. */
+    machineEvidence?: MachineEvidenceWindow;
+    /** Sensor LOOK (S5 D3): which parked photo the question is about. The
+     *  server verifies the file is linked to THIS notebook (and silently
+     *  ignores it otherwise) and re-derives the evidence entry — the client
+     *  never sends evidence rows. Absent = unchanged path. */
+    visualEvidence?: VisualEvidence;
   } = {},
 ): Promise<ChatTurn> {
   const parser = createChatSseParser();
@@ -1098,6 +1246,8 @@ export async function askNotebook(
         sourceDocIds,
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
+        ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
+        ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
       },
       onChunk: (chunk) => {
         const before = parser.turn().answer;
@@ -1118,6 +1268,121 @@ export async function askNotebook(
 /** Pure helper (unit-tested): the doc ids chat retrieval is scoped to. */
 export function enabledDocIds(sources: Pick<NotebookSource, "docId" | "enabledByDefault">[]): string[] {
   return sources.filter((s) => s.enabledByDefault !== false).map((s) => s.docId);
+}
+
+// --- Sensor REPLAY: Machine Memory history window (contract §4.3) -----------
+
+/**
+ * GET /api/assets/[id]/history?at=&pre=&post= — the fault-anchored window
+ * Machine Memory actually recorded. Read-only, tenant-scoped on the server.
+ * A 404 `no_fault_window` is an ANSWER (there is nothing to replay), not a
+ * transport failure, so it is accepted and mapped rather than thrown. Rows are
+ * passed through as the server ordered them (by event_timestamp); the client
+ * adds nothing.
+ */
+export async function getAssetHistory(
+  assetId: string,
+  opts: { at?: string; pre?: number; post?: number } = {},
+): Promise<HistoryResult> {
+  const p = new URLSearchParams();
+  if (opts.at) p.set("at", opts.at);
+  if (opts.pre != null) p.set("pre", String(opts.pre));
+  if (opts.post != null) p.set("post", String(opts.post));
+  const qs = p.toString();
+  const r = await request(
+    `/api/assets/${encodeURIComponent(assetId)}/history/${qs ? `?${qs}` : ""}`,
+    { acceptStatuses: [404] },
+  );
+  const d = (r.data ?? {}) as Record<string, unknown>;
+  if (r.status === 404) {
+    // Only the server's OWN discriminators are answers about the machine. A
+    // bare 404 (route missing, asset not in this tenant, bad id) is a
+    // transport/route failure and must never read as "no fault window
+    // recorded" (§2.8 honesty).
+    const error = typeof d.error === "string" ? d.error : "";
+    if (error === "no_uns_path") return { ok: false, reason: "no_uns_path" };
+    if (error === "no_fault_window") {
+      // Hub shape: `latestWindow: {state, started_at, ended_at}` +
+      // `windowsAvailable`; `latest.at` tolerated for older bodies.
+      const latest = (d.latestWindow ?? d.latest) as Record<string, unknown> | null | undefined;
+      return {
+        ok: false,
+        reason: "no_fault_window",
+        windowsAvailable: d.windowsAvailable !== false,
+        latest:
+          latest && latest.state
+            ? { state: String(latest.state), at: String(latest.started_at ?? latest.at ?? "") }
+            : null,
+      };
+    }
+    throw errorFromStatus(404, d);
+  }
+  const anchor = (d.anchor ?? {}) as Record<string, unknown>;
+  const w = (d.window ?? {}) as Record<string, unknown>;
+  const anchorAt = String(anchor.at ?? "");
+  const freshness = (d.freshness ?? {}) as Record<string, unknown>;
+  const rows = Array.isArray(d.rows) ? (d.rows as Record<string, unknown>[]) : [];
+  const overall = String(freshness.overall ?? "unknown");
+  const history: AssetHistory = {
+    anchor: {
+      at: anchorAt,
+      source: anchor.source === "explicit" ? "explicit" : "state_window",
+      windowId: anchor.windowId != null ? String(anchor.windowId) : null,
+      runId: anchor.runId != null ? String(anchor.runId) : null,
+    },
+    rows: rows.map((row) => ({
+      event_timestamp: String(row.event_timestamp ?? ""),
+      ingested_at: String(row.ingested_at ?? ""),
+      uns_path: String(row.uns_path ?? ""),
+      tag: String(row.tag ?? ""),
+      value: (row.value as AssetHistory["rows"][number]["value"]) ?? null,
+      prev_value: (row.prev_value as AssetHistory["rows"][number]["prev_value"]) ?? null,
+      quality: row.quality != null ? String(row.quality) : null,
+      kind: row.kind === "diff" ? "diff" : "event",
+    })),
+    freshness: {
+      overall:
+        overall === "live" || overall === "stale" || overall === "simulated" ? overall : "unknown",
+      live: Number(freshness.live ?? 0),
+      stale: Number(freshness.stale ?? 0),
+      simulated: Number(freshness.simulated ?? 0),
+      unknown: Number(freshness.unknown ?? 0),
+    },
+    summary: (d.summary ?? {}) as AssetHistory["summary"],
+    provenance: "machine_memory",
+    reason: d.reason === "unavailable" ? "unavailable" : null,
+    // The window the SERVER fetched, which is nested (`historyResponseBody`
+    // emits `window:{from,to,pre,post}`), NOT the one we asked for. The server
+    // clamps to the §4.3 120 s cap, so echoing the request would misname the
+    // timeline header AND the window handed to Ask MIRA. Absolute bounds are
+    // the fallback when only `from`/`to` are named; the request is the last
+    // resort, and is the only case where these numbers are ours, not the
+    // server's.
+    pre: windowSeconds(w.pre, anchorAt, w.from, -1) ?? Number(d.pre ?? opts.pre ?? 5),
+    post: windowSeconds(w.post, anchorAt, w.to, 1) ?? Number(d.post ?? opts.post ?? 2),
+    from: w.from != null ? String(w.from) : null,
+    to: w.to != null ? String(w.to) : null,
+  };
+  return { ok: true, history };
+}
+
+/** One bound of the fetched window, in seconds: the server's own `pre`/`post`
+ *  when it names them, else derived from the absolute bound it did name
+ *  (`sign` = -1 for `from`, +1 for `to`). Returns null when neither is
+ *  available — the caller then falls back to the request, which is the only
+ *  honest thing left to show. */
+function windowSeconds(
+  seconds: unknown,
+  anchorAt: string,
+  bound: unknown,
+  sign: 1 | -1,
+): number | null {
+  if (typeof seconds === "number" && Number.isFinite(seconds)) return seconds;
+  if (typeof bound !== "string") return null;
+  const a = new Date(anchorAt).getTime();
+  const b = new Date(bound).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.round((sign * (b - a)) / 1000);
 }
 
 // --- More tab ---------------------------------------------------------------
