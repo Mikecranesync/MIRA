@@ -1,6 +1,8 @@
-// Pure SSE frame parser for the Hub chat endpoints (sources → content* →
-// status → [DONE]). Exported standalone so it is unit-testable and reusable by
-// the Phase-4 streamed variant (same frames, incremental delivery).
+// Pure SSE frame parser for the Hub chat endpoints. Actual wire order:
+// content* → sources → evidence → [usage] → status → [followups] → [DONE].
+// One incremental parser (`createChatSseParser`) owns the frame semantics;
+// `parseChatSse` is the one-shot convenience over it, so a streamed turn
+// (STRM-1) and a buffered turn are byte-identical by construction.
 
 export interface ChatCitation {
   citationId: string;
@@ -56,18 +58,31 @@ export function normalizeCitations(raw: unknown): ChatCitation[] {
     }));
 }
 
-export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
+/** Incremental SSE parser. Feed raw body chunks in any split (mid-line,
+ *  mid-frame, mid-terminator); `turn()` returns the state so far, so the UI can
+ *  re-render on every `content` frame; `finish()` flushes a trailing frame
+ *  that never got its blank-line terminator. Same frame semantics as the
+ *  old one-shot parse — that function is now implemented on top of this. */
+export interface ChatSseParser {
+  push(chunk: string): ChatTurn;
+  finish(): ChatTurn;
+  turn(): ChatTurn;
+}
+
+export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let answer = "";
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
-  for (const block of body.split("\n\n")) {
+  let buffer = "";
+
+  const applyBlock = (block: string) => {
     const line = block.trim();
-    if (!line.startsWith("data:")) continue;
+    if (!line.startsWith("data:")) return;
     const payload = line.slice(5).trim();
-    if (payload === "[DONE]") continue;
+    if (payload === "[DONE]") return;
     try {
       const frame = JSON.parse(payload) as Record<string, unknown>;
       if (frame.kind === "content") answer += String(frame.content ?? "");
@@ -85,6 +100,42 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
     } catch {
       /* keep parsing subsequent frames */
     }
-  }
-  return { answer, citations, status, evidenceBasis, evidenceLabel, followups };
+  };
+
+  const turn = (): ChatTurn => ({
+    answer,
+    citations,
+    status,
+    evidenceBasis,
+    evidenceLabel,
+    followups,
+  });
+
+  return {
+    push(chunk) {
+      buffer += chunk;
+      // A frame is complete only at its blank-line terminator; whatever
+      // follows the last one stays buffered for the next chunk.
+      let i: number;
+      while ((i = buffer.indexOf("\n\n")) !== -1) {
+        applyBlock(buffer.slice(0, i));
+        buffer = buffer.slice(i + 2);
+      }
+      return turn();
+    },
+    finish() {
+      if (buffer.length) {
+        applyBlock(buffer);
+        buffer = "";
+      }
+      return turn();
+    },
+    turn,
+  };
+}
+
+export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
+  const p = createChatSseParser(httpStatus);
+  p.push(body);
+  return p.finish();
 }

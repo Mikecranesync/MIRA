@@ -6,8 +6,9 @@ import {
   uploadMultipart,
   withAuthEventsSuppressed,
   clearAllLocalState,
+  requestStream,
 } from "./client";
-import { parseChatSse, type ChatTurn } from "../lib/sse";
+import { createChatSseParser, type ChatTurn } from "../lib/sse";
 
 // --- auth -------------------------------------------------------------------
 
@@ -1026,20 +1027,35 @@ export interface ChatHistoryTurn {
 }
 
 /**
+ * STRM-2 stopped-turn contract (no schema change): the server persists a
+ * client-stopped turn as `answer_status='error'` with `answer_text` = the
+ * partial that streamed; a provider-failure turn is `'error'` with
+ * `answer_text` NULL. So `error` + non-empty text IS the stopped turn.
+ * One rule, applied on reload (this) and live (`status === "stopped"`).
+ */
+export function isStoppedTurn(t: Pick<NotebookServerTurn, "answerStatus" | "answerText">): boolean {
+  return t.answerStatus === "error" && !!t.answerText?.trim();
+}
+
+/**
  * CONV-3: the recent thread, built from BOTH stores a notebook renders —
  * persisted turns (server truth, survives devices) and this session's live
  * turns — in chronological order, as role/content pairs. Same windowing the
  * web client uses (last 12 lines); the route caps it again defensively.
  * A refusal contributes its QUESTION (real context) but no fabricated answer
- * line. Pure and unit-tested.
+ * line. A STOPPED turn (see `isStoppedTurn`) contributes nothing — a stopped
+ * answer is not an answer, and neither is the question that produced it,
+ * identically to how a live stopped turn is filtered out. Pure and
+ * unit-tested.
  */
 export function buildChatHistory(
-  turns: Pick<NotebookServerTurn, "question" | "answerText">[],
+  turns: Pick<NotebookServerTurn, "question" | "answerText" | "answerStatus">[],
   liveTurns: { q: string; a: Pick<ChatTurn, "answer"> }[],
   maxLines = 12,
 ): ChatHistoryTurn[] {
   const out: ChatHistoryTurn[] = [];
   for (const t of turns) {
+    if (isStoppedTurn(t)) continue;
     if (t.question.trim()) out.push({ role: "user", content: t.question });
     if (t.answerText?.trim()) out.push({ role: "assistant", content: t.answerText });
   }
@@ -1065,22 +1081,38 @@ export async function askNotebook(
     mode?: "general";
     /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
     history?: ChatHistoryTurn[];
+    /** STRM-1: called with the turn-so-far after every completed frame, so
+     *  the transcript can paint tokens as they arrive. The resolved value is
+     *  the SAME object the last update produced (one parser, one truth). */
+    onUpdate?: (partial: ChatTurn) => void;
+    /** STRM-2: Stop. Rejects with the signal's reason (an AbortError). */
+    signal?: AbortSignal;
   } = {},
 ): Promise<ChatTurn> {
-  const r = await request(
+  const parser = createChatSseParser();
+  const r = await requestStream(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
     {
-      method: "POST",
       json: {
         message,
         sourceDocIds,
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
       },
+      onChunk: (chunk) => {
+        const before = parser.turn().answer;
+        const partial = parser.push(chunk);
+        if (partial.answer !== before) opts.onUpdate?.(partial);
+      },
+      signal: opts.signal,
       timeoutMs: 120_000,
     },
   );
-  return parseChatSse(r.text, r.status);
+  const turn = parser.finish();
+  // Non-200 bodies never reach here (requestStream throws), but keep the
+  // status-tagging contract of the old one-shot parse for a 2xx that isn't 200.
+  if (r.status !== 200 && !turn.status) turn.status = `http ${r.status}`;
+  return turn;
 }
 
 /** Pure helper (unit-tested): the doc ids chat retrieval is scoped to. */
