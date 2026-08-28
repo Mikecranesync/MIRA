@@ -369,6 +369,116 @@ describe("approved-context gate — machine evidence only (D3)", () => {
   });
 });
 
+// ── S5 D4: an explicit anchor names the window that CONTAINS it ─────────────
+describe("explicit anchor resolves its containing machine_state_window (D4)", () => {
+  const CONTAINING: Handler = [
+    /FROM machine_state_window/,
+    { rows: [{ window_id: "w-contain", state: "faulted", started_at: "2026-08-27T23:16:30.000Z", ended_at: null }] },
+  ];
+
+  it("windowId is set from the containing window; the fault-window anchor query is never issued", async () => {
+    dbMock.handlers = [KG_HIT, CONTAINING, EVENTS, DIFFS, STALE];
+    const res = await POST(req({ message: "what happened?", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    const fr = await frames(res);
+    const evidence = fr.find((f) => f.kind === "evidence")!;
+    expect((evidence.machineEvidence as { windowId: string | null; anchorAt: string }).windowId).toBe("w-contain");
+    expect((evidence.machineEvidence as { anchorAt: string }).anchorAt).toBe(FAULT_AT);
+    // The fault-window anchor query never runs; the CONTAINS query runs once
+    // (the Machine Memory header's own latest-window read is separate).
+    const win = dbMock.calls.filter((c) => /FROM machine_state_window/.test(c.sql));
+    expect(win.some((c) => /state IN \('faulted', 'estopped'\)/.test(c.sql))).toBe(false);
+    const contains = win.filter((c) => /started_at <= \$3::timestamptz/.test(c.sql));
+    expect(contains).toHaveLength(1);
+    expect(contains[0].sql).toMatch(/ended_at IS NULL OR ended_at >= \$3::timestamptz/);
+    expect(contains[0].values).toEqual([TENANT, UNS, FAULT_AT]);
+    expect(persistedTurn<{ evidence: { windowId?: string | null }[] }>().evidence.at(-1)!.windowId).toBe("w-contain");
+  });
+
+  it("no containing window → windowId stays null (never invented)", async () => {
+    dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE];
+    const fr = await frames(await POST(req({ message: "q", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
+    expect((fr.find((f) => f.kind === "evidence")!.machineEvidence as { windowId: string | null }).windowId).toBeNull();
+  });
+});
+
+// ── S5 D3: server-verified visual observation (LOOK photo) on the turn ──────
+const FILE = "f0000000-0000-4000-8000-000000000001";
+const CAPTURED = "2026-08-27T23:14:21.000Z";
+const VE = { fileId: FILE, capturedAt: "2026-08-27T19:14:21-04:00" }; // client-local offset → server-normalized
+const LINKED: Handler = [/FROM workspace_file_links/, { rows: [{ file_id: FILE }] }];
+
+describe("visualEvidence — the server verifies the link and re-derives the entry (D3)", () => {
+  it("verified: entry streamed on the evidence frame + persisted in evidence[]; never a citation; basis unchanged", async () => {
+    dbMock.handlers = [LINKED];
+    const res = await POST(req({ message: "what is this LED?", sourceDocIds: [DOC_A], visualEvidence: VE }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    const evidence = fr.find((f) => f.kind === "evidence")!;
+    expect(evidence.basis).toBe("oem_documentation");
+    expect(evidence.visualEvidence).toEqual({ kind: "visual_observation", fileId: FILE, capturedAt: CAPTURED, provenance: "phone_photo" });
+    const sources = fr.find((f) => f.kind === "sources")!;
+    expect(sources.sourceSnapshot).toEqual([DOC_A]);
+    expect((sources.citations as { kind?: string }[]).every((c) => !c.kind)).toBe(true);
+    const persisted = persistedTurn<{ basis: string; evidence: unknown[] }>();
+    expect(persisted.basis).toBe("oem_documentation");
+    expect(persisted.evidence.at(-1)).toEqual(evidence.visualEvidence);
+    // one SELECT, tenant + file + this notebook bound — the server never trusts the claim
+    const link = dbMock.calls.filter((c) => /FROM workspace_file_links/.test(c.sql));
+    expect(link).toHaveLength(1);
+    expect(link[0].sql.trim()).toMatch(/^SELECT/i);
+    expect(link[0].values).toEqual([TENANT, FILE, "equipment_notebook", NB]);
+  });
+
+  it("unverified (file not linked to this notebook / foreign tenant): ignored silently, the turn is still answered", async () => {
+    dbMock.handlers = []; // the link SELECT returns no row
+    const res = await POST(req({ message: "what is this LED?", sourceDocIds: [DOC_A], visualEvidence: VE }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("answered");
+    expect(fr.find((f) => f.kind === "evidence")!).not.toHaveProperty("visualEvidence");
+    expect(persistedTurn<{ evidence: { kind?: string }[] }>().evidence.some((e) => e.kind === "visual_observation")).toBe(false);
+  });
+
+  it("malformed claim (non-uuid fileId, unparseable capturedAt): no link SQL, no 4xx, no entry", async () => {
+    for (const bad of [{ fileId: "../etc", capturedAt: CAPTURED }, { fileId: FILE, capturedAt: "yesterday" }, { fileId: 7 }]) {
+      dbMock.calls = [];
+      nbMock.recordTurn.mockClear();
+      const res = await POST(req({ message: "q", sourceDocIds: [DOC_A], visualEvidence: bad }), params);
+      expect(res.status).toBe(200);
+      const fr = await frames(res);
+      expect(fr.find((f) => f.kind === "evidence")!).not.toHaveProperty("visualEvidence");
+      expect(dbMock.calls.some((c) => /workspace_file_links/.test(c.sql))).toBe(false);
+    }
+  });
+
+  it("with machine evidence too: evidence[] carries citations, then the machine entry, then the photo", async () => {
+    dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE, LINKED];
+    const fr = await frames(await POST(req({ message: "q", sourceDocIds: [DOC_A], machineEvidence: ME, visualEvidence: VE }), params));
+    const evidence = fr.find((f) => f.kind === "evidence")!;
+    expect(evidence.basis).toBe("machine_history");
+    expect((evidence.machineEvidence as { kind: string }).kind).toBe("machine_evidence");
+    expect((evidence.visualEvidence as { kind: string }).kind).toBe("visual_observation");
+    const kinds = persistedTurn<{ evidence: { kind?: string; docId?: string }[] }>().evidence.map((e) => e.kind ?? (e.docId ? "citation" : "?"));
+    expect(kinds).toEqual(["citation", "machine_evidence", "visual_observation"]);
+  });
+
+  it("a failed (unserved) turn persists no photo entry", async () => {
+    dbMock.handlers = [LINKED];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+    const fr = await frames(await POST(req({ message: "q", sourceDocIds: [DOC_A], visualEvidence: VE }), params));
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("error");
+    const persisted = persistedTurn<{ evidence: unknown[]; basis: string | null }>();
+    expect(persisted.evidence).toEqual([]);
+    expect(persisted.basis).toBeNull();
+  });
+
+  it("without visualEvidence: no link SQL, no key on the frame (byte-identical contract)", async () => {
+    const fr = await frames(await POST(req({ message: "q", sourceDocIds: [DOC_A] }), params));
+    expect(fr.find((f) => f.kind === "evidence")!).not.toHaveProperty("visualEvidence");
+    expect(dbMock.calls.some((c) => /workspace_file_links/.test(c.sql))).toBe(false);
+  });
+});
+
 describe("without machineEvidence — the existing contract", () => {
   it("no machine section, no machine entry, oem_documentation, no machine SQL issued", async () => {
     dbMock.handlers = [KG_HIT, EVENTS, DIFFS, STALE];

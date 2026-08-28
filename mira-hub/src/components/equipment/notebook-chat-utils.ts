@@ -4,11 +4,13 @@
 
 import {
   isMachineEvidenceEntry,
+  isVisualObservationEntry,
   parseFrame,
   type EvidenceBasis,
   type EvidenceCitation,
   type MachineEvidenceEntry,
   type NotebookChatFrame,
+  type VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 
 /** Evidence-ladder caption per basis (spec §1.3). Every basis gets a caption;
@@ -18,8 +20,10 @@ export const BASIS_LABEL: Record<EvidenceBasis, string> = {
   identified_component: "Grounded in the identified component.",
   oem_documentation: "Grounded in this notebook's sources.",
   workspace_evidence: "Grounded in workspace evidence.",
-  machine_history: "Grounded in recorded machine history — not live.",
-  live_machine_evidence: "Grounded in live machine evidence.",
+  // S5 D5 cross-lane contract: the two machine bases use mobile's exact
+  // strings (mira-mobile/src/lib/replay.ts basisCaption) — one copy, both clients.
+  machine_history: "Grounded in recorded machine history — not live",
+  live_machine_evidence: "Grounded in live machine evidence",
 };
 
 export function basisLabel(basis: string | null | undefined): string | null {
@@ -27,12 +31,14 @@ export function basisLabel(basis: string | null | undefined): string | null {
   return (BASIS_LABEL as Record<string, string>)[basis] ?? null;
 }
 
-/** Freshness copy for the Machine Replay card — stale/simulated is never "live". */
-export const REPLAY_FRESHNESS_LABEL: Record<MachineEvidenceEntry["freshness"], string> = {
-  live: "Live signals",
-  stale: "Recorded history — not live",
-  simulated: "Simulated data — not live",
-  unknown: "No current signals",
+/** The shared FRESHNESS_LABEL vocabulary (S5 D5 cross-lane contract): the same
+ *  four strings as mira-mobile/src/lib/replay.ts FRESHNESS_LABEL and the
+ *  command-center page — stale/simulated is never "live". */
+export const FRESHNESS_LABEL: Record<MachineEvidenceEntry["freshness"], string> = {
+  live: "Live",
+  stale: "Stale",
+  simulated: "Simulated",
+  unknown: "No tags",
 };
 
 function defaultClock(iso: string): string {
@@ -41,13 +47,22 @@ function defaultClock(iso: string): string {
   return d.toLocaleTimeString(undefined, { hour12: false });
 }
 
-/** "Machine Replay · 7 observed changes around 23:16:31 · Recorded history — not live".
- *  `clock` is injectable so the caption is deterministic in tests. */
+/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" — the S5 D5
+ *  cross-lane shape (mobile's replayCardTitle). `clock` is injectable so the
+ *  caption is deterministic in tests. */
 export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: string) => string = defaultClock): string {
   const n = e.rowCount;
-  const changes = `${n} observed ${n === 1 ? "change" : "changes"}`;
-  const fresh = REPLAY_FRESHNESS_LABEL[e.freshness] ?? REPLAY_FRESHNESS_LABEL.unknown;
+  const changes = `${n} observed change${n === 1 ? "" : "s"}`;
+  const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
   return `Machine Replay · ${changes} around ${clock(e.anchorAt)} · ${fresh}`;
+}
+
+/** "Visual observation · Photo captured · 02:14:21" (contract §4.5, S5 D3). */
+export function visualObservationCaption(
+  e: VisualObservationEntry,
+  clock: (iso: string) => string = defaultClock,
+): string {
+  return `Visual observation · Photo captured · ${clock(e.capturedAt)}`;
 }
 
 /** Enter sends; Shift+Enter is a newline; an in-progress IME composition
@@ -93,6 +108,8 @@ export type StreamResult = {
   followups: string[];
   /** Sensor REPLAY (D5): the machine window the turn was grounded on, if any. */
   machineEvidence: MachineEvidenceEntry | null;
+  /** Sensor LOOK (S5 D3): the server-verified photo the turn was asked with. */
+  visualEvidence: VisualObservationEntry | null;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -116,6 +133,7 @@ export async function readNotebookStream(
     basis: null,
     followups: [],
     machineEvidence: null,
+    visualEvidence: null,
   };
   try {
     while (true) {
@@ -135,6 +153,7 @@ export async function readNotebookStream(
         else if (frame.kind === "evidence") {
           out.basis = frame.basis;
           out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
+          out.visualEvidence = isVisualObservationEntry(frame.visualEvidence) ? frame.visualEvidence : null;
         }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
@@ -231,7 +250,7 @@ export type PersistedTurn = {
   /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries riding in
    *  the same JSONB. Non-document entries are split out, never rendered as
    *  citations. */
-  evidence: Array<EvidenceCitation | MachineEvidenceEntry>;
+  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry>;
   basis?: string | null;
 };
 
@@ -243,6 +262,7 @@ type HydratedTurn = {
   citations?: EvidenceCitation[];
   basis?: string | null;
   machineEvidence?: MachineEvidenceEntry[];
+  visualEvidence?: VisualObservationEntry[];
   stopped?: boolean;
 };
 
@@ -251,16 +271,19 @@ type HydratedTurn = {
 export function splitEvidence(evidence: unknown[]): {
   citations: EvidenceCitation[];
   machineEvidence: MachineEvidenceEntry[];
+  visualEvidence: VisualObservationEntry[];
 } {
   const citations: EvidenceCitation[] = [];
   const machineEvidence: MachineEvidenceEntry[] = [];
+  const visualEvidence: VisualObservationEntry[] = [];
   for (const e of Array.isArray(evidence) ? evidence : []) {
     if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
+    else if (isVisualObservationEntry(e)) visualEvidence.push(e);
     else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
       citations.push(e as EvidenceCitation);
     }
   }
-  return { citations, machineEvidence };
+  return { citations, machineEvidence, visualEvidence };
 }
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
@@ -273,7 +296,7 @@ export function splitEvidence(evidence: unknown[]): {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
-    const { citations, machineEvidence } = splitEvidence(t.evidence);
+    const { citations, machineEvidence, visualEvidence } = splitEvidence(t.evidence);
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -286,6 +309,8 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         basis: stopped ? null : (t.basis ?? null),
         // D5: the Machine Replay card survives reload too (stopped turns carry none).
         ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
+        // D3 (S5): the Visual observation card survives reload the same way.
+        ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

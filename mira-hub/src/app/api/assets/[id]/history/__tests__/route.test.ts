@@ -90,6 +90,34 @@ describe("anchor", () => {
     expect(ev.values).toEqual([TENANT, UNS_PATH, "2026-08-27T23:16:28.000Z", "2026-08-27T23:16:32.000Z"]);
   });
 
+  it("explicit ?at= inside a machine_state_window → anchor carries that window's id + state (S5 D4); still source 'explicit'", async () => {
+    const containing: [RegExp, { rows: unknown[] }] = [
+      /FROM machine_state_window/,
+      { rows: [{ window_id: "w-contain", state: "faulted", started_at: "2026-08-27T23:16:30.000Z", ended_at: null }] },
+    ];
+    const client = mockClient([KG_HIT, containing, [/FROM tag_events/, { rows: EVENTS }]]);
+    wire(client);
+    const res = await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.anchor).toEqual({ at: FAULT_AT, source: "explicit", windowId: "w-contain", state: "faulted" });
+    // the CONTAINS query, not the latest-fault query; anchored on the explicit time as a bound param
+    // (the Machine Memory header's own latest-window read is a separate statement)
+    const win = client.calls.filter((c) => /FROM machine_state_window/.test(c.sql));
+    expect(win.some((c) => /state IN \('faulted', 'estopped'\)/.test(c.sql))).toBe(false);
+    const contains = win.filter((c) => /started_at <= \$3::timestamptz/.test(c.sql));
+    expect(contains).toHaveLength(1);
+    expect(contains[0].values).toEqual([TENANT, UNS_PATH, FAULT_AT]);
+  });
+
+  it("explicit ?at= with machine_state_window missing (040 not applied) → still 200, anchor without windowId", async () => {
+    const client = mockClient([KG_HIT, [/FROM machine_state_window/, undefinedTable("machine_state_window")], [/FROM tag_events/, { rows: EVENTS }]]);
+    wire(client);
+    const res = await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params });
+    expect(res.status).toBe(200);
+    expect((await res.json()).anchor).toEqual({ at: FAULT_AT, source: "explicit" });
+  });
+
   it("no ?at= → the latest faulted/estopped machine_state_window anchors the replay (source 'state_window')", async () => {
     wire(mockClient([KG_HIT, FAULT_WINDOW, [/FROM tag_events/, { rows: EVENTS }]]));
     const res = await GET(new Request(`http://t/api/assets/${ID}/history`), { params });

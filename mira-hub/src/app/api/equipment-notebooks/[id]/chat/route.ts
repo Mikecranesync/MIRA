@@ -78,6 +78,7 @@ import {
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
+import { fileLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -92,6 +93,7 @@ import type {
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
+  VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
@@ -415,6 +417,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
+    /** Sensor LOOK (S5 D3 cross-lane contract): the phone photo this turn was
+     *  asked with. Only the CLAIM is trusted — the server verifies the file is
+     *  linked to this notebook and re-derives the entry; unverified → ignored. */
+    visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
   };
   try {
     body = await req.json();
@@ -435,6 +441,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
+  }
+  // Visual-evidence claim (D3). Never a 4xx: a malformed or foreign claim is
+  // dropped silently and the turn is answered without it.
+  let visualClaim: { fileId: string; capturedAt: string } | null = null;
+  if (body.visualEvidence && typeof body.visualEvidence === "object") {
+    const ve = body.visualEvidence;
+    const fileId = typeof ve.fileId === "string" ? ve.fileId.trim() : "";
+    const capturedAt = parseAnchor(ve.capturedAt);
+    if (fileId && capturedAt) visualClaim = { fileId, capturedAt };
   }
   // Spec §1.1 — a technician with nothing configured must still get help, and
   // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
@@ -674,6 +689,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       console.error("[notebook-chat] machine evidence fetch failed (continuing without it):", err);
       machinePacket = null;
       machineEntry = null;
+    }
+  }
+
+  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
+  // to THIS notebook in THIS tenant (workspace_file_links), then re-derive the
+  // entry server-side. Unverified/foreign → ignored silently; the turn still
+  // answers. Never a citation, never in sourceSnapshot, never moves `basis`.
+  let visualEntry: VisualObservationEntry | null = null;
+  if (visualClaim) {
+    try {
+      const linked = await fileLinkedToTarget(ctx.tenantId, visualClaim.fileId, "equipment_notebook", notebookId);
+      if (linked) {
+        visualEntry = {
+          kind: "visual_observation",
+          fileId: visualClaim.fileId,
+          capturedAt: visualClaim.capturedAt,
+          provenance: "phone_photo",
+        };
+      } else {
+        console.warn("[notebook-chat] visualEvidence ignored: file not linked to this notebook");
+      }
+    } catch (err) {
+      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
+      visualEntry = null;
     }
   }
 
@@ -1128,6 +1167,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               basis: "oem_documentation",
               label: "Grounded in this notebook's sources.",
             };
+      // D3 (S5): the verified visual observation rides on the SAME frame,
+      // additively — basis and label above are untouched by it.
+      if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
@@ -1186,7 +1228,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // D5: the machine window rides INSIDE evidence[] next to the
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
-          evidence: served && machineEntry ? [...emittedCitations, machineEntry] : emittedCitations,
+          evidence: served
+            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : [])]
+            : emittedCitations,
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.

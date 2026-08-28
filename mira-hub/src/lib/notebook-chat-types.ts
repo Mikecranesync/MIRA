@@ -140,6 +140,9 @@ export type NotebookEvidenceFrame = {
    *  grounded on. Additive — same frame kind, so FRAME_KINDS is untouched and
    *  older clients simply ignore the field. */
   machineEvidence?: MachineEvidenceEntry;
+  /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
+   *  turn was asked with. Additive, same discipline as `machineEvidence`. */
+  visualEvidence?: VisualObservationEntry;
 };
 
 /**
@@ -173,6 +176,36 @@ export function isMachineEvidenceEntry(e: unknown): e is MachineEvidenceEntry {
     e !== null &&
     (e as { kind?: unknown }).kind === "machine_evidence" &&
     typeof (e as { anchorAt?: unknown }).anchorAt === "string"
+  );
+}
+
+/**
+ * Visual observation attached to a turn (Sensor LOOK, S5 D3 cross-lane
+ * contract). The client sends `{fileId, capturedAt}`; the SERVER verifies the
+ * file is a workspace file linked to THIS notebook (workspace_file_links,
+ * same tenant) and re-derives the entry — an unverified/foreign fileId is
+ * ignored silently, never a 4xx. Rides INSIDE `evidence[]` next to citations
+ * and machine entries, discriminated by `kind`. It is NOT a citation: no
+ * `docId`, never in `sources.citations` / `sourceSnapshot`, never changes
+ * `basis`. Readers that assume `{docId}` skip it.
+ */
+export type VisualObservationEntry = {
+  kind: "visual_observation";
+  /** namespace_direct_uploads id — the byte-serving door for the thumbnail. */
+  fileId: string;
+  /** Server-normalized ISO (the phone's capture time, re-serialized). */
+  capturedAt: string;
+  provenance: "phone_photo";
+};
+
+/** Type guard: an `evidence[]` entry that is a visual observation. */
+export function isVisualObservationEntry(e: unknown): e is VisualObservationEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "visual_observation" &&
+    typeof (e as { fileId?: unknown }).fileId === "string" &&
+    typeof (e as { capturedAt?: unknown }).capturedAt === "string"
   );
 }
 

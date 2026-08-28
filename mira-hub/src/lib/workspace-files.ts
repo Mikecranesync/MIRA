@@ -840,6 +840,35 @@ export async function linkedDocIdsForTarget(
   });
 }
 
+/**
+ * Membership check for ONE file against ONE target (Sensor LOOK, S5 D3): is
+ * `fileId` a workspace file linked to this exact target, in this tenant? One
+ * SELECT, same predicate shape as {@link listFilesForTarget}. The chat route
+ * uses it to verify a client-supplied `visualEvidence.fileId` before it
+ * re-derives the evidence entry — the server never trusts the client's claim.
+ */
+export async function fileLinkedToTarget(
+  tenantId: string,
+  fileId: string,
+  targetType: LinkTargetType,
+  targetId: string,
+): Promise<boolean> {
+  if (!UUID_RE.test(fileId) || !UUID_RE.test(targetId)) return false;
+  return withTenantContext(tenantId, async (c) => {
+    const r = await c.query<{ file_id: string }>(
+      `SELECT l.file_id::text AS file_id
+         FROM workspace_file_links l
+         JOIN namespace_direct_uploads f
+           ON f.id = l.file_id AND f.tenant_id = l.tenant_id
+        WHERE l.tenant_id = $1::uuid AND l.file_id = $2::uuid
+          AND l.target_type = $3 AND l.target_id = $4::uuid
+        LIMIT 1`,
+      [tenantId, fileId, targetType, targetId],
+    );
+    return r.rows.length > 0;
+  });
+}
+
 /** Namespace-node specialization of {@link linkedDocIdsForTarget}. */
 export async function linkedDocIdsForNode(
   tenantId: string,
