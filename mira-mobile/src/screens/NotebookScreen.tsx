@@ -896,7 +896,20 @@ export function NotebookScreen({
         />
       )}
 
-      {sensorOpen && <SensorSheet onClose={() => setSensorOpen(false)} />}
+      {sensorOpen && (
+        <SensorSheet
+          notebookId={id}
+          onClose={() => setSensorOpen(false)}
+          onChanged={refresh}
+          onAsk={(question) => {
+            // One conversation (§2.3): the observation goes through the same
+            // send path as the composer — same scope, same history, same route.
+            setSensorOpen(false);
+            setPanel("chat");
+            void sendQuestion(question);
+          }}
+        />
+      )}
     </>
   );
 }

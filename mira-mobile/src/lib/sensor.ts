@@ -13,6 +13,8 @@
  * connected machine, and offers READ instead.
  */
 
+import { nameplateErrorCopy, reasonFromRecognizeError } from "./nameplate-flow";
+
 export type SensorMode = "look" | "read" | "replay";
 
 /** Exactly three modes. LISTEN / VIBRATION are out of v0 (contract §6) and
@@ -67,6 +69,27 @@ export function lookQuestion(
   const q = (technicianQuestion ?? "").trim() || LOOK_DEFAULT_QUESTION;
   const obs = observation.trim().replace(/\s+/g, " ");
   return `Visual observation (${hhmmss(capturedAt)}, phone photo): ${obs}\n\n${q}`;
+}
+
+/**
+ * LOOK intake failures: the SAME status→reason mapping the nameplate lane
+ * uses (`reasonFromRecognizeError` — 415 / 413 / 503 / 502 / other), so a
+ * format or size rejection never renders as "MIRA couldn't see anything". The
+ * two nameplate-specific sentences are re-worded for LOOK; the shared ones
+ * are reused verbatim from `nameplateErrorCopy`.
+ */
+export function lookErrorCopy(e: unknown): string {
+  const reason = reasonFromRecognizeError(e);
+  switch (reason) {
+    case "unsupported_image_type":
+    case "image_too_large":
+    case "provider_error":
+      return nameplateErrorCopy(reason);
+    case "recognizer_unavailable":
+      return "Photo description isn't available on the server right now";
+    default:
+      return "Couldn't upload the photo — check connectivity and try again";
+  }
 }
 
 /** Contract §2.6: REPLAY without a bound machine is explained, never gated

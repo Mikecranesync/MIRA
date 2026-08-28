@@ -833,6 +833,68 @@ export async function recognizeComponentNameplate(
   };
 }
 
+// --- Sensor LOOK (notebook-scoped; contract §4.1) ---------------------------
+
+export interface LookObservation {
+  /** What the vision pass SAW — observations only, never a diagnosis. */
+  text: string;
+  capturedAt: string;
+  provenance: string; // "phone_photo"
+}
+
+export interface LookResult {
+  /** The parked photograph — retained and linked to the notebook (role
+   *  "photo") BEFORE vision runs, so it exists even when the provider fails. */
+  fileId: string;
+  attachment: { linkId: string; notebookId: string } | null;
+  /** Null when the provider failed: the file is kept, the observation is not
+   *  invented. */
+  observation: LookObservation | null;
+  /** Opaque capture-quality assessment (blur/glare hint) — preserved verbatim. */
+  quality: unknown | null;
+}
+
+/**
+ * LOOK: photograph → parked once (SHA-256 dedup on the server; `clientKey`
+ * makes a retry replay the same link instead of filing a second one) →
+ * observation text. Same multipart seam as `recognizeComponentNameplate`.
+ * The observation is conversation context only — it becomes a citable source
+ * solely through the existing confirmation doors (§4.1), never from here.
+ */
+export async function lookAtPhoto(
+  notebookId: string,
+  image: File,
+  clientKey: string,
+  question?: string | null,
+): Promise<LookResult> {
+  const fd = new FormData();
+  fd.append("image", image);
+  fd.append("clientKey", clientKey);
+  if (question?.trim()) fd.append("question", question.trim());
+  const r = await uploadMultipart(
+    `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/look/`,
+    fd,
+  );
+  const d = (r.data ?? {}) as Record<string, unknown>;
+  const att = d.attachment as Record<string, unknown> | undefined;
+  const obs = d.observation as Record<string, unknown> | null | undefined;
+  return {
+    fileId: String(d.fileId ?? ""),
+    attachment: att
+      ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }
+      : null,
+    observation:
+      obs && typeof obs.text === "string" && obs.text.trim()
+        ? {
+            text: obs.text,
+            capturedAt: String(obs.capturedAt ?? new Date().toISOString()),
+            provenance: String(obs.provenance ?? "phone_photo"),
+          }
+        : null,
+    quality: d.quality ?? null,
+  };
+}
+
 export type ConfirmComponentStatus =
   | "complete"
   | "candidate_review"
