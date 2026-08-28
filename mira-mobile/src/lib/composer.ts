@@ -41,4 +41,7 @@ export interface PendingSend {
   scope: string[];
   mode: "general" | undefined;
   history: { role: "user" | "assistant"; content: string }[];
+  /** Sensor REPLAY window (contract §4.4) — kept on the body so a Retry
+   *  re-sends the identical window, never a recomputed one. */
+  machineEvidence?: { assetId: string; anchorAt: string; pre: number; post: number };
 }

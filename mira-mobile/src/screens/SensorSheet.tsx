@@ -10,7 +10,7 @@
 //
 // One conversation (§2.3): every "Ask MIRA" here closes the sheet and sends
 // through the notebook's existing `sendQuestion` — no Sensor chat store.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BackDismiss, Sheet } from "./Sheet";
 import { SourceThumb } from "./FilePreview";
 import { ScanView, type ScanVia } from "./ScanView";
@@ -19,16 +19,21 @@ import { canPickNatively, pickPhoto } from "../lib/native-pick";
 import {
   bindNotebookAsset,
   getAssetByTag,
+  getAssetHistory,
   lookAtPhoto,
   openAssetNotebook,
   type LookResult,
   type Notebook,
 } from "../api/resources";
+import { ReplayTimeline } from "./ReplayTimeline";
+import { replayQuestion, type HistoryResult, type MachineEvidenceWindow } from "../lib/replay";
+import { ErrorState } from "./common";
 import { extractAssetTag } from "../lib/tags";
 import { readScan, type ReadOutcome } from "../lib/sensor-read";
 import { assetCardState, resolvedAssetFromNotebook } from "../lib/notebook-asset-card";
 import {
   SENSOR_MODES,
+  REPLAY_NO_MACHINE,
   hhmmss,
   lookErrorCopy,
   lookQuestion,
@@ -50,8 +55,9 @@ export function SensorSheet({
    *  bound) — the caller re-reads it. */
   onChanged: () => void;
   /** Send a question through the notebook's ONE conversation. The caller
-   *  closes the sheet and switches to the chat panel. */
-  onAsk: (question: string) => void;
+   *  closes the sheet and switches to the chat panel. REPLAY passes the
+   *  selected Machine Memory window (contract §4.4) alongside. */
+  onAsk: (question: string, machineEvidence?: MachineEvidenceWindow) => void;
   /** A scan resolved to a DIFFERENT machine's notebook — go there (the
    *  existing scan → notebook transition). */
   onOpenNotebook: (notebookId: string) => void;
@@ -105,6 +111,9 @@ export function SensorSheet({
               onOpenNotebook={onOpenNotebook}
               onUploadInstead={onUploadInstead}
             />
+          )}
+          {current.id === "replay" && (
+            <ReplayPanel notebook={notebook} onAsk={onAsk} onIdentify={() => setMode("read")} />
           )}
           <button style={{ marginTop: 6 }} onClick={() => setMode(null)}>
             ← Modes
@@ -401,6 +410,90 @@ function ReadPanel({
           if (f) setState({ name: "nameplate", photo: f });
         }}
       />
+    </>
+  );
+}
+
+// --- REPLAY -----------------------------------------------------------------
+//
+// Machine Memory owns replay (§2.5). This panel asks the Hub for the
+// fault-anchored window of what was actually recorded and renders it; then
+// "Ask MIRA what happened" hands that exact window to the notebook's ONE
+// conversation as body.machineEvidence (§4.4). Needs a bound machine — and
+// when there is none it says so and offers READ. That sentence is an
+// explanation, not a gate: LOOK and READ keep working regardless (§2.6).
+
+type ReplayState =
+  | { name: "loading" }
+  | { name: "ready"; result: HistoryResult }
+  | { name: "error"; error: unknown };
+
+function ReplayPanel({
+  notebook,
+  onAsk,
+  onIdentify,
+}: {
+  notebook: Pick<Notebook, "asset">;
+  onAsk: (question: string, machineEvidence?: MachineEvidenceWindow) => void;
+  onIdentify: () => void;
+}) {
+  const assetId = notebook.asset?.entityId ?? null;
+  const [state, setState] = useState<ReplayState>({ name: "loading" });
+
+  useEffect(() => {
+    if (!assetId) return;
+    let cancelled = false;
+    setState({ name: "loading" });
+    getAssetHistory(assetId)
+      .then((result) => !cancelled && setState({ name: "ready", result }))
+      .catch((error) => !cancelled && setState({ name: "error", error }));
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
+
+  if (!assetId)
+    return (
+      <>
+        <div className="meta" role="status" style={{ marginBottom: 8 }}>
+          {REPLAY_NO_MACHINE}
+        </div>
+        <button className="sheet-option" onClick={onIdentify}>
+          Identify the machine with READ
+        </button>
+      </>
+    );
+
+  if (state.name === "loading") return <div className="empty">Reading Machine Memory…</div>;
+  if (state.name === "error") return <ErrorState error={state.error} />;
+
+  const { result } = state;
+  if (!result.ok)
+    return (
+      <div className="meta" role="status">
+        No fault window recorded for this machine, so there is nothing to replay.
+        {result.latest
+          ? ` Latest recorded state: ${result.latest.state}${result.latest.at ? ` at ${hhmmss(result.latest.at)}` : ""}.`
+          : ""}
+      </div>
+    );
+
+  const { history } = result;
+  const window: MachineEvidenceWindow = {
+    assetId,
+    anchorAt: history.anchor.at,
+    pre: history.pre,
+    post: history.post,
+  };
+  return (
+    <>
+      <ReplayTimeline history={history} />
+      <button
+        className="btn-primary"
+        onClick={() => onAsk(replayQuestion(history.anchor.at), window)}
+      >
+        Ask MIRA what happened
+      </button>
     </>
   );
 }

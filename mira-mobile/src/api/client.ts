@@ -137,6 +137,9 @@ interface RequestOpts {
    *  caller provides an idempotency key (safe replay by contract). */
   idempotencyKey?: string;
   timeoutMs?: number;
+  /** Non-2xx statuses whose BODY is the answer (e.g. a 404 `no_fault_window`
+   *  that carries the latest window state). Returned instead of thrown. */
+  acceptStatuses?: number[];
 }
 
 async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse> {
@@ -460,6 +463,7 @@ export async function request(path: string, opts: RequestOpts = {}): Promise<Api
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status >= 200 && res.status < 300) return res;
+    if (opts.acceptStatuses?.includes(res.status)) return res;
     throw errorFromStatus(res.status, res.data);
   }
   throw new ApiError("network", null, String(lastNetworkErr ?? "request failed"));

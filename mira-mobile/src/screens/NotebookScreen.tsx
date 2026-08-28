@@ -34,6 +34,13 @@ import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import {
+  basisCaption,
+  machineEvidenceEntries,
+  replayCardTitle,
+  type MachineEvidenceEntry,
+  type MachineEvidenceWindow,
+} from "../lib/replay";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
@@ -209,7 +216,11 @@ export function NotebookScreen({
   // follow-ups, because a stopped answer is not an answer. CMPS-2: a failed
   // send puts the question back in the composer and keeps the exact body for
   // Retry, so the retry is byte-identical rather than recomputed.
-  const sendQuestion = async (raw: string, replay?: PendingSend) => {
+  const sendQuestion = async (
+    raw: string,
+    replay?: PendingSend,
+    machineEvidence?: MachineEvidenceWindow,
+  ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
     const body: PendingSend = replay ?? {
@@ -221,6 +232,9 @@ export function NotebookScreen({
         turns,
         liveTurns.filter((t) => t.a.status !== "stopped"),
       ),
+      // Sensor REPLAY (§4.4): the selected window rides on the body so a
+      // Retry re-sends it byte-identically.
+      ...(machineEvidence ? { machineEvidence } : {}),
     };
     const ctl = new AbortController();
     abortRef.current = ctl;
@@ -233,6 +247,7 @@ export function NotebookScreen({
       const a = await askNotebook(id, body.question, body.scope, {
         mode: body.mode,
         history: body.history,
+        machineEvidence: body.machineEvidence,
         signal: ctl.signal,
         onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
@@ -566,6 +581,7 @@ export function NotebookScreen({
                     General guidance — not grounded in this machine's documents.
                   </div>
                 )}
+                <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
                     <button
@@ -621,6 +637,9 @@ export function NotebookScreen({
                   <div className="evidence-basis-general">
                     {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
                   </div>
+                )}
+                {t.a.status !== "stopped" && (
+                  <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
                 )}
                 <div>
                   {t.a.citations.map((c) => (
@@ -916,15 +935,46 @@ export function NotebookScreen({
             setSensorOpen(false);
             setSheetOpen(true);
           }}
-          onAsk={(question) => {
+          onAsk={(question, machineEvidence) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.
             setSensorOpen(false);
             setPanel("chat");
-            void sendQuestion(question);
+            void sendQuestion(question, undefined, machineEvidence);
           }}
         />
       )}
+    </>
+  );
+}
+
+/** Sensor REPLAY in the conversation (§4.5, D5): the persisted
+ *  `{kind:"machine_evidence"}` entries render as a "Machine Replay · N observed
+ *  changes around HH:MM:SS · <freshness>" card, and the machine bases
+ *  (`live_machine_evidence` / `machine_history`) get a MUTED caption — amber is
+ *  reserved for `general_reasoning`. Nothing here is inferred: no entry, no
+ *  card; no machine basis, no caption. */
+function MachineEvidenceCards({
+  entries,
+  basis,
+}: {
+  entries: MachineEvidenceEntry[];
+  basis: string | null | undefined;
+}) {
+  const caption = basisCaption(basis);
+  if (entries.length === 0 && !caption) return null;
+  return (
+    <>
+      {entries.map((e, i) => (
+        <div key={`${e.anchorAt}-${i}`} className="card sensor-evidence" data-testid="machine-replay-card">
+          <div className="title">{replayCardTitle(e)}</div>
+          <div className="meta">
+            {e.pre} s before / {e.post} s after · Machine Memory
+            {e.windowId ? " · fault window" : ""}
+          </div>
+        </div>
+      ))}
+      {caption && <div className="evidence-basis-machine">{caption}</div>}
     </>
   );
 }

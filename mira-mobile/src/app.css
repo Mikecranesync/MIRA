@@ -389,6 +389,32 @@ textarea {
 .asset-chip-unbound { border-left-color: var(--fl-ink-muted); }
 .asset-chip-unresolvable { border-left-color: var(--fl-red); }
 
+/* Machine-evidence basis caption (mig 084 bases live_machine_evidence /
+   machine_history): MUTED. Amber stays reserved for general_reasoning. */
+.evidence-basis-machine {
+  display: block; margin: 6px 0 0 0; padding: 6px 10px;
+  border-left: 3px solid var(--fl-line-strong);
+  background: var(--fl-surface); color: var(--fl-ink-muted);
+  border-radius: var(--fl-radius); font-size: 12px; line-height: 1.4;
+}
+
+/* REPLAY timeline: rows are observations, colour never decorates them.
+   The banner is amber = degraded (not live); nothing here reads as live. */
+.replay-banner {
+  margin: 8px 0; padding: 6px 10px;
+  border-left: 3px solid var(--fl-amber); background: var(--fl-surface);
+  color: var(--fl-ink); border-radius: var(--fl-radius); font-size: 13px;
+}
+.replay-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.replay-row {
+  display: grid; grid-template-columns: 5.5em 1fr auto auto; column-gap: 8px;
+  align-items: baseline; padding: 4px 0; border-top: 1px solid var(--fl-line);
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.replay-t { color: var(--fl-ink-muted); }
+.replay-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-ingested { grid-column: 2 / -1; font-size: 11px; }
+
 /* Sensor camera overlay: the QR viewfinder is NOT a sheet (80% max-height);
    it takes the screen and registers its own BACK layer above the sheet. */
 .sensor-overlay {

@@ -9,6 +9,7 @@ import {
   requestStream,
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
+import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
 
 // --- auth -------------------------------------------------------------------
 
@@ -1206,6 +1207,10 @@ export async function askNotebook(
     onUpdate?: (partial: ChatTurn) => void;
     /** STRM-2: Stop. Rejects with the signal's reason (an AbortError). */
     signal?: AbortSignal;
+    /** Sensor REPLAY (contract §4.4): the selected Machine Memory window.
+     *  The server re-fetches the rows itself and grounds the answer on them;
+     *  the client never sends rows. Absent = unchanged document path. */
+    machineEvidence?: MachineEvidenceWindow;
   } = {},
 ): Promise<ChatTurn> {
   const parser = createChatSseParser();
@@ -1217,6 +1222,7 @@ export async function askNotebook(
         sourceDocIds,
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
+        ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
       },
       onChunk: (chunk) => {
         const before = parser.turn().answer;
@@ -1237,6 +1243,79 @@ export async function askNotebook(
 /** Pure helper (unit-tested): the doc ids chat retrieval is scoped to. */
 export function enabledDocIds(sources: Pick<NotebookSource, "docId" | "enabledByDefault">[]): string[] {
   return sources.filter((s) => s.enabledByDefault !== false).map((s) => s.docId);
+}
+
+// --- Sensor REPLAY: Machine Memory history window (contract §4.3) -----------
+
+/**
+ * GET /api/assets/[id]/history?at=&pre=&post= — the fault-anchored window
+ * Machine Memory actually recorded. Read-only, tenant-scoped on the server.
+ * A 404 `no_fault_window` is an ANSWER (there is nothing to replay), not a
+ * transport failure, so it is accepted and mapped rather than thrown. Rows are
+ * passed through as the server ordered them (by event_timestamp); the client
+ * adds nothing.
+ */
+export async function getAssetHistory(
+  assetId: string,
+  opts: { at?: string; pre?: number; post?: number } = {},
+): Promise<HistoryResult> {
+  const p = new URLSearchParams();
+  if (opts.at) p.set("at", opts.at);
+  if (opts.pre != null) p.set("pre", String(opts.pre));
+  if (opts.post != null) p.set("post", String(opts.post));
+  const qs = p.toString();
+  const r = await request(
+    `/api/assets/${encodeURIComponent(assetId)}/history/${qs ? `?${qs}` : ""}`,
+    { acceptStatuses: [404] },
+  );
+  const d = (r.data ?? {}) as Record<string, unknown>;
+  if (r.status === 404) {
+    const latest = d.latest as Record<string, unknown> | null | undefined;
+    return {
+      ok: false,
+      reason: "no_fault_window",
+      latest:
+        latest && latest.state
+          ? { state: String(latest.state), at: String(latest.at ?? latest.started_at ?? "") }
+          : null,
+    };
+  }
+  const anchor = (d.anchor ?? {}) as Record<string, unknown>;
+  const freshness = (d.freshness ?? {}) as Record<string, unknown>;
+  const rows = Array.isArray(d.rows) ? (d.rows as Record<string, unknown>[]) : [];
+  const overall = String(freshness.overall ?? "unknown");
+  const history: AssetHistory = {
+    anchor: {
+      at: String(anchor.at ?? ""),
+      source: anchor.source === "explicit" ? "explicit" : "state_window",
+      windowId: anchor.windowId != null ? String(anchor.windowId) : null,
+      runId: anchor.runId != null ? String(anchor.runId) : null,
+    },
+    rows: rows.map((row) => ({
+      event_timestamp: String(row.event_timestamp ?? ""),
+      ingested_at: String(row.ingested_at ?? ""),
+      uns_path: String(row.uns_path ?? ""),
+      tag: String(row.tag ?? ""),
+      value: (row.value as AssetHistory["rows"][number]["value"]) ?? null,
+      prev_value: (row.prev_value as AssetHistory["rows"][number]["prev_value"]) ?? null,
+      quality: row.quality != null ? String(row.quality) : null,
+      kind: row.kind === "diff" ? "diff" : "event",
+    })),
+    freshness: {
+      overall:
+        overall === "live" || overall === "stale" || overall === "simulated" ? overall : "unknown",
+      live: Number(freshness.live ?? 0),
+      stale: Number(freshness.stale ?? 0),
+      simulated: Number(freshness.simulated ?? 0),
+      unknown: Number(freshness.unknown ?? 0),
+    },
+    summary: (d.summary ?? {}) as AssetHistory["summary"],
+    provenance: "machine_memory",
+    reason: d.reason === "unavailable" ? "unavailable" : null,
+    pre: Number(d.pre ?? opts.pre ?? 5),
+    post: Number(d.post ?? opts.post ?? 2),
+  };
+  return { ok: true, history };
 }
 
 // --- More tab ---------------------------------------------------------------
