@@ -412,7 +412,9 @@ textarea {
 }
 /* A [n] mark inline in the prose: the citation palette, sized to the text. */
 .cite-mark {
-  display: inline; border: none; cursor: pointer; padding: 0 4px; margin: 0 1px;
+  /* Override the global `button { width: 100%; min-height: 44px }` touch-target
+     rule: an inline [n] mark must flow with the sentence, not break it. */
+  display: inline; width: auto; min-height: 0; border: none; cursor: pointer; padding: 0 4px; margin: 0 1px;
   background: var(--flm-citation-bg); color: var(--flm-citation-fg);
   border-radius: var(--flm-radius-pill); font-family: var(--flm-font-mono); font-size: 12px;
   line-height: inherit; vertical-align: baseline;
