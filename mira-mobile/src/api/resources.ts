@@ -11,6 +11,7 @@ import {
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
 import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
+import type { VisualEvidence } from "../lib/sensor";
 
 // --- auth -------------------------------------------------------------------
 
@@ -1229,6 +1230,11 @@ export async function askNotebook(
      *  The server re-fetches the rows itself and grounds the answer on them;
      *  the client never sends rows. Absent = unchanged document path. */
     machineEvidence?: MachineEvidenceWindow;
+    /** Sensor LOOK (S5 D3): which parked photo the question is about. The
+     *  server verifies the file is linked to THIS notebook (and silently
+     *  ignores it otherwise) and re-derives the evidence entry — the client
+     *  never sends evidence rows. Absent = unchanged path. */
+    visualEvidence?: VisualEvidence;
   } = {},
 ): Promise<ChatTurn> {
   const parser = createChatSseParser();
@@ -1241,6 +1247,7 @@ export async function askNotebook(
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
+        ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
       },
       onChunk: (chunk) => {
         const before = parser.turn().answer;

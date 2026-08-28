@@ -22,6 +22,9 @@ import { normalizeCitations, parseChatSse } from "../sse";
 import {
   FRESHNESS_LABEL,
   LIVE_UNAVAILABLE_BANNER,
+  REPLAY_DEFAULT_WINDOW,
+  REPLAY_WINDOW_CAP,
+  REPLAY_WINDOW_PRESETS,
   basisCaption,
   clocksDiverge,
   formatRelativeSeconds,
@@ -29,6 +32,8 @@ import {
   machineEvidenceEntries,
   replayCardTitle,
   replayQuestion,
+  replayWindowHeader,
+  sameWindow,
 } from "../replay";
 import { hhmmss } from "../sensor";
 
@@ -164,6 +169,39 @@ describe("askNotebook body.machineEvidence (§4.4) — additive only", () => {
 
     await askNotebook("nb-1", "plain", ["d1"]);
     expect(requestStream.mock.calls[1][1].json).toEqual({ message: "plain", sourceDocIds: ["d1"] });
+  });
+
+  it("S5 D3: sends body.visualEvidence {fileId, capturedAt} — identifiers only, never rows", async () => {
+    requestStream.mockImplementation(async (_p: string, o: { onChunk: (c: string) => void }) => {
+      o.onChunk(sse);
+      return { status: 200, data: null, text: sse };
+    });
+    const visual = { fileId: "f-park", capturedAt: "2026-08-28T02:14:21.000Z" };
+    await askNotebook("nb-1", "what is lit?", [], { visualEvidence: visual });
+    expect(requestStream.mock.calls[0][1].json).toEqual({ message: "what is lit?", sourceDocIds: [], visualEvidence: visual });
+  });
+});
+
+describe("the window the technician is looking at (S5 D2)", () => {
+  it("client default is 60 s before / 10 s after — the server's 5 s / 2 s cannot reach a cause at −7.02 s", () => {
+    expect(REPLAY_DEFAULT_WINDOW).toEqual({ pre: 60, post: 10 });
+    expect(REPLAY_DEFAULT_WINDOW.pre).toBeGreaterThan(7.02);
+  });
+
+  it("presets are ±5 s / 60 s / 120 s and never exceed the server cap", () => {
+    expect(REPLAY_WINDOW_PRESETS.map((p) => p.label)).toEqual(["±5 s", "60 s", "120 s"]);
+    expect(REPLAY_WINDOW_PRESETS.some((p) => sameWindow(p, REPLAY_DEFAULT_WINDOW))).toBe(true);
+    for (const p of REPLAY_WINDOW_PRESETS) {
+      expect(p.pre).toBeLessThanOrEqual(REPLAY_WINDOW_CAP);
+      expect(p.post).toBeLessThanOrEqual(REPLAY_WINDOW_CAP);
+    }
+    expect(REPLAY_WINDOW_PRESETS[2].pre).toBe(REPLAY_WINDOW_CAP);
+  });
+
+  it("header names the fetched window: 'N observed changes in −60 s … +10 s'", () => {
+    expect(replayWindowHeader(7, { pre: 60, post: 10 })).toBe("7 observed changes in −60 s … +10 s");
+    expect(replayWindowHeader(1, { pre: 120, post: 10 })).toBe("1 observed change in −120 s … +10 s");
+    expect(replayWindowHeader(0, { pre: 5, post: 5 })).toBe("0 observed changes in −5 s … +5 s");
   });
 });
 

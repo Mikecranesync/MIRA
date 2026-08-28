@@ -5,6 +5,7 @@
 // (STRM-1) and a buffered turn are byte-identical by construction.
 
 import { machineEvidenceEntries, type MachineEvidenceEntry } from "./replay";
+import { visualObservationEntries, type VisualObservationEntry } from "./sensor";
 
 export interface ChatCitation {
   citationId: string;
@@ -41,6 +42,10 @@ export interface ChatTurn {
    *  in the turn's evidence[] and echoed on the existing `evidence` frame.
    *  Absent on servers that predate it; never inferred. */
   machineEvidence?: MachineEvidenceEntry[];
+  /** Sensor LOOK (S5 D3): `{kind:"visual_observation"}` entries the server
+   *  re-derived from `body.visualEvidence` and echoed on the same `evidence`
+   *  frame. Never a citation. Absent = none. */
+  visualEvidence?: VisualObservationEntry[];
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -86,6 +91,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
   let machineEvidence: MachineEvidenceEntry[] | undefined;
+  let visualEvidence: VisualObservationEntry[] | undefined;
   let buffer = "";
 
   const applyBlock = (block: string) => {
@@ -108,11 +114,21 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         evidenceLabel = String(frame.label ?? "");
         // Same frame kind (no new SSE frame, D5). The Hub puts the entry on
         // the frame as ONE object (`machineEvidence: {kind:"machine_evidence",…}`,
-        // chat/route.ts evidenceFrame); an echoed evidence[] array is also
-        // read. Either way only machine-evidence entries are kept.
-        const raw = frame.machineEvidence ?? frame.evidence ?? frame.entries;
-        const entries = machineEvidenceEntries(raw == null || Array.isArray(raw) ? raw : [raw]);
+        // chat/route.ts evidenceFrame) and, additively, the LOOK photo the
+        // same way (`visualEvidence: {kind:"visual_observation",…}`); an
+        // echoed evidence[] array is also read. Every carrier is flattened
+        // and each entry goes to its own reader by `kind` — so a visual entry
+        // riding in the machine field (or vice versa) is still found.
+        const carried: unknown[] = [];
+        for (const raw of [frame.machineEvidence, frame.visualEvidence, frame.evidence, frame.entries]) {
+          if (raw == null) continue;
+          if (Array.isArray(raw)) carried.push(...raw);
+          else carried.push(raw);
+        }
+        const entries = machineEvidenceEntries(carried);
         if (entries.length) machineEvidence = entries;
+        const visual = visualObservationEntries(carried);
+        if (visual.length) visualEvidence = visual;
       }
     } catch {
       /* keep parsing subsequent frames */
@@ -127,6 +143,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     evidenceLabel,
     followups,
     ...(machineEvidence ? { machineEvidence } : {}),
+    ...(visualEvidence ? { visualEvidence } : {}),
   });
 
   return {

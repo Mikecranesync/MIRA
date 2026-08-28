@@ -16,7 +16,18 @@ vi.mock("../../api/client", async (importOriginal) => {
 
 import { ApiError } from "../../api/client";
 import { lookAtPhoto } from "../../api/resources";
-import { hhmmss, lookErrorCopy, lookQuestion, LOOK_DEFAULT_QUESTION, SENSOR_MODES } from "../sensor";
+import {
+  hhmmss,
+  lookErrorCopy,
+  lookQuestion,
+  visualCardTitle,
+  visualObservationEntries,
+  LOOK_DEFAULT_QUESTION,
+  LOOK_SAVED_COPY,
+  SENSOR_MODES,
+} from "../sensor";
+import { machineEvidenceEntries } from "../replay";
+import { normalizeCitations, parseChatSse } from "../sse";
 import { nameplateErrorCopy } from "../nameplate-flow";
 
 beforeEach(() => uploadMultipart.mockReset());
@@ -149,5 +160,61 @@ describe("lookErrorCopy — same intake mapping as the nameplate lane", () => {
     expect(s503).not.toMatch(/nameplate/i);
     expect(sNet).not.toMatch(/nameplate/i);
     expect(s503).not.toBe(sNet);
+  });
+});
+
+describe("S5 D1: the LOOK card names where the photo went", () => {
+  it("says 'files' — LOOK links in workspace_file_links, not equipment_notebook_sources", () => {
+    expect(LOOK_SAVED_COPY).toBe("Phone photo — saved to this notebook's files.");
+    expect(LOOK_SAVED_COPY).not.toMatch(/sources/);
+  });
+});
+
+describe("S5 D3: the persisted {kind:\"visual_observation\"} entry", () => {
+  const CAPTURED = "2026-08-28T02:14:21.000Z";
+  const visual = { kind: "visual_observation", fileId: "f-park", capturedAt: CAPTURED, provenance: "phone_photo" };
+  const citation = { citationId: "1", sourceTitle: "gs10.pdf", page: 12, docId: "d1" };
+  const machine = { kind: "machine_evidence", assetId: "a", anchorAt: CAPTURED, pre: 60, post: 10, rowCount: 2, freshness: "stale" };
+
+  it("card title is exactly 'Visual observation · Photo captured · HH:MM:SS'", () => {
+    expect(visualCardTitle(CAPTURED)).toBe(`Visual observation · Photo captured · ${hhmmss(CAPTURED)}`);
+  });
+
+  it("is read by visualObservationEntries only; citations and machine readers skip it", () => {
+    const evidence = [citation, visual, machine, { kind: "visual_observation" }, "junk", null];
+    expect(visualObservationEntries(evidence)).toEqual([visual]);
+    // A visual entry without a fileId is nothing to render — dropped, never a blank card.
+    expect(visualObservationEntries([{ kind: "visual_observation", capturedAt: CAPTURED }])).toEqual([]);
+    expect(normalizeCitations(evidence).map((c) => c.citationId)).toEqual(["1"]);
+    expect(machineEvidenceEntries(evidence)).toHaveLength(1);
+    expect(visualObservationEntries(undefined)).toEqual([]);
+  });
+
+  it("the live evidence frame carries it additively (single object, like machineEvidence) — basis untouched", () => {
+    const body =
+      'data: {"kind":"content","content":"A"}\n\n' +
+      `data: {"kind":"sources","citations":[${JSON.stringify(citation)}]}\n\n` +
+      `data: {"kind":"evidence","basis":"oem_documentation","label":"x","visualEvidence":${JSON.stringify(visual)}}\n\n` +
+      'data: {"kind":"status","status":"answered"}\n\n';
+    const t = parseChatSse(body);
+    expect(t.evidenceBasis).toBe("oem_documentation");
+    expect(t.citations).toHaveLength(1);
+    expect(t.visualEvidence).toEqual([visual]);
+    expect("machineEvidence" in t).toBe(false);
+  });
+
+  it("a visual entry riding in the machine field or an echoed evidence[] is still found by kind", () => {
+    const inMachineField = parseChatSse(
+      `data: {"kind":"evidence","basis":"machine_history","label":"x","machineEvidence":[${JSON.stringify(machine)},${JSON.stringify(visual)}]}\n\n`,
+    );
+    expect(inMachineField.machineEvidence).toHaveLength(1);
+    expect(inMachineField.visualEvidence).toEqual([visual]);
+    const echoed = parseChatSse(
+      `data: {"kind":"evidence","basis":"oem_documentation","label":"x","evidence":[${JSON.stringify(citation)},${JSON.stringify(visual)}]}\n\n`,
+    );
+    expect(echoed.visualEvidence).toEqual([visual]);
+    // No entry → the field is absent, never an empty claim.
+    const plain = parseChatSse('data: {"kind":"evidence","basis":"oem_documentation","label":"y"}\n\n');
+    expect("visualEvidence" in plain).toBe(false);
   });
 });

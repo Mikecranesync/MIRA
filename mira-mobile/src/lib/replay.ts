@@ -138,6 +138,39 @@ export function tagShortName(tag: string): string {
   return parts[parts.length - 1] ?? tag;
 }
 
+// --- the window the technician is looking at (S5 D2) -------------------------
+
+/** Client default. The server's own default (5 s / 2 s) is too narrow to
+ *  reach a cause that sits seconds before the fault (the S5 e-stop wiring
+ *  fault at −7.02 s), so the phone always asks for its window explicitly. */
+export const REPLAY_DEFAULT_WINDOW = { pre: 60, post: 10 } as const;
+
+/** Server cap (§4.3): 120 s either side. */
+export const REPLAY_WINDOW_CAP = 120;
+
+export interface ReplayWindow {
+  pre: number;
+  post: number;
+}
+
+/** The segmented control in the timeline header. Each press re-fetches. */
+export const REPLAY_WINDOW_PRESETS: ReadonlyArray<{ label: string } & ReplayWindow> = [
+  { label: "±5 s", pre: 5, post: 5 },
+  { label: "60 s", pre: REPLAY_DEFAULT_WINDOW.pre, post: REPLAY_DEFAULT_WINDOW.post },
+  { label: "120 s", pre: REPLAY_WINDOW_CAP, post: REPLAY_DEFAULT_WINDOW.post },
+];
+
+export function sameWindow(a: ReplayWindow, b: ReplayWindow): boolean {
+  return a.pre === b.pre && a.post === b.post;
+}
+
+/** "7 observed changes in −60 s … +10 s" — the header names the window the
+ *  rows were fetched for, so what the technician sees and what Ask MIRA sends
+ *  are the same numbers. */
+export function replayWindowHeader(rowCount: number, w: ReplayWindow): string {
+  return `${rowCount} observed change${rowCount === 1 ? "" : "s"} in −${w.pre} s … +${w.post} s`;
+}
+
 // --- the Ask-MIRA hand-off (§4.4) -------------------------------------------
 
 /** The selected window, sent as `body.machineEvidence`. The server re-fetches

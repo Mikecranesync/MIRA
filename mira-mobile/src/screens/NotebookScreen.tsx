@@ -34,19 +34,19 @@ import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import { visualCardTitle, visualObservationEntries, type VisualObservationEntry } from "../lib/sensor";
 import {
   basisCaption,
   machineEvidenceEntries,
   replayCardTitle,
   type MachineEvidenceEntry,
-  type MachineEvidenceWindow,
 } from "../lib/replay";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
-import { SensorSheet } from "./SensorSheet";
+import { SensorSheet, type SensorAskEvidence } from "./SensorSheet";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -219,7 +219,7 @@ export function NotebookScreen({
   const sendQuestion = async (
     raw: string,
     replay?: PendingSend,
-    machineEvidence?: MachineEvidenceWindow,
+    sensor?: SensorAskEvidence,
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
@@ -232,9 +232,10 @@ export function NotebookScreen({
         turns,
         liveTurns.filter((t) => t.a.status !== "stopped"),
       ),
-      // Sensor REPLAY (§4.4): the selected window rides on the body so a
-      // Retry re-sends it byte-identically.
-      ...(machineEvidence ? { machineEvidence } : {}),
+      // Sensor REPLAY (§4.4) / LOOK (S5 D3): the selected window and the
+      // parked photo ride on the body so a Retry re-sends them byte-identically.
+      ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
+      ...(sensor?.visualEvidence ? { visualEvidence: sensor.visualEvidence } : {}),
     };
     const ctl = new AbortController();
     abortRef.current = ctl;
@@ -248,6 +249,7 @@ export function NotebookScreen({
         mode: body.mode,
         history: body.history,
         machineEvidence: body.machineEvidence,
+        visualEvidence: body.visualEvidence,
         signal: ctl.signal,
         onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
@@ -581,6 +583,7 @@ export function NotebookScreen({
                     General guidance — not grounded in this machine's documents.
                   </div>
                 )}
+                <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
                 <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
@@ -639,7 +642,10 @@ export function NotebookScreen({
                   </div>
                 )}
                 {t.a.status !== "stopped" && (
-                  <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
+                  <>
+                    <VisualEvidenceCards entries={t.a.visualEvidence ?? []} />
+                    <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
+                  </>
                 )}
                 <div>
                   {t.a.citations.map((c) => (
@@ -935,15 +941,45 @@ export function NotebookScreen({
             setSensorOpen(false);
             setSheetOpen(true);
           }}
-          onAsk={(question, machineEvidence) => {
+          onAsk={(question, evidence) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.
             setSensorOpen(false);
             setPanel("chat");
-            void sendQuestion(question, undefined, machineEvidence);
+            void sendQuestion(question, undefined, evidence);
           }}
         />
       )}
+    </>
+  );
+}
+
+/** Sensor LOOK in the conversation (§4.5, S5 D3): the persisted
+ *  `{kind:"visual_observation"}` entries render as a "Visual observation ·
+ *  Photo captured · HH:MM:SS" card with the parked photo's thumbnail
+ *  (`SourceThumb`, never a markdown <img>). Not a citation, not a chip, and
+ *  never part of the basis. No entry, no card. */
+function VisualEvidenceCards({ entries }: { entries: VisualObservationEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <>
+      {entries.map((e, i) => (
+        <div
+          key={`${e.fileId}-${i}`}
+          className="card sensor-evidence"
+          data-testid="visual-observation-card"
+          style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
+        >
+          <SourceThumb fileId={e.fileId} />
+          <div className="grow">
+            <div className="title">{visualCardTitle(e.capturedAt)}</div>
+            <div className="meta">
+              {e.provenance === "phone_photo" ? "Phone photo" : e.provenance} · saved to this
+              notebook&apos;s files
+            </div>
+          </div>
+        </div>
+      ))}
     </>
   );
 }

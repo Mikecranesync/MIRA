@@ -14,7 +14,7 @@ vi.mock("../../api/client", async (importOriginal) => {
 
 import { ApiError } from "../../api/client";
 import { bindNotebookAsset, toNotebook, type Asset, type Notebook } from "../../api/resources";
-import { readScan, type ReadDeps } from "../sensor-read";
+import { bindRefusalMessage, readScan, type ReadDeps } from "../sensor-read";
 import { assetCardState, resolvedAssetFromNotebook } from "../notebook-asset-card";
 
 const ASSET = { id: "asset-1", tag: "CV-101", name: "Discharge Conveyor" } as unknown as Asset;
@@ -82,6 +82,35 @@ describe("readScan — progressive context (§2.6)", () => {
     const out = await readScan("CV-101", { notebookId: "nb-1", boundEntityId: null }, d);
     expect(out).toMatchObject({ kind: "failed", message: /hasn't been approved/ });
     expect(d.openAssetNotebook).not.toHaveBeenCalled();
+  });
+
+  it("S5 D6: a bind the server refuses with 404 renders the server's sentence, never 'Not found (or no access)'", async () => {
+    // The Hub's PUT …/asset BIND_ERRORS: asset_not_found → 404 + a sentence.
+    // The tag RESOLVED, so this is a bind refusal, not a missing tag.
+    const d = deps({
+      bindNotebookAsset: vi.fn(async () => {
+        throw new ApiError("not_found", 404, "That asset isn't in this account.");
+      }),
+    });
+    const out = await readScan("CV-101", { notebookId: "nb-1", boundEntityId: null }, d);
+    expect(out).toEqual({ kind: "failed", message: "That asset isn't in this account." });
+    expect(d.openAssetNotebook).not.toHaveBeenCalled();
+  });
+
+  it("S5 D6: a bare 404 / discriminator-only refusal reads as a bind refusal, still never 'Not found'", async () => {
+    for (const detail of ["HTTP 404", "asset_not_found", ""]) {
+      const d = deps({
+        bindNotebookAsset: vi.fn(async () => {
+          throw new ApiError("not_found", 404, detail);
+        }),
+      });
+      const out = await readScan("CV-101", { notebookId: "nb-1", boundEntityId: null }, d);
+      expect(out).toEqual({ kind: "failed", message: "Could not attach that machine to this notebook." });
+    }
+    expect(bindRefusalMessage(new ApiError("not_found", 404, "Notebook not found."))).toBe("Notebook not found.");
+    expect(bindRefusalMessage(new ApiError("server", 500, "HTTP 500"))).toBe("Could not attach that machine to this notebook.");
+    expect(bindRefusalMessage(new Error("boom"))).toBe("Could not attach that machine to this notebook.");
+    expect(bindRefusalMessage(new ApiError("not_found", 404, "x")).includes("Not found (or no access)")).toBe(false);
   });
 
   it("an unknown tag is notfound; nothing is bound or opened", async () => {

@@ -10,18 +10,32 @@ import {
   FRESHNESS_LABEL,
   FRESHNESS_TITLE,
   LIVE_UNAVAILABLE_BANNER,
+  REPLAY_WINDOW_PRESETS,
   clocksDiverge,
   formatRelativeSeconds,
   formatValue,
   liveUnavailable,
+  replayWindowHeader,
+  sameWindow,
   tagShortName,
   type AssetHistory,
+  type ReplayWindow,
 } from "../lib/replay";
 import { hhmmss } from "../lib/sensor";
 
-export function ReplayTimeline({ history }: { history: AssetHistory }) {
+export function ReplayTimeline({
+  history,
+  onWindowChange,
+}: {
+  history: AssetHistory;
+  /** S5 D2: the technician widens/narrows the window from the header; the
+   *  caller re-fetches. The header names the window the rows were fetched
+   *  for (`history.pre/post`) — the same numbers Ask MIRA sends. */
+  onWindowChange?: (w: ReplayWindow) => void;
+}) {
   const { anchor, rows, freshness, summary } = history;
   const label = FRESHNESS_LABEL[freshness.overall];
+  const current: ReplayWindow = { pre: history.pre, post: history.post };
   return (
     <div className="card replay" data-testid="replay-timeline" data-freshness={freshness.overall}>
       <div className="title">Fault: {hhmmss(anchor.at)}</div>
@@ -31,6 +45,29 @@ export function ReplayTimeline({ history }: { history: AssetHistory }) {
           {label}
         </span>
         {anchor.source === "state_window" ? " · anchored on the recorded fault window" : ""}
+      </div>
+      <div className="replay-window">
+        <span className="meta" data-testid="replay-window-header">
+          {replayWindowHeader(rows.length, current)}
+        </span>
+        {onWindowChange && (
+          <div className="segmented" role="group" aria-label="Replay window">
+            {REPLAY_WINDOW_PRESETS.map((p) => {
+              const active = sameWindow(p, current);
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  className={`segment${active ? " segment-active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => !active && onWindowChange({ pre: p.pre, post: p.post })}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       {liveUnavailable(freshness) && (
         <div className="replay-banner" role="status">

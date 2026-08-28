@@ -405,6 +405,16 @@ textarea {
   border-left: 3px solid var(--fl-amber); background: var(--fl-surface);
   color: var(--fl-ink); border-radius: var(--fl-radius); font-size: 13px;
 }
+/* Window control (S5 D2): a segmented group; the active segment is selection
+   (accent), never a state colour. */
+.replay-window { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.segmented { display: inline-flex; border: 1px solid var(--fl-line); border-radius: var(--fl-radius); overflow: hidden; }
+.segment {
+  margin: 0; padding: 4px 10px; font-size: 12px; border: 0; border-radius: 0;
+  background: var(--fl-surface); color: var(--fl-ink-muted); min-height: 0; width: auto;
+}
+.segment + .segment { border-left: 1px solid var(--fl-line); }
+.segment-active { background: var(--fl-accent); color: var(--flm-on-primary); }
 .replay-rows { list-style: none; margin: 8px 0 0; padding: 0; }
 .replay-row {
   display: grid; grid-template-columns: 5.5em 1fr auto auto; column-gap: 8px;
