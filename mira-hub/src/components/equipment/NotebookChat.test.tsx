@@ -6,6 +6,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Bubble, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
+import { persistedTurns } from "./notebook-chat-utils";
 
 const citation = {
   citationId: "1",
@@ -141,5 +142,27 @@ describe("Bubble — follow-up suggestion chips", () => {
     expect(renderToStaticMarkup(<Bubble turn={turn} />)).not.toContain("valid range");
     const bare: ChatTurn = { id: "a11", role: "assistant", content: "Hi.", status: "answered" };
     expect(renderToStaticMarkup(<Bubble turn={bare} onFollowup={() => {}} />)).not.toContain("Ask follow-up");
+  });
+});
+
+describe("Bubble — rehydrated stopped turn (STRM-2 on reload)", () => {
+  it("renders the partial with the Stopped caption, no citation chips, no follow-ups", () => {
+    const [, a] = persistedTurns([
+      {
+        id: "t1",
+        question: "And F005?",
+        answerStatus: "error",
+        answerText: "F005 is over [1]",
+        evidence: [citation],
+        basis: "oem_documentation",
+      },
+    ]);
+    const html = renderToStaticMarkup(<Bubble turn={a as ChatTurn} onFollowup={() => {}} />);
+    expect(html).toContain("F005 is over");
+    expect(html).toContain('data-testid="stopped-caption"');
+    expect(html).not.toContain("Open citation");
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Ask follow-up");
+    expect(html).not.toContain("General guidance");
   });
 });

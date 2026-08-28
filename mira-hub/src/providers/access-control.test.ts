@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("next-auth/react", () => ({ getSession: vi.fn() }));
 
 import { getSession } from "next-auth/react";
-import { accessControlProvider, canAccess } from "@/providers/access-control";
+import { accessControlProvider, canAccess, NAV_ITEMS } from "@/providers/access-control";
 
 const mockSession = (user: Record<string, unknown> | null) =>
   vi.mocked(getSession).mockResolvedValue((user ? { user } : null) as never);
@@ -60,5 +60,18 @@ describe("canAccess — unknown resource falls to admin/owner only", () => {
   it("technician cannot touch an unlisted resource; admin can", () => {
     expect(canAccess("technician", "unlisted", "list")).toBe(false);
     expect(canAccess("admin", "unlisted", "list")).toBe(true);
+  });
+});
+
+describe("NAV_ITEMS — Equipment Notebooks in the hub navigation (PLAT-1)", () => {
+  it("lists /equipment as 'Notebooks', visible to every tenant role, ungated", () => {
+    const item = NAV_ITEMS.find((i) => i.href === "/equipment");
+    expect(item).toBeDefined();
+    expect(item?.label).toBe("Notebooks");
+    expect(item?.group).toBe("primary");
+    expect(item?.capability).toBeUndefined();
+    for (const role of ["technician", "manager", "scheduler", "admin", "operator", "owner"] as const) {
+      expect(item?.roles, role).toContain(role);
+    }
   });
 });
