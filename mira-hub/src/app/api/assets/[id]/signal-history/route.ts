@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
 import { isUndefinedRelationOrColumn } from "@/lib/machine-memory";
+import { resolveAssetUnsPath } from "@/lib/asset-uns-path";
 import { formatTagValue } from "@/lib/gs10-display";
 
 export const dynamic = "force-dynamic";
@@ -34,17 +35,7 @@ export async function GET(
   try {
     const result = await withTenantContext(ctx.tenantId, async (c) => {
       // Same kg_entities asset→uns_path bridge as the machine-memory route.
-      const unsPath = await c
-        .query(
-          `SELECT uns_path::text AS uns_path
-             FROM kg_entities
-            WHERE tenant_id = $1
-              AND entity_type = 'equipment'
-              AND (id::text = $2 OR entity_id = $2)
-            LIMIT 1`,
-          [ctx.tenantId, id],
-        )
-        .then((r) => r.rows[0]?.uns_path ?? null);
+      const unsPath = await resolveAssetUnsPath(c, ctx.tenantId, id);
 
       if (!unsPath) return { uns_path: null, series: {} };
 

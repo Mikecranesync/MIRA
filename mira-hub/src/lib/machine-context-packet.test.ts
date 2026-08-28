@@ -192,4 +192,87 @@ describe("renderMachineEvidenceSection (the Ask-MIRA bridge)", () => {
     const packet = await buildMachineContextPacket(makeClient({ unsPath: null }), "tenant-1", "asset-1", NOW);
     expect(renderMachineEvidenceSection(packet)).toBe("");
   });
+
+  // ── S5 D7: the replay variant forbids "live" for recorded rows and value invention ──
+  const REPLAY_RULES =
+    'RULES FOR THE RECORDED ROWS: these rows are RECORDED HISTORY, not live — never use the word "live" for them. Every tag value you state must appear verbatim in the recorded rows listed below. If a tag is absent from the window, say it was not recorded in the window; do not infer, estimate, or assume its value (a tag you do not see is NOT zero).';
+  const LIVE_HEADING =
+    '## Live Machine Evidence (observed now)\nThe following is MACHINE-OBSERVED evidence from this asset\'s live tags and history (current decoded tag values, freshness-aware state, a deterministic assessment, and anomaly detections). Treat it as current, citable observations — cite it as "machine memory" when you use it. In your answer, clearly separate: (1) this LIVE evidence, (2) asset/manual context, (3) your inference, and (4) the recommended next checks.\n\n';
+
+  it("replay variant (D7): states the recorded-history rules in the rendered instruction", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    packet.replay = {
+      anchor_at: "2026-07-04T11:30:00.000Z",
+      started_at: "2026-07-04T11:29:55.000Z",
+      stopped_at: "2026-07-04T11:30:02.000Z",
+      freshness: "stale",
+      rows: [
+        { kind: "event", event_timestamp: "2026-07-04T11:29:58.000Z", ingested_at: "2026-07-04T11:30:00.500Z", tag: "Conveyor/photo_eye", value: "true", quality: "good" },
+      ],
+    };
+    const section = renderMachineEvidenceSection(packet);
+    expect(section).toContain("## Machine Evidence (replayed history around 2026-07-04T11:30:00.000Z)");
+    expect(section).toContain(REPLAY_RULES);
+    // the rules precede the rows they govern
+    expect(section.indexOf(REPLAY_RULES)).toBeLessThan(section.indexOf("- Replayed observations (1 recorded around"));
+    // the existing four-bucket instruction (RECORDED flavour) is intact
+    expect(section).toContain("(1) this RECORDED evidence, (2) asset/manual context, (3) your inference, and (4) the recommended next checks");
+    expect(section).not.toContain("Live Machine Evidence (observed now)");
+  });
+
+  it("non-replay packets render byte-identically (the live heading + instruction are pinned; no replay rules)", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    const section = renderMachineEvidenceSection(packet);
+    expect(section.startsWith(LIVE_HEADING)).toBe(true);
+    expect(section).not.toContain("RECORDED HISTORY");
+    expect(section).not.toContain("RULES FOR THE RECORDED ROWS");
+    // MAJOR-2 regression guard: the live label is untouched off the replay path.
+    expect(section).toContain("- Live signals (observed now):");
+    expect(section).not.toContain("Current signals (");
+  });
+
+  // MAJOR-2: on a replay packet the asset's CURRENT tags are still rendered
+  // (they are useful context) but they are NOT the fault state, and the old
+  // "observed now" label invited exactly that reading next to a replayed fault.
+  it("replay variant relabels the current-signal block and names its freshness", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    packet.replay = {
+      anchor_at: "2026-07-04T11:30:00.000Z",
+      started_at: "2026-07-04T11:29:55.000Z",
+      stopped_at: "2026-07-04T11:30:02.000Z",
+      freshness: "stale",
+      rows: [
+        { kind: "event", event_timestamp: "2026-07-04T11:29:58.000Z", ingested_at: null, tag: "Conveyor/photo_eye", value: "true", quality: "good" },
+      ],
+    };
+    const section = renderMachineEvidenceSection(packet);
+    expect(section).toContain(
+      "- Current signals (stale, NOT part of the replayed window — do not treat as the fault state):",
+    );
+    expect(section).not.toContain("- Live signals (observed now):");
+    // the current values themselves are unchanged
+    expect(section).toMatch(/vfd_dc_bus: 328\.6 V/);
+  });
+
+  // m6: the prompt names the same leaf the mobile timeline shows. A '/'-only
+  // split left a dotted UNS tag whole in the prompt while the UI showed the leaf.
+  it("replay rows take their leaf name from BOTH separators ('.' and '/')", async () => {
+    const packet = await buildMachineContextPacket(healthyStoppedClient(), "tenant-1", "asset-1", NOW);
+    packet.replay = {
+      anchor_at: "2026-07-04T11:30:00.000Z",
+      started_at: "2026-07-04T11:29:55.000Z",
+      stopped_at: "2026-07-04T11:30:02.000Z",
+      freshness: "stale",
+      rows: [
+        { kind: "event", event_timestamp: "2026-07-04T11:29:58.000Z", ingested_at: null, tag: "enterprise.garage.demo_cell.cv_101.fault_alarm", value: "true", quality: "good" },
+        { kind: "event", event_timestamp: "2026-07-04T11:29:59.000Z", ingested_at: null, tag: "Conveyor/photo_eye", value: "true", quality: "good" },
+        { kind: "diff", event_timestamp: "2026-07-04T11:30:00.000Z", ingested_at: null, tag: "enterprise.garage.cv_101/run_cmd", prev_value: "false", value: "true", quality: null },
+      ],
+    };
+    const section = renderMachineEvidenceSection(packet);
+    expect(section).toContain(" fault_alarm: true");
+    expect(section).not.toContain("enterprise.garage.demo_cell.cv_101.fault_alarm:");
+    expect(section).toContain(" photo_eye: true");
+    expect(section).toContain(" run_cmd: false → true");
+  });
 });

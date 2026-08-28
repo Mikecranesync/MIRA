@@ -5,18 +5,21 @@
 // (hub has no jsdom/RTL — audit §11).
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw } from "lucide-react";
+import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera } from "lucide-react";
 import { API_BASE } from "@/lib/config";
-import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import type { EvidenceCitation, MachineEvidenceEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
 import { AnswerMarkdown } from "./notebook-markdown";
 import {
+  basisLabel,
   buildChatBody,
   growTextarea,
   isAbortError,
   isEnterToSend,
+  machineReplayCaption,
   postNotebookChat,
   restoreComposer,
   stoppedTurn,
+  visualObservationCaption,
   type ChatBody,
 } from "./notebook-chat-utils";
 
@@ -44,6 +47,12 @@ export type ChatTurn = {
    *  frame AND persisted on the turn row (084/#3387) — never inferred from
    *  citation count. */
   basis?: string | null;
+  /** Sensor REPLAY (D5): machine windows this answer was grounded on — from
+   *  the `evidence` frame live, from evidence[] on reload. Never citations. */
+  machineEvidence?: MachineEvidenceEntry[];
+  /** Sensor LOOK (S5 D3): server-verified phone photos this turn was asked
+   *  with — from the `evidence` frame live, from evidence[] on reload. */
+  visualEvidence?: VisualObservationEntry[];
   /** Deterministic follow-up questions from the server (answered turns only). */
   followups?: string[];
   /** The technician pressed Stop mid-stream (STRM-2): `content` is what had
@@ -121,16 +130,71 @@ export function Bubble({
           Not found in the selected sources. Add a source or rephrase.
         </p>
       )}
-      {turn.basis === "general_reasoning" && (
+      {(turn.machineEvidence?.length ?? 0) > 0 && (
+        <div className="mt-2 flex flex-col gap-1" data-testid="machine-replay-cards">
+          {turn.machineEvidence!.map((e) => (
+            <div
+              key={`${e.assetId}|${e.anchorAt}`}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--foreground-muted)",
+                background: "var(--surface-1)",
+              }}
+              data-testid="machine-replay-card"
+              data-freshness={e.freshness}
+            >
+              <Activity size={12} aria-hidden />
+              <span className="min-w-0 truncate">{machineReplayCaption(e)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {(turn.visualEvidence?.length ?? 0) > 0 && (
+        <div className="mt-2 flex flex-col gap-1" data-testid="visual-observation-cards">
+          {turn.visualEvidence!.map((e) => (
+            <div
+              key={`${e.fileId}|${e.capturedAt}`}
+              className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--foreground-muted)",
+                background: "var(--surface-1)",
+              }}
+              data-testid="visual-observation-card"
+              data-file-id={e.fileId}
+            >
+              {/* The existing web file-preview seam: the byte-serving door
+                  (/api/namespace/files/[id], inline for raster) — the same
+                  <img> the namespace Pictures grid uses. Never markdown. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${API_BASE}/api/namespace/files/${e.fileId}`}
+                alt="Photo captured"
+                loading="lazy"
+                className="h-10 w-10 shrink-0 rounded object-cover"
+                style={{ border: "1px solid var(--border)" }}
+              />
+              <Camera size={12} aria-hidden />
+              <span className="min-w-0 truncate">{visualObservationCaption(e)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {basisLabel(turn.basis) && (
         <p
           className="mt-1 text-xs font-medium"
           style={{
             color: "var(--foreground-muted)",
-            borderLeft: "3px solid var(--status-yellow)",
+            // Amber is reserved for the one basis that is NOT machine evidence
+            // (spec §1.3); every other basis is a muted statement of fact.
+            borderLeft: `3px solid ${turn.basis === "general_reasoning" ? "var(--status-yellow)" : "var(--border)"}`,
             paddingLeft: 8,
           }}
+          data-testid="basis-caption"
+          data-basis={turn.basis ?? undefined}
         >
-          General guidance — not grounded in this machine&apos;s documents.
+          {basisLabel(turn.basis)}
         </p>
       )}
       {onFollowup && turn.status === "answered" && (turn.followups?.length ?? 0) > 0 && (
@@ -249,7 +313,7 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, basis, followups } = await postNotebookChat(
+      const { content, citations, status, basis, followups, machineEvidence, visualEvidence } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
@@ -272,6 +336,8 @@ export function NotebookChat({
                 // Only a served answer carries a basis claim — mirrors what
                 // the server persists (084).
                 basis: status === "answered" ? basis : null,
+                ...(status === "answered" && machineEvidence ? { machineEvidence: [machineEvidence] } : {}),
+                ...(status === "answered" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
                 followups,
               }
             : x,
