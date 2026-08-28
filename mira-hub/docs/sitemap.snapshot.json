@@ -160,6 +160,7 @@
     "/api/equipment-notebooks/[id]",
     "/api/equipment-notebooks/[id]/asset",
     "/api/equipment-notebooks/[id]/chat",
+    "/api/equipment-notebooks/[id]/look",
     "/api/equipment-notebooks/[id]/nameplate/confirm",
     "/api/equipment-notebooks/[id]/nameplate/recognize",
     "/api/equipment-notebooks/[id]/sources",

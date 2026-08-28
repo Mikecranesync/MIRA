@@ -175,6 +175,7 @@
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
 | `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
+| `/api/equipment-notebooks/[id]/look` | dynamic | `api/equipment-notebooks/[id]/look/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
