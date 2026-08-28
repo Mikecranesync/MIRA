@@ -25,10 +25,17 @@ shared, real device — touch it with etiquette or not at all.
 | Find / tap by text | `device.py find "Sensor"` → `device.py tap-text "Sensor"` (refuses when our app is not foreground) |
 | Type into a WebView input | `device.py type "…"` — `input text` drops characters in React inputs; char-by-char ~90 ms |
 | DOM-level evidence (debug builds only) | `device.py cdp` then `import {CDP} from tools/mobile-e2e/cdp.mjs` — `evaluate`, `key`, `touch`, `growth`, `screenshot` |
-| Release build (no CDP) | uiautomator only; pull `pm path` base.apk and `sha256sum` it against the built artifact |
+| Release build (no CDP) | uiautomator only; pull `pm path` base.apk (~4 MB, seconds) and `sha256sum` it against the built artifact |
+| Inspect an APK's signer before installing | `$LOCALAPPDATA/Android/Sdk/build-tools/<ver>/apksigner.bat verify --print-certs X.apk` (release upload key prefix `23:95:B9:60`); version via `aapt dump badging X.apk` |
+| Installed hash ≠ artifact | Stop and report the mismatch (installed version/cert vs artifact). Install only when the artifact's cert equals the installed cert (`install -r`, login kept); a different cert means uninstall = logout of a real account → ask Mike first |
+| Wait for an answer | poll the dump for the `Stop` control / "Searching your docs…" to disappear, up to 90 s (screenshot at 30/60/90); still busy after 90 s = FAIL "no answer", not "still loading" |
+| Element has no text (chip, ✕, thumb) | match `content-desc` (`find(content_desc="Open citation")`), else pick by `resource-id`/class + bounds order from the dump; screenshot to confirm the tap landed |
 | Native picker from automation | push the fixture to `/sdcard/Pictures/` + `MEDIA_SCANNER_SCAN_FILE` broadcast; the picker then lists it. Debug builds may instead feed the component's hidden `<input type=file>` via CDP (say which path you used) |
 | Debug APK pointed at staging | local-only edits to `src/api/client.ts` API_BASE, `capacitor.config.ts` cleartext, `AndroidManifest` `usesCleartextTraffic` — never commit |
 | Build | `bun install --frozen-lockfile && bun run build && bunx cap sync android` (restore `capacitor.*.gradle` churn), `local.properties` sdk.dir with forward slashes, `JAVA_HOME=…/Android Studio/jbr`, `./gradlew assembleDebug` / release via `doppler run -p factorylm -c prd -- env ANDROID_KEYSTORE_FILE=C:/…/factorylm-upload.jks ./gradlew assembleRelease` |
+
+## Sensor BACK ladder (the contract to verify)
+One rung per hardware BACK, never an app exit mid-ladder: media viewer → Sensor mode (LOOK card / READ / REPLAY timeline) → Sensor mode picker → Sensor sheet closed (notebook) → notebook list → tab root (a further BACK backgrounds the app). Q1 chat: citation sheet ✕ / BACK closes the sheet, not the notebook.
 
 ## Phone etiquette (real device) — the run aborts, never the rule
 1. `adb devices` quiet ≠ free: check `mCurrentFocus` before EVERY tap batch; a call or another
