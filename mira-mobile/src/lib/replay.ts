@@ -54,8 +54,15 @@ export interface AssetHistory {
   provenance: "machine_memory";
   /** Server degradation (§4.3): the tables are missing, not merely empty. */
   reason?: "unavailable" | null;
+  /** The window the SERVER actually fetched (`window:{from,to,pre,post}` on the
+   *  wire) — not the one the client asked for. The server clamps to §4.3's
+   *  120 s cap, so echoing the request would misname both the timeline header
+   *  and the window Ask MIRA is handed. */
   pre: number;
   post: number;
+  /** Absolute bounds of that same fetched window, when the server names them. */
+  from?: string | null;
+  to?: string | null;
 }
 
 export type HistoryResult =
@@ -200,6 +207,9 @@ export interface MachineEvidenceEntry {
   post: number;
   rowCount: number;
   freshness: FreshnessSummary | Freshness | null;
+  /** Hub honesty field: the machine-history tables are missing, so `rowCount`
+   *  is not a count of "nothing happened" — there was nothing to count. */
+  reason?: "unavailable" | null;
   runId?: string | null;
   windowId?: string | null;
 }
@@ -223,6 +233,7 @@ export function machineEvidenceEntries(evidence: unknown): MachineEvidenceEntry[
       post: Number(e.post ?? 0),
       rowCount: Number(e.rowCount ?? 0),
       freshness: (e.freshness as FreshnessSummary | Freshness | null) ?? null,
+      reason: e.reason === "unavailable" ? "unavailable" : null,
       runId: e.runId != null ? String(e.runId) : null,
       windowId: e.windowId != null ? String(e.windowId) : null,
     }));
@@ -234,9 +245,25 @@ function overallOf(f: MachineEvidenceEntry["freshness"]): Freshness | null {
   return f.overall in FRESHNESS_LABEL ? f.overall : null;
 }
 
-/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" (§4.5). A
- *  missing freshness is left out rather than guessed. */
-export function replayCardTitle(e: Pick<MachineEvidenceEntry, "rowCount" | "anchorAt" | "freshness">): string {
+export const REPLAY_CARD_UNAVAILABLE = "Machine history unavailable";
+export const REPLAY_CARD_EMPTY = "No machine changes recorded in this window";
+
+/** "Machine Replay · 7 observed changes around 23:16:31 · Stale" (§4.5) — but
+ *  only when there is something to count. Three honest titles, matching the
+ *  Hub's `reason` / `rowCount` semantics:
+ *    • `reason === "unavailable"` — the machine-history tables are missing, so
+ *      neither a change count nor a freshness label would be a fact. Saying
+ *      "0 observed changes · Stale" here would claim the machine was quiet.
+ *    • `rowCount === 0` with no reason — the tables answered, and the answer
+ *      was "nothing changed in this window". That IS a finding, so it gets its
+ *      own sentence rather than a zero.
+ *    • otherwise the count + the Hub's freshness label; a missing freshness is
+ *      left out rather than guessed. */
+export function replayCardTitle(
+  e: Pick<MachineEvidenceEntry, "rowCount" | "anchorAt" | "freshness"> & { reason?: "unavailable" | null },
+): string {
+  if (e.reason === "unavailable") return REPLAY_CARD_UNAVAILABLE;
+  if (e.rowCount === 0) return REPLAY_CARD_EMPTY;
   const n = e.rowCount;
   const overall = overallOf(e.freshness);
   const parts = [

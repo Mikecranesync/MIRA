@@ -36,19 +36,30 @@ export function ReplayTimeline({
   const { anchor, rows, freshness, summary } = history;
   const label = FRESHNESS_LABEL[freshness.overall];
   const current: ReplayWindow = { pre: history.pre, post: history.post };
+  // Server degradation (§4.3): the machine-history tables are missing. There is
+  // nothing to count and nothing whose freshness could be labelled, so the
+  // count, the freshness label and the "showing recorded history" banner are
+  // all withheld — "0 observed changes · Stale" would claim the machine was
+  // quiet when we simply never looked.
+  const unavailable = history.reason === "unavailable";
   return (
     <div className="card replay" data-testid="replay-timeline" data-freshness={freshness.overall}>
       <div className="title">Fault: {hhmmss(anchor.at)}</div>
       <div className="meta">
-        {summary.summary?.trim() || "Machine Memory window"} ·{" "}
-        <span title={FRESHNESS_TITLE[freshness.overall]} data-testid="freshness-label">
-          {label}
-        </span>
+        {summary.summary?.trim() || "Machine Memory window"}
+        {unavailable ? null : (
+          <>
+            {" · "}
+            <span title={FRESHNESS_TITLE[freshness.overall]} data-testid="freshness-label">
+              {label}
+            </span>
+          </>
+        )}
         {anchor.source === "state_window" ? " · anchored on the recorded fault window" : ""}
       </div>
       <div className="replay-window">
         <span className="meta" data-testid="replay-window-header">
-          {replayWindowHeader(rows.length, current)}
+          {unavailable ? `−${current.pre} s … +${current.post} s` : replayWindowHeader(rows.length, current)}
         </span>
         {onWindowChange && (
           <div className="segmented" role="group" aria-label="Replay window">
@@ -69,18 +80,18 @@ export function ReplayTimeline({
           </div>
         )}
       </div>
-      {liveUnavailable(freshness) && (
+      {!unavailable && liveUnavailable(freshness) && (
         <div className="replay-banner" role="status">
           {LIVE_UNAVAILABLE_BANNER}
         </div>
       )}
-      {history.reason === "unavailable" && (
+      {unavailable && (
         <div className="meta" style={{ marginTop: 8 }}>
           Machine Memory isn&apos;t available for this workspace yet, so there is
           no recorded history to show.
         </div>
       )}
-      {history.reason !== "unavailable" && rows.length === 0 && (
+      {!unavailable && rows.length === 0 && (
         <div className="meta" style={{ marginTop: 8 }}>
           No recorded changes in the {history.pre} s before / {history.post} s
           after this fault.

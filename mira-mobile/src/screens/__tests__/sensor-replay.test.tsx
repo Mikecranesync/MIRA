@@ -209,6 +209,11 @@ describe("Sensor REPLAY (S4)", () => {
     await screen.findByTestId("replay-timeline");
     expect(screen.getByText(/isn't available for this workspace yet/)).toBeTruthy();
     expect(screen.queryByRole("listitem")).toBeNull();
+    // Nothing was read, so nothing is counted and nothing is labelled: an
+    // "0 observed changes · Stale" header would claim the machine was quiet.
+    expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/observed change/);
+    expect(screen.queryByTestId("freshness-label")).toBeNull();
+    expect(screen.queryByText(/Live unavailable/)).toBeNull();
   });
 
   it("S5 D2: the header names the fetched window and the segmented control re-fetches on widen", async () => {

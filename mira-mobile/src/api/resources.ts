@@ -1318,12 +1318,14 @@ export async function getAssetHistory(
     throw errorFromStatus(404, d);
   }
   const anchor = (d.anchor ?? {}) as Record<string, unknown>;
+  const w = (d.window ?? {}) as Record<string, unknown>;
+  const anchorAt = String(anchor.at ?? "");
   const freshness = (d.freshness ?? {}) as Record<string, unknown>;
   const rows = Array.isArray(d.rows) ? (d.rows as Record<string, unknown>[]) : [];
   const overall = String(freshness.overall ?? "unknown");
   const history: AssetHistory = {
     anchor: {
-      at: String(anchor.at ?? ""),
+      at: anchorAt,
       source: anchor.source === "explicit" ? "explicit" : "state_window",
       windowId: anchor.windowId != null ? String(anchor.windowId) : null,
       runId: anchor.runId != null ? String(anchor.runId) : null,
@@ -1349,10 +1351,38 @@ export async function getAssetHistory(
     summary: (d.summary ?? {}) as AssetHistory["summary"],
     provenance: "machine_memory",
     reason: d.reason === "unavailable" ? "unavailable" : null,
-    pre: Number(d.pre ?? opts.pre ?? 5),
-    post: Number(d.post ?? opts.post ?? 2),
+    // The window the SERVER fetched, which is nested (`historyResponseBody`
+    // emits `window:{from,to,pre,post}`), NOT the one we asked for. The server
+    // clamps to the §4.3 120 s cap, so echoing the request would misname the
+    // timeline header AND the window handed to Ask MIRA. Absolute bounds are
+    // the fallback when only `from`/`to` are named; the request is the last
+    // resort, and is the only case where these numbers are ours, not the
+    // server's.
+    pre: windowSeconds(w.pre, anchorAt, w.from, -1) ?? Number(d.pre ?? opts.pre ?? 5),
+    post: windowSeconds(w.post, anchorAt, w.to, 1) ?? Number(d.post ?? opts.post ?? 2),
+    from: w.from != null ? String(w.from) : null,
+    to: w.to != null ? String(w.to) : null,
   };
   return { ok: true, history };
+}
+
+/** One bound of the fetched window, in seconds: the server's own `pre`/`post`
+ *  when it names them, else derived from the absolute bound it did name
+ *  (`sign` = -1 for `from`, +1 for `to`). Returns null when neither is
+ *  available — the caller then falls back to the request, which is the only
+ *  honest thing left to show. */
+function windowSeconds(
+  seconds: unknown,
+  anchorAt: string,
+  bound: unknown,
+  sign: 1 | -1,
+): number | null {
+  if (typeof seconds === "number" && Number.isFinite(seconds)) return seconds;
+  if (typeof bound !== "string") return null;
+  const a = new Date(anchorAt).getTime();
+  const b = new Date(bound).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.round((sign * (b - a)) / 1000);
 }
 
 // --- More tab ---------------------------------------------------------------
