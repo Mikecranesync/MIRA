@@ -78,7 +78,7 @@ import {
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
-import { fileLinkedToTarget } from "@/lib/workspace-files";
+import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -418,8 +418,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
     /** Sensor LOOK (S5 D3 cross-lane contract): the phone photo this turn was
-     *  asked with. Only the CLAIM is trusted — the server verifies the file is
-     *  linked to this notebook and re-derives the entry; unverified → ignored. */
+     *  asked with. NOTHING here is trusted but the file id: the server verifies
+     *  the file is linked to this notebook AS A PHOTO and re-derives the whole
+     *  entry (capture time included) from the stored file row; unverified →
+     *  ignored. `capturedAt` is still accepted for client compatibility and is
+     *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
   };
   try {
@@ -443,13 +446,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
   }
   // Visual-evidence claim (D3). Never a 4xx: a malformed or foreign claim is
-  // dropped silently and the turn is answered without it.
-  let visualClaim: { fileId: string; capturedAt: string } | null = null;
+  // dropped silently and the turn is answered without it. The claim is a FILE
+  // ID and nothing else — `capturedAt` is client-supplied, so it is neither
+  // required nor read (the server derives the capture time from the file row).
+  let visualClaimFileId: string | null = null;
   if (body.visualEvidence && typeof body.visualEvidence === "object") {
-    const ve = body.visualEvidence;
-    const fileId = typeof ve.fileId === "string" ? ve.fileId.trim() : "";
-    const capturedAt = parseAnchor(ve.capturedAt);
-    if (fileId && capturedAt) visualClaim = { fileId, capturedAt };
+    const raw = body.visualEvidence.fileId;
+    const fileId = typeof raw === "string" ? raw.trim() : "";
+    if (fileId) visualClaimFileId = fileId;
   }
   // Spec §1.1 — a technician with nothing configured must still get help, and
   // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
@@ -681,6 +685,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           freshness: h.freshness.overall,
           runId: h.anchor.runId ?? null,
           windowId: h.anchor.windowId ?? null,
+          // Contract §2.8: "the tables are missing" and "the window was
+          // genuinely quiet" are DIFFERENT sentences. The reader already
+          // distinguishes them; carry that distinction to the clients instead
+          // of flattening both into "0 observed changes".
+          ...(h.reason ? { reason: h.reason } : {}),
         };
       } else {
         console.warn("[notebook-chat] machine evidence not available:", result.error);
@@ -691,24 +700,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       machineEntry = null;
     }
   }
+  // Nothing observed → nothing to ground on (contract §2.8, D2). A window that
+  // is `unavailable` (033/037 missing in this env) or genuinely empty must not
+  // move `basis` to a machine basis and must not put a MACHINE section in the
+  // prompt — an empty section is an invitation to infer. The ENTRY is still
+  // persisted (with `rowCount: 0` and its `reason`, when it has one) so both
+  // clients can say which of the two happened. Nulling the packet also keeps
+  // the machine-only approved-context gate off a turn that isn't using
+  // machine evidence.
+  const groundedMachineEntry: MachineEvidenceEntry | null =
+    machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
+  if (!groundedMachineEntry) machinePacket = null;
 
   // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
-  // to THIS notebook in THIS tenant (workspace_file_links), then re-derive the
-  // entry server-side. Unverified/foreign → ignored silently; the turn still
-  // answers. Never a citation, never in sourceSnapshot, never moves `basis`.
+  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
+  // raster MIME), then re-derive the WHOLE entry server-side — including
+  // `capturedAt`, which comes from the stored file row, never from the client.
+  // Anything else (a manual PDF that merely happens to be linked, a foreign
+  // file, a stored-only type) → ignored silently; the turn still answers.
+  // Never a citation, never in sourceSnapshot, never moves `basis`.
   let visualEntry: VisualObservationEntry | null = null;
-  if (visualClaim) {
+  if (visualClaimFileId) {
     try {
-      const linked = await fileLinkedToTarget(ctx.tenantId, visualClaim.fileId, "equipment_notebook", notebookId);
-      if (linked) {
+      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
+      if (photo) {
         visualEntry = {
           kind: "visual_observation",
-          fileId: visualClaim.fileId,
-          capturedAt: visualClaim.capturedAt,
+          fileId: photo.fileId,
+          capturedAt: photo.capturedAt,
           provenance: "phone_photo",
         };
       } else {
-        console.warn("[notebook-chat] visualEvidence ignored: file not linked to this notebook");
+        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
       }
     } catch (err) {
       console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
@@ -1138,15 +1161,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // With machine evidence (§4.4): `live_machine_evidence` only when the
       // asset's CURRENT signals roll up fresh; anything else is
       // `machine_history` — a replay is never labelled live (contract §2.8).
-      const evidenceFrame: NotebookEvidenceFrame = machineEntry
-        ? machineEntry.freshness === "live"
+      // An empty or unavailable window claims NO machine basis (see
+      // `machineGrounded` above): the turn keeps the basis it would have had
+      // without the selection, and the entry rides along additively so the
+      // client can render the honest caption.
+      const evidenceFrame: NotebookEvidenceFrame = groundedMachineEntry
+        ? groundedMachineEntry.freshness === "live"
           ? {
               kind: "evidence",
               basis: "live_machine_evidence",
               label: general
                 ? "Grounded in live machine evidence — no documents for this machine."
                 : "Grounded in live machine evidence and this notebook's sources.",
-              machineEvidence: machineEntry,
             }
           : {
               kind: "evidence",
@@ -1154,7 +1180,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               label: general
                 ? "Grounded in recorded machine history — not live, no documents for this machine."
                 : "Grounded in recorded machine history and this notebook's sources — not live.",
-              machineEvidence: machineEntry,
             }
         : general
           ? {
@@ -1167,8 +1192,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               basis: "oem_documentation",
               label: "Grounded in this notebook's sources.",
             };
-      // D3 (S5): the verified visual observation rides on the SAME frame,
-      // additively — basis and label above are untouched by it.
+      // The machine entry and the verified visual observation ride on the SAME
+      // frame, additively — the basis and label above are untouched by them.
+      if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 

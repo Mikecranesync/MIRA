@@ -167,6 +167,23 @@ export type MachineEvidenceEntry = {
   freshness: "live" | "stale" | "simulated" | "unknown";
   runId?: string | null;
   windowId?: string | null;
+  /**
+   * Why the window is empty, when it is (contract §2.8 honesty). Present ONLY
+   * as `"unavailable"` — the machine-history tables (033/037) are missing in
+   * this environment, so nothing COULD be observed. Absent with `rowCount: 0`
+   * means the opposite and equally honest thing: the tables are there and the
+   * window was genuinely quiet.
+   *
+   * Cross-lane contract (same spelling as `AssetHistory.reason` in
+   * mira-mobile/src/lib/replay.ts, which the phone already reads off
+   * GET /api/assets/[id]/history):
+   *   `reason === "unavailable"` → "Machine history unavailable"
+   *   `rowCount === 0` (no reason) → "No machine changes recorded in this window"
+   * Neither ever renders as "0 observed changes", and neither carries a
+   * machine `basis` — the server leaves the turn on the basis it would have
+   * had without the selection.
+   */
+  reason?: "unavailable" | null;
 };
 
 /** Type guard: an `evidence[]` entry that is machine evidence, not a citation. */

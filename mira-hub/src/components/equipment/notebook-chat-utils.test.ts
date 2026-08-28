@@ -263,7 +263,12 @@ describe("persistedTurns — reload applies the STOPPED-TURN CONTRACT", () => {
 });
 
 // ── Sensor S4 (D5): machine evidence rides in evidence[] / the evidence frame ──
-import { machineReplayCaption, splitEvidence } from "./notebook-chat-utils";
+import {
+  MACHINE_HISTORY_UNAVAILABLE_CAPTION,
+  MACHINE_NO_CHANGES_CAPTION,
+  machineReplayCaption,
+  splitEvidence,
+} from "./notebook-chat-utils";
 
 const machine = {
   kind: "machine_evidence" as const,
@@ -422,7 +427,20 @@ describe("machineReplayCaption", () => {
     // S5 D5 cross-lane contract: mobile's replayCardTitle shape + the shared FRESHNESS_LABEL vocabulary.
     expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Stale");
     expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 observed change around 23:16:31 · Live");
-    expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe("Machine Replay · 0 observed changes around 23:16:31 · No tags");
     expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 observed changes around 23:16:31 · Simulated");
+  });
+
+  // §2.8: "0 observed changes" reads like a real, quiet window — so it must
+  // never stand in for "the backend isn't there". Two distinct sentences.
+  it("an unavailable window says so instead of counting zero", () => {
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).toBe(
+      MACHINE_HISTORY_UNAVAILABLE_CAPTION,
+    );
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: "unavailable" }, clock)).not.toContain("observed change");
+  });
+
+  it("a genuinely empty window says nothing was recorded, not '0 observed changes'", () => {
+    expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
+    expect(machineReplayCaption({ ...machine, rowCount: 0, reason: null }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
   });
 });

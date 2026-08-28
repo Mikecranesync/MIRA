@@ -227,6 +227,31 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     expect(mk("simulated")).toContain("· Simulated</span>");
     expect(mk("simulated")).not.toContain("· Live</span>");
   });
+
+  // §2.8: an empty card must say WHICH empty it is. "0 observed changes" reads
+  // as a real, quiet window and would hide a missing machine-history backend.
+  it("an unavailable window and an empty one get their own captions — never '0 observed changes'", () => {
+    const mk = (entry: Record<string, unknown>) =>
+      renderToStaticMarkup(
+        <Bubble
+          turn={{
+            ...base,
+            basis: "oem_documentation",
+            machineEvidence: [
+              { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 0, freshness: "unknown", ...entry },
+            ] as ChatTurn["machineEvidence"],
+          }}
+        />,
+      );
+    const unavailable = mk({ reason: "unavailable" });
+    expect(unavailable).toContain("Machine Replay · Machine history unavailable");
+    expect(unavailable).not.toContain("observed change");
+    const empty = mk({});
+    expect(empty).toContain("Machine Replay · No machine changes recorded in this window");
+    expect(empty).not.toContain("observed change");
+    // Neither claims a machine basis — the turn keeps the basis it earned.
+    expect(unavailable).toContain("Grounded in this notebook's sources".replace(/'/g, "&#x27;"));
+  });
 });
 
 // ── S5 D3 (contract §4.5): the persisted Visual observation card ────────────

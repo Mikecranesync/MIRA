@@ -47,10 +47,24 @@ function defaultClock(iso: string): string {
   return d.toLocaleTimeString(undefined, { hour12: false });
 }
 
+/** The two honest empty-window captions (contract §2.8). "Nothing was
+ *  recorded" and "nothing COULD be recorded" are different sentences, and
+ *  neither is "0 observed changes" — which reads like a real, quiet window and
+ *  hides a missing backend. Kept as constants so both clients can share the
+ *  exact strings. */
+export const MACHINE_HISTORY_UNAVAILABLE_CAPTION = "Machine Replay · Machine history unavailable";
+export const MACHINE_NO_CHANGES_CAPTION = "Machine Replay · No machine changes recorded in this window";
+
 /** "Machine Replay · 7 observed changes around 23:16:31 · Stale" — the S5 D5
  *  cross-lane shape (mobile's replayCardTitle). `clock` is injectable so the
- *  caption is deterministic in tests. */
+ *  caption is deterministic in tests.
+ *
+ *  An empty window never renders as "0 observed changes": `reason:
+ *  "unavailable"` (tables missing) and a genuinely quiet window get their own
+ *  captions, and neither claims a freshness for a replay that has no rows. */
 export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: string) => string = defaultClock): string {
+  if (e.reason === "unavailable") return MACHINE_HISTORY_UNAVAILABLE_CAPTION;
+  if (e.rowCount === 0) return MACHINE_NO_CHANGES_CAPTION;
   const n = e.rowCount;
   const changes = `${n} observed change${n === 1 ? "" : "s"}`;
   const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
