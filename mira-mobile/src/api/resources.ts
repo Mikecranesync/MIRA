@@ -239,9 +239,19 @@ export async function getAssetByTag(tag: string): Promise<Asset | null> {
  * confirmation — so the notebook can show identity as unconfirmed until a
  * human says otherwise.
  */
+/** How a machine was chosen — mirrors the Hub's ASSET_SELECTION_METHODS. A
+ *  scan or a typed tag is a SELECTION, never a confirmation. */
+export type AssetSelectionMethod =
+  | "qr"
+  | "nfc"
+  | "asset_picker"
+  | "work_order"
+  | "nameplate"
+  | "manual_entry";
+
 export async function openAssetNotebook(
   assetId: string,
-  via: "qr" | "nfc" | "asset_picker" | "work_order" | "nameplate" | "manual_entry",
+  via: AssetSelectionMethod,
 ): Promise<Notebook> {
   const r = await request(`/api/assets/${encodeURIComponent(assetId)}/notebook/`, {
     method: "POST",
@@ -254,6 +264,17 @@ export async function openAssetNotebook(
 
 // --- equipment notebooks (NotebookLM-style workspaces; build spec §3–6) -----
 
+/** The notebook's canonical-asset binding (server `asset` field). Null
+ *  `confirmedAt` means selected-but-unconfirmed — the identity chip renders
+ *  that as amber, never as confirmed. */
+export interface NotebookAssetBinding {
+  /** kg_entities.entity_id — the asset UUID as text. */
+  entityId: string;
+  selectedVia: AssetSelectionMethod | null;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+}
+
 export interface Notebook {
   id: string;
   displayName: string;
@@ -264,9 +285,12 @@ export interface Notebook {
   nodeId: string;
   sourceCount: number;
   createdAt: string | null;
+  /** L2 machine binding, or null for a general (L0/L1) notebook. */
+  asset: NotebookAssetBinding | null;
 }
 
-function toNotebook(d: Record<string, unknown>): Notebook {
+export function toNotebook(d: Record<string, unknown>): Notebook {
+  const a = d.asset as Record<string, unknown> | null | undefined;
   return {
     id: String(d.id ?? ""),
     displayName: String(d.displayName ?? d.display_name ?? "Untitled"),
@@ -277,7 +301,40 @@ function toNotebook(d: Record<string, unknown>): Notebook {
     nodeId: String(d.nodeId ?? ""),
     sourceCount: Number(d.sourceCount ?? 0),
     createdAt: (d.createdAt as string) ?? null,
+    // Without this the client cannot see what the bind route stored — the
+    // binding would exist on the server and be invisible on the phone.
+    asset:
+      a && a.entityId
+        ? {
+            entityId: String(a.entityId),
+            selectedVia: a.selectedVia != null ? (String(a.selectedVia) as AssetSelectionMethod) : null,
+            confirmedBy: a.confirmedBy != null ? String(a.confirmedBy) : null,
+            confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,
+          }
+        : null,
   };
+}
+
+/**
+ * L1→L2: bind THIS notebook to a canonical asset (PUT
+ * /api/equipment-notebooks/[id]/asset). The client says WHICH asset and HOW it
+ * was selected; confirmation is derived server-side and never sent. Failures
+ * carry the server's technician-readable sentence in `error` (the mobile
+ * error layer surfaces it verbatim) and a `code` a caller may switch on
+ * (`asset_already_bound` → another notebook owns that machine).
+ */
+export async function bindNotebookAsset(
+  notebookId: string,
+  assetRef: string,
+  selectedVia: AssetSelectionMethod,
+): Promise<Notebook> {
+  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/asset/`, {
+    method: "PUT",
+    json: { assetRef, selectedVia },
+  });
+  const d = r.data as { notebook?: Record<string, unknown> } | null;
+  if (!d?.notebook) throw new Error("bind_asset_failed");
+  return toNotebook(d.notebook);
 }
 
 export async function listNotebooks(): Promise<Notebook[]> {

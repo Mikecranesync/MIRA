@@ -118,11 +118,16 @@ export function NotebookScreen({
   openAddSources,
   backRef,
   onExit,
+  onOpenNotebook,
 }: {
   id: string;
   openAddSources?: boolean;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
+  /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
+   *  scan → notebook transition the Assets tab uses). Optional so existing
+   *  mounts are unchanged; without it the technician stays here. */
+  onOpenNotebook?: (notebookId: string) => void;
 }) {
   const [detail, setDetail] = useState<Loadable<NotebookDetail>>({ state: "loading" });
   const [panel, setPanel] = useState<Panel>(openAddSources ? "sources" : "chat");
@@ -898,9 +903,19 @@ export function NotebookScreen({
 
       {sensorOpen && (
         <SensorSheet
-          notebookId={id}
+          notebook={notebook}
           onClose={() => setSensorOpen(false)}
           onChanged={refresh}
+          onOpenNotebook={(nid) => {
+            setSensorOpen(false);
+            onOpenNotebook?.(nid);
+          }}
+          onUploadInstead={() => {
+            // Hand off to the Add-sources sheet (one sheet at a time), where
+            // "Upload a PDF manual" is the existing door.
+            setSensorOpen(false);
+            setSheetOpen(true);
+          }}
           onAsk={(question) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.

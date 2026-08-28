@@ -9,7 +9,7 @@
  * empty state.
  */
 import { ApiError } from "../api/client";
-import type { Asset, Notebook } from "../api/resources";
+import type { Asset, AssetSelectionMethod, Notebook } from "../api/resources";
 
 export type ScanOutcome =
   /** Resolved all the way: open the machine's notebook. The point of scanning. */
@@ -23,14 +23,14 @@ export type ScanOutcome =
 
 export type ScanDeps = {
   getAssetByTag: (tag: string) => Promise<Asset | null>;
-  openAssetNotebook: (assetId: string, via: "qr") => Promise<Notebook>;
+  openAssetNotebook: (assetId: string, via: AssetSelectionMethod) => Promise<Notebook>;
 };
 
 const FALLBACK_LOOKUP = "Could not resolve the tag — check connectivity.";
 const FALLBACK_NOTEBOOK = "Could not open a notebook for this machine.";
 
 /** A server message is preferred over ours: the server knows WHY. */
-function messageFrom(err: unknown, fallback: string): string {
+export function messageFrom(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     const m = err.userMessage;
     // Never surface a bare discriminator: the mobile error layer passes
@@ -41,7 +41,16 @@ function messageFrom(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function resolveScan(tag: string, deps: ScanDeps): Promise<ScanOutcome> {
+/**
+ * `via` records HOW the tag arrived — a camera decode is `qr`, a typed tag is
+ * `manual_entry`. Both are SELECTIONS (never confirmations); the server keeps
+ * the distinction so the identity chip can say "typed in" vs "QR sticker".
+ */
+export async function resolveScan(
+  tag: string,
+  deps: ScanDeps,
+  via: AssetSelectionMethod = "qr",
+): Promise<ScanOutcome> {
   let asset: Asset | null;
   try {
     asset = await deps.getAssetByTag(tag);
@@ -51,7 +60,7 @@ export async function resolveScan(tag: string, deps: ScanDeps): Promise<ScanOutc
   if (!asset?.id) return { kind: "notfound" };
 
   try {
-    const nb = await deps.openAssetNotebook(asset.id, "qr");
+    const nb = await deps.openAssetNotebook(asset.id, via);
     if (!nb?.id) return { kind: "asset_only", assetId: asset.id, message: FALLBACK_NOTEBOOK };
     return { kind: "notebook", notebookId: nb.id, assetId: asset.id };
   } catch (err) {

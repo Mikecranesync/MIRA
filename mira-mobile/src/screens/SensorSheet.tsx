@@ -11,10 +11,22 @@
 // One conversation (§2.3): every "Ask MIRA" here closes the sheet and sends
 // through the notebook's existing `sendQuestion` — no Sensor chat store.
 import { useRef, useState } from "react";
-import { Sheet } from "./Sheet";
+import { BackDismiss, Sheet } from "./Sheet";
 import { SourceThumb } from "./FilePreview";
+import { ScanView, type ScanVia } from "./ScanView";
+import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { canPickNatively, pickPhoto } from "../lib/native-pick";
-import { lookAtPhoto, type LookResult } from "../api/resources";
+import {
+  bindNotebookAsset,
+  getAssetByTag,
+  lookAtPhoto,
+  openAssetNotebook,
+  type LookResult,
+  type Notebook,
+} from "../api/resources";
+import { extractAssetTag } from "../lib/tags";
+import { readScan, type ReadOutcome } from "../lib/sensor-read";
+import { assetCardState, resolvedAssetFromNotebook } from "../lib/notebook-asset-card";
 import {
   SENSOR_MODES,
   hhmmss,
@@ -25,24 +37,35 @@ import {
 } from "../lib/sensor";
 
 export function SensorSheet({
-  notebookId,
+  notebook,
   onClose,
   onChanged,
   onAsk,
+  onOpenNotebook,
+  onUploadInstead,
 }: {
-  notebookId: string;
+  notebook: Pick<Notebook, "id" | "displayName" | "asset">;
   onClose: () => void;
-  /** The notebook's sources changed (a photo was parked and linked). */
+  /** The notebook changed (a photo was parked and linked; a machine was
+   *  bound) — the caller re-reads it. */
   onChanged: () => void;
   /** Send a question through the notebook's ONE conversation. The caller
    *  closes the sheet and switches to the chat panel. */
   onAsk: (question: string) => void;
+  /** A scan resolved to a DIFFERENT machine's notebook — go there (the
+   *  existing scan → notebook transition). */
+  onOpenNotebook: (notebookId: string) => void;
+  /** The nameplate flow found a manual it could not import; the technician
+   *  will add the PDF themselves via the Add-sources sheet. */
+  onUploadInstead: () => void;
 }) {
+  const notebookId = notebook.id;
   const [mode, setMode] = useState<SensorMode | null>(null);
   const current = SENSOR_MODES.find((m) => m.id === mode) ?? null;
 
   return (
     <Sheet label="Sensor" onClose={onClose}>
+      <AssetIdentityChip notebook={notebook} />
       {current === null && (
         <>
           <h3>Sensor</h3>
@@ -74,6 +97,14 @@ export function SensorSheet({
           </div>
           {current.id === "look" && (
             <LookPanel notebookId={notebookId} onChanged={onChanged} onAsk={onAsk} />
+          )}
+          {current.id === "read" && (
+            <ReadPanel
+              notebook={notebook}
+              onChanged={onChanged}
+              onOpenNotebook={onOpenNotebook}
+              onUploadInstead={onUploadInstead}
+            />
           )}
           <button style={{ marginTop: 6 }} onClick={() => setMode(null)}>
             ← Modes
@@ -223,6 +254,151 @@ function LookPanel({
           const f = e.target.files?.[0] ?? null;
           e.target.value = "";
           if (f) void look(f);
+        }}
+      />
+    </>
+  );
+}
+
+// --- identity chip -----------------------------------------------------------
+//
+// The three-second test (dogfood spec §7): which machine is MIRA using, and
+// how sure is that? Tone comes from the ported `assetCardState`; colour is
+// applied at this boundary through tokens only.
+
+function AssetIdentityChip({
+  notebook,
+}: {
+  notebook: Pick<Notebook, "displayName" | "asset">;
+}) {
+  const card = assetCardState(resolvedAssetFromNotebook(notebook), notebook.asset);
+  return (
+    <div className={`asset-chip asset-chip-${card.tone}`} data-testid="asset-chip" data-tone={card.tone}>
+      <div className="title">{card.headline}</div>
+      <div className="meta">{card.detail}</div>
+    </div>
+  );
+}
+
+// --- READ -------------------------------------------------------------------
+//
+// Converges the identification doors that already exist: the FactoryLM QR
+// scanner (ScanView → extractAssetTag → readScan), and the component
+// nameplate flow (ComponentNameplateFlow, invoked as-is). A resolved QR
+// upgrades THIS notebook in place (L1→L2 via PUT …/asset) when it has no
+// machine yet; otherwise the scanned machine's own notebook opens.
+
+type ReadState =
+  | { name: "menu"; note: string | null }
+  | { name: "scan" }
+  | { name: "resolving"; tag: string }
+  | { name: "nameplate"; photo: File };
+
+function ReadPanel({
+  notebook,
+  onChanged,
+  onOpenNotebook,
+  onUploadInstead,
+}: {
+  notebook: Pick<Notebook, "id" | "displayName" | "asset">;
+  onChanged: () => void;
+  onOpenNotebook: (notebookId: string) => void;
+  onUploadInstead: () => void;
+}) {
+  const [state, setState] = useState<ReadState>({ name: "menu", note: null });
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+
+  const onScanned = async (text: string, via: ScanVia) => {
+    const tag = extractAssetTag(text);
+    if (!tag) return setState({ name: "menu", note: `Not a FactoryLM asset code: ${text}` });
+    setState({ name: "resolving", tag });
+    const out: ReadOutcome = await readScan(
+      tag,
+      { notebookId: notebook.id, boundEntityId: notebook.asset?.entityId ?? null },
+      { getAssetByTag, openAssetNotebook, bindNotebookAsset },
+      via,
+    );
+    switch (out.kind) {
+      case "bound":
+        onChanged();
+        return setState({
+          name: "menu",
+          note: `${out.asset.name || tag} is now this notebook's machine — selected from the ${via === "qr" ? "QR sticker" : "typed tag"}, not yet confirmed.`,
+        });
+      case "same_machine":
+        return setState({ name: "menu", note: `That's this notebook's machine (${out.asset.name || tag}).` });
+      case "notebook":
+        return onOpenNotebook(out.notebookId);
+      case "notfound":
+        return setState({ name: "menu", note: `No asset with tag “${tag}” in this workspace.` });
+      case "asset_only":
+      case "failed":
+        return setState({ name: "menu", note: out.message });
+    }
+  };
+
+  const openNameplatePicker = async () => {
+    if (!canPickNatively()) return cameraRef.current?.click();
+    const f = await pickPhoto("nameplate.jpg");
+    if (f) setState({ name: "nameplate", photo: f });
+  };
+
+  if (state.name === "nameplate")
+    return (
+      <ComponentNameplateFlow
+        notebookId={notebook.id}
+        photo={state.photo}
+        onDone={onChanged}
+        onCancel={() => setState({ name: "menu", note: null })}
+        onUploadInstead={onUploadInstead}
+      />
+    );
+
+  return (
+    <>
+      {state.name === "scan" && (
+        // Fullscreen, above the sheet; its own BACK layer so BACK closes the
+        // viewfinder first, then the Sensor sheet, then the notebook.
+        <div className="sensor-overlay" role="dialog" aria-label="Scan FactoryLM QR">
+          <BackDismiss onDismiss={() => setState({ name: "menu", note: null })} />
+          <ScanView
+            cancelLabel="← Sensor"
+            onCancel={() => setState({ name: "menu", note: null })}
+            onResult={(text, via) => void onScanned(text, via)}
+          />
+        </div>
+      )}
+      {state.name === "resolving" && (
+        <div className="empty" style={{ marginTop: 12 }}>
+          Resolving {state.tag}…
+        </div>
+      )}
+      {(state.name === "menu" || state.name === "scan") && (
+        <>
+          <button className="sheet-option" onClick={() => setState({ name: "scan" })}>
+            🔳 Scan FactoryLM QR
+          </button>
+          <button className="sheet-option" onClick={() => void openNameplatePicker()}>
+            📷 Photograph a nameplate
+          </button>
+          {state.name === "menu" && state.note && (
+            <div className="meta" role="status">
+              {state.note}
+            </div>
+          )}
+        </>
+      )}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        aria-label="Nameplate photo"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          if (f) setState({ name: "nameplate", photo: f });
         }}
       />
     </>

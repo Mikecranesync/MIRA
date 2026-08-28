@@ -375,6 +375,27 @@ textarea {
 .sensor-mode { flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 18px; }
 .sensor-mode-label { font-weight: 600; letter-spacing: 0.04em; }
 
+/* Identity chip (notebook-asset-card tones): colour = state only.
+   green = confirmed, amber = selected-not-confirmed, gray = none/unknown,
+   red = the bound machine cannot be resolved. */
+.asset-chip {
+  border: 1px solid var(--fl-line); border-left-width: 4px;
+  border-radius: var(--fl-radius); background: var(--fl-surface);
+  padding: 8px 10px; margin-bottom: 10px; font-size: 13px;
+}
+.asset-chip .title { font-weight: 600; }
+.asset-chip-confirmed { border-left-color: var(--fl-green); }
+.asset-chip-unconfirmed { border-left-color: var(--fl-amber); }
+.asset-chip-unbound { border-left-color: var(--fl-ink-muted); }
+.asset-chip-unresolvable { border-left-color: var(--fl-red); }
+
+/* Sensor camera overlay: the QR viewfinder is NOT a sheet (80% max-height);
+   it takes the screen and registers its own BACK layer above the sheet. */
+.sensor-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: var(--fl-bg); display: flex; flex-direction: column;
+}
+
 .studio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
 .studio-tile {
   border: 1px solid var(--fl-line); border-radius: var(--flm-radius-card);

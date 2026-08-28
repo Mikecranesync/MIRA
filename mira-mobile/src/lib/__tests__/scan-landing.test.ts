@@ -36,6 +36,13 @@ describe("resolveScan", () => {
     expect((d.openAssetNotebook as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1]).toBe("qr");
   });
 
+  it("records a typed tag as manual_entry — still a selection, still not a confirmation", async () => {
+    const d = deps();
+    const out = await resolveScan("CV-101", d, "manual_entry");
+    expect(out.kind).toBe("notebook");
+    expect(d.openAssetNotebook).toHaveBeenCalledWith("asset-1", "manual_entry");
+  });
+
   it("reports notfound for a tag that is not an asset here", async () => {
     const out = await resolveScan("CV-999", deps({ getAssetByTag: vi.fn(async () => null) }));
     expect(out.kind).toBe("notfound");
