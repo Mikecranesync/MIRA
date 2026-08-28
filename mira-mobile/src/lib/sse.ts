@@ -4,6 +4,8 @@
 // `parseChatSse` is the one-shot convenience over it, so a streamed turn
 // (STRM-1) and a buffered turn are byte-identical by construction.
 
+import { machineEvidenceEntries, type MachineEvidenceEntry } from "./replay";
+
 export interface ChatCitation {
   citationId: string;
   sourceTitle: string;
@@ -35,6 +37,10 @@ export interface ChatTurn {
   evidenceLabel?: string;
   /** Deterministic follow-up questions (CONV-4) — answered turns only. */
   followups?: string[];
+  /** Sensor REPLAY (D5): `{kind:"machine_evidence"}` entries the server put
+   *  in the turn's evidence[] and echoed on the existing `evidence` frame.
+   *  Absent on servers that predate it; never inferred. */
+  machineEvidence?: MachineEvidenceEntry[];
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -44,6 +50,9 @@ export function normalizeCitations(raw: unknown): ChatCitation[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter(
+      // A `{kind:"machine_evidence"}` entry (D5) shares the array but is not
+      // a citation: no citationId, so it is skipped here by construction and
+      // read by `machineEvidenceEntries` instead.
       (c): c is Record<string, unknown> =>
         typeof c === "object" && c !== null && "citationId" in c,
     )
@@ -76,6 +85,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
+  let machineEvidence: MachineEvidenceEntry[] | undefined;
   let buffer = "";
 
   const applyBlock = (block: string) => {
@@ -96,6 +106,13 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
       } else if (frame.kind === "evidence") {
         evidenceBasis = String(frame.basis ?? "");
         evidenceLabel = String(frame.label ?? "");
+        // Same frame kind (no new SSE frame, D5). The Hub puts the entry on
+        // the frame as ONE object (`machineEvidence: {kind:"machine_evidence",…}`,
+        // chat/route.ts evidenceFrame); an echoed evidence[] array is also
+        // read. Either way only machine-evidence entries are kept.
+        const raw = frame.machineEvidence ?? frame.evidence ?? frame.entries;
+        const entries = machineEvidenceEntries(raw == null || Array.isArray(raw) ? raw : [raw]);
+        if (entries.length) machineEvidence = entries;
       }
     } catch {
       /* keep parsing subsequent frames */
@@ -109,6 +126,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     evidenceBasis,
     evidenceLabel,
     followups,
+    ...(machineEvidence ? { machineEvidence } : {}),
   });
 
   return {

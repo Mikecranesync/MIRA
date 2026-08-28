@@ -1,0 +1,157 @@
+// @vitest-environment jsdom
+// Sensor v0 S2 — LOOK in the notebook (contract §4.1, §2.3):
+//   • picking a photo posts it to /look/ and renders an evidence card
+//     (thumbnail of the parked file + observation)
+//   • "Ask MIRA about this" closes the sheet and sends the prefixed question
+//     through the notebook's ONE send path (askNotebook, same route)
+//   • an intake failure shows the server's reason, not "nothing seen"
+//
+// Run: cd mira-mobile && bunx vitest run src/screens/__tests__/sensor-look
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => false, convertFileSrc: (p: string) => p },
+  CapacitorHttp: { request: vi.fn() },
+  registerPlugin: () => ({}),
+}));
+vi.mock("@capacitor/preferences", () => ({
+  Preferences: {
+    get: vi.fn(async () => ({ value: null })),
+    set: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}),
+  },
+}));
+
+const { askNotebook, getNotebookDetail, lookAtPhoto } = vi.hoisted(() => ({
+  askNotebook: vi.fn(),
+  getNotebookDetail: vi.fn(),
+  lookAtPhoto: vi.fn(),
+}));
+
+vi.mock("../../api/resources", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../api/resources")>();
+  return { ...real, askNotebook, getNotebookDetail, lookAtPhoto };
+});
+// SourceThumb fetches bytes over the session; stub it to a marker so the card
+// test asserts the thumbnail is wired to the PARKED file id.
+vi.mock("../FilePreview", () => ({
+  SourceThumb: ({ fileId }: { fileId: string }) => <span data-testid="thumb">{fileId}</span>,
+  FilePreview: () => null,
+}));
+
+import { NotebookScreen } from "../NotebookScreen";
+import { ApiError } from "../../api/client";
+
+const detail = () => ({
+  notebook: { id: "nb1", displayName: "CV-101", manufacturer: null, model: null, asset: null },
+  sources: [],
+  turns: [],
+});
+
+function mount() {
+  const backRef = { current: null as (() => boolean) | null };
+  return render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} />);
+}
+
+async function openLook() {
+  fireEvent.click(await screen.findByRole("button", { name: "Open Sensor" }));
+  fireEvent.click(await screen.findByRole("button", { name: "LOOK" }));
+  const input = screen.getByLabelText("LOOK photo") as HTMLInputElement;
+  const file = new File([new Uint8Array([0xff, 0xd8])], "panel.jpg", { type: "image/jpeg" });
+  fireEvent.change(input, { target: { files: [file] } });
+  return file;
+}
+
+beforeEach(() => {
+  askNotebook.mockReset();
+  getNotebookDetail.mockReset();
+  lookAtPhoto.mockReset();
+  getNotebookDetail.mockResolvedValue(detail());
+  Element.prototype.scrollTo = vi.fn();
+});
+afterEach(cleanup);
+
+describe("Sensor LOOK (S2)", () => {
+  it("renders the evidence card from the parked file + observation", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: { linkId: "l1", notebookId: "nb1" },
+      observation: { text: "Amber LED on the drive, DC bus indicator lit.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+      quality: null,
+    });
+    mount();
+    const file = await openLook();
+    await screen.findByTestId("look-card");
+    // Request shape through the screen: notebook id, the exact File, one key.
+    expect(lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(lookAtPhoto.mock.calls[0][0]).toBe("nb1");
+    expect(lookAtPhoto.mock.calls[0][1]).toBe(file);
+    expect(typeof lookAtPhoto.mock.calls[0][2]).toBe("string");
+    expect(screen.getByTestId("thumb").textContent).toBe("f-park");
+    expect(screen.getByText("Amber LED on the drive, DC bus indicator lit.")).toBeTruthy();
+    expect(screen.getByText(/Visual observation · Photo captured · 02:14:21/)).toBeTruthy();
+    // The sources list is re-read: the photo is a linked source now.
+    expect(getNotebookDetail.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Ask MIRA about this closes the sheet and sends the prefixed question via askNotebook", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: null,
+      observation: { text: "Contactor K1 pulled in.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+      quality: null,
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    fireEvent.change(screen.getByLabelText("Question about this photo"), {
+      target: { value: "Is that normal at idle?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog", { name: "Sensor" })).toBeNull();
+    const [nbId, question, scope] = askNotebook.mock.calls[0];
+    expect(nbId).toBe("nb1");
+    expect(scope).toEqual([]);
+    expect(question).toBe(
+      "Visual observation (02:14:21, phone photo): Contactor K1 pulled in.\n\nIs that normal at idle?",
+    );
+    // The question posts in the conversation like any other turn.
+    await screen.findByText("ok");
+  });
+
+  it("§4.1: provider failure with the parked file renders the evidence card (no description) + Ask MIRA", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: { linkId: "l1", notebookId: "nb1" },
+      observation: null,
+      quality: null,
+      reason: "provider_error",
+      message: "Could not describe the photo. The photo has been saved to this notebook.",
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByTestId("thumb").textContent).toBe("f-park");
+    const note = screen.getByTestId("look-no-observation").textContent ?? "";
+    expect(note).toContain("Could not describe the photo. The photo has been saved to this notebook.");
+    expect(note).toMatch(/still ask MIRA/);
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][1]).toContain("(no description available)");
+  });
+
+  it("an intake failure shows the server's reason (415), not an invented one", async () => {
+    lookAtPhoto.mockRejectedValue(new ApiError("client", 415, "unsupported_image_type"));
+    mount();
+    await openLook();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/format isn't supported/);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+});
