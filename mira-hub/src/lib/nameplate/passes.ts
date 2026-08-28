@@ -604,7 +604,7 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
   return { text: body.choices?.[0]?.message?.content ?? "{}", model };
 };
 
-function safeJson(text: string): Record<string, unknown> | null {
+export function safeJson(text: string): Record<string, unknown> | null {
   try {
     const v = JSON.parse(text);
     return v && typeof v === "object" ? (v as Record<string, unknown>) : null;

@@ -53,7 +53,7 @@ Tricorder *capability*, industrial *styling*: calm, trustworthy, no fake precisi
 
 ### 4.1 LOOK — `POST /api/equipment-notebooks/[id]/look/`  (hub, new; mirrors `nameplate/recognize`)
 - multipart `image` (+ optional `question`, `clientKey`). Bytes decide MIME (`effectiveImageMime`); 8 MB cap; SVG never viewable.
-- Park before vision: `parkOrReuseFile` → `attachFileToTargets({equipment_notebook: id}, role:"photo")` (idempotent on `clientKey`).
+- Park before vision: `parkOrReuseFile` → `attachFileToTargets({equipment_notebook: id}, role:"photo")`. Idempotent on **content**: same bytes → same `fileId` (`content_sha256` unique per tenant) and one link (`uq_workspace_file_links_relationship`), so a retried POST never duplicates. `clientKey` (≤128) is echoed for client-side correlation only — no column exists to key on it and no migration is allowed (§2), so it is NOT an idempotency key (amended 2026-08-28, PR #3458 review).
 - Vision: `togetherVisionCall` (`nameplate/passes.ts`) with a fixed inspection prompt (describe visible components, LEDs/indicators, damage, labels/text — **observations only, no diagnosis**). Provider errors are scrubbed and still return the parked file.
 - Response `{ fileId, attachment, observation: { text, capturedAt, provenance: "phone_photo" }, quality?: assessCapture }`.
 - The observation becomes a citable source ONLY through existing doors (materialize like nameplate confirm → `origin_file_id=fileId`, marked verified by the same technician-confirmation rule as #3440, never silently). Until confirmed, the observation is conversation context: the client sends it as the turn's `question` prefix ("Visual observation (02:14:21): …") — no new store.
