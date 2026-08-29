@@ -593,8 +593,12 @@ def test_fresh_review_without_the_exact_decision_sections_is_unknown_never_pass_
     assert fresh_review_verdict(_OK_REVIEW, parse_findings(_OK_REVIEW, strict=True)) == "PASS"
     hi = _OK_REVIEW.replace("None found", "- **[severity: high] Real** — detail")
     assert fresh_review_verdict(hi, parse_findings(hi, strict=True)) == "BLOCK"
-    stated_block = _OK_REVIEW.replace("PASS", "BLOCK")
-    assert fresh_review_verdict(stated_block, parse_findings(stated_block, strict=True)) == "BLOCK"
+    # A stated BLOCK with zero parseable findings is unactionable — nothing to
+    # fix, rebut or adjudicate — so it is malformed, not a verdict.
+    empty_block = _OK_REVIEW.replace("PASS", "BLOCK")
+    assert fresh_review_verdict(empty_block, parse_findings(empty_block, strict=True)) == "UNKNOWN"
+    medium_block = empty_block.replace("None found", "- **[severity: medium] Real** — detail")
+    assert fresh_review_verdict(medium_block, parse_findings(medium_block, strict=True)) == "BLOCK"
 
 
 def test_strict_findings_never_fall_back_to_whole_text():
@@ -629,6 +633,18 @@ def test_strict_rulings_are_read_only_inside_a_single_rulings_section():
     assert adjudication_verdict_strict(ok, prior) == "PASS"
     ok_bare = "## RULINGS\n**F1 – REFUTED**\nreason\n\n## VERDICT\nPASS\n"
     assert adjudication_verdict_strict(ok_bare, prior) == "PASS"
+    # The brief demands exactly one `## VERDICT` (PASS/BLOCK) as well; the
+    # stated word is never trusted (the verdict is structural), but a reply
+    # without it, with two of them, or with a bold one is not an adjudication.
+    no_verdict = "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — ok\n"
+    assert adjudication_verdict_strict(no_verdict, prior) == "UNKNOWN"
+    two_verdicts = ok + "\n## VERDICT\nBLOCK\n"
+    assert adjudication_verdict_strict(two_verdicts, prior) == "UNKNOWN"
+    bold_verdict = ok.replace("## VERDICT\nPASS", "## VERDICT\n**PASS**")
+    assert adjudication_verdict_strict(bold_verdict, prior) == "UNKNOWN"
+    # …and the stated word does not decide: SUSTAINED high + stated PASS = BLOCK.
+    lying = "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** — real\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(lying, prior) == "BLOCK"
 
 
 def test_prompts_demand_the_exact_decision_sections():
@@ -662,6 +678,13 @@ def test_canonical_contracts_state_the_evidence_exclusion_semantics():
         assert "rebuttal" in low and "readme.md" in low
         assert "executable" in low
         assert "## rulings" in low and "## not reviewed" in low and "unknown" in low
+        # Fresh Codex Gate 9 (sustained): the contracts once said "at most one
+        # re-run", contradicting the record's "no round cap". Malformed attempts
+        # are preserved and retried with fresh calls; there is no cap.
+        assert "at most one" not in low and "at most once" not in low
+        assert "no gate 7 round or attempt cap" in low
+        assert "malformed attempt" in low and "fresh, independent call" in low
+        assert "never waives" in low
 
 
 def test_adjudicator_has_no_severity_channel():

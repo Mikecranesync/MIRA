@@ -384,8 +384,14 @@ Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.
 > adjudicator output must contain exactly one `## RULINGS`, and rulings are read only from
 > it (exact bijection by stable id; severity never from the adjudicator). Anything else —
 > a table, an essay, a bold verdict, a quoted example line, missing or duplicated sections
-> — is **UNKNOWN**, never PASS and never BLOCK, preserved as a malformed attempt with at
-> most one re-run. Loose parsing survives only for loading committed prior reports.
+> — is **UNKNOWN**, never PASS and never BLOCK. A fresh review that states BLOCK with zero
+> parseable findings is itself malformed (unactionable) ⇒ UNKNOWN. Every malformed attempt is
+> **preserved** (`-attemptN-malformed`, all of them) and the lane is **retried with a
+> fresh, independent call** — never by widening the parser — until a valid verdict exists. A
+> malformed attempt never waives the requirement for a valid verdict, and
+> **there is no Gate 7 round or attempt cap** in either direction: a BLOCK is cleared only by
+> (a) or (b) above, and a lane that has not yet produced a valid shape simply has no verdict yet. Loose parsing survives
+> only for loading committed prior reports.
 
 Escalate automatically to **xhigh** for:
 

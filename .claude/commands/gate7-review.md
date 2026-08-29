@@ -126,9 +126,15 @@ schema-, or auth-adjacent). Those wait for the real lane.
   one `## NOT REVIEWED`; findings are parsed only from `## FINDINGS`. Fresh adjudication
   output: exactly one `## RULINGS`, rulings parsed only from it (exact bijection by stable
   id, no severity channel). A table, an essay, a bold verdict, a quoted example line, or
-  missing/duplicated sections ⇒ **UNKNOWN** — never PASS, never BLOCK. Preserve the
-  malformed attempt (`-attemptN-malformed`) and re-run at most once; do not widen the
-  parser to fish a verdict. Loose parsing is used only to load committed prior reports.
+  missing/duplicated sections ⇒ **UNKNOWN** — never PASS, never BLOCK. A review that states
+  BLOCK with zero parseable findings is malformed too (unactionable) ⇒ UNKNOWN. Preserve
+  **every** malformed attempt (`-attemptN-malformed`) and retry with a
+  fresh, independent call until a valid verdict exists; do not widen the parser to fish a
+  verdict. A malformed attempt never waives the requirement for a valid verdict, and
+  **there is no Gate 7 round or attempt cap** — a lane that has not yet produced a valid shape
+  has no verdict yet, not a waiver and not a BLOCK. Adjudications follow the same rule: exactly one `## VERDICT`
+  (PASS/BLOCK) and exactly one `## RULINGS`, rulings read only from it; malformed ⇒ UNKNOWN,
+  preserved, retried. Loose parsing is used only to load committed prior reports.
 
 ## Related
 

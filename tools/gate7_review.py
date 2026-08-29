@@ -742,10 +742,23 @@ def validate_review_shape(text: str) -> Optional[str]:
     return None
 
 
+def review_shape_error(text: str, findings: list[Finding]) -> Optional[str]:
+    """Why FRESH reviewer output cannot carry a verdict, or None. Beyond the
+    section shape: a stated BLOCK with zero parseable findings is unactionable
+    — there is nothing to fix, rebut or adjudicate — so it is malformed too."""
+    err = validate_review_shape(text)
+    if err:
+        return err
+    if verdict_of(text, findings) == "BLOCK" and not findings:
+        return "BLOCK stated with zero parseable findings (unactionable)"
+    return None
+
+
 def fresh_review_verdict(text: str, findings: list[Finding]) -> str:
-    """The verdict of FRESH reviewer output: UNKNOWN unless the shape validates,
-    then `verdict_of` (a parsed high still overrides a stated PASS). Pure."""
-    if validate_review_shape(text) is not None:
+    """The verdict of FRESH reviewer output: UNKNOWN unless the shape validates
+    and a BLOCK carries at least one parsed finding, then `verdict_of` (a parsed
+    high still overrides a stated PASS). Pure."""
+    if review_shape_error(text, findings) is not None:
         return "UNKNOWN"
     return verdict_of(text, findings)
 
@@ -761,12 +774,32 @@ def _rulings_section(text: str) -> Optional[str]:
     return body[: nxt.start()] if nxt else body
 
 
+def validate_adjudication_shape(text: str) -> Optional[str]:
+    """None when fresh adjudicator output has exactly one `## RULINGS` and
+    exactly one `## VERDICT` followed by PASS or BLOCK alone — the shape the
+    brief demands — otherwise the reason. The stated verdict is never trusted;
+    it is required only so a reply that is not an adjudication cannot be
+    mistaken for one. Pure."""
+    n = len(_H_RULINGS.findall(text))
+    if n != 1:
+        return f"expected exactly one `## RULINGS` section, found {n}"
+    v = len(_H_VERDICT.findall(text))
+    if v != 1:
+        return f"expected exactly one `## VERDICT` section, found {v}"
+    m = _H_VERDICT.search(text)
+    first = text[m.end() :].lstrip("\n").split("\n", 1)[0].strip()
+    if first not in ("PASS", "BLOCK"):
+        return f"`## VERDICT` must be followed by PASS or BLOCK alone, found {first[:40]!r}"
+    return None
+
+
 def adjudication_verdict_strict(text: str, prior: list[Finding]) -> str:
-    """Verdict of FRESH adjudicator output: UNKNOWN without exactly one
-    `## RULINGS` section; otherwise the structural bijection verdict over the
-    rulings read from that section only. Severity still never comes from the
-    adjudicator. Pure."""
-    if _rulings_section(text) is None:
+    """Verdict of FRESH adjudicator output: UNKNOWN unless the shape validates
+    (one `## RULINGS`, one `## VERDICT` with PASS/BLOCK); otherwise the
+    structural bijection verdict over the rulings read from `## RULINGS` only.
+    Severity never comes from the adjudicator; its stated verdict is never
+    used. Pure."""
+    if validate_adjudication_shape(text) is not None:
         return "UNKNOWN"
     return adjudication_verdict(parse_rulings(text, strict=True), prior)
 
@@ -1205,8 +1238,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
         rulings = parse_rulings(text, strict=True)
         verdict = adjudication_verdict_strict(text, prior)
-        if _rulings_section(text) is None:
-            attempts.append("shape: no single `## RULINGS` section — UNKNOWN (malformed attempt)")
+        adj_shape_error = validate_adjudication_shape(text)
+        if adj_shape_error:
+            attempts.append(f"shape: {adj_shape_error} — UNKNOWN (malformed attempt)")
         severity = {fid: f for fid, f in finding_ids(prior)}
         lines = [
             f"# Gate 7 adjudication — PR #{a.pr}",
@@ -1282,7 +1316,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     findings = parse_findings(text, strict=True)
-    shape_error = validate_review_shape(text)
+    shape_error = review_shape_error(text, findings)
     if shape_error:
         attempts.append(f"shape: {shape_error} — UNKNOWN (malformed attempt)")
     review = Review(fresh_review_verdict(text, findings), findings, provider, text, attempts)
