@@ -184,3 +184,41 @@ questions:
       - "MSG_MODBUS reference"
     required_citations:
       - "CCW MSG_MODBUS instruction help"
+
+  # Q14 — Modbus RTU framing mismatch (PLC ↔ VFD).
+  # Sourced from the live troubleshooting session on 2026-05-24
+  # (Mike Harper, garage bench). Multi-source reasoning required:
+  # the answer is a cross-reference between the PLC serial port config
+  # (CCW screenshot) and the drive's P09.04 parameter table (GS10 Ch. 4).
+  # See docs/evaluations/golden-cases/modbus-rtu-framing-mismatch.md
+  # for the full grading rubric.
+  - id: Q14
+    question: "My Micro820 PLC is set to 38400 baud, Even parity, 1 stop bit in CCW. The GS10 VFD has P09.04 set to the default of 13. The sniffer shows 0x3F on every byte with CRC Invalid. What's wrong and how do I fix it?"
+    category: modbus-troubleshooting
+    difficulty: hard
+    equipment: [GS10, Micro820, RS-485, Modbus-RTU]
+    expected_answer_components:
+      - "P09.04"
+      - "8-N-2"           # what P09.04=13 means on the GS10
+      - "8-E-1"           # what CCW is actually sending
+      - "framing"         # name the failure mode
+      - "parity"
+      - "stop bit"
+      - "P09.04 = 14"     # the canonical fix value
+      - "0x3F"            # acknowledge the evidence
+    fabrication_anti_patterns:
+      # Any of these in the answer = veto (ungrounded-LLM hallucinations
+      # this question is specifically designed to distinguish against).
+      - "noise"
+      - "termination"
+      - "ferrite"
+      - "swap A and B"
+      - "factory default"
+      - "reduce baud"
+    required_documents:
+      - "GS10 manual Chapter 4 P09.04 parameter table"
+      - "GS10 manual Chapter 5 serial communications"
+      - "Micro820 / CCW Serial Port configuration"
+    required_citations:
+      - "GS10 P09.04 parameter encoding (13 = 8-N-2, 14 = 8-E-1)"
+      - "CCW Serial Port driver settings"
