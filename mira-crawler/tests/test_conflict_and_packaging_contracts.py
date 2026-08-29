@@ -74,11 +74,12 @@ def _ingest_gate():
 
 
 class _Rows:
-    def __init__(self, rows: list) -> None:
+    def __init__(self, rows: list, count: int = 0) -> None:
         self.rows = rows
+        self.count = count
 
     def scalar(self):
-        return 0
+        return self.count
 
     def fetchall(self):
         return self.rows
@@ -98,7 +99,7 @@ class _FakeConn:
         self.box["sql"] = str(stmt)
         self.box["params"] = params
         self.box.setdefault("all", []).append((str(stmt), dict(params)))
-        return _Rows(self.box.get("rows", []))
+        return _Rows(self.box.get("rows", []), self.box.get("count", 0))
 
     def commit(self):
         pass
@@ -587,6 +588,41 @@ class TestCanonicalSourceUrl:
     def test_expanded_canonical_form_is_idempotent(self, raw):
         once = store.canonical_source_url(raw)
         assert store.canonical_source_url(once) == once
+
+    # ── Round U (#3481) code F1, high: the historical-spelling guard belongs at the
+    # write boundary. Every production route runs chunk_exists() before
+    # insert_chunk() (store_chunks, tasks/ingest.py, tasks/_shared.py), but a
+    # boundary that relies on its callers remembering that is the exact shape
+    # this file's provenance enforcement was written to replace. insert_chunk
+    # itself now refuses to write a second row beside a row that already exists
+    # under the exact spelling the caller supplied.
+
+    def test_insert_itself_never_writes_beside_a_historical_raw_spelled_row(self, captured):
+        captured["count"] = 1  # the DB already holds the row under the raw spelling
+        raw = "HTTPS://EXAMPLE.COM:443/Legacy%7a.PDF"
+        assert _insert(True, raw) == ""
+        statements = [s for s, _ in captured["all"]]
+        assert not any("INSERT INTO knowledge_entries" in s for s in statements)
+        sql = re.sub(r"\s+", " ", captured["sql"])  # the last statement is the lookup
+        assert "source_url = :url OR source_url = :raw" in sql
+        assert captured["params"]["raw"] == raw
+        assert captured["params"]["url"] == store.canonical_source_url(raw)
+        assert captured["params"]["tid"] == "tenant-a"  # tenant-scoped, like every read
+
+    def test_insert_writes_when_neither_spelling_exists(self, captured):
+        captured["count"] = 0
+        raw = "HTTPS://EXAMPLE.COM:443/Fresh%7a.PDF"
+        assert _insert(True, raw) != ""
+        assert "INSERT INTO knowledge_entries" in captured["sql"]
+        assert captured["params"]["source_url"] == "https://example.com/Fresh%7A.PDF"
+
+    def test_insert_pays_no_extra_lookup_when_the_spelling_is_already_canonical(self, captured):
+        """The common path is unchanged: a canonical spelling has no historical
+        twin to look for, and ON CONFLICT DO NOTHING already lets an existing
+        canonical row win."""
+        captured["count"] = 1
+        assert _insert(True, "https://example.com/Doc%7A.PDF") != ""
+        assert [s for s, _ in captured["all"] if "SELECT COUNT" in s] == []
 
     def test_lookup_and_write_share_one_key_across_port_and_escape_spellings(self, captured):
         raw = "HTTPS://EXAMPLE.COM:443/Doc%7a.PDF"

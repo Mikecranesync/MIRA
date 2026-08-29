@@ -214,6 +214,7 @@ def insert_chunk(
     # One canonical key for every casing of an origin — before provenance and
     # before binding, so the classified URL and the stored URL are the same
     # string, and chunk_exists() looks up exactly what this writes.
+    raw_url = source_url
     source_url = canonical_source_url(source_url)
 
     # ── Provenance enforcement at the write boundary (Gate 9 round 1, F1) ──
@@ -238,6 +239,18 @@ def insert_chunk(
             _log_ref(source_url),
             prov_reason,
         )
+        return ""
+
+    # The historical-spelling guard lives HERE, at the boundary every route
+    # passes through (Gate 7 round U on #3481, code F1): a row stored before
+    # canonicalisation under the exact spelling the caller supplied wins, just
+    # as ON CONFLICT DO NOTHING lets an existing canonical row win — this never
+    # writes a second row beside it, whether or not the caller ran
+    # chunk_exists() first. Skipped when the spelling is already canonical:
+    # there is no historical twin to look for, and the conflict target handles
+    # the canonical row. (Documented residual, unchanged: a historical row is
+    # only found when the caller supplies its exact spelling — #3482.)
+    if raw_url != source_url and chunk_exists(tenant_id, raw_url, chunk_index):
         return ""
 
     entry_id = str(uuid.uuid4())
