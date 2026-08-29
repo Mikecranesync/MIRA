@@ -12,11 +12,26 @@ SCRIPT = pathlib.Path(__file__).resolve().parents[2] / "tools" / "qa" / "redact_
 
 
 def _bash() -> str | None:
-    # On Windows, System32\bash.exe is the WSL launcher (no POSIX paths); prefer Git Bash.
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
+    """A bash that can run a Windows-path script.
+
+    On Windows, `System32\\bash.exe` is the WSL launcher: it cannot open a
+    `C:\\…` path, so it is treated as UNAVAILABLE (never selected, never handed
+    a Windows path). Git Bash is preferred; any other bash on PATH that is not
+    the WSL launcher is acceptable.
+    """
+    for cand in (
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+    ):
         if pathlib.Path(cand).exists():
             return cand
-    return shutil.which("bash")
+    found = shutil.which("bash")
+    if not found:
+        return None
+    if "system32" in found.lower() or "windowsapps" in found.lower():
+        return None  # WSL launcher — unusable for a Windows-path script
+    return found
 
 
 BASH = _bash()

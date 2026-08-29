@@ -27,13 +27,17 @@
  *
  * HUB defaults to http://localhost:3100 (override with HUB_BASE).
  */
+import { randomBytes } from "node:crypto";
 import { Client } from "pg";
 
 const HUB = process.env.HUB_BASE ?? "http://localhost:3100";
 const SUFFIX = Date.now().toString();
+// Cryptographically fresh per run. Never logged, never emitted on stdout/stderr:
+// the gate authenticates with the minted session cookie, not the password, and
+// the run's auth rows are swept afterwards (--cleanup).
 const CREDS = {
   email: `betagate-${SUFFIX}@factorylm.com`,
-  password: "TestPass123!",
+  password: `${randomBytes(24).toString("base64url")}!Aa1`,
   name: "Beta Gate Stranger",
 };
 

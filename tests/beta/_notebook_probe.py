@@ -537,6 +537,22 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
             doc_id=up,
             file_id=fid,
         )
+        if r.status_code == 201 and up and not fid:
+            # The document row WAS created — register it so cleanup removes it.
+            nonlocal doc_id, control_doc_id
+            if name == "control_upload":
+                control_doc_id = str(up)
+            else:
+                doc_id = str(up)
+            # A fresh indexed upload carries BOTH ids. Without the parked file
+            # id the run can neither detach links / delete the file nor check
+            # citation file identity — that is not a successful upload.
+            fail(
+                name,
+                t0,
+                f"{name}: upload door returned no fileId for a fresh indexed document (uploadId={up})",
+                **info,
+            )
         if r.status_code != 201 or not up or body.get("duplicate"):
             fail(
                 name,

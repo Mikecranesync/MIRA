@@ -161,13 +161,20 @@ jobs:
           GATE_RC=$?
           set -e
 
-          # 6. Clean up the staging rows we created (best-effort, never fail the job).
-          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
+          # 6. Clean up the staging rows we created. Cleanup is PROOF: a failed
+          #    sweep fails the job — but never hides an earlier gate failure.
+          SWEEP_RC=0
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || SWEEP_RC=$?
+          if [ "$SWEEP_RC" -ne 0 ]; then
+            echo "::error::tenant sweep FAILED for $BETA_GATE_TENANT (rc=$SWEEP_RC) — run-owned staging rows may remain"
+          fi
 
           # 7. Tear down the server.
           pkill -f "next start -p 3100" || true
 
-          exit $GATE_RC
+          if [ "$GATE_RC" -ne 0 ]; then exit "$GATE_RC"; fi
+          if [ "$SWEEP_RC" -ne 0 ]; then exit 1; fi
+          exit 0
 
       - name: Redact server log on failure
         if: failure()

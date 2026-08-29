@@ -1318,3 +1318,25 @@ approved:
       SELECT 1 FROM knowledge_entries dup
        WHERE dup.tenant_id::text = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
          AND dup.source_url = ke.source_url
+  "tools/qa/notebook_source_admission_preflight.py:72":
+    approved_classification: TENANT-ONLY
+    query_sha256: "fdea7ff4a0bf4ca4529d1b75e6300ed89616b390d8b498a9e56729c9dacd4822"
+    reason: "PRD §7.3 read-only preflight REPORT (Workstream B, PR #3480). Pure-tenant
+      by design, not a hybrid surface: it joins knowledge_entries ONLY through the
+      caller's own equipment_notebook_sources rows (s.tenant_id = %s::uuid AND
+      k.tenant_id = s.tenant_id) to count that tenant's confirmed-source chunks and
+      whether any carries verified=true. Counting shared OEM rows (is_private=false)
+      here would report ANOTHER corpus as this tenant's admission state — the exact
+      mistake listSources() avoids for the same reason. Aggregates is_private and
+      verified per source to compute the REAL current admission (verified OR
+      private-and-confirmed); shared verified=false rows are reported as EXCLUDED,
+      never counted as admissible. Runs inside SET TRANSACTION READ ONLY + ROLLBACK,
+      connects to loopback hosts ONLY (no override; staging uses --print-sql via
+      db-inspect.yml), and is never executed against production from a session
+      (tests/beta/test_admission_preflight.py)."
+    query_snippet: |
+      FROM equipment_notebook_sources s
+        LEFT JOIN knowledge_entries k
+               ON k.doc_id = s.doc_id
+              AND k.tenant_id = s.tenant_id
+       WHERE s.tenant_id = %s::uuid

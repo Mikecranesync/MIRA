@@ -97,13 +97,25 @@ jobs:
               fi
             fi
           fi
+          # Raw evidence lives ONLY under /tmp and is never uploaded as-is:
+          # failure strings can echo response bodies. The if:always step
+          # below redacts it before the artifact is taken.
           # shellcheck disable=SC2086
-          python tests/beta/_notebook_probe.py $DRY --evidence-out probe-evidence.json
+          python tests/beta/_notebook_probe.py $DRY --evidence-out /tmp/probe-evidence.raw.json \
+            2>&1 | bash tools/qa/redact_ci_log.sh
+
+      - name: Redact evidence before upload (always)
+        if: always()
+        run: |
+          if [ -f /tmp/probe-evidence.raw.json ]; then
+            bash tools/qa/redact_ci_log.sh < /tmp/probe-evidence.raw.json > /tmp/probe-evidence.json
+            rm -f /tmp/probe-evidence.raw.json
+          fi
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: beta-probe-prod-evidence-${{ github.run_id }}
-          path: probe-evidence.json
+          path: /tmp/probe-evidence.json
           retention-days: 14
           if-no-files-found: ignore

@@ -400,7 +400,9 @@ class FakeHub:
         links_get_status: int = 200,
         control_body: str | None = None,
         sentinel_http: int = 200,
+        omit_file_id: bool = False,
     ):
+        self.omit_file_id = omit_file_id
         self.delete_status = delete_status
         self.links_get_status = links_get_status
         self.calls: list[tuple[str, str]] = []
@@ -457,16 +459,10 @@ class FakeHub:
             is_control = b"control-" in request.content
             if is_control:
                 self.control_uploaded = True
-                return httpx.Response(
-                    201,
-                    json={
-                        "ok": True,
-                        "indexed": True,
-                        "uploadId": CONTROL,
-                        "fileId": "file-c",
-                        "chunkCount": 1,
-                    },
-                )
+                body = {"ok": True, "indexed": True, "uploadId": CONTROL, "chunkCount": 1}
+                if not self.omit_file_id:
+                    body["fileId"] = "file-c"
+                return httpx.Response(201, json=body)
             self.uploaded = True
             return httpx.Response(
                 201,
@@ -670,6 +666,24 @@ def test_email_password_auth_cleanup_uses_the_minted_cookie():
     assert hub.cookies_seen and all(c == "next-auth.session-token=MINTED" for c in hub.cookies_seen)
     assert len(hub.deleted) == 9
     assert "MINTED" not in json.dumps(report.to_dict())
+
+
+def test_upload_without_server_file_id_is_not_a_successful_upload():
+    # The upload door returns BOTH ids for a fresh indexed document: `uploadId`
+    # (the doc) and `fileId` (the parked original). Without `fileId` the run
+    # cannot detach links, delete the file, or check citation file identity —
+    # so it is not a successful upload and the lane must stop before confirming.
+    hub = FakeHub(omit_file_id=True)
+    report, _ = _run(hub)
+    assert not report.ok
+    assert any("fileId" in f for f in report.failures), report.failures
+    assert not hub.attached, "a fileId-less upload must never be confirmed as a source"
+    up = next(s for s in report.steps if s["name"] == "control_upload")
+    assert up["ok"] is False and up["file_id"] is None
+    # what WAS created is still cleaned (upload + notebook + node), nothing else
+    assert (
+        f"/api/uploads/{CONTROL}/" in hub.deleted and "/api/namespace/node/node-1/" in hub.deleted
+    )
 
 
 def test_probe_happy_path_walks_the_product_contract_in_order():
