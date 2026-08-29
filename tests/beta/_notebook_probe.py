@@ -538,16 +538,47 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
         # Cleanup is PROOF, not observation: any target that is neither
         # deleted (2xx) nor already gone (404) is a probe failure, and so is
         # an exception mid-cleanup — a QA tenant must not accumulate rows.
+        #
+        # Order matters, and every step is proof-checked:
+        #   1. GET /api/files/{fileId}/ → detach each of this run-unique file's
+        #      links (the upload door filed it at the notebook's node; without
+        #      the detach, DELETE file is a 409 has_links);
+        #   2. DELETE notebook (removes sources/turns/notebook links only — it
+        #      deliberately keeps the file and the backing kg node);
+        #   3. DELETE upload; 4. DELETE file (now link-free);
+        #   5. DELETE the run-owned backing node (/api/namespace/node/{id}/).
         t0 = time.monotonic()
         outcome: dict[str, Any] = {}
         targets: list[tuple[str, str]] = []
+        h2 = {"Cookie": active_cookie} if active_cookie else {}
+        if file_id and active_cookie:
+            try:
+                fr = client.get(f"/api/files/{file_id}/", headers=h2)
+                outcome["file_links_get"] = fr.status_code
+                if fr.status_code == 200:
+                    links = fr.json().get("links") or []
+                    for ln in links:
+                        lid = str(ln.get("id") or "")
+                        if lid:
+                            targets.append((f"link:{lid}", f"/api/files/{file_id}/links/{lid}/"))
+                    outcome["file_links"] = len(links)
+                elif fr.status_code != 404:
+                    failures.append(
+                        f"cleanup file links GET HTTP {fr.status_code} — cannot detach run-owned file"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                outcome["file_links_get"] = type(exc).__name__
+                failures.append(
+                    f"cleanup file links GET raised {type(exc).__name__}: {str(exc)[:200]}"
+                )
         if notebook_id:
             targets.append(("notebook", f"/api/equipment-notebooks/{notebook_id}/"))
         if doc_id:
             targets.append(("upload", f"/api/uploads/{doc_id}/"))
         if file_id:
             targets.append(("file", f"/api/files/{file_id}/"))
-        h2 = {"Cookie": active_cookie} if active_cookie else {}
+        if node_id:
+            targets.append(("node", f"/api/namespace/node/{node_id}/"))
         if targets and not active_cookie:
             failures.append("cleanup impossible: no active session cookie")
         for name, path in targets:

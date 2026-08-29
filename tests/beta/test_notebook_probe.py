@@ -263,8 +263,10 @@ class FakeHub:
         answered_body: str | None = None,
         refusal_body: str | None = None,
         delete_status: int = 200,
+        links_get_status: int = 200,
     ):
         self.delete_status = delete_status
+        self.links_get_status = links_get_status
         self.calls: list[tuple[str, str]] = []
         self.cookies_seen: list[str] = []
         self.readiness_polls = 0
@@ -350,6 +352,19 @@ class FakeHub:
                     ],
                 },
             )
+        if m == "GET" and p == "/api/files/file-1/":
+            if self.links_get_status != 200:
+                return httpx.Response(self.links_get_status, json={"error": "Query failed"})
+            return httpx.Response(
+                200,
+                json={
+                    "file": {"id": "file-1"},
+                    "links": [
+                        {"id": "link-1", "targetType": "namespace_node", "targetId": "node-1"},
+                        {"id": "link-2", "targetType": "equipment_notebook", "targetId": "nb-1"},
+                    ],
+                },
+            )
         if m == "DELETE":
             self.deleted.append(p)
             if self.delete_status >= 500:
@@ -388,10 +403,57 @@ def test_probe_fails_when_cleanup_returns_500_even_if_everything_else_passed():
     report, _ = _run(hub)
     assert not report.ok
     assert any("cleanup notebook HTTP 500" in f for f in report.failures)
-    # every run-owned target was still attempted
-    assert len(hub.deleted) == 3
+    # every run-owned target was still attempted (2 links + notebook + upload + file + node)
+    assert len(hub.deleted) == 6
     cleanup = next(s for s in report.steps if s["name"] == "cleanup")
-    assert cleanup["notebook"] == 500
+    assert cleanup["notebook"] == 500 and cleanup["node"] == 500 and cleanup["link:link-1"] == 500
+
+
+def test_cleanup_detaches_links_before_file_delete_and_deletes_node_last():
+    hub = FakeHub()
+    report, _ = _run(hub)
+    assert report.ok, report.failures
+    d = hub.deleted
+    assert d == [
+        "/api/files/file-1/links/link-1/",
+        "/api/files/file-1/links/link-2/",
+        "/api/equipment-notebooks/nb-1/",
+        "/api/uploads/11111111-1111-4111-8111-111111111111/",
+        "/api/files/file-1/",
+        "/api/namespace/node/node-1/",
+    ]
+    calls = hub.calls
+    # the link enumeration (GET) precedes the first detach, which precedes the file delete
+    assert (
+        calls.index(("GET", "/api/files/file-1/"))
+        < calls.index(("DELETE", "/api/files/file-1/links/link-1/"))
+        < calls.index(("DELETE", "/api/files/file-1/"))
+        < calls.index(("DELETE", "/api/namespace/node/node-1/"))
+    )
+    cleanup = next(s for s in report.steps if s["name"] == "cleanup")
+    assert cleanup["file_links"] == 2 and cleanup["file"] == 200 and cleanup["node"] == 200
+
+
+def test_cleanup_fails_when_links_cannot_be_enumerated_but_still_attempts_the_rest():
+    hub = FakeHub(links_get_status=500)
+    report, _ = _run(hub)
+    assert not report.ok and any("file links GET HTTP 500" in f for f in report.failures)
+    assert hub.deleted[-1] == "/api/namespace/node/node-1/"
+    assert "/api/files/file-1/" in hub.deleted
+
+
+def test_cleanup_fails_when_a_link_detach_is_refused():
+    hub = FakeHub()
+    orig = hub.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE" and request.url.path.endswith("/links/link-1/"):
+            return httpx.Response(409, json={"error": "has_links"})
+        return orig(request)
+
+    hub.handler = handler
+    report, _ = _run(hub)
+    assert not report.ok and any("cleanup link:link-1 HTTP 409" in f for f in report.failures)
 
 
 def test_probe_accepts_404_on_cleanup_as_already_gone():
@@ -424,7 +486,7 @@ def test_email_password_auth_cleanup_uses_the_minted_cookie():
     assert order[:2] == ["/api/auth/csrf/", "/api/auth/callback/credentials/"]
     # every authenticated call — INCLUDING the DELETEs in finally — carried the minted session
     assert hub.cookies_seen and all(c == "next-auth.session-token=MINTED" for c in hub.cookies_seen)
-    assert len(hub.deleted) == 3
+    assert len(hub.deleted) == 6
     assert "MINTED" not in json.dumps(report.to_dict())
 
 
