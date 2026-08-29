@@ -230,10 +230,13 @@ class TestManifestPackaging:
         assert dest, (
             f"{dockerfile.name}: no whole-directory `COPY mira-crawler/ <dest>` — the manifest would not ship"
         )
-        env = re.search(r'PYTHONPATH="([^"]+)"', text)
+        # Quoted or bare `ENV PYTHONPATH=...` — the contract is the import path,
+        # not the quoting style (follow-up Gate 7 hardening).
+        env = re.search(r'PYTHONPATH="([^"]+)"|PYTHONPATH=([^\s"]+)', text)
         assert env, f"{dockerfile.name}: no PYTHONPATH"
-        assert dest in env.group(1).split(":"), (
-            f"{dockerfile.name}: {dest} not on PYTHONPATH {env.group(1)}"
+        pythonpath = env.group(1) or env.group(2)
+        assert dest in pythonpath.split(":"), (
+            f"{dockerfile.name}: {dest} not on PYTHONPATH {pythonpath}"
         )
 
     def test_build_context_does_not_exclude_the_manifest(self):
