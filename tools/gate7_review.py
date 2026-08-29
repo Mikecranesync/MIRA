@@ -459,8 +459,8 @@ Diff:
 {_truncation_notice(diff)}{_scope_notice(excluded)}{decision_point_reminder(kind)}
 
 Output STRICT markdown in exactly this shape, no preamble — exactly one `## VERDICT`
-(the word PASS or BLOCK alone on the next line), exactly one `## FINDINGS`, exactly one
-`## NOT REVIEWED`. Any other shape — a table, an essay, a bold verdict, extra or missing
+(the word PASS or BLOCK alone on the next line), exactly one `## FINDINGS`, and
+exactly one `## NOT REVIEWED`. Any other shape — a table, an essay, a bold verdict, extra or missing
 sections — is discarded as UNKNOWN (never PASS, never BLOCK) and your work is lost:
 
 ## VERDICT
