@@ -202,6 +202,25 @@ class TestReadValidatedSymlinkWalk:
         with pytest.raises(OSError):
             _read_validated(validated)
 
+    def test_platform_guard_is_set_membership_and_reads_on_every_platform(
+        self, tmp_path, monkeypatch
+    ):
+        """Gate 7 round-12 group A finding on #3268 claimed `os.supports_dir_fd` is
+        a *boolean*, so `os.open not in os.supports_dir_fd` would raise TypeError
+        and abort every local-file ingest. It is a set (the documented idiom is
+        `os.stat in os.supports_dir_fd`). This test is deliberately NOT POSIX-only:
+        the guard line executes here on Windows (plain-open branch) and on Linux
+        CI (dir_fd walk), so a TypeError on either platform is a red test."""
+        assert isinstance(os.supports_dir_fd, (set, frozenset))
+        base = tmp_path / "inbox"
+        base.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        (base / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+
+        from tasks.ingest import _read_validated
+
+        assert _read_validated((base / "doc.pdf").resolve()) == b"%PDF-1.4 legit"
+
     @_POSIX_ONLY
     def test_honest_nested_file_within_base_still_reads(self, tmp_path, monkeypatch):
         base = tmp_path / "inbox"

@@ -36,7 +36,11 @@ def _urls_in(node: ast.AST) -> list[str]:
         for n in ast.walk(node)
         if isinstance(n, ast.Constant)
         and isinstance(n.value, str)
-        and n.value.startswith(("http://", "https://"))
+        # Scheme match is case-insensitive (Gate 7 round-12 group A on #3268):
+        # a constant written `HTTPS://...` is still a configured origin, and a
+        # manifest discovery that missed it would leave the policy consistency
+        # test vacuous for that origin.
+        and n.value.lower().startswith(("http://", "https://"))
     ]
 
 

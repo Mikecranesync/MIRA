@@ -730,3 +730,96 @@ def test_build_prompt_default_is_unchanged_for_a_code_round_one():
     prompt = build_prompt("t", "b", "diff", "high", [])
     assert "SETTLED FROM EARLIER ROUNDS" not in prompt
     assert "WHAT KIND OF CHANGE THIS IS" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Gate 9 follow-up on #3268 (review thread r3793088736): the five adjudicator
+# evasions, replayed END-TO-END from RAW adjudicator text.
+#
+# The earlier locks above feed `adjudication_verdict` pre-parsed tuples, which
+# leaves `parse_rulings` — the only place model text is trusted at all — outside
+# the exploit. These take the exact strings a laundering adjudicator would emit
+# and run them through the same two functions `main` does.
+# ---------------------------------------------------------------------------
+
+
+def _adjudicate_raw(raw: str, prior_report: str) -> str:
+    """Exactly what main() does after the cascade returns: parse the prior
+    report for stable ids, parse the adjudicator text, compute structurally."""
+    from gate7_review import adjudication_verdict, parse_rulings
+
+    return adjudication_verdict(parse_rulings(raw), parse_findings(prior_report))
+
+
+_PRIOR_ONE_HIGH = (
+    "## VERDICT\nBLOCK\n\n## FINDINGS\n- **[severity: high] TOCTOU parent-component swap** — race\n"
+)
+_PRIOR_TWO_HIGH = _PRIOR_ONE_HIGH + "- **[severity: high] Redirect bypass** — hop\n"
+
+
+def test_raw_severity_downgrade_on_a_sustained_high_still_blocks():
+    """Evasion 1 — severity laundering. Whatever severity the adjudicator writes
+    next to (or instead of) the id, the prior report's HIGH governs."""
+    for raw in (
+        "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** [severity: medium] — downgraded\n## VERDICT\nPASS\n",
+        "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** — (severity: low) residual only\n## VERDICT\nPASS\n",
+        "## RULINGS\n- **[ruling: SUSTAINED] [severity: medium] TOCTOU** — old format\n## VERDICT\nPASS\n",
+    ):
+        assert _adjudicate_raw(raw, _PRIOR_ONE_HIGH) != "PASS", raw
+
+
+def test_raw_duplicate_ruling_masking_an_omitted_id_cannot_pass():
+    """Evasion 2 — two REFUTED lines for F1, none for F2: right count, one
+    high left unruled."""
+    raw = (
+        "## RULINGS\n"
+        "- **[ruling: REFUTED] [id: F1]** — quote present\n"
+        "- **[ruling: REFUTED] [id: F1]** — quote present again\n"
+        "## VERDICT\nPASS\n"
+    )
+    assert _adjudicate_raw(raw, _PRIOR_TWO_HIGH) == "UNKNOWN"
+
+
+def test_raw_invented_id_or_title_cannot_pass_and_title_text_is_inert():
+    """Evasion 3 — invented ids void the run; a restated/invented TITLE next to
+    a real id changes nothing, because there is no title channel at all."""
+    invented_id = (
+        "## RULINGS\n- **[ruling: REFUTED] [id: F2]** Some invented finding\n## VERDICT\nPASS\n"
+    )
+    assert _adjudicate_raw(invented_id, _PRIOR_ONE_HIGH) == "UNKNOWN"
+    relabelled = (
+        "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** Cosmetic nit (low)\n## VERDICT\nPASS\n"
+    )
+    assert _adjudicate_raw(relabelled, _PRIOR_ONE_HIGH) == "BLOCK"
+
+
+def test_raw_extra_ruling_cannot_pass():
+    """Evasion 4 — an extra ruling beyond the prior set (len > count) voids."""
+    raw = (
+        "## RULINGS\n"
+        "- **[ruling: REFUTED] [id: F1]** — ok\n"
+        "- **[ruling: REFUTED] [id: F2]** — bonus\n"
+        "## VERDICT\nPASS\n"
+    )
+    assert _adjudicate_raw(raw, _PRIOR_ONE_HIGH) == "UNKNOWN"
+
+
+def test_raw_zero_parsed_prior_findings_cannot_pass():
+    """Evasion 5 — a prior report with no parseable findings (e.g. the
+    round-10 group D malformed attempt) plus a confident ruling."""
+    unparseable_prior = (
+        "## VERDICT\nBLOCK\n\n## FINDINGS\n- (high) something without the severity keyword\n"
+    )
+    assert parse_findings(unparseable_prior) == []
+    raw = "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — nothing to see\n## VERDICT\nPASS\n"
+    assert _adjudicate_raw(raw, unparseable_prior) == "UNKNOWN"
+    assert _adjudicate_raw("## VERDICT\nPASS\n", unparseable_prior) == "UNKNOWN"
+
+
+def test_raw_verdict_line_alone_never_decides():
+    """The adjudicator's own `## VERDICT` is never read: with the ruling lines
+    absent, a written PASS is UNKNOWN; with a sustained high, a written PASS is
+    BLOCK."""
+    assert _adjudicate_raw("## VERDICT\nPASS\n", _PRIOR_ONE_HIGH) == "UNKNOWN"
+    raw = "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** — real\n## VERDICT\nPASS\n"
+    assert _adjudicate_raw(raw, _PRIOR_ONE_HIGH) == "BLOCK"

@@ -67,6 +67,27 @@ def test_discovery_still_sees_the_known_manifests():
     )
 
 
+def test_discovery_matches_url_constants_case_insensitively(tmp_path):
+    """Gate 7 round-12 group A finding on #3268 (Gate 9 follow-up): `_urls_in`
+    matched only lowercase `http://` / `https://`, so a manifest constant written
+    `HTTPS://…` escaped discovery and the consistency test above would never have
+    demanded a policy entry for it. The production boundary was never open — the
+    gate lowercases scheme and host and REFUSES an unclassified origin — the gap
+    was in this CI proof, not in the write path. Fixed at the root in `_urls_in`."""
+    (tmp_path / "shouty.py").write_text(
+        'FEEDS = ["HTTPS://Example.COM/feed.xml", "Http://mixed.example.com/x"]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert found == {
+        "shouty.FEEDS": ["HTTPS://Example.COM/feed.xml", "Http://mixed.example.com/x"]
+    }
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {
+        "example.com",
+        "mixed.example.com",
+    }
+
+
 def test_every_entry_is_well_formed(policy):
     """Each entry states a valid classification, a reason, and who decided."""
     bad = []
