@@ -290,6 +290,17 @@ def pr_kind(changed_paths: list[str]) -> str:
     return "code"
 
 
+def scoped_paths(changed_paths: list[str], prefixes: tuple[str, ...]) -> list[str]:
+    """The changed paths a --paths scope keeps. Pure.
+
+    A scoped run must brief the reviewer on what it will actually SEE. Classifying
+    from the full PR file list told a docs-only scope it was reviewing a "partly
+    documentation" change, and the reviewer then reported the (out-of-scope)
+    code as missing, three rounds running (CU-03 follow-up, PR #3481).
+    """
+    return [p for p in changed_paths if any(p.startswith(pre) for pre in prefixes)]
+
+
 def settled_block(prior_reports: list[str]) -> str:
     """Render previously-adjudicated findings as SETTLED context.
 
@@ -332,6 +343,9 @@ def kind_block(kind: str) -> str:
         "the document's own subject matter back as a finding is a false positive.\n"
         "Do report: claims the document makes that are FALSE, internally contradictory,\n"
         "unsupported by the cited file/line, or that overstate what is delivered.\n"
+        "Preserved review artifacts (raw model output, rebuttals, adjudications, stderr\n"
+        "logs) are historical EVIDENCE quoted verbatim, not present-tense claims of this\n"
+        "PR; judge the PR's own claims in the unit record and index, not the artifacts.\n"
         "--- END KIND ---\n"
     )
 
@@ -975,7 +989,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         except OSError as e:
             print(f"error: could not read --settled report: {e}", file=sys.stderr)
             return 1
-    kind = pr_kind(paths)
+    kind = pr_kind(scoped_paths(paths, tuple(a.paths)) if a.paths else paths)
     if settled:
         print(
             f"Gate 7: {len(a.settled)} prior round(s) supplied as settled context.", file=sys.stderr

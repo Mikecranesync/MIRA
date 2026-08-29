@@ -680,6 +680,27 @@ def test_pr_kind_classifies_documentation_code_and_mixed():
     assert pr_kind([]) == "code"
 
 
+def test_scoped_paths_keeps_only_the_scope_and_kind_follows_it():
+    """CU-03 follow-up (#3481): a `--paths docs/` run was briefed as 'partly
+    documentation' because kind came from the FULL file list, and the reviewer
+    reported the out-of-scope code as missing three rounds running. Kind must
+    follow what the reviewer will actually see."""
+    from gate7_review import scoped_paths
+
+    files = ["tools/x.py", "docs/a.md", "docs/evidence/b.md"]
+    assert scoped_paths(files, ("docs/",)) == ["docs/a.md", "docs/evidence/b.md"]
+    assert pr_kind(scoped_paths(files, ("docs/",))) == "documentation"
+    assert pr_kind(scoped_paths(files, ("tools/",))) == "code"
+    assert pr_kind(files) == "mixed"
+
+
+def test_kind_block_names_preserved_artifacts_as_evidence():
+    """An audit-trail PR carries raw reviews/adjudications verbatim; the
+    reviewer must not read those as the PR's present-tense claims."""
+    assert "historical EVIDENCE" in kind_block("documentation")
+    assert "historical EVIDENCE" in kind_block("mixed")
+
+
 def test_kind_block_is_empty_for_a_code_pr():
     """Round-1 code review must be byte-identical to the pre-#3313 brief."""
     assert kind_block("code") == ""
