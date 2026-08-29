@@ -370,9 +370,9 @@ def _scope_notice(excluded: Optional[list[str]]) -> str:
         f"\n⚠️ SCOPE NOTICE — you are reading a --paths SLICE of this PR, not the PR.\n"
         f"{len(excluded)} changed file(s) are outside your slice and exist in the PR:\n"
         + "\n".join(f"  - {p}" for p in excluded)
-        + '\nTherefore: "the diff does not contain X" / "the only file changed is Y" is NOT a\n'
-        "finding here. A claim that this PR changes one of the files above is settled by that\n"
-        "file's own group, not by its absence from yours. Do not report the absence.\n"
+        + '\nTherefore: "the diff does not contain X" / "the only file changed is Y"\n'
+        "is NOT a finding here. A claim that this PR changes one of the files above is settled\n"
+        "by that file's own group, not by its absence from yours. Do not report the absence.\n"
     )
 
 
