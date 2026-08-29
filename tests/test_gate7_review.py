@@ -129,6 +129,28 @@ def test_parses_severity_title_and_detail():
     assert "route.ts:42" in found[0].detail
 
 
+def test_heading_form_findings_parse_with_the_same_severity_and_title():
+    """#3481 rounds G–H: gpt-oss emitted findings as `### 1. **[severity: high] T**`
+    headings (twice in a row) instead of the briefed bullet shape; parse_findings
+    saw zero findings, so a BLOCK with real content was unadjudicable. The
+    `[severity: X]` token is the discriminator — accept it on a heading line as
+    on a bullet line. Verdict semantics are unchanged: a parsed high still
+    forces BLOCK (test_a_high_finding_overrides_a_stated_pass)."""
+    found = parse_findings(
+        "## FINDINGS\n"
+        "### 1. **[severity: high] Scoped diff not filtered**  \n"
+        "**What breaks:** prose\n"
+        "### 2. **[severity: medium] DRY violation** — detail here\n"
+        "- **[severity: low] Bullet form still works** — nit\n"
+    )
+    assert [(f.severity, f.title) for f in found] == [
+        ("high", "Scoped diff not filtered"),
+        ("medium", "DRY violation"),
+        ("low", "Bullet form still works"),
+    ]
+    assert verdict_of("## VERDICT\nPASS\n", found) == "BLOCK"
+
+
 def test_none_found_yields_no_findings():
     assert parse_findings("## FINDINGS\n\nNone found\n") == []
 
@@ -467,6 +489,26 @@ def test_parse_rulings_extracts_ruling_id_pairs():
     assert parse_rulings(text) == [("SUSTAINED", "F1"), ("REFUTED", "F2")]
 
 
+def test_bare_ruling_lines_parse_by_stable_id():
+    """#3481 rounds G–H: the adjudicator answered with bare `F1 SUSTAINED` /
+    `F1: SUSTAINED` lines instead of the briefed `**[ruling: X] [id: Fn]**`
+    shape, so parse_rulings saw nothing and the adjudication was UNKNOWN twice.
+    The stable id + the ruling word are unambiguous; accept them. The
+    bijection contract is untouched (ids still must match the prior report
+    exactly), and severity still never comes from the adjudicator."""
+    from gate7_review import parse_rulings
+
+    text = "F1 SUSTAINED\nF2: REFUTED  \n- F3 — REFUTED\n**F4** SUSTAINED\n"
+    assert parse_rulings(text) == [
+        ("SUSTAINED", "F1"),
+        ("REFUTED", "F2"),
+        ("REFUTED", "F3"),
+        ("SUSTAINED", "F4"),
+    ]
+    # Prose that merely mentions an id is not a ruling.
+    assert parse_rulings("F1 was discussed but the diff SUSTAINED nothing about F2\n") == []
+
+
 def test_adjudicator_has_no_severity_channel():
     """Gate 9 re-review evasion: a prior HIGH returned as 'SUSTAINED medium'
     PASSed under the old count-only contract. Ruling lines that try to state
@@ -754,6 +796,11 @@ def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_rec
     assert not is_evidence_artifact(e + "round-12-groupA-rebuttal.md")
     assert not is_evidence_artifact("docs/architecture/convergence/units/CU-03.md")
     assert not is_evidence_artifact("mira-crawler/ingest/store.py")
+    # #3481 round H (real): only documentation/log artifacts are evidence. Anything
+    # executable or structured that lands under units/evidence/ stays in review —
+    # the directory must never become a place to hide code from the gate.
+    for smuggled in ("run.sh", "helper.py", "policy.yaml", "payload.json", "x.ts", "Dockerfile"):
+        assert not is_evidence_artifact(e + smuggled), smuggled
 
     diff = (
         f"diff --git a/{e}README.md b/{e}README.md\n+index row\n"

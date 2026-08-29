@@ -480,14 +480,27 @@ class Review:
     attempts: list[str] = field(default_factory=list)
 
 
+# A finding line is a bullet OR a numbered/plain heading — gpt-oss emitted
+# `### 1. **[severity: high] Title**` twice in a row on #3481 (rounds G–H), and a
+# BLOCK whose findings do not parse cannot be adjudicated. The `[severity: X]`
+# token is the discriminator either way.
 _FINDING_RE = re.compile(
-    r"^\s*[-*]\s*\*\*\[severity:\s*(high|medium|low)\]\s*(.+?)\*\*\s*(?:[—–-]\s*)?(.*)$",
+    r"^\s*(?:[-*]|#{1,6}\s*(?:\d+[.)]\s*)?)\s*\*\*\[severity:\s*(high|medium|low)\]\s*(.+?)\*\*\s*(?:[—–-]\s*)?(.*)$",
     re.I,
 )
 
 
 _RULING_RE = re.compile(
     r"^\s*[-*]\s*\*\*\[ruling:\s*(SUSTAINED|REFUTED)\]\s*\[id:\s*(F\d+)\]\*\*",
+    re.IGNORECASE,
+)
+# The bare shape the adjudicator actually emitted on #3481 rounds G–H
+# (`F1 SUSTAINED`, `F2: REFUTED`, `- F3 — REFUTED`, `**F4** SUSTAINED`): the
+# stable id plus the ruling word, alone on the line, optionally followed by a
+# dash-separated reason. Prose that merely mentions an id does not match. The
+# bijection contract and the no-severity-channel rule are unchanged.
+_BARE_RULING_RE = re.compile(
+    r"^\s*[-*]?\s*(?:\*\*)?(F\d+)(?:\*\*)?\s*[:—–-]?\s*(SUSTAINED|REFUTED)\b\s*(?:[—–-].*)?$",
     re.IGNORECASE,
 )
 
@@ -504,6 +517,10 @@ def parse_rulings(text: str) -> list[tuple[str, str]]:
         m = _RULING_RE.match(line)
         if m:
             out.append((m.group(1).upper(), m.group(2).upper()))
+            continue
+        b = _BARE_RULING_RE.match(line)
+        if b:
+            out.append((b.group(2).upper(), b.group(1).upper()))
     return out
 
 
@@ -702,6 +719,12 @@ def is_evidence_artifact(path: str) -> bool:
     if not path.startswith(_EVIDENCE_DIR):
         return False
     name = path.rsplit("/", 1)[-1].lower()
+    # Only documentation/log files are artifacts. Anything executable or
+    # structured under units/evidence/ (a script, a policy, a Dockerfile) stays
+    # in the reviewed diff — the directory must never become a place to hide
+    # code from the gate (#3481 round H).
+    if not name.endswith(_DOC_SUFFIXES):
+        return False
     return name != "readme.md" and "rebuttal" not in name
 
 
