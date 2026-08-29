@@ -79,7 +79,8 @@ def test_discovery_matches_url_constants_case_insensitively(tmp_path):
         encoding="utf-8",
     )
     found = origins_mod.discover_manifests(tmp_path)
-    assert found == {"shouty.FEEDS": ["HTTPS://Example.COM/feed.xml", "Http://mixed.example.com/x"]}
+    assert set(found) == {"shouty.FEEDS"}
+    assert set(found["shouty.FEEDS"]) == {"HTTPS://Example.COM/feed.xml", "Http://mixed.example.com/x"}
     assert set(origins_mod.discover_feeder_origins(tmp_path)) == {
         "example.com",
         "mixed.example.com",

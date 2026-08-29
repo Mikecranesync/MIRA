@@ -184,18 +184,34 @@ class TestConflictVisibility:
         updates: dict[str, list[str]] = {}
         for path in _production_py_files():
             text = path.read_text(encoding="utf-8", errors="replace")
-            for m in re.finditer(
-                r"UPDATE\s+knowledge_entries\b(.*?)(?:\bWHERE\b|\Z)", text, re.I | re.S
-            ):
-                updates.setdefault(path.relative_to(CRAWLER_DIR).as_posix(), []).append(m.group(1))
+            found = _update_set_clauses(text)
+            if found:
+                updates[path.relative_to(CRAWLER_DIR).as_posix()] = found
         assert updates, "population check: the crawler's UPDATE statements were not found"
-        offenders = {
-            f: s
-            for f, sets in updates.items()
-            for s in sets
-            if re.search(r"\bis_private\b", s, re.I)
-        }
+        offenders = {f: s for f, sets in updates.items() for s in sets if _assigns_is_private(s)}
         assert not offenders, f"an UPDATE assigns is_private: {offenders}"
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "UPDATE knowledge_entries SET is_private = false WHERE id = :id",
+            "UPDATE knowledge_entries AS ke SET ke.is_private = TRUE WHERE ke.id = :id",
+            "update knowledge_entries ke set content = :c, is_private=:p where id = :id",
+            "UPDATE knowledge_entries\n   SET metadata = :m,\n       is_private = :p\n WHERE id = :id",
+            "UPDATE knowledge_entries SET is_private = false",  # no WHERE at all
+        ],
+    )
+    def test_update_scanner_catches_aliased_lowercase_and_multiline_forms(self, sql):
+        """Scanner honesty (follow-up Gate 7 finding): the lock above is only as
+        good as its scanner. The capture runs from the table name to the WHERE
+        (or end of text), so an alias, lowercase keywords, line breaks, or a
+        missing WHERE cannot hide an `is_private` assignment."""
+        clauses = _update_set_clauses(sql)
+        assert clauses and any(_assigns_is_private(c) for c in clauses), sql
+
+    def test_update_scanner_ignores_benign_updates(self):
+        benign = "UPDATE knowledge_entries SET metadata = jsonb_set(metadata, '{is_stale}', 'true') WHERE id = :id"
+        assert not any(_assigns_is_private(c) for c in _update_set_clauses(benign))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -203,9 +219,31 @@ class TestConflictVisibility:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _update_set_clauses(text: str) -> list[str]:
+    """Everything between `UPDATE knowledge_entries` and its WHERE (or the end of
+    the text) — alias, SET list and all — for every UPDATE in ``text``."""
+    return [
+        m.group(1)
+        for m in re.finditer(
+            r"UPDATE\s+knowledge_entries\b(.*?)(?:\bWHERE\b|\Z)", text, re.I | re.S
+        )
+    ]
+
+
+def _assigns_is_private(set_clause: str) -> bool:
+    return re.search(r"\bis_private\b", set_clause, re.I) is not None
+
+
 def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
+    """The destination of a whole-directory copy of ``mira-crawler`` — shell form
+    (`COPY mira-crawler/ /app/x/`, `COPY ./mira-crawler /app/x`) or JSON form
+    (`COPY ["mira-crawler/", "/app/x/"]`). A subset copy (`COPY mira-crawler/tasks/`)
+    deliberately does NOT match: it would not ship the manifest."""
     for line in dockerfile_text.splitlines():
-        m = re.match(r"\s*COPY\s+mira-crawler/?\s+(\S+)\s*$", line)
+        m = re.match(r"\s*COPY\s+(?:\./)?mira-crawler/?\s+(\S+)\s*$", line)
+        if m:
+            return m.group(1).rstrip("/")
+        m = re.match(r'\s*COPY\s+\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*$', line)
         if m:
             return m.group(1).rstrip("/")
     return None
@@ -306,7 +344,9 @@ class TestPyYAMLDeclared:
         )
         assert "ingest/provenance.py" in importers, importers  # population: the gate itself
         req = REQUIREMENTS.read_text(encoding="utf-8")
-        assert re.search(r"^PyYAML\s*(==|>=|~=)\s*\d", req, re.I | re.M), (
+        # Accepts extras and trailing markers/comments — `PyYAML[libyaml]>=6.0 ; …` —
+        # but still demands a version floor (follow-up Gate 7 hardening).
+        assert re.search(r"^PyYAML(?:\[[^\]]*\])?\s*(?:===|==|>=|~=)\s*\d", req, re.I | re.M), (
             f"{len(importers)} production modules import yaml ({importers}) but "
             f"requirements-celery.txt declares no versioned PyYAML"
         )
@@ -344,3 +384,34 @@ class TestPyYAMLDeclared:
 
         assert _insert(False, url) == ""
         assert "sql" not in captured
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The gate itself is case-insensitive on scheme AND host — so widening the
+# manifest DISCOVERY to uppercase schemes (R12-F3 fix) cannot open anything:
+# an uppercase-scheme origin is classified exactly like its lowercase twin.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestCaseInsensitiveGate:
+    def test_uppercase_scheme_unclassified_origin_is_refused_and_forced_private(self, captured):
+        url = "HTTPS://Unknown.Example.INVALID/manual.pdf"
+        ok, reason = _ingest_gate()(url)
+        assert ok is False, reason
+        allowed, is_private, _ = provenance.enforce_visibility(url, False)
+        assert (allowed, is_private) == (True, True)  # ingestible, never shared
+        _insert(False, url)
+        assert captured["params"]["is_private"] is True
+
+    def test_uppercase_scheme_curated_origin_classifies_like_lowercase(self):
+        policy = provenance.load_policy()
+        curated = next(
+            h for h, e in policy["origins"].items() if e.get("classification") == "curated"
+        )
+        upper = f"HTTPS://{curated.upper()}/doc.pdf"
+        lower = f"https://{curated}/doc.pdf"
+        assert _ingest_gate()(upper) == _ingest_gate()(lower)
+        assert provenance.classify_origin(upper) == provenance.classify_origin(lower)
+        assert provenance.enforce_visibility(upper, False) == provenance.enforce_visibility(
+            lower, False
+        )
