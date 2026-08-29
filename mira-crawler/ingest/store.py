@@ -10,11 +10,58 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 
 logger = logging.getLogger("mira-crawler.store")
 
 _ENGINE = None
+
+_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+
+
+def canonical_source_url(url: str) -> str:
+    """Lower-case ONLY the scheme and the host of ``url``; every other byte —
+    userinfo, port, path, query, fragment — is preserved exactly as given.
+
+    The dedup key ``(tenant_id, source_url, chunk_index)`` is an exact-match
+    UNIQUE index (migration 003), while origin classification lower-cases the
+    host — so two casings of one origin were stored as two rows (Gate 7 on
+    PR #3481, code F1, SUSTAINED). BOTH constructors of the key — chunk_exists
+    and insert_chunk — apply this, so lookup and write can never disagree.
+    Bare filesystem paths (no scheme, or a one-letter Windows drive) and
+    authority-less URLs (``file:/x``) get at most a lower-cased scheme.
+
+    Historical residual, documented not migrated: rows written before this
+    function keep their stored casing; a recrawl of such a row writes the
+    canonical key beside it (one extra row per historical mixed-case URL) —
+    a one-off dedup migration is the follow-up, never a silent rewrite here.
+    """
+    if not url:
+        return url
+    head, sep, rest = url.partition(":")
+    if not sep or len(head) < 2 or not _SCHEME_RE.fullmatch(head):
+        return url  # not a URL (bare path, Windows drive letter) — untouched
+    scheme = head.lower()
+    if not rest.startswith("//"):
+        return f"{scheme}:{rest}"  # no authority component (e.g. file:/allowed/doc.pdf)
+    body = rest[2:]
+    end = len(body)
+    for stop in "/?#":
+        idx = body.find(stop)
+        if idx != -1:
+            end = min(end, idx)
+    authority, tail = body[:end], body[end:]
+    userinfo, at, hostport = authority.rpartition("@")
+    if hostport.startswith("["):  # IPv6 literal
+        close = hostport.find("]")
+        host, port = (
+            (hostport[: close + 1], hostport[close + 1 :]) if close != -1 else (hostport, "")
+        )
+    else:
+        host, colon, port = hostport.partition(":")
+        port = colon + port
+    return f"{scheme}://{userinfo}{at}{host.lower()}{port}{tail}"
 
 
 def _engine():
@@ -43,6 +90,7 @@ def chunk_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     """Check if a chunk has already been stored (dedup guard)."""
     from sqlalchemy import text
 
+    source_url = canonical_source_url(source_url)  # the SAME key insert_chunk writes
     try:
         with _engine().connect() as conn:
             count = conn.execute(
@@ -95,6 +143,11 @@ def insert_chunk(
     # GROUPs BY) stays canonical regardless of which caller wrote it (#1596).
     manufacturer = normalize_manufacturer(manufacturer).canonical
 
+    # One canonical key for every casing of an origin — before provenance and
+    # before binding, so the classified URL and the stored URL are the same
+    # string, and chunk_exists() looks up exactly what this writes.
+    source_url = canonical_source_url(source_url)
+
     # ── Provenance enforcement at the write boundary (Gate 9 round 1, F1) ──
     # Every storage route passes through here, which is the point: enforcing in
     # tasks/ingest.py only meant reddit/patents/youtube/manualslib_scraper and
@@ -113,7 +166,9 @@ def insert_chunk(
     allowed, is_private, prov_reason = enforce_visibility(source_url, is_private)
     if not allowed:
         logger.warning(
-            "Refusing knowledge_entries write for %s — %s", (source_url or "<no url>")[:100], prov_reason
+            "Refusing knowledge_entries write for %s — %s",
+            (source_url or "<no url>")[:100],
+            prov_reason,
         )
         return ""
 
@@ -296,6 +351,7 @@ def store_chunks(
     )
     return inserted
 
+
 def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str]:
     """Return which of ``source_urls`` actually have rows in knowledge_entries.
 
@@ -312,17 +368,23 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
         return set()
     from sqlalchemy import text
 
+    # Rows written since the canonical key landed carry the canonical spelling;
+    # rows written before it keep their raw casing. Ask for BOTH and answer in
+    # the caller's own spelling, so the ledger's keys match either way and a
+    # mixed-case enqueued URL can never stay pending forever.
+    asked = list(source_urls)
+    lookup = sorted({*asked, *(canonical_source_url(u) for u in asked)})
     try:
         with _engine().connect() as conn:
             rows = conn.execute(
                 text(
                     "SELECT DISTINCT source_url FROM knowledge_entries "
-                    "WHERE source_url = ANY(:urls)"
-                    + (" AND tenant_id = :tid" if tenant_id else "")
+                    "WHERE source_url = ANY(:urls)" + (" AND tenant_id = :tid" if tenant_id else "")
                 ),
-                ({"urls": list(source_urls), "tid": tenant_id} if tenant_id else {"urls": list(source_urls)}),
+                ({"urls": lookup, "tid": tenant_id} if tenant_id else {"urls": lookup}),
             ).fetchall()
-        return {r[0] for r in rows if r and r[0]}
+        found = {r[0] for r in rows if r and r[0]}
+        return {u for u in asked if u in found or canonical_source_url(u) in found}
     except Exception as e:
         logger.warning("ingested_source_urls check failed (treating as none): %s", e)
         return set()

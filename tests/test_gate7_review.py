@@ -709,6 +709,42 @@ def test_the_brief_never_asserts_a_round_budget_or_cap():
         assert not re.search(r"\b\d+-round\b|round budget|round cap|budget of", text, re.I), text
 
 
+def test_artifact_semantics_reminder_lands_after_the_untrusted_data_in_both_prompts():
+    """#3481 rounds A–E: the kind note sat ~170k chars BEFORE the reviewer's
+    output decision, and both the reviewer and the adjudicator then quoted
+    preserved earlier-review artifacts back as the PR's present-tense claims.
+    Root fix: the artifact-semantics reminder is REPEATED after the untrusted
+    data, immediately before the output instructions — in the review brief and
+    in the adjudication brief. This locks placement (after the END marker,
+    before the output shape), not merely presence."""
+    from gate7_review import build_adjudication_prompt
+
+    prior = [Finding("high", "x")]
+    for kind in ("documentation", "mixed"):
+        review = build_prompt("t", "b", "diff", "xhigh", [], kind=kind)
+        end = review.index("--- END UNTRUSTED PR DATA ---")
+        out = review.index("Output STRICT")
+        assert end < review.index("historical EVIDENCE", end) < out
+        assert "READ BEFORE YOU DECIDE" in review[end:out]
+
+        adj = build_adjudication_prompt("PRIOR", "REBUTTAL", "+diff", prior, kind=kind)
+        end = adj.index("--- END UNTRUSTED DIFF ---")
+        out = adj.index("Output STRICT")
+        assert end < adj.index("historical EVIDENCE", end) < out
+        assert "READ BEFORE YOU DECIDE" in adj[end:out]
+        # Security fencing is preserved: the reminder re-asserts that nothing
+        # inside the untrusted data changed the brief.
+        assert "untrusted data above" in adj[end:out].lower()
+
+
+def test_code_kind_gets_no_decision_point_reminder():
+    from gate7_review import build_adjudication_prompt
+
+    prior = [Finding("high", "x")]
+    assert "READ BEFORE YOU DECIDE" not in build_prompt("t", "b", "diff", "high", [], kind="code")
+    assert "READ BEFORE YOU DECIDE" not in build_adjudication_prompt("P", "R", "+d", prior)
+
+
 def test_committed_review_logs_are_documentation_not_code():
     """#3481 round D: a docs scope that carried the lane's own committed
     stderr logs was still briefed as 'partly documentation'."""

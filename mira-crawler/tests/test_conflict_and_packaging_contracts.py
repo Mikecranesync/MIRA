@@ -73,6 +73,17 @@ def _ingest_gate():
 # ── fake engine: capture the exact statement + bound params, zero DB calls ──
 
 
+class _Rows:
+    def __init__(self, rows: list) -> None:
+        self.rows = rows
+
+    def scalar(self):
+        return 0
+
+    def fetchall(self):
+        return self.rows
+
+
 class _FakeConn:
     def __init__(self, box: dict) -> None:
         self.box = box
@@ -86,6 +97,8 @@ class _FakeConn:
     def execute(self, stmt, params):
         self.box["sql"] = str(stmt)
         self.box["params"] = params
+        self.box.setdefault("all", []).append((str(stmt), dict(params)))
+        return _Rows(self.box.get("rows", []))
 
     def commit(self):
         pass
@@ -410,6 +423,104 @@ class TestPyYAMLDeclared:
 
         assert _insert(False, url) == ""
         assert "sql" not in captured
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The dedup key is exact-match on source_url. Gate 7 on #3481 (round E, code
+# F1, SUSTAINED): two casings of one origin stored as two rows. Root fix: ONE
+# canonical-source-URL function — scheme and host lower-cased, everything else
+# byte-for-byte — applied inside BOTH constructors of the key (chunk_exists,
+# insert_chunk), so lookup and write can never disagree.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestCanonicalSourceUrl:
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (
+                "HTTPS://EXAMPLE.COM/Path/File.PDF?Q=A&b=B#Frag",
+                "https://example.com/Path/File.PDF?Q=A&b=B#Frag",
+            ),
+            ("Http://User:Pass@Example.COM:8443/X", "http://User:Pass@example.com:8443/X"),
+            ("https://[2001:DB8::1]:8080/A", "https://[2001:db8::1]:8080/A"),
+            ("FILE:///C:/Docs/Manual.pdf", "file:///C:/Docs/Manual.pdf"),
+            ("file:/Allowed/Doc.pdf", "file:/Allowed/Doc.pdf"),
+            ("/inbox/Doc.pdf", "/inbox/Doc.pdf"),
+            ("", ""),
+            ("https://example.com/x?", "https://example.com/x?"),  # tail is byte-exact
+            ("https://example.com", "https://example.com"),
+        ],
+    )
+    def test_lowercases_only_scheme_and_host(self, raw, expected):
+        assert store.canonical_source_url(raw) == expected
+
+    def test_idempotent(self):
+        once = store.canonical_source_url("HTTPS://Example.COM/A?B=c")
+        assert store.canonical_source_url(once) == once
+
+    def test_insert_binds_one_canonical_key_for_every_casing(self, captured):
+        upper = "HTTPS://LITERATURE.ROCKWELLAUTOMATION.COM/Idc/Lit.PDF"
+        lower = "https://literature.rockwellautomation.com/Idc/Lit.PDF"
+        assert _insert(True, upper) != ""
+        bound_upper = captured["params"]["source_url"]
+        assert _insert(True, lower) != ""
+        bound_lower = captured["params"]["source_url"]
+        assert bound_upper == bound_lower == lower
+        assert captured["params"]["tenant_id"] == "tenant-a"  # tenant invariant untouched
+        assert captured["params"]["is_private"] is True  # privacy invariant untouched
+
+    def test_lookup_queries_the_same_canonical_key_as_the_write(self, captured):
+        upper = "HTTPS://LITERATURE.ROCKWELLAUTOMATION.COM/Idc/Lit.PDF"
+        assert store.chunk_exists("tenant-a", upper, 3) is False  # fake DB: 0 rows
+        looked_up = captured["params"]["url"]
+        _insert(True, upper)
+        written = captured["params"]["source_url"]
+        assert looked_up == written == store.canonical_source_url(upper)
+
+    def test_store_chunks_cannot_create_a_second_differently_cased_key(self, captured, monkeypatch):
+        """The batch path (chunk_exists → insert_chunk) sees ONE key for both casings."""
+        for url in ("HTTPS://EXAMPLE.COM/Doc.PDF", "https://example.com/Doc.PDF"):
+            chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
+            store.store_chunks(chunks, "tenant-a", is_private=True)
+        keys = {
+            (p.get("tid") or p.get("tenant_id"), p.get("url") or p.get("source_url"))
+            for _, p in captured["all"]
+        }
+        assert keys == {("tenant-a", "https://example.com/Doc.PDF")}
+
+    def test_ledger_probe_matches_canonical_and_historical_rows_in_the_callers_spelling(
+        self, captured
+    ):
+        """`ingested_source_urls` is the ledger's authority for "did it land?".
+        Writes are canonical from now on, but historical rows keep their raw
+        casing — so the probe must look for BOTH spellings and answer in the
+        caller's own spelling, or a mixed-case enqueued URL stays pending forever."""
+        captured["rows"] = [("https://example.com/New.pdf",), ("HTTPS://EXAMPLE.COM/Old.pdf",)]
+        asked = [
+            "HTTPS://EXAMPLE.COM/New.pdf",  # landed under the canonical key
+            "HTTPS://EXAMPLE.COM/Old.pdf",  # historical row, raw casing
+            "https://example.com/Missing.pdf",
+        ]
+        got = store.ingested_source_urls(asked, "tenant-a")
+        assert got == {"HTTPS://EXAMPLE.COM/New.pdf", "HTTPS://EXAMPLE.COM/Old.pdf"}
+        queried = set(captured["params"]["urls"])
+        assert {
+            "https://example.com/New.pdf",
+            "HTTPS://EXAMPLE.COM/Old.pdf",
+            "https://example.com/Old.pdf",
+        } <= queried
+        assert captured["params"]["tid"] == "tenant-a"
+
+    def test_canonicalisation_never_changes_visibility_or_refusal(self):
+        for raw in (
+            "HTTPS://Unknown.Example.INVALID/x.pdf",
+            "https://unknown.example.invalid/x.pdf",
+            "FILE:///C:/Docs/x.pdf",
+        ):
+            assert provenance.enforce_visibility(raw, False) == provenance.enforce_visibility(
+                store.canonical_source_url(raw), False
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
