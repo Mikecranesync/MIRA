@@ -371,8 +371,10 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
     """
     if not source_urls:
         return set()
-    if not tenant_id:
-        # Fail closed (Gate 7 round M on #3481): without a tenant this probe
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        # Fail closed — empty, None, whitespace-only or non-string is not a
+        # tenant. (A whitespace tenant would still be scoped — `tenant_id = ' '`
+        # matches no row — but it is invalid input and must not reach SQL.) (Gate 7 round M on #3481): without a tenant this probe
         # would have queried EVERY tenant's rows. Nothing is reported as
         # ingested, so ledger items stay pending — the retryable direction.
         logger.warning("ingested_source_urls called without a tenant_id — refusing the probe")

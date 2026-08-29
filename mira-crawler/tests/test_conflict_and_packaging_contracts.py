@@ -543,9 +543,11 @@ class TestCanonicalSourceUrl:
         existence query. Fail closed instead: no tenant → no query, nothing
         reported as ingested (items stay pending, the retryable direction)."""
         captured["rows"] = [("https://example.com/a.pdf",)]
-        assert store.ingested_source_urls(["https://example.com/a.pdf"], "") == set()
-        assert store.ingested_source_urls(["https://example.com/a.pdf"], None) == set()  # type: ignore[arg-type]
-        assert "sql" not in captured, "a tenant-less probe must never reach the database"
+        for bad in ("", None, "   ", "\t\n", 123):
+            assert store.ingested_source_urls(["https://example.com/a.pdf"], bad) == set(), bad  # type: ignore[arg-type]
+        assert "sql" not in captured, (
+            "an invalid tenant (empty, None, whitespace, non-str) must never reach the database"
+        )
         # With a tenant the predicate is always present.
         store.ingested_source_urls(["https://example.com/a.pdf"], "tenant-a")
         assert "tenant_id = :tid" in captured["sql"] and captured["params"]["tid"] == "tenant-a"

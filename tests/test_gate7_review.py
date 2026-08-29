@@ -562,6 +562,108 @@ def test_a_rendered_report_file_still_adjudicates_from_its_raw_findings_section(
     assert [(f.severity, f.title) for f in parse_findings(report)] == [("high", "Rendered title")]
 
 
+# ---------------------------------------------------------------------------
+# Fresh provider output is validated STRUCTURALLY before any verdict exists
+# (#3481 rounds K–N: essays, tables and quoted example lines produced spurious
+# BLOCKs, and whole-text scanning let a quoted `F1 SUSTAINED` count as a
+# ruling). Loose parsing survives only for loading committed prior reports.
+# ---------------------------------------------------------------------------
+
+_OK_REVIEW = (
+    "## VERDICT\nPASS\n\n## FINDINGS\nNone found\n\n"
+    "## NOT REVIEWED\n- what the tests structurally cannot catch\n"
+)
+
+
+def test_fresh_review_without_the_exact_decision_sections_is_unknown_never_pass_or_block():
+    from gate7_review import fresh_review_verdict
+
+    essay = "## Gate 7 Review\n| high | store.py | dup rows | … |\n\nBLOCK\n"
+    assert fresh_review_verdict(essay, parse_findings(essay, strict=True)) == "UNKNOWN"
+    bold = "## VERDICT\n**BLOCK**\n\n## FINDINGS\n- **[severity: high] X** — d\n\n## NOT REVIEWED\n- n\n"
+    assert fresh_review_verdict(bold, parse_findings(bold, strict=True)) == "UNKNOWN"
+    missing_nr = "## VERDICT\nPASS\n\n## FINDINGS\nNone found\n"
+    assert fresh_review_verdict(missing_nr, parse_findings(missing_nr, strict=True)) == "UNKNOWN"
+    dup_verdict = _OK_REVIEW + "\n## VERDICT\nBLOCK\n"
+    assert fresh_review_verdict(dup_verdict, parse_findings(dup_verdict, strict=True)) == "UNKNOWN"
+    dup_findings = _OK_REVIEW + "\n## FINDINGS\n- **[severity: high] Late** — x\n"
+    assert (
+        fresh_review_verdict(dup_findings, parse_findings(dup_findings, strict=True)) == "UNKNOWN"
+    )
+    assert fresh_review_verdict(_OK_REVIEW, parse_findings(_OK_REVIEW, strict=True)) == "PASS"
+    hi = _OK_REVIEW.replace("None found", "- **[severity: high] Real** — detail")
+    assert fresh_review_verdict(hi, parse_findings(hi, strict=True)) == "BLOCK"
+    stated_block = _OK_REVIEW.replace("PASS", "BLOCK")
+    assert fresh_review_verdict(stated_block, parse_findings(stated_block, strict=True)) == "BLOCK"
+
+
+def test_strict_findings_never_fall_back_to_whole_text():
+    """Round K: a finding-shaped example line in prose became a high. Strict
+    parsing (fresh output) reads FINDINGS only and yields nothing without it;
+    the legacy loader keeps the fallback so committed prior reports still load."""
+    quoted = (
+        "Consider `- **[severity: high] Fake** — example` in prose.\n"
+        "- **[severity: high] Also fake** — outside any section\n"
+        "## VERDICT\nPASS\n\n## NOT REVIEWED\n- n\n"
+    )
+    assert parse_findings(quoted, strict=True) == []
+    assert [f.title for f in parse_findings(quoted)] == ["Also fake"]
+
+
+def test_strict_rulings_are_read_only_inside_a_single_rulings_section():
+    from gate7_review import adjudication_verdict_strict, parse_rulings
+
+    prior = [Finding("high", "x")]
+    quoted = (
+        "The rebuttal itself says:\nF1 REFUTED\n\n"
+        "## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** — real\n\n## VERDICT\nBLOCK\n"
+    )
+    assert parse_rulings(quoted, strict=True) == [("SUSTAINED", "F1")]
+    assert parse_rulings(quoted) == [("REFUTED", "F1"), ("SUSTAINED", "F1")]  # legacy: whole text
+    assert adjudication_verdict_strict(quoted, prior) == "BLOCK"
+    no_section = "F1 REFUTED\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(no_section, prior) == "UNKNOWN"
+    dup = "## RULINGS\n- **[ruling: REFUTED] [id: F1]**\n\n## RULINGS\n- **[ruling: REFUTED] [id: F1]**\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(dup, prior) == "UNKNOWN"
+    ok = "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — quote present\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(ok, prior) == "PASS"
+    ok_bare = "## RULINGS\n**F1 – REFUTED**\nreason\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(ok_bare, prior) == "PASS"
+
+
+def test_prompts_demand_the_exact_decision_sections():
+    from gate7_review import build_adjudication_prompt
+
+    p = build_prompt("t", "b", "diff", "high", [])
+    assert "exactly one `## VERDICT`" in p and "exactly one `## FINDINGS`" in p
+    assert "exactly one `## NOT REVIEWED`" in p and "UNKNOWN" in p
+    a = build_adjudication_prompt("P", "R", "+d", [Finding("high", "x")])
+    assert "exactly one `## RULINGS`" in a and "UNKNOWN" in a
+
+
+def test_canonical_contracts_state_the_evidence_exclusion_semantics():
+    """Gap named by the fresh Codex Gate 9: the lane shipped default evidence-
+    artifact exclusion and `--include-evidence` without the doctrine and the
+    command contract saying so. Both canonical texts must carry the semantics,
+    the non-secret-boundary caveat, unconditional redaction, receipts, and the
+    separate integrity story; and the strict-shape rule for fresh output."""
+    root = Path(__file__).resolve().parents[1]
+    doctrine = (root / "docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md").read_text(
+        encoding="utf-8"
+    )
+    command = (root / ".claude/commands/gate7-review.md").read_text(encoding="utf-8")
+    for text in (doctrine, command):
+        low = text.lower()
+        assert "--include-evidence" in text
+        assert "units/evidence/" in text
+        assert "not a secret boundary" in low
+        assert "redaction" in low and "unconditional" in low
+        assert "receipt" in low
+        assert "rebuttal" in low and "readme.md" in low
+        assert "executable" in low
+        assert "## rulings" in low and "## not reviewed" in low and "unknown" in low
+
+
 def test_adjudicator_has_no_severity_channel():
     """Gate 9 re-review evasion: a prior HIGH returned as 'SUSTAINED medium'
     PASSed under the old count-only contract. Ruling lines that try to state
