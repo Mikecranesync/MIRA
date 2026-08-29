@@ -109,7 +109,15 @@ async function cleanup(tenantId: string) {
   console.error(`cleaned tenant ${tenantId} (auth + data rows verified gone)`);
 }
 
-async function main() {
+/** Test hook: BETA_GATE_FAIL_AFTER=mirror|signin|node forces a failure at that
+ *  stage so the self-clean path is provable. Never set in CI. */
+function failAfter(stage: "mirror" | "signin" | "node") {
+  if (process.env.BETA_GATE_FAIL_AFTER === stage) {
+    throw new Error(`forced failure after ${stage} (BETA_GATE_FAIL_AFTER)`);
+  }
+}
+
+export async function main() {
   // 1. Register a fresh stranger tenant (auth side: hub_tenants).
   const reg = await fetch(`${HUB}/api/auth/register/`, {
     method: "POST",
@@ -123,6 +131,29 @@ async function main() {
   const tenantId = regJson.tenantId;
   console.error(`registered tenant ${tenantId}`);
 
+  // From here a tenant EXISTS. If anything below fails, the workflow never
+  // receives BETA_GATE_TENANT and no job could sweep it — so the provisioner
+  // sweeps its own registration before re-throwing (ENV lines are emitted only
+  // on full success, at the very end).
+  try {
+    await provisionAfterRegister(tenantId);
+  } catch (e) {
+    console.error(`provisioning failed after registration — sweeping tenant ${tenantId}`);
+    try {
+      await cleanup(tenantId);
+    } catch (sweepErr) {
+      // Cleanup failure must PROPAGATE, not be logged away: the caller sees
+      // both the original failure and the fact that rows may remain.
+      throw new AggregateError(
+        [e, sweepErr],
+        `provisioning failed after registration AND self-clean FAILED for ${tenantId} — run-owned staging rows may remain`,
+      );
+    }
+    throw e;
+  }
+}
+
+async function provisionAfterRegister(tenantId: string) {
   // 2. Mirror the tenant id into the DATA-side `tenants` (UUID FK). register only
   //    made the auth-side row; without this the upload's chunk INSERT 500s on FK.
   const owner = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -136,6 +167,7 @@ async function main() {
     await owner.end();
   }
   console.error("mirrored tenant into data-side `tenants`");
+  failAfter("mirror");
 
   // 3. Mint the next-auth session cookie (csrf → credentials callback).
   const csrfRes = await fetch(`${HUB}/api/auth/csrf/`);
@@ -158,6 +190,7 @@ async function main() {
   if (!sessionToken) throw new Error(`no session cookie (signin ${signIn.status})`);
   const cookieHeader = `next-auth.session-token=${sessionToken}`;
   console.error(`minted session cookie (signin ${signIn.status})`);
+  failAfter("signin");
 
   // 4. Create a namespace node as the stranger (real route).
   const nodeRes = await fetch(`${HUB}/api/namespace/node/`, {
@@ -171,6 +204,7 @@ async function main() {
   }
   const nodeId = nodeJson.node.id;
   console.error(`created node ${nodeId}`);
+  failAfter("node");
 
   // Emit env for the gate (trailing-slash canonical doors; cookie auth).
   console.log(`ENV:BETA_GATE_UPLOAD_URL=${HUB}/api/namespace/node/${nodeId}/files/`);
@@ -185,9 +219,18 @@ async function main() {
   console.log(`ENV:BETA_PROBE_COOKIE=${cookieHeader}`);
 }
 
-const cleanupIdx = process.argv.indexOf("--cleanup");
-const run = cleanupIdx !== -1 ? cleanup(process.argv[cleanupIdx + 1]) : main();
-run.catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+export { cleanup };
+
+// Auto-run only when executed as a script (bun run …); under vitest the module
+// is imported and `main`/`cleanup` are driven directly.
+const isDirectRun =
+  Boolean((import.meta as unknown as { main?: boolean }).main) ||
+  /provision-beta-gate\.ts$/.test(process.argv[1] ?? "");
+if (isDirectRun) {
+  const cleanupIdx = process.argv.indexOf("--cleanup");
+  const run = cleanupIdx !== -1 ? cleanup(process.argv[cleanupIdx + 1]) : main();
+  run.catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

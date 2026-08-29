@@ -1318,26 +1318,37 @@ approved:
       SELECT 1 FROM knowledge_entries dup
        WHERE dup.tenant_id::text = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
          AND dup.source_url = ke.source_url
-  "tools/qa/notebook_source_admission_preflight.py:76":
+  "tests/beta/test_admission_preflight_pg.py:138":
     approved_classification: TENANT-ONLY
-    query_sha256: "fdea7ff4a0bf4ca4529d1b75e6300ed89616b390d8b498a9e56729c9dacd4822"
+    query_sha256: "2188cb4d98d683bb45064e325e53316903441da43ec4dc602cf634c684847119"
+    reason: "NOT a corpus read: the §7.3 preflight real-Postgres suite's fixture DELETE
+      (module teardown) on a DISPOSABLE loopback Postgres (PREFLIGHT_DATABASE_URL +
+      MIRA_TEST_DB_CONFIRM=DISPOSABLE guarded by the module skipif; the tool under test
+      refuses any non-loopback host), scoped to the two fixture tenant ids the suite
+      itself seeded. No production data, no OEM corpus."
+    query_snippet: |
+      "DELETE FROM knowledge_entries WHERE tenant_id IN ($1::uuid, $2::uuid)", TENANT, OTHER
+  "tools/qa/notebook_source_admission_preflight.py:88":
+    approved_classification: TENANT-ONLY
+    query_sha256: "af19d177d4bb0a4d33873abea96d576437384d91a682d12321e4fbd44e62fd04"
     reason: "PRD §7.3 read-only preflight REPORT (Workstream B, PR #3480). Pure-tenant
       by design, not a hybrid surface: it joins knowledge_entries ONLY through the
-      caller's own equipment_notebook_sources rows (s.tenant_id = %s::uuid AND
+      caller's own equipment_notebook_sources rows (s.tenant_id = $1::uuid AND
       k.tenant_id = s.tenant_id) to count that tenant's confirmed-source chunks and
       whether any carries verified=true. Counting shared OEM rows (is_private=false)
       here would report ANOTHER corpus as this tenant's admission state — the exact
-      mistake listSources() avoids for the same reason. Aggregates is_private and
-      verified per source to compute the REAL current admission (verified OR
-      private-and-confirmed); shared verified=false rows are reported as EXCLUDED,
-      never counted as admissible. Runs inside SET TRANSACTION READ ONLY + ROLLBACK,
-      connects to loopback hosts ONLY (no override; --print-sql merely PREPARES the
-      statement for a reviewed db-inspect.yml step), and is never executed against
-      production from a session
-      (tests/beta/test_admission_preflight.py)."
+      mistake listSources() avoids for the same reason. Aggregates, per source,
+      chunks_total / chunks_v2 and the v2-scoped decision counts (is_private,
+      verified, admissible = ingest_route='v2' AND (verified OR is_private)) to
+      compute the REAL current admission; shared verified=false and legacy-route-only
+      sources are reported as EXCLUDED, never counted as admissible. Runs inside an
+      explicit asyncpg transaction(readonly=True) that is ROLLED BACK, connects to
+      loopback hosts ONLY (no override; --print-sql merely PREPARES the statement
+      for a reviewed db-inspect.yml step), and is never executed against production
+      from a session (tests/beta/test_admission_preflight.py + _pg.py)."
     query_snippet: |
       FROM equipment_notebook_sources s
         LEFT JOIN knowledge_entries k
                ON k.doc_id = s.doc_id
               AND k.tenant_id = s.tenant_id
-       WHERE s.tenant_id = %s::uuid
+       WHERE s.tenant_id = $1::uuid

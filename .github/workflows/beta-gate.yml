@@ -76,6 +76,8 @@ on:
       - "mira-hub/bun.lock"
       - "mira-hub/next.config.*"
       - "tools/qa/redact_ci_log.sh"
+      - "tools/qa/notebook_source_admission_preflight.py"
+      - "tools/qa/requirements-preflight.txt"
       - ".github/workflows/beta-gate.yml"
 
 concurrency:
@@ -142,7 +144,7 @@ jobs:
             if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
             sleep 3
           done
-          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub.log; exit 1; fi
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; bash tools/qa/redact_ci_log.sh < /tmp/hub.log; exit 1; fi
 
           # 4. Provision a real stranger run → BETA_GATE_* env lines.
           ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/gate-env.out
@@ -419,3 +421,32 @@ jobs:
         env:
           MIRA_ENFORCE_APPROVED_RETRIEVAL: "true"
         run: node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: §7.3 preflight — real asyncpg path on the SAME disposable Postgres (loopback only)
+        env:
+          # The tool refuses any non-loopback host; this is the job's own service DB.
+          PREFLIGHT_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+          MIRA_TEST_DB_CONFIRM: DISPOSABLE
+        run: |
+          set -euo pipefail
+          pip install --quiet pytest -r tools/qa/requirements-preflight.txt
+          python -m pytest tests/beta/test_admission_preflight.py --confcutdir=tests/beta -q
+          # The real-path module must RUN here, never skip: a skip would mean the
+          # loopback DB or the confirm flag went missing and the gate proved nothing.
+          # Keep the collection-safe remote-target guards covered separately,
+          # then bind the disposable-DB proof to the exact real-query test.
+          python -m pytest \
+            tests/beta/test_admission_preflight_pg.py::test_fixture_seed_path_refuses_remote_before_any_write \
+            tests/beta/test_admission_preflight_pg.py::test_remote_url_is_refused_by_connect_even_with_driver_available \
+            --confcutdir=tests/beta -q
+          python -m pytest \
+            tests/beta/test_admission_preflight_pg.py::test_real_connect_select_readonly_rollback_and_admission \
+            --confcutdir=tests/beta -q -rs | tee /tmp/preflight-pg.out
+          if grep -qiE "skipped|no tests ran" /tmp/preflight-pg.out; then
+            echo "::error::preflight real-Postgres tests were skipped — the gate proved nothing"; exit 1
+          fi
+          grep -qE "^1 passed" /tmp/preflight-pg.out || grep -qE " 1 passed" /tmp/preflight-pg.out

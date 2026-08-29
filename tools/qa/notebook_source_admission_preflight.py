@@ -2,25 +2,35 @@
 """PRD §7.3 — tenant-scoped, READ-ONLY historical repair/preflight report.
 
 For ONE tenant, computes the REAL current admission result of every confirmed,
-enabled, visible notebook source under the Workstream A rule
-(`manual-rag.ts` under MIRA_ENFORCE_APPROVED_RETRIEVAL=true):
+enabled, visible notebook source under the retrieval rule `manual-rag.ts`
+applies with MIRA_ENFORCE_APPROVED_RETRIEVAL=true:
 
-    a chunk is admissible when  verified = true
-                            OR  (is_private = true AND its doc is in the
-                                 server-derived confirmed set)
+    a chunk is retrievable when  ingest_route = 'v2'
+                             AND ( verified = true
+                                   OR (is_private = true AND its doc is in the
+                                       server-derived confirmed set) )
 
-so, per source (all of whose rows are already confirmed by the WHERE clause):
-    admitted   ⇐ chunks_admissible > 0   (globally verified, or tenant-private)
-    excluded   ⇐ chunks_admissible = 0   (shared/OEM verified=false, or no chunks)
+Per source the report splits `chunks_total` / `chunks_v2` (total / eligible)
+and scopes the DECISION counts to ingest_route = 'v2' only —
+`chunks_v2_private`, `chunks_v2_verified`, `chunks_admissible` — so a legacy
+chunk (any mark) can never decide:
+    admitted   ⇐ chunks_admissible > 0
+                 (`verified_mark_present` if a v2 chunk is globally verified,
+                  else `admitted_via_confirmation` for tenant-private v2 chunks)
+    excluded   ⇐ no chunks              → `no_chunks`
+                 chunks but none v2     → `excluded_legacy_route_only`
+                 v2 shared, unverified  → `excluded_shared_unverified`
 
 Because this tool performs NO rewrite, the §7.3 "counts before and after" are
 two identical snapshots of the same rows with a zero delta and
 `mutations_performed: 0`; the report is evidence for the no-rewrite decision,
 never a repair action.
 
-Guarantees (pinned by tests/beta/test_admission_preflight.py):
+Guarantees (pinned by tests/beta/test_admission_preflight.py and, on a
+disposable loopback Postgres, tests/beta/test_admission_preflight_pg.py):
   * exactly one SELECT, bound to one uuid tenant, no write verb anywhere;
-  * the session is `SET TRANSACTION READ ONLY` and ends with ROLLBACK;
+  * an explicit asyncpg `transaction(readonly=True)` that is ROLLED BACK;
+  * driver asyncpg (Apache-2.0), pinned in tools/qa/requirements-preflight.txt;
   * EXECUTABLE ACCESS IS LOOPBACK-ONLY (localhost / 127.0.0.1 / ::1) — there
     is no host override of any kind, and the connect path itself re-checks
     the gate; the tool never connects to a remote or shared database;
@@ -42,6 +52,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import copy
 import json
 import os
@@ -69,14 +80,15 @@ SELECT s.tenant_id::text            AS tenant_id,
        s.match_state                AS match_state,
        s.enabled_by_default         AS enabled_by_default,
        count(k.id)::int             AS chunks_total,
-       count(k.id) FILTER (WHERE k.is_private)::int              AS chunks_private,
-       count(k.id) FILTER (WHERE k.verified)::int                AS chunks_verified,
-       count(k.id) FILTER (WHERE k.verified OR k.is_private)::int AS chunks_admissible
+       count(k.id) FILTER (WHERE k.ingest_route = 'v2')::int     AS chunks_v2,
+       count(k.id) FILTER (WHERE k.ingest_route = 'v2' AND k.is_private)::int AS chunks_v2_private,
+       count(k.id) FILTER (WHERE k.ingest_route = 'v2' AND k.verified)::int   AS chunks_v2_verified,
+       count(k.id) FILTER (WHERE k.ingest_route = 'v2' AND (k.verified OR k.is_private))::int AS chunks_admissible
   FROM equipment_notebook_sources s
   LEFT JOIN knowledge_entries k
          ON k.doc_id = s.doc_id
         AND k.tenant_id = s.tenant_id
- WHERE s.tenant_id = %s::uuid
+ WHERE s.tenant_id = $1::uuid
    AND s.match_state IN ('user_confirmed', 'verified')
    AND s.enabled_by_default = true
    AND s.superseded_at IS NULL
@@ -122,15 +134,20 @@ def assert_safe_target(url: str) -> None:
 
 def _classify(row: dict[str, Any]) -> tuple[str, str]:
     """(current_admission_result, admission_path) from the aggregated counts."""
+    # Decision counts are scoped to ingest_route = 'v2' (the only route
+    # manual-rag.ts reads); chunks_total / chunks_v2 are the total/eligible split.
     total = int(row.get("chunks_total") or 0)
-    verified = int(row.get("chunks_verified") or 0)
+    v2 = int(row.get("chunks_v2") or 0)
+    verified = int(row.get("chunks_v2_verified") or 0)
     admissible = int(row.get("chunks_admissible") or 0)
     if total == 0:
         return "excluded", "no_chunks"
-    if verified > 0:
-        return "admitted", "verified_mark_present"
+    if v2 == 0:
+        # manual-rag.ts reads ingest_route = 'v2' only: legacy-route chunks are
+        # unreachable no matter how they are marked.
+        return "excluded", "excluded_legacy_route_only"
     if admissible > 0:
-        return "admitted", "admitted_via_confirmation"
+        return "admitted", "verified_mark_present" if verified > 0 else "admitted_via_confirmation"
     return "excluded", "excluded_shared_unverified"
 
 
@@ -145,8 +162,9 @@ def _snapshot(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "match_state": r.get("match_state"),
                 "enabled_by_default": bool(r.get("enabled_by_default")),
                 "chunks_total": int(r.get("chunks_total") or 0),
-                "chunks_private": int(r.get("chunks_private") or 0),
-                "chunks_verified": int(r.get("chunks_verified") or 0),
+                "chunks_v2": int(r.get("chunks_v2") or 0),
+                "chunks_v2_private": int(r.get("chunks_v2_private") or 0),
+                "chunks_v2_verified": int(r.get("chunks_v2_verified") or 0),
                 "chunks_admissible": int(r.get("chunks_admissible") or 0),
                 "current_admission_result": result,
                 "admission_path": path,
@@ -160,25 +178,31 @@ def _snapshot(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "admitted_via_confirmation": paths.count("admitted_via_confirmation"),
         "verified_mark_present": paths.count("verified_mark_present"),
         "excluded_shared_unverified": paths.count("excluded_shared_unverified"),
+        "excluded_legacy_route_only": paths.count("excluded_legacy_route_only"),
         "no_chunks": paths.count("no_chunks"),
         "chunks_total": sum(s["chunks_total"] for s in sources),
-        "chunks_private": sum(s["chunks_private"] for s in sources),
-        "chunks_verified": sum(s["chunks_verified"] for s in sources),
+        "chunks_v2": sum(s["chunks_v2"] for s in sources),
+        "chunks_v2_private": sum(s["chunks_v2_private"] for s in sources),
+        "chunks_v2_verified": sum(s["chunks_v2_verified"] for s in sources),
         "chunks_admissible": sum(s["chunks_admissible"] for s in sources),
     }
     return {"sources": sources, "summary": summary}
 
 
-def run_preflight(tenant_id: str, conn: Any) -> dict[str, Any]:
+async def run_preflight(tenant_id: str, conn: Any) -> dict[str, Any]:
     """Execute the one read-only query on an open LOOPBACK connection and shape
-    the report. `conn` is DB-API-ish (psycopg 3 in real use; a fake in tests).
+    the report. `conn` is an asyncpg.Connection (a same-shaped fake in tests):
+    an explicit `transaction(readonly=True)` is started, ONE `fetch` runs, and
+    the transaction is ROLLED BACK — never committed.
     """
     sql, params = build_query(tenant_id)
-    with conn.cursor(row_factory=_dict_row_factory()) as cur:
-        cur.execute("SET TRANSACTION READ ONLY")
-        cur.execute(sql, params)
-        rows = [dict(r) for r in cur.fetchall()]
-    conn.rollback()
+    tr = conn.transaction(readonly=True)
+    await tr.start()
+    try:
+        records = await conn.fetch(sql, *params)
+    finally:
+        await tr.rollback()
+    rows = [dict(r) for r in records]
     before = _snapshot(rows)
     # No rewrite is performed, so "after" is the same rows: an identical
     # snapshot, by construction — the §7.3 before/after with zero delta.
@@ -191,7 +215,10 @@ def run_preflight(tenant_id: str, conn: Any) -> dict[str, Any]:
         "tenant_id": tenant_id,
         "read_only": True,
         "mutations_performed": 0,
-        "admission_rule": "verified = true OR (is_private = true AND doc in server-derived confirmed set)",
+        "admission_rule": (
+            "ingest_route = 'v2' AND (verified = true OR "
+            "(is_private = true AND doc in server-derived confirmed set))"
+        ),
         "sources": after["sources"],
         "summary": after["summary"],
         "before": before,
@@ -204,23 +231,24 @@ def run_preflight(tenant_id: str, conn: Any) -> dict[str, Any]:
     }
 
 
-def _dict_row_factory():
-    try:
-        from psycopg.rows import dict_row  # type: ignore
-
-        return dict_row
-    except Exception:  # noqa: BLE001 — tests inject a fake connection
-        return None
-
-
-def _connect(url: str) -> Any:
+async def _connect(url: str) -> Any:
     """The ONLY connect path — gated here too (defense in depth), so no caller
     that bypasses main() can reach a remote/shared database: the loopback
-    check runs before the driver is even imported."""
+    check runs before the driver is even imported. Driver: asyncpg
+    (Apache-2.0 — PRD §4 permits Apache-2.0/MIT only), pinned in
+    tools/qa/requirements-preflight.txt."""
     assert_safe_target(url)
-    import psycopg  # type: ignore
+    import asyncpg  # type: ignore
 
-    return psycopg.connect(url, autocommit=False)
+    return await asyncpg.connect(url)
+
+
+async def _execute(url: str, tenant_id: str) -> dict[str, Any]:
+    conn = await _connect(url)
+    try:
+        return await run_preflight(tenant_id, conn)
+    finally:
+        await conn.close()
 
 
 def render_sql_for_db_inspect(tenant_id: str) -> str:
@@ -229,7 +257,7 @@ def render_sql_for_db_inspect(tenant_id: str) -> str:
     accepts no arbitrary SQL, so this must be added to it as a reviewed probe
     step (PR + approval) before it can run against staging."""
     sql, (tid,) = build_query(tenant_id)
-    bound = sql.replace("%s::uuid", f"'{tid}'::uuid")
+    bound = sql.replace("$1::uuid", f"'{tid}'::uuid")
     return (
         "-- notebook_source_admission_preflight (PRD §7.3) — PREPARED SQL, READ ONLY.\n"
         "-- Not runnable as-is on staging: db-inspect.yml accepts no arbitrary SQL; add this\n"
@@ -258,11 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     except PreflightRefused as exc:
         print(f"REFUSED: {exc}")
         return 2
-    conn = _connect(os.getenv(args.database_url_env, ""))
-    try:
-        report = run_preflight(args.tenant_id, conn)
-    finally:
-        conn.close()
+    report = asyncio.run(_execute(os.getenv(args.database_url_env, ""), args.tenant_id))
     text = json.dumps(report, indent=2, default=str)
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as fh:
