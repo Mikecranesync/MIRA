@@ -355,6 +355,9 @@ def kind_block(kind: str) -> str:
     )
 
 
+SCOPE_NOTICE_MAX_PATHS = 40
+
+
 def _scope_notice(excluded: Optional[list[str]]) -> str:
     """Tell a scoped (--paths) reviewer what it cannot see. Pure.
 
@@ -366,10 +369,17 @@ def _scope_notice(excluded: Optional[list[str]]) -> str:
     """
     if not excluded:
         return ""
+    shown = excluded[:SCOPE_NOTICE_MAX_PATHS]
+    rest = len(excluded) - len(shown)
+    listing = "\n".join(f"  - {p}" for p in shown)
+    if rest > 0:
+        # Bounded (#3481 round R): a wide PR must not turn the notice into tens
+        # of kilobytes of prompt; the full list is always in the run receipts.
+        listing += f"\n  … and {rest} more (the full list is in the run receipts)"
     return (
         f"\n⚠️ SCOPE NOTICE — you are reading a --paths SLICE of this PR, not the PR.\n"
         f"{len(excluded)} changed file(s) are outside your slice and exist in the PR:\n"
-        + "\n".join(f"  - {p}" for p in excluded)
+        + listing
         + '\nTherefore: "the diff does not contain X" / "the only file changed is Y"\n'
         "is NOT a finding here. A claim that this PR changes one of the files above is settled\n"
         "by that file's own group, not by its absence from yours. Do not report the absence.\n"

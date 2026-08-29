@@ -67,6 +67,28 @@ def test_discovery_still_sees_the_known_manifests():
     )
 
 
+def test_discovery_never_reads_docstrings_or_non_assignment_strings(tmp_path):
+    """Gate 7 round R on #3481 (code F1, sustained on adjudication): the claim
+    was that `_urls_in` treats module/function docstrings as origin URLs.
+    `discover_manifests` visits only `ast.Assign` / `ast.AnnAssign` VALUES at
+    module level; a docstring is an `ast.Expr` and is never walked, and neither
+    is a string inside a function body or a call argument."""
+    (tmp_path / "doc_heavy.py").write_text(
+        '"""Module docstring mentioning https://docstring.example/module."""\n'
+        "import logging\n\n"
+        "FEEDS = ['https://real.example/feed.xml']\n\n"
+        "def fetch():\n"
+        '    """See https://docstring.example/function for details."""\n'
+        "    url = 'https://body.example/not-a-manifest'\n"
+        "    logging.info('https://call.example/arg')\n"
+        "    return url\n",
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert found == {"doc_heavy.FEEDS": ["https://real.example/feed.xml"]}
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {"real.example"}
+
+
 def test_discovery_matches_url_constants_case_insensitively(tmp_path):
     """Gate 7 round-12 group A finding on #3268 (Gate 9 follow-up): `_urls_in`
     matched only lowercase `http://` / `https://`, so a manifest constant written
@@ -238,8 +260,10 @@ class TestPrivateOriginsAreIngestedNotRefused:
         with (
             patch("tasks.ingest.httpx.Client", _Client),
             patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
-            patch("ingest.chunker.chunk_blocks",
-                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch(
+                "ingest.chunker.chunk_blocks",
+                return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}],
+            ),
             patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
@@ -286,7 +310,9 @@ class TestPrivateOriginsAreIngestedNotRefused:
         )
         oem = [h for h, e in d["origins"].items() if "OEM documentation portal" in e["reason"]]
         press = [h for h, e in d["origins"].items() if "trade press" in e["reason"]]
-        assert len(oem) == 11 and len(press) == 9, f"population changed: {len(oem)} OEM, {len(press)} press"
+        assert len(oem) == 11 and len(press) == 9, (
+            f"population changed: {len(oem)} OEM, {len(press)} press"
+        )
         for h in oem:
             assert d["origins"][h]["classification"] == "curated"
             assert "Mike" in d["origins"][h]["confirmed_by"]
@@ -302,7 +328,11 @@ class TestPrivateOriginsAreIngestedNotRefused:
         d = yaml.safe_load(
             (pathlib.Path(__file__).resolve().parents[1] / "provenance_policy.yaml").read_text()
         )
-        pending = [h for h, e in d["origins"].items() if str(e.get("confirmed_by", "")).startswith("PENDING")]
+        pending = [
+            h
+            for h, e in d["origins"].items()
+            if str(e.get("confirmed_by", "")).startswith("PENDING")
+        ]
         assert not pending, f"origins still awaiting a human decision: {pending}"
 
 
@@ -360,8 +390,10 @@ class TestPrivateRedirectChains:
         with (
             patch("tasks.ingest.httpx.Client", _Client),
             patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
-            patch("ingest.chunker.chunk_blocks",
-                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch(
+                "ingest.chunker.chunk_blocks",
+                return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}],
+            ),
             patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
@@ -376,7 +408,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://www.machinerylubrication.com/canonical"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") is None, f"private redirect must be followed, got {result}"
@@ -388,7 +421,8 @@ class TestPrivateRedirectChains:
         a = "https://ibiblio.org/book.pdf"
         b = "https://www.plantservices.com/article"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") is None
@@ -402,7 +436,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://www.manualslib.com/doc"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") == "uncurated_redirect"
@@ -413,7 +448,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://never-classified.invalid/doc"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") == "uncurated_redirect"
@@ -500,8 +536,8 @@ class TestEveryWriteRouteEnforcesThePolicy:
         # A caller asking for private always gets private, whatever the policy.
         for url in (
             "https://library.e.abb.com/m.pdf",  # curated
-            "https://www.reddit.com/r/x",       # private
-            "https://unknown.invalid/x",        # unclassified
+            "https://www.reddit.com/r/x",  # private
+            "https://unknown.invalid/x",  # unclassified
         ):
             allowed, is_private, _ = enforce_visibility(url, True)
             if allowed:
@@ -517,9 +553,7 @@ class TestEveryWriteRouteEnforcesThePolicy:
         import pathlib
 
         src = (
-            pathlib.Path(__file__).resolve().parents[2]
-            / "tools"
-            / "vendor_coverage_ingest.py"
+            pathlib.Path(__file__).resolve().parents[2] / "tools" / "vendor_coverage_ingest.py"
         ).read_text(encoding="utf-8", errors="replace")
         assert "enforce_visibility" in src, (
             "the duplicate writer must enforce provenance — central enforcement "

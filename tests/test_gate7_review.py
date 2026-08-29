@@ -1092,6 +1092,23 @@ def test_redaction_is_unconditional_and_covers_log_content_whatever_the_kind():
     assert pr_kind(["x/run.log"]) == "documentation"  # classification is all `.log` changes
 
 
+def test_scope_notice_is_bounded_and_states_the_remainder_as_a_count():
+    """#3481 round R (code F2, sustained): the scope notice enumerated every
+    excluded file, so a wide PR could add tens of kilobytes to the prompt. It
+    now lists a bounded number of paths and gives the rest as a count; the full
+    list stays in the run receipts."""
+    from gate7_review import SCOPE_NOTICE_MAX_PATHS, _scope_notice
+
+    excluded = [f"module{i}/file{i}.py" for i in range(SCOPE_NOTICE_MAX_PATHS + 160)]
+    notice = _scope_notice(excluded)
+    assert f"{len(excluded)} changed file(s) are outside your slice" in notice
+    assert notice.count("\n  - ") == SCOPE_NOTICE_MAX_PATHS
+    assert "and 160 more" in notice and "run receipts" in notice
+    assert len(notice) < 6000
+    small = _scope_notice(["a/b.py", "c/d.py"])
+    assert small.count("\n  - ") == 2 and "more" not in small
+
+
 def test_code_kind_gets_no_decision_point_reminder():
     from gate7_review import build_adjudication_prompt
 
