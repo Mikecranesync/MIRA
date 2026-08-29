@@ -522,7 +522,7 @@ _RULING_RE = re.compile(
 # dash-separated reason. Prose that merely mentions an id does not match. The
 # bijection contract and the no-severity-channel rule are unchanged.
 _BARE_RULING_RE = re.compile(
-    r"^\s*[-*]?\s*(?:\*\*)?(F\d+)(?:\*\*)?\s*[:—–-]?\s*(SUSTAINED|REFUTED)\b\s*(?:[—–-].*)?$",
+    r"^\s*[-*]?\s*(?:\*\*)?(F\d+)(?:\*\*)?\s*[:—–-]?\s*(SUSTAINED|REFUTED)\b(?:\*\*)?\s*(?:[—–-].*)?$",
     re.IGNORECASE,
 )
 
@@ -637,10 +637,28 @@ Output STRICT markdown, no preamble — one ruling line per finding id, exactly:
 PASS or BLOCK (BLOCK if any high finding is SUSTAINED)"""
 
 
+_FINDINGS_SECTION_RE = re.compile(r"^\s*##\s*FINDINGS\b.*$", re.I | re.M)
+_NEXT_SECTION_RE = re.compile(r"^\s*##\s+(?!#)", re.M)
+
+
+def _findings_section(text: str) -> str:
+    """The body of `## FINDINGS` up to the next `## ` heading — or the whole
+    text when there is no such header (older/looser reports). #3481 round K:
+    the reviewer wrote a finding-shaped line INSIDE its prose as an example of
+    what the parser would accept, and the parser accepted it — one spurious
+    high, verdict BLOCK. Findings are what the reviewer lists as findings."""
+    m = _FINDINGS_SECTION_RE.search(text)
+    if not m:
+        return text
+    body = text[m.end() :]
+    nxt = _NEXT_SECTION_RE.search(body)
+    return body[: nxt.start()] if nxt else body
+
+
 def parse_findings(text: str) -> list[Finding]:
     """Pure. Extract findings from the model's markdown."""
     out: list[Finding] = []
-    for line in text.splitlines():
+    for line in _findings_section(text).splitlines():
         m = _FINDING_RE.match(line)
         if m:
             out.append(Finding(m.group(1).lower(), m.group(2).strip(), m.group(3).strip()))

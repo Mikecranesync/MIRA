@@ -509,6 +509,43 @@ def test_bare_ruling_lines_parse_by_stable_id():
     assert parse_rulings("F1 was discussed but the diff SUSTAINED nothing about F2\n") == []
 
 
+def test_bold_wrapped_rulings_with_prose_parse_by_stable_id():
+    """#3481 round K: the adjudicator answered `**F1 – REFUTED**` with its reasoning
+    on the following lines — refuting the finding with the exact hunk quoted —
+    and the run was UNKNOWN because the whole line was bold-wrapped."""
+    from gate7_review import parse_rulings
+
+    text = (
+        "**F1 – REFUTED**  \nThe diff contains a modification to origins.py:\n\n"
+        "**F2 — SUSTAINED**\nbecause…\n"
+        "**F3: REFUTED** — reason on the same line\n"
+    )
+    assert parse_rulings(text) == [("REFUTED", "F1"), ("SUSTAINED", "F2"), ("REFUTED", "F3")]
+
+
+def test_findings_are_parsed_only_from_the_findings_section():
+    """#3481 round K: the reviewer wrote `- **[severity: high] Fake critical bug** —
+    this is just a comment` INSIDE its prose, as an example of a line the parser
+    would accept — and the parser accepted it: one spurious high, verdict BLOCK.
+    Findings live under `## FINDINGS`; lines quoted elsewhere (prose, NOT
+    REVIEWED, code fences) are not findings."""
+    text = (
+        "## VERDICT\nPASS\n\n"
+        "## FINDINGS\n"
+        "- **[severity: medium] Real one** — detail\n\n"
+        "## NOT REVIEWED\n"
+        "- **[severity: high] Fake critical bug** — this is just a comment\n"
+        "## Analysis\n"
+        "For example a line like `- **[severity: high] Another fake** — x` would be parsed.\n"
+    )
+    found = parse_findings(text)
+    assert [(f.severity, f.title) for f in found] == [("medium", "Real one")]
+    assert verdict_of(text, found) == "PASS"
+    # Backwards compatibility: a report with no FINDINGS header at all still
+    # parses finding-shaped lines (nothing to scope to).
+    assert [f.title for f in parse_findings("- **[severity: low] Loose** — x\n")] == ["Loose"]
+
+
 def test_adjudicator_has_no_severity_channel():
     """Gate 9 re-review evasion: a prior HIGH returned as 'SUSTAINED medium'
     PASSed under the old count-only contract. Ruling lines that try to state
