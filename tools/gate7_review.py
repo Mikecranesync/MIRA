@@ -271,7 +271,10 @@ question for the author, never as a finding."""
 #       TEXT to a reviewer briefed to find defects.
 # Both are fixed in the brief, which is where they originate.
 
-_DOC_SUFFIXES = (".md", ".markdown", ".rst", ".txt")
+# `.log` is here because committed review evidence (the lane's own stderr logs,
+# crash logs) is documentation-of-record, not code: a docs scope that carried
+# them was briefed as "partly documentation" (#3481 round D).
+_DOC_SUFFIXES = (".md", ".markdown", ".rst", ".txt", ".log")
 
 
 def pr_kind(changed_paths: list[str]) -> str:
@@ -321,8 +324,10 @@ def settled_block(prior_reports: list[str]) -> str:
         "command that proves the refutation. The rounds are cumulative: this round\n"
         "starts from that settled state.\n\n"
         "**Do NOT re-raise any of these without NEW evidence that the adjudication was\n"
-        "wrong.** Restating a settled finding is not a finding; it consumes a round of a\n"
-        "3-round budget and trains readers to stop reading this gate. If you believe an\n"
+        "wrong.** Restating a settled finding is not a finding; it wastes the round and\n"
+        "trains readers to stop reading this gate. (No number of rounds is fixed at this\n"
+        "gate: a BLOCK is cleared only by a root fix plus a fresh review of the new head,\n"
+        "or by one adjudication on an unchanged head.) If you believe an\n"
         "adjudication was mistaken, say so explicitly and cite what is new.\n\n"
         + "\n".join(lines)
         + "\n--- END SETTLED ---\n"

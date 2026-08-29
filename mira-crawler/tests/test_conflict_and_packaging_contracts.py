@@ -240,13 +240,39 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
     (`COPY ["mira-crawler/", "/app/x/"]`). A subset copy (`COPY mira-crawler/tasks/`)
     deliberately does NOT match: it would not ship the manifest."""
     for line in dockerfile_text.splitlines():
-        m = re.match(r"\s*COPY\s+(?:\./)?mira-crawler/?\s+(\S+)\s*$", line)
+        # `COPY [--chown=… --from=…] mira-crawler/ <dest>` — flags are allowed;
+        # a non-matching COPY makes the caller's assert fail LOUD (dest is
+        # None); it can never pass a Dockerfile that omits the directory.
+        m = re.match(r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+(\S+)\s*$", line)
         if m:
             return m.group(1).rstrip("/")
-        m = re.match(r'\s*COPY\s+\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*$', line)
+        m = re.match(
+            r'\s*COPY\s+(?:--\S+\s+)*\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*$', line
+        )
         if m:
             return m.group(1).rstrip("/")
     return None
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        ("COPY mira-crawler/ /app/mira_crawler/", "/app/mira_crawler"),
+        ("COPY ./mira-crawler /app/x", "/app/x"),
+        ("COPY --chown=app:app mira-crawler/ /app/", "/app"),
+        ("COPY --from=builder --chown=app:app mira-crawler/ /srv/mc/", "/srv/mc"),
+        ('COPY ["mira-crawler/", "/app/mc/"]', "/app/mc"),
+        ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
+        ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
+        ("COPY mira-core/ /app/core/", None),
+    ],
+)
+def test_whole_dir_copy_matcher_accepts_flags_and_rejects_subset_copies(line, expected):
+    """Scanner honesty for the packaging contract (follow-up Gate 7 finding):
+    flag-bearing COPY forms are recognised, and a subset copy — the shape that
+    would leave the manifest out of the image — is never mistaken for a
+    whole-directory copy. A miss here is a loud red, never a silent green."""
+    assert _whole_dir_copy_dest(line) == expected
 
 
 class TestManifestPackaging:

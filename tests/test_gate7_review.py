@@ -694,6 +694,27 @@ def test_scoped_paths_keeps_only_the_scope_and_kind_follows_it():
     assert pr_kind(files) == "mixed"
 
 
+def test_the_brief_never_asserts_a_round_budget_or_cap():
+    """Fresh Codex Gate 9 on #3481: the settled-findings brief told the reviewer a
+    re-raise "consumes a round of a 3-round budget". No Gate 7 doctrine grants
+    such a budget (the 3-round cap is the multi-session protocol's rule for the
+    Codex lane), and the phrase leaked into the record as an escape hatch. Lock:
+    the brief keeps the re-raise warning but never names a budget or a cap."""
+    import re
+
+    block = settled_block([_PRIOR_REPORT])
+    assert "Do NOT re-raise" in block
+    full = build_prompt("t", "b", "diff", "xhigh", ["tenant scoping"], settled=block, kind="mixed")
+    for text in (block, full):
+        assert not re.search(r"\b\d+-round\b|round budget|round cap|budget of", text, re.I), text
+
+
+def test_committed_review_logs_are_documentation_not_code():
+    """#3481 round D: a docs scope that carried the lane's own committed
+    stderr logs was still briefed as 'partly documentation'."""
+    assert pr_kind(["docs/x/round-1.stderr.log", "docs/x/round-1.md"]) == "documentation"
+
+
 def test_kind_block_names_preserved_artifacts_as_evidence():
     """An audit-trail PR carries raw reviews/adjudications verbatim; the
     reviewer must not read those as the PR's present-tense claims."""
