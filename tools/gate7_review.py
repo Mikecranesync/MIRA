@@ -721,6 +721,16 @@ _H_VERDICT = re.compile(r"^\s*##\s*VERDICT\s*$", re.I | re.M)
 _H_FINDINGS = re.compile(r"^\s*##\s*FINDINGS\s*$", re.I | re.M)
 _H_NOT_REVIEWED = re.compile(r"^\s*##\s*NOT REVIEWED\s*$", re.I | re.M)
 _H_RULINGS = re.compile(r"^\s*##\s*RULINGS\s*$", re.I | re.M)
+_H_ANY = re.compile(r"^\s*##(?!#)\s*(.*?)\s*$", re.M)
+
+
+def _unexpected_sections(text: str, allowed: tuple[str, ...]) -> list[str]:
+    """Level-2 headings other than the briefed ones. Round Q (#3481): the brief
+    promised "extra or missing sections ⇒ UNKNOWN", but only the required
+    sections were counted, so a reply could carry its real content — or a
+    payload — in an unvalidated section beside an empty FINDINGS and still
+    PASS. Sub-headings (`###`) inside a section are not sections."""
+    return [h for h in _H_ANY.findall(text) if h.upper() not in allowed]
 
 
 def validate_review_shape(text: str) -> Optional[str]:
@@ -735,6 +745,9 @@ def validate_review_shape(text: str) -> Optional[str]:
         n = len(rx.findall(text))
         if n != 1:
             return f"expected exactly one `## {name}` section, found {n}"
+    extra = _unexpected_sections(text, ("VERDICT", "FINDINGS", "NOT REVIEWED"))
+    if extra:
+        return f"unexpected section(s) beyond the briefed shape: {extra[:3]}"
     m = _H_VERDICT.search(text)
     first = text[m.end() :].lstrip("\n").split("\n", 1)[0].strip()
     if first not in ("PASS", "BLOCK"):
@@ -786,6 +799,9 @@ def validate_adjudication_shape(text: str) -> Optional[str]:
     v = len(_H_VERDICT.findall(text))
     if v != 1:
         return f"expected exactly one `## VERDICT` section, found {v}"
+    extra = _unexpected_sections(text, ("RULINGS", "VERDICT"))
+    if extra:
+        return f"unexpected section(s) beyond the briefed shape: {extra[:3]}"
     m = _H_VERDICT.search(text)
     first = text[m.end() :].lstrip("\n").split("\n", 1)[0].strip()
     if first not in ("PASS", "BLOCK"):

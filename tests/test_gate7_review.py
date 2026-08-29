@@ -601,6 +601,35 @@ def test_fresh_review_without_the_exact_decision_sections_is_unknown_never_pass_
     assert fresh_review_verdict(medium_block, parse_findings(medium_block, strict=True)) == "BLOCK"
 
 
+def test_extra_top_level_sections_void_fresh_output_in_both_lanes():
+    """#3481 round Q: the reviewer's own raw text found it — the brief promises
+    "extra or missing sections ⇒ UNKNOWN", but the validators only counted the
+    required sections and ignored any other `## …` heading, so a reply could
+    carry its real content (or a payload) in an unvalidated section next to
+    an empty FINDINGS and still be PASS. Level-2 headings define sections; only
+    the briefed ones may exist. Sub-headings (`###`, the heading-form finding)
+    inside a section are fine."""
+    from gate7_review import (
+        adjudication_verdict_strict,
+        fresh_review_verdict,
+        validate_review_shape,
+    )
+
+    extra = _OK_REVIEW + "\n## EXTRA\nhidden payload or the real finding, outside FINDINGS\n"
+    assert validate_review_shape(extra) is not None
+    assert fresh_review_verdict(extra, parse_findings(extra, strict=True)) == "UNKNOWN"
+    preamble = "## Gate 7 Adversarial Review\nessay first\n\n" + _OK_REVIEW
+    assert fresh_review_verdict(preamble, parse_findings(preamble, strict=True)) == "UNKNOWN"
+    sub = _OK_REVIEW.replace("None found", "### 1. **[severity: low] Sub-heading form** — ok")
+    assert fresh_review_verdict(sub, parse_findings(sub, strict=True)) == "PASS"
+
+    prior = [Finding("high", "x")]
+    ok = "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — quote\n\n## VERDICT\nPASS\n"
+    assert adjudication_verdict_strict(ok, prior) == "PASS"
+    assert adjudication_verdict_strict(ok + "\n## NOTES\nunadjudicated text\n", prior) == "UNKNOWN"
+    assert adjudication_verdict_strict("## PREAMBLE\nx\n\n" + ok, prior) == "UNKNOWN"
+
+
 def test_strict_findings_never_fall_back_to_whole_text():
     """Round K: a finding-shaped example line in prose became a high. Strict
     parsing (fresh output) reads FINDINGS only and yields nothing without it;
@@ -685,6 +714,11 @@ def test_canonical_contracts_state_the_evidence_exclusion_semantics():
         assert "no gate 7 round or attempt cap" in low
         assert "malformed attempt" in low and "fresh, independent call" in low
         assert "never waives" in low
+        # Round Q: the no-cap rule and the no-re-roll-for-variance rule are
+        # different rules; both contracts must say so, and must attribute the
+        # three-round cap to the multi-session protocol's Codex lane.
+        assert "verdict variance is forbidden" in low
+        assert "multi-session-protocol.md" in low
 
 
 def test_adjudicator_has_no_severity_channel():

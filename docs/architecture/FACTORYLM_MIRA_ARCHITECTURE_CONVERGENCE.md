@@ -394,7 +394,11 @@ Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.
 > fresh, independent call** — never by widening the parser — until a valid verdict exists. A
 > malformed attempt never waives the requirement for a valid verdict, and
 > **there is no Gate 7 round or attempt cap** in either direction: a BLOCK is cleared only by
-> (a) or (b) above, and a lane that has not yet produced a valid shape simply has no verdict yet. Loose parsing survives
+> (a) or (b) above, and a lane that has not yet produced a valid shape simply has no verdict yet.
+> Two distinct rules, both in force: retrying a *malformed* attempt (no verdict exists yet) is
+> required and unbounded; re-rolling a *valid* verdict on an unchanged head to shop for
+> verdict variance is forbidden. The "three-round cap" is the multi-session protocol's rule for the
+> Codex review lane (`.claude/rules/multi-session-protocol.md` §6), not a Gate 7 rule. Loose parsing survives
 > only for loading committed prior reports.
 
 Escalate automatically to **xhigh** for:

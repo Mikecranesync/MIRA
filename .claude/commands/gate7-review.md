@@ -135,7 +135,11 @@ schema-, or auth-adjacent). Those wait for the real lane.
   fresh, independent call until a valid verdict exists; do not widen the parser to fish a
   verdict. A malformed attempt never waives the requirement for a valid verdict, and
   **there is no Gate 7 round or attempt cap** — a lane that has not yet produced a valid shape
-  has no verdict yet, not a waiver and not a BLOCK. Adjudications follow the same rule: exactly one `## VERDICT`
+  has no verdict yet, not a waiver and not a BLOCK. Two distinct rules, both in force: retrying
+  a *malformed* attempt (no verdict exists yet) is required and unbounded; re-rolling a *valid*
+  verdict on an unchanged head to shop for verdict variance is forbidden. The "three-round cap"
+  belongs to the multi-session protocol's Codex lane (`.claude/rules/multi-session-protocol.md`
+  §6), not to Gate 7. Adjudications follow the same rule: exactly one `## VERDICT`
   (PASS/BLOCK) and exactly one `## RULINGS`, rulings read only from it; malformed ⇒ UNKNOWN,
   preserved, retried. Loose parsing is used only to load committed prior reports.
 
