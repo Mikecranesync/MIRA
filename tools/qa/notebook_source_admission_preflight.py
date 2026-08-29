@@ -22,16 +22,20 @@ Guarantees (pinned by tests/beta/test_admission_preflight.py):
   * exactly one SELECT, bound to one uuid tenant, no write verb anywhere;
   * the session is `SET TRANSACTION READ ONLY` and ends with ROLLBACK;
   * EXECUTABLE ACCESS IS LOOPBACK-ONLY (localhost / 127.0.0.1 / ::1) — there
-    is no host override of any kind. For staging use `--print-sql` and run the
-    emitted statement through the approved read-only path (db-inspect.yml);
-    the tool itself never connects to a remote or shared database;
+    is no host override of any kind, and the connect path itself re-checks
+    the gate; the tool never connects to a remote or shared database;
+  * `--print-sql` only PREPARES the tenant-bound READ ONLY statement. It is
+    not an execution path: `.github/workflows/db-inspect.yml` is a static
+    workflow that accepts no arbitrary SQL, so running this against staging
+    requires ADDING the statement to that workflow as a reviewed probe step
+    (PR + approval) — nothing here submits it anywhere;
   * the report never contains the connection string.
 
 Usage:
   # disposable local Postgres
   PREFLIGHT_DATABASE_URL=postgres://…@127.0.0.1:5602/mira_test \
       python tools/qa/notebook_source_admission_preflight.py --tenant-id <uuid> --json-out report.json
-  # staging: emit the statement for db-inspect.yml (no connection is made)
+  # prepare the statement for a reviewed db-inspect.yml probe step (no connection is made)
   python tools/qa/notebook_source_admission_preflight.py --tenant-id <uuid> --print-sql
 """
 
@@ -64,10 +68,10 @@ SELECT s.tenant_id::text            AS tenant_id,
        s.doc_id::text               AS doc_id,
        s.match_state                AS match_state,
        s.enabled_by_default         AS enabled_by_default,
-       count(k.*)::int              AS chunks_total,
-       count(k.*) FILTER (WHERE k.is_private)::int              AS chunks_private,
-       count(k.*) FILTER (WHERE k.verified)::int                AS chunks_verified,
-       count(k.*) FILTER (WHERE k.verified OR k.is_private)::int AS chunks_admissible
+       count(k.id)::int             AS chunks_total,
+       count(k.id) FILTER (WHERE k.is_private)::int              AS chunks_private,
+       count(k.id) FILTER (WHERE k.verified)::int                AS chunks_verified,
+       count(k.id) FILTER (WHERE k.verified OR k.is_private)::int AS chunks_admissible
   FROM equipment_notebook_sources s
   LEFT JOIN knowledge_entries k
          ON k.doc_id = s.doc_id
@@ -96,7 +100,8 @@ def assert_safe_target(url: str) -> None:
     host carries no 'prod'/'prd' marker), and an allow variable would be an
     arbitrary-remote escape hatch. So the executable path connects ONLY to a
     loopback host; every remote/shared database is refused before any
-    connection is attempted. Staging goes through `--print-sql` + db-inspect.
+    connection is attempted. For staging, `--print-sql` prepares the statement
+    for a reviewed db-inspect.yml probe step; it does not execute it.
     """
     if not url:
         raise PreflightRefused("no database url")
@@ -105,12 +110,13 @@ def assert_safe_target(url: str) -> None:
     haystack = f"{host} {parsed.path or ''}".lower()
     if any(m in haystack for m in PROD_MARKERS):
         raise PreflightRefused(
-            "REFUSED: production-looking database target — use --print-sql with db-inspect.yml"
+            "REFUSED: production-looking database target — this tool never connects to it; "
+            "--print-sql prepares the statement for a reviewed db-inspect.yml probe step"
         )
     if host not in LOOPBACK_HOSTS:
         raise PreflightRefused(
             f"REFUSED: host {host!r} is not loopback — this tool never connects to a remote or "
-            "shared database; use --print-sql and run it through db-inspect.yml on staging"
+            "shared database; --print-sql prepares the statement for a reviewed db-inspect.yml step"
         )
 
 
@@ -208,18 +214,26 @@ def _dict_row_factory():
 
 
 def _connect(url: str) -> Any:
+    """The ONLY connect path — gated here too (defense in depth), so no caller
+    that bypasses main() can reach a remote/shared database: the loopback
+    check runs before the driver is even imported."""
+    assert_safe_target(url)
     import psycopg  # type: ignore
 
     return psycopg.connect(url, autocommit=False)
 
 
 def render_sql_for_db_inspect(tenant_id: str) -> str:
-    """The exact statement for the approved read-only staging path, with the
-    tenant literal bound in and the READ ONLY guard stated. No connection."""
+    """PREPARED statement with the tenant literal bound in and the READ ONLY
+    guard stated. Not executed by anything here: db-inspect.yml is static and
+    accepts no arbitrary SQL, so this must be added to it as a reviewed probe
+    step (PR + approval) before it can run against staging."""
     sql, (tid,) = build_query(tenant_id)
     bound = sql.replace("%s::uuid", f"'{tid}'::uuid")
     return (
-        "-- notebook_source_admission_preflight (PRD §7.3) — run via db-inspect.yml, READ ONLY\n"
+        "-- notebook_source_admission_preflight (PRD §7.3) — PREPARED SQL, READ ONLY.\n"
+        "-- Not runnable as-is on staging: db-inspect.yml accepts no arbitrary SQL; add this\n"
+        "-- as a reviewed probe step in that workflow (PR + approval). Never run from a session.\n"
         "BEGIN; SET TRANSACTION READ ONLY;\n" + bound + ";\nROLLBACK;\n"
     )
 
@@ -232,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--print-sql",
         action="store_true",
-        help="emit the parameter-bound READ ONLY statement for db-inspect.yml; never connects",
+        help="print the PREPARED tenant-bound READ ONLY statement (to be added to db-inspect.yml as a reviewed step); never connects",
     )
     args = ap.parse_args(argv)
     try:

@@ -1,11 +1,13 @@
 """PRD §7.3 — tenant-scoped, READ-ONLY historical repair/preflight report.
 
-The tool never mutates anything and never runs against production from a
-session: it refuses production-looking targets, opens a READ ONLY transaction,
-issues exactly one SELECT bound to one tenant, and reports per-source
-admission paths plus the §7.3 conclusion (`no_rewrite_required` when every
-confirmed source is admitted through server-derived confirmation — the
-Workstream A design — regardless of `knowledge_entries.verified`).
+The tool never mutates anything and never connects to a remote or shared
+database: executable access is loopback-only (no override), the session is a
+READ ONLY transaction with exactly one SELECT bound to one tenant, and the
+report computes the REAL current admission per confirmed source under the
+Workstream A rule — globally verified chunks are admissible; confirmed
+tenant-private chunks are admissible via confirmation; confirmed shared/OEM
+chunks with verified=false are EXCLUDED; zero chunks are excluded — plus
+before/after snapshots with zero delta and the §7.3 conclusion.
 """
 
 from __future__ import annotations
@@ -25,17 +27,7 @@ _TOOL = (
 )
 
 
-class _Missing:
-    """Placeholder namespace so a not-yet-written tool fails each test as an
-    assertion for its own reason, never as a collection error."""
-
-    def __getattr__(self, name):
-        raise AssertionError(f"missing behaviour: {_TOOL.name}.{name} is not implemented")
-
-
 def _load_tool():
-    if not _TOOL.exists():
-        return _Missing()
     spec = importlib.util.spec_from_file_location("notebook_source_admission_preflight", _TOOL)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -104,6 +96,26 @@ def test_loopback_disposable_targets_are_allowed():
     pre.assert_safe_target("postgres://postgres:testpw@[::1]/mira_test")
 
 
+def test_connect_itself_refuses_remote_hosts_before_any_driver_call(monkeypatch):
+    # Defense in depth: even a caller that bypasses main() cannot reach a remote
+    # database — the gate is enforced INSIDE the connect path, before psycopg
+    # is even imported.
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_psycopg(name, *a, **kw):
+        if name == "psycopg":
+            raise AssertionError("psycopg imported for a remote host")
+        return real_import(name, *a, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", no_psycopg)
+    with pytest.raises(pre.PreflightRefused):
+        pre._connect("postgres://u:p@ep-purple-hall-ahimeyn0-pooler.us-east-2.aws.neon.tech/neondb")
+    with pytest.raises(pre.PreflightRefused):
+        pre._connect("postgres://u:p@ep-abc-123.us-east-2.aws.neon.tech/neondb")
+
+
 def test_no_host_override_exists_in_the_tool():
     src = _TOOL.read_text(encoding="utf-8")
     assert "PREFLIGHT_ALLOWED_HOST" not in src
@@ -111,8 +123,9 @@ def test_no_host_override_exists_in_the_tool():
 
 
 def test_print_sql_emits_the_select_for_db_inspect_without_connecting(monkeypatch, capsys):
-    # The staging path is db-inspect.yml (read-only, approved). The tool only
-    # EMITS the parameterised SELECT for it; it never connects itself.
+    # --print-sql only PREPARES the statement: db-inspect.yml is static and takes
+    # no arbitrary SQL, so the output must be added there as a reviewed step.
+    # The tool never connects itself.
     monkeypatch.setenv(
         "PREFLIGHT_DATABASE_URL",
         "postgres://u:p@ep-purple-hall-ahimeyn0-pooler.us-east-2.aws.neon.tech/neondb",
@@ -125,6 +138,7 @@ def test_print_sql_emits_the_select_for_db_inspect_without_connecting(monkeypatc
     assert rc == 0
     assert "SELECT" in out and "s.tenant_id = " in out and TENANT in out
     assert "READ ONLY" in out
+    assert "PREPARED SQL" in out and "reviewed probe step" in out
     assert not re.search(r"\b(UPDATE|INSERT|DELETE|ALTER|DROP|TRUNCATE)\b", out, re.I)
 
 
@@ -209,7 +223,8 @@ ROWS = [
 def test_query_aggregates_privacy_and_verification_per_source():
     sql, _ = pre.build_query(TENANT)
     low = sql.lower()
-    assert "count(k.*)" in low or "count(k.id)" in low
+    assert "count(k.id)" in low and "count(k.*)" not in low
+    assert low.count("count(k.id)") == 4
     assert "is_private" in low and "verified" in low
     # admissible = globally verified OR tenant-private (confirmation admits it)
     assert "filter (where k.verified or k.is_private)" in low.replace("  ", " ")
