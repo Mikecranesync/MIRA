@@ -1,9 +1,9 @@
 # Autonomous Run Plan — Technician Beta Recovery, Workstream B
 
-**Date:** 2026-08-29  
-**Branch:** `codex/technician-beta-recovery-b`  
-**Base:** `origin/main` at `4a695bf311241ec4e2b9d0a269a3630ff7477bcd`  
-**Operator:** Claude Code, supervised by Codex  
+**Date:** 2026-08-29
+**Branch:** `codex/technician-beta-recovery-b`
+**Base:** `origin/main` at `4a695bf311241ec4e2b9d0a269a3630ff7477bcd`
+**Operator:** Claude Code, supervised by Codex
 **Approved PRD:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md`
 
 ## Objective

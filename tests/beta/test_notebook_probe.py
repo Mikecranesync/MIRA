@@ -258,8 +258,15 @@ def test_main_refuses_to_print_secrets(monkeypatch, capsys):
 class FakeHub:
     """Minimal stand-in for the notebook product contract."""
 
-    def __init__(self, answered_body: str | None = None, refusal_body: str | None = None):
+    def __init__(
+        self,
+        answered_body: str | None = None,
+        refusal_body: str | None = None,
+        delete_status: int = 200,
+    ):
+        self.delete_status = delete_status
         self.calls: list[tuple[str, str]] = []
+        self.cookies_seen: list[str] = []
         self.readiness_polls = 0
         self.answered_body = answered_body
         self.refusal_body = refusal_body if refusal_body is not None else _refusal()
@@ -270,9 +277,17 @@ class FakeHub:
     def handler(self, request: httpx.Request) -> httpx.Response:
         p, m = request.url.path, request.method
         self.calls.append((m, p))
+        # Sign-in doors (email/password auth) are the only cookie-less calls.
+        if p == "/api/auth/csrf/":
+            return httpx.Response(200, json={"csrfToken": "csrf-1"})
+        if p == "/api/auth/callback/credentials/":
+            return httpx.Response(
+                200, headers={"set-cookie": "next-auth.session-token=MINTED; Path=/; HttpOnly"}
+            )
         assert "cookie" in {k.lower() for k in request.headers}, (
             "every call must carry the session cookie"
         )
+        self.cookies_seen.append(request.headers["cookie"])
         if p == "/api/health/":
             return httpx.Response(200, json={"status": "ok", "approvedRetrievalEnforced": True})
         if m == "POST" and p == "/api/equipment-notebooks/":
@@ -337,17 +352,23 @@ class FakeHub:
             )
         if m == "DELETE":
             self.deleted.append(p)
-            return httpx.Response(200, json={"ok": True})
+            if self.delete_status >= 500:
+                return httpx.Response(self.delete_status, json={"error": "delete_failed"})
+            return httpx.Response(self.delete_status, json={"ok": True})
         return httpx.Response(404, json={"error": f"unexpected {m} {p}"})
 
 
-def _cfg() -> ProbeConfig:
-    return ProbeConfig(
-        hub_base="http://hub.test", cookie="next-auth.session-token=x", poll_seconds=30
-    )
+def _cfg(**kw) -> ProbeConfig:
+    base = {
+        "hub_base": "http://hub.test",
+        "cookie": "next-auth.session-token=x",
+        "poll_seconds": 30,
+    }
+    base.update(kw)
+    return ProbeConfig(**base)
 
 
-def _run(hub: FakeHub, **overrides):
+def _run(hub: FakeHub, cfg: ProbeConfig | None = None):
     with (
         mock.patch("tests.beta._notebook_probe.time.sleep") as sleep,
         mock.patch("tests.beta._notebook_probe._sentinel", return_value=("QX7K3", "137")),
@@ -355,8 +376,56 @@ def _run(hub: FakeHub, **overrides):
         client = httpx.Client(
             transport=httpx.MockTransport(hub.handler), base_url="http://hub.test"
         )
-        report = run_notebook_probe(_cfg(), client=client, **overrides)
+        report = run_notebook_probe(cfg or _cfg(), client=client)
     return report, sleep
+
+
+# ── cleanup is proof, not observation ────────────────────────────────────────
+
+
+def test_probe_fails_when_cleanup_returns_500_even_if_everything_else_passed():
+    hub = FakeHub(delete_status=500)
+    report, _ = _run(hub)
+    assert not report.ok
+    assert any("cleanup notebook HTTP 500" in f for f in report.failures)
+    # every run-owned target was still attempted
+    assert len(hub.deleted) == 3
+    cleanup = next(s for s in report.steps if s["name"] == "cleanup")
+    assert cleanup["notebook"] == 500
+
+
+def test_probe_accepts_404_on_cleanup_as_already_gone():
+    hub = FakeHub(delete_status=404)
+    report, _ = _run(hub)
+    assert report.ok, report.failures
+
+
+def test_probe_fails_when_cleanup_raises():
+    hub = FakeHub()
+    orig = hub.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE" and "/uploads/" in request.url.path:
+            raise httpx.ConnectError("boom")
+        return orig(request)
+
+    hub.handler = handler
+    report, _ = _run(hub)
+    assert not report.ok and any("cleanup upload raised ConnectError" in f for f in report.failures)
+    # the remaining target is still attempted after the exception
+    assert any(p.startswith("/api/files/") for p in hub.deleted)
+
+
+def test_email_password_auth_cleanup_uses_the_minted_cookie():
+    hub = FakeHub()
+    report, _ = _run(hub, cfg=_cfg(cookie=None, email="qa@example.com", password="pw"))
+    assert report.ok, report.failures
+    order = [p for _, p in hub.calls]
+    assert order[:2] == ["/api/auth/csrf/", "/api/auth/callback/credentials/"]
+    # every authenticated call — INCLUDING the DELETEs in finally — carried the minted session
+    assert hub.cookies_seen and all(c == "next-auth.session-token=MINTED" for c in hub.cookies_seen)
+    assert len(hub.deleted) == 3
+    assert "MINTED" not in json.dumps(report.to_dict())
 
 
 def test_probe_happy_path_walks_the_product_contract_in_order():

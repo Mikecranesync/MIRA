@@ -344,14 +344,18 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
     own_client = client is None
     if client is None:
         client = httpx.Client(base_url=cfg.hub_base, timeout=90, follow_redirects=True)
+    # The ACTIVE session cookie lives outside the try so cleanup can use it
+    # whether it was supplied (BETA_PROBE_COOKIE) or minted by sign-in.
+    active_cookie: str | None = cfg.cookie
 
     def step(name: str, t0: float, **info: Any) -> None:
         steps.append({"name": name, "ms": int((time.monotonic() - t0) * 1000), **_redact(info)})
 
     try:
         # 0. auth
-        cookie = cfg.cookie or _sign_in(client, cfg)
-        h = {"Cookie": cookie}
+        if not active_cookie:
+            active_cookie = _sign_in(client, cfg)
+        h = {"Cookie": active_cookie}
 
         # 1. gate state — the effective, non-secret production flag
         t0 = time.monotonic()
@@ -531,20 +535,33 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
         failures.append(f"{type(exc).__name__}: {str(exc)[:300]}")
     finally:
         # 10. run-owned cleanup, even after failure — only what THIS run created
+        # Cleanup is PROOF, not observation: any target that is neither
+        # deleted (2xx) nor already gone (404) is a probe failure, and so is
+        # an exception mid-cleanup — a QA tenant must not accumulate rows.
         t0 = time.monotonic()
         outcome: dict[str, Any] = {}
-        try:
-            h2 = {"Cookie": cfg.cookie} if cfg.cookie else {}
-            if notebook_id:
-                outcome["notebook"] = client.delete(
-                    f"/api/equipment-notebooks/{notebook_id}/", headers=h2
-                ).status_code
-            if doc_id:
-                outcome["upload"] = client.delete(f"/api/uploads/{doc_id}/", headers=h2).status_code
-            if file_id:
-                outcome["file"] = client.delete(f"/api/files/{file_id}/", headers=h2).status_code
-        except Exception as exc:  # noqa: BLE001
-            outcome["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        targets: list[tuple[str, str]] = []
+        if notebook_id:
+            targets.append(("notebook", f"/api/equipment-notebooks/{notebook_id}/"))
+        if doc_id:
+            targets.append(("upload", f"/api/uploads/{doc_id}/"))
+        if file_id:
+            targets.append(("file", f"/api/files/{file_id}/"))
+        h2 = {"Cookie": active_cookie} if active_cookie else {}
+        if targets and not active_cookie:
+            failures.append("cleanup impossible: no active session cookie")
+        for name, path in targets:
+            try:
+                code_ = client.delete(path, headers=h2).status_code
+            except Exception as exc:  # noqa: BLE001
+                outcome[name] = f"{type(exc).__name__}"
+                failures.append(f"cleanup {name} raised {type(exc).__name__}: {str(exc)[:200]}")
+                continue
+            outcome[name] = code_
+            if not (200 <= code_ < 300 or code_ == 404):
+                failures.append(
+                    f"cleanup {name} HTTP {code_} — run-owned record NOT removed ({path})"
+                )
         steps.append({"name": "cleanup", "ms": int((time.monotonic() - t0) * 1000), **outcome})
         if own_client:
             client.close()
