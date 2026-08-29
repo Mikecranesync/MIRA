@@ -47,7 +47,11 @@ ModuleNotFoundError: No module named 'tests.beta._notebook_probe'   (1 error dur
 
 **CLI dry-run (no env):** `python tests/beta/_notebook_probe.py` → prints `DRY-RUN … no request was sent`, exit 0; the unit test asserts `httpx.Client` is never constructed.
 
-**Live staging lane:** runs in CI on this PR (`notebook-gate`); not run from this session (no Doppler/staging access used). `prove_regression=true` is the one-click red proof for Mike.
+**Live staging lane — GREEN with the fix:** run 33264885272 / job 99133085783
+(https://github.com/Mikecranesync/MIRA/actions/runs/33264885272): gate asserted via `/api/health` (HTTP 200, `approvedRetrievalEnforced: true`), pre-upload `422 no_sources_selected`, run-unique upload indexed (2 chunks), confirmed, readiness on the contract, sentinel `answered` with the exact doc/page + provider usage, passage identity on page 2, unsupported question `insufficient_evidence` with no usage frame, cleanup link → notebook → upload → file → node all 2xx, tenant swept.
+
+**§8.4 exit gate — RED under the reintroduced defect (staging synthetic tenant):** run 33265180078
+(https://github.com/Mikecranesync/MIRA/actions/runs/33265180078), dispatched with `prove_regression=true` from this branch (staging only; the production probe was NOT dispatched). The build carried the faithful #3437 shape (legacy `verified = true` rule, approved set bound but ignored). Same flag, same probe: the sentinel turn returned `status='insufficient_evidence'` ("I couldn't find that in the selected sources."), **no citation, no provider usage** — `failures=['status=insufficient_evidence, expected answered', 'no citation emitted for a run-owned fact', 'answer does not state the sentinel value 624', 'provider usage missing/null…']`, pytest rc=1 → `::notice::§8.4 proof: the notebook lane FAILED under the reintroduced verified=false defect (rc=1), as required` → job green; `cleaned tenant 7dd64604-…`. (An earlier attempt, run 33265056350, also failed-as-required but via HTTP 500 — the first revert left an unreferenced bind parameter; that is a broken build, not the defect, so the revert was corrected in `16f4c46f7` before the run above.)
 
 ## 4. Verification commands (exact)
 
