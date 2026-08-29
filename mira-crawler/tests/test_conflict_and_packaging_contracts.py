@@ -458,11 +458,192 @@ class TestCanonicalSourceUrl:
             (
                 "https://example.com/a%2Fpath",
                 "https://example.com/a%2Fpath",
-            ),  # percent-encoding untouched
+            ),  # an escape is never decoded; upper-case hex digits are already canonical
         ],
     )
-    def test_lowercases_only_scheme_and_host(self, raw, expected):
+    def test_scheme_and_host_are_lower_cased(self, raw, expected):
         assert store.canonical_source_url(raw) == expected
+
+    # ── Round T (#3481) code F2 + F3, SUSTAINED high ─────────────────────────
+    # RFC 3986 §6.2.3 (scheme-based: an explicit default port is the same
+    # authority as none) and §6.2.2.1 (the hex digits of a %HH escape are
+    # case-insensitive). Either spelling difference stored ONE logical document
+    # under TWO dedup keys. Both are folded into the canonical identity in the
+    # smallest standards-correct way: nothing is decoded, only http/https carry
+    # a default here, and non-default / empty / invalid port text and invalid
+    # `%` text stay byte-exact.
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("https://example.com:443/file.pdf", "https://example.com/file.pdf"),
+            ("HTTP://Example.com:80/x", "http://example.com/x"),
+            ("https://example.com:0443/x", "https://example.com/x"),  # equivalent digit spelling
+            ("http://example.com:00080/x", "http://example.com/x"),
+            ("https://user:p%40ss@example.com:443/x", "https://user:p%40ss@example.com/x"),
+            ("https://[2001:DB8::1]:443/A", "https://[2001:db8::1]/A"),  # IPv6 + default port
+            ("http://[::1]:80/A", "http://[::1]/A"),
+            ("https://example.com:443", "https://example.com"),  # no path
+            ("https://example.com:443?q=1#f", "https://example.com?q=1#f"),
+        ],
+    )
+    def test_an_explicit_default_port_is_removed_for_http_and_https(self, raw, expected):
+        assert store.canonical_source_url(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "https://example.com:8443/x",  # non-default
+            "http://example.com:443/x",  # 443 is not http's default
+            "https://example.com:80/x",  # 80 is not https's default
+            "https://example.com:/x",  # empty port text
+            "https://example.com:44a/x",  # invalid port text
+            "https://example.com:4433/x",  # a different number that merely contains 443
+            "https://[2001:db8::1]:8080/A",  # IPv6, non-default
+            "ftp://example.com:21/x",  # only http/https carry a canonical default here
+            "https://example.com:\u0664\u0664\u0663/x",  # non-ASCII digits are not a port
+        ],
+    )
+    def test_non_default_empty_or_invalid_port_text_is_byte_exact(self, raw):
+        assert store.canonical_source_url(raw) == raw
+
+    def test_a_very_long_numeric_port_never_crashes_and_is_still_compared_exactly(self):
+        """The URL is untrusted text. CPython refuses to convert a decimal
+        string longer than its integer digit limit (~4,300 digits — ValueError),
+        so the default-port comparison must never go through int(): a run of
+        >5,000 leading zeros is still an equivalent spelling of 443 and must be
+        removed, while the same run ending in 444 is non-default and must stay
+        byte-exact — both without raising."""
+        zeros = "0" * 5001
+        assert store.canonical_source_url(f"https://example.com:{zeros}443/x") == (
+            "https://example.com/x"
+        )
+        non_default = f"https://example.com:{zeros}444/x"
+        assert store.canonical_source_url(non_default) == non_default
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("https://example.com/a%7apath", "https://example.com/a%7Apath"),  # path
+            ("https://example.com/x?q=%e2%82%ac", "https://example.com/x?q=%E2%82%AC"),  # query
+            ("https://example.com/x#%aB", "https://example.com/x#%AB"),  # fragment
+            ("https://us%2fer:p%2fw@example.com/x", "https://us%2Fer:p%2Fw@example.com/x"),
+            ("https://example.com/%7a%7A%7b", "https://example.com/%7A%7A%7B"),
+            ("file:/Allowed/Doc%2fx.pdf", "file:/Allowed/Doc%2Fx.pdf"),  # authority-less URL
+            ("FILE:///C:/Docs/Manual%c3%a9.pdf", "file:///C:/Docs/Manual%C3%A9.pdf"),
+        ],
+    )
+    def test_percent_escape_hex_digits_are_upper_cased_in_every_component(self, raw, expected):
+        assert store.canonical_source_url(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "https://example.com/a%zzb",  # not hex
+            "https://example.com/a%7",  # truncated escape
+            "https://example.com/a%",  # bare percent
+            "https://example.com/a%7g",  # one hex digit is not an escape
+            "https://example.com/100%25",  # already canonical
+            "https://example.com/a%2Fb",  # never decoded to `/`
+            "https://example.com/%41",  # never decoded to `A`
+        ],
+    )
+    def test_invalid_escape_text_is_byte_exact_and_escapes_are_never_decoded(self, raw):
+        assert store.canonical_source_url(raw) == raw
+
+    def test_a_valid_escape_beside_invalid_text_is_normalised_alone(self):
+        assert (
+            store.canonical_source_url("https://example.com/a%zz%7ab%7?%2fx%")
+            == "https://example.com/a%zz%7Ab%7?%2Fx%"
+        )
+
+    def test_escape_case_folding_never_decodes(self):
+        assert (
+            store.canonical_source_url("https://example.com/a%2fb") == "https://example.com/a%2Fb"
+        )
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "/inbox/Doc%7a.pdf",  # bare path — not a URL
+            "C:\\inbox\\Doc%7a.pdf",  # Windows drive letter — not a scheme
+            "",
+        ],
+    )
+    def test_non_urls_are_untouched_by_the_port_and_escape_rules(self, raw):
+        assert store.canonical_source_url(raw) == raw
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "HTTPS://EXAMPLE.COM:443/Doc%7a.PDF?q=%e2#%aB",
+            "https://us%2fer@[2001:DB8::1]:443/A%7",
+            "http://example.com:00080/x%zz",
+            "https://example.com:8443/x%2f",
+            "file:/Allowed/Doc%2fx.pdf",
+            "https://example.com:/x",
+        ],
+    )
+    def test_expanded_canonical_form_is_idempotent(self, raw):
+        once = store.canonical_source_url(raw)
+        assert store.canonical_source_url(once) == once
+
+    def test_lookup_and_write_share_one_key_across_port_and_escape_spellings(self, captured):
+        raw = "HTTPS://EXAMPLE.COM:443/Doc%7a.PDF"
+        canon = "https://example.com/Doc%7A.PDF"
+        assert store.chunk_exists("tenant-a", raw, 0) is False  # fake DB: 0 rows
+        looked_up = captured["params"]["url"]
+        assert captured["params"]["raw"] == raw  # the historical raw-spelling lookup stays
+        assert _insert(True, raw) != ""
+        written = captured["params"]["source_url"]
+        assert looked_up == written == canon == store.canonical_source_url(raw)
+        assert captured["params"]["tenant_id"] == "tenant-a"
+        assert captured["params"]["is_private"] is True
+
+    def test_store_chunks_sees_one_key_across_port_and_escape_spellings(self, captured):
+        for url in (
+            "https://example.com:443/Doc%7a.PDF",
+            "https://example.com/Doc%7A.PDF",
+            "HTTPS://EXAMPLE.COM:0443/Doc%7a.PDF",
+        ):
+            chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
+            store.store_chunks(chunks, "tenant-a", is_private=True)
+        keys = {
+            (p.get("tid") or p.get("tenant_id"), p.get("url") or p.get("source_url"))
+            for _, p in captured["all"]
+        }
+        assert keys == {("tenant-a", "https://example.com/Doc%7A.PDF")}
+
+    def test_ledger_probe_matches_historical_port_and_escape_spellings(self, captured):
+        captured["rows"] = [
+            ("https://example.com/New%7A.pdf",),  # landed under the canonical key
+            ("https://example.com:443/Old%7a.pdf",),  # historical row, raw spelling
+        ]
+        asked = [
+            "https://example.com:443/New%7a.pdf",
+            "https://example.com:443/Old%7a.pdf",
+            "https://example.com/Missing.pdf",
+        ]
+        got = store.ingested_source_urls(asked, "tenant-a")
+        assert got == {"https://example.com:443/New%7a.pdf", "https://example.com:443/Old%7a.pdf"}
+        queried = set(captured["params"]["urls"])
+        assert {
+            "https://example.com/New%7A.pdf",
+            "https://example.com:443/Old%7a.pdf",
+            "https://example.com/Old%7A.pdf",
+        } <= queried
+        assert captured["params"]["tid"] == "tenant-a"
+
+    def test_port_and_escape_canonicalisation_never_changes_visibility_or_refusal(self):
+        for raw in (
+            "HTTPS://Unknown.Example.INVALID:443/x%7a.pdf",
+            "https://unknown.example.invalid:8443/x.pdf",
+            "http://[::1]:80/x%2f.pdf",
+            "FILE:///C:/Docs/x%7a.pdf",
+        ):
+            assert provenance.enforce_visibility(raw, False) == provenance.enforce_visibility(
+                store.canonical_source_url(raw), False
+            )
 
     def test_lookup_also_matches_a_historical_row_stored_in_the_callers_spelling(self, captured):
         """Round-F code finding (real): rows written BEFORE canonicalisation keep

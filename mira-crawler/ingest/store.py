@@ -36,24 +36,67 @@ def _log_ref(url: str) -> str:
 
 
 _SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+# RFC 3986 §6.2.3: for these schemes an explicit default port names the same
+# authority as no port. Only the schemes the crawler stores are listed; any
+# other scheme keeps its port text byte-exact.
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+# RFC 3986 §6.2.2.1: the hex digits of a percent-encoding triplet are
+# case-insensitive; the canonical form is upper-case. Only a complete, valid
+# `%HH` matches — `%7`, `%`, `%zz`, `%7g` are not escapes and stay as given.
+_PCT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+_ASCII_DIGITS_RE = re.compile(r"[0-9]+")
+
+
+def _upper_escapes(component: str) -> str:
+    """Upper-case the hex digits of every valid ``%HH`` escape; decode nothing."""
+    return _PCT_ESCAPE_RE.sub(lambda m: m.group(0).upper(), component)
+
+
+def _canonical_port(scheme: str, port: str) -> str:
+    """``port`` is the port text INCLUDING its leading colon (or ``""``). It is
+    dropped only when it is a run of ASCII digits equal to the scheme's default
+    (``:443``, ``:0443``); non-default, empty (``:``), non-numeric or non-ASCII
+    port text is returned exactly as given. The comparison strips leading zeros
+    and compares strings — never ``int()``: the URL is untrusted text and
+    CPython refuses to convert a decimal string past its digit limit."""
+    default = _DEFAULT_PORTS.get(scheme)
+    digits = port[1:]
+    if default is None or not port or not _ASCII_DIGITS_RE.fullmatch(digits):
+        return port
+    return "" if (digits.lstrip("0") or "0") == str(default) else port
 
 
 def canonical_source_url(url: str) -> str:
-    """Lower-case ONLY the scheme and the host of ``url``; every other byte —
-    userinfo, port, path, query, fragment — is preserved exactly as given.
+    """The one storage identity of a source URL — the exact behaviour, nothing more:
 
-    The dedup key ``(tenant_id, source_url, chunk_index)`` is an exact-match
-    UNIQUE index (migration 003), while origin classification lower-cases the
-    host — so two casings of one origin were stored as two rows (Gate 7 on
-    PR #3481, code F1, SUSTAINED). BOTH constructors of the key — chunk_exists
-    and insert_chunk — apply this, so lookup and write can never disagree.
-    Bare filesystem paths (no scheme, or a one-letter Windows drive) and
-    authority-less URLs (``file:/x``) get at most a lower-cased scheme.
+    * the scheme and the host are lower-cased (a host is case-insensitive;
+      origin classification already lower-cases it);
+    * an explicit **default port** is removed for ``http`` (80) and ``https``
+      (443), including an equivalent digit spelling such as ``:0443``
+      (RFC 3986 §6.2.3); non-default, empty (``:``) or invalid port text and the
+      ports of every other scheme are preserved byte-exact;
+    * the hex digits of every valid ``%HH`` escape are **upper-cased** in the
+      userinfo, path, query and fragment (RFC 3986 §6.2.2.1); nothing is ever
+      decoded, and invalid ``%`` text (``%7``, ``%``, ``%zz``) is preserved;
+    * every other byte is preserved exactly as given. The transform is
+      idempotent.
+
+    Why: the dedup key ``(tenant_id, source_url, chunk_index)`` is an exact-match
+    UNIQUE index (migration 003), so any two spellings of one logical document
+    that differ only in a semantics-preserving way stored as two rows — two
+    casings of one origin (Gate 7 on PR #3481, code F1, SUSTAINED), then a
+    default port and the case of an escape (round T, code F2 + F3, SUSTAINED).
+    BOTH constructors of the key — chunk_exists and insert_chunk — and the
+    ledger probe apply this, so lookup and write can never disagree. Bare
+    filesystem paths (no scheme, or a one-letter Windows drive) are untouched;
+    authority-less URLs (``file:/x``) get a lower-cased scheme and the escape
+    rule on their path.
 
     Historical residual, documented not migrated: rows written before this
-    function keep their stored casing; a recrawl of such a row writes the
-    canonical key beside it (one extra row per historical mixed-case URL) —
-    a one-off dedup migration is the follow-up, never a silent rewrite here.
+    function keep their stored spelling; ``chunk_exists`` and the ledger probe
+    also look up the exact raw spelling they were given, so a recrawl of such a
+    row finds it. A one-off dedup migration is the follow-up, never a silent
+    rewrite here.
     """
     if not url:
         return url
@@ -62,7 +105,8 @@ def canonical_source_url(url: str) -> str:
         return url  # not a URL (bare path, Windows drive letter `C:\…`) — untouched
     scheme = head.lower()
     if not rest.startswith("//"):
-        return f"{scheme}:{rest}"  # no authority component (e.g. file:/allowed/doc.pdf)
+        # no authority component (e.g. file:/allowed/doc.pdf): the rest is a path
+        return f"{scheme}:{_upper_escapes(rest)}"
     body = rest[2:]
     end = len(body)
     for stop in "/?#":
@@ -79,7 +123,8 @@ def canonical_source_url(url: str) -> str:
     else:
         host, colon, port = hostport.partition(":")
         port = colon + port
-    return f"{scheme}://{userinfo}{at}{host.lower()}{port}{tail}"
+    port = _canonical_port(scheme, port)
+    return f"{scheme}://{_upper_escapes(userinfo)}{at}{host.lower()}{port}{_upper_escapes(tail)}"
 
 
 def _engine():

@@ -963,14 +963,17 @@ approved:
   # Re-keyed 297 -> 319 by the Gate 9 F1 fix
   # (provenance enforcement added above these queries). Query unchanged;
   # the hash moves because it is computed over surrounding context.
-  "mira-crawler/ingest/store.py:412":
+  # Re-keyed 412 -> 457 and 121 -> 166 (2026-08-29, #3481 round U): the
+  # canonical_source_url contract docstring + the default-port / escape-case
+  # helpers grew above both queries. Queries and hashes unchanged.
+  "mira-crawler/ingest/store.py:457":
     approved_classification: TENANT-ONLY
     query_sha256: "17bf4aecaae4cd4d42e1118fb5ad416c281fb68aec39107c7aec47a70d24ad62"
     reason: "Existence probe, not a retrieval surface — returns only which source_urls already have rows, never content, and feeds ingest_ledger.reconcile so a GUID/lastmod is marked processed only after the document is really in the corpus. Scoped to the ingesting tenant (MIRA_TENANT_ID): reconciliation must not observe another tenant's rows, and the shared OEM corpus is irrelevant to whether THIS crawler's enqueue succeeded. Legit TENANT-ONLY under the pure-tenant carve-out."
     query_snippet: |
       SELECT DISTINCT source_url FROM knowledge_entries
       WHERE source_url = ANY(:urls) AND tenant_id = :tid
-  "mira-crawler/ingest/store.py:121":
+  "mira-crawler/ingest/store.py:166":
     approved_classification: TENANT-ONLY
     query_sha256: "ad1be2f573ddc8b937eb4fc0e0f9ec60402de3bf743d251994189d0de8e129c5"
     reason: "chunk_exists dedup guard — counts the tenant's OWN rows for the same source_url+chunk_index; cross-tenant matches would wrongly skip inserts, so TENANT-ONLY is the point (pure-tenant carve-out). Re-keyed in CU-03: the hash context window extends into insert_chunk's signature, which gained the required is_private param."
