@@ -266,7 +266,11 @@ def insert_chunk(
 
     try:
         with _engine().connect() as conn:
-            conn.execute(
+            # The DATABASE says whether a row was written: `RETURNING id`
+            # yields the inserted row's id, and yields nothing when the
+            # conflict target fired (DO NOTHING). The minted `entry_id` is
+            # only what the statement binds — it is never reported on its own.
+            written_id = conn.execute(
                 text("""
                     INSERT INTO knowledge_entries
                         (id, tenant_id, source_type, manufacturer, model_number,
@@ -280,6 +284,7 @@ def insert_chunk(
                     ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
                     WHERE (metadata->>'chunk_index') IS NOT NULL
                     DO NOTHING
+                    RETURNING id
                 """),
                 {
                     "id": entry_id,
@@ -297,9 +302,15 @@ def insert_chunk(
                     "verified": verified,
                     "image_embedding": img_emb_val,
                 },
-            )
+            ).scalar_one_or_none()
             conn.commit()
-        return entry_id
+        # A conflict is not a write (Gate 7 round V on #3481, code F1 + F2): the
+        # canonical row already existed, or the other of two concurrent writers
+        # of one document got there first. Nothing was written, so there is no
+        # id to report — store_chunks must neither count nor KG-link it.
+        if written_id is None:
+            return ""  # DO NOTHING fired
+        return str(written_id)
     except Exception as e:
         logger.error("Insert failed: %s", e)
         return ""

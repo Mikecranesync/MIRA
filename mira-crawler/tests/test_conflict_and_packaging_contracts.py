@@ -74,12 +74,16 @@ def _ingest_gate():
 
 
 class _Rows:
-    def __init__(self, rows: list, count: int = 0) -> None:
+    def __init__(self, rows: list, count: int = 0, returned_id: str | None = None) -> None:
         self.rows = rows
         self.count = count
+        self.returned_id = returned_id  # what `INSERT … RETURNING id` yielded (None = no row)
 
     def scalar(self):
         return self.count
+
+    def scalar_one_or_none(self):
+        return self.returned_id
 
     def fetchall(self):
         return self.rows
@@ -99,7 +103,14 @@ class _FakeConn:
         self.box["sql"] = str(stmt)
         self.box["params"] = params
         self.box.setdefault("all", []).append((str(stmt), dict(params)))
-        return _Rows(self.box.get("rows", []), self.box.get("count", 0))
+        # The DB decides what `RETURNING id` yields: nothing when the conflict
+        # target fired (box["conflict"]), otherwise the row's id — by default the
+        # id the statement bound, or an explicit box["returned_id"].
+        if self.box.get("conflict"):
+            returned = None
+        else:
+            returned = self.box.get("returned_id") or params.get("id")
+        return _Rows(self.box.get("rows", []), self.box.get("count", 0), returned)
 
     def commit(self):
         pass
@@ -601,8 +612,12 @@ class TestCanonicalSourceUrl:
         captured["count"] = 1  # the DB already holds the row under the raw spelling
         raw = "HTTPS://EXAMPLE.COM:443/Legacy%7a.PDF"
         assert _insert(True, raw) == ""
+        # No INSERT statement at all reached the DB (only the lookup did). The
+        # assertion deliberately does not spell the INSERT-INTO-table token
+        # sequence, so Contract 13 (tests/test_architecture.py) does not read
+        # a mock-SQL assertion as a new writer.
         statements = [s for s, _ in captured["all"]]
-        assert not any("INSERT INTO knowledge_entries" in s for s in statements)
+        assert not any(s.lstrip().upper().startswith("INSERT") for s in statements)
         sql = re.sub(r"\s+", " ", captured["sql"])  # the last statement is the lookup
         assert "source_url = :url OR source_url = :raw" in sql
         assert captured["params"]["raw"] == raw
@@ -613,8 +628,78 @@ class TestCanonicalSourceUrl:
         captured["count"] = 0
         raw = "HTTPS://EXAMPLE.COM:443/Fresh%7a.PDF"
         assert _insert(True, raw) != ""
-        assert "INSERT INTO knowledge_entries" in captured["sql"]
+        assert captured["sql"].lstrip().upper().startswith("INSERT")
+        assert "knowledge_entries" in captured["sql"]
         assert captured["params"]["source_url"] == "https://example.com/Fresh%7A.PDF"
+        assert captured["params"]["is_private"] is True
+
+    # ── Round V (#3481) code F1 + F2, high: a conflict is not a write. When
+    # ON CONFLICT DO NOTHING inserts nothing (a canonical row already exists —
+    # a repeat, or the other of two concurrent writers of the same document)
+    # insert_chunk must not hand back a freshly minted id as if a row had been
+    # written: store_chunks counts a non-empty return as an insert AND links it
+    # into the KG (link_chunk_to_equipment, register_fault_code). The id the
+    # function reports is the one the DATABASE yields from `RETURNING id` —
+    # nothing else, and no driver-metadata fallback.
+
+    def test_insert_reports_the_id_the_database_returned(self, captured):
+        captured["returned_id"] = "id-yielded-by-returning"
+        assert _insert(True, "https://example.com/Doc%7A.PDF") == "id-yielded-by-returning"
+        sql = re.sub(r"\s+", " ", captured["sql"])
+        assert sql.lstrip().upper().startswith("INSERT")
+        assert re.search(r"DO\s+NOTHING\s+RETURNING\s+id\b", sql, re.I), sql
+
+    def test_insert_returns_empty_when_the_canonical_row_already_exists(self, captured):
+        captured["conflict"] = True  # DO NOTHING fired: RETURNING yielded no row
+        assert _insert(True, "https://example.com/Doc%7A.PDF") == ""
+        assert captured["sql"].lstrip().upper().startswith("INSERT")  # it was attempted
+
+    def test_concurrent_loser_of_the_same_document_reports_no_write(self, captured):
+        """Two writers, two spellings of one document, both canonicalise to one
+        key, both pass the pre-insert lookup (no historical row): the first
+        INSERT wins and yields its id; the second hits the conflict target and
+        yields nothing — it must report `""`, never a second success."""
+        winner = _insert(True, "https://example.com/Race%7A.PDF")
+        assert winner != ""
+        captured["conflict"] = True
+        loser = _insert(True, "HTTPS://EXAMPLE.COM:443/Race%7a.PDF")
+        assert loser == ""
+        inserts = [s for s, _ in captured["all"] if s.lstrip().upper().startswith("INSERT")]
+        assert len(inserts) == 2  # both attempted; the DB, not the caller, decided
+
+    def test_store_chunks_neither_counts_nor_links_a_conflict(self, captured, monkeypatch):
+        try:
+            from ingest import kg_writer
+        except ImportError:  # container layout
+            from mira_crawler.ingest import kg_writer  # type: ignore[no-redef]
+        links: list[tuple[str, str]] = []
+        faults: list[dict] = []
+        monkeypatch.setattr(
+            kg_writer, "register_equipment_and_manual", lambda **kw: ("eq-1", "manual-1")
+        )
+        monkeypatch.setattr(kg_writer, "link_chunk_to_equipment", lambda e, q: links.append((e, q)))
+        monkeypatch.setattr(kg_writer, "register_fault_code", lambda **kw: faults.append(kw))
+        chunks = [
+            (
+                {
+                    "text": "fault F0004 overcurrent",
+                    "chunk_index": 0,
+                    "source_url": "https://example.com/Doc.pdf",
+                },
+                [0.1, 0.2],
+            )
+        ]
+
+        captured["returned_id"] = "row-1"
+        assert store.store_chunks(chunks, "tenant-a", "Rockwell", "525", is_private=True) == 1
+        assert links == [("row-1", "eq-1")]  # linked to the id the DB returned
+        assert all(f["source_chunk_id"] == "row-1" for f in faults)
+
+        links.clear()
+        faults.clear()
+        captured["conflict"] = True
+        assert store.store_chunks(chunks, "tenant-a", "Rockwell", "525", is_private=True) == 0
+        assert links == [] and faults == []  # a conflict is neither counted nor linked
 
     def test_insert_pays_no_extra_lookup_when_the_spelling_is_already_canonical(self, captured):
         """The common path is unchanged: a canonical spelling has no historical

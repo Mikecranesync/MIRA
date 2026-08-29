@@ -34,9 +34,21 @@ class _FakeConn:
 
     def execute(self, _stmt, params):
         self.captured.update(params)
+        return _Returned(params.get("id"))
 
     def commit(self):
         pass
+
+
+class _Returned:
+    """What `INSERT … ON CONFLICT DO NOTHING RETURNING id` yields: the written
+    row's id (nothing here ever conflicts, so it is the id the statement bound)."""
+
+    def __init__(self, written_id):
+        self.written_id = written_id
+
+    def scalar_one_or_none(self):
+        return self.written_id
 
 
 class _FakeEngine:

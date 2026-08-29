@@ -502,6 +502,12 @@ class TestEveryWriteRouteEnforcesThePolicy:
             def execute(self, stmt, params):
                 captured.update(params)
 
+                class _Returned:  # `RETURNING id` — the written row's id
+                    def scalar_one_or_none(self_):
+                        return params.get("id")
+
+                return _Returned()
+
             def commit(self):
                 pass
 
