@@ -75,10 +75,34 @@ async function cleanup(tenantId: string) {
       }
     }
     await c.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+    // Auth side (users.ts): hub_users.tenant_id REFERENCES hub_tenants(id), and
+    // hub_tenants.owner_user_id is a plain TEXT column — so users first, then
+    // the tenant. Both keyed on THIS run's tenant id only.
+    await c.query(`DELETE FROM hub_users WHERE tenant_id = $1`, [tenantId]);
+    await c.query(`DELETE FROM hub_tenants WHERE id = $1`, [tenantId]);
   } finally {
     await c.end();
   }
-  console.error(`cleaned tenant ${tenantId}`);
+  // Proof, not observation: the run's auth + data rows must be GONE.
+  const left = await (async () => {
+    const c2 = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    await c2.connect();
+    try {
+      const r = await c2.query(
+        `SELECT (SELECT count(*) FROM hub_users WHERE tenant_id = $1)::int AS users,
+                (SELECT count(*) FROM hub_tenants WHERE id = $1)::int AS auth_tenants,
+                (SELECT count(*) FROM tenants WHERE id::text = $1)::int AS tenants`,
+        [tenantId],
+      );
+      return r.rows[0] as { users: number; auth_tenants: number; tenants: number };
+    } finally {
+      await c2.end();
+    }
+  })();
+  if (left.users || left.auth_tenants || left.tenants) {
+    throw new Error(`cleanup incomplete for ${tenantId}: ${JSON.stringify(left)}`);
+  }
+  console.error(`cleaned tenant ${tenantId} (auth + data rows verified gone)`);
 }
 
 async function main() {

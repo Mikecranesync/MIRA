@@ -17,6 +17,7 @@ from unittest import mock
 import httpx
 import pytest
 
+from . import _notebook_probe as probe_mod
 from ._notebook_probe import (
     ProbeConfig,
     ProbeUnavailable,
@@ -31,6 +32,27 @@ from ._notebook_probe import (
 
 DOC = "11111111-1111-4111-8111-111111111111"
 OTHER_DOC = "22222222-2222-4222-8222-222222222222"
+CONTROL = "33333333-3333-4333-8333-333333333333"
+
+
+def _behaviour(name: str):
+    """Resolve a probe symbol at TEST time so a not-yet-implemented behaviour
+    fails as an assertion for its own reason, not as a collection error."""
+    sym = getattr(probe_mod, name, None)
+    assert sym is not None, f"missing behaviour: _notebook_probe.{name} is not implemented"
+    return sym
+
+
+def expected_regression_outcome(report):
+    return _behaviour("expected_regression_outcome")(report)
+
+
+class _NeverRaised(Exception):
+    """Stand-in when ProbeRefused does not exist yet → pytest.raises reports DID NOT RAISE."""
+
+
+def _probe_refused():
+    return getattr(probe_mod, "ProbeRefused", _NeverRaised)
 
 
 def _sse(*frames: object) -> str:
@@ -48,7 +70,14 @@ def _answered(
         {
             "kind": "sources",
             "citations": [
-                {"citationId": "1", "docId": doc_id, "page": page, "sourceTitle": "probe.pdf"}
+                {
+                    "citationId": "1",
+                    "docId": doc_id,
+                    "page": page,
+                    "sourceTitle": "probe.pdf",
+                    "fileId": "file-1",
+                    "quote": "Coupling bolt code QX7K3: the torque setting is 137 newton meters.",
+                }
             ],
             "sourceSnapshot": [DOC],
         },
@@ -172,6 +201,111 @@ def test_judge_answered_rejects_missing_sentinel_value_and_no_citations():
     )
 
 
+def _answered_with(citation_extra: dict, answer: str = "It is 137 newton meters [1]."):
+    """_answered() with the single citation's fields overridden (quote/fileId…)."""
+    frames = []
+    for line in _answered(answer=answer).split("\n\n"):
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            continue
+        obj = json.loads(line[6:])
+        if obj.get("kind") == "sources":
+            obj["citations"][0] = {
+                k: v for k, v in obj["citations"][0].items() if k not in ("quote", "fileId")
+            }
+            obj["citations"][0].update(citation_extra)
+        frames.append(obj)
+    return _sse(*frames)
+
+
+def _requires_judge_param(name: str) -> None:
+    import inspect
+
+    assert name in inspect.signature(judge_answered).parameters, (
+        f"missing behaviour: judge_answered has no {name!r} check"
+    )
+
+
+def test_judge_answered_requires_server_excerpt_to_carry_the_sentinel():
+    _requires_judge_param("expected_excerpt_tokens")
+    # The citation contract exposes `quote` — a SERVER-derived excerpt window of
+    # the cited chunk (buildCitations → relevantQuoteWindow). It must contain
+    # the sentinel; a citation whose excerpt is about something else is not
+    # evidence for the answer, even when docId/page are right.
+    good = parse_notebook_frames(
+        _answered_with(
+            {"quote": "Coupling bolt code QX7K3: the torque setting is 137 newton meters."}
+        )
+    )
+    assert (
+        judge_answered(
+            good,
+            doc_id=DOC,
+            expected_page=2,
+            expected_value="137",
+            require_usage=True,
+            expected_excerpt_tokens=("QX7K3", "137"),
+        )
+        == []
+    )
+    bad = parse_notebook_frames(
+        _answered_with({"quote": "Inspect the belt guard every 250 hours."})
+    )
+    fails = judge_answered(
+        bad,
+        doc_id=DOC,
+        expected_page=2,
+        expected_value="137",
+        require_usage=True,
+        expected_excerpt_tokens=("QX7K3", "137"),
+    )
+    assert any("excerpt" in x for x in fails)
+    missing = parse_notebook_frames(_answered_with({}))  # no quote field at all
+    assert any(
+        "excerpt" in x
+        for x in judge_answered(
+            missing,
+            doc_id=DOC,
+            expected_page=2,
+            expected_value="137",
+            require_usage=True,
+            expected_excerpt_tokens=("QX7K3", "137"),
+        )
+    )
+
+
+def test_judge_answered_requires_server_file_identity_when_known():
+    _requires_judge_param("expected_file_id")
+    # `fileId` on a citation is resolved SERVER-side (namespace_direct_uploads
+    # by upload_id); the probe compares it with the server-issued id from the
+    # upload response — two server identities, nothing client-trusted.
+    ok = parse_notebook_frames(_answered_with({"fileId": "file-1", "quote": "QX7K3 137"}))
+    assert (
+        judge_answered(
+            ok,
+            doc_id=DOC,
+            expected_page=2,
+            expected_value="137",
+            require_usage=True,
+            expected_excerpt_tokens=("QX7K3", "137"),
+            expected_file_id="file-1",
+        )
+        == []
+    )
+    other = parse_notebook_frames(_answered_with({"fileId": "file-9", "quote": "QX7K3 137"}))
+    assert any(
+        "file identity" in x
+        for x in judge_answered(
+            other,
+            doc_id=DOC,
+            expected_page=2,
+            expected_value="137",
+            require_usage=True,
+            expected_excerpt_tokens=("QX7K3", "137"),
+            expected_file_id="file-1",
+        )
+    )
+
+
 # ── judge: refusal path must be provider-free ────────────────────────────────
 
 
@@ -264,16 +398,25 @@ class FakeHub:
         refusal_body: str | None = None,
         delete_status: int = 200,
         links_get_status: int = 200,
+        control_body: str | None = None,
+        sentinel_http: int = 200,
     ):
         self.delete_status = delete_status
         self.links_get_status = links_get_status
         self.calls: list[tuple[str, str]] = []
         self.cookies_seen: list[str] = []
-        self.readiness_polls = 0
+        self.readiness_polls = 0  # polls while the SENTINEL doc is attached
         self.answered_body = answered_body
         self.refusal_body = refusal_body if refusal_body is not None else _refusal()
-        self.uploaded = False
+        # The control source never contains the sentinel: asking for it through
+        # real retrieval must refuse, provider-free.
+        self.control_body = control_body if control_body is not None else _refusal()
+        self.sentinel_http = sentinel_http
+        self.uploaded = False  # the SENTINEL document
+        self.control_uploaded = False
         self.attached = False
+        self.attached_ids: list[str] = []
+        self.chat_bodies: list[dict] = []
         self.deleted: list[str] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -296,19 +439,34 @@ class FakeHub:
             return httpx.Response(201, json={"notebook": {"id": "nb-1", "nodeId": "node-1"}})
         if m == "POST" and p == "/api/equipment-notebooks/nb-1/chat/":
             body = json.loads(request.content)
+            self.chat_bodies.append(body)
             if not body.get("sourceDocIds"):
                 return httpx.Response(422, json={"error": "no_sources_selected"})
-            assert body["sourceDocIds"] == [DOC]
-            if "QX7K3" in body["message"]:
-                return httpx.Response(
-                    200,
-                    headers={"content-type": "text/event-stream"},
-                    text=self.answered_body or _answered(),
-                )
-            return httpx.Response(
-                200, headers={"content-type": "text/event-stream"}, text=self.refusal_body
-            )
+            ids = body["sourceDocIds"]
+            assert set(ids) <= {CONTROL, DOC}, ids
+            assert all(i in self.attached_ids for i in ids), "chat may only scope attached docs"
+            sse = {"content-type": "text/event-stream"}
+            if "QX7K3" in body["message"] and DOC in ids:
+                if self.sentinel_http != 200:
+                    return httpx.Response(self.sentinel_http, json={"error": "boom"})
+                return httpx.Response(200, headers=sse, text=self.answered_body or _answered())
+            if "QX7K3" in body["message"] and ids == [CONTROL]:
+                return httpx.Response(200, headers=sse, text=self.control_body)
+            return httpx.Response(200, headers=sse, text=self.refusal_body)
         if m == "POST" and p == "/api/namespace/node/node-1/files/":
+            is_control = b"control-" in request.content
+            if is_control:
+                self.control_uploaded = True
+                return httpx.Response(
+                    201,
+                    json={
+                        "ok": True,
+                        "indexed": True,
+                        "uploadId": CONTROL,
+                        "fileId": "file-c",
+                        "chunkCount": 1,
+                    },
+                )
             self.uploaded = True
             return httpx.Response(
                 201,
@@ -321,26 +479,35 @@ class FakeHub:
                 },
             )
         if m == "POST" and p == "/api/equipment-notebooks/nb-1/sources/":
-            assert json.loads(request.content)["docId"] == DOC
-            self.attached = True
+            doc = json.loads(request.content)["docId"]
+            assert doc in (CONTROL, DOC)
+            self.attached_ids.append(doc)
+            self.attached = DOC in self.attached_ids
             return httpx.Response(201, json={"ok": True})
         if m == "GET" and p == "/api/equipment-notebooks/nb-1/":
-            self.readiness_polls += 1
-            state = "stored" if self.readiness_polls < 3 else "chat_ready_basic"
+            sources = []
+            if CONTROL in self.attached_ids:
+                sources.append(
+                    {
+                        "docId": CONTROL,
+                        "matchState": "user_confirmed",
+                        "enabledByDefault": True,
+                        "readiness": {"state": "chat_ready_basic", "canChat": True},
+                    }
+                )
+            if DOC in self.attached_ids:
+                self.readiness_polls += 1
+                state = "stored" if self.readiness_polls < 3 else "chat_ready_basic"
+                sources.append(
+                    {
+                        "docId": DOC,
+                        "matchState": "user_confirmed",
+                        "enabledByDefault": True,
+                        "readiness": {"state": state, "canChat": state != "stored"},
+                    }
+                )
             return httpx.Response(
-                200,
-                json={
-                    "notebook": {"id": "nb-1"},
-                    "sources": [
-                        {
-                            "docId": DOC,
-                            "matchState": "user_confirmed",
-                            "enabledByDefault": True,
-                            "readiness": {"state": state, "canChat": state != "stored"},
-                        }
-                    ],
-                    "turns": [],
-                },
+                200, json={"notebook": {"id": "nb-1"}, "sources": sources, "turns": []}
             )
         if m == "GET" and p == f"/api/equipment-notebooks/nb-1/sources/{DOC}/passage/":
             return httpx.Response(
@@ -362,6 +529,16 @@ class FakeHub:
                     "links": [
                         {"id": "link-1", "targetType": "namespace_node", "targetId": "node-1"},
                         {"id": "link-2", "targetType": "equipment_notebook", "targetId": "nb-1"},
+                    ],
+                },
+            )
+        if m == "GET" and p == "/api/files/file-c/":
+            return httpx.Response(
+                200,
+                json={
+                    "file": {"id": "file-c"},
+                    "links": [
+                        {"id": "link-c1", "targetType": "namespace_node", "targetId": "node-1"}
                     ],
                 },
             )
@@ -404,7 +581,7 @@ def test_probe_fails_when_cleanup_returns_500_even_if_everything_else_passed():
     assert not report.ok
     assert any("cleanup notebook HTTP 500" in f for f in report.failures)
     # every run-owned target was still attempted (2 links + notebook + upload + file + node)
-    assert len(hub.deleted) == 6
+    assert len(hub.deleted) == 9
     cleanup = next(s for s in report.steps if s["name"] == "cleanup")
     assert cleanup["notebook"] == 500 and cleanup["node"] == 500 and cleanup["link:link-1"] == 500
 
@@ -417,9 +594,12 @@ def test_cleanup_detaches_links_before_file_delete_and_deletes_node_last():
     assert d == [
         "/api/files/file-1/links/link-1/",
         "/api/files/file-1/links/link-2/",
+        "/api/files/file-c/links/link-c1/",
         "/api/equipment-notebooks/nb-1/",
-        "/api/uploads/11111111-1111-4111-8111-111111111111/",
+        f"/api/uploads/{DOC}/",
+        f"/api/uploads/{CONTROL}/",
         "/api/files/file-1/",
+        "/api/files/file-c/",
         "/api/namespace/node/node-1/",
     ]
     calls = hub.calls
@@ -432,6 +612,8 @@ def test_cleanup_detaches_links_before_file_delete_and_deletes_node_last():
     )
     cleanup = next(s for s in report.steps if s["name"] == "cleanup")
     assert cleanup["file_links"] == 2 and cleanup["file"] == 200 and cleanup["node"] == 200
+    assert cleanup["control_file_links"] == 1 and cleanup["control_file"] == 200
+    assert cleanup["control_upload"] == 200 and cleanup["ok"] is True
 
 
 def test_cleanup_fails_when_links_cannot_be_enumerated_but_still_attempts_the_rest():
@@ -486,7 +668,7 @@ def test_email_password_auth_cleanup_uses_the_minted_cookie():
     assert order[:2] == ["/api/auth/csrf/", "/api/auth/callback/credentials/"]
     # every authenticated call — INCLUDING the DELETEs in finally — carried the minted session
     assert hub.cookies_seen and all(c == "next-auth.session-token=MINTED" for c in hub.cookies_seen)
-    assert len(hub.deleted) == 6
+    assert len(hub.deleted) == 9
     assert "MINTED" not in json.dumps(report.to_dict())
 
 
@@ -495,18 +677,49 @@ def test_probe_happy_path_walks_the_product_contract_in_order():
     report, sleep = _run(hub)
     assert report.ok, report.failures
     order = [p for _, p in hub.calls]
-    # pre-upload grounded refusal happens BEFORE the upload; readiness polled on the contract.
-    assert order.index("/api/equipment-notebooks/nb-1/chat/") < order.index(
-        "/api/namespace/node/node-1/files/"
-    )
+    # The control source is uploaded+confirmed FIRST; the sentinel is asked
+    # through REAL retrieval over it (refuses); only then is the sentinel doc
+    # uploaded. Readiness is polled on the contract, never a fixed sleep.
+    uploads = [i for i, p in enumerate(order) if p == "/api/namespace/node/node-1/files/"]
+    chats = [i for i, p in enumerate(order) if p == "/api/equipment-notebooks/nb-1/chat/"]
+    assert len(uploads) == 2 and len(chats) == 4
+    assert chats[0] < uploads[0] < chats[1] < uploads[1] < chats[2] < chats[3]
     assert hub.readiness_polls == 3 and sleep.call_count == 2, (
         "readiness must be polled, never a single fixed sleep"
     )
-    assert hub.attached
+    assert hub.attached and hub.attached_ids == [CONTROL, DOC]
     assert "/api/equipment-notebooks/nb-1/" in hub.deleted  # run-owned cleanup
     names = [s["name"] for s in report.steps]
-    assert names[:3] == ["gate_state", "create_notebook", "pre_upload_refusal"]
-    assert "unsupported_refusal" in names and "cleanup" in names
+    assert names == [
+        "gate_state",
+        "create_notebook",
+        "pre_upload_no_sources",
+        "control_upload",
+        "control_confirm",
+        "control_readiness",
+        "pre_upload_control_refusal",
+        "upload",
+        "confirm_source",
+        "readiness",
+        "sentinel_answer",
+        "passage_identity",
+        "unsupported_refusal",
+        "cleanup",
+    ]
+    assert all(s["ok"] is True for s in report.steps)
+    # the answered turn is scoped to BOTH docs so "no other document cited" is meaningful
+    assert [b["sourceDocIds"] for b in hub.chat_bodies] == [
+        [],
+        [CONTROL],
+        [CONTROL, DOC],
+        [CONTROL, DOC],
+    ]
+    assert report.to_dict()["outcome"]["sentinel_turn"] == {
+        "http": 200,
+        "status": "answered",
+        "citations": 1,
+        "usage_present": True,
+    }
     # evidence is machine-readable + redacted
     dumped = json.dumps(report.to_dict())
     assert "session-token" not in dumped and "QX7K3" in dumped
@@ -573,5 +786,171 @@ def test_gate_module_skips_without_env(monkeypatch):
         gate.test_beta_ready_notebook_confirmed_source()
 
 
-def test_env_is_never_written_by_import():
-    assert "BETA_PROBE_HUB_BASE" not in os.environ or True
+def test_control_refusal_must_be_provider_free_and_uncited():
+    hub = FakeHub(control_body=_refusal(with_usage=True))
+    report, _ = _run(hub)
+    assert not report.ok and any("pre-upload" in f and "provider" in f for f in report.failures)
+    assert not hub.uploaded, "the sentinel doc is never uploaded after a bad control refusal"
+    assert hub.control_uploaded and f"/api/uploads/{CONTROL}/" in hub.deleted
+
+
+def test_control_answer_before_sentinel_upload_fails_the_lane():
+    hub = FakeHub(control_body=_answered())
+    report, _ = _run(hub)
+    assert not report.ok and any("pre-upload" in f for f in report.failures)
+    assert not hub.uploaded
+
+
+def test_control_refusal_must_be_http_200_sse_not_422():
+    hub = FakeHub()
+    orig = hub.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/chat/") and json.loads(request.content).get(
+            "sourceDocIds"
+        ) == [CONTROL]:
+            return httpx.Response(422, json={"error": "source_not_in_notebook"})
+        return orig(request)
+
+    hub.handler = handler
+    report, _ = _run(hub)
+    assert not report.ok and any("pre-upload" in f and "422" in f for f in report.failures)
+    assert not hub.uploaded
+
+
+# ── structured expected-regression outcome (§8.4, no grep) ───────────────────
+
+
+def test_expected_regression_outcome_matches_only_the_deliberate_defect_signature():
+    # Deliberate defect: everything else works, the sentinel turn refuses 200/insufficient_evidence.
+    hub = FakeHub(answered_body=_refusal())
+    report, _ = _run(hub)
+    assert not report.ok
+    assert expected_regression_outcome(report) == []
+    o = report.to_dict()["outcome"]
+    assert o["setup_ok"] and o["cleanup_ok"] and o["passage_identity_ok"]
+    assert o["sentinel_turn"] == {
+        "http": 200,
+        "status": "insufficient_evidence",
+        "citations": 0,
+        "usage_present": False,
+    }
+
+
+def test_expected_regression_outcome_rejects_everything_else():
+    # (a) the fix present → answered → NOT the defect
+    r, _ = _run(FakeHub())
+    assert any("answered" in f for f in expected_regression_outcome(r))
+    # (b) a 500 on the sentinel turn is a broken build, not the defect
+    r, _ = _run(FakeHub(sentinel_http=500))
+    assert any("500" in f for f in expected_regression_outcome(r))
+    # (c) cleanup failure stays red even when the sentinel turn shows the defect
+    r, _ = _run(FakeHub(answered_body=_refusal(), delete_status=500))
+    assert any("cleanup" in f for f in expected_regression_outcome(r))
+    # (d) a refusal that called a provider is not the defect
+    r, _ = _run(FakeHub(answered_body=_refusal(with_usage=True)))
+    assert any("provider" in f for f in expected_regression_outcome(r))
+    # (e) gate not enforced → setup failed
+    hub = FakeHub(answered_body=_refusal())
+    orig = hub.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/health/":
+            return httpx.Response(200, json={"status": "ok", "approvedRetrievalEnforced": False})
+        return orig(request)
+
+    hub.handler = handler
+    r, _ = _run(hub)
+    assert any("setup" in f for f in expected_regression_outcome(r))
+
+
+def test_main_expect_regression_exit_codes(monkeypatch, tmp_path):
+    monkeypatch.setenv("BETA_PROBE_HUB_BASE", "http://hub.test")
+    monkeypatch.setenv("BETA_PROBE_COOKIE", "next-auth.session-token=x")
+    defect, _ = _run(FakeHub(answered_body=_refusal()))
+    fixed, _ = _run(FakeHub())
+    out = tmp_path / "e.json"
+    with mock.patch("tests.beta._notebook_probe.run_notebook_probe", return_value=defect):
+        assert main(["--expect-regression", "--evidence-out", str(out)]) == 0
+    assert (
+        json.loads(out.read_text(encoding="utf-8"))["outcome"]["expected_regression"] == "matched"
+    )
+    with mock.patch("tests.beta._notebook_probe.run_notebook_probe", return_value=fixed):
+        assert main(["--expect-regression"]) == 1
+    with mock.patch("tests.beta._notebook_probe.run_notebook_probe", return_value=fixed):
+        assert main([]) == 0
+    with mock.patch("tests.beta._notebook_probe.run_notebook_probe", return_value=defect):
+        assert main([]) == 1
+
+
+# ── strict origin pin (production probe) ─────────────────────────────────────
+
+
+def test_origin_pin_refuses_any_other_destination(monkeypatch):
+    monkeypatch.setenv("BETA_PROBE_COOKIE", "next-auth.session-token=x")
+    monkeypatch.setenv("BETA_PROBE_EXPECT_ORIGIN", "https://app.factorylm.com")
+    for bad in (
+        "https://app.factorylm.com.evil.example",
+        "http://app.factorylm.com",
+        "https://staging.factorylm.com",
+        "https://app.factorylm.com/hub",
+        "https://user:pw@app.factorylm.com",
+        "https://app.factorylm.com:8443",
+    ):
+        monkeypatch.setenv("BETA_PROBE_HUB_BASE", bad)
+        with pytest.raises(_probe_refused()):
+            load_probe_config()
+    monkeypatch.setenv("BETA_PROBE_HUB_BASE", "https://app.factorylm.com/")
+    assert load_probe_config().hub_base == "https://app.factorylm.com"
+
+
+def test_hub_base_must_be_a_bare_http_origin(monkeypatch):
+    monkeypatch.delenv("BETA_PROBE_EXPECT_ORIGIN", raising=False)
+    monkeypatch.setenv("BETA_PROBE_COOKIE", "next-auth.session-token=x")
+    for bad in ("localhost:3100", "ftp://hub", "http://hub/path", "http://u:p@hub"):
+        monkeypatch.setenv("BETA_PROBE_HUB_BASE", bad)
+        with pytest.raises(_probe_refused()):
+            load_probe_config()
+
+
+def test_main_refused_origin_is_loud_not_dry_run(monkeypatch, capsys):
+    monkeypatch.setenv("BETA_PROBE_HUB_BASE", "https://staging.factorylm.com")
+    monkeypatch.setenv("BETA_PROBE_COOKIE", "next-auth.session-token=x")
+    monkeypatch.setenv("BETA_PROBE_EXPECT_ORIGIN", "https://app.factorylm.com")
+    with mock.patch("httpx.Client") as client:
+        rc = main([])
+        client.assert_not_called()
+    assert rc == 2 and "REFUSED" in capsys.readouterr().out
+
+
+# ── import/config never mutate the process environment ───────────────────────
+
+
+def test_env_is_never_written_by_import_or_config(monkeypatch):
+    import importlib.util
+    import pathlib
+
+    # A FRESH module object (not importlib.reload of the shared one — that
+    # would replace the exception classes other test modules already bound).
+    src = pathlib.Path(probe_mod.__file__)
+    monkeypatch.setenv("BETA_PROBE_HUB_BASE", "http://hub.test/")
+    monkeypatch.setenv("BETA_PROBE_COOKIE", "next-auth.session-token=x")
+    snapshot = dict(os.environ)
+    import sys
+
+    spec = importlib.util.spec_from_file_location("_notebook_probe_fresh", src)
+    fresh = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = fresh  # dataclasses resolve the module by name
+    try:
+        spec.loader.exec_module(fresh)  # import-time side effects would show here
+    finally:
+        sys.modules.pop(spec.name, None)
+    assert dict(os.environ) == snapshot
+    cfg = fresh.load_probe_config()
+    assert cfg.hub_base == "http://hub.test"  # normalised in the config, not in the env
+    assert dict(os.environ) == snapshot
+    monkeypatch.delenv("BETA_PROBE_COOKIE")
+    snapshot2 = dict(os.environ)
+    with pytest.raises(fresh.ProbeUnavailable):
+        fresh.load_probe_config()
+    assert dict(os.environ) == snapshot2

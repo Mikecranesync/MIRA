@@ -51,9 +51,31 @@ on:
       - "mira-hub/src/lib/manual-rag.ts"
       - "mira-hub/src/app/api/namespace/node/**"
       - "mira-hub/scripts/provision-beta-gate.ts"
+      # Every load-bearing dependency of the notebook lane: a change to any of
+      # these must not be able to reach main on a green CI that skipped it.
       - "mira-hub/src/lib/equipment-notebooks.ts"
+      - "mira-hub/src/lib/workspace-files.ts"
+      - "mira-hub/src/lib/uploads.ts"
+      - "mira-hub/src/lib/local-upload.ts"
+      - "mira-hub/src/lib/document-readiness.ts"
+      - "mira-hub/src/lib/notebook-query.ts"
+      - "mira-hub/src/lib/notebook-chat-types.ts"
+      - "mira-hub/src/lib/quote-window.ts"
+      - "mira-hub/src/lib/approved-context.ts"
+      - "mira-hub/src/lib/session.ts"
+      - "mira-hub/src/lib/tenant-context.ts"
+      - "mira-hub/src/lib/db.ts"
+      - "mira-hub/src/lib/inference/**"
       - "mira-hub/src/app/api/equipment-notebooks/**"
+      - "mira-hub/src/app/api/files/**"
+      - "mira-hub/src/app/api/uploads/**"
+      - "mira-hub/src/app/api/auth/**"
       - "mira-hub/src/app/api/health/**"
+      - "mira-hub/db/migrations/**"
+      - "mira-hub/package.json"
+      - "mira-hub/bun.lock"
+      - "mira-hub/next.config.*"
+      - "tools/qa/redact_ci_log.sh"
       - ".github/workflows/beta-gate.yml"
 
 concurrency:
@@ -147,12 +169,16 @@ jobs:
 
           exit $GATE_RC
 
+      - name: Redact server log on failure
+        if: failure()
+        run: bash tools/qa/redact_ci_log.sh < /tmp/hub.log > /tmp/hub.redacted.log 2>/dev/null || true
+
       - name: Upload server log on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: beta-gate-hub-log-${{ github.run_id }}
-          path: /tmp/hub.log
+          path: /tmp/hub.redacted.log
           retention-days: 7
           if-no-files-found: ignore
 
@@ -228,14 +254,23 @@ jobs:
           # and sweep ONLY the tenant we provisioned (if provisioning got that
           # far). Runs on every exit path — a failed assertion, a failed probe,
           # or a normal finish — so a red lane never leaks staging rows.
+          # Cleanup is PROOF: a failed sweep fails the job (exit 1) — but never
+          # hides an EARLIER failure, whose exit code is preserved.
           BETA_GATE_TENANT=""
           cleanup_run() {
+            local rc=$?
+            local sweep_rc=0
             if [ -n "${BETA_GATE_TENANT:-}" ]; then
               echo "teardown: sweeping run-owned tenant $BETA_GATE_TENANT"
-              ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || \
-                echo "::warning::tenant sweep failed for $BETA_GATE_TENANT — inspect staging"
+              ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || sweep_rc=$?
+              if [ "$sweep_rc" -ne 0 ]; then
+                echo "::error::tenant sweep FAILED for $BETA_GATE_TENANT (rc=$sweep_rc) — run-owned staging rows may remain"
+              fi
             fi
             pkill -f "next start -p 3100" || true
+            if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+            if [ "$sweep_rc" -ne 0 ]; then exit 1; fi
+            exit 0
           }
           trap cleanup_run EXIT
 
@@ -262,7 +297,7 @@ jobs:
             if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
             sleep 3
           done
-          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub-notebook.log; exit 1; fi
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; bash tools/qa/redact_ci_log.sh < /tmp/hub-notebook.log; exit 1; fi
 
           # Non-secret startup assertion: /api/health must be 200 (every
           # required env present) AND report the EFFECTIVE gate as enforced.
@@ -285,28 +320,41 @@ jobs:
           [ -n "${BETA_GATE_TENANT:-}" ] || { echo "::error::provisioning emitted no BETA_GATE_TENANT"; exit 1; }
           echo "::notice::provisioned tenant=$BETA_GATE_TENANT (run-owned; swept by the EXIT trap)"
 
-          set +e
-          BETA_PROBE_POLL_SECONDS=240 python -m pytest tests/beta/beta_ready_notebook_confirmed_source.py \
-            --confcutdir=tests/beta -v -rs -s 2>&1 | sed -E 's/next-auth\.session-token=[^ "]+/next-auth.session-token=[redacted]/g' | tee /tmp/probe-report.log
-          GATE_RC=${PIPESTATUS[0]}
-          set -e
-
+          export BETA_PROBE_POLL_SECONDS=240
           if [ "$PROVE_REGRESSION" = "1" ]; then
-            if [ "$GATE_RC" -eq 0 ]; then
-              echo "::error::The notebook lane PASSED with the Workstream A defect reintroduced — the gate is not production-equivalent"; exit 1
+            # §8.4 proof — STRUCTURED, not "any failure": the probe's
+            # --expect-regression exits 0 ONLY when auth, gate, notebook,
+            # control source, upload, confirmation, readiness, passage
+            # identity, the unsupported refusal and the cleanup ALL succeeded
+            # and the sentinel turn is exactly HTTP 200 insufficient_evidence
+            # with no citations and no provider usage. A 5xx, timeout, auth,
+            # provider, cleanup or assertion failure stays RED.
+            set +e
+            python tests/beta/_notebook_probe.py --expect-regression --evidence-out /tmp/probe-evidence.json 2>&1 \
+              | bash tools/qa/redact_ci_log.sh | tee /tmp/probe-report.log
+            GATE_RC=${PIPESTATUS[0]}
+            set -e
+            matched=$(python -c 'import json; print(json.load(open("/tmp/probe-evidence.json")).get("outcome",{}).get("expected_regression"))' 2>/dev/null || echo unknown)
+            if [ "$GATE_RC" -ne 0 ] || [ "$matched" != "matched" ]; then
+              echo "::error::§8.4 proof NOT established: outcome.expected_regression=$matched (rc=$GATE_RC) — see probe-report.log"; exit 1
             fi
-            echo "::notice::§8.4 proof: the notebook lane FAILED under the reintroduced verified=false defect (rc=$GATE_RC), as required"
+            echo "::notice::§8.4 proof: under the reintroduced verified=false defect the sentinel turn refused provider-free (200 insufficient_evidence, no citations, no usage) with every other step green"
             exit 0
           fi
+
+          set +e
+          python -m pytest tests/beta/beta_ready_notebook_confirmed_source.py \
+            --confcutdir=tests/beta -v -rs -s 2>&1 | bash tools/qa/redact_ci_log.sh | tee /tmp/probe-report.log
+          GATE_RC=${PIPESTATUS[0]}
+          set -e
           exit "$GATE_RC"
 
       - name: Redact + upload Hub log and probe evidence on failure
         if: failure() || env.PROVE_REGRESSION == '1'
         run: |
-          sed -E -e 's/next-auth\.session-token=[^ ;"]+/next-auth.session-token=[redacted]/g' \
-                 -e 's/(Bearer|Authorization:)[^ "]*/\1 [redacted]/g' \
-                 -e 's/(password|apiKey|api_key|token)("?\s*[:=]\s*"?)[^",} ]+/\1\2[redacted]/gi' \
-                 /tmp/hub-notebook.log > /tmp/hub-notebook.redacted.log 2>/dev/null || true
+          # One redaction script for every uploaded log (tests/beta/test_redact_ci_log.py).
+          bash tools/qa/redact_ci_log.sh < /tmp/hub-notebook.log > /tmp/hub-notebook.redacted.log 2>/dev/null || true
+          [ -f /tmp/probe-evidence.json ] && bash tools/qa/redact_ci_log.sh < /tmp/probe-evidence.json > /tmp/probe-evidence.redacted.json || true
 
       - uses: actions/upload-artifact@v7
         if: failure() || env.PROVE_REGRESSION == '1'
@@ -315,6 +363,7 @@ jobs:
           path: |
             /tmp/hub-notebook.redacted.log
             /tmp/probe-report.log
+            /tmp/probe-evidence.redacted.json
           retention-days: 7
           if-no-files-found: ignore
 
