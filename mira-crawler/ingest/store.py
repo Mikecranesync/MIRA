@@ -7,6 +7,7 @@ NullPool, sslmode=require).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -16,6 +17,23 @@ import uuid
 logger = logging.getLogger("mira-crawler.store")
 
 _ENGINE = None
+
+
+def _log_ref(url: str) -> str:
+    """A log-safe reference to a source URL: its origin plus a short hash of the
+    exact URL — enough for an operator to correlate a refusal with a row, never
+    the path or query (which can carry a document name or a token). Gate 7
+    round P on #3481, code F1."""
+    if not url:
+        return "<no url>"
+    from urllib.parse import urlsplit
+
+    try:
+        origin = urlsplit(url).netloc or "<no host>"
+    except ValueError:
+        origin = "<unparseable>"
+    return f"{origin} sha256:{hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]}"
+
 
 _SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
 
@@ -172,7 +190,7 @@ def insert_chunk(
     if not allowed:
         logger.warning(
             "Refusing knowledge_entries write for %s — %s",
-            (source_url or "<no url>")[:100],
+            _log_ref(source_url),
             prov_reason,
         )
         return ""

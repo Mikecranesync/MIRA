@@ -564,6 +564,39 @@ class TestCanonicalSourceUrl:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Round P (#3481) code F1, SUSTAINED: the write-boundary refusal warning logged
+# the source URL (path and query included). Operator logs are not a tenant
+# surface, but a URL path can carry a document name or a token; the log needs
+# only enough to correlate — the origin and a short hash of the exact URL.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestRefusalLogging:
+    def test_refusal_warning_logs_origin_and_hash_never_the_path_or_query(self, captured, caplog):
+        import logging
+
+        policy = provenance.load_policy()
+        blocked = next(
+            h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
+        )
+        url = f"https://{blocked}/private/Secret-Doc-Name.pdf?token=abc123"
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            assert _insert(False, url) == ""  # refused at the boundary
+        text = caplog.text
+        assert "Secret-Doc-Name" not in text and "token=abc123" not in text
+        assert blocked in text and "sha256:" in text
+        assert "sql" not in captured
+
+    def test_log_ref_is_stable_and_never_echoes_the_url(self):
+        url = "HTTPS://Example.COM/Path/File.PDF?q=1"
+        ref = store._log_ref(url)
+        assert ref == store._log_ref(url)
+        assert "Example.COM" in ref and "sha256:" in ref
+        assert "/Path/File.PDF" not in ref and "q=1" not in ref
+        assert store._log_ref("") == "<no url>"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # The gate itself is case-insensitive on scheme AND host — so widening the
 # manifest DISCOVERY to uppercase schemes (R12-F3 fix) cannot open anything:
 # an uppercase-scheme origin is classified exactly like its lowercase twin.

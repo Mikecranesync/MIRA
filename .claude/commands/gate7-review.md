@@ -116,9 +116,12 @@ schema-, or auth-adjacent). Those wait for the real lane.
   model's text* ("the documentation claims X was fixed"), recursively, every head (#3483).
 - **This is not a secret boundary.** Redaction (IP / MAC / serial / credential) is applied
   unconditionally to the whole diff before any provider call — scope, kind and exclusion
-  do not change that. Evidence integrity is checked separately: artifacts are tracked at
-  an exact head/commit, every commit passes the secrets scan, and `--include-evidence`
-  puts their contents in scope explicitly.
+  do not change that. Evidence integrity is checked separately, by verifiable mechanisms:
+  artifacts are tracked at an exact head/commit; the pre-commit hook
+  (`.githooks/pre-commit`, `gitleaks protect --staged`) scans every staged change; the
+  exclusion is receipted by `receipts_block` (locked by
+  `test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_receipted`);
+  and `--include-evidence` puts artifact contents in scope explicitly.
 - **Scoped runs carry a SCOPE NOTICE** naming every changed file outside the `--paths`
   slice; "the diff does not contain X" is not a finding in a scoped run.
 - **A verdict exists only in the briefed shape.** Fresh review output: exactly one

@@ -373,10 +373,14 @@ Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.
 > documentation claims X was fixed", quoted from an earlier reviewer — recursively, on
 > every head (#3483). This is **not a secret boundary**: redaction (IP / MAC / serial /
 > credential) is applied **unconditionally** to the whole diff before any provider call,
-> regardless of scope, kind or exclusion. Evidence *integrity* is checked separately —
-> artifacts are tracked at an exact head/commit (the git object), every commit passes the
-> secrets scan, and their contents are put in scope explicitly with `--include-evidence`
-> when they are what is being judged.
+> regardless of scope, kind or exclusion. Evidence *integrity* is checked separately, by
+> mechanisms that can be verified in the repository rather than asserted: artifacts are
+> tracked at an exact head/commit (the git object); the repository's pre-commit hook
+> (`.githooks/pre-commit`, `gitleaks protect --staged`) scans every staged change before it
+> can be committed; the exclusion is receipted by `receipts_block` and locked by
+> `test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_receipted`; and
+> artifact contents are put in scope explicitly with `--include-evidence` when they are what
+> is being judged.
 >
 > *A verdict exists only in the briefed shape.* Fresh reviewer output must contain exactly
 > one `## VERDICT` (PASS or BLOCK alone on the next line), exactly one `## FINDINGS` and
