@@ -199,7 +199,14 @@ jobs:
           src = p.read_text(encoding="utf-8")
           needle = "return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;"
           assert src.count(needle) == 1, "admission predicate not found exactly once — the proof needs updating"
-          p.write_text(src.replace(needle, "return approvalFilterSql(); // DEFECT REINTRODUCED FOR THE §8.4 PROOF"), encoding="utf-8")
+          # Faithful #3437 shape: the legacy global rule (verified = true only)
+          # with the approved-set parameter still BOUND but IGNORED, so the
+          # query stays valid and retrieval returns 0 private rows → Gate G
+          # abstains with insufficient_evidence and no provider call. (Merely
+          # dropping the predicate leaves an unreferenced bind parameter and
+          # turns the turn into a 500 — a broken build, not the defect.)
+          replacement = "return `AND verified = true AND $${approvedParam}::uuid[] IS NOT NULL`; // DEFECT REINTRODUCED FOR THE §8.4 PROOF"
+          p.write_text(src.replace(needle, replacement), encoding="utf-8")
           print("::warning::Workstream A admission fix REVERTED in this build — the notebook lane is now REQUIRED to fail")
           PY
 
