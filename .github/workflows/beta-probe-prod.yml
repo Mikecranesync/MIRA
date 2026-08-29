@@ -1,0 +1,85 @@
+name: Beta Probe (production, manual, dry-run by default)
+
+# Workstream B — PRD §8.3 post-deploy probe.
+#
+# Runs the SAME probe the staging beta gate runs (tests/beta/_notebook_probe.py)
+# against PRODUCTION through PUBLIC application APIs only: sign in as an
+# existing QA tenant → run-unique notebook → run-unique document with a
+# run-unique sentinel → readiness → confirmation → cited answer → unsupported
+# refusal → delete only what the run created.
+#
+# It is INERT unless every input is present:
+#   * secrets BETA_PROBE_QA_EMAIL + BETA_PROBE_QA_PASSWORD (an EXISTING QA
+#     tenant login — the probe never registers; the data-side tenant row is a
+#     provisioning concern, not a public-API one), and
+#   * inputs.execute == true (an explicit boolean, unchecked by default).
+# Anything else → DRY-RUN: the probe prints what it WOULD do and sends nothing.
+#
+# MIKE OWNS DISPATCH AUTHORIZATION AND THE QA-TENANT CREDENTIALS. No schedule,
+# no workflow_run trigger, no automatic dispatch from any deploy: a merge can be
+# green without this ever running; a design-partner-readiness claim cannot.
+#
+# NEVER: raw production SQL, database URLs, Doppler prd reads, VPS actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hub_base:
+        description: "Production Hub base URL (public application API host)"
+        type: string
+        default: "https://app.factorylm.com"
+      execute:
+        description: "Send real requests to production (requires BOTH QA-tenant secrets). Unchecked = dry-run, nothing is sent."
+        type: boolean
+        default: false
+
+concurrency:
+  group: beta-probe-prod
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Notebook probe against ${{ inputs.hub_base }} (${{ inputs.execute == true && 'LIVE' || 'DRY-RUN' }})
+    runs-on: ubuntu-latest
+    # The `production` environment carries the QA-tenant secrets (when Mike adds
+    # them) and any required-reviewer gate configured on it.
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install probe deps
+        run: pip install --quiet httpx
+
+      - name: Run the probe (dry-run unless every QA input is present)
+        env:
+          BETA_PROBE_HUB_BASE: ${{ inputs.hub_base }}
+          BETA_PROBE_EMAIL: ${{ secrets.BETA_PROBE_QA_EMAIL }}
+          BETA_PROBE_PASSWORD: ${{ secrets.BETA_PROBE_QA_PASSWORD }}
+          BETA_PROBE_POLL_SECONDS: "240"
+          EXECUTE: ${{ inputs.execute == true && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          echo "::notice::Dispatch authorization + QA credentials are Mike's. This job never runs automatically."
+          DRY=""
+          if [ "$EXECUTE" != "1" ]; then
+            DRY="--dry-run"; echo "::notice::execute=false → DRY-RUN (no request will be sent)"
+          fi
+          if [ -z "${BETA_PROBE_EMAIL:-}" ] || [ -z "${BETA_PROBE_PASSWORD:-}" ]; then
+            DRY="--dry-run"; echo "::notice::BETA_PROBE_QA_EMAIL/PASSWORD secrets absent → DRY-RUN (no request will be sent)"
+          fi
+          # shellcheck disable=SC2086
+          python tests/beta/_notebook_probe.py $DRY --evidence-out probe-evidence.json
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: beta-probe-prod-evidence-${{ github.run_id }}
+          path: probe-evidence.json
+          retention-days: 30
+          if-no-files-found: ignore

@@ -49,8 +49,30 @@ async function cleanup(tenantId: string) {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   try {
-    for (const tbl of ["knowledge_entries", "hub_uploads", "kg_entities"]) {
-      await c.query(`DELETE FROM ${tbl} WHERE tenant_id = $1`, [tenantId]);
+    // Every table a provisioned run can write, dependents first. All deletes
+    // are tenant-scoped by construction (the run's OWN tenant id) — this is the
+    // staging sweep only; the production probe cleans through public APIs.
+    // Notebook-lane tables (Workstream B) may be absent on an older branch:
+    // a missing table is skipped, never fatal.
+    const tables = [
+      "equipment_notebook_turns",
+      "equipment_notebook_sources",
+      "equipment_notebooks",
+      "workspace_file_links",
+      "namespace_direct_uploads",
+      "decision_traces",
+      "knowledge_entries",
+      "hub_uploads",
+      "kg_entities",
+    ];
+    for (const tbl of tables) {
+      try {
+        await c.query(`DELETE FROM ${tbl} WHERE tenant_id::text = $1`, [tenantId]);
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "42P01" || code === "42703") continue; // undefined_table / undefined_column
+        throw err;
+      }
     }
     await c.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   } finally {
@@ -128,6 +150,11 @@ async function main() {
   console.log(`ENV:BETA_GATE_TENANT=${tenantId}`);
   console.log(`ENV:BETA_GATE_COOKIE=${cookieHeader}`);
   console.log(`ENV:BETA_GATE_NODE=${nodeId}`);
+  // Workstream B notebook lane (tests/beta/_notebook_probe.py): same stranger,
+  // same cookie; the probe creates its OWN notebook + node through the product
+  // contract, so only the Hub base and the session are needed.
+  console.log(`ENV:BETA_PROBE_HUB_BASE=${HUB}`);
+  console.log(`ENV:BETA_PROBE_COOKIE=${cookieHeader}`);
 }
 
 const cleanupIdx = process.argv.indexOf("--cleanup");

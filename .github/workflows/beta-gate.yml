@@ -21,8 +21,27 @@ name: Beta Gate (upload → retrieval → citation)
 # (matching db-inspect's working pattern). It only ever resolves the *stg*
 # config — never prod.
 
+#
+# Workstream B (PRD docs/prd/2026-08-29-technician-beta-recovery-prd.md §8)
+# adds two jobs so that GREEN means the behaviour PRODUCTION depends on:
+#   notebook-gate        — the same stranger, through the NOTEBOOK product
+#                          contract, with the Hub started EXPLICITLY under
+#                          MIRA_ENFORCE_APPROVED_RETRIEVAL=true (the production
+#                          gate) + a run-unique document/sentinel. See
+#                          tests/beta/_notebook_probe.py.
+#   admission-regression — no secrets; disposable postgres:16; the Workstream A
+#                          admission suite that goes RED the moment the
+#                          verified=false fix is reverted.
+# `prove_regression=true` (manual dispatch) reverts the fix in the build and
+# REQUIRES the notebook lane to fail — the PRD §8.4 exit-gate demonstration.
+
 on:
   workflow_dispatch:
+    inputs:
+      prove_regression:
+        description: "Reintroduce the Workstream A verified=false defect in the built Hub and require the notebook lane to FAIL (§8.4 exit-gate proof). Never merges anything."
+        type: boolean
+        default: false
   schedule:
     - cron: "0 7 * * 1" # Mondays 07:00 UTC — weekly beta-readiness re-proof
   pull_request:
@@ -32,6 +51,9 @@ on:
       - "mira-hub/src/lib/manual-rag.ts"
       - "mira-hub/src/app/api/namespace/node/**"
       - "mira-hub/scripts/provision-beta-gate.ts"
+      - "mira-hub/src/lib/equipment-notebooks.ts"
+      - "mira-hub/src/app/api/equipment-notebooks/**"
+      - "mira-hub/src/app/api/health/**"
       - ".github/workflows/beta-gate.yml"
 
 concurrency:
@@ -133,3 +155,180 @@ jobs:
           path: /tmp/hub.log
           retention-days: 7
           if-no-files-found: ignore
+
+  # ── Workstream B: production-equivalent notebook lane ─────────────────────
+  notebook-gate:
+    name: Stranger notebook → confirmed source → cited answer (production gate ON)
+    runs-on: ubuntu-latest
+    environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
+    timeout-minutes: 30
+    env:
+      PROVE_REGRESSION: ${{ github.event_name == 'workflow_dispatch' && inputs.prove_regression == true && '1' || '0' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install probe python deps
+        run: pip install --quiet httpx pytest
+
+      - name: Reintroduce the Workstream A defect (prove_regression only)
+        if: env.PROVE_REGRESSION == '1'
+        run: |
+          set -euo pipefail
+          # The exact admission predicate Workstream A added (manual-rag.ts).
+          # Replacing it with the legacy global rule is the #3437/#3468 defect.
+          python - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("mira-hub/src/lib/manual-rag.ts")
+          src = p.read_text(encoding="utf-8")
+          needle = "return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;"
+          assert src.count(needle) == 1, "admission predicate not found exactly once — the proof needs updating"
+          p.write_text(src.replace(needle, "return approvalFilterSql(); // DEFECT REINTRODUCED FOR THE §8.4 PROOF"), encoding="utf-8")
+          print("::warning::Workstream A admission fix REVERTED in this build — the notebook lane is now REQUIRED to fail")
+          PY
+
+      - name: Build · start (gate ON) · assert gate · provision · probe · cleanup
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: factorylm
+          DOPPLER_CONFIG: stg
+        run: |
+          set -euo pipefail
+          [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
+
+          echo "::group::next build (staging)"
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' NODE_ENV=production \
+              doppler run -- ./node_modules/.bin/next build )
+          echo "::endgroup::"
+
+          # Start the Hub with the PRODUCTION gate set EXPLICITLY on the command
+          # line — never inherited from an ambiguous staging value (#3328).
+          # MIRA_CANONICAL_SEAM=1 matches production so provider/model usage is
+          # emitted per turn (the probe asserts it is non-null).
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NODE_ENV=production \
+              doppler run -- env NEXTAUTH_URL=http://localhost:3100 AUTH_TRUST_HOST=true \
+              MIRA_ENFORCE_APPROVED_RETRIEVAL=true MIRA_CANONICAL_SEAM=1 \
+              ./node_modules/.bin/next start -p 3100 > /tmp/hub-notebook.log 2>&1 & )
+
+          ready=
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/auth/csrf/ || true)
+            if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
+            sleep 3
+          done
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub-notebook.log; exit 1; fi
+
+          # Non-secret startup assertion: the EFFECTIVE gate, as the running
+          # process reports it through the public health door.
+          health=$(curl -sf http://localhost:3100/api/health/)
+          echo "health: $health"
+          enforced=$(printf '%s' "$health" | python -c 'import json,sys; print(json.load(sys.stdin).get("approvedRetrievalEnforced"))')
+          [ "$enforced" = "True" ] || { echo "::error::MIRA_ENFORCE_APPROVED_RETRIEVAL is not effective (health.approvedRetrievalEnforced=$enforced)"; exit 1; }
+          echo "::notice::effective gate: MIRA_ENFORCE_APPROVED_RETRIEVAL=true (asserted via /api/health)"
+
+          # Fresh stranger tenant + fresh credentials for THIS run.
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/probe-env.out
+          set -a
+          # shellcheck disable=SC1090
+          . <(grep '^ENV:' /tmp/probe-env.out | sed 's/^ENV://')
+          set +a
+          echo "::notice::provisioned tenant=$BETA_GATE_TENANT (run-owned; swept below)"
+
+          set +e
+          BETA_PROBE_POLL_SECONDS=240 python -m pytest tests/beta/beta_ready_notebook_confirmed_source.py \
+            --confcutdir=tests/beta -v -rs -s 2>&1 | sed -E 's/next-auth\.session-token=[^ "]+/next-auth.session-token=[redacted]/g' | tee /tmp/probe-report.log
+          GATE_RC=${PIPESTATUS[0]}
+          set -e
+
+          # Sweep ONLY this run's tenant rows (best-effort, never fails the job).
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
+          pkill -f "next start -p 3100" || true
+
+          if [ "$PROVE_REGRESSION" = "1" ]; then
+            if [ "$GATE_RC" -eq 0 ]; then
+              echo "::error::The notebook lane PASSED with the Workstream A defect reintroduced — the gate is not production-equivalent"; exit 1
+            fi
+            echo "::notice::§8.4 proof: the notebook lane FAILED under the reintroduced verified=false defect (rc=$GATE_RC), as required"
+            exit 0
+          fi
+          exit "$GATE_RC"
+
+      - name: Redact + upload Hub log and probe evidence on failure
+        if: failure() || env.PROVE_REGRESSION == '1'
+        run: |
+          sed -E -e 's/next-auth\.session-token=[^ ;"]+/next-auth.session-token=[redacted]/g' \
+                 -e 's/(Bearer|Authorization:)[^ "]*/\1 [redacted]/g' \
+                 -e 's/(password|apiKey|api_key|token)("?\s*[:=]\s*"?)[^",} ]+/\1\2[redacted]/gi' \
+                 /tmp/hub-notebook.log > /tmp/hub-notebook.redacted.log 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: failure() || env.PROVE_REGRESSION == '1'
+        with:
+          name: notebook-gate-evidence-${{ github.run_id }}
+          path: |
+            /tmp/hub-notebook.redacted.log
+            /tmp/probe-report.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── Workstream B: deterministic admission regression (no secrets) ─────────
+  admission-regression:
+    name: Admission fix present (disposable Postgres, gate ON)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      MIRA_INTEGRATION_MIGRATIONS: "001_knowledge_graph.sql,010_kg_uns_path.sql,026_kg_entities_dedupe_and_constraint.sql,027_ai_suggestions.sql,029_kg_approval_state.sql,055_contextualization.sql,056_contextualization_intake.sql,067_ctx_import_batches_approval_cols.sql,027_namespace_direct_uploads.sql,059_namespace_filing_cabinet.sql,068_hub_uploads.sql,072_hub_uploads_content_sha256.sql,073_equipment_notebooks.sql,075_workspace_file_links.sql,076_namespace_uploads_source_reconcile.sql,077_ingest_claim.sql,082_namespace_uploads_node_nullable.sql,084_notebook_turn_basis_and_source_origin.sql,085_notebook_source_canonical_provenance.sql"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Apply the integration schema
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: Workstream A admission suite (RED if the verified=false fix is reverted)
+        working-directory: mira-hub
+        env:
+          MIRA_ENFORCE_APPROVED_RETRIEVAL: "true"
+        run: node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission

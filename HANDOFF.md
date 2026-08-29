@@ -1,181 +1,106 @@
-# HANDOFF — Technician Beta Recovery, Workstream A
+# HANDOFF — Technician Beta Recovery, Workstream B
 
 **Date:** 2026-08-29
-**Branch:** `codex/technician-beta-recovery-a` (worktree `C:/Users/hharp/.codex/worktrees/technician-beta-recovery-a`)
-**Base:** `origin/main` @ `89adee90b3ebb31b5117a5cfa23341ce90ff239e`
-**PRD:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md` (copied verbatim — sha256 `712d6c7f…60cc0` identical to the approved source)
-**Scope delivered:** Workstream A only (PRD §7, delivery-sequence PR 1). Workstreams B–E untouched.
-**Status:** GREEN for the PR-1 slice. Human gates: PR review + merge (Mike), and the §7.5 disposable dev/staging end-to-end run.
+**Branch:** `codex/technician-beta-recovery-b` (worktree `C:/Users/hharp/.codex/worktrees/technician-beta-recovery-b`)
+**Base:** `origin/main` @ `4a695bf311241ec4e2b9d0a269a3630ff7477bcd` (Workstream A merged as #3468 fix)
+**PRD:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md` §8 (delivery-sequence PR 2)
+**Scope delivered:** Workstream B only. Workstreams C–E untouched. No merge, deploy, dispatch, production call, Doppler read, or SQL against any shared environment happened in this session.
+**Status:** GREEN for the offline/disposable-DB slice; the staging lane runs on the PR (CI provisions it). Human gates: PR review + merge (Mike); production probe dispatch + QA-tenant secrets (Mike).
 
 ---
 
-## 1. Root cause (traced, not guessed)
+## 1. Root cause / why the old gate was not production-equivalent
 
-Under `MIRA_ENFORCE_APPROVED_RETRIEVAL=true` (forwarded into mira-hub since #3416),
-`retrieveNodeChunks` (`mira-hub/src/lib/manual-rag.ts`) appended `AND verified = true` to every
-v2 chunk read. But:
+- `beta-gate.yml` proved the **NodeChat** `/files/` door with the **shared GS10 fixture** and inherited whatever `MIRA_ENFORCE_APPROVED_RETRIEVAL` staging happened to have. Under the production flag the NodeChat route keeps the legacy `verified = true` rule (`namespace/node/[id]/chat/route.ts:327` filters `chunk.verified === true`), so that lane could not exercise — or catch — the #3437/#3468 defect at all.
+- The behaviour production depends on is the **notebook** contract (`equipment-notebooks/[id]/chat` → `validateChatSources` → `retrieveNodeChunks({approvedSourceDocIds})`), where confirmed tenant-private chunks stay `knowledge_entries.verified=false` and are admitted only through the server-derived confirmed set (Workstream A).
+- The health door had no non-secret way to say which gate is effective (#3328 class), so nothing could *assert* the flag.
 
-- the v2 upload writer (`node-knowledge-ingest.ts`) never sets `knowledge_entries.verified`
-  (column default `false`) — #3437;
-- the technician's confirmation lives in `equipment_notebook_sources.match_state`
-  (`user_confirmed` / `verified`, `enabled_by_default`, `superseded_at IS NULL`), which the
-  chat route already proves via `validateChatSources` **before** retrieval — but that proof was
-  never handed to the SQL boundary;
-- #3440 only patched the nameplate lane by marking chunks `verified=true` at confirm time, so
-  every source confirmed before it stayed `verified=false` and refused — #3468.
-
-Three flags named "verified" were being conflated: shared-corpus trust (`knowledge_entries.verified`),
-retention governance (`namespace_direct_uploads.verified`, admin `/verify` route), and
-tenant-private retrieval admission (notebook confirmation). The PRD §7.2 model separates them.
-
-## 2. The fix (smallest coherent diff)
+## 2. Design (smallest coherent diff)
 
 | File | Change |
 |---|---|
-| `mira-hub/src/lib/manual-rag.ts` | New `retrieveNodeChunks` option `approvedSourceDocIds` (server-derived). Under the gate the approval predicate on BOTH lanes (BM25 pool + exact-token ILIKE) becomes `AND (verified = true OR (is_private = true AND doc_id = ANY($n::uuid[])))`, bound to `approvedSourceDocIds ∩ docIds`. Empty intersection / no set → the pre-existing `AND verified = true`. Gate off → no predicate (unchanged). Seam doc-comment defines the three "verified" meanings. |
-| `mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts` | Passes `approvedSourceDocIds: docIds` — the **output** of `validateChatSources` (tenant-owned, notebook-linked, enabled, confirmed, not superseded), never `body.sourceDocIds`. 8 additive lines. |
-| `tools/qa/security/knowledge_entries_read_allowlist.yml` | Re-keyed the two `retrieveNodeChunks` reads (`:504→:559`, `:540→:600`) with new full-context hashes + dated HASH MIGRATION notes; 7 individually-justified approvals for the new test-file sites (mock-regex assertions / disposable-DB fixture DML). No broad exemption. |
+| `tests/beta/_notebook_probe.py` | **One reusable probe** (library + CLI). Public Hub APIs only, in mobile's order: `GET /api/health/` (gate must be enforced) → `POST /api/equipment-notebooks/` → grounded chat with **no sources → `422 no_sources_selected`** (pre-upload, provider-free) → `POST /api/namespace/node/{nodeId}/files/` with a **run-unique, runtime-generated 2-page PDF** (pure-python writer, sentinel `QZxxxxxx` + value on page 2) → `POST …/sources/` (attach = `user_confirmed`, the product's confirmation) → **poll** `GET /api/equipment-notebooks/{id}/` until `sources[].readiness.canChat` (contract, no fixed sleep) → sentinel question → judge: `answered`, ≥1 citation, **every** citation `docId == run upload id**, sentinel page (2) cited, sentinel value in the answer, `usage.provider`/`model` non-null → `GET …/passage/?page=2` carries the sentinel (passage identity) → unsupported question (vocabulary disjoint from the document) → judge: `insufficient_evidence`, zero citations, **no usage frame** (provider-free) → cleanup **only** the run's notebook/upload/file via `DELETE`, even after failure. Redacted JSON evidence + per-step timings. DRY-RUN (exit 0, zero requests) unless hub base + auth are present. Signs in with an *existing* login when given email/password; never registers. |
+| `tests/beta/beta_ready_notebook_confirmed_source.py` | The pytest release-gate entry; skips without `BETA_PROBE_*`. |
+| `tests/beta/test_notebook_probe.py` | 23 offline tests pinning the judge + flow (see §3). |
+| `mira-hub/src/app/api/health/route.ts` (+ `__tests__/route.test.ts`) | Additive non-secret field `approvedRetrievalEnforced` = `MIRA_ENFORCE_APPROVED_RETRIEVAL === "true"` (the exact boolean `manual-rag.ts` reads). Lets CI and the prod probe **assert** the effective gate. |
+| `mira-hub/scripts/provision-beta-gate.ts` | Emits `BETA_PROBE_HUB_BASE`/`BETA_PROBE_COOKIE` for the new lane; `--cleanup` (staging sweep, tenant-scoped by the run's own tenant id) now also removes notebook-lane tables, skipping absent tables/columns. |
+| `.github/workflows/beta-gate.yml` | Legacy job **unchanged**. New job **`notebook-gate`**: builds the Hub, starts it with **explicit** `MIRA_ENFORCE_APPROVED_RETRIEVAL=true MIRA_CANONICAL_SEAM=1`, asserts `/api/health/.approvedRetrievalEnforced == true` before anything else, provisions a fresh stranger tenant + credentials per run, runs the gate, sweeps only that tenant, uploads **redacted** Hub log + probe report on failure. New job **`admission-regression`** (no secrets, `postgres:16` service): the Workstream A integration suite under the flag — RED the moment the admission predicate is reverted. New dispatch input **`prove_regression`** reverts the predicate in the built Hub and *requires* the notebook lane to FAIL (§8.4 exit-gate proof, never merges anything). Path filters extended to the notebook routes + health. Line 49 (`actions/checkout@v6`) untouched — Dependabot #2251's hunk rebases mechanically. |
+| `.github/workflows/beta-probe-prod.yml` | Manual-only (`workflow_dispatch`; no schedule, no `workflow_run`). Inert unless **`execute: true` (boolean, default false) AND both `BETA_PROBE_QA_EMAIL`/`BETA_PROBE_QA_PASSWORD` secrets** exist on the `production` environment; otherwise `--dry-run` sends nothing. Public app APIs only; evidence artifact retained 30 days. States in output that Mike owns dispatch + credentials. |
+| `tests/beta/README.md` | File table updated. |
 
-Isolation properties (why this equals or beats the PRD's preferred shape): the admission branch is
-reachable only for rows that already satisfy `tenant_id = $1` AND `doc_id = ANY(validated scope)`
-AND `is_private = true`; the approved set can only narrow; shared/OEM rows (`is_private=false`)
-still require `verified = true`; nothing is written — no chunk becomes globally verified, no KG
-relationship changes, no trust class is added. The NodeChat (`/api/namespace/node/[id]/chat`) and
-asset-chat call sites pass no approved set and keep their byte-identical predicate.
+Deliberate interpretation: on the notebook contract, "grounded ask with nothing attached" is `422 no_sources_selected` (structured, no provider, nothing persisted) — the probe requires exactly that pre-upload, and requires a **200 SSE `insufficient_evidence` with no usage frame** for the post-confirmation unsupported question. A pre-upload turn that *answers* fails the lane before any upload happens.
 
-## 3. Tests — the 11 PRD §7.4 cases
+## 3. Red → green evidence
 
-| # | Case | Test | Red → Green |
-|---|---|---|---|
-| 1 | fresh private PDF, confirmed+selected | integration "1." | `[]` → `[DOC_PDF]` |
-| 2 | fresh private text | integration "2." | `[]` → `[DOC_TXT]` |
-| 3 | confirmed OCR/nameplate doc (no verified mark) | integration "3." | `[]` → `[DOC_OCR]` |
-| 4 | pre-fix confirmed, `verified=false`, **no data rewrite** | integration "4." (verified-count oracle 0→0) | `[]` → `[DOC_PREFIX]` |
-| 5 | shared `is_private=false`, `verified=false` stays excluded | integration "5." | green before & after |
-| 6 | private candidate excluded | integration "6." + unit intersection | positive half red → green |
-| 7 | private disabled excluded | integration "7." | positive half red → green |
-| 8 | same doc id from another tenant excluded | integration "8." | green before & after |
-| 9 | forged client id not linked to notebook excluded | integration "9." + unit "narrow, never widen" | red → green |
-| 10 | admin namespace verification keeps governance behaviour | `verify/__tests__/governance.test.ts` (UPDATE `namespace_direct_uploads` only, tenant-scoped, no `knowledge_entries`) | green before & after |
-| 11 | Hub NodeChat beta path unchanged | unit "case 11" (predicate byte-identical, `$5` layout) + existing `namespace/node/[id]/chat` suite + `tests/beta` offline lane | green before & after |
-| route | server-derived set is the authority (requested `DOC_A` → derived `DOC_B`) | `chat-approved-source-scope.test.ts` | red → green |
-
-Files: `mira-hub/src/lib/__tests__/approved-source-admission.integration.test.ts`,
-`mira-hub/src/lib/__tests__/approved-source-admission.test.ts`,
-`mira-hub/src/app/api/equipment-notebooks/__tests__/chat-approved-source-scope.test.ts`,
-`mira-hub/src/app/api/namespace/files/[id]/verify/__tests__/governance.test.ts`.
-
-### Red evidence (before the fix, gate ON, disposable Postgres 16)
+**Probe unit tests (RED before implementation):**
 ```
-× 1. fresh tenant-private PDF upload, confirmed and selected → retrievable
-    AssertionError: expected [] to deeply equal [ Array(1) ]
-× 2. fresh tenant-private text upload … expected [] to deeply equal [ Array(1) ]
-× 3. confirmed OCR/nameplate-derived document … expected [] to deeply equal [ Array(1) ]
-× 4. #3468: source confirmed pre-fix with knowledge_entries.verified=false … expected [] …
-× 6./7./9. (positive half: the confirmed doc alongside the excluded one) expected [] …
-✓ 5. shared … excluded   ✓ 8. other tenant … excluded   ✓ no approved set ⇒ legacy rule
-Tests  7 failed | 3 passed (10)
+ModuleNotFoundError: No module named 'tests.beta._notebook_probe'   (1 error during collection)
 ```
-Unit/route before: `3 failed | 5 passed (8)` — missing option (`expected null to be truthy` on the
-admission regex; route spy not called with `approvedSourceDocIds`).
+**GREEN:** `python -m pytest tests/beta/test_notebook_probe.py tests/beta/test_gate_harness.py tests/beta/test_gate_sources.py tests/beta/beta_ready_notebook_confirmed_source.py --confcutdir=tests/beta -q` → `38 passed, 1 skipped` (the skip = the live gate without env, by design).
 
-### Green evidence (after)
-```
-approved-source-admission.integration.test.ts   10 passed (10)
-approved-source-admission.test.ts                5 passed
-chat-approved-source-scope.test.ts               2 passed
-governance.test.ts                               1 passed
-Regression (manual-rag, notebook-isolation, equipment-notebooks/*, namespace/node/[id]/chat,
-  assets/[id]/chat, namespace/files/[id]/verify):  23 files, 332 passed
-```
+**Deterministic regression (disposable Postgres 16, gate ON) — the §8.4 shape:**
+- fix present: `approved-source-admission.integration.test.ts` → `10 passed (10)`
+- admission predicate reverted locally (`approvedSourceFilterSql` → `approvalFilterSql()`): → `9 failed | 1 passed (10)` (cases 1–9 red; only "no approved set ⇒ legacy rule" stays green)
+- restored: `10 passed (10)`; `git diff --stat mira-hub/src/lib/manual-rag.ts` → empty (byte-identical to main).
+
+**Health route:** `route.test.ts` → `2 passed` (`"true"`→true; `"false"`/`"1"`/unset→false; no secret values, exact key set).
+
+**CLI dry-run (no env):** `python tests/beta/_notebook_probe.py` → prints `DRY-RUN … no request was sent`, exit 0; the unit test asserts `httpx.Client` is never constructed.
+
+**Live staging lane:** runs in CI on this PR (`notebook-gate`); not run from this session (no Doppler/staging access used). `prove_regression=true` is the one-click red proof for Mike.
 
 ## 4. Verification commands (exact)
 
 ```bash
-# from the worktree root; keep the shell cwd at the root (hooks resolve relative to it)
-docker run -d --name mira-wsa-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test -p 5601:5432 postgres:16
-export TEST_DATABASE_URL="postgres://postgres:testpw@127.0.0.1:5601/mira_test" MIRA_TEST_DB_CONFIRM=DISPOSABLE
-export MIRA_INTEGRATION_MIGRATIONS="001_knowledge_graph.sql,010_kg_uns_path.sql,026_kg_entities_dedupe_and_constraint.sql,027_ai_suggestions.sql,029_kg_approval_state.sql,055_contextualization.sql,056_contextualization_intake.sql,067_ctx_import_batches_approval_cols.sql,027_namespace_direct_uploads.sql,059_namespace_filing_cabinet.sql,068_hub_uploads.sql,072_hub_uploads_content_sha256.sql,073_equipment_notebooks.sql,075_workspace_file_links.sql,076_namespace_uploads_source_reconcile.sql,077_ingest_claim.sql,082_namespace_uploads_node_nullable.sql,084_notebook_turn_basis_and_source_origin.sql,085_notebook_source_canonical_provenance.sql"
-(cd mira-hub && bun install --frozen-lockfile && node scripts/setup-integration-db.mjs)
-(cd mira-hub && npx vitest run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission)
-(cd mira-hub && npx vitest run src/lib/__tests__/approved-source-admission.test.ts "src/app/api/equipment-notebooks/__tests__/chat-approved-source-scope.test.ts" "src/app/api/namespace/files/[id]/verify/__tests__/governance.test.ts")
-(cd mira-hub && npx vitest run src/lib/__tests__/manual-rag.test.ts src/lib/__tests__/notebook-isolation.test.ts src/app/api/equipment-notebooks "src/app/api/namespace/node/[id]/chat" "src/app/api/assets/[id]/chat" "src/app/api/namespace/files/[id]/verify")
-(cd mira-hub && npx eslint src/lib/manual-rag.ts "src/app/api/equipment-notebooks/[id]/chat/route.ts" src/lib/__tests__/approved-source-admission*.ts)
-(cd mira-hub && node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)   # see §6
-PYTHONIOENCODING=utf-8 python tools/qa/security/check_knowledge_entries_filters.py  # ✅ 180 sites
-python -m pytest tests/test_knowledge_entries_security_check.py tests/beta tests/test_architecture.py -q
-PYTHONUTF8=1 python -m pytest tests/test_approved_retrieval_plumbing.py -q            # 11 passed
-docker rm -f mira-wsa-pg
+# worktree root; keep cwd here (hooks resolve root-relative)
+PYTHONUTF8=1 python -m pytest tests/beta/test_notebook_probe.py tests/beta/test_gate_harness.py tests/beta/test_gate_sources.py tests/beta/beta_ready_notebook_confirmed_source.py --confcutdir=tests/beta -q   # 38 passed, 1 skipped
+PYTHONUTF8=1 python tests/beta/_notebook_probe.py                       # DRY-RUN, rc=0
+uvx ruff check tests/beta/_notebook_probe.py tests/beta/test_notebook_probe.py tests/beta/beta_ready_notebook_confirmed_source.py
+actionlint .github/workflows/beta-gate.yml .github/workflows/beta-probe-prod.yml
+(cd mira-hub && node node_modules/vitest/vitest.mjs run src/app/api/health)            # 2 passed
+(cd mira-hub && npx eslint src/app/api/health scripts/provision-beta-gate.ts)          # clean
+(cd mira-hub && node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)        # 0 errors in touched files (32 pre-existing elsewhere, same set as Workstream A §6)
+git diff --check -- . ':!PLAN.md'                                                      # clean (PLAN.md hard-break spaces are operator-authored)
+
+# regression proof (disposable DB)
+docker run -d --name mira-wsb-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test -p 5602:5432 postgres:16
+export TEST_DATABASE_URL="postgres://postgres:testpw@127.0.0.1:5602/mira_test" MIRA_TEST_DB_CONFIRM=DISPOSABLE
+export MIRA_INTEGRATION_MIGRATIONS="<the list in beta-gate.yml admission-regression env>"
+(cd mira-hub && node scripts/setup-integration-db.mjs)
+(cd mira-hub && MIRA_ENFORCE_APPROVED_RETRIEVAL=true node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission)
+docker rm -f mira-wsb-pg
 ```
 
-## 5. Historical repair (#3468) — PRD §7.3 decision
+## 5. Historical repair — closed honestly (PRD §7.3 / PLAN step 5)
 
-**No data rewrite is required.** Case 4 proves it on the disposable DB: a source with
-`match_state='verified'`, `created_at = now() - 30 days`, and chunks `verified=false` becomes
-retrievable purely through the corrected admission query while the tenant's
-`verified=true` chunk count stays 0 before and after. Per §7.3 ("do not create a migration merely
-to appear active") no backfill/migration ships in this PR. A read-only *detection* query for
-PR 2's preflight (tenant-scoped by construction; never run against prod from a session):
+No backfill/migration ships. Workstream A case 4 proved a pre-fix confirmed source with `verified=false` chunks is retrievable through the corrected admission with the tenant's verified-count 0→0; `admission-regression` now re-proves that on every PR. The earlier read-only detection SQL was **not** added to this PR (scope correction: no SQL anywhere in Workstream B; the probe is the detection path, through public APIs).
 
-```sql
--- affected = confirmed+enabled+visible notebook sources whose chunks are all verified=false
-SELECT s.tenant_id, s.notebook_id, s.doc_id, s.match_state,
-       count(k.*) AS chunks, bool_or(k.verified) AS any_verified
-  FROM equipment_notebook_sources s
-  LEFT JOIN knowledge_entries k ON k.doc_id = s.doc_id AND k.tenant_id = s.tenant_id
- WHERE s.tenant_id = $1::uuid            -- REQUIRED tenant predicate
-   AND s.match_state IN ('user_confirmed','verified')
-   AND s.enabled_by_default = true AND s.superseded_at IS NULL
- GROUP BY 1,2,3,4;
-```
-After this PR every such row reports admission = eligible without mutation; the #3440 confirm-time
-`markNameplateDocVerified` becomes redundant-but-harmless (left untouched — it lives in the
-#3477-owned file).
+## 6. Dry-run semantics + the human gate
 
-## 6. Pre-existing / environmental failures (precisely evidenced)
+- `beta-probe-prod.yml`: manual dispatch only. `execute` unchecked → dry-run. `execute` checked but either QA secret missing → dry-run. Only `execute=true` + both secrets → live, and then only public APIs against an **existing** QA tenant (registration is not used: `/api/auth/register` does not mirror the data-side `tenants` row, so a freshly registered tenant cannot upload — provisioning, not a public-API concern).
+- Mike: adds `BETA_PROBE_QA_EMAIL`/`BETA_PROBE_QA_PASSWORD` to the `production` environment (any required reviewers on that environment apply), dispatches, reads `probe-evidence.json`. A merge may be green without this; a design-partner-readiness claim may not (PRD §8.3).
 
-- `tsc --noEmit`: errors only in files this branch does not touch (`nameplate/__tests__/confirm.test.ts` ×15,
-  `mira/ask/__tests__/route.test.ts` ×8, `assets/[id]/chat/__tests__/route.test.ts` ×2, `cmms/sso` ×2,
-  `hub/status` ×1, `drive-pack-suggestion.test.ts` ×1, `tests/e2e/upload-probe.spec.ts` ×3). Zero errors in changed files.
-- `tests/test_approved_retrieval_plumbing.py`: 6 failures under the default Windows console codepage
-  (`UnicodeDecodeError: 'charmap'` reading compose YAML); **11/11 pass with `PYTHONUTF8=1`**. Compose files untouched.
-- `tests/beta`: 2 skips by design (no dev/staging endpoint provisioned in this session) — the §7.5 live
-  upload→confirm→ask→citation run is a human/staging gate (see §8).
-- `git diff --check`: trailing double-spaces in `PLAN.md` header lines (operator-authored markdown hard breaks); left as-is.
+## 7. Collision notes
 
-## 7. Collision audit
+- **PR #3477** (`equipment-notebooks.ts`, its domain test, 2 mobile files): **not edited, not read for edits**. The probe consumes its public contract only; #3477's successor-id remap composes (the probe sends the id it uploaded, the server derives the admitted set).
+- **Dependabot #2251** (`actions/checkout@v6→v7` on `beta-gate.yml:49`): line untouched; new jobs pin `@v6` consistently — a mechanical rebase either way.
+- No open PR touches `beta-gate.yml`, `health/route.ts`, `provision-beta-gate.ts`, or `tests/beta/` (checked `gh pr list` at session start).
 
-- **PR #3477** (`fix/3442-superseded-chat-scope`, OPEN): owns `equipment-notebooks.ts` + its domain test +
-  2 mira-mobile files. **Not edited here.** Integration note: #3477 makes `validateChatSources` return
-  the *remapped* successor ids in `docIds`; because this PR passes `validated.docIds` (not the request)
-  as `approvedSourceDocIds`, the remap composes cleanly — the successor is both the doc scope and the
-  admission set. The `chat-approved-source-scope` test models exactly that shape (requested A → derived B).
-  Deferred to #3477's file: the seam doc-comment on notebook confirmation semantics (written here at the
-  retrieval seam + route instead).
-- **PR #3300** (draft, idle since 2026-08-18): touches `chat/route.ts` only at the auth import
-  (`sessionOr401` → `requestContextOr401`) — disjoint hunk; and the allowlist YAML (textual merge
-  risk only; re-run the checker after either merge).
-- No other open PR touches `manual-rag.ts`.
+## 8. Honest limitations / risks
 
-## 8. Remaining risks / human actions
-
-1. **Merge = Mike.** PR is merge-ready, not merged. Merge auto-deploys mira-hub (docs-only merges don't).
-2. **§7.5 exit gate half 2** — a disposable dev/staging tenant doing upload → confirm → supported
-   question → correct citation with `MIRA_ENFORCE_APPROVED_RETRIEVAL=true`. Needs a staging endpoint
-   (`BETA_GATE_*` env) — not available to this session. Workstream B makes CI do this.
-3. Asset chat (`/api/assets/[id]/chat`) still calls `retrieveNodeChunks` with attached docs and no
-   approved set, so its attached-doc lane remains subject to `verified=true` under the gate (its own
-   comment already documents the limitation). Out of Workstream A scope; candidate for PR 2 if the
-   `workspace_file_links` derivation is accepted as a server authority.
-4. `.claude/rules/knowledge-entries-tenant-scoping.md` could cite the new admission predicate; left
-   unchanged to keep the diff to the PRD scope (the seam comment in `manual-rag.ts` is the owning doc).
+1. The live `notebook-gate` job has **not** run from this session; its first evidence is this PR's CI run. If it fails on a contract detail (e.g. text-PDF page anchoring by `unpdf`), the failure artifact is redacted and uploaded; the probe is unit-pinned so the fix is in one file.
+2. Cleanup on **production** is public-API only: `DELETE notebook`, `DELETE /api/uploads/{id}`, `DELETE /api/files/{id}` (the file delete may 409 `has_links` while the node link exists — reported, never fatal). Residual chunks in the QA tenant cannot contaminate a later run: every run uses a fresh sentinel and requires the citation's `docId` to equal *its own* upload.
+3. `require_usage` defaults on (production runs `MIRA_CANONICAL_SEAM=1`); `BETA_PROBE_REQUIRE_USAGE=0` documents the legacy-cascade escape hatch, never used by CI.
+4. `tests/beta/test_upload_retrieval_citation.py::test_retrieval_reads_only_knowledge_entries` fails under `--confcutdir=tests/beta` (`No module named 'shared'` — it needs the parent conftest's sys.path); pre-existing (#2077), unrelated, unchanged.
+5. The legacy NodeChat lane remains **not** production-equivalent by design (§1); replacing it is a product decision outside this PR.
 
 ## 9. PLAN.md row-by-row
 
 | PLAN step | Result |
 |---|---|
-| 1 Preflight/authority | ✅ worktree/branch/hooks/env verified; PRD copied byte-identical; seam documented (§1) |
-| 2 Tests first | ✅ 11 cases + route authority; red evidence preserved (§3) |
-| 3 Smallest fix | ✅ 2 source files + allowlist migration (§2) |
-| 4 Historical repair | ✅ investigated — no mutation required; detection query provided (§5) |
-| 5 Verify & hand off | ✅ focused + package regression + lint + checker; tsc/plumbing deltas evidenced (§6); this file |
+| 1 Preflight/trace | ✅ clean worktree on `4a695bf31`, hooks resolve, no prod overrides; contract traced from routes + mobile client; #3477/#2251 boundaries honored |
+| 2 Reusable probe | ✅ `_notebook_probe.py` (library + CLI), public APIs only, run-unique doc/sentinel, contract readiness, confirmation, exact doc/page/provider, other-tenant exclusion, provider-free refusals, redacted evidence |
+| 3 Staging CI | ✅ explicit flag + health assertion, fresh tenant per run, `admission-regression`, `prove_regression`, redacted artifacts |
+| 4 Prod entry point | ✅ `beta-probe-prod.yml`, manual, boolean + secrets gated, dry-run default, Mike owns dispatch |
+| 5 Historical repair | ✅ no mutation; SQL preflight withdrawn per scope correction |
+| 6 Verify + hand off | ✅ this file; commits + PR (unmerged) |
