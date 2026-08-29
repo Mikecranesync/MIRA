@@ -546,6 +546,22 @@ def test_findings_are_parsed_only_from_the_findings_section():
     assert [f.title for f in parse_findings("- **[severity: low] Loose** — x\n")] == ["Loose"]
 
 
+def test_a_rendered_report_file_still_adjudicates_from_its_raw_findings_section():
+    """#3481 round L: a committed report FILE has a rendered `## Findings` list
+    (no severity tokens) followed by `## Raw review` containing the model's
+    `## FINDINGS` bullets. Scoping to the FIRST section parsed nothing and the
+    adjudication aborted ("no structured findings"). Every FINDINGS section
+    counts; prose elsewhere still does not."""
+    report = (
+        "# Gate 7 adversarial review — PR #1\n\n"
+        "## Findings\n\n- **[high] Rendered title** — \n\n"
+        "## Raw review\n## VERDICT\nBLOCK\n\n"
+        "## FINDINGS\n- **[severity: high] Rendered title** — the detail\n\n"
+        "## NOT REVIEWED\n- **[severity: high] Not a finding** — quoted in prose\n"
+    )
+    assert [(f.severity, f.title) for f in parse_findings(report)] == [("high", "Rendered title")]
+
+
 def test_adjudicator_has_no_severity_channel():
     """Gate 9 re-review evasion: a prior HIGH returned as 'SUSTAINED medium'
     PASSed under the old count-only contract. Ruling lines that try to state

@@ -642,17 +642,21 @@ _NEXT_SECTION_RE = re.compile(r"^\s*##\s+(?!#)", re.M)
 
 
 def _findings_section(text: str) -> str:
-    """The body of `## FINDINGS` up to the next `## ` heading — or the whole
-    text when there is no such header (older/looser reports). #3481 round K:
-    the reviewer wrote a finding-shaped line INSIDE its prose as an example of
-    what the parser would accept, and the parser accepted it — one spurious
-    high, verdict BLOCK. Findings are what the reviewer lists as findings."""
-    m = _FINDINGS_SECTION_RE.search(text)
-    if not m:
-        return text
-    body = text[m.end() :]
-    nxt = _NEXT_SECTION_RE.search(body)
-    return body[: nxt.start()] if nxt else body
+    """The bodies of EVERY `## FINDINGS` section (each up to its next `## `
+    heading), joined — or the whole text when there is no such header
+    (older/looser reports). #3481 round K: the reviewer wrote a finding-shaped
+    line INSIDE its prose as an example of what the parser would accept, and
+    the parser accepted it — one spurious high, verdict BLOCK. Findings are
+    what the reviewer lists as findings. Round L: a committed report FILE has a
+    rendered `## Findings` list (no severity tokens) before `## Raw review`'s
+    `## FINDINGS` bullets — taking only the first section parsed nothing and
+    the adjudication aborted, so every such section is read."""
+    bodies: list[str] = []
+    for m in _FINDINGS_SECTION_RE.finditer(text):
+        body = text[m.end() :]
+        nxt = _NEXT_SECTION_RE.search(body)
+        bodies.append(body[: nxt.start()] if nxt else body)
+    return "\n".join(bodies) if bodies else text
 
 
 def parse_findings(text: str) -> list[Finding]:
