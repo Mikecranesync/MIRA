@@ -593,6 +593,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // for every id in docIds — the validated doc set is the boundary, so a
       // document linked from another notebook's node stays retrievable here.
       validatedDocScope: true,
+      // Workstream A (#3437/#3468): the SAME server-derived set is the
+      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+      // validateChatSources derives it (tenant-owned, notebook-linked,
+      // enabled, user_confirmed/verified, not superseded); the client's
+      // `body.sourceDocIds` was only an intersection request. Tenant-private
+      // chunks of these docs are admitted without ever being marked globally
+      // verified — confirmation is admission, not corpus promotion.
+      approvedSourceDocIds: docIds,
     }),
   );
 

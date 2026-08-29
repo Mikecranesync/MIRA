@@ -81,8 +81,41 @@ export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
 }
 
+/**
+ * Three flags called "verified" mean three different things — this seam owns
+ * the retrieval-admission one (PRD 2026-08-29 §7.2, #3437/#3468):
+ *
+ *  - `knowledge_entries.verified` = SHARED-CORPUS trust. Under
+ *    MIRA_ENFORCE_APPROVED_RETRIEVAL it is the canonical global rule: an OEM /
+ *    shared chunk is citable only when verified = true. It is NOT set by the
+ *    tenant upload path and must never be blanket-set on private uploads.
+ *  - `namespace_direct_uploads.verified` = RETENTION governance (filing
+ *    cabinet: verified files cannot be deleted — 059 trigger). Admin action.
+ *    Owning seam: /api/namespace/files/[id]/verify. It does not admit chunks.
+ *  - notebook confirmation (`equipment_notebook_sources.match_state IN
+ *    ('user_confirmed','verified')`, enabled, not superseded) = TENANT-PRIVATE
+ *    retrieval admission. Derived server-side by validateChatSources and
+ *    handed here as `approvedSourceDocIds`. It never promotes the document
+ *    to globally verified and never widens beyond the owning tenant.
+ */
 function approvalFilterSql(): string {
   return approvalGateEnabled() ? "AND verified = true" : "";
+}
+
+/**
+ * Approval predicate for a v2 chunk read that carries a server-derived
+ * approved source set. `$${approvedParam}` must be bound to that set (uuid[])
+ * by the caller, on a query whose WHERE already pins `tenant_id = $1`.
+ *
+ * Shared rows keep the global rule; a tenant-private row (`is_private = true`)
+ * is admitted when its document is in the approved set. The set can only
+ * NARROW (it is intersected with the validated doc scope upstream), and with
+ * no set — or the gate off — this collapses to the pre-existing predicate.
+ */
+function approvedSourceFilterSql(approvedParam: number | null): string {
+  if (!approvalGateEnabled()) return "";
+  if (approvedParam == null) return approvalFilterSql();
+  return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;
 }
 
 // #1766 — BM25 term bounding. Ports mira-bots/shared/neon_recall._recall_bm25's
@@ -419,6 +452,13 @@ export async function retrieveNodeChunks(
      *  file-link derivation) — it is ignored unless docIds/docId narrow the
      *  scope, so the node filter is never globally removed. */
     validatedDocScope?: boolean;
+    /** SERVER-derived approved source set (Workstream A, PRD §7.2): the
+     *  tenant-owned, notebook-linked, enabled, explicitly confirmed doc ids
+     *  validateChatSources returned — never the client's requested ids. Under
+     *  the approval gate, tenant-private chunks of these docs are admitted
+     *  alongside verified shared rows; the set is intersected with `docIds`
+     *  (narrow only) and ignored when the gate is off. */
+    approvedSourceDocIds?: string[];
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -470,6 +510,21 @@ export async function retrieveNodeChunks(
   const docParams = allowedDocIds.length > 0 ? [allowedDocIds] : [];
   const docClause = allowedDocIds.length > 0 ? "AND doc_id = ANY($5::uuid[])" : "";
 
+  // Workstream A — server-derived admission set. Intersected with the validated
+  // doc scope so it can only narrow; an empty intersection falls back to the
+  // bare global rule (fail-closed). Bound as its own uuid[] param on BOTH
+  // lanes: $6 on the BM25 pass (after $5 docIds), and the next free slot on
+  // the exact lane. Only meaningful when a doc scope exists — a subtree read
+  // with no validated docs never gains an admission branch.
+  const approvedSourceDocIds =
+    allowedDocIds.length > 0 && (opts.approvedSourceDocIds?.length ?? 0) > 0
+      ? opts.approvedSourceDocIds!.filter((d) => allowedDocIds.includes(d))
+      : [];
+  const approvedParams = approvedSourceDocIds.length > 0 ? [approvedSourceDocIds] : [];
+  const approvalClauseMain = approvedSourceFilterSql(
+    approvedSourceDocIds.length > 0 ? 5 + docParams.length : null,
+  );
+
   // Canonical-files mode: the validated doc set IS the boundary — chunks keep
   // their original ingest-time node stamp, so a doc linked to a second notebook
   // must not be excluded for carrying the first node's id. The bypass is
@@ -504,13 +559,13 @@ export async function retrieveNodeChunks(
         FROM knowledge_entries
         WHERE tenant_id = $1
           AND ingest_route = 'v2'
-          ${approvalFilterSql()}
+          ${approvalClauseMain}
           ${nodeClauseMain}
           ${docClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST
         LIMIT $4`,
-      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams],
+      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams, ...approvedParams],
     );
     return res.rows;
   };
@@ -532,6 +587,11 @@ export async function retrieveNodeChunks(
       exactParams.push(allowedDocIds);
       exactDocClause = "AND doc_id = ANY($5::uuid[])";
     }
+    let approvalClauseExact = approvedSourceFilterSql(null);
+    if (approvedSourceDocIds.length > 0) {
+      exactParams.push(approvedSourceDocIds);
+      approvalClauseExact = approvedSourceFilterSql(exactParams.length);
+    }
     const res = await client.query(
       `SELECT
           content, doc_id::text AS doc_id, source_url, source_page, page_start,
@@ -540,7 +600,7 @@ export async function retrieveNodeChunks(
         FROM knowledge_entries
         WHERE tenant_id = $1
           AND ingest_route = 'v2'
-          ${approvalFilterSql()}
+          ${approvalClauseExact}
           ${nodeClauseExact}
           ${exactDocClause}
           AND content ILIKE ANY($3::text[])
