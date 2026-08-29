@@ -217,13 +217,36 @@ jobs:
               doppler run -- ./node_modules/.bin/next build )
           echo "::endgroup::"
 
+          # Failure-safe teardown, scoped to THIS run: stop the Hub we started
+          # and sweep ONLY the tenant we provisioned (if provisioning got that
+          # far). Runs on every exit path — a failed assertion, a failed probe,
+          # or a normal finish — so a red lane never leaks staging rows.
+          BETA_GATE_TENANT=""
+          cleanup_run() {
+            if [ -n "${BETA_GATE_TENANT:-}" ]; then
+              echo "teardown: sweeping run-owned tenant $BETA_GATE_TENANT"
+              ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || \
+                echo "::warning::tenant sweep failed for $BETA_GATE_TENANT — inspect staging"
+            fi
+            pkill -f "next start -p 3100" || true
+          }
+          trap cleanup_run EXIT
+
           # Start the Hub with the PRODUCTION gate set EXPLICITLY on the command
           # line — never inherited from an ambiguous staging value (#3328).
           # MIRA_CANONICAL_SEAM=1 matches production so provider/model usage is
           # emitted per turn (the probe asserts it is non-null).
+          # INGEST_URL: docker-compose.staging-vps.yml sets the staging Hub to
+          # `disabled://staging` (mira-ingest-client.ts honours the scheme); the
+          # Doppler stg config alone does not carry it, so /api/health reports
+          # 503 `missing: ["INGEST_URL"]` (run 33264432611). Set the SAME
+          # staging value explicitly. The notebook upload door ingests
+          # in-process (node-knowledge-ingest.ts) and never reads INGEST_URL,
+          # so this changes nothing the probe exercises.
           ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NODE_ENV=production \
               doppler run -- env NEXTAUTH_URL=http://localhost:3100 AUTH_TRUST_HOST=true \
               MIRA_ENFORCE_APPROVED_RETRIEVAL=true MIRA_CANONICAL_SEAM=1 \
+              INGEST_URL="${INGEST_URL:-disabled://staging}" \
               ./node_modules/.bin/next start -p 3100 > /tmp/hub-notebook.log 2>&1 & )
 
           ready=
@@ -234,31 +257,32 @@ jobs:
           done
           if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub-notebook.log; exit 1; fi
 
-          # Non-secret startup assertion: the EFFECTIVE gate, as the running
-          # process reports it through the public health door.
-          health=$(curl -sf http://localhost:3100/api/health/)
-          echo "health: $health"
-          enforced=$(printf '%s' "$health" | python -c 'import json,sys; print(json.load(sys.stdin).get("approvedRetrievalEnforced"))')
+          # Non-secret startup assertion: /api/health must be 200 (every
+          # required env present) AND report the EFFECTIVE gate as enforced.
+          # The body is printed on either failure so a 503 names what is
+          # missing instead of dying as a bare curl exit code.
+          hcode=$(curl -s -o /tmp/health.json -w "%{http_code}" http://localhost:3100/api/health/ || true)
+          echo "health: HTTP $hcode $(cat /tmp/health.json 2>/dev/null)"
+          [ "$hcode" = "200" ] || { echo "::error::/api/health is HTTP $hcode — the Hub is not healthy: $(cat /tmp/health.json 2>/dev/null)"; exit 1; }
+          enforced=$(python -c 'import json; print(json.load(open("/tmp/health.json")).get("approvedRetrievalEnforced"))')
           [ "$enforced" = "True" ] || { echo "::error::MIRA_ENFORCE_APPROVED_RETRIEVAL is not effective (health.approvedRetrievalEnforced=$enforced)"; exit 1; }
-          echo "::notice::effective gate: MIRA_ENFORCE_APPROVED_RETRIEVAL=true (asserted via /api/health)"
+          echo "::notice::effective gate: MIRA_ENFORCE_APPROVED_RETRIEVAL=true (asserted via /api/health, HTTP 200)"
 
-          # Fresh stranger tenant + fresh credentials for THIS run.
+          # Fresh stranger tenant + fresh credentials for THIS run. The tenant
+          # id is exported so the EXIT trap can sweep it on any later failure.
           ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/probe-env.out
           set -a
           # shellcheck disable=SC1090
           . <(grep '^ENV:' /tmp/probe-env.out | sed 's/^ENV://')
           set +a
-          echo "::notice::provisioned tenant=$BETA_GATE_TENANT (run-owned; swept below)"
+          [ -n "${BETA_GATE_TENANT:-}" ] || { echo "::error::provisioning emitted no BETA_GATE_TENANT"; exit 1; }
+          echo "::notice::provisioned tenant=$BETA_GATE_TENANT (run-owned; swept by the EXIT trap)"
 
           set +e
           BETA_PROBE_POLL_SECONDS=240 python -m pytest tests/beta/beta_ready_notebook_confirmed_source.py \
             --confcutdir=tests/beta -v -rs -s 2>&1 | sed -E 's/next-auth\.session-token=[^ "]+/next-auth.session-token=[redacted]/g' | tee /tmp/probe-report.log
           GATE_RC=${PIPESTATUS[0]}
           set -e
-
-          # Sweep ONLY this run's tenant rows (best-effort, never fails the job).
-          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
-          pkill -f "next start -p 3100" || true
 
           if [ "$PROVE_REGRESSION" = "1" ]; then
             if [ "$GATE_RC" -eq 0 ]; then

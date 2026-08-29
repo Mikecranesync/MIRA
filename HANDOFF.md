@@ -86,6 +86,10 @@ No backfill/migration ships. Workstream A case 4 proved a pre-fix confirmed sour
 - **Dependabot #2251** (`actions/checkout@v6→v7` on `beta-gate.yml:49`): line untouched; new jobs pin `@v6` consistently — a mechanical rebase either way.
 - No open PR touches `beta-gate.yml`, `health/route.ts`, `provision-beta-gate.ts`, or `tests/beta/` (checked `gh pr list` at session start).
 
+## 7b. First CI run finding (run 33264432611) — fixed
+
+`notebook-gate` died before provisioning: `/api/health` returned **503 `missing: ["INGEST_URL"]`** (`curl -sf` → exit 22). Cause: `docker-compose.staging-vps.yml` sets the staging Hub `INGEST_URL=disabled://staging` (honoured by `mira-ingest-client.ts`), but the CI job starts the Hub from the Doppler stg config alone, which does not carry it; the legacy job never queried health so it never tripped. Fix: the isolated Hub start now sets `INGEST_URL="${INGEST_URL:-disabled://staging}"` explicitly (staging-compose parity; the notebook upload door ingests in-process via `node-knowledge-ingest.ts` and never reads `INGEST_URL`). The assertion was **not** weakened: health must be HTTP **200** *and* `approvedRetrievalEnforced == true`; the body is printed on either failure. The step also gained an `EXIT` trap that stops the Hub and sweeps the run's own `BETA_GATE_TENANT` (only if provisioning emitted one) on every exit path, and fails if provisioning emitted no tenant id. Local `shellcheck` of the extracted run block was **not completed** (the local validation hung and was interrupted); GitHub's actionlint check on the PR is the validation of record.
+
 ## 8. Honest limitations / risks
 
 1. The live `notebook-gate` job has **not** run from this session; its first evidence is this PR's CI run. If it fails on a contract detail (e.g. text-PDF page anchoring by `unpdf`), the failure artifact is redacted and uploaded; the probe is unit-pinned so the fix is in one file.
