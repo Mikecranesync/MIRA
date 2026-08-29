@@ -737,6 +737,43 @@ def test_artifact_semantics_reminder_lands_after_the_untrusted_data_in_both_prom
         assert "untrusted data above" in adj[end:out].lower()
 
 
+def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_receipted():
+    """#3481 rounds A–G (#3483): every docs-group BLOCK quoted a preserved raw
+    review/adjudication/log under units/evidence/ back as the PR's own claim.
+    Those files are append-only evidence of what an EARLIER model said; the
+    author-written index (README.md) and rebuttals are what a docs review can
+    judge. The lane drops the artifacts from the reviewed diff by default and
+    names every dropped file in the receipts — never silently."""
+    from gate7_review import drop_evidence_artifacts, is_evidence_artifact, receipts_block
+
+    e = "docs/architecture/convergence/units/evidence/CU-03/"
+    assert is_evidence_artifact(e + "round-12-groupA-final-head.md")
+    assert is_evidence_artifact(e + "round-1-crash.log")
+    assert is_evidence_artifact(e + "followup-3481-round5-docs-adjudication.stderr.log")
+    assert not is_evidence_artifact(e + "README.md")
+    assert not is_evidence_artifact(e + "round-12-groupA-rebuttal.md")
+    assert not is_evidence_artifact("docs/architecture/convergence/units/CU-03.md")
+    assert not is_evidence_artifact("mira-crawler/ingest/store.py")
+
+    diff = (
+        f"diff --git a/{e}README.md b/{e}README.md\n+index row\n"
+        f"diff --git a/{e}round-9-review.md b/{e}round-9-review.md\n+raw review text\n"
+        f"diff --git a/{e}r.stderr.log b/{e}r.stderr.log\n+log line\n"
+        f"diff --git a/{e}round-9-rebuttal.md b/{e}round-9-rebuttal.md\n+author rebuttal\n"
+        "diff --git a/tools/x.py b/tools/x.py\n+code\n"
+    )
+    kept, dropped = drop_evidence_artifacts(diff)
+    assert dropped == [e + "round-9-review.md", e + "r.stderr.log"]
+    assert "+raw review text" not in kept and "+log line" not in kept
+    assert "+index row" in kept and "+author rebuttal" in kept and "+code" in kept
+
+    out = "\n".join(receipts_block("h", None, [], kept, "high", artifacts=dropped))
+    assert "evidence artifacts excluded" in out
+    assert e + "round-9-review.md" in out and e + "r.stderr.log" in out
+    # Default receipts are byte-for-byte unchanged when nothing was dropped.
+    assert "evidence artifacts" not in "\n".join(receipts_block("h", None, [], kept, "high"))
+
+
 def test_code_kind_gets_no_decision_point_reminder():
     from gate7_review import build_adjudication_prompt
 

@@ -686,6 +686,44 @@ def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
     return "".join(kept)
 
 
+_EVIDENCE_DIR = "docs/architecture/convergence/units/evidence/"
+
+
+def is_evidence_artifact(path: str) -> bool:
+    """A preserved review artifact: a file under units/evidence/ that is raw
+    reviewer/adjudicator output or a lane log — NOT the author-written index
+    (README.md) and NOT a rebuttal.
+
+    Doctrine preserves these verbatim; they are evidence of what an EARLIER
+    model said, not claims this PR makes. On #3481 every docs-group review for
+    seven rounds quoted them back as "the documentation claims …" — judging the
+    wrong author — and neither the documentation brief, the decision-point
+    reminder nor reworded records changed that (#3483). Pure."""
+    if not path.startswith(_EVIDENCE_DIR):
+        return False
+    name = path.rsplit("/", 1)[-1].lower()
+    return name != "readme.md" and "rebuttal" not in name
+
+
+def drop_evidence_artifacts(diff: str) -> tuple[str, list[str]]:
+    """Remove preserved evidence artifacts from a unified diff. Returns the
+    reduced diff and every dropped b/ path, so the receipts can name them —
+    an exclusion the record cannot see is exactly the silent-scope failure
+    the receipts exist to prevent. Pure."""
+    kept: list[str] = []
+    dropped: list[str] = []
+    keep = True
+    for line in diff.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            target = line.rsplit(" b/", 1)[-1].strip()
+            keep = not is_evidence_artifact(target)
+            if not keep:
+                dropped.append(target)
+        if keep:
+            kept.append(line)
+    return "".join(kept), dropped
+
+
 def diff_paths_excluded(diff: str, prefixes: tuple[str, ...]) -> list[str]:
     """The b/ paths a --paths scope EXCLUDES from review. Printed so a scoped
     run can never silently hide part of the PR — the operator must cover every
@@ -725,6 +763,7 @@ def receipts_block(
     excluded: list[str],
     full_diff: str,
     reasoning_effort: str,
+    artifacts: Optional[list[str]] = None,
 ) -> list[str]:
     """Immutable run identity, embedded in every report (Gate 9 re-review: a
     committed PASS file must independently prove WHAT was reviewed — head SHA,
@@ -747,7 +786,15 @@ def receipts_block(
         f"- reviewed-diff sha256 (sent bytes): `{hashlib.sha256(sent_diff.encode('utf-8')).hexdigest()}`",
         f"- full scoped-diff sha256 (pre-cap): `{hashlib.sha256(full_diff.encode('utf-8')).hexdigest()}`",
         f"- requested reasoning_effort: {reasoning_effort} (see Cascade attempts for what was sent)",
-    ]
+    ] + (
+        [
+            "- evidence artifacts excluded from review (raw reviewer output / logs under "
+            f"units/evidence/, not author claims; --include-evidence keeps them) "
+            f"({len(artifacts)}): {', '.join(artifacts)}"
+        ]
+        if artifacts
+        else []
+    )
 
 
 def call_cascade(
@@ -856,6 +903,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         "evidence often lives.",
     )
     p.add_argument(
+        "--include-evidence",
+        action="store_true",
+        help="keep preserved review artifacts (raw reviewer output / logs under "
+        "units/evidence/) in the reviewed diff. By default they are excluded and "
+        "named in the receipts: they are evidence of what an earlier model said, "
+        "not claims the PR makes (#3483).",
+    )
+    p.add_argument(
         "--settled",
         action="append",
         default=None,
@@ -909,6 +964,22 @@ def main(argv: Optional[list[str]] = None) -> int:
                 file=sys.stderr,
             )
 
+    artifacts: list[str] = []
+    if not a.include_evidence:
+        diff, artifacts = drop_evidence_artifacts(diff)
+        if artifacts:
+            print(
+                f"Gate 7: {len(artifacts)} preserved evidence artifact(s) excluded from review "
+                "(raw reviewer output / logs under units/evidence/, not author claims; "
+                f"--include-evidence keeps them): {', '.join(artifacts)}",
+                file=sys.stderr,
+            )
+        if not diff.strip():
+            print(
+                "error: nothing left to review after excluding evidence artifacts", file=sys.stderr
+            )
+            return 1
+
     level, reasons = escalation(paths, f"{title}\n{body}\n{diff}")
     if a.xhigh:
         level = "xhigh"
@@ -939,7 +1010,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"(redacted: IP/MAC/SN)" + (" — TRUNCATED" if len(diff) > MAX_DIFF_CHARS else ""),
         file=sys.stderr,
     )
-    receipts = receipts_block(head_sha, a.paths, excluded, diff, "high")
+    receipts = receipts_block(head_sha, a.paths, excluded, diff, "high", artifacts=artifacts)
     # Classified from the files the reviewer/adjudicator will actually SEE.
     kind = pr_kind(scoped_paths(paths, tuple(a.paths)) if a.paths else paths)
 
