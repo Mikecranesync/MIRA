@@ -450,10 +450,34 @@ class TestCanonicalSourceUrl:
             ("", ""),
             ("https://example.com/x?", "https://example.com/x?"),  # tail is byte-exact
             ("https://example.com", "https://example.com"),
+            (
+                "X://Service.Local/Resource",
+                "x://service.local/Resource",
+            ),  # 1-letter scheme WITH authority
+            ("C:\\inbox\\Doc.pdf", "C:\\inbox\\Doc.pdf"),  # Windows drive letter, not a scheme
+            (
+                "https://example.com/a%2Fpath",
+                "https://example.com/a%2Fpath",
+            ),  # percent-encoding untouched
         ],
     )
     def test_lowercases_only_scheme_and_host(self, raw, expected):
         assert store.canonical_source_url(raw) == expected
+
+    def test_lookup_also_matches_a_historical_row_stored_in_the_callers_spelling(self, captured):
+        """Round-F code finding (real): rows written BEFORE canonicalisation keep
+        their raw casing, and the freshness recrawl re-supplies exactly that
+        stored spelling. A canonical-only lookup would miss such a row and the
+        recrawl would write a duplicate. `chunk_exists` therefore asks for the
+        canonical key AND the spelling it was given."""
+        raw = "HTTPS://EXAMPLE.COM/Legacy.PDF"
+        store.chunk_exists("tenant-a", raw, 0)
+        params = captured["params"]
+        assert params["url"] == "https://example.com/Legacy.PDF"
+        assert params["raw"] == raw
+        sql = re.sub(r"\s+", " ", captured["sql"])
+        assert "source_url = :url" in sql and "source_url = :raw" in sql
+        assert "tenant_id = :tid" in sql
 
     def test_idempotent(self):
         once = store.canonical_source_url("HTTPS://Example.COM/A?B=c")

@@ -40,8 +40,8 @@ def canonical_source_url(url: str) -> str:
     if not url:
         return url
     head, sep, rest = url.partition(":")
-    if not sep or len(head) < 2 or not _SCHEME_RE.fullmatch(head):
-        return url  # not a URL (bare path, Windows drive letter) — untouched
+    if not sep or not _SCHEME_RE.fullmatch(head) or (len(head) < 2 and not rest.startswith("//")):
+        return url  # not a URL (bare path, Windows drive letter `C:\…`) — untouched
     scheme = head.lower()
     if not rest.startswith("//"):
         return f"{scheme}:{rest}"  # no authority component (e.g. file:/allowed/doc.pdf)
@@ -90,17 +90,22 @@ def chunk_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     """Check if a chunk has already been stored (dedup guard)."""
     from sqlalchemy import text
 
-    source_url = canonical_source_url(source_url)  # the SAME key insert_chunk writes
+    # Look up the canonical key insert_chunk writes AND the spelling we were
+    # given: rows written before canonicalisation keep their raw casing, and the
+    # freshness recrawl re-supplies exactly that stored spelling — a canonical-
+    # only lookup would miss such a row and the recrawl would write a duplicate.
+    raw_url = source_url
+    source_url = canonical_source_url(source_url)
     try:
         with _engine().connect() as conn:
             count = conn.execute(
                 text("""
                     SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = :tid
-                      AND source_url = :url
+                      AND (source_url = :url OR source_url = :raw)
                       AND metadata->>'chunk_index' = :idx
                 """),
-                {"tid": tenant_id, "url": source_url, "idx": str(chunk_index)},
+                {"tid": tenant_id, "url": source_url, "raw": raw_url, "idx": str(chunk_index)},
             ).scalar()
         return (count or 0) > 0
     except Exception as e:
