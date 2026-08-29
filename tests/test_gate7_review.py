@@ -852,6 +852,34 @@ def test_scoped_run_tells_the_reviewer_which_files_it_cannot_see():
     assert "SCOPE NOTICE" not in build_prompt("t", "b", "diff", "high", [])
 
 
+def test_redaction_is_unconditional_and_covers_log_content_whatever_the_kind():
+    """#3481 round J (sustained on adjudication, false): "`.log` in
+    _DOC_SUFFIXES excludes logs from the redaction step". Kind never gates
+    redaction: main() redacts title, body and the WHOLE diff before any
+    provider call, with no kind conditional, and the redactors act on log
+    content like any other text."""
+    import inspect
+
+    from gate7_review import main
+
+    src = inspect.getsource(main)
+    redact_at = src.index("title, body, diff = redact(title), redact(body), redact(diff)")
+    kind_at = src.index("kind = pr_kind(")
+    cascade_at = src.index("call_cascade(")
+    assert redact_at < cascade_at, "redaction must precede every provider call"
+    assert "if kind" not in src[:redact_at] and "if kind" not in src[redact_at:cascade_at]
+    assert kind_at > redact_at, "kind is classified after redaction; it cannot gate it"
+
+    log_diff = (
+        "diff --git a/x/run.log b/x/run.log\n"
+        "+2026-08-29 host=10.20.30.40 api_key=sk-live-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 mac=AA:BB:CC:DD:EE:FF\n"
+    )
+    out = redact(log_diff)
+    assert "10.20.30.40" not in out and "AA:BB:CC:DD:EE:FF" not in out
+    assert "sk-live-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345" not in out
+    assert pr_kind(["x/run.log"]) == "documentation"  # classification is all `.log` changes
+
+
 def test_code_kind_gets_no_decision_point_reminder():
     from gate7_review import build_adjudication_prompt
 
