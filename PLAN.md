@@ -1,71 +1,86 @@
-# PLAN — Photo memory: bot remembers ANY photo and answers follow-ups (overnight 2026-07-29)
+# Autonomous Run Plan — Technician Beta Recovery, Workstream A
 
-**Operator ask (verbatim intent):** "the telegram bot being able to remember the photo and answer
-about it — use telethon and agents to test this fully — ready when I wake up in 4 hours."
+**Date:** 2026-08-29  
+**Branch:** `codex/technician-beta-recovery-a`  
+**Base:** `origin/main` at `89adee90b3ebb31b5117a5cfa23341ce90ff239e`  
+**Operator:** Claude Code, supervised by Codex  
+**Approved PRD source:** `C:\Users\hharp\Documents\GitHub\MIRA\docs\prd\2026-08-29-technician-beta-recovery-prd.md`
 
-**Branch:** `feat/photo-memory-equipment-followup` — STACKED on `feat/printsense-persistent-qa`
-(PR #2798, which already ships photo-memory for electrical prints; DO NOT MERGE #2798 — that gate
-is Mike's). This PR generalizes the same workspace spine to equipment/nameplate photos.
+## Objective
 
-**Worktree:** `.claude/worktrees/photo-memory` (isolated; teardown obligation noted in HANDOFF).
-*(This PLAN.md replaces the completed June "Path to Beta" plan — that phase shipped; see git
-history for the old contract.)*
+Deliver **Workstream A only** from the approved Technician Beta Recovery PRD: make private-source retrieval coherent and testable for the synthetic design-partner gate. Produce a small, merge-ready PR with failing-before/green-after evidence and no production mutations.
 
-## Scope (numbered, each with success criteria)
+## Required sequence
 
-1. **Equipment-photo workspace persistence.** After the engine vision path (and the nameplate
-   fast-path) analyzes a photo, persist the analysis — classification, extracted nameplate fields,
-   vision summary, photo sha — via the existing VisualSession spine (`mira-bots/shared/visual/`,
-   reuse `print_workspace.py` patterns; extend, don't fork). Materialized-evidence rules apply
-   (keyed on photo sha, idempotent, chat→session mapping in mira.db).
-   - ✅ Success: sending an equipment photo produces a persisted workspace row; re-ingesting the
-     same photo bytes CONVERGES (latest-wins field readers; answers unchanged). *(Adjusted from
-     "strict no-op" mid-run: the spine has no evidence-read API, so sha-keyed dedupe is a
-     documented follow-up — see HANDOFF.md.)*
+1. **Preflight and establish authority**
+   - Read the approved PRD in full, repository instructions, relevant module instructions, and current architecture/retrieval docs.
+   - Copy the approved PRD into this worktree at `docs/prd/2026-08-29-technician-beta-recovery-prd.md` without changing its approved product decisions.
+   - Confirm the branch/worktree, hooks, production guard, clean starting diff, and relevant tests.
+   - Review current retrieval/upload/chat authority paths and document the defect seam before editing implementation.
+   - Treat open PR #3477 (`fix/3442-superseded-chat-scope`) as an active ownership boundary.
 
-2. **Follow-up rung.** A text turn that references the earlier photo ("what was the model
-   number?", "what did that photo show?", "how many amps?") answers deterministic-first from
-   stored fields → bounded evidence-packet model explanation → honest refusal. Falls through
-   unchanged for safety/FSM/commercial/wiring turns. Citation-compliant: answers cite the stored
-   photo evidence or admit ignorance.
-   - ✅ Success: golden multi-turn test (photo → ≥3 distinct follow-ups) passes on the real rungs;
-     safety-keyword turns still reach the safety path (test proves fall-through).
+2. **Write regression tests first**
+   - Encode all 11 Workstream A acceptance cases from the PRD.
+   - Prefer new or clearly non-overlapping test files.
+   - Demonstrate the production defect with focused failing tests before implementation. Preserve the exact red-test evidence in the handoff.
+   - Include tenant isolation, unapproved/private-source denial, stale/superseded IDs, empty/mixed scope, approved current versions, and the existing beta NodeChat path required by the PRD.
 
-3. **Offline test suite.** Unit tests for ingest + rung + fall-through + idempotency; golden
-   conversation test mirroring `test_print_workspace_golden.py`. Full `mira-bots/tests` +
-   `tests/eval` watch set must not regress vs. the #2798 baseline (capture baseline FIRST).
-   - ✅ Success: new tests green; no newly-red pre-existing tests; ruff clean.
+3. **Implement the smallest coherent fix**
+   - Use the PRD's preferred authority model: server-derived approved source document IDs at the retrieval boundary.
+   - Keep tenant/factory/equipment authorization fail-closed.
+   - Do not globally verify or broaden trust for private uploads.
+   - Do not change public/global/manual trust semantics beyond what the tests and PRD require.
+   - Avoid refactors not necessary to establish one source of truth for Workstream A.
 
-4. **Telethon + agent QA.** (a) Add photo-memory conversation cases to the Telethon harness
-   manifest (`mira-bots/telegram_test_runner/`) and prove them via `--dry-run` (wire login is
-   human-gated: `telegram_test_session` volume is gone; one-time interactive code per RUNBOOK §3 —
-   HANDOFF item, do NOT loop on it). (b) Commit a rerunnable staging E2E proof harness
-   (generalizing the uncommitted `e2e_proof.py` pattern) under `tools/qa/`. (c) Re-run the #2798
-   staging proof against the CURRENTLY deployed staging container (no redeploy) to confirm the
-   environment is still green for Mike's morning phone test.
-   - ✅ Success: dry-run report generated; harness committed; staging re-verify transcript captured.
+4. **Prepare safe historical-repair support if required by the PRD**
+   - Any repair/backfill must default to dry-run, be tenant-scoped, emit counts/evidence, and require a separate explicit apply action.
+   - Do not run mutation mode against production or any shared environment.
+   - If no repair is required after investigation, document why and provide detection/preflight evidence instead.
 
-5. **Multi-agent (ultracode) adversarial review** of the full diff before PR: correctness /
-   security-tenancy / architecture-rules (fast-path rule, one-pipeline, citation compliance,
-   materialized evidence) lenses, findings verified then fixed.
-   - ✅ Success: review findings addressed or explicitly dispositioned in HANDOFF.
+5. **Verify and hand off**
+   - Run focused unit/integration tests, the relevant beta NodeChat coverage, type checking, and lint/static checks proportionate to changed packages.
+   - Re-run the exact regression suite green and preserve command/output evidence.
+   - Review the final diff for tenant widening, hidden fallback behavior, secrets, production endpoints, and unrelated changes.
+   - Create/update `HANDOFF.md` with: root cause, changed files, red/green evidence, remaining risks, PR #3477 integration note, and exact follow-up commands.
+   - Commit in coherent conventional commits, push the branch, and open a merge-ready PR if all gates pass. Do not merge it.
 
-6. **PR + HANDOFF + morning brief.** Open PR (base: `feat/printsense-persistent-qa`, marked
-   STACKED), VERSION bump next-free minor + CHANGELOG, `HANDOFF.md` committed, concise morning
-   brief for Mike with exact verify commands.
-   - ✅ Success: PR open with evidence body; CI triggered; HANDOFF.md complete.
+## Explicitly out of scope
 
-## OUT of scope (hard lines)
+- `mira-hub/src/lib/equipment-notebooks.ts`
+- `mira-hub/src/lib/__tests__/equipment-notebooks-domain.test.ts`
+- Any file substantively owned by open PR #3477 unless the session stops and obtains a new integration decision
+- Workstreams B, C, D, or E
+- Mobile UI/Expo changes
+- Machine memory, knowledge graph, technician feedback, or analytics work
+- Production deploys, shared-environment mutations, Doppler `prd` access, raw production SQL, or hardware changes
+- Authentication redesign, new trust classes, global source verification, cross-tenant widening, or security-policy changes
+- Archived/deferred modules unless needed only as read-only historical context
+- Merging the PR
 
-- ❌ Merging #2798 or this PR (both are Mike's call; #2798 explicitly says DO NOT MERGE).
-- ❌ Redeploying staging or prod (staging currently hosts Mike's pending #2798 phone-verify env).
-- ❌ Any prod DB/psql/VPS container mutation; migration application to prod.
-- ❌ Slack/email/web adapters (Telegram only tonight; engine seams stay adapter-agnostic).
-- ❌ Engine FSM redesign, UNS gate changes, new ingestion pipelines, control writes.
-- ❌ Retrying the Telethon interactive login (human-gated — one HANDOFF line, no loop).
-- ❌ New migrations beyond what already exists on #2798 (069). Reuse spine tables.
+## Hard stops
 
-## Budget / stop conditions
+Stop implementation and write `HANDOFF.md` if any of these occur:
 
-Per autonomous-run skill: stop at 70% token budget, 200 turns, 5 consecutive failures on one
-test, or any OUT-of-scope touch. On stop: HANDOFF.md, commit, push branch, end.
+- The defensible fix requires editing the two PR #3477-owned files or otherwise conflicts with that PR.
+- Acceptance requires changing tenant isolation, authorization policy, trust semantics, or another security/product decision not already settled in the PRD.
+- A required test can only pass using production data, a production mutation, hidden fallback, or disabled guard.
+- Repository state or hooks do not match the asserted branch/worktree and cannot be made safe without operator authority.
+- Existing unrelated failures prevent credible red/green evidence after focused isolation.
+
+## Success criteria
+
+- The approved PRD is present on the branch unchanged in substance.
+- All 11 Workstream A acceptance cases exist as automated tests.
+- New tests demonstrably fail for the expected reason before implementation and pass afterward.
+- Retrieval derives the effective approved source scope server-side and fails closed for unauthorized, stale, empty, or cross-tenant scope.
+- No private upload becomes globally verified or accessible outside its authorized tenant/factory/equipment context.
+- Existing beta NodeChat/retrieval coverage relevant to the changed path remains green.
+- Relevant type checks and lint/static checks pass, or any pre-existing unrelated failure is precisely evidenced.
+- The diff excludes all out-of-scope files and contains no secrets or production mutation.
+- `HANDOFF.md`, conventional commits, pushed branch, and a merge-ready unmerged PR exist.
+
+## Operator notes
+
+- The autonomous-run skill refers to `.Codex/settings.json`, but this repository's current hook authority is `.claude/settings.json`. Semantic hook coverage is present there: `SessionStart`, `PreToolUse`, `PostToolUse`, and `Stop`, including `tools/hooks/prod-guard.sh` and `tools/hooks/stop-gate.sh`.
+- No override variables may be introduced or enabled. In particular, keep `MIRA_ALLOW_PROD` and `MIRA_SKIP_STOP_GATE` unset.
+- Do not reinterpret “finish the PRD” as permission to leave Workstream A. This session ends at the Workstream A PR/handoff boundary.
