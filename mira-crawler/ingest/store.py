@@ -371,6 +371,12 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
     """
     if not source_urls:
         return set()
+    if not tenant_id:
+        # Fail closed (Gate 7 round M on #3481): without a tenant this probe
+        # would have queried EVERY tenant's rows. Nothing is reported as
+        # ingested, so ledger items stay pending — the retryable direction.
+        logger.warning("ingested_source_urls called without a tenant_id — refusing the probe")
+        return set()
     from sqlalchemy import text
 
     # Rows written since the canonical key landed carry the canonical spelling;
@@ -384,9 +390,9 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
             rows = conn.execute(
                 text(
                     "SELECT DISTINCT source_url FROM knowledge_entries "
-                    "WHERE source_url = ANY(:urls)" + (" AND tenant_id = :tid" if tenant_id else "")
+                    "WHERE source_url = ANY(:urls) AND tenant_id = :tid"
                 ),
-                ({"urls": lookup, "tid": tenant_id} if tenant_id else {"urls": lookup}),
+                {"urls": lookup, "tid": tenant_id},
             ).fetchall()
         found = {r[0] for r in rows if r and r[0]}
         return {u for u in asked if u in found or canonical_source_url(u) in found}

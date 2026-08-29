@@ -536,6 +536,20 @@ class TestCanonicalSourceUrl:
         } <= queried
         assert captured["params"]["tid"] == "tenant-a"
 
+    def test_ledger_probe_refuses_to_run_without_a_tenant(self, captured):
+        """Gate 7 round M on #3481 (real, pre-existing): `ingested_source_urls`
+        took `tenant_id=""` and then dropped the tenant predicate, so an unset
+        MIRA_TENANT_ID turned the ledger's did-it-land probe into a cross-tenant
+        existence query. Fail closed instead: no tenant → no query, nothing
+        reported as ingested (items stay pending, the retryable direction)."""
+        captured["rows"] = [("https://example.com/a.pdf",)]
+        assert store.ingested_source_urls(["https://example.com/a.pdf"], "") == set()
+        assert store.ingested_source_urls(["https://example.com/a.pdf"], None) == set()  # type: ignore[arg-type]
+        assert "sql" not in captured, "a tenant-less probe must never reach the database"
+        # With a tenant the predicate is always present.
+        store.ingested_source_urls(["https://example.com/a.pdf"], "tenant-a")
+        assert "tenant_id = :tid" in captured["sql"] and captured["params"]["tid"] == "tenant-a"
+
     def test_canonicalisation_never_changes_visibility_or_refusal(self):
         for raw in (
             "HTTPS://Unknown.Example.INVALID/x.pdf",
