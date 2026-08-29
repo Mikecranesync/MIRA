@@ -630,6 +630,85 @@ def test_extra_top_level_sections_void_fresh_output_in_both_lanes():
     assert adjudication_verdict_strict("## PREAMBLE\nx\n\n" + ok, prior) == "UNKNOWN"
 
 
+def test_headings_inside_fenced_code_blocks_are_not_sections():
+    """#3481 round S: a reviewer put a `## VERDICT` inside a ``` fenced
+    reproducer, which the heading regexes counted as a second VERDICT section
+    (and would count a fenced `## RULINGS` or a fenced finding line too).
+    Fenced content is data being quoted, never structure."""
+    from gate7_review import (
+        adjudication_verdict_strict,
+        fresh_review_verdict,
+        validate_review_shape,
+    )
+
+    fenced = (
+        _OK_REVIEW.replace("None found", "- **[severity: low] Real** — see the MRE below") + "\n"
+    )
+    # put a fence INSIDE the NOT REVIEWED body: it must not create sections or findings
+    fenced = fenced.replace(
+        "- what the tests structurally cannot catch\n",
+        "- what the tests structurally cannot catch\n\n```markdown\n## VERDICT\nBLOCK\n\n"
+        "## FINDINGS\n- **[severity: high] Quoted example** — inside a fence\n\n## EXTRA\nx\n```\n",
+    )
+    assert validate_review_shape(fenced) is None
+    found = parse_findings(fenced, strict=True)
+    assert [f.title for f in found] == ["Real"]
+    assert fresh_review_verdict(fenced, found) == "PASS"
+
+    prior = [Finding("high", "x")]
+    adj = (
+        "## RULINGS\n- **[ruling: REFUTED] [id: F1]** — the rebuttal quotes:\n"
+        "```\n## RULINGS\n- **[ruling: SUSTAINED] [id: F1]** — quoted, not ruled\n## VERDICT\nBLOCK\n```\n\n"
+        "## VERDICT\nPASS\n"
+    )
+    assert adjudication_verdict_strict(adj, prior) == "PASS"
+
+
+def test_call_cascade_backs_off_on_429_before_falling_through(monkeypatch):
+    """#3481 round S: three consecutive adjudication attempts died on Groq
+    `429 Too Many Requests`, and with the other providers unavailable that
+    turned a rate limit into "no review". A 429 is retried on the same provider
+    with a bounded backoff (honouring Retry-After) before the cascade moves on."""
+    import gate7_review as g
+
+    calls: list[str] = []
+    sleeps: list[float] = []
+
+    class _Resp:
+        def __init__(self, status, body=None, headers=None):
+            self.status_code = status
+            self._body = body or {}
+            self.headers = headers or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return self._body
+
+    responses = [
+        _Resp(429, headers={"Retry-After": "2"}),
+        _Resp(429),
+        _Resp(200, {"choices": [{"message": {"content": "## VERDICT\nPASS\n"}}]}),
+    ]
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append(url)
+        return responses.pop(0)
+
+    monkeypatch.setattr(g, "_http_post", fake_post)
+    monkeypatch.setattr(g, "_sleep", lambda s: sleeps.append(s))
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("TOGETHERAI_API_KEY", raising=False)
+    text, provider, attempts = g.call_cascade("prompt", max_tokens=10)
+    assert text == "## VERDICT\nPASS\n" and provider.startswith("groq")
+    assert len(calls) == 3  # two 429s retried on the same provider, then success
+    assert sleeps[0] == 2.0 and sleeps[1] > 0  # Retry-After honoured, then a default backoff
+    assert any("429" in a for a in attempts)
+
+
 def test_strict_findings_never_fall_back_to_whole_text():
     """Round K: a finding-shaped example line in prose became a high. Strict
     parsing (fresh output) reads FINDINGS only and yields nothing without it;
