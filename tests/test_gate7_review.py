@@ -814,11 +814,42 @@ def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_rec
     assert "+raw review text" not in kept and "+log line" not in kept
     assert "+index row" in kept and "+author rebuttal" in kept and "+code" in kept
 
+    # #3481 round I (sustained): a rename/move must be keyed on BOTH sides. An
+    # artifact that merely moves (still a doc/log file) stays excluded and is
+    # receipted under its new path; one that becomes code stays in review.
+    moved = (
+        f"diff --git a/{e}round-9-review.md b/docs/notes/round-9-review.md\n"
+        "similarity index 100%\n"
+        f"rename from {e}round-9-review.md\nrename to docs/notes/round-9-review.md\n"
+        f"diff --git a/{e}r.stderr.log b/tools/r.py\n+now code\n"
+        f"diff --git a/docs/plain.md b/{e}plain.md\n+moved into evidence\n"
+    )
+    kept2, dropped2 = drop_evidence_artifacts(moved)
+    assert dropped2 == ["docs/notes/round-9-review.md", e + "plain.md"]
+    assert "+now code" in kept2 and "rename to docs/notes" not in kept2
+
     out = "\n".join(receipts_block("h", None, [], kept, "high", artifacts=dropped))
     assert "evidence artifacts excluded" in out
     assert e + "round-9-review.md" in out and e + "r.stderr.log" in out
     # Default receipts are byte-for-byte unchanged when nothing was dropped.
     assert "evidence artifacts" not in "\n".join(receipts_block("h", None, [], kept, "high"))
+
+
+def test_scoped_run_tells_the_reviewer_which_files_it_cannot_see():
+    """#3481 rounds H–I: a `--paths docs/` review reported "the only file changed
+    is CU-03.md" and called the record's true statements about code outside its
+    slice false claims. Like the truncation notice, the scope notice lands
+    after the untrusted data and before the output shape: the excluded files
+    exist in the PR, and "the diff does not contain X" is NOT a finding."""
+    excluded = ["mira-crawler/ingest/store.py", "tests/test_gate7_review.py"]
+    p = build_prompt("t", "b", "diff", "high", [], excluded=excluded)
+    end = p.index("--- END UNTRUSTED PR DATA ---")
+    out = p.index("Output STRICT")
+    notice = p.index("SCOPE NOTICE")
+    assert end < notice < out
+    assert "mira-crawler/ingest/store.py" in p[notice:out]
+    assert "is NOT a finding" in p[notice:out]
+    assert "SCOPE NOTICE" not in build_prompt("t", "b", "diff", "high", [])
 
 
 def test_code_kind_gets_no_decision_point_reminder():

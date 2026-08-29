@@ -355,6 +355,27 @@ def kind_block(kind: str) -> str:
     )
 
 
+def _scope_notice(excluded: Optional[list[str]]) -> str:
+    """Tell a scoped (--paths) reviewer what it cannot see. Pure.
+
+    Same lesson as the truncation notice, one level up: on #3481 a
+    `--paths docs/` review reported "the only file changed is CU-03.md" and
+    called the record's true statements about code outside its slice false
+    claims, two rounds running. A reviewer that does not know it is reading a
+    slice treats every absence as a defect.
+    """
+    if not excluded:
+        return ""
+    return (
+        f"\n⚠️ SCOPE NOTICE — you are reading a --paths SLICE of this PR, not the PR.\n"
+        f"{len(excluded)} changed file(s) are outside your slice and exist in the PR:\n"
+        + "\n".join(f"  - {p}" for p in excluded)
+        + '\nTherefore: "the diff does not contain X" / "the only file changed is Y" is NOT a\n'
+        "finding here. A claim that this PR changes one of the files above is settled by that\n"
+        "file's own group, not by its absence from yours. Do not report the absence.\n"
+    )
+
+
 def decision_point_reminder(kind: str) -> str:
     """The artifact-semantics reminder, repeated AFTER the untrusted data and
     immediately BEFORE the output instructions. Pure.
@@ -390,6 +411,7 @@ def build_prompt(
     reasons: list[str],
     settled: str = "",
     kind: str = "code",
+    excluded: Optional[list[str]] = None,
 ) -> str:
     """Assemble the Gate 7 brief. Pure — no I/O.
 
@@ -434,7 +456,7 @@ Diff:
 {diff[:MAX_DIFF_CHARS]}
 ```
 --- END UNTRUSTED PR DATA ---
-{_truncation_notice(diff)}{decision_point_reminder(kind)}
+{_truncation_notice(diff)}{_scope_notice(excluded)}{decision_point_reminder(kind)}
 
 Output STRICT markdown in exactly this shape, no preamble:
 
@@ -738,8 +760,16 @@ def drop_evidence_artifacts(diff: str) -> tuple[str, list[str]]:
     keep = True
     for line in diff.splitlines(keepends=True):
         if line.startswith("diff --git "):
-            target = line.rsplit(" b/", 1)[-1].strip()
-            keep = not is_evidence_artifact(target)
+            header = line[len("diff --git ") :].strip()
+            source, _, target = header.rpartition(" b/")
+            source = source[2:] if source.startswith("a/") else source
+            # Keyed on BOTH sides (#3481 round I, sustained): an artifact that
+            # merely moves — still a doc/log-class file at its new path — stays
+            # excluded and is receipted under the new path; one that becomes
+            # code (`x.log` -> `x.py`) stays in review. A pure rename carries no
+            # content hunk, so nothing reviewable is lost either way.
+            moved_artifact = is_evidence_artifact(source) and target.lower().endswith(_DOC_SUFFIXES)
+            keep = not (is_evidence_artifact(target) or moved_artifact)
             if not keep:
                 dropped.append(target)
         if keep:
@@ -1127,7 +1157,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     text, provider, attempts = call_cascade(
-        build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind),
+        build_prompt(
+            title, body, diff, level, reasons, settled=settled, kind=kind, excluded=excluded
+        ),
         max_tokens=32000 if level == "xhigh" else 24000,
     )
     if text is None:
