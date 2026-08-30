@@ -54,6 +54,22 @@ The remaining decision is the human Gate 9 / merge.
    brief; docs + raw evidence ⇒ documentation brief; evidence-only ⇒ exit 1, no provider call;
    `--include-evidence` ⇒ documentation. Closes round-23 code F2 (medium, materially right).
 
+6. **Whitespace at the canonical seam (round AA, this commit).** Surrounding whitespace is
+   stripped from a recognised **http/https/file** URL before every other rule; a padded non-URL
+   (bare/local path, drive letter) or a padded URL of any other scheme keeps every byte. Closes
+   round-25 code F1 (real).
+7. **The credential boundary (round AA, this commit).** `provenance.url_has_userinfo` — an
+   http/https URL whose authority carries `user:password@` is refused fail-closed at the hop-0
+   gate (`shared_corpus_allowed` / `enforce_visibility`, reached by
+   `tasks/ingest.py::shared_corpus_source_allowed`; no second policy implementation) and at the
+   store boundary (`insert_chunk`, `chunk_exists`, `ingested_source_urls`) **before
+   canonicalisation and before any SQL**; never stripped into another identity, never persisted,
+   never logged (refusal warnings carry `_log_ref` only). Authenticated sources use out-of-band
+   secret-backed request headers, not URL userinfo. Closes round-25 code F2 (real, pre-existing
+   on `main`). Parameter-capture locks prove the literal username/password never enters any SQL
+   bind or log across insert, dedup lookup, batch store and the ledger probe (mixed request →
+   only safe values queried, refused spelling never answered; all-userinfo → no query).
+
 Supporting: `tools/qa/security/knowledge_entries_read_allowlist.yml` re-keyed for the two unchanged
 `store.py` reads (`121→173`, `412→488`; hashes unchanged); four pre-existing test fakes now yield
 the bound id from `execute()` (the contract changed); two mock-SQL assertions rephrased so
@@ -69,7 +85,8 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 **materially right** (kind from the PR file list, not the reviewed diff) → root-fixed (round Y); not adjudicated (fix, don't argue) |
 | X | `8204059a4` | not reviewed — superseded before review by the round-23 F2 correction | F2 was materially right (kind from the PR file list, not the reviewed diff) → root-fixed in round Y |
 | Y | `60c61870d` | BLOCK ×1 (fabricated `is_evidence_artifact` body) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 fabricated (no `dict(rulings)`; locked explicitly), F2 **real** (`_urls_in` whitespace) → root-fixed (round Z); not adjudicated |
-| Z | this commit | round 25 — recorded in the final evidence commit | round 25 — a valid BLOCK is fixed, not adjudicated |
+| Z | `8db09c2ea` | BLOCK ×3, all false on the diff → adjudication attempt 1 structurally PASS but **substantively void** (reasons unrelated to the findings) — recorded as invalid, not GREEN; fresh docs review on the new head | attempt 1 malformed (preserved) → attempt 2 **valid BLOCK**: Z-C1 **real** (whitespace) and Z-C2 **real, pre-existing** (userinfo persisted) → both root-fixed (round AA); Z-C3 settled/re-raised; Z-C4/Z-C5 false, non-blocking |
+| AA | this commit | round 26 — recorded in the final evidence commit | round 26 — a valid BLOCK is fixed, not adjudicated |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
 PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at
@@ -116,10 +133,10 @@ from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 6. What remains / human actions
 
-1. **Round 25** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
+1. **Round 26** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
    in CU-03, the evidence README and here, in the final evidence/record commit. A valid code BLOCK
-   is fixed (new head, new round), never adjudicated away. Reviews of a superseded head are not
-   retried once the head has moved.
+   is fixed (new head, new round), never adjudicated away; a false finding may receive one
+   evidence-bound adjudication. Reviews of a superseded head are not retried once it moves.
 2. **PR/issue comms** — PR #3481 body + comment, PR #3268 closure pointer, issues #3482/#3483:
    updated to the final head in the final commit.
 3. **Human Gate 9 / merge = Mike.** This branch never merges itself, never marks the convergence

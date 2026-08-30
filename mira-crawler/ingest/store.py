@@ -52,6 +52,10 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 # `%HH` matches — `%7`, `%`, `%zz`, `%7g` are not escapes and stay as given.
 _PCT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 _ASCII_DIGITS_RE = re.compile(r"[0-9]+")
+# Surrounding whitespace is stripped only from URLs of the schemes the hop-0
+# gate admits (http/https/file). A padded value of any other scheme, a padded
+# bare path or a padded drive-letter path keeps every byte: not ours to change.
+_STRIP_SCHEMES = frozenset({"http", "https", "file"})
 
 
 def _upper_escapes(component: str) -> str:
@@ -85,8 +89,18 @@ def canonical_source_url(url: str) -> str:
     * the hex digits of every valid ``%HH`` escape are **upper-cased** in the
       userinfo, path, query and fragment (RFC 3986 §6.2.2.1); nothing is ever
       decoded, and invalid ``%`` text (``%7``, ``%``, ``%zz``) is preserved;
+    * surrounding whitespace is not part of a URL and is stripped from a
+      recognised URL before any of the above (round Z on #3481); a value that
+      is not a URL by the scheme rule — a bare path, a Windows drive letter —
+      keeps every byte including its whitespace, so a non-URL identity is never
+      silently changed;
     * every other byte is preserved exactly as given. The transform is
       idempotent.
+
+    Userinfo (``user:password@host``) is neither stripped into another identity
+    nor persisted: such a URL is refused at the hop-0 gate and at the store
+    boundary before this function is ever consulted for a write
+    (``ingest.provenance.url_has_userinfo``).
 
     Why: the dedup key ``(tenant_id, source_url, chunk_index)`` is an exact-match
     UNIQUE index (migration 003), so any two spellings of one logical document
@@ -107,10 +121,15 @@ def canonical_source_url(url: str) -> str:
     """
     if not url:
         return url
-    head, sep, rest = url.partition(":")
+    candidate = url.strip()
+    head, sep, rest = candidate.partition(":")
     if not sep or not _SCHEME_RE.fullmatch(head) or (len(head) < 2 and not rest.startswith("//")):
-        return url  # not a URL (bare path, Windows drive letter `C:\…`) — untouched
+        return url  # not a URL (bare path, Windows drive letter `C:\…`) — untouched, bytes and all
     scheme = head.lower()
+    if candidate != url and scheme not in _STRIP_SCHEMES:
+        return url  # padded, but not an allowed scheme: its bytes are not ours to change
+    # From here every part is taken from `candidate`: an allowed-scheme URL's
+    # surrounding whitespace is not identity.
     if not rest.startswith("//"):
         # no authority component (e.g. file:/allowed/doc.pdf): the rest is a path
         return f"{scheme}:{_upper_escapes(rest)}"
@@ -132,6 +151,25 @@ def canonical_source_url(url: str) -> str:
         port = colon + port
     port = _canonical_port(scheme, port)
     return f"{scheme}://{_upper_escapes(userinfo)}{at}{host.lower()}{port}{_upper_escapes(tail)}"
+
+
+def _refuse_userinfo(url: str) -> bool:
+    """True — with a credential-free warning — when ``url`` carries userinfo.
+    The store boundary's half of the hop-0 rule (``provenance.url_has_userinfo``):
+    every route that reaches SQL passes through here first."""
+    try:
+        from .provenance import url_has_userinfo
+    except ImportError:  # pragma: no cover — flat-path layout
+        from provenance import url_has_userinfo  # type: ignore[no-redef]
+
+    if not url_has_userinfo(url):
+        return False
+    logger.warning(
+        "Refusing knowledge_entries access for %s — the URL carries userinfo (credentials); "
+        "authenticated sources use secret-backed request headers, never URL userinfo",
+        _log_ref(url),
+    )
+    return True
 
 
 def _engine():
@@ -160,6 +198,8 @@ def chunk_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     """Check if a chunk has already been stored (dedup guard)."""
     from sqlalchemy import text
 
+    if _refuse_userinfo(source_url):
+        return False  # no query: a credential never reaches the DB, not even as a bind
     # Look up the canonical key insert_chunk writes AND the spelling we were
     # given: rows written before canonicalisation keep their raw casing, and the
     # freshness recrawl re-supplies exactly that stored spelling — a canonical-
@@ -217,6 +257,13 @@ def insert_chunk(
     # the knowledge_entries.manufacturer column (which the Hub KB catalog
     # GROUPs BY) stays canonical regardless of which caller wrote it (#1596).
     manufacturer = normalize_manufacturer(manufacturer).canonical
+
+    # A URL carrying userinfo is refused HERE — before canonicalisation, before
+    # the dedup lookup, before any SQL (Gate 7 round Z on #3481, code F2). The
+    # credential is never stripped into another identity and never persisted;
+    # an authenticated source uses out-of-band secret-backed headers.
+    if _refuse_userinfo(source_url):
+        return ""
 
     # One canonical key for every casing of an origin — before provenance and
     # before binding, so the classified URL and the stored URL are the same
@@ -480,6 +527,12 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
     # the caller's own spelling, so the ledger's keys match either way and a
     # mixed-case enqueued URL can never stay pending forever.
     asked = list(source_urls)
+    # A credential-bearing URL is refused before it is canonicalised or bound:
+    # only the safe values are queried, and a refused spelling is never answered
+    # (Gate 7 round Z on #3481, code F2). All refused → no query at all.
+    asked = [u for u in asked if not _refuse_userinfo(u)]
+    if not asked:
+        return set()
     lookup = sorted({*asked, *(canonical_source_url(u) for u in asked)})
     try:
         with _engine().connect() as conn:

@@ -172,8 +172,38 @@ def classify_origin(url: str, *, policy: "dict | None" = None) -> tuple[str, str
     return ("unclassified", f"origin {host!r} has no entry in the canonical provenance policy")
 
 
+_USERINFO_REFUSED = (
+    "URL carries userinfo (credentials in the authority) — refused; an authenticated "
+    "source uses out-of-band secret-backed request headers, never URL userinfo"
+)
+
+
+def url_has_userinfo(url: str) -> bool:
+    """True when an http/https URL's authority carries userinfo (``user:pass@host``).
+
+    Pure, string-based on the same authority slice ``canonical_source_url`` uses
+    (everything between ``//`` and the first ``/``, ``?`` or ``#``), so an ``@``
+    in a path, query or fragment is not userinfo. Case- and padding-insensitive
+    on the scheme. Such a URL is refused at the hop-0 gate and at the store
+    boundary (Gate 7 round Z on #3481): a credential is never stripped into
+    another identity, never bound into SQL, never persisted, never logged.
+    """
+    s = str(url).strip()
+    head, sep, rest = s.partition(":")
+    if not sep or head.lower() not in ("http", "https") or not rest.startswith("//"):
+        return False
+    authority = rest[2:]
+    for stop in "/?#":
+        idx = authority.find(stop)
+        if idx != -1:
+            authority = authority[:idx]
+    return "@" in authority
+
+
 def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bool, str]:
     """May this URL be written to the shared corpus? Fail-closed."""
+    if url_has_userinfo(url):
+        return (False, _USERINFO_REFUSED)
     cls, reason = classify_origin(url, policy=policy)
     if cls in _SHARED_OK:
         return (True, reason)
@@ -213,6 +243,8 @@ def enforce_visibility(source_url: str, declared_private: bool) -> tuple[bool, b
     asked, never less, and it can refuse — it can never grant sharing that the
     caller did not request.
     """
+    if url_has_userinfo(source_url):
+        return (False, True, _USERINFO_REFUSED)  # before classification: never a document
     try:
         cls, reason = classify_origin(source_url)
     except Exception as exc:  # unreadable policy -> refuse, never publish

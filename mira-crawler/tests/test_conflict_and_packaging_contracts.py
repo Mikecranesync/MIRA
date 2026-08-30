@@ -709,6 +709,42 @@ class TestCanonicalSourceUrl:
         assert _insert(True, "https://example.com/Doc%7A.PDF") != ""
         assert [s for s, _ in captured["all"] if "SELECT COUNT" in s] == []
 
+    # ── Round Z (#3481) code F1, high: surrounding whitespace is not part of a
+    # URL's identity. A padded spelling of a recognised URL canonicalises to the
+    # same key; a padded NON-URL (bare path, drive letter) keeps its bytes — its
+    # identity is not silently changed.
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("  https://Example.com:443/x ", "https://example.com/x"),
+            ("\thttp://example.com/a%7a\n", "http://example.com/a%7A"),
+            ("  FILE:///C:/Docs/x.pdf", "file:///C:/Docs/x.pdf"),
+            ("https://example.com/x", "https://example.com/x"),
+        ],
+    )
+    def test_surrounding_whitespace_is_stripped_from_a_recognised_url(self, raw, expected):
+        assert store.canonical_source_url(raw) == expected
+        assert store.canonical_source_url(expected) == expected  # idempotent
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            " /inbox/Doc.pdf",  # padded bare path
+            "C:\\inbox\\Doc.pdf ",  # padded Windows drive path
+            "  ",
+            " not a url ",
+            " ftp://Example.com/x ",  # padded, but not an allowed scheme: untouched entirely
+            "  mailto:A@B.example ",
+            "\tX://Service.Local/Resource\n",
+        ],
+    )
+    def test_a_padded_non_url_or_disallowed_scheme_keeps_its_bytes(self, raw):
+        assert store.canonical_source_url(raw) == raw
+
+    def test_an_unpadded_other_scheme_still_canonicalises_as_before(self):
+        assert store.canonical_source_url("FTP://Example.com:21/X") == "ftp://example.com:21/X"
+
     def test_lookup_and_write_share_one_key_across_port_and_escape_spellings(self, captured):
         raw = "HTTPS://EXAMPLE.COM:443/Doc%7a.PDF"
         canon = "https://example.com/Doc%7A.PDF"
@@ -871,6 +907,118 @@ class TestCanonicalSourceUrl:
 # surface, but a URL path can carry a document name or a token; the log needs
 # only enough to correlate — the origin and a short hash of the exact URL.
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestUserinfoRefusedAtTheBoundary:
+    """Round Z (#3481) code F2, high: a URL whose authority carries userinfo
+    (`user:password@host`) is refused at the hop-0 gate and at the store
+    boundary — before canonicalisation, before any SQL — and the credential
+    never reaches a log. Userinfo is never stripped into another identity and
+    never persisted: an authenticated source uses out-of-band, secret-backed
+    request headers, not URL userinfo (repository secret policy)."""
+
+    URL = "https://svc:hunter2@Example.com:443/private/doc.pdf"
+
+    @staticmethod
+    def _no_credential_reached_sql(captured: dict) -> None:
+        """Every statement and every bound parameter value, not just the last."""
+        for sql, params in captured.get("all", []):
+            blob = f"{sql} {params!r}"
+            assert "hunter2" not in blob and "svc" not in blob, blob[:200]
+
+    def test_gate_and_policy_refuse_userinfo(self):
+        ok, reason = _ingest_gate()(self.URL)
+        assert ok is False and "userinfo" in reason and "hunter2" not in reason
+        allowed, is_private, reason = provenance.enforce_visibility(self.URL, False)
+        assert (allowed, is_private) == (False, True) and "hunter2" not in reason
+        assert provenance.shared_corpus_allowed(self.URL)[0] is False
+        assert provenance.url_has_userinfo(self.URL)
+        assert provenance.url_has_userinfo("http://u@[::1]/x")
+        assert provenance.url_has_userinfo("  HTTPS://u:p@example.com/x")  # padded, upper-case
+
+    def test_an_at_sign_outside_the_authority_is_not_userinfo(self):
+        for url in (
+            "https://example.com/x?mail=a@b.c",
+            "https://example.com/p@th",
+            "https://example.com/x#a@b",
+            "file:///C:/Docs/a@b.pdf",
+        ):
+            assert not provenance.url_has_userinfo(url), url
+        # The rule never widens: an origin without userinfo classifies exactly as before.
+        assert provenance.enforce_visibility("https://unknown.example.invalid/x?u=a@b", False) == (
+            True,
+            True,
+            provenance.enforce_visibility("https://unknown.example.invalid/x", False)[2],
+        )
+
+    def test_insert_refuses_userinfo_with_no_sql_and_no_credential_in_logs(
+        self, captured, caplog, monkeypatch
+    ):
+        import logging
+
+        # "Before canonicalisation": the store boundary refuses on its own, before
+        # the canonical identity is ever computed — not only via enforce_visibility.
+        monkeypatch.setattr(
+            store,
+            "canonical_source_url",
+            lambda u: pytest.fail("canonicalised a credential-bearing URL"),
+        )
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            assert _insert(True, self.URL) == ""
+        assert "sql" not in captured  # nothing reached the DB — not even the dedup lookup
+        assert "hunter2" not in caplog.text and "svc:" not in caplog.text
+        assert "userinfo" in caplog.text
+
+    def test_chunk_exists_refuses_userinfo_without_a_query(self, captured):
+        assert store.chunk_exists("tenant-a", self.URL, 0) is False
+        assert "sql" not in captured
+
+    def test_store_chunks_refuses_userinfo_with_no_sql_and_no_links(self, captured, monkeypatch):
+        try:
+            from ingest import kg_writer
+        except ImportError:  # container layout
+            from mira_crawler.ingest import kg_writer  # type: ignore[no-redef]
+        links: list = []
+        monkeypatch.setattr(
+            kg_writer, "register_equipment_and_manual", lambda **kw: ("eq-1", "manual-1")
+        )
+        monkeypatch.setattr(kg_writer, "link_chunk_to_equipment", lambda e, q: links.append((e, q)))
+        chunks = [({"text": "c", "chunk_index": 0, "source_url": self.URL}, [0.1, 0.2])]
+        assert store.store_chunks(chunks, "tenant-a", "Rockwell", "525", is_private=True) == 0
+        assert "sql" not in captured and links == []
+        self._no_credential_reached_sql(captured)
+
+    def test_ledger_probe_never_binds_a_credential_and_never_returns_the_refused_spelling(
+        self, captured, caplog
+    ):
+        import logging
+
+        captured["rows"] = [("https://example.com/safe.pdf",)]
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            got = store.ingested_source_urls(
+                ["https://example.com/safe.pdf", self.URL, "http://a:b@other.example/x"],
+                "tenant-a",
+            )
+        assert got == {"https://example.com/safe.pdf"}  # only the safe value is answered
+        queried = captured["params"]["urls"]
+        assert "https://example.com/safe.pdf" in queried
+        assert not any("@" in u for u in queried)  # the refused spellings were never bound
+        self._no_credential_reached_sql(captured)
+        assert "hunter2" not in caplog.text and "svc:" not in caplog.text
+        assert "userinfo" in caplog.text
+
+    def test_ledger_probe_with_only_userinfo_urls_runs_no_query(self, captured):
+        assert (
+            store.ingested_source_urls([self.URL, "http://a:b@other.example/x"], "tenant-a")
+            == set()
+        )
+        assert "sql" not in captured
+
+    def test_insert_and_lookup_bind_no_credential_anywhere(self, captured):
+        _insert(True, self.URL)
+        store.chunk_exists("tenant-a", self.URL, 0)
+        assert captured.get("all", []) == []  # no statement at all
+        self._no_credential_reached_sql(captured)
 
 
 class TestRefusalLogging:
