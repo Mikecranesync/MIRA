@@ -55,11 +55,22 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         ledger.turn(args.campaign, scenario["id"], args.tier, i, "tech", turn["send"])
         reply, min_id = await uat.collect_reply(client, STAGING_BOT, min_id)
         transcript.append(dict(role="mira", text=reply))
-        ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
+        ok, notes = uat.grade_turn(
+            reply,
+            turn.get("expect", []),
+            turn.get("forbid", []),
+            expect_all=turn.get("expect_all", []),
+        )
         # A declared gate is the authoritative contract for that turn; the
         # expect/forbid list grades vocabulary, the gate grades behaviour.
-        if turn.get("gate") == "identifying_question":
-            gv = gates.check_identifying_question(reply, scenario["id"])
+        #
+        # Resolved through gates.TURN_GATES rather than compared against a
+        # literal. The literal form dispatched exactly ONE name, so a scenario
+        # declaring any other gate went silently ungraded and reported PASS —
+        # a check that cannot fail. An unknown name now raises, loudly, rather
+        # than letting a typo disarm its own grading.
+        for gate_name in gates.declared_turn_gates(turn):
+            gv = gates.resolve_turn_gate(gate_name)(reply, scenario["id"])
             if gv:
                 ok = False
                 notes = notes + [str(x) for x in gv]
@@ -76,6 +87,27 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         if not ok:
             passed = False
         await asyncio.sleep(uat.SEND_GAP_S)
+
+    # Conversation-level gates run once, over the whole transcript. They CANNOT
+    # ride turn["gate"] — they take a transcript, not a reply — so a scenario
+    # declares them separately. Without this dispatch the cross-vendor,
+    # repeated-answer and parameter contracts are declared and never run, which
+    # is the same "looks graded, isn't" failure the turn-gate registry closed.
+    for conv_gate_name in scenario.get("conv_gates", []):
+        cv = gates.resolve_conversation_gate(conv_gate_name)(transcript, scenario["id"])
+        if cv:
+            passed = False
+            for v in cv:
+                print(f"  GATE {v}")
+            ledger.turn(
+                args.campaign,
+                scenario["id"],
+                args.tier,
+                len(scenario["turns"]) + 1,
+                "conv_gate",
+                "; ".join(str(v) for v in cv),
+                grade="FAIL",
+            )
     return passed, transcript
 
 
@@ -148,14 +180,15 @@ async def amain(args) -> int:
     n_pass = n_fail = n_skip = 0
     meta = dict(deploy_sha=args.deploy_sha, seed=args.seed, telegram=str(me.username))
 
-    if args.tier in (1, 2, 9):
-        # Tier 9 is the safety curriculum. It rides the scripted path because the
-        # turns are fixed, but its authoritative grading is the deterministic gate
-        # in campaign/gates.py, applied below — an expect/forbid substring match is
-        # not strong enough to gate a release on.
+    if args.tier in (1, 2, 7, 9):
+        # Tier 9 is the safety curriculum and tier 7 the citation-integrity tier.
+        # Both ride the scripted path because the turns are fixed, but their
+        # authoritative grading is the deterministic gates in campaign/gates.py —
+        # an expect/forbid substring match is not strong enough to gate a
+        # release on.
         gen = importlib.import_module(
             "tests.regime1_telethon.campaign."
-            + {1: "mutators", 2: "state_attacks", 9: "safety"}[args.tier]
+            + {1: "mutators", 2: "state_attacks", 7: "citation_integrity", 9: "safety"}[args.tier]
         )
         scenarios = gen.generate(args.seed, args.count)
         for sc in scenarios:

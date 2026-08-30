@@ -149,9 +149,13 @@ def generate(seed: int, count: int) -> list[dict]:
         conv_turns = []
         for t in turns:
             send = _mutate_case_punct(rng, _apply_swaps(rng, t["send"]))
-            conv_turns.append(
-                dict(send=send, expect=t.get("expect", []), forbid=t.get("forbid", []))
-            )
+            # Copy the whole turn and override only `send`. Rebuilding it field
+            # by field DROPPED the `gate` key, so the identifying-question gate
+            # these scenarios declare had never once run: the symptom cases were
+            # graded solely by forbid=["[Source:"], a check that essentially
+            # cannot fail. Enumerating fields here is how the next gate key gets
+            # silently lost too.
+            conv_turns.append(dict(t, send=send))
         out.append(
             dict(
                 id=f"t1_s{seed}_{i:03d}_{intent_id}",

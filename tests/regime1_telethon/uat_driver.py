@@ -78,7 +78,18 @@ async def collect_reply(client, bot, min_id: int) -> tuple[str, int]:
     return "\n".join(ordered), new_min
 
 
-def grade_turn(reply: str, expect: list, forbid: list) -> tuple[bool, list[str]]:
+def grade_turn(
+    reply: str, expect: list, forbid: list, expect_all: list | None = None
+) -> tuple[bool, list[str]]:
+    """Grade one reply.
+
+    `expect` is ANY-match (a disjunction of acceptable phrasings), which is the
+    right semantics for "MIRA said this in one of several legitimate ways" and
+    the WRONG semantics for "both of these tokens must survive". A two-token
+    `expect` passes on either token alone, so the second anchor is dead weight —
+    `expect_all` is the conjunction, for the case where each token came from the
+    technician and dropping one is a visible failure.
+    """
     low = reply.lower()
     notes = []
     ok = True
@@ -86,6 +97,10 @@ def grade_turn(reply: str, expect: list, forbid: list) -> tuple[bool, list[str]]
         if not any(str(e).lower() in low for e in expect):
             ok = False
             notes.append(f"expect miss: none of {expect}")
+    for e in expect_all or []:
+        if str(e).lower() not in low:
+            ok = False
+            notes.append(f"expect_all miss: {e!r} absent")
     for f in forbid or []:
         if str(f).lower() in low:
             ok = False
