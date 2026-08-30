@@ -706,6 +706,7 @@ def test_call_cascade_backs_off_on_429_before_falling_through(monkeypatch):
     assert text == "## VERDICT\nPASS\n" and provider.startswith("groq")
     assert len(calls) == 3  # two 429s retried on the same provider, then success
     assert sleeps[0] == 2.0 and sleeps[1] > 0  # Retry-After honoured, then a default backoff
+    assert any("429" in a for a in attempts)
 
 
 def test_retry_after_is_parsed_defensively(monkeypatch):
@@ -724,7 +725,6 @@ def test_retry_after_is_parsed_defensively(monkeypatch):
     assert _retry_after_seconds("", 15.0) == 15.0
     assert _retry_after_seconds("-3", 15.0) == 15.0
     assert _retry_after_seconds("99999999", 15.0) == 300.0  # bounded, never an hours-long sleep
-    assert any("429" in a for a in attempts)
 
 
 def test_strict_findings_never_fall_back_to_whole_text():
