@@ -7,7 +7,6 @@ NullPool, sslmode=require).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -19,24 +18,16 @@ logger = logging.getLogger("mira-crawler.store")
 _ENGINE = None
 
 
-def _log_ref(url: str) -> str:
-    """A log-safe reference to a source URL: its host (plus an explicit port)
-    and a short hash of the exact URL — enough for an operator to correlate a
-    refusal with a row, never the path or query (which can carry a document
-    name or a token) and never the userinfo (which can carry credentials —
-    ``netloc`` includes it; ``hostname``/``port`` do not). Gate 7 round P on
-    #3481, code F1; round W observation."""
-    if not url:
-        return "<no url>"
-    return f"{_safe_origin(url)} sha256:{hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]}"
-
-
 def _safe_origin(url: str) -> str:
-    """host[:port] only — never userinfo, path, query, fragment, and never a
-    hash. The only thing a credential-bearing refusal may log (round AD on
-    #3481): a hash of a URL that embeds a secret is a hash of the secret."""
+    """The only reference to a source URL any refusal log may carry: host
+    (plus an explicit port, IPv6 re-bracketed) — never userinfo, path, query
+    or fragment, and **never a hash of the URL** (rounds P, W, AD, AE on
+    #3481): a hash of a URL is a fingerprint of whatever secret the URL might
+    carry that no name rule can recognise, so no refusal path hashes it."""
     from urllib.parse import urlsplit
 
+    if not url:
+        return "<no url>"
     try:
         parts = urlsplit(str(url).strip())
         host = parts.hostname or "<no host>"
@@ -306,9 +297,12 @@ def insert_chunk(
 
     allowed, is_private, prov_reason = enforce_visibility(source_url, is_private)
     if not allowed:
+        # Safe origin only — never the path or query, and never a hash of the
+        # URL (round AE on #3481: a hash of a URL is a fingerprint of whatever
+        # secret the URL might carry that no name rule can recognise).
         logger.warning(
             "Refusing knowledge_entries write for %s — %s",
-            _log_ref(source_url),
+            _safe_origin(source_url),
             prov_reason,
         )
         return ""

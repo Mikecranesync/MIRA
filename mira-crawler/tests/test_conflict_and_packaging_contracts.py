@@ -1081,21 +1081,23 @@ class TestUserinfoRefusedAtTheBoundary:
         for sql, params in captured.get("all", []):
             assert "abc123" not in f"{sql} {params!r}"
 
-    def test_ordinary_queries_still_write_and_the_refusal_log_keeps_its_hash(
+    def test_ordinary_queries_still_write_and_no_refusal_ever_hashes_the_url(
         self, captured, caplog
     ):
         import logging
 
         assert _insert(True, "https://example.com/doc.pdf?v=3&lc=en") != ""
         assert "v=3&lc=en" in captured["params"]["source_url"]  # identity keeps its query
-        # A policy refusal (blocked origin, no credential) still carries the correlation hash.
+        # A policy refusal (blocked origin, no credential) names the origin only —
+        # no path, no query, and (round AE) no hash of the URL on ANY refusal path.
         policy = provenance.load_policy()
         blocked = next(
             h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
         )
         with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
             assert _insert(False, f"https://{blocked}/x.pdf?page=2") == ""
-        assert "sha256:" in caplog.text and "page=2" not in caplog.text
+        assert blocked in caplog.text
+        assert "sha256:" not in caplog.text and "page=2" not in caplog.text
 
     def test_userinfo_refusal_logs_only_a_safe_origin_and_no_hash(self, caplog):
         import logging
@@ -1184,38 +1186,39 @@ class TestRefusalLogging:
         blocked = next(
             h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
         )
-        # An ORDINARY query (no credential-family name): the refusal is the policy's,
-        # and it carries the exact-URL correlation hash — never the path or query.
+        # An ORDINARY query (no credential-family name): the refusal is the policy's.
+        # It names the origin — never the path or query, and (round AE) never a hash
+        # of the URL: a hash of a URL is a fingerprint of any secret it might carry.
         url = f"https://{blocked}/private/Secret-Doc-Name.pdf?page=2&dl=1"
         with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
             assert _insert(False, url) == ""  # refused at the boundary
         text = caplog.text
         assert "Secret-Doc-Name" not in text and "page=2" not in text
-        assert blocked in text and "sha256:" in text
+        assert blocked in text and "sha256:" not in text
         assert "sql" not in captured
+        assert not hasattr(store, "_log_ref")  # the hashing reference is gone, not dormant
 
-    def test_log_ref_is_stable_and_never_echoes_the_url(self):
+    def test_safe_origin_is_stable_and_never_echoes_the_url(self):
         url = "HTTPS://Example.COM/Path/File.PDF?q=1"
-        ref = store._log_ref(url)
-        assert ref == store._log_ref(url)
-        assert ref.startswith("example.com ") and "sha256:" in ref  # host as classified
+        ref = store._safe_origin(url)
+        assert ref == store._safe_origin(url) == "example.com"  # host as classified
         assert "/Path/File.PDF" not in ref and "q=1" not in ref
-        assert store._log_ref("") == "<no url>"
+        assert store._safe_origin("") == "<no url>"
 
     # Round-23 (#3481) code observation, real: `urlsplit(url).netloc` carries the
     # userinfo, so a URL with embedded credentials would have put `user:secret@`
     # into the refusal log. The reference is host[:port] — never the userinfo.
 
-    def test_log_ref_never_carries_userinfo(self):
-        ref = store._log_ref("https://user:s3cret@Example.COM:8443/private/x.pdf?token=abc")
-        assert ref.startswith("example.com:8443 ") and "sha256:" in ref
-        for secret in ("user", "s3cret", "@", "token=abc", "/private"):
+    def test_safe_origin_never_carries_userinfo_or_a_hash(self):
+        ref = store._safe_origin("https://user:s3cret@Example.COM:8443/private/x.pdf?token=abc")
+        assert ref == "example.com:8443"
+        for secret in ("user", "s3cret", "@", "token=abc", "/private", "sha256"):
             assert secret not in ref, secret
         # An IPv6 literal stays bracketed so host and port cannot be confused.
-        assert store._log_ref("https://[2001:DB8::1]:8443/x").startswith("[2001:db8::1]:8443 ")
-        assert store._log_ref("https://u:p@[::1]/x").startswith("[::1] ")
-        assert store._log_ref("https://example.com:44a/x").startswith("<unparseable> ")
-        assert store._log_ref("https://example.com/x").startswith("example.com ")
+        assert store._safe_origin("https://[2001:DB8::1]:8443/x") == "[2001:db8::1]:8443"
+        assert store._safe_origin("https://u:p@[::1]/x") == "[::1]"
+        assert store._safe_origin("https://example.com:44a/x") == "<unparseable>"
+        assert store._safe_origin("https://example.com/x") == "example.com"
 
     def test_refusal_warning_never_carries_userinfo(self, captured, caplog):
         import logging

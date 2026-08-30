@@ -275,9 +275,9 @@ def url_has_userinfo(url: str) -> bool:
 
 def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bool, str]:
     """May this URL be written to the shared corpus? Fail-closed."""
-    credential = url_credential_reason(url)
-    if credential:
-        return (False, _credential_refused(credential))
+    refusal = url_credential_reason(url)
+    if refusal:
+        return (False, _credential_refused(refusal))
     cls, reason = classify_origin(url, policy=policy)
     if cls in _SHARED_OK:
         return (True, reason)
@@ -317,9 +317,9 @@ def enforce_visibility(source_url: str, declared_private: bool) -> tuple[bool, b
     asked, never less, and it can refuse — it can never grant sharing that the
     caller did not request.
     """
-    credential = url_credential_reason(source_url)
-    if credential:  # before classification: a credential-bearing URL is never a document
-        return (False, True, _credential_refused(credential))
+    refusal = url_credential_reason(source_url)
+    if refusal:  # before classification: a credential-bearing URL is never a document
+        return (False, True, _credential_refused(refusal))
     try:
         cls, reason = classify_origin(source_url)
     except Exception as exc:  # unreadable policy -> refuse, never publish
