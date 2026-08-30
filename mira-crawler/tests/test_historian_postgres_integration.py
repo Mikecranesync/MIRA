@@ -28,11 +28,13 @@ written correct-and-skipped and is meant to run on staging.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import uuid
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("MIRA_TEST_DATABASE_URL"),
@@ -156,7 +158,7 @@ def _seed_tag_event(schema, tenant, tag, value, ts, *, vt="bool"):
     eng.dispose()
 
 
-def _scalar_as_app(schema, tenant, sql, params=None):
+def _scalar_as_app(schema, tenant, sql, params=None, *, tenant_setting="app.current_tenant_id"):
     """Run a SELECT as factorylm_app under RLS for ``tenant``; return the scalar."""
     eng = _admin_engine()
     try:
@@ -164,8 +166,8 @@ def _scalar_as_app(schema, tenant, sql, params=None):
             conn.exec_driver_sql("SET ROLE factorylm_app")
             conn.exec_driver_sql(f"SET search_path TO {schema}, public")
             conn.execute(
-                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
-                {"tid": tenant},
+                text("SELECT set_config(:setting, :tid, true)"),
+                {"setting": tenant_setting, "tid": tenant},
             )
             return conn.execute(text(sql), params or {}).scalar()
     finally:
@@ -207,7 +209,7 @@ def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
     app_engine = create_engine(pg_schema["store_url"], future=True)
     try:
         store = HistorianHeartbeatStore(engine=app_engine, tenant_id=tenant)
-        store.start(context)
+        generation_a = store.start(context)
 
         row = _scalar_as_app(
             schema,
@@ -219,13 +221,22 @@ def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
 
         # A second start is an upsert, increments exactly once, and deliberately
         # leaves a new crash-shaped `running` record distinguishable.
-        store.start(context)
+        generation_b = store.start(context)
         assert _scalar_as_app(
             schema,
             tenant,
             "SELECT run_count FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
         ) == 2
-        store.finish(context, status="ok")
+        # A's terminal update must not overwrite the newer B generation.
+        assert store.finish(context, status="ok", generation=generation_a) is False
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == "running:2:true"
+
+        assert store.finish(context, status="ok", generation=generation_b) is True
         assert _scalar_as_app(
             schema,
             tenant,
@@ -241,8 +252,38 @@ def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
         assert _scalar_as_app(
             schema,
             tenant,
+            "SELECT count(*) FROM historian_task_heartbeat",
+            tenant_setting="app.tenant_id",
+        ) == 1
+        assert _scalar_as_app(
+            schema,
+            tenant,
             "SELECT has_table_privilege(current_user, 'historian_task_heartbeat', 'DELETE')",
         ) is False
+
+        # All constraints are enforced by Postgres while acting as the
+        # non-bypass app role, not merely checked in Python.
+        insert_sql = text(
+            """
+            INSERT INTO historian_task_heartbeat
+                (tenant_id, deployment_environment, task_name, started_at, status,
+                 software_version, detail)
+            VALUES
+                (CAST(:tenant_id AS UUID), :deployment_environment, 'constraint_probe', NOW(),
+                 :status, :software_version, CAST(:detail AS JSONB))
+            """
+        )
+        invalid_rows = [
+            {"deployment_environment": "qa", "status": "running", "software_version": "f" * 40, "detail": json.dumps(detail)},
+            {"deployment_environment": "staging", "status": "bogus", "software_version": "f" * 40, "detail": json.dumps(detail)},
+            {"deployment_environment": "staging", "status": "running", "software_version": "f" * 39, "detail": json.dumps(detail)},
+            {"deployment_environment": "staging", "status": "running", "software_version": "f" * 40, "detail": "{}"},
+        ]
+        for invalid in invalid_rows:
+            with pytest.raises(IntegrityError):
+                with app_engine.begin() as conn:
+                    conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                    conn.execute(insert_sql, {"tenant_id": tenant, **invalid})
     finally:
         app_engine.dispose()
 

@@ -87,6 +87,14 @@ class _RecordingConnection:
 
     def execute(self, statement, params=None):
         self.calls.append((str(statement), params or {}))
+        return _RecordingResult()
+
+
+class _RecordingResult:
+    rowcount = 1
+
+    def scalar_one(self):
+        return 1
 
 
 class _Transaction:
@@ -113,15 +121,17 @@ def test_heartbeat_store_commits_start_and_terminal_updates_separately():
     context = historize_runs.build_heartbeat_context(_env())
     store = historize_runs.HistorianHeartbeatStore(engine=engine, tenant_id=TENANT)
 
-    store.start(context)
-    store.finish(context, status="ok")
+    generation = store.start(context)
+    store.finish(context, status="ok", generation=generation)
 
     statements = [statement for statement, _ in engine.conn.calls]
     assert sum("SET LOCAL app.current_tenant_id" in statement for statement in statements) == 2
     assert "INSERT INTO historian_task_heartbeat" in statements[1]
     assert "run_count = historian_task_heartbeat.run_count + 1" in statements[1]
     assert "UPDATE historian_task_heartbeat" in statements[3]
-    assert "run_count" not in statements[3]
+    assert "SET run_count" not in statements[3]
+    assert "run_count = :generation" in statements[3]
+    assert "status = 'running'" in statements[3]
     all_params = [params for _, params in engine.conn.calls]
     assert all("exception" not in params and "url" not in params for params in all_params)
 
@@ -166,8 +176,9 @@ class _TaskHeartbeatStore:
 
     def start(self, context):
         self.events.append(("start", context))
+        return 1
 
-    def finish(self, context, *, status):
+    def finish(self, context, *, status, generation):
         self.events.append((status, context))
 
 
@@ -211,3 +222,53 @@ def test_task_records_stable_error_code_without_exception_text(monkeypatch):
     detail = heartbeat.events[-1][1].detail
     assert detail["error_code"] == "HISTORIAN_PIPELINE_ERROR"
     assert "secret-url" not in json.dumps(detail)
+
+
+def test_disabled_task_records_heartbeat_without_trigger_or_tag_diff_config(monkeypatch):
+    _configure_task_env(
+        monkeypatch,
+        MIRA_RUN_DIFF_ENABLED="0",
+        MIRA_RUN_TRIGGERS="",
+        MIRA_MACHINE_MEMORY_UNS_PATHS="",
+        TAG_DIFF_CONFIG_JSON="",
+    )
+    heartbeat = _TaskHeartbeatStore()
+    monkeypatch.setattr(historize_runs, "_engine", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "HistorianHeartbeatStore", lambda **_kwargs: heartbeat)
+
+    result = historize_runs.historize_runs()
+
+    assert result == {"status": "disabled"}
+    assert [event[0] for event in heartbeat.events] == ["start", "disabled"]
+    assert heartbeat.events[0][1].detail["fault_trigger_tag_hashes"] == []
+
+
+def test_heartbeat_start_failure_fails_open_and_preserves_historization(monkeypatch, caplog):
+    _configure_task_env(monkeypatch)
+
+    class FailingHeartbeatStore:
+        def start(self, _context):
+            raise RuntimeError("missing migration at postgres://secret")
+
+    monkeypatch.setattr(historize_runs, "_engine", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "HistorianHeartbeatStore", lambda **_kwargs: FailingHeartbeatStore())
+    monkeypatch.setattr(historize_runs, "_read_recent_events", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(historize_runs, "NeonRunStore", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "run_historization", lambda *_args, **_kwargs: {"status": "ok"})
+    monkeypatch.setattr(
+        historize_runs,
+        "historize_machine_memory",
+        lambda *_args, **_kwargs: {
+            "windows_upserted": 0,
+            "anomaly_diffs_written": 0,
+            "anomalies_cooldown_suppressed": 0,
+            "latest_window": None,
+            "unmapped_tags": [],
+        },
+    )
+
+    result = historize_runs.historize_runs()
+
+    assert result["status"] == "ok"
+    assert "HISTORIAN_HEARTBEAT_START_FAILED" in caplog.text
+    assert "postgres://secret" not in caplog.text

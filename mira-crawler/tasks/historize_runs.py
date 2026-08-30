@@ -82,7 +82,9 @@ def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def build_heartbeat_context(env: dict[str, str] | None = None) -> HeartbeatContext:
+def build_heartbeat_context(
+    env: dict[str, str] | None = None, *, require_task_config: bool = True
+) -> HeartbeatContext:
     """Validate deployment identity and derive a redacted canonical fingerprint.
 
     This is intentionally pure: it neither opens a DB connection nor retains
@@ -97,6 +99,26 @@ def build_heartbeat_context(env: dict[str, str] | None = None) -> HeartbeatConte
 
     tenant_id = (values.get("MIRA_TENANT_ID") or "").strip()
     run_diff_enabled = (values.get("MIRA_RUN_DIFF_ENABLED") or "") == "1"
+    if not require_task_config:
+        detail: dict[str, object] = {
+            "config_sha256": _sha256('{"run_diff_enabled":false}'),
+            "counts": {
+                "machine_memory_paths": 0,
+                "run_trigger_paths": 0,
+                "fault_trigger_tags": 0,
+            },
+            "fault_trigger_tag_hashes": [],
+            "machine_memory_path_hashes": [],
+            "run_diff_enabled": run_diff_enabled,
+            "run_trigger_path_hashes": [],
+        }
+        return HeartbeatContext(
+            tenant_id=tenant_id,
+            deployment_environment=deployment_environment,
+            software_version=software_version,
+            detail=detail,
+        )
+
     triggers = parse_run_triggers(values.get("MIRA_RUN_TRIGGERS"))
     trigger_paths = sorted({_normalize_uns_path(path) for path in triggers})
     machine_memory_paths = sorted(
@@ -171,7 +193,7 @@ class HistorianHeartbeatStore:
         self._engine = engine
         self._tenant_id = tenant_id
 
-    def start(self, context: HeartbeatContext) -> None:
+    def start(self, context: HeartbeatContext) -> int:
         """Commit the running evidence before any historian work begins."""
         from sqlalchemy import text
 
@@ -187,7 +209,7 @@ class HistorianHeartbeatStore:
                 text("SET LOCAL app.current_tenant_id = :tenant_id"),
                 {"tenant_id": self._tenant_id},
             )
-            conn.execute(
+            result = conn.execute(
                 text(
                     """
                     INSERT INTO historian_task_heartbeat
@@ -205,12 +227,14 @@ class HistorianHeartbeatStore:
                         run_count = historian_task_heartbeat.run_count + 1,
                         detail = EXCLUDED.detail,
                         updated_at = NOW()
+                    RETURNING run_count
                     """
                 ),
                 params,
             )
+        return int(result.scalar_one())
 
-    def finish(self, context: HeartbeatContext, *, status: str) -> None:
+    def finish(self, context: HeartbeatContext, *, status: str, generation: int) -> bool:
         """Commit a terminal status without changing the start run count."""
         from sqlalchemy import text
 
@@ -219,6 +243,7 @@ class HistorianHeartbeatStore:
             "deployment_environment": context.deployment_environment,
             "task_name": "historize_runs",
             "status": status,
+            "generation": generation,
             "detail": json.dumps(context.detail, sort_keys=True, separators=(",", ":")),
         }
         with self._engine.begin() as conn:
@@ -226,7 +251,7 @@ class HistorianHeartbeatStore:
                 text("SET LOCAL app.current_tenant_id = :tenant_id"),
                 {"tenant_id": self._tenant_id},
             )
-            conn.execute(
+            result = conn.execute(
                 text(
                     """
                     UPDATE historian_task_heartbeat
@@ -235,10 +260,13 @@ class HistorianHeartbeatStore:
                      WHERE tenant_id = CAST(:tenant_id AS UUID)
                        AND deployment_environment = :deployment_environment
                        AND task_name = :task_name
+                       AND run_count = :generation
+                       AND status = 'running'
                     """
                 ),
                 params,
             )
+        return result.rowcount == 1
 
 
 def _enabled() -> bool:
@@ -340,10 +368,11 @@ def _finish_heartbeat(
     context: HeartbeatContext | None,
     *,
     status: str,
+    generation: int | None,
     error_code: str | None = None,
 ) -> None:
     """Fail open: heartbeat trouble never suppresses historization."""
-    if store is None or context is None:
+    if store is None or context is None or generation is None:
         return
     terminal_context = context
     if error_code is not None:
@@ -354,7 +383,7 @@ def _finish_heartbeat(
             detail={**context.detail, "error_code": error_code},
         )
     try:
-        store.finish(terminal_context, status=status)
+        store.finish(terminal_context, status=status, generation=generation)
     except Exception:  # noqa: BLE001 - explicitly fail-open evidence writer
         logger.error("HISTORIAN_HEARTBEAT_FINISH_FAILED")
 
@@ -364,34 +393,42 @@ def historize_runs() -> dict:
     """Detect runs, baseline them, and diff each closed run for anomalies."""
     tenant_id = os.getenv("MIRA_TENANT_ID", "")
     neon_url = os.getenv("NEON_DATABASE_URL", "")
+    run_diff_enabled = _enabled()
     heartbeat_store: HistorianHeartbeatStore | None = None
     heartbeat_context: HeartbeatContext | None = None
+    heartbeat_generation: int | None = None
     if tenant_id and neon_url:
         try:
-            heartbeat_context = build_heartbeat_context()
+            heartbeat_context = build_heartbeat_context(
+                require_task_config=run_diff_enabled
+            )
             heartbeat_store = HistorianHeartbeatStore(
                 engine=_engine(neon_url), tenant_id=tenant_id
             )
-            heartbeat_store.start(heartbeat_context)
+            heartbeat_generation = heartbeat_store.start(heartbeat_context)
         except ValueError:
             # Invalid deployment identity/configuration cannot fabricate a row.
             logger.error("HISTORIAN_HEARTBEAT_IDENTITY_INVALID")
             heartbeat_context = None
             heartbeat_store = None
+            heartbeat_generation = None
         except Exception:  # noqa: BLE001 - heartbeat is fail-open by contract
             logger.error("HISTORIAN_HEARTBEAT_START_FAILED")
             heartbeat_context = None
             heartbeat_store = None
+            heartbeat_generation = None
 
-    if not _enabled():
-        _finish_heartbeat(heartbeat_store, heartbeat_context, status="disabled")
+    if not run_diff_enabled:
+        _finish_heartbeat(
+            heartbeat_store,
+            heartbeat_context,
+            status="disabled",
+            generation=heartbeat_generation,
+        )
         return {"status": "disabled"}
 
     if not tenant_id or not neon_url:
         logger.error("HISTORIAN_MISSING_DB_OR_TENANT")
-        return {"status": "error", "error": "missing_config"}
-
-    if heartbeat_context is None:
         return {"status": "error", "error": "missing_config"}
 
     triggers = parse_run_triggers(os.getenv("MIRA_RUN_TRIGGERS"))
@@ -406,7 +443,12 @@ def historize_runs() -> dict:
     ]
     uns_paths = list(dict.fromkeys(list(triggers.keys()) + extra_uns))
     if not uns_paths:
-        _finish_heartbeat(heartbeat_store, heartbeat_context, status="no_triggers")
+        _finish_heartbeat(
+            heartbeat_store,
+            heartbeat_context,
+            status="no_triggers",
+            generation=heartbeat_generation,
+        )
         return {"status": "no_triggers"}
 
     try:
@@ -418,7 +460,12 @@ def historize_runs() -> dict:
         lookback = float(os.getenv("MIRA_RUN_LOOKBACK_SECONDS", "3600"))
     except ValueError:
         logger.error("HISTORIAN_MISSING_CONFIG")
-        _finish_heartbeat(heartbeat_store, heartbeat_context, status="missing_config")
+        _finish_heartbeat(
+            heartbeat_store,
+            heartbeat_context,
+            status="missing_config",
+            generation=heartbeat_generation,
+        )
         return {"status": "error", "error": "missing_config"}
 
     try:
@@ -489,6 +536,7 @@ def historize_runs() -> dict:
             heartbeat_store,
             heartbeat_context,
             status="error",
+            generation=heartbeat_generation,
             error_code="HISTORIAN_PIPELINE_ERROR",
         )
         # Existing callers receive their established error shape; evidence and
@@ -503,5 +551,10 @@ def historize_runs() -> dict:
         summary.get("diffs_written", 0),
         len(machine_memory),
     )
-    _finish_heartbeat(heartbeat_store, heartbeat_context, status="ok")
+    _finish_heartbeat(
+        heartbeat_store,
+        heartbeat_context,
+        status="ok",
+        generation=heartbeat_generation,
+    )
     return summary
