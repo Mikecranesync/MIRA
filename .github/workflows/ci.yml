@@ -1424,6 +1424,7 @@ jobs:
       - capability-closure
       - docs-fault-codes
       - bench-harness-tests
+      - historian-heartbeat-postgres
       # module-suites is waited on (visible in the gate's timeline) but NOT
       # yet required — see the promotion note above.
       - module-suites
@@ -1448,6 +1449,7 @@ jobs:
           BANDIT_RESULT: ${{ needs.sast-bandit.result }}
           CAPABILITY_RESULT: ${{ needs.capability-closure.result }}
           DOCS_FAULT_CODES_RESULT: ${{ needs.docs-fault-codes.result }}
+          HISTORIAN_HEARTBEAT_RESULT: ${{ needs.historian-heartbeat-postgres.result }}
         run: |
           fail=0
 
@@ -1490,6 +1492,7 @@ jobs:
           # *gate*.
           require_success capability-closure    "$CAPABILITY_RESULT"
           require_success docs-fault-codes      "$DOCS_FAULT_CODES_RESULT"
+          require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"
           # Informative only until promoted: print, never fail.
           echo "module-suites: '$MODULE_SUITES_RESULT' (not yet gated — see promotion note)"
 

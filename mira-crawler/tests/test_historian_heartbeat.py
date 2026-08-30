@@ -297,6 +297,23 @@ def test_heartbeat_ci_job_runs_units_and_real_rls_contract_with_skip_guard():
     assert '! grep -qi "skipped" heartbeat-postgres.out' in job
 
 
+def test_heartbeat_postgres_job_is_dependency_and_result_checked_by_ci_gate():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    gate = workflow.split("  ci-gate:", 1)[1]
+
+    assert "      - historian-heartbeat-postgres" in gate
+    assert (
+        "HISTORIAN_HEARTBEAT_RESULT: "
+        "${{ needs.historian-heartbeat-postgres.result }}"
+    ) in gate
+    assert (
+        'require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"'
+        in gate
+    )
+
+
 def test_migration_order_checker_rejects_heartbeat_before_historian_foundation(tmp_path):
     """The dependency rule remains testable without touching real migrations."""
     (tmp_path / "086_historian_task_heartbeat.sql").write_text("-- Issue: #3485\n")
