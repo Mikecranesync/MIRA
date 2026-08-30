@@ -78,7 +78,18 @@ async def collect_reply(client, bot, min_id: int) -> tuple[str, int]:
     return "\n".join(ordered), new_min
 
 
-def grade_turn(reply: str, expect: list, forbid: list) -> tuple[bool, list[str]]:
+def grade_turn(
+    reply: str, expect: list, forbid: list, expect_all: list | None = None
+) -> tuple[bool, list[str]]:
+    """expect = ANY-match (phrased any of these ways). expect_all = conjunction.
+
+    `expect` has always been a disjunction, which is right for "the reply may
+    say model OR make OR manufacturer" and WRONG for "both of these tokens
+    survived the parse". `expect=["Pump 7", "leaking seal"]` passes on the asset
+    alone, so the anchor meant to prove the FAULT reached the work-order draft
+    was decoration. `expect_all` is the conjunction, and it names the token that
+    went missing rather than the whole list.
+    """
     low = reply.lower()
     notes = []
     ok = True
@@ -86,6 +97,10 @@ def grade_turn(reply: str, expect: list, forbid: list) -> tuple[bool, list[str]]
         if not any(str(e).lower() in low for e in expect):
             ok = False
             notes.append(f"expect miss: none of {expect}")
+    for e in expect_all or []:
+        if str(e).lower() not in low:
+            ok = False
+            notes.append(f"expect_all miss: {e!r} absent")
     for f in forbid or []:
         if str(f).lower() in low:
             ok = False
@@ -109,7 +124,12 @@ async def run_scenario(client, bot, scenario: dict, report_lines: list) -> bool:
         text = turn["send"]
         await client.send_message(bot, text)
         reply, min_id = await collect_reply(client, bot, min_id)
-        ok, notes = grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
+        ok, notes = grade_turn(
+            reply,
+            turn.get("expect", []),
+            turn.get("forbid", []),
+            turn.get("expect_all", []),
+        )
         mark = "PASS" if ok else "FAIL"
         report_lines.append(f"- T{i} `{text[:60]}` → **{mark}**")
         if not ok:
