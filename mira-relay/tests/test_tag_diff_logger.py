@@ -19,6 +19,9 @@ Covered behaviours (PLAN.md P5):
 
 from __future__ import annotations
 
+import json
+
+import tag_diff_logger
 from tag_diff_logger import (
     FALLING_EDGE,
     QUALITY_DEGRADED,
@@ -28,6 +31,7 @@ from tag_diff_logger import (
     THRESHOLD_CROSS_LOW,
     VALUE_CHANGED,
     DiffConfig,
+    NeonDiffStore,
     TagDiff,
     TagDiffLogger,
     TagReading,
@@ -297,6 +301,134 @@ def test_logger_reports_rows_persisted_across_exact_retry():
     assert len(retry) == 1
     assert logger.last_written_count == 0
     assert len(store.diffs) == 1
+
+
+def test_neon_store_retry_reuses_existing_fault_window_for_new_group_member(monkeypatch):
+    """Catch a retry splitting a late neighbor from its committed trigger."""
+
+    class FakeResult:
+        def __init__(self, *, scalar=None, scalars=None):
+            self._scalar = scalar
+            self._scalars = list(scalars or [])
+
+        def scalar(self):
+            return self._scalar
+
+        def scalar_one_or_none(self):
+            return self._scalar
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self._scalars
+
+    class FakeConnection:
+        def __init__(self):
+            self.rows: dict[tuple, dict] = {}
+            self.next_window = 0
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            params = params or {}
+            if "gen_random_uuid" in sql:
+                self.next_window += 1
+                return FakeResult(
+                    scalar=f"00000000-0000-0000-0000-{self.next_window:012d}"
+                )
+            identity = (
+                params.get("tenant_id"),
+                params.get("to_event_id"),
+                params.get("diff_type"),
+                params.get("threshold"),
+            )
+            if "semantic_members" in params:
+                existing_windows = []
+                for member in json.loads(params["semantic_members"]):
+                    member_identity = (
+                        params["tenant_id"],
+                        member["to_event_id"],
+                        member["diff_type"],
+                        member["threshold"],
+                    )
+                    row = self.rows.get(member_identity)
+                    if row is not None:
+                        existing_windows.append(row["fault_window_id"])
+                return FakeResult(scalars=existing_windows)
+            if "INSERT INTO tag_event_diffs" in sql:
+                if identity in self.rows:
+                    return FakeResult(scalar=None)
+                self.rows[identity] = dict(params)
+                return FakeResult(scalar=1)
+            return FakeResult()
+
+    class FakeTransaction:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            return self.connection
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakeEngine:
+        def __init__(self):
+            self.connection = FakeConnection()
+
+        def begin(self):
+            return FakeTransaction(self.connection)
+
+    trigger = TagDiff(
+        tenant_id=TENANT,
+        tag_path="Fault_Alarm",
+        diff_type=RISING_EDGE,
+        prev_value="false",
+        new_value="true",
+        value_type="bool",
+        event_timestamp=400.0,
+        from_event_id="00000000-0000-0000-0000-000000000100",
+        to_event_id="00000000-0000-0000-0000-000000000400",
+        fault_window_id="first-local-key",
+    )
+    retried_trigger = TagDiff(**{**trigger.__dict__, "fault_window_id": "retry-local-key"})
+    late_neighbor = TagDiff(
+        tenant_id=TENANT,
+        tag_path="Motor_State",
+        diff_type=VALUE_CHANGED,
+        prev_value="RUN",
+        new_value="FAULT",
+        value_type="string",
+        event_timestamp=403.0,
+        from_event_id="00000000-0000-0000-0000-000000000200",
+        to_event_id="00000000-0000-0000-0000-000000000403",
+        fault_window_id="retry-local-key",
+    )
+    engine = FakeEngine()
+    store = NeonDiffStore("postgresql://unused")
+    monkeypatch.setattr(store, "_engine", lambda: engine)
+
+    assert store.persist_diffs([trigger]) == 1
+    assert store.persist_diffs([retried_trigger, late_neighbor]) == 1
+    assert store.persist_diffs([retried_trigger, late_neighbor]) == 0
+
+    assert len(engine.connection.rows) == 2
+    window_ids = {row["fault_window_id"] for row in engine.connection.rows.values()}
+    assert window_ids == {"00000000-0000-0000-0000-000000000001"}
+
+
+def test_existing_fault_window_resolution_fails_closed_on_conflict():
+    """Catch silently choosing one UUID from a fractured persisted group."""
+    try:
+        tag_diff_logger._resolve_existing_fault_window_id(
+            [
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002",
+            ]
+        )
+        assert False, "expected conflicting existing fault windows to fail closed"
+    except ValueError as exc:
+        assert str(exc) == "conflicting_existing_fault_windows"
 
 
 def test_logger_requires_tenant():

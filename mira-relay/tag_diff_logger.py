@@ -371,6 +371,20 @@ class TagDiffLogger:
         return diffs
 
 
+def _resolve_existing_fault_window_id(
+    existing_ids: list[Optional[str]],
+) -> Optional[str]:
+    """Return one persisted window id, or fail closed on fractured evidence."""
+    if not existing_ids:
+        return None
+    if any(window_id is None for window_id in existing_ids):
+        raise ValueError("missing_existing_fault_window_id")
+    distinct = set(existing_ids)
+    if len(distinct) != 1:
+        raise ValueError("conflicting_existing_fault_windows")
+    return next(iter(distinct))
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # NeonDiffStore — prod persistence (SQLAlchemy NullPool + RLS), same pattern
 # as tag_ingest.NeonTagStore. Lazy imports keep the in-memory test path free of
@@ -473,16 +487,59 @@ class NeonDiffStore:
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:tid, 0))"),
                 {"tid": tenant_id},
             )
+            window_groups: dict[str, list[dict[str, Any]]] = {}
             for p in params:
-                key = p["fw_key"]
-                if key is None:
-                    p["fault_window_id"] = None
-                    continue
-                if key not in window_uuids:
-                    window_uuids[key] = conn.execute(
-                        text("SELECT gen_random_uuid()::text")
-                    ).scalar()
-                p["fault_window_id"] = window_uuids[key]
+                if p["fw_key"] is not None:
+                    window_groups.setdefault(p["fw_key"], []).append(p)
+
+            existing_window_sql = text(
+                """
+                WITH members AS (
+                    SELECT item
+                      FROM jsonb_array_elements(
+                           CAST(:semantic_members AS JSONB)
+                      ) AS member(item)
+                )
+                SELECT existing.fault_window_id::text
+                  FROM tag_event_diffs existing
+                  JOIN members
+                    ON existing.to_event_id IS NOT DISTINCT FROM
+                       CAST(members.item ->> 'to_event_id' AS UUID)
+                   AND existing.diff_type = members.item ->> 'diff_type'
+                   AND existing.threshold IS NOT DISTINCT FROM
+                       CAST(members.item ->> 'threshold' AS DOUBLE PRECISION)
+                 WHERE existing.tenant_id = CAST(:tenant_id AS UUID)
+                """
+            )
+            for key, group in window_groups.items():
+                semantic_members = json.dumps(
+                    [
+                        {
+                            "to_event_id": p["to_event_id"],
+                            "diff_type": p["diff_type"],
+                            "threshold": p["threshold"],
+                        }
+                        for p in group
+                    ]
+                )
+                existing_ids = (
+                    conn.execute(
+                        existing_window_sql,
+                        {
+                            "tenant_id": tenant_id,
+                            "semantic_members": semantic_members,
+                        },
+                    )
+                    .scalars()
+                    .all()
+                )
+                existing_window = _resolve_existing_fault_window_id(existing_ids)
+                window_uuids[key] = existing_window or conn.execute(
+                    text("SELECT gen_random_uuid()::text")
+                ).scalar()
+
+            for p in params:
+                p["fault_window_id"] = window_uuids.get(p["fw_key"])
             insert_sql = text(
                 """
                     INSERT INTO tag_event_diffs

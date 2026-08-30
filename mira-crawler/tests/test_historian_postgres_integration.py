@@ -177,6 +177,27 @@ def _scalar_as_app(schema, tenant, sql, params=None, *, tenant_setting="app.curr
         eng.dispose()
 
 
+def _set_tag_diff_cursor(schema, tenant, timestamp):
+    """Reset only the disposable fixture's tag-diff cursor to model a crash."""
+    eng = _admin_engine()
+    try:
+        with eng.begin() as conn:
+            conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+            conn.execute(
+                text(
+                    """
+                    UPDATE historian_cursor
+                       SET last_event_ts = to_timestamp(:timestamp)
+                     WHERE tenant_id = CAST(:tenant_id AS UUID)
+                       AND source = 'tag_diff'
+                    """
+                ),
+                {"tenant_id": tenant, "timestamp": timestamp},
+            )
+    finally:
+        eng.dispose()
+
+
 # ---------------------------------------------------------------------------
 # #3485 — durable historian task heartbeat
 # ---------------------------------------------------------------------------
@@ -516,6 +537,95 @@ def test_historizer_crash_retry_does_not_duplicate_tag_diff(pg_schema, monkeypat
         }
     ]
     assert float(cursor) == 400.0
+
+
+def test_historizer_fault_window_retry_reuses_committed_window(pg_schema, monkeypatch):
+    """A late neighbor after a cursor crash must join the trigger's DB window."""
+    from celery_app import app as celery_app
+
+    schema = pg_schema["schema"]
+    store_url = pg_schema["store_url"]
+    tenant = str(uuid.uuid4())
+    trigger_from = _seed_tag_event(schema, tenant, "Fault_Alarm", "false", 100.0)
+    neighbor_from = _seed_tag_event(
+        schema, tenant, "Motor_State", "RUN", 200.0, vt="string"
+    )
+    trigger_to = _seed_tag_event(schema, tenant, "Fault_Alarm", "true", 400.0)
+
+    monkeypatch.setenv("NEON_DATABASE_URL", store_url)
+    monkeypatch.setenv("MIRA_TENANT_ID", tenant)
+    monkeypatch.setenv(
+        "TAG_DIFF_CONFIG_JSON",
+        json.dumps(
+            {
+                "fault_trigger_tags": ["Fault_Alarm"],
+                "fault_window_seconds": 5.0,
+            }
+        ),
+    )
+    celery_app.conf.task_always_eager = True
+
+    from tasks.tag_diff_historizer import historize_tag_diffs
+
+    first = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert first["diffs_written"] == 1
+
+    # The trigger diff committed, but its cursor did not. A newly observed
+    # neighbor arrives inside that trigger's logical fault window.
+    _set_tag_diff_cursor(schema, tenant, 200.0)
+    neighbor_to = _seed_tag_event(
+        schema, tenant, "Motor_State", "FAULT", 403.0, vt="string"
+    )
+    retry_with_neighbor = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert retry_with_neighbor["tag_events_read"] == 2
+    assert retry_with_neighbor["diffs_written"] == 1
+
+    # Repeating the same crash gap is a fully idempotent retry: neither member
+    # is inserted again, and the outer task can still advance its cursor.
+    _set_tag_diff_cursor(schema, tenant, 200.0)
+    exact_retry = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert exact_retry["tag_events_read"] == 2
+    assert exact_retry["diffs_written"] == 0
+
+    eng = _admin_engine()
+    with eng.connect() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        rows = conn.execute(
+            text(
+                """
+                SELECT tag_path, from_event_id::text, to_event_id::text,
+                       diff_type, fault_window_id::text
+                  FROM tag_event_diffs
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                 ORDER BY event_timestamp
+                """
+            ),
+            {"tenant_id": tenant},
+        ).mappings().all()
+        cursor = conn.execute(
+            text(
+                """
+                SELECT EXTRACT(EPOCH FROM last_event_ts)
+                  FROM historian_cursor
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        ).scalar_one()
+    eng.dispose()
+
+    assert len(rows) == 2
+    assert [
+        (row["tag_path"], row["from_event_id"], row["to_event_id"], row["diff_type"])
+        for row in rows
+    ] == [
+        ("Fault_Alarm", trigger_from, trigger_to, "rising_edge"),
+        ("Motor_State", neighbor_from, neighbor_to, "value_changed"),
+    ]
+    assert rows[0]["fault_window_id"] is not None
+    assert rows[1]["fault_window_id"] == rows[0]["fault_window_id"]
+    assert float(cursor) == 403.0
 
 
 # ---------------------------------------------------------------------------
