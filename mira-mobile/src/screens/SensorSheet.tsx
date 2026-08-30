@@ -28,6 +28,7 @@ import {
 import { ReplayTimeline } from "./ReplayTimeline";
 import {
   REPLAY_DEFAULT_WINDOW,
+  canAskWhatHappened,
   replayQuestion,
   type HistoryResult,
   type MachineEvidenceWindow,
@@ -586,15 +587,22 @@ function ReplayPanel({
     pre: history.pre,
     post: history.post,
   };
+  // Workstream C (PRD §9.2 / #3469): the CTA exists ONLY when the served
+  // window holds at least one admissible recorded observation and the history
+  // source answered (`coverage.admissible`, server-owned). An empty or
+  // unavailable window renders its honest sentence in the timeline and sends
+  // no machineEvidence — the route would refuse it anyway (422).
   return (
     <>
       <ReplayTimeline history={history} onWindowChange={setWindow} />
-      <button
-        className="btn-primary"
-        onClick={() => onAsk(replayQuestion(history.anchor.at), { machineEvidence })}
-      >
-        Ask MIRA what happened
-      </button>
+      {canAskWhatHappened(history) && (
+        <button
+          className="btn-primary"
+          onClick={() => onAsk(replayQuestion(history.anchor.at), { machineEvidence })}
+        >
+          Ask MIRA what happened
+        </button>
+      )}
     </>
   );
 }

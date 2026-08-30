@@ -77,7 +77,7 @@ import {
   type MachineContextPacket,
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
-import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
+import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -617,6 +617,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 040 env or any error never drops the notebook context already built.
   let machinePacket: MachineContextPacket | null = null;
   let machineEntry: MachineEvidenceEntry | null = null;
+  // Workstream C (§9.2): why the served window is NOT grounding, when it
+  // isn't — kept apart so "nothing recorded" and "no history source" are
+  // never one sentence.
+  let machineUnavailableReason: "no_uns_path" | "no_fault_window" | "unavailable" | "fetch_failed" | null = null;
+  let machineCoverage: HistoryCoverage | null = null;
   if (machineRequest) {
     const mr = machineRequest;
     try {
@@ -625,6 +630,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
       if (result.ok) {
         const h = result.history;
+        machineCoverage = h.coverage;
+        if (h.reason === "unavailable") machineUnavailableReason = "unavailable";
         machinePacket = packetFromMachineMemoryResponse(ctx.tenantId, mr.assetId, h.summary);
         machinePacket.replay = {
           anchor_at: h.anchor.at,
@@ -654,11 +661,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         };
       } else {
         console.warn("[notebook-chat] machine evidence not available:", result.error);
+        machineUnavailableReason = result.error;
       }
     } catch (err) {
-      console.error("[notebook-chat] machine evidence fetch failed (continuing without it):", err);
+      console.error("[notebook-chat] machine evidence fetch failed:", err);
       machinePacket = null;
       machineEntry = null;
+      machineUnavailableReason = "fetch_failed";
     }
   }
   // Nothing observed → nothing to ground on (contract §2.8, D2). A window that
@@ -672,6 +681,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const groundedMachineEntry: MachineEvidenceEntry | null =
     machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
   if (!groundedMachineEntry) machinePacket = null;
+
+  // Workstream C (PRD §9.2 / #3469): a replay ask whose served window holds
+  // no admissible recorded observation is REFUSED here — at the seam that
+  // owns the truth — before any retrieval-backed answer, any provider call,
+  // and any persistence. Answering from documents while carrying an empty
+  // machine-evidence card, or letting the approved-context gate blame
+  // "approved asset context", would both dress an empty window as evidence.
+  // The two empties stay distinct: `machine_window_empty` (the history source
+  // answered: nothing recorded) vs `machine_history_unavailable` (no source
+  // to ask). `error` is a sentence (mira-mobile renders it verbatim); `code`
+  // is the discriminator. Nothing is recorded: a refused replay is not a turn.
+  if (machineRequest && !groundedMachineEntry) {
+    const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
+    if (windowEmpty) {
+      return NextResponse.json(
+        {
+          error: "Nothing was recorded in this window. Widen the window or check the gateway.",
+          code: "machine_window_empty",
+          coverage: machineCoverage,
+        },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json(
+      {
+        error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
+        code: "machine_history_unavailable",
+        reason: machineUnavailableReason ?? "unavailable",
+        coverage: machineCoverage,
+      },
+      { status: 422 },
+    );
+  }
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:

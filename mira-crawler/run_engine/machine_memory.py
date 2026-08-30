@@ -270,6 +270,12 @@ def historize_machine_memory(
                 event_timestamp=ev_ts,
                 metadata={
                     "severity_raw": a.severity,
+                    # Canonical technician-facing title + message (Workstream C,
+                    # PRD §9.2): tag_path is the evidence TOPIC (for A0 the
+                    # pseudo-topic `_stale_s`), never a title. The Hub prefers
+                    # this persisted title over its rule catalog.
+                    "title": a.title,
+                    "message": a.message,
                     "next_check": NEXT_CHECK.get(a.rule_id, ""),
                     "confidence": a.confidence,
                     "components": a.components,

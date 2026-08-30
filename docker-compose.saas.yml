@@ -975,6 +975,15 @@ services:
       - JOURNEY_SWARM_SOFT_LIMIT_S=${JOURNEY_SWARM_SOFT_LIMIT_S:-1500}
       - JOURNEY_SWARM_HARD_LIMIT_S=${JOURNEY_SWARM_HARD_LIMIT_S:-1800}
       - JOURNEY_SWARM_MAX_RETRIES=${JOURNEY_SWARM_MAX_RETRIES:-3}
+      # ── CV-101 Machine Memory observer (PRD §9.4) — READ-ONLY ───────────
+      # Daily GETs against the Hub's public APIs; never a fault generator,
+      # never an equipment write, never SQL. Inert unless ENABLED=1. The
+      # observer login is an EXISTING user in the tenant that owns CV-101
+      # (it signs in; it never registers) — values come from Doppler.
+      - MACHINE_MEMORY_OBSERVER_ENABLED=${MACHINE_MEMORY_OBSERVER_ENABLED:-0}
+      - MACHINE_MEMORY_OBSERVER_ASSET_ID=${MACHINE_MEMORY_OBSERVER_ASSET_ID:-}
+      - MACHINE_MEMORY_OBSERVER_EMAIL=${MACHINE_MEMORY_OBSERVER_EMAIL:-}
+      - MACHINE_MEMORY_OBSERVER_PASSWORD=${MACHINE_MEMORY_OBSERVER_PASSWORD:-}
     networks:
       - mira-net
     volumes:
