@@ -39,6 +39,11 @@ export class ApiError extends Error {
       case "auth":
         return "Session expired — sign in again.";
       case "forbidden":
+        // #3442: source_not_in_notebook is scope staleness (a source was
+        // superseded/replaced while this chat was open), not a role problem.
+        if (this.detail === "source_not_in_notebook") {
+          return "A source in this chat was updated — reopen the notebook and ask again.";
+        }
         return "Your role doesn't allow this action.";
       case "not_found":
         return "Not found (or no access).";

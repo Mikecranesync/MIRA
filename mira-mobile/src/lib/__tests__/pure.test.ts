@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { extractAssetTag } from "../tags";
 import { parseChatSse } from "../sse";
-import { splitSetCookie } from "../../api/client";
+import { ApiError, splitSetCookie } from "../../api/client";
 import { TABS, visibleTabs, can } from "../../nav";
 
 describe("extractAssetTag (Hub scan-target semantics + trust filter)", () => {
@@ -44,6 +44,22 @@ describe("parseChatSse", () => {
     expect(t.answer).toContain("F004");
     const empty = parseChatSse("", 422);
     expect(empty.status).toBe("http 422");
+  });
+});
+
+describe("ApiError.userMessage", () => {
+  // #3442: a 403 whose server error is source_not_in_notebook is a
+  // scope-staleness condition (a source was replaced under the open client),
+  // NOT a permissions problem — the generic role copy misdirects the tech.
+  it("names scope staleness for source_not_in_notebook, not roles", () => {
+    const err = new ApiError("forbidden", 403, "source_not_in_notebook");
+    expect(err.userMessage).toBe(
+      "A source in this chat was updated — reopen the notebook and ask again.",
+    );
+  });
+  it("keeps the generic role copy for every other 403", () => {
+    const err = new ApiError("forbidden", 403, "HTTP 403");
+    expect(err.userMessage).toBe("Your role doesn't allow this action.");
   });
 });
 
