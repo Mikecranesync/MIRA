@@ -134,11 +134,11 @@ jobs:
 
           echo "=== Bring up full staging stack ==="
           doppler run --preserve-env="MIRA_GIT_SHA" --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml up -d --remove-orphans
+            docker compose -f docker-compose.staging-vps.yml up -d --wait --wait-timeout 180 --remove-orphans
 
           # Force-recreate only the rebuilt services so their new images take effect.
           doppler run --preserve-env="MIRA_GIT_SHA" --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate $TARGETS
+            docker compose -f docker-compose.staging-vps.yml up -d --wait --wait-timeout 180 --no-deps --force-recreate $TARGETS
 
           echo "=== Health checks ==="
           sleep 10

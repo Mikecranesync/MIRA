@@ -58,6 +58,24 @@ def _build_and_up_invocations(invocations: list[str], compose_file: str) -> list
     return [invocation for invocation in invocations if command.search(invocation)]
 
 
+def _historian_roles() -> tuple[tuple[dict, str, str], ...]:
+    production = _compose(PRODUCTION_COMPOSE)["services"]
+    staging = _compose(STAGING_COMPOSE)["services"]
+    return (
+        (production["mira-historian-worker"], "worker", "production"),
+        (production["mira-historian-beat"], "beat", "production"),
+        (staging["stg-mira-historian-worker"], "worker", "staging"),
+        (staging["stg-mira-historian-beat"], "beat", "staging"),
+    )
+
+
+def _python_healthcheck(service: dict) -> str:
+    command = service["healthcheck"]["test"]
+    assert command[:3] == ["CMD", "python", "-c"]
+    assert len(command) == 4
+    return command[3]
+
+
 def test_production_historian_worker_forwards_heartbeat_identity_and_config() -> None:
     services = _compose(PRODUCTION_COMPOSE)["services"]
     worker = services["mira-historian-worker"]
@@ -231,3 +249,64 @@ def test_historian_and_redis_stanzas_do_not_reuse_dogfood_wiring() -> None:
 
     for service in owned_services:
         assert "dogfood" not in json.dumps(service, sort_keys=True).lower()
+
+
+def test_historian_healthchecks_are_bounded_and_use_image_dependencies() -> None:
+    """Would catch missing/unbounded checks or an assumed curl/pgrep binary."""
+    for service, _role, _environment_name in _historian_roles():
+        healthcheck = service["healthcheck"]
+        command = _python_healthcheck(service)
+
+        assert healthcheck["interval"] == "30s"
+        assert healthcheck["timeout"] == "10s"
+        assert healthcheck["retries"] == 3
+        assert healthcheck["start_period"] == "30s"
+        assert "mira_crawler.celery_app" in command
+        assert "curl" not in command
+        assert "pgrep" not in command
+
+
+def test_worker_healthcheck_targets_this_node_and_historian_queue() -> None:
+    """Would catch a broadcast ping that another healthy Celery worker can answer."""
+    for service, role, _environment_name in _historian_roles():
+        if role != "worker":
+            continue
+
+        command = _python_healthcheck(service)
+        assert "socket.gethostname()" in command
+        assert "destination=[node]" in command
+        assert "timeout=3" in command
+        assert ".ping()" in command
+        assert ".active_queues()" in command
+        assert '"historian"' in command
+
+
+def test_beat_healthcheck_proves_pid1_role_and_broker_readiness() -> None:
+    """Would catch a live Python process or import-only check passing for dead beat."""
+    for service, role, _environment_name in _historian_roles():
+        if role != "beat":
+            continue
+
+        command = _python_healthcheck(service)
+        assert 'Path("/proc/1/cmdline")' in command
+        assert '"celery"' in command
+        assert '"beat"' in command
+        assert "assert " not in command
+        assert "raise SystemExit" in command
+        assert ".connection_for_read()" in command
+        assert ".ensure_connection(" in command
+
+
+def test_staging_up_waits_for_health_before_declaring_deploy_complete() -> None:
+    """Would catch an unhealthy historian being reported as a completed deploy."""
+    workflow = STAGING_WORKFLOW.read_text(encoding="utf-8")
+    invocations = _doppler_compose_invocations(workflow, "docker-compose.staging-vps.yml")
+    up_invocations = [invocation for invocation in invocations if " up -d" in invocation]
+
+    assert len(up_invocations) == 2, "expected full-stack and force-recreate staging up"
+    assert all("--wait" in invocation for invocation in up_invocations)
+    assert all("--wait-timeout 180" in invocation for invocation in up_invocations)
+
+    final_up = workflow.rindex("docker compose -f docker-compose.staging-vps.yml up -d")
+    complete = workflow.index('echo "=== Deploy complete ==="')
+    assert final_up < complete

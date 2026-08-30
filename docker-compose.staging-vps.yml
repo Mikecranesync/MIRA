@@ -82,6 +82,23 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 512m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import socket; from mira_crawler.celery_app import app;
+          node = "celery@" + socket.gethostname();
+          inspector = app.control.inspect(destination=[node], timeout=3);
+          ping = (inspector.ping() or {}).get(node);
+          queues = (inspector.active_queues() or {}).get(node, []);
+          names = {queue.get("name") for queue in queues};
+          raise SystemExit(0 if ping and "historian" in names else 1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   stg-mira-historian-beat:
     build:
@@ -101,6 +118,25 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     memswap_limit: 256m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |-
+          from pathlib import Path
+          from mira_crawler.celery_app import app
+
+          argv = [arg for arg in Path("/proc/1/cmdline").read_bytes().decode("utf-8").split("\0") if arg]
+          valid_app = "-A" in argv and argv[argv.index("-A") + 1] == "mira_crawler.celery_app"
+          if not (any(Path(arg).name == "celery" for arg in argv) and "beat" in argv and valid_app):
+              raise SystemExit(1)
+          with app.connection_for_read() as connection:
+              connection.ensure_connection(max_retries=1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ─── Atlas CMMS — staging DB + storage ─────────────────────────────────────
   atlas-db:
