@@ -352,6 +352,7 @@
     "techv0-drive-010": [
       "NOT_GOLD",
       "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-drive-011": [
@@ -363,7 +364,6 @@
     "techv0-drive-012": [
       "NOT_GOLD",
       "TRAINING_NOT_ALLOWED",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-drive-013": [
@@ -374,12 +374,12 @@
     "techv0-drive-014": [
       "NOT_GOLD",
       "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-drive-015": [
       "NOT_GOLD",
       "TRAINING_NOT_ALLOWED",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-drive-016": [
@@ -400,6 +400,7 @@
     "techv0-drive-019": [
       "NOT_GOLD",
       "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-drive-020": [
@@ -877,7 +878,7 @@
     "APPROVAL_MISSING": 180,
     "HELD_OUT": 25,
     "NOT_GOLD": 180,
-    "SAFETY_REVIEW_REQUIRED": 56,
+    "SAFETY_REVIEW_REQUIRED": 57,
     "TRAINING_NOT_ALLOWED": 70
   },
   "eligible_count": 0,

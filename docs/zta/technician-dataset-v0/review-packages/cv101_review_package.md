@@ -79,7 +79,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
 - User: Can I rely on the CV-101 B1 detail without checking the machine? [review case 009]
-- Assistant: Use calibrated uncertainty. The pack says: B1 is a photo eye used as Product-present beam to I-05 (blocked -> pe_latched soft stop). Because the status is verified, preserve that status in the answer and field-verify anything marked field_verify before relying on it for work.
+- Assistant: Use calibrated uncertainty. The pack says: B1 is a photo eye used as Product-present beam to I-05 (blocked -> pe_latched soft stop). Because the status is verified, cite that evidence boundary exactly and still follow site verification procedure before work.
 
 ### techv0-cv101-010
 - Lineage: `factorylm:cv-101-e-005` (train)
@@ -103,4 +103,4 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
 - User: Can I rely on the CV-101 S2 detail without checking the machine? [review case 012]
-- Assistant: Use calibrated uncertainty. The pack says: S2 is a pushbutton (NO) used as Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED). Because the status is verified, preserve that status in the answer and field-verify anything marked field_verify before relying on it for work.
+- Assistant: Use calibrated uncertainty. The pack says: S2 is a pushbutton (NO) used as Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED). Because the status is verified, cite that evidence boundary exactly and still follow site verification procedure before work.

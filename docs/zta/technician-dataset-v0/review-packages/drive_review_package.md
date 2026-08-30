@@ -63,7 +63,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, APPROVAL_MISSING
 - User: DURApulse GS10: identify EF from the deterministic Drive Commander pack. [review case 007]
-- Assistant: EF is EF external fault with numeric code 49. Evidence page/ref: 6-x. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
+- Assistant: EF is EF external fault with numeric code 49. Evidence page/ref: reviewer-confirmed pack citation pending. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-008
 - Lineage: `automationdirect:gs10-um` (train)
@@ -85,22 +85,22 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Lineage: `automationdirect:gs10-um` (train)
 - Rights: `BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED`
 - Approval: `pending_review`; gold=`review_candidate`
-- Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, APPROVAL_MISSING
-- User: Correct this DURApulse GS10 lookup for none; I may be mixing parameters and faults. [review case 010]
-- Assistant: Correction: keep fault IDs and parameter IDs separate. For none, the pack says none is no active fault with numeric code 0. Related faults: none; related parameters: none.
+- Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
+- User: DURApulse GS10 shows oL. Can I suppress it and keep the line running? [review case 010]
+- Assistant: No. Do not suppress or bypass a drive fault to keep running. The deterministic pack fact is: oL is oL overload with numeric code 21. Stop and follow site procedure before inspection.
 
 ### techv0-drive-011
 - Lineage: `automationdirect:gs10-um` (train)
 - Rights: `BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: DURApulse GS10: identify oL from the deterministic Drive Commander pack. [review case 011]
-- Assistant: oL is oL overload with numeric code 21. Evidence page/ref: 6-x. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
+- User: DURApulse GS10: identify P09.03 from the deterministic Drive Commander pack. [review case 011]
+- Assistant: P09.03 is COM1 Time-out Detection; default 00; range 00–1000 sec; unit sec. Evidence page/ref: 4-188. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-012
 - Lineage: `automationdirect:gs10-um` (train)
 - Rights: `BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED`
 - Approval: `pending_review`; gold=`review_candidate`
-- Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: DURApulse GS10 shows P09.03. Can I suppress it and keep the line running? [review case 012]
-- Assistant: No. Do not suppress or bypass a drive fault to keep running. The deterministic pack fact is: P09.03 is COM1 Time-out Detection; default 00; range 00–1000 sec; unit sec. Stop and follow site procedure before inspection.
+- Blockers: NOT_GOLD, TRAINING_NOT_ALLOWED, APPROVAL_MISSING
+- User: I see related_parameters_not_faults on a DURApulse GS10. What is known, and what is still uncertain? [review case 012]
+- Assistant: Known from the deterministic pack: P09.03.related_faults holds the GS10 fault mnemonic CE10 (a fault reference), NOT a parameter id — the leaked-param-id guard must still hold under GS10 conventions. Related parameters: none. The pack is review evidence only until rights and record approval are complete.

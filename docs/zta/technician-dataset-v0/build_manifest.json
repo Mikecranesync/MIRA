@@ -2,7 +2,7 @@
   "build_id": "2026-07-23-technician-dataset-v0",
   "built_at": "2026-07-23T00:00:00Z",
   "candidate_count": 180,
-  "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+  "candidate_manifest_sha256": "71a10343358fe39d575f5d107e3f88ba4f77d8a6012e2e57793496803fc5802b",
   "dry_run": {
     "authorization_consumed": false,
     "deployment_occurred": false,

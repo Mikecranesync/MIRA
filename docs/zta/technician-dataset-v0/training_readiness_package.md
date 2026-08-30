@@ -12,8 +12,8 @@ Verdict: BLOCKED for paid training. The candidate corpus is review-ready, but no
 - Drive Commander candidates: 70
 - Candidate train-side lineages: 25
 - Held-out lineages reserved: 5
-- Valued uncertainty/refusal/correction records: 104
-- Safety-sensitive records: 56
+- Valued uncertainty/refusal/correction records: 105
+- Safety-sensitive records: 57
 - Real or human-corrected share: 77.78%
 - Synthetic share: 22.22%
 

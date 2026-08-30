@@ -3,7 +3,7 @@
   "build_id": "2026-07-23-technician-dataset-v0",
   "candidate_cost_floor_usd_if_later_approved": 4.0,
   "candidate_record_count": 180,
-  "candidate_token_estimate": 21599,
+  "candidate_token_estimate": 21593,
   "eligible_cost_usd": 4.0,
   "eligible_record_count": 0,
   "eligible_token_estimate": 0,
