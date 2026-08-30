@@ -89,7 +89,7 @@ def test_go_when_everything_is_healthy_and_physical():
     # SELECT-only, always
     assert all(s.lstrip().lower().startswith("select") for s in db.sql)
     assert not any(
-        re.search(r"(insert|update|delete|drop|alter|truncate)", s, re.I) for s in db.sql
+        re.search(r"\b(insert|update|delete|drop|alter|truncate)\b", s, re.I) for s in db.sql
     )
 
 
