@@ -1,0 +1,7 @@
+{
+  "test_id": "local-pf525-523-control-io",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "93219f651f14b3ea9f86ceefc7808f45d18f785b8536ee96cff90d384233fd58",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

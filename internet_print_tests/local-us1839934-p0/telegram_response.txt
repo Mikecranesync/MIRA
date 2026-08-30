@@ -1,0 +1,19 @@
+This is a **patent drawing**, not a working maintenance schematic. The header reads:
+
+- **"Jan. 5, 1932."**
+- **"C. STANSBURY"**
+- **"MOTOR CONTROLLER"**
+- **"Filed May 14, 1928"**
+- Patent No. **1,839,934**
+- Inventor signature: **Carroll Stansbury** (by attorney)
+
+**Fig. 1** is a pictorial/mechanical layout showing the physical arrangement of the controller:
+- Three-phase supply **L1, L2, L3** feeding contactor **5** at the top.
+- Two reversing contactors **6** and **7** (with coils **6b**, **7b**) feeding motor **4** through coupling **3**.
+- A foot pedal/operator **1** linked via lever **2** and shaft **18** (with collar **17**) to a bank of limit/switch contacts (**8, 9a/9b, 10, 11a/11b, 13, 14, 15, 16**) and a transformer/relay assembly **12** (with parts **12a, 12b, 12c, 12d**).
+
+**Fig. 2** is the electrical schematic between **L1** and **L3**, showing how the switches (**15, 9a, 8, 9b, 16, 14, 13, 11a, 10, 11b**) interlock with the contactor coils (**6a, 5a, 6b, 7b, 12a, 7a**) and the transformer secondary (**12c/12b**) to sequence motor starting/reversing.
+
+In short: it depicts a **foot-operated, three-phase motor reversing controller** with mechanical interlocks.
+
+The sheet does not include a parts list, contact sequence chart, or coil voltages — those would be in the patent's written specification, not on this drawing page.

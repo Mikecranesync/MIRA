@@ -1,0 +1,17 @@
+The print does not show specific devices. It is a wiring caution notice ("FX3U Input Wiring Caution") showing generic example wiring configurations for sink and source input methods.
+
+The terminals depicted in the examples are:
+
+**AC power type (Except FX3U-□MR/UA1):**
+- Ground: ⊥
+- Power: L, N
+- S/S
+- 0V, 24V
+- Inputs: X0, X1, X2 (with "..." indicating additional inputs continue)
+
+**DC power type:**
+- Ground: ⊥
+- Power: ⊕, ⊖
+- S/S
+- (0V), (24V)
+- Inputs: X0, X1,

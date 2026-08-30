@@ -1,0 +1,25 @@
+{
+  "test_id": "url-d82eba78cf",
+  "source_url": "https://support.automationdirect.com/docs/an-gs-021.pdf",
+  "publisher": "(direct URL)",
+  "title": "https://support.automationdirect.com/docs/an-gs-021.pdf",
+  "sheet": null,
+  "equipment_type": null,
+  "standard": null,
+  "category": null,
+  "why_selected": "operator-supplied --source-url",
+  "access_date_utc": "2026-07-21T10:16:39Z",
+  "original_sha256": "888e8675d66be569e1b2fc90358e8f898b654f7d3801609f82f1ec1f00099f9d",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://support.automationdirect.com/docs/an-gs-021.pdf",
+    "final_url": "https://support.automationdirect.com/docs/an-gs-021.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 1368649,
+    "host": "support.automationdirect.com"
+  },
+  "license_note": "public source \u2014 original ownership retained by publisher; retained for testing only"
+}

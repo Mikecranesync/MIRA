@@ -1,0 +1,7 @@
+{
+  "test_id": "url-d82eba78cf",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "06ee0805be2abaa8e5ac431d5ee6aad747fed170e3617d7a35f5cc6fc07f2e2e",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

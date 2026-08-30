@@ -1,0 +1,20 @@
+{
+  "test_id": "local-us1839934-p0",
+  "source_url": null,
+  "publisher": "(local)",
+  "title": "US1839934_p0.png",
+  "sheet": null,
+  "equipment_type": null,
+  "standard": null,
+  "category": null,
+  "why_selected": "operator-supplied local file",
+  "access_date_utc": "2026-07-21T21:52:55Z",
+  "original_sha256": "dfd6ad6ca6348d004f5088ef72bf68ee8e79ccecc5d2125242cac87b5b59cb00",
+  "original_ext": "png",
+  "download": {
+    "local_file": "C:\\Users\\hharp\\AppData\\Local\\Temp\\claude\\C--Users-hharp-Documents-GitHub-MIRA\\507a3e18-280d-45fe-8b3f-a6c462ea8136\\scratchpad\\pod\\US1839934_p0.png",
+    "content_type_sniffed": "image/png",
+    "bytes": 218948
+  },
+  "license_note": "public source \u2014 original ownership retained by publisher; retained for testing only"
+}

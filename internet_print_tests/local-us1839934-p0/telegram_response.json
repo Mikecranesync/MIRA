@@ -1,0 +1,30 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "schematic",
+  "vision_description": "Electrical drawing — patent drawing (US 1,839,934, Jan. 5, 1932, C. Stansbury, \"Motor Controller\") containing Fig. 1 (physical/mechanical layout of motor, contactors, and operating linkage) and Fig. 2 (electrical schematic/circuit diagram with switches, coils, and contacts).",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation usually takes 1–2 minutes…",
+  "final_text": "This is a **patent drawing**, not a working maintenance schematic. The header reads:\n\n- **\"Jan. 5, 1932.\"**\n- **\"C. STANSBURY\"**\n- **\"MOTOR CONTROLLER\"**\n- **\"Filed May 14, 1928\"**\n- Patent No. **1,839,934**\n- Inventor signature: **Carroll Stansbury** (by attorney)\n\n**Fig. 1** is a pictorial/mechanical layout showing the physical arrangement of the controller:\n- Three-phase supply **L1, L2, L3** feeding contactor **5** at the top.\n- Two reversing contactors **6** and **7** (with coils **6b**, **7b**) feeding motor **4** through coupling **3**.\n- A foot pedal/operator **1** linked via lever **2** and shaft **18** (with collar **17**) to a bank of limit/switch contacts (**8, 9a/9b, 10, 11a/11b, 13, 14, 15, 16**) and a transformer/relay assembly **12** (with parts **12a, 12b, 12c, 12d**).\n\n**Fig. 2** is the electrical schematic between **L1** and **L3**, showing how the switches (**15, 9a, 8, 9b, 16, 14, 13, 11a, 10, 11b**) interlock with the contactor coils (**6a, 5a, 6b, 7b, 12a, 7a**) and the transformer secondary (**12c/12b**) to sequence motor starting/reversing.\n\nIn short: it depicts a **foot-operated, three-phase motor reversing controller** with mechanical interlocks.\n\nThe sheet does not include a parts list, contact sequence chart, or coil voltages — those would be in the patent's written specification, not on this drawing page.",
+  "final_text_last_chunk": "This is a **patent drawing**, not a working maintenance schematic. The header reads:\n\n- **\"Jan. 5, 1932.\"**\n- **\"C. STANSBURY\"**\n- **\"MOTOR CONTROLLER\"**\n- **\"Filed May 14, 1928\"**\n- Patent No. **1,839,934**\n- Inventor signature: **Carroll Stansbury** (by attorney)\n\n**Fig. 1** is a pictorial/mechanical layout showing the physical arrangement of the controller:\n- Three-phase supply **L1, L2, L3** feeding contactor **5** at the top.\n- Two reversing contactors **6** and **7** (with coils **6b**, **7b**) feeding motor **4** through coupling **3**.\n- A foot pedal/operator **1** linked via lever **2** and shaft **18** (with collar **17**) to a bank of limit/switch contacts (**8, 9a/9b, 10, 11a/11b, 13, 14, 15, 16**) and a transformer/relay assembly **12** (with parts **12a, 12b, 12c, 12d**).\n\n**Fig. 2** is the electrical schematic between **L1** and **L3**, showing how the switches (**15, 9a, 8, 9b, 16, 14, 13, 11a, 10, 11b**) interlock with the contactor coils (**6a, 5a, 6b, 7b, 12a, 7a**) and the transformer secondary (**12c/12b**) to sequence motor starting/reversing.\n\nIn short: it depicts a **foot-operated, three-phase motor reversing controller** with mechanical interlocks.\n\nThe sheet does not include a parts list, contact sequence chart, or coil voltages — those would be in the patent's written specification, not on this drawing page.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation usually takes 1–2 minutes…",
+    "This is a **patent drawing**, not a working maintenance schematic. The header reads:\n\n- **\"Jan. 5, 1932.\"**\n- **\"C. STANSBURY\"**\n- **\"MOTOR CONTROLLER\"**\n- **\"Filed May 14, 1928\"**\n- Patent No. **1,839,934**\n- Inventor signature: **Carroll Stansbury** (by attorney)\n\n**Fig. 1** is a pictorial/mechanical layout showing the physical arrangement of the controller:\n- Three-phase supply **L1, L2, L3** feeding contactor **5** at the top.\n- Two reversing contactors **6** and **7** (with coils **6b**, **7b**) feeding motor **4** through coupling **3**.\n- A foot pedal/operator **1** linked via lever **2** and shaft **18** (with collar **17**) to a bank of limit/switch contacts (**8, 9a/9b, 10, 11a/11b, 13, 14, 15, 16**) and a transformer/relay assembly **12** (with parts **12a, 12b, 12c, 12d**).\n\n**Fig. 2** is the electrical schematic between **L1** and **L3**, showing how the switches (**15, 9a, 8, 9b, 16, 14, 13, 11a, 10, 11b**) interlock with the contactor coils (**6a, 5a, 6b, 7b, 12a, 7a**) and the transformer secondary (**12c/12b**) to sequence motor starting/reversing.\n\nIn short: it depicts a **foot-operated, three-phase motor reversing controller** with mechanical interlocks.\n\nThe sheet does not include a parts list, contact sequence chart, or coil voltages — those would be in the patent's written specification, not on this drawing page."
+  ],
+  "map_text": null,
+  "graph": null,
+  "interpreter_used": false,
+  "provider": "together",
+  "model": "together/MiniMaxAI/MiniMax-M3",
+  "interpreter_provider": "openai",
+  "interpreter_model": "gpt-5.5",
+  "decline_reason": null,
+  "effort": "medium",
+  "max_tokens": 12000,
+  "self_consistency_usage": null,
+  "latency_s": 44.99,
+  "error": null
+}

@@ -1,0 +1,12 @@
+2026-07-21 06:05:24,179 INFO fetching https://www.omron-ap.com/data_pdf/mnu/cp1e-cpu(iowiringdiagram)_inst-1131078-2b.pdf?id=2064
+2026-07-21 06:05:24,526 ERROR run failed
+Traceback (most recent call last):
+  File "C:\wt-me\tools\internet_print_test\runner.py", line 199, in run_one
+    original, dl_meta = _acquire(src, log)
+                        ~~~~~~~~^^^^^^^^^^
+  File "C:\wt-me\tools\internet_print_test\runner.py", line 85, in _acquire
+    data, meta = safety.Fetcher().fetch(url)
+                 ~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\wt-me\tools\internet_print_test\safety.py", line 81, in fetch
+    raise FetchError(f"robots.txt disallows fetching {url}")
+safety.FetchError: robots.txt disallows fetching https://www.omron-ap.com/data_pdf/mnu/cp1e-cpu(iowiringdiagram)_inst-1131078-2b.pdf?id=2064

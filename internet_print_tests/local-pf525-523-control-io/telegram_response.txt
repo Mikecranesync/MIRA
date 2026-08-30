@@ -1,0 +1,49 @@
+# PowerFlex 523 Control I/O Wiring Block Diagram (Series A)
+
+This diagram shows the **Control Terminal Block** layout and wiring for the PowerFlex 523 drive's control I/O.
+
+## Terminal Groups
+
+**Digital Inputs (01–06):**
+- **01** – Stop (always a stop input)
+- **02** – Start / Run FWD
+- **03** – Direction / Run REV
+- **04** – Digital Common
+- **05** – Pulse input (or digital input, selected by jumper J7)
+- **06** – Digital input
+
+A **SNK/SRC selector** (jumper J8) between terminals 04 and 05 chooses sink or source wiring mode. Typical SRC and SNK wiring examples are shown on the right.
+
+**Power & Analog (11–15):**
+- **11** – +24V DC
+- **12** – +10V DC
+- **13** – 0–10V Input
+- **14** – Analog Common
+- **15** – 4–20mA Input
+
+A potentiometer symbol is shown connected to terminals 12, 13, 14 with the note: **"Pot must be 1…10 k ohm, 2 W min."**
+
+**Communication (C1–C2):**
+- **C1** – RJ45 Shield
+- **C2** – Comm Common
+
+An **RS485 (DSI)** port is also shown.
+
+**Relay Outputs (R1–R3):**
+- **R1** – Relay N.O.
+- **R2** – Relay Common
+- **R3** – Relay N.C.
+
+## Jumpers
+- **J8** – Digital In SNK/SRC
+- **J7** – DigIn TermBlk 05 Sel (Pulse In / Digital Input)
+
+## Key Notes
+1. **I/O Terminal 01 is always a stop input.** The drive ships with a jumper between terminals 01 and 11 — remove it when using 01 as a stop/enable input.
+2. Two-wire control is shown. For three-wire control, use a momentary input on terminal 02 (start) and a maintained input on terminal 03 (direction).
+3. Only one analog frequency source may be connected at a time.
+
+## Physical Terminal Block (bottom of page)
+Two rows of screw terminals: top row = R1, R2, 01, 02, 03, 04, 05, 06; bottom row = R3, 11, 12, 13, 14, 15, C1, C2.
+
+**Source:** Rockwell Automation Publication 520-QS001B-EN-E, November 2017, page 11.

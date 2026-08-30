@@ -8,7 +8,7 @@
   "standard": "IEC 60947-4-1",
   "category": "contactor",
   "why_selected": "European/IEC three-phase star-delta reversal starter with main + delta + star contactors, overload, and terminal-to-terminal wiring. Page 4 is the campaign-verified rendered schematic page (corpus_manifest.md first-10, entry #3). Publicly published on library.e.abb.com; provenance verified 2026-07-10 (httpx application/pdf).",
-  "access_date_utc": "2026-07-13T20:28:15Z",
+  "access_date_utc": "2026-07-21T06:29:17Z",
   "original_sha256": "f9eb30746fd22c91bbe160b889fbbbecd93d5997c9fa438fd9a57a7847f1f07f",
   "original_ext": "pdf",
   "download": {

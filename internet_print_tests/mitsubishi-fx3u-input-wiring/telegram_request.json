@@ -1,0 +1,7 @@
+{
+  "test_id": "mitsubishi-fx3u-input-wiring",
+  "caption": "What devices and I/O are wired in this print?",
+  "tested_page_sha256": "e57fd1a518dbff8e0f4417cbe71c70c068f1511a8031d196c602137ed7070d0c",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

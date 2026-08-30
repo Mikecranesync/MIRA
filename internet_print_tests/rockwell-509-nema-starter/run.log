@@ -1,12 +1,16 @@
-2026-07-13 09:24:01,296 INFO regrade: reusing saved tested_page.png + telegram_response.json
-2026-07-13 09:24:01,298 INFO running independent multimodal judge…
-2026-07-13 09:25:34,231 INFO email package built:
+2026-07-21 01:57:04,486 INFO fetching https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf
+2026-07-21 01:57:06,194 INFO fetched 5976314 bytes (application/pdf)
+2026-07-21 01:57:07,016 INFO rendered PDF page 12 @ 200 dpi -> 309660 bytes PNG
+2026-07-21 01:57:07,019 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 01:58:07,849 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=59.96s
+2026-07-21 01:58:07,849 INFO running independent multimodal judge…
+2026-07-21 01:58:11,147 INFO email package built:
 TO: harperhousebuyers@gmail.com
-SUBJECT: MIRA Print Translator Test — rockwell-509-nema-starter — Bulletin 509 NEMA Motor Starters — Wiring Diagrams (GI-WD005) — 83/100
+SUBJECT: MIRA Print Translator Test — rockwell-509-nema-starter — Bulletin 509 NEMA Motor Starters — Wiring Diagrams (GI-WD005) — ungraded
 ATTACHMENTS:
   [attach] original.pdf (5,976,314 B)
   [attach] tested_page.png (309,660 B)
-  [attach] report.html (11,238 B)
-  [attach] telegram_response.json (39,522 B)
-HTML: 10,971 chars
-2026-07-13 09:25:35,723 INFO email send: {'sent': True, 'status': 200, 'id': '24c52435-d08f-4d02-8a3e-4f4bc2caa422'}
+  [attach] report.html (8,052 B)
+  [attach] judge_1.json (326 B)
+  [attach] telegram_response.json (9,107 B)
+HTML: 1,897 chars

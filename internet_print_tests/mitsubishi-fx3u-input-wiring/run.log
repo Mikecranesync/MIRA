@@ -1,0 +1,15 @@
+2026-07-21 02:27:40,077 INFO fetching https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf
+2026-07-21 02:27:41,660 INFO fetched 76145 bytes (application/pdf)
+2026-07-21 02:27:41,889 INFO rendered PDF page 0 @ 200 dpi -> 141368 bytes PNG
+2026-07-21 02:27:41,891 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 02:28:07,398 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=24.75s
+2026-07-21 02:28:07,462 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — mitsubishi-fx3u-input-wiring — FX3U PLC Input Module Wiring (JY997D19001) — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (76,145 B)
+  [attach] tested_page.png (141,368 B)
+  [attach] report.html (3,165 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (2,403 B)
+HTML: 1,863 chars

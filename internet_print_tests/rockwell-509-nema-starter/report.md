@@ -5,10 +5,10 @@
 - Title: Bulletin 509 NEMA Motor Starters — Wiring Diagrams (GI-WD005)
 - Sheet: Bulletin 509 Sizes 7 & 8 — 3-Phase Starters, standard START-STOP pushbutton (booklet p.13)
 - Equipment: NEMA 3-phase magnetic motor starter
-- Standard: NEMA
+- Standard: NEMA ICS 2
 - Category: motor_starter
 - Source URL: https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf
-- Access date (UTC): 2026-07-13T13:10:37Z
+- Access date (UTC): 2026-07-21T05:57:06Z
 - Original sha256: `9d3f977104c86a6ee38aa3f85630a3ad9ff890ec138a43b0d85977479bde6993`
 
 ## 2. Why selected
@@ -17,77 +17,59 @@ Page index 12 of the Rockwell WD booklet is a genuine NEMA 3-phase magnetic-star
 ## 3. Exact Telegram bot response (verbatim, unmodified)
 
 ```
-📋 Allen-Bradley Bulletin 509 three-phase full-voltage magnetic motor starter (Sizes 7 and 8), wired for a standard START-STOP push-button station — catalog wiring page 17.
+# Bulletin 509, Sizes 7 and 8 — 3 Phase Starter (Standard Wiring with START-STOP Push Button Station)
 
-This page documents an across-the-line 3-phase motor starter. Incoming lines L1/L2/L3 pass through the main contactor poles, through current transformers (1/2/3 C.T.) and the three overload elements (O.L.'s), then out to the motor as T1/T2/T3. The lower elementary (ladder) diagram shows the control logic: a separate control source, protected by a 1-amp fuse, runs through a normally-closed Stop button and a normally-open Start button (sealed in by a CR relay contact) to energize the control relay CR; a normally-closed overload contact in series drops the circuit out on overload. Because Sizes 7 and 8 use very large contactors, the operating coil is DC-fed: a rectifier bridge converts the control AC to DC, an economizer circuit (1 & 2 Econ. Cap. plus 1 & 2 Res. switched by CR contacts) lowers the coil holding current after pull-in, and a MOV (Mov.) suppresses coil transients.
+This sheet (page 17/13) shows the **standard wiring** for an Allen-Bradley Bulletin 509 Size 7 or 8 three-phase motor starter. It contains two views of the same circuit:
 
-🔑 Signals
-• Three-phase supply in
-• Motor output leads
-• Stop command (opens control circuit)
-• Start command (energizes/seal-in via CR)
-• Control-relay coil energize
-• Overload trip (drops control circuit)
-• Contactor coil (DC) hold
+## Top view — Physical / pictorial layout
+Shows how the devices are arranged and terminated:
 
-🔧 Devices
-• Three-phase motor (MOTOR (T1/T2/T3))
-• Main contactor operating coil (DC, economizer) (M / (L.B.))
-• Line current transformers (1C.T. / 2C.T. / 3C.T.)
-• Three-pole overload relay (O.L.'s)
-• Control relay with seal-in and economizer contacts (CR (coil K1/K2; contacts A1X..A4X / A1Y..A4Y))
-• Rectifier bridge (AC-to-DC for coil) (Rect.)
-• Surge-suppression varistor (Mov.)
-• Economizer capacitors (1 Econ. Cap. / 2 Econ. Cap.)
-• Economizer resistors (1 Res. / 2 Res.)
-• Control-circuit fuse (FU (1A))
-• Stop push button (NC) (Stop (1-2))
-• Start push button (NO) (Start (2-3))
+- **Incoming Lines L1, L2, L3** land on terminals **20, 22, 24** (with **21, 23, 25** as the load-side run terminals).
+- **1 C.T., 2 C.T., 3 C.T.** (current transformers) on **T1, T2, T3** feed the motor.
+- **(L.B.)** — overload relay block, with the **M** coil between terminals **6 and 9**.
+- **Mov.** (MOV, surge suppressor) and **Rect.** (rectifier) wired between terminals **4, 8, 9**.
+- **1 Econ. Cap.** and **2 Econ. Cap.** — economizer capacitors on terminal **8**, feeding the **FU 1A** fuse block (terminals **1–7**, with **1A**).
+- **O.L.'s** (overload contacts) with **Grd** (ground), terminals **20/21, 22/23, 24/25**.
+- **K1 / K2** interlock contacts and the **CR** relay with terminals **A1X, A2X, A3X, A4X, A1Y, A2Y, A3Y, A4Y**.
+- **1 Res.** and **2 Res.** (resistors) on terminals **5–7** and **12–6**.
+- **MOTOR** leads **T1, T2, T3**.
+- **Stop** and **Start** push buttons (terminals **1–2** and **2–3**).
 
-🩺 If you're chasing a fault
-… (more — reply "map")
+## Bottom view — Schematic ladder diagram
+Shows the control logic in schematic form:
 
-❓ Couldn't confirm (verify on the sheet):
-• Abbreviation '(L.B.)' at the M coil/contact is not clearly decodable.
-• Exact AC/DC terminal assignment on the rectifier bridge (which of 4/8/9/12) is hard to read.
-• Terminal '13' appears both at CR coil (K2) and near the OL/Grd area — possible dual usage needs a clean crop.
-• FU block digit sequence '1 2 3 4 6 7' (whether '5' is intentionally skipped).
-…and 1 more (see 'map')
+- **FU 1A** fuse feeds a **Separate Control Source** (terminal **4**).
+- Control line: terminal **1 → Stop (1–2) → Start (2–3) → CR (A1Y/A1X) holding contact → CR coil → K1 / K2 contacts → O.L. (terminal 4)**.
+- The **CR** coil, when energized, seals in through its own **A1Y/A1X** contact around the Start button.
+- **2 Res.** with **CR (A4X/A4Y)** contact feeds the **M** (master/contactor) coil.
+- **1 Res.** with **CR (A2Y/A2X)** and **CR (A3X/A3Y)** contacts, in series with the **M (L.B.)** overload contact, feeds the **Rect.** (rectifier terminals **8, 4, 9**).
+- **1 Econ. Cap.** and **2 Econ. Cap.** are switched in via the **Mov.** (MOV) branch on terminal **8**.
 
-⚠️ No voltage is printed on this sheet — neither the incoming line voltage nor the 'Separate Control Source' level is shown, so do not assume a value; treat the circuit as potentially lethal until measured. For continuity/resistance checks (Stop/Start contacts, coil, OL contact, capacitors, resistors) de-energize, lock out, and verify absence of voltage first. If live voltage checks are required to isolate coil vs OL, follow energized-work procedures with properly rated meters and PPE. Note that this is a generic catalog diagram and may not reflect the exact as-built panel.
-🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+## What the circuit does
+Pressing **Start** energizes **CR**; CR's contacts then pick the **M** (main contactor) through the resistor/capacitor economizer network, with the rectifier and MOV providing DC coil power and surge protection. Releasing **Start** is permitted because **CR (A1Y/A1X)** holds the circuit. Pressing **Stop**, or an **O.L.** trip, drops **CR** and the motor.
 
-Reply "map" for the full terminal and wire list.
+## Note on live state
+The print shows the **wiring**, not the present condition of the starter. To confirm whether the contactor is currently energized or which contacts are open/closed, the technician must verify with a meter at the terminals.
 ```
 
-- classification: **ELECTRICAL_PRINT** (conf 0.9)
-- interpreter used (Anthropic PrintSynth): **True**
-- model: claude-opus-4-8 · effort xhigh · latency 169.84s
+- classification: **ELECTRICAL_PRINT** (conf 0.85)
+- interpreter used (Anthropic PrintSynth): **False**
+- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 59.96s
 
-## 4. Automated grade (PROVISIONAL — not technician approval until Mike calibrates)
-- score: **83/100** (B)
-- hard failure: **False**
-- summary: The response correctly identifies the sheet (Bulletin 509, Sizes 7 & 8, 3-phase starter with START-STOP station) and gives a generally accurate, well-hedged account of the DC-coil/rectifier/economizer control scheme, with no invented voltages or device tags and appropriate uncertainty flags on genuinely ambiguous marks. Its main weaknesses are an unaddressed set of lamp-like symbols near the top of the diagram and a somewhat speculative (though hedged) merging of the 'M' coil and '(L.B.)' contact into one device with combined terminals. No hard failures were found.
+## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)
+- score: **None/100** (None)
+- hard failure: **None**
+- summary: None
 
 ## 5. Verified strengths
-- Sheet identity (Bulletin 509, Sizes 7 & 8, START-STOP pushbutton, 3 Phase Starters) matches the drawing's title block and footer exactly.
-- Correctly identifies the DC-coil/rectifier/economizer architecture visible via 'Rect.', 'Mov.', '1/2 Econ. Cap.', '1/2 Res.' blocks.
-- Appropriately flags ambiguous/illegible items ('(L.B.)', rectifier terminal numbers, FU sequence gap) instead of asserting them as fact.
-- Correctly notes the absence of any printed voltage value on the sheet and gives appropriate lockout/tagout safety guidance.
 
 ## 6. Suspected errors / hallucinations
-- "Contactor coil (DC) hold — M / (L.B.) @ 6-7-8-9 → pulls in main contactor via rectifier + economizer · conf 0.60" — The drawing shows 'M' coil (6-M-9) and a separate '(L.B.)' contact (7-8) as distinct symbols; merging them into one device with a single terminal range is a simplification not clearly supported by the drawing, though it is appropriately hedged with low confidence.
 
 ## 7. Items requiring technician review
-- Meaning of '(L.B.)' abbreviation near the M coil/contact
-- Exact rectifier bridge terminal assignment (4/8/9/12)
-- Dual appearance of terminal '13' at CR coil (K2) and near the OL/Grd area
-- Whether '5' is intentionally omitted from the FU terminal block sequence
-- Identity/function of the four unlabeled lamp-like (⊗) symbols near the top of the diagram, which the response never addresses
 
 ## 8. Build & runtime
-- commit: `8379b7cb8fc00324590aabd2f054a212dc2a55b5` · branch: feat/internet-print-test-runner · version: 3.137.1
-- judge model: claude-sonnet-5 · run: 2026-07-13T13:25:34Z
+- commit: `a3033b7f9607074493da92761904be4e86d9ceb2` · branch: feat/printsense-prod-recall-gate · version: 3.184.0
+- judge model: None · run: 2026-07-21T05:58:11Z
 
 ## 9. Source URL
 https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf

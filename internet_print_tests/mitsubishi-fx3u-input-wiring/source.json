@@ -1,0 +1,25 @@
+{
+  "test_id": "mitsubishi-fx3u-input-wiring",
+  "source_url": "https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf",
+  "publisher": "Mitsubishi Electric",
+  "title": "FX3U PLC Input Module Wiring (JY997D19001)",
+  "sheet": "Schematic & terminal table (p. 2-4)",
+  "equipment_type": "PLC input module",
+  "standard": "Industrial 24VDC",
+  "category": "plc_io",
+  "why_selected": "Mitsubishi FX3U modular input card, 24 VDC sensor input with common terminal wiring and group isolation. Page 0 is the campaign-verified rendered page (corpus_manifest.md first-10, entry #16). Publicly published on dl.mitsubishielectric.com; provenance verified 2026-07-10.",
+  "access_date_utc": "2026-07-21T06:27:41Z",
+  "original_sha256": "ed5d909ee1874af1c2b7f88bfc2d0f9a61687135b62b799421a079a420c9930e",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf",
+    "final_url": "https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 76145,
+    "host": "dl.mitsubishielectric.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by Mitsubishi Electric; retained only for read-only interpreter testing."
+}

@@ -1,0 +1,20 @@
+{
+  "test_id": "local-pf525-523-control-io",
+  "source_url": null,
+  "publisher": "(local)",
+  "title": "pf525_523_control_io.png",
+  "sheet": null,
+  "equipment_type": null,
+  "standard": null,
+  "category": null,
+  "why_selected": "operator-supplied local file",
+  "access_date_utc": "2026-07-21T23:55:51Z",
+  "original_sha256": "93219f651f14b3ea9f86ceefc7808f45d18f785b8536ee96cff90d384233fd58",
+  "original_ext": "png",
+  "download": {
+    "local_file": "C:\\Users\\hharp\\AppData\\Local\\Temp\\claude\\C--Users-hharp-Documents-GitHub-MIRA\\cc397855-fdc7-49db-8db0-6c8c666bd583\\scratchpad\\pod\\pf525_523_control_io.png",
+    "content_type_sniffed": "image/png",
+    "bytes": 250653
+  },
+  "license_note": "public source \u2014 original ownership retained by publisher; retained for testing only"
+}

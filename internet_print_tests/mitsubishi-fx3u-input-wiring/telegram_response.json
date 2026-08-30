@@ -1,0 +1,29 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.8,
+  "drawing_type": "wiring diagram",
+  "vision_description": "electrical drawing — Mitsubishi Electric FX3U Input Wiring Caution notice (Side B, English), showing sink/source input wiring diagrams for AC and DC power types with S/S, 0V, 24V, X0-X2 terminal configurations.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": null,
+  "final_text": "The print does not show specific devices. It is a wiring caution notice (\"FX3U Input Wiring Caution\") showing generic example wiring configurations for sink and source input methods.\n\nThe terminals depicted in the examples are:\n\n**AC power type (Except FX3U-□MR/UA1):**\n- Ground: ⊥\n- Power: L, N\n- S/S\n- 0V, 24V\n- Inputs: X0, X1, X2 (with \"...\" indicating additional inputs continue)\n\n**DC power type:**\n- Ground: ⊥\n- Power: ⊕, ⊖\n- S/S\n- (0V), (24V)\n- Inputs: X0, X1,",
+  "final_text_last_chunk": "The print does not show specific devices. It is a wiring caution notice (\"FX3U Input Wiring Caution\") showing generic example wiring configurations for sink and source input methods.\n\nThe terminals depicted in the examples are:\n\n**AC power type (Except FX3U-□MR/UA1):**\n- Ground: ⊥\n- Power: L, N\n- S/S\n- 0V, 24V\n- Inputs: X0, X1, X2 (with \"...\" indicating additional inputs continue)\n\n**DC power type:**\n- Ground: ⊥\n- Power: ⊕, ⊖\n- S/S\n- (0V), (24V)\n- Inputs: X0, X1,",
+  "all_messages": [
+    "The print does not show specific devices. It is a wiring caution notice (\"FX3U Input Wiring Caution\") showing generic example wiring configurations for sink and source input methods.\n\nThe terminals depicted in the examples are:\n\n**AC power type (Except FX3U-□MR/UA1):**\n- Ground: ⊥\n- Power: L, N\n- S/S\n- 0V, 24V\n- Inputs: X0, X1, X2 (with \"...\" indicating additional inputs continue)\n\n**DC power type:**\n- Ground: ⊥\n- Power: ⊕, ⊖\n- S/S\n- (0V), (24V)\n- Inputs: X0, X1,"
+  ],
+  "map_text": null,
+  "graph": null,
+  "interpreter_used": false,
+  "provider": "together",
+  "model": "together/MiniMaxAI/MiniMax-M3",
+  "interpreter_provider": "",
+  "interpreter_model": "gpt-5.5",
+  "decline_reason": null,
+  "effort": "medium",
+  "max_tokens": 12000,
+  "self_consistency_usage": null,
+  "latency_s": 24.75,
+  "error": null
+}

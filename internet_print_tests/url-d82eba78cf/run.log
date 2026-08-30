@@ -1,0 +1,13 @@
+2026-07-21 06:48:21,468 INFO regrade: reusing saved tested_page.png + telegram_response.json
+2026-07-21 06:48:21,470 INFO running independent multimodal judge…
+2026-07-21 06:48:48,224 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — url-d82eba78cf — https://support.automationdirect.com/docs/an-gs-021.pdf — 82/100
+ATTACHMENTS:
+  [attach] original.pdf (1,368,649 B)
+  [attach] tested_page.png (560,274 B)
+  [attach] report.html (7,439 B)
+  [attach] judge_1.json (6,426 B)
+  [attach] telegram_response.json (6,349 B)
+HTML: 2,923 chars
+2026-07-21 06:48:49,427 INFO email send: {'sent': True, 'status': 200, 'id': 'f00016ef-649e-4719-a0f0-efe4f5e39343'}

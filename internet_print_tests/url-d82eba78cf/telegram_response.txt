@@ -1,0 +1,41 @@
+# Wiring Diagram Explanation (Page 5)
+
+This is an AutomationDirect drive/VFD control terminal wiring diagram showing how an **EchoSpan** device is connected to the drive's analog input.
+
+## Main Terminals Shown
+
+**Control terminals (left column):**
+- **+24V** (two terminals) — internal 24 VDC supply
+- **DI1/FWD, DI2/REV, DI3–DI7** — digital inputs (DI1/FWD and DI2/REV are the dedicated forward/reverse run terminals)
+- **DCM** — digital common
+- **SCM, +24V, STO1, STO2** — Safe Torque Off circuit
+- **+10V** — 10 V reference for analog inputs
+- **AI1, AI2** — analog inputs (each with a DIP switch selecting **0–20 mA / 4–20 mA / 0–10 V**)
+- **ACM** — analog common
+
+**Power/communication terminals (right column):**
+- **R1O, R1C, R1** — relay output contacts
+- **AO1** — analog output (DIP switch: **0–10 V / 0–20 mA / 4–20 mA**)
+- **Option Slot** and **USB Port**
+
+## External Wiring (shown in blue)
+
+1. **Run command:** A switch is wired between **DI1/FWD** and **DCM** — closing it commands forward run.
+2. **EchoSpan transmitter:** Powered from an external **24Vdc** source.
+   - **(+)** output → **AI2** terminal
+   - **(−)** output → **ACM** terminal
+
+## Critical Note Printed on the Sheet
+
+> **"Please set the DIP switch for AI2 to 4-20 mA"**
+
+This is required so the drive interprets the EchoSpan's 4–20 mA signal correctly on the AI2 input.
+
+## What This Sheet Does NOT Show
+
+- Drive model number, parameter settings, or scaling values for AI2
+- Power input wiring (line/load terminals)
+- Motor connections
+- Any field device other than the EchoSpan
+
+For those, refer to the drive's user manual and the EchoSpan datasheet.

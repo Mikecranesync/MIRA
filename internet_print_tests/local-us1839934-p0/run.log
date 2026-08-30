@@ -1,0 +1,14 @@
+2026-07-21 17:52:55,046 INFO loaded local file C:\Users\hharp\AppData\Local\Temp\claude\C--Users-hharp-Documents-GitHub-MIRA\507a3e18-280d-45fe-8b3f-a6c462ea8136\scratchpad\pod\US1839934_p0.png (218948 bytes, image/png)
+2026-07-21 17:52:55,055 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 17:53:40,994 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=44.99s
+2026-07-21 17:53:40,995 INFO running independent multimodal judge…
+2026-07-21 17:53:46,268 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — local-us1839934-p0 — US1839934_p0.png — ungraded
+ATTACHMENTS:
+  [attach] original.png (218,948 B)
+  [attach] tested_page.png (218,948 B)
+  [attach] report.html (4,419 B)
+  [attach] judge_1.json (326 B)
+  [attach] telegram_response.json (5,322 B)
+HTML: 1,680 chars

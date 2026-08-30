@@ -1,0 +1,14 @@
+2026-07-21 19:55:51,420 INFO loaded local file C:\Users\hharp\AppData\Local\Temp\claude\C--Users-hharp-Documents-GitHub-MIRA\cc397855-fdc7-49db-8db0-6c8c666bd583\scratchpad\pod\pf525_523_control_io.png (250653 bytes, image/png)
+2026-07-21 19:55:51,431 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 19:56:42,964 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=50.42s
+2026-07-21 19:56:42,964 INFO running independent multimodal judge…
+2026-07-21 19:56:46,344 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — local-pf525-523-control-io — pf525_523_control_io.png — ungraded
+ATTACHMENTS:
+  [attach] original.png (250,653 B)
+  [attach] tested_page.png (250,653 B)
+  [attach] report.html (5,425 B)
+  [attach] judge_1.json (326 B)
+  [attach] telegram_response.json (6,785 B)
+HTML: 1,696 chars
