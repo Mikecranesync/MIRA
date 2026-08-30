@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
+
+import pytest
 
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "tools" / "cv101_live_gate.py"
+sys.path.insert(0, str(_MODULE_PATH.parent))
 _spec = importlib.util.spec_from_file_location("cv101_live_gate", _MODULE_PATH)
 assert _spec and _spec.loader
 gate = importlib.util.module_from_spec(_spec)
@@ -170,9 +174,23 @@ def test_foreign_source_does_not_answer_for_cv101():
     """A different gateway's stream must not satisfy the gate on its own."""
     other = _live(source_connection_id="some-other-gw", rows=999999, distinct_observed_ts=999999)
     v = _run([other])
-    # It is judged (busiest physical group) — the identity/scope checks are what
-    # catch a foreign mapping; here it shares the path so the label is reported.
-    assert "some-other-gw" in "\n".join(v.lines)
+    assert not v.ok
+    assert v.cause == gate.CAUSE_PROVENANCE
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        _live(source_system="historian_export"),
+        _live(source_connection_id=None),
+        _live(source_connection_id="   "),
+        _live(source_system="simulator", simulated=False),
+    ],
+)
+def test_positive_provenance_contract_fails_closed(row):
+    verdict = _run([row])
+    assert not verdict.ok
+    assert verdict.cause == gate.CAUSE_PROVENANCE
 
 
 # --- reporting quality --------------------------------------------------------
