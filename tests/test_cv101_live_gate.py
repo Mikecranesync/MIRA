@@ -193,6 +193,27 @@ def test_positive_provenance_contract_fails_closed(row):
     assert verdict.cause == gate.CAUSE_PROVENANCE
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        _live(source_system="IGNITION"),
+        _live(source_system="ignition "),
+        _live(source_connection_id=" cv101-bench-gw"),
+    ],
+)
+def test_cv101_pair_is_exact_without_case_or_whitespace_normalization(row):
+    verdict = _run([row])
+    assert not verdict.ok
+    assert verdict.cause == gate.CAUSE_PROVENANCE
+
+
+def test_foreign_physical_provenance_cannot_coexist_with_a_cv101_go():
+    foreign = _live(source_system="plc_bridge", source_connection_id="bridge-1")
+    verdict = _run([_live(), foreign])
+    assert not verdict.ok
+    assert verdict.cause == gate.CAUSE_PROVENANCE
+
+
 # --- reporting quality --------------------------------------------------------
 
 

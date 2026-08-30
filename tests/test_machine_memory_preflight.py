@@ -144,10 +144,10 @@ def test_ingest_without_a_physical_fault_window_is_no_go():
     assert "FAULT_WINDOW_EMPTY" in _codes(verdict)
 
 
-def test_missing_historian_execution_is_unknown():
+def test_missing_historian_execution_is_no_go():
     verdict = preflight.evaluate(_input(heartbeat_started_at=None, heartbeat_finished_at=None))
-    assert verdict.status == preflight.UNKNOWN
-    assert "HISTORIAN_EXECUTION_UNOBSERVED" in _codes(verdict)
+    assert verdict.status == preflight.NO_GO
+    assert _codes(verdict) == ["HISTORIAN_EXECUTION_UNOBSERVED"]
 
 
 def test_fault_window_observation_partition_must_equal_raw_event_rows():
@@ -171,6 +171,34 @@ def test_fault_window_must_match_exact_replay_bounds():
     verdict = preflight.evaluate(_input(fault_window_to="2026-08-30T11:59:59Z"))
     assert verdict.status == preflight.NO_GO
     assert "FAULT_WINDOW_BOUNDS_MISMATCH" in _codes(verdict)
+
+
+def test_matching_but_reversed_replay_bounds_are_no_go():
+    verdict = preflight.evaluate(
+        _input(
+            fault_window_from="2026-08-30T12:00:00Z",
+            fault_window_to="2026-08-30T11:58:00Z",
+            replay_from="2026-08-30T12:00:00Z",
+            replay_to="2026-08-30T11:58:00Z",
+        )
+    )
+    assert verdict.status == preflight.NO_GO
+    assert _codes(verdict) == ["FAULT_WINDOW_BOUNDS_MISMATCH"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("machine_memory_path_hashes", CV101_PATH_HASH),
+        ("run_trigger_path_hashes", None),
+        ("fault_trigger_tag_hashes", ["not-a-sha256"]),
+    ],
+)
+def test_malformed_heartbeat_hash_collections_are_unknown_not_go(field, value):
+    detail = {**_input().heartbeat_detail, field: value}
+    verdict = preflight.evaluate(_input(heartbeat_detail=detail))
+    assert verdict.status == preflight.UNKNOWN
+    assert "CRITICAL_FACT_UNKNOWN" in _codes(verdict)
 
 
 def test_reasons_have_stable_priority_order():
@@ -220,3 +248,16 @@ def test_diffs_never_count_as_observations_or_provenance():
     fixture = json.loads((ROOT / "tests/fixtures/machine-history-provenance.v1.json").read_text())
     coverage = provenance.summarize_fixture(fixture)
     assert coverage == fixture["expectedCoverage"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"source_system": "IGNITION", "source_connection_id": "cv101-bench-gw", "simulated": False},
+        {"source_system": "ignition ", "source_connection_id": "cv101-bench-gw", "simulated": False},
+        {"source_system": "ignition", "source_connection_id": " cv101-bench-gw", "simulated": False},
+    ],
+)
+def test_cv101_provenance_does_not_normalize_exact_pair(row):
+    result = provenance.classify_event(row)
+    assert not result.cv101_approved

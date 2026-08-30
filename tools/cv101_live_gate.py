@@ -110,15 +110,31 @@ def classify(
             EXIT_NOGO,
         )
 
-    # Prefer a real (non-synthetic) group; a simulator group must never satisfy
-    # the physical gate, but it is reported so SimLab traffic is never mistaken
-    # for silence.
+    # CV-101 accepts exactly one provenance pair.  Keep every non-synthetic row
+    # in the partition rather than dropping it: an approved group cannot mask a
+    # foreign physical gateway or unknown provenance in the same probe result.
     physical = [r for r in rows if _is_cv101_physical(r)]
     synthetic = [r for r in rows if classify_event(r).provenance == "simulated"]
-    unknown = [r for r in rows if classify_event(r).provenance == "unknown"]
+    non_approved = [
+        r
+        for r in rows
+        if classify_event(r).provenance != "simulated" and not _is_cv101_physical(r)
+    ]
+
+    if non_approved:
+        names = ", ".join(_label(r) for r in non_approved)
+        return Verdict(
+            False,
+            CAUSE_PROVENANCE,
+            [
+                "NO-GO: non-approved provenance is present (%s)." % names,
+                "  CV-101 requires exactly ignition/cv101-bench-gw with simulated=false.",
+            ],
+            EXIT_NOGO,
+        )
 
     if not physical:
-        names = ", ".join(_label(r) for r in synthetic + unknown)
+        names = ", ".join(_label(r) for r in synthetic)
         return Verdict(
             False,
             CAUSE_PROVENANCE,

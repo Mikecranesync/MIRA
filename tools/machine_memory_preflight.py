@@ -88,6 +88,11 @@ def _valid_count(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def _valid_hash_collection(value: object) -> bool:
+    """Heartbeat evidence is an array of hashes, never a membership-friendly string."""
+    return isinstance(value, (list, tuple)) and all(_valid_hash(item, _SHA256) for item in value)
+
+
 def _snapshot(status: str, codes: list[str], data: MachineMemoryPreflightInput) -> str:
     """Serialize a stable, credentials/path/content-free operations record."""
     detail = data.heartbeat_detail if isinstance(data.heartbeat_detail, dict) else {}
@@ -154,6 +159,15 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     )
     if not isinstance(data.heartbeat_detail, dict):
         invalid = True
+    else:
+        invalid = invalid or any(
+            not _valid_hash_collection(data.heartbeat_detail.get(field))
+            for field in (
+                "machine_memory_path_hashes",
+                "run_trigger_path_hashes",
+                "fault_trigger_tag_hashes",
+            )
+        )
     if invalid:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
@@ -196,7 +210,6 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
         add("HISTORIAN_CONFIG_MISMATCH")
 
     if data.heartbeat_started_at is None:
-        unknown = True
         add("HISTORIAN_EXECUTION_UNOBSERVED")
     elif _timestamp(data.heartbeat_started_at) is None:
         unknown = True
@@ -204,7 +217,6 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     if data.heartbeat_status == "running" and data.heartbeat_finished_at is None:
         add("HISTORIAN_STUCK_RUNNING")
     elif data.heartbeat_finished_at is None:
-        unknown = True
         add("HISTORIAN_EXECUTION_UNOBSERVED")
     elif _timestamp(data.heartbeat_finished_at) is None:
         unknown = True
@@ -229,6 +241,12 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
     if _timestamp(data.fault_window_from) != _timestamp(data.replay_from) or _timestamp(data.fault_window_to) != _timestamp(data.replay_to):
+        add("FAULT_WINDOW_BOUNDS_MISMATCH")
+    elif (
+        _timestamp(data.replay_from) is not None
+        and _timestamp(data.replay_to) is not None
+        and _timestamp(data.replay_from) >= _timestamp(data.replay_to)
+    ):
         add("FAULT_WINDOW_BOUNDS_MISMATCH")
     if all(
         _valid_count(value)

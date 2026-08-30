@@ -41,7 +41,7 @@ def classify_event(row: dict[str, object]) -> ProvenanceResult:
         admissible=physical and quality == "good",
         bad_quality=physical and quality != "good",
         cv101_approved=(
-            physical and source_name == CV101_SOURCE and connection == CV101_CONNECTION
+            physical and source == CV101_SOURCE and connection == CV101_CONNECTION
         ),
     )
 
