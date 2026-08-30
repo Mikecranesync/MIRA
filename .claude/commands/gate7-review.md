@@ -103,6 +103,46 @@ schema-, or auth-adjacent). Those wait for the real lane.
   high-severity defect and then approves is contradicting itself, and the finding is the
   evidence.
 
+## Evidence artifacts, scope, and the shape a verdict needs (2026-08-29, #3481)
+
+- **Evidence artifacts are excluded by default — and receipted.** Preserved raw
+  reviewer/adjudicator outputs and lane logs under
+  `docs/architecture/convergence/units/evidence/` (documentation/log suffixes only, keyed
+  on both sides of a rename) are dropped from the reviewed diff. `README.md` and
+  `*rebuttal*` files stay in review; executable or structured files under that directory
+  never hide there. Every excluded path is listed in the run receipts. Pass
+  `--include-evidence` when the artifacts' contents are what you want reviewed.
+  Why: a PR that carries its own preserved review output gets reviewed *for the prior
+  model's text* ("the documentation claims X was fixed"), recursively, every head (#3483).
+- **This is not a secret boundary.** Redaction (IP / MAC / serial / credential) is applied
+  unconditionally to the whole diff before any provider call — scope, kind and exclusion
+  do not change that. Evidence integrity is checked separately, by verifiable mechanisms:
+  artifacts are tracked at an exact head/commit; the pre-commit hook
+  (`.githooks/pre-commit`, `gitleaks protect --staged`) scans every staged change; the
+  exclusion is receipted by `receipts_block` (locked by
+  `test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_receipted`);
+  and `--include-evidence` puts artifact contents in scope explicitly.
+- **Scoped runs carry a SCOPE NOTICE** naming every changed file outside the `--paths`
+  slice; "the diff does not contain X" is not a finding in a scoped run.
+- **A verdict exists only in the briefed shape.** Fresh review output: exactly one
+  `## VERDICT` (PASS or BLOCK alone on the next line), exactly one `## FINDINGS`, exactly
+  one `## NOT REVIEWED`; findings are parsed only from `## FINDINGS`. Fresh adjudication
+  output: exactly one `## RULINGS`, rulings parsed only from it (exact bijection by stable
+  id, no severity channel). A table, an essay, a bold verdict, a quoted example line, or
+  missing/duplicated sections ⇒ **UNKNOWN** — never PASS, never BLOCK. A review that states
+  BLOCK with zero parseable findings is malformed too (unactionable) ⇒ UNKNOWN. Preserve
+  **every** malformed attempt (`-attemptN-malformed`) and retry with a
+  fresh, independent call until a valid verdict exists; do not widen the parser to fish a
+  verdict. A malformed attempt never waives the requirement for a valid verdict, and
+  **there is no Gate 7 round or attempt cap** — a lane that has not yet produced a valid shape
+  has no verdict yet, not a waiver and not a BLOCK. Two distinct rules, both in force: retrying
+  a *malformed* attempt (no verdict exists yet) is required and unbounded; re-rolling a *valid*
+  verdict on an unchanged head to shop for verdict variance is forbidden. The "three-round cap"
+  belongs to the multi-session protocol's Codex lane (`.claude/rules/multi-session-protocol.md`
+  §6), not to Gate 7. Adjudications follow the same rule: exactly one `## VERDICT`
+  (PASS/BLOCK) and exactly one `## RULINGS`, rulings read only from it; malformed ⇒ UNKNOWN,
+  preserved, retried. Loose parsing is used only to load committed prior reports.
+
 ## Related
 
 - `.claude/agents/gate7-adversarial-reviewer.md` — the posture, and the substitute-panel role

@@ -35,6 +35,7 @@ origin list here.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -172,8 +173,192 @@ def classify_origin(url: str, *, policy: "dict | None" = None) -> tuple[str, str
     return ("unclassified", f"origin {host!r} has no entry in the canonical provenance policy")
 
 
+# Query-parameter NAMES that carry a credential (round AD on #3481, round-27
+# scope C F1 SUSTAINED). Matched on the percent-decoded name, NFKC-normalised,
+# lower-cased, with EVERY non-alphanumeric character removed (round AL on
+# #3481: a U+2011 hyphen, a full-width underscore, a full-width letter or a
+# stray `&` inside the name all fold to the same key — refusing more is the
+# fail-closed direction) — so `api_key`, `Api-Key`, `api%5Fkey`, `api‑key` and
+# `X-Amz-Signature` all match; values are never inspected (a value that merely
+# contains the word "token" is an ordinary query), and a longer name such as
+# `tokenizer` is not the family.
+_CREDENTIAL_QUERY_NAMES = frozenset(
+    {
+        "token",
+        "accesstoken",
+        "idtoken",
+        "refreshtoken",
+        "authtoken",
+        "sessiontoken",
+        "clienttoken",
+        "oauthtoken",
+        "bearer",
+        "jwt",
+        "sessionid",
+        "apikey",
+        "accesskey",
+        "secretkey",
+        "privatekey",
+        "apisecret",
+        "auth",
+        "authorization",
+        "password",
+        "passwd",
+        "secret",
+        "clientsecret",
+        "signature",
+        "sig",
+        "credential",
+        "xamzsignature",
+        "xamzcredential",
+        "xgoogsignature",
+        "xgoogcredential",
+    }
+)
+_QUERY_NAME_NOISE_RE = re.compile(r"[^0-9a-z]")
+
+
+# Latin-lookalike letters (Cyrillic and Greek) mapped to their Latin twins
+# before folding (round AP on #3481): `pаssword` with a Cyrillic а must fold to
+# `password`. Only visually identical lower-case letters are mapped; the map
+# is applied after NFKD + lower-casing, so upper-case twins fold through it too.
+_CONFUSABLES = str.maketrans(
+    {
+        "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x",  # Cyrillic
+        "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "ɡ": "g", "һ": "h", "ԛ": "q", "ԝ": "w",
+        "ο": "o", "ν": "v", "ι": "i", "κ": "k", "α": "a", "τ": "t",  # Greek
+    }
+)  # fmt: skip
+
+
+def _fold_query_name(raw: str) -> str:
+    """The comparison key of a query-parameter name: percent-decoded, NFKD with
+    every combining mark dropped (`pássword` → `password`), lower-cased,
+    Latin-lookalike Cyrillic/Greek letters mapped to Latin, then every
+    non-alphanumeric byte removed. Pure."""
+    from unicodedata import combining, normalize
+    from urllib.parse import unquote
+
+    # Percent-decode until the value stops changing, bounded (round AT on
+    # #3481, round-42 S2 F1 SUSTAINED): `api%255Fkey` -> `api%5Fkey` -> `api_key`.
+    # Refusing a multiply-encoded spelling is the fail-closed direction.
+    decoded = raw
+    for _ in range(5):
+        nxt = unquote(decoded)
+        if nxt == decoded:
+            break
+        decoded = nxt
+    decomposed = normalize("NFKD", decoded)
+    stripped = "".join(ch for ch in decomposed if not combining(ch))
+    return _QUERY_NAME_NOISE_RE.sub("", stripped.lower().translate(_CONFUSABLES))
+
+
+def _credential_query_name(url: str) -> "str | None":
+    """The first credential-family query-parameter NAME in ``url``, or None.
+
+    The query is NFKC-normalised BEFORE it is split (round AM on #3481), so a
+    full-width ``＆`` (U+FF06) or ``；`` (U+FF1B) is a pair separator too —
+    refusing more is the fail-closed direction; values are still never read.
+    """
+    from unicodedata import normalize
+
+    s = str(url).strip()
+    query = normalize("NFKC", s.partition("?")[2].partition("#")[0])
+    # The fragment takes the same rule for `name=value` pairs (round AO on
+    # #3481): it is never sent to a server, but it IS persisted in source_url
+    # (an OAuth implicit-flow `#access_token=…` is the canonical case). A
+    # fragment without `=` is an anchor (`#token`, `#signature` are ordinary
+    # section ids in a manual), not a parameter.
+    fragment = normalize("NFKC", s.partition("#")[2])
+    pairs = re.split(r"[&;]", query) + [p for p in re.split(r"[&;]", fragment) if "=" in p]
+    for pair in pairs:
+        if not pair:
+            continue
+        name = _fold_query_name(pair.split("=", 1)[0])
+        if name in _CREDENTIAL_QUERY_NAMES:
+            return name
+    return None
+
+
+def url_credential_reason(url: str) -> "str | None":
+    """Why ``url`` must be refused as credential-bearing, or None.
+
+    The ONE boundary rule every gate and store route consults before identity,
+    log or SQL: userinfo in the authority of any ``scheme://authority`` form, or
+    a credential-family query-parameter name. The reason names the class (and,
+    for a query, the normalised parameter NAME) — never a value.
+    """
+    if url_has_userinfo(url):
+        return "userinfo (credentials in the authority)"
+    name = _credential_query_name(url)
+    if name:
+        return f"a credential-like query parameter ({name})"
+    return None
+
+
+def _credential_refused(reason: str) -> str:
+    return (
+        f"URL carries {reason} — refused; an authenticated source uses out-of-band "
+        "secret-backed request headers, never a credential in the URL"
+    )
+
+
+_URL_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+
+
+def url_has_userinfo(url: str) -> bool:
+    """True when a ``scheme://authority`` URL of ANY scheme carries userinfo
+    (``user:pass@host``, ``user@host``) in its authority.
+
+    Pure, string-based on the same authority slice ``canonical_source_url`` uses
+    (everything between ``//`` and the first ``/``, ``?`` or ``#``), so an ``@``
+    in a path, query or fragment is not userinfo, and a value without a
+    ``scheme://`` authority form (bare path, drive letter, ``mailto:``,
+    ``file:/x``) is not a candidate. Every syntactically valid scheme counts —
+    ``ftp``, ``s3``, a custom scheme, upper-case spellings, ``file://user@host`` —
+    because the policy is any URL userinfo, not http/https only (round AB on
+    #3481: the http/https-only first version let a direct store call persist
+    ``ftp://user:pass@host``). Case- and padding-insensitive. Such a URL is
+    refused at the hop-0 gate and at the store boundary: a credential is never
+    stripped into another identity, never bound into SQL, never persisted, never
+    logged.
+
+    A **network-path reference** — ``//authority/path`` with no scheme (RFC 3986
+    §4.2) — has an authority too, and its userinfo is userinfo (round AH on
+    #3481, round-31 S2 F1): it parses to scheme ``""``, which the visibility
+    floor classifies as *local*, so without this rule ``//user:pass@host/x``
+    would be written tenant-private with the credential in ``source_url``. An
+    opaque ``scheme:path`` value with an ``@`` (``mailto:a@b``,
+    ``user:secret@host/path``) has no authority and stays a non-candidate —
+    the two forms are syntactically indistinguishable, no crawler route
+    produces the latter, and the hop-0 gate admits only http/https/file.
+    """
+    from unicodedata import normalize
+
+    # NFKC first (round AS on #3481, round-41 S2 F1): a FULLWIDTH COMMERCIAL AT
+    # (U+FF20) is the `@` delimiter and full-width `／？＃` are the stops;
+    # without it `user:pass＠host` parsed as a HOST and a direct store call
+    # would have persisted the credential bytes tenant-private.
+    s = normalize("NFKC", str(url)).strip()
+    if s.startswith("//"):
+        authority = s[2:]  # network-path reference: an authority with no scheme
+    else:
+        head, sep, rest = s.partition(":")
+        if not sep or not _URL_SCHEME_RE.fullmatch(head) or not rest.startswith("//"):
+            return False
+        authority = rest[2:]
+    for stop in "/?#":
+        idx = authority.find(stop)
+        if idx != -1:
+            authority = authority[:idx]
+    return "@" in authority
+
+
 def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bool, str]:
     """May this URL be written to the shared corpus? Fail-closed."""
+    refusal = url_credential_reason(url)
+    if refusal:
+        return (False, _credential_refused(refusal))
     cls, reason = classify_origin(url, policy=policy)
     if cls in _SHARED_OK:
         return (True, reason)
@@ -213,6 +398,9 @@ def enforce_visibility(source_url: str, declared_private: bool) -> tuple[bool, b
     asked, never less, and it can refuse — it can never grant sharing that the
     caller did not request.
     """
+    refusal = url_credential_reason(source_url)
+    if refusal:  # before classification: a credential-bearing URL is never a document
+        return (False, True, _credential_refused(refusal))
     try:
         cls, reason = classify_origin(source_url)
     except Exception as exc:  # unreadable policy -> refuse, never publish

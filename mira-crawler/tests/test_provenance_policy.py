@@ -67,6 +67,93 @@ def test_discovery_still_sees_the_known_manifests():
     )
 
 
+def test_discovery_never_reads_docstrings_or_non_assignment_strings(tmp_path):
+    """Gate 7 round R on #3481 (code F1, sustained on adjudication): the claim
+    was that `_urls_in` treats module/function docstrings as origin URLs.
+    `discover_manifests` visits only `ast.Assign` / `ast.AnnAssign` VALUES at
+    module level; a docstring is an `ast.Expr` and is never walked, and neither
+    is a string inside a function body or a call argument."""
+    (tmp_path / "doc_heavy.py").write_text(
+        '"""Module docstring mentioning https://docstring.example/module."""\n'
+        "import logging\n\n"
+        "FEEDS = ['https://real.example/feed.xml']\n\n"
+        "def fetch():\n"
+        '    """See https://docstring.example/function for details."""\n'
+        "    url = 'https://body.example/not-a-manifest'\n"
+        "    logging.info('https://call.example/arg')\n"
+        "    return url\n",
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert found == {"doc_heavy.FEEDS": ["https://real.example/feed.xml"]}
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {"real.example"}
+
+
+def test_discovery_matches_url_constants_case_insensitively(tmp_path):
+    """Gate 7 round-12 group A finding on #3268 (Gate 9 follow-up): `_urls_in`
+    matched only lowercase `http://` / `https://`, so a manifest constant written
+    `HTTPS://…` escaped discovery and the consistency test above would never have
+    demanded a policy entry for it. The production boundary was never open — the
+    gate lowercases scheme and host and REFUSES an unclassified origin — the gap
+    was in this CI proof, not in the write path. Fixed at the root in `_urls_in`."""
+    (tmp_path / "shouty.py").write_text(
+        'FEEDS = ["HTTPS://Example.COM/feed.xml", "Http://mixed.example.com/x"]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert set(found) == {"shouty.FEEDS"}
+    assert set(found["shouty.FEEDS"]) == {
+        "HTTPS://Example.COM/feed.xml",
+        "Http://mixed.example.com/x",
+    }
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {
+        "example.com",
+        "mixed.example.com",
+    }
+
+
+def test_discovery_reports_an_fstring_built_origin_as_dynamic_and_the_proof_fails_loud(tmp_path):
+    """#3481 round AT (round-42 S1 F1 SUSTAINED): a module-level f-string whose
+    literal head is `http(s)://` builds an origin the policy cannot classify.
+    Discovery reports it as a DYNAMIC origin (`https://{…}`) so the consistency
+    proof fails loud on "no resolvable host" instead of never seeing it. (The
+    credential gate itself runs on the URL VALUE at ingest on every route and is
+    unaffected by how the string was built.)"""
+    (tmp_path / "dyn.py").write_text(
+        'HOST = "cdn.example.com"\n'
+        'FEEDS = [f"https://{HOST}/feed.xml", "https://static.example.com/x"]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert set(found["dyn.FEEDS"]) == {"https://{…}/feed.xml", "https://static.example.com/x"}
+    cls, reason = provenance.classify_origin("https://{…}/feed.xml")
+    assert cls == "unclassified" and "{…}" in reason, (cls, reason)
+    with pytest.raises(AssertionError, match=r"https://\{…\}/feed.xml"):
+        for url in found["dyn.FEEDS"]:
+            cls, reason = provenance.classify_origin(url)
+            assert cls != "unclassified", f"{url}: {reason}"
+
+
+def test_discovery_matches_url_constants_with_surrounding_whitespace(tmp_path):
+    """#3481 round Y code F2 (medium, real): a manifest constant written with
+    accidental surrounding whitespace (`"  https://…"`) escaped discovery, so the
+    consistency proof above would not have demanded a policy entry for its
+    origin. Discovery strips before matching and reports the stripped URL."""
+    (tmp_path / "padded.py").write_text(
+        'FEEDS = ["  https://padded.example.com/feed.xml", "HTTPS://tail.example.com/x  "]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert set(found["padded.FEEDS"]) == {
+        "https://padded.example.com/feed.xml",
+        "HTTPS://tail.example.com/x",
+    }
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {
+        "padded.example.com",
+        "tail.example.com",
+    }
+
+
 def test_every_entry_is_well_formed(policy):
     """Each entry states a valid classification, a reason, and who decided."""
     bad = []
@@ -215,8 +302,10 @@ class TestPrivateOriginsAreIngestedNotRefused:
         with (
             patch("tasks.ingest.httpx.Client", _Client),
             patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
-            patch("ingest.chunker.chunk_blocks",
-                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch(
+                "ingest.chunker.chunk_blocks",
+                return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}],
+            ),
             patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
@@ -263,7 +352,9 @@ class TestPrivateOriginsAreIngestedNotRefused:
         )
         oem = [h for h, e in d["origins"].items() if "OEM documentation portal" in e["reason"]]
         press = [h for h, e in d["origins"].items() if "trade press" in e["reason"]]
-        assert len(oem) == 11 and len(press) == 9, f"population changed: {len(oem)} OEM, {len(press)} press"
+        assert len(oem) == 11 and len(press) == 9, (
+            f"population changed: {len(oem)} OEM, {len(press)} press"
+        )
         for h in oem:
             assert d["origins"][h]["classification"] == "curated"
             assert "Mike" in d["origins"][h]["confirmed_by"]
@@ -279,7 +370,11 @@ class TestPrivateOriginsAreIngestedNotRefused:
         d = yaml.safe_load(
             (pathlib.Path(__file__).resolve().parents[1] / "provenance_policy.yaml").read_text()
         )
-        pending = [h for h, e in d["origins"].items() if str(e.get("confirmed_by", "")).startswith("PENDING")]
+        pending = [
+            h
+            for h, e in d["origins"].items()
+            if str(e.get("confirmed_by", "")).startswith("PENDING")
+        ]
         assert not pending, f"origins still awaiting a human decision: {pending}"
 
 
@@ -337,8 +432,10 @@ class TestPrivateRedirectChains:
         with (
             patch("tasks.ingest.httpx.Client", _Client),
             patch("ingest.converter.extract_from_pdf_with_fallback", return_value=[{"text": "x"}]),
-            patch("ingest.chunker.chunk_blocks",
-                  return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}]),
+            patch(
+                "ingest.chunker.chunk_blocks",
+                return_value=[{"text": "body long enough", "chunk_index": 0, "chunk_type": "text"}],
+            ),
             patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.store.insert_chunk", side_effect=lambda **kw: (seen.update(kw), "id")[1]),
@@ -353,7 +450,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://www.machinerylubrication.com/canonical"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") is None, f"private redirect must be followed, got {result}"
@@ -365,7 +463,8 @@ class TestPrivateRedirectChains:
         a = "https://ibiblio.org/book.pdf"
         b = "https://www.plantservices.com/article"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") is None
@@ -379,7 +478,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://www.manualslib.com/doc"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") == "uncurated_redirect"
@@ -390,7 +490,8 @@ class TestPrivateRedirectChains:
         a = "https://www.plantservices.com/article"
         b = "https://never-classified.invalid/doc"
         result, requested, seen = self._run_chain(
-            monkeypatch, a,
+            monkeypatch,
+            a,
             {a: (302, {"location": b}), b: (200, {"content-type": "application/pdf"})},
         )
         assert result.get("error") == "uncurated_redirect"
@@ -443,6 +544,12 @@ class TestEveryWriteRouteEnforcesThePolicy:
             def execute(self, stmt, params):
                 captured.update(params)
 
+                class _Returned:  # `RETURNING id` — the written row's id
+                    def scalar_one_or_none(self_):
+                        return params.get("id")
+
+                return _Returned()
+
             def commit(self):
                 pass
 
@@ -477,8 +584,8 @@ class TestEveryWriteRouteEnforcesThePolicy:
         # A caller asking for private always gets private, whatever the policy.
         for url in (
             "https://library.e.abb.com/m.pdf",  # curated
-            "https://www.reddit.com/r/x",       # private
-            "https://unknown.invalid/x",        # unclassified
+            "https://www.reddit.com/r/x",  # private
+            "https://unknown.invalid/x",  # unclassified
         ):
             allowed, is_private, _ = enforce_visibility(url, True)
             if allowed:
@@ -494,9 +601,7 @@ class TestEveryWriteRouteEnforcesThePolicy:
         import pathlib
 
         src = (
-            pathlib.Path(__file__).resolve().parents[2]
-            / "tools"
-            / "vendor_coverage_ingest.py"
+            pathlib.Path(__file__).resolve().parents[2] / "tools" / "vendor_coverage_ingest.py"
         ).read_text(encoding="utf-8", errors="replace")
         assert "enforce_visibility" in src, (
             "the duplicate writer must enforce provenance — central enforcement "

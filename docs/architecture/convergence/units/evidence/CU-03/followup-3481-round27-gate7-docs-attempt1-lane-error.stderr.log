@@ -1,0 +1,1 @@
+error: could not fetch PR #3481: Command '['gh', 'pr', 'diff', '3481']' returned non-zero exit status 1.

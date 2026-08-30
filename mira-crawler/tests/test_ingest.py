@@ -1,4 +1,5 @@
 """Tests for the ingest_url Celery task — particularly scheme handling (M8)."""
+
 from __future__ import annotations
 
 import os
@@ -39,12 +40,14 @@ class TestIngestUrlFileScheme:
 
         # ingest_url imports these lazily inside the function body.
         # Patch at their source modules so the function picks up the mocks.
-        with patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks), \
-             patch("ingest.chunker.chunk_blocks", return_value=fake_chunks), \
-             patch("ingest.embedder.embed_text", return_value=[0.1] * 768), \
-             patch("ingest.store.chunk_exists", return_value=False), \
-             patch("ingest.store.insert_chunk", return_value="fake-id") as mock_insert, \
-             patch("ingest.quality.quality_gate", return_value=(True, "")):
+        with (
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks),
+            patch("ingest.chunker.chunk_blocks", return_value=fake_chunks),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", return_value="fake-id") as mock_insert,
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
             from tasks.ingest import ingest_url
 
             result = ingest_url.run(url=file_url)
@@ -133,19 +136,19 @@ class TestIngestUrlFileScheme:
 
         fake_head = type("H", (), {"headers": {"content-length": "100"}})()
 
-        with patch("tasks.ingest.httpx.Client", _FakeClient), \
-             patch("tasks.ingest.httpx.head", return_value=fake_head), \
-             patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks), \
-             patch("ingest.chunker.chunk_blocks", return_value=fake_chunks), \
-             patch("ingest.embedder.embed_text", return_value=[0.1] * 768), \
-             patch("ingest.store.chunk_exists", return_value=False), \
-             patch("ingest.store.insert_chunk", return_value="fake-id") as mock_insert, \
-             patch("ingest.quality.quality_gate", return_value=(True, "")):
+        with (
+            patch("tasks.ingest.httpx.Client", _FakeClient),
+            patch("tasks.ingest.httpx.head", return_value=fake_head),
+            patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks),
+            patch("ingest.chunker.chunk_blocks", return_value=fake_chunks),
+            patch("ingest.embedder.embed_text", return_value=[0.1] * 768),
+            patch("ingest.store.chunk_exists", return_value=False),
+            patch("ingest.store.insert_chunk", return_value="fake-id") as mock_insert,
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
+        ):
             from tasks.ingest import ingest_url
 
-            ingest_url.run(
-                url="https://cdn.automationdirect.com/manuals/gs20.pdf"
-            )
+            ingest_url.run(url="https://cdn.automationdirect.com/manuals/gs20.pdf")
 
         assert mock_insert.called
 
@@ -201,6 +204,70 @@ class TestReadValidatedSymlinkWalk:
 
         with pytest.raises(OSError):
             _read_validated(validated)
+
+    def test_platform_guard_is_set_membership_and_reads_on_every_platform(
+        self, tmp_path, monkeypatch
+    ):
+        """Gate 7 round-12 group A finding on #3268 claimed `os.supports_dir_fd` is
+        a *boolean*, so `os.open not in os.supports_dir_fd` would raise TypeError
+        and abort every local-file ingest. It is a set (the documented idiom is
+        `os.stat in os.supports_dir_fd`). This test is deliberately NOT POSIX-only:
+        the guard line executes here on Windows (plain-open branch) and on Linux
+        CI (dir_fd walk), so a TypeError on either platform is a red test."""
+        assert isinstance(os.supports_dir_fd, (set, frozenset))
+        base = tmp_path / "inbox"
+        base.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        (base / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+
+        from tasks.ingest import _read_validated
+
+        assert _read_validated((base / "doc.pdf").resolve()) == b"%PDF-1.4 legit"
+
+    def test_containment_gate_refuses_a_path_outside_the_base_on_every_platform(
+        self, tmp_path, monkeypatch
+    ):
+        """Round AJ (#3481, round-33 S3 F1 SUSTAINED — "the test never asserts
+        that a path outside INGEST_LOCAL_ALLOWED_DIR is rejected"). It did, in
+        `test_path_outside_base_is_refused_even_at_read_time` (POSIX-only, below,
+        unchanged on main and therefore invisible to a diff-scoped reviewer). This
+        lock is deliberately cross-platform and sits at the containment gate every
+        route passes first: `_validated_local_path` resolves the URL and returns
+        None for anything outside the base — a sibling, a `..` traversal, a
+        prefix-sharing sibling directory (`inbox-evil/`) — never a path."""
+        base = tmp_path / "inbox"
+        base.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        (base / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+        stray = tmp_path / "stray.pdf"
+        stray.write_bytes(b"%PDF-1.4 attacker payload")
+        sibling = tmp_path / "inbox-evil"
+        sibling.mkdir()
+        (sibling / "doc.pdf").write_bytes(b"%PDF-1.4 attacker payload")
+
+        from tasks.ingest import _validated_local_path
+
+        assert (
+            _validated_local_path((base / "doc.pdf").resolve().as_uri())
+            == (base / "doc.pdf").resolve()
+        )
+        assert _validated_local_path(stray.resolve().as_uri()) is None
+        assert _validated_local_path((base / ".." / "stray.pdf").as_uri()) is None
+        assert _validated_local_path((sibling / "doc.pdf").resolve().as_uri()) is None
+        # Round AM (#3481, round-36 S3 F1 — "a case-variant path evades containment
+        # on Windows"): the path is `resolve()`d first, so on a case-insensitive
+        # filesystem a differently-cased spelling resolves to the true-case path
+        # INSIDE the base (contained, never a sibling); on a case-sensitive one it
+        # does not exist and is refused. Either way nothing outside the base is
+        # ever returned, and a `..` spelled through an upper-cased base is refused.
+        from pathlib import Path
+
+        upper = Path(str(base).upper()) / "doc.pdf"
+        got = _validated_local_path(upper.as_uri())
+        assert got is None or got == (base / "doc.pdf").resolve(), got
+        assert (
+            _validated_local_path((Path(str(base).upper()) / ".." / "stray.pdf").as_uri()) is None
+        )
 
     @_POSIX_ONLY
     def test_honest_nested_file_within_base_still_reads(self, tmp_path, monkeypatch):

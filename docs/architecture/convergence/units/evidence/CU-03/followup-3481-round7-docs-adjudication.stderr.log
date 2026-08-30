@@ -1,0 +1,3 @@
+Gate 7: PR #3481 · effort=xhigh · triggers=['database/schema', 'canonical asset identity', 'tenant scoping', 'security boundaries', 'cross-repository contract', 'deletion/destructive', 'concurrency/idempotency/state', 'broad multi-module (5 top-level dirs)', 'forced by --xhigh']
+Gate 7: sending 349,600/349,600 diff chars to a third-party provider (redacted: IP/MAC/SN)
+Gate 7 adjudication: UNKNOWN — written to docs/architecture/convergence/units/evidence/CU-03/followup-3481-round7-docs-adjudication.md

@@ -357,6 +357,49 @@ Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.
 > satisfy the evidence requirement). For diffs past the reviewer's char cap, review
 > per file group (`--paths`) — every group needs its own PASS and every excluded file
 > must be covered by another group.
+>
+> **Amended 2026-08-29 (CU-03 Gate 9 follow-up, PR #3481).** Two contract points the lane
+> already enforces, stated here so the doctrine and the tool cannot drift.
+>
+> *Evidence artifacts are not claims.* By default the lane excludes from the reviewed diff
+> the preserved **raw reviewer/adjudicator outputs and lane logs** under
+> `docs/architecture/convergence/units/evidence/` — documentation/log suffixes only, keyed
+> on **both** sides of a rename. The author-written `README.md` index and `*rebuttal*`
+> files stay in review; **executable or structured files never hide there** (a script, a
+> policy file or a Dockerfile under that directory is reviewed like any other). **Every
+> excluded path is named in the run receipts**; `--include-evidence` opts back in when the
+> artifacts' contents are themselves the subject of review. Why: a PR that carries its own
+> preserved review output was being reviewed *for the prior model's text* — "the
+> documentation claims X was fixed", quoted from an earlier reviewer — recursively, on
+> every head (#3483). This is **not a secret boundary**: redaction (IP / MAC / serial /
+> credential) is applied **unconditionally** to the whole diff before any provider call,
+> regardless of scope, kind or exclusion. Evidence *integrity* is checked separately, by
+> mechanisms that can be verified in the repository rather than asserted: artifacts are
+> tracked at an exact head/commit (the git object); the repository's pre-commit hook
+> (`.githooks/pre-commit`, `gitleaks protect --staged`) scans every staged change before it
+> can be committed; the exclusion is receipted by `receipts_block` and locked by
+> `test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_receipted`; and
+> artifact contents are put in scope explicitly with `--include-evidence` when they are what
+> is being judged.
+>
+> *A verdict exists only in the briefed shape.* Fresh reviewer output must contain exactly
+> one `## VERDICT` (PASS or BLOCK alone on the next line), exactly one `## FINDINGS` and
+> exactly one `## NOT REVIEWED`; findings are read only from `## FINDINGS`. Fresh
+> adjudicator output must contain exactly one `## RULINGS`, and rulings are read only from
+> it (exact bijection by stable id; severity never from the adjudicator). Anything else —
+> a table, an essay, a bold verdict, a quoted example line, missing or duplicated sections
+> — is **UNKNOWN**, never PASS and never BLOCK. A fresh review that states BLOCK with zero
+> parseable findings is itself malformed (unactionable) ⇒ UNKNOWN. Every malformed attempt is
+> **preserved** (`-attemptN-malformed`, all of them) and the lane is **retried with a
+> fresh, independent call** — never by widening the parser — until a valid verdict exists. A
+> malformed attempt never waives the requirement for a valid verdict, and
+> **there is no Gate 7 round or attempt cap** in either direction: a BLOCK is cleared only by
+> (a) or (b) above, and a lane that has not yet produced a valid shape simply has no verdict yet.
+> Two distinct rules, both in force: retrying a *malformed* attempt (no verdict exists yet) is
+> required and unbounded; re-rolling a *valid* verdict on an unchanged head to shop for
+> verdict variance is forbidden. The "three-round cap" is the multi-session protocol's rule for the
+> Codex review lane (`.claude/rules/multi-session-protocol.md` §6), not a Gate 7 rule. Loose parsing survives
+> only for loading committed prior reports.
 
 Escalate automatically to **xhigh** for:
 

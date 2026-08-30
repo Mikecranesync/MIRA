@@ -1,0 +1,6 @@
+Gate 7: diff scoped to ['docs/']
+Gate 7: NOT reviewed in this scoped run (7 files — cover each in another group's run): .github/workflows/ci.yml, mira-crawler/ingest/origins.py, mira-crawler/tests/test_conflict_and_packaging_contracts.py, mira-crawler/tests/test_ingest.py, mira-crawler/tests/test_provenance_policy.py, tests/test_gate7_review.py, tools/gate7_review.py
+Gate 7: PR #3481 · effort=xhigh · triggers=['database/schema', 'canonical asset identity', 'tenant scoping', 'cross-repository contract', 'deletion/destructive', 'broad multi-module (5 top-level dirs)', 'forced by --xhigh']
+Gate 7: sending 170,702/170,702 diff chars to a third-party provider (redacted: IP/MAC/SN)
+Gate 7: PR classified as documentation — briefing the reviewer accordingly.
+Gate 7: BLOCK — written to docs/architecture/convergence/units/evidence/CU-03/followup-3481-round5-gate7-docs.md
