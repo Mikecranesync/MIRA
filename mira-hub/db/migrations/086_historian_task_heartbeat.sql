@@ -22,9 +22,9 @@ AS $function$
     SELECT jsonb_typeof(value) = 'array'
        AND NOT EXISTS (
             SELECT 1
-              FROM jsonb_array_elements(value) AS element(item)
+             FROM jsonb_array_elements(value) AS element(item)
              WHERE jsonb_typeof(item) <> 'string'
-                OR item #>> '{}' !~ '^[0-9a-f]{64}$'
+                OR (item #>> '{}') !~ '^[0-9a-f]{64}$'
        );
 $function$;
 
@@ -52,20 +52,20 @@ CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
             AND detail ? 'run_diff_enabled'
             AND detail ? 'run_trigger_path_hashes'
             AND jsonb_typeof(detail -> 'config_sha256') = 'string'
-            AND detail ->> 'config_sha256' ~ '^[0-9a-f]{64}$'
+            AND (detail ->> 'config_sha256') ~ '^[0-9a-f]{64}$'
             AND jsonb_typeof(detail -> 'counts') = 'object'
-            AND (detail -> 'counts' - ARRAY[
+            AND ((detail -> 'counts') - ARRAY[
                 'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'
             ]) = '{}'::jsonb
-            AND detail -> 'counts' ?& ARRAY[
+            AND (detail -> 'counts') ?& ARRAY[
                 'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'
             ]
-            AND jsonb_typeof(detail -> 'counts' -> 'fault_trigger_tags') = 'number'
-            AND jsonb_typeof(detail -> 'counts' -> 'machine_memory_paths') = 'number'
-            AND jsonb_typeof(detail -> 'counts' -> 'run_trigger_paths') = 'number'
-            AND detail -> 'counts' ->> 'fault_trigger_tags' ~ '^(0|[1-9][0-9]*)$'
-            AND detail -> 'counts' ->> 'machine_memory_paths' ~ '^(0|[1-9][0-9]*)$'
-            AND detail -> 'counts' ->> 'run_trigger_paths' ~ '^(0|[1-9][0-9]*)$'
+            AND jsonb_typeof((detail -> 'counts') -> 'fault_trigger_tags') = 'number'
+            AND jsonb_typeof((detail -> 'counts') -> 'machine_memory_paths') = 'number'
+            AND jsonb_typeof((detail -> 'counts') -> 'run_trigger_paths') = 'number'
+            AND ((detail -> 'counts') ->> 'fault_trigger_tags') ~ '^(0|[1-9][0-9]*)$'
+            AND ((detail -> 'counts') ->> 'machine_memory_paths') ~ '^(0|[1-9][0-9]*)$'
+            AND ((detail -> 'counts') ->> 'run_trigger_paths') ~ '^(0|[1-9][0-9]*)$'
             AND historian_heartbeat_hash_array_is_valid(
                 detail -> 'fault_trigger_tag_hashes'
             )
@@ -77,10 +77,10 @@ CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
                 detail -> 'run_trigger_path_hashes'
             )
             AND (
-                NOT detail ? 'error_code'
+                NOT (detail ? 'error_code')
                 OR (
                     jsonb_typeof(detail -> 'error_code') = 'string'
-                    AND detail ->> 'error_code' = 'HISTORIAN_PIPELINE_ERROR'
+                    AND (detail ->> 'error_code') = 'HISTORIAN_PIPELINE_ERROR'
                 )
             )
             AND (detail - ARRAY[

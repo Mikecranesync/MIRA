@@ -272,10 +272,14 @@ def test_heartbeat_migration_locks_identity_rls_and_no_delete_privilege():
     assert "CHECK (status IN ('running', 'ok', 'error', 'disabled', 'no_triggers', 'missing_config'))" in migration
     assert "CHECK ((status = 'running') = (finished_at IS NULL))" in migration
     assert "historian_heartbeat_hash_array_is_valid" in migration
-    assert "detail ->> 'config_sha256' ~ '^[0-9a-f]{64}$'" in migration
-    assert "detail -> 'counts' - ARRAY[" in migration
+    assert "(detail ->> 'config_sha256') ~ '^[0-9a-f]{64}$'" in migration
+    assert "(detail -> 'counts') - ARRAY[" in migration
+    assert "(detail -> 'counts') ?& ARRAY[" in migration
     assert "'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'" in migration
-    assert "jsonb_typeof(detail -> 'counts' -> 'fault_trigger_tags') = 'number'" in migration
+    assert "jsonb_typeof((detail -> 'counts') -> 'fault_trigger_tags') = 'number'" in migration
+    assert "((detail -> 'counts') ->> 'fault_trigger_tags') ~" in migration
+    assert "NOT (detail ? 'error_code')" in migration
+    assert "(item #>> '{}') !~ '^[0-9a-f]{64}$'" in migration
     assert "~ '^(0|[1-9][0-9]*)$'" in migration
     assert "NULLIF(current_setting('app.tenant_id', true), '')::UUID" in migration
     assert "NULLIF(current_setting('app.current_tenant_id', true), '')::UUID" in migration
