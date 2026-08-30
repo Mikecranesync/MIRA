@@ -21,8 +21,27 @@ name: Beta Gate (upload → retrieval → citation)
 # (matching db-inspect's working pattern). It only ever resolves the *stg*
 # config — never prod.
 
+#
+# Workstream B (PRD docs/prd/2026-08-29-technician-beta-recovery-prd.md §8)
+# adds two jobs so that GREEN means the behaviour PRODUCTION depends on:
+#   notebook-gate        — the same stranger, through the NOTEBOOK product
+#                          contract, with the Hub started EXPLICITLY under
+#                          MIRA_ENFORCE_APPROVED_RETRIEVAL=true (the production
+#                          gate) + a run-unique document/sentinel. See
+#                          tests/beta/_notebook_probe.py.
+#   admission-regression — no secrets; disposable postgres:16; the Workstream A
+#                          admission suite that goes RED the moment the
+#                          verified=false fix is reverted.
+# `prove_regression=true` (manual dispatch) reverts the fix in the build and
+# REQUIRES the notebook lane to fail — the PRD §8.4 exit-gate demonstration.
+
 on:
   workflow_dispatch:
+    inputs:
+      prove_regression:
+        description: "Reintroduce the Workstream A verified=false defect in the built Hub and require the notebook lane to FAIL (§8.4 exit-gate proof). Never merges anything."
+        type: boolean
+        default: false
   schedule:
     - cron: "0 7 * * 1" # Mondays 07:00 UTC — weekly beta-readiness re-proof
   pull_request:
@@ -32,6 +51,33 @@ on:
       - "mira-hub/src/lib/manual-rag.ts"
       - "mira-hub/src/app/api/namespace/node/**"
       - "mira-hub/scripts/provision-beta-gate.ts"
+      # Every load-bearing dependency of the notebook lane: a change to any of
+      # these must not be able to reach main on a green CI that skipped it.
+      - "mira-hub/src/lib/equipment-notebooks.ts"
+      - "mira-hub/src/lib/workspace-files.ts"
+      - "mira-hub/src/lib/uploads.ts"
+      - "mira-hub/src/lib/local-upload.ts"
+      - "mira-hub/src/lib/document-readiness.ts"
+      - "mira-hub/src/lib/notebook-query.ts"
+      - "mira-hub/src/lib/notebook-chat-types.ts"
+      - "mira-hub/src/lib/quote-window.ts"
+      - "mira-hub/src/lib/approved-context.ts"
+      - "mira-hub/src/lib/session.ts"
+      - "mira-hub/src/lib/tenant-context.ts"
+      - "mira-hub/src/lib/db.ts"
+      - "mira-hub/src/lib/inference/**"
+      - "mira-hub/src/app/api/equipment-notebooks/**"
+      - "mira-hub/src/app/api/files/**"
+      - "mira-hub/src/app/api/uploads/**"
+      - "mira-hub/src/app/api/auth/**"
+      - "mira-hub/src/app/api/health/**"
+      - "mira-hub/db/migrations/**"
+      - "mira-hub/package.json"
+      - "mira-hub/bun.lock"
+      - "mira-hub/next.config.*"
+      - "tools/qa/redact_ci_log.sh"
+      - "tools/qa/notebook_source_admission_preflight.py"
+      - "tools/qa/requirements-preflight.txt"
       - ".github/workflows/beta-gate.yml"
 
 concurrency:
@@ -98,7 +144,7 @@ jobs:
             if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
             sleep 3
           done
-          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub.log; exit 1; fi
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; bash tools/qa/redact_ci_log.sh < /tmp/hub.log; exit 1; fi
 
           # 4. Provision a real stranger run → BETA_GATE_* env lines.
           ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/gate-env.out
@@ -117,19 +163,290 @@ jobs:
           GATE_RC=$?
           set -e
 
-          # 6. Clean up the staging rows we created (best-effort, never fail the job).
-          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
+          # 6. Clean up the staging rows we created. Cleanup is PROOF: a failed
+          #    sweep fails the job — but never hides an earlier gate failure.
+          SWEEP_RC=0
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || SWEEP_RC=$?
+          if [ "$SWEEP_RC" -ne 0 ]; then
+            echo "::error::tenant sweep FAILED for $BETA_GATE_TENANT (rc=$SWEEP_RC) — run-owned staging rows may remain"
+          fi
 
           # 7. Tear down the server.
           pkill -f "next start -p 3100" || true
 
-          exit $GATE_RC
+          if [ "$GATE_RC" -ne 0 ]; then exit "$GATE_RC"; fi
+          if [ "$SWEEP_RC" -ne 0 ]; then exit 1; fi
+          exit 0
+
+      - name: Redact server log on failure
+        if: failure()
+        run: bash tools/qa/redact_ci_log.sh < /tmp/hub.log > /tmp/hub.redacted.log 2>/dev/null || true
 
       - name: Upload server log on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: beta-gate-hub-log-${{ github.run_id }}
-          path: /tmp/hub.log
+          path: /tmp/hub.redacted.log
           retention-days: 7
           if-no-files-found: ignore
+
+  # ── Workstream B: production-equivalent notebook lane ─────────────────────
+  notebook-gate:
+    name: Stranger notebook → confirmed source → cited answer (production gate ON)
+    runs-on: ubuntu-latest
+    environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
+    timeout-minutes: 30
+    env:
+      PROVE_REGRESSION: ${{ github.event_name == 'workflow_dispatch' && inputs.prove_regression == true && '1' || '0' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install probe python deps
+        run: pip install --quiet httpx pytest
+
+      - name: Reintroduce the Workstream A defect (prove_regression only)
+        if: env.PROVE_REGRESSION == '1'
+        run: |
+          set -euo pipefail
+          # The exact admission predicate Workstream A added (manual-rag.ts).
+          # Replacing it with the legacy global rule is the #3437/#3468 defect.
+          python - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("mira-hub/src/lib/manual-rag.ts")
+          src = p.read_text(encoding="utf-8")
+          needle = "return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;"
+          assert src.count(needle) == 1, "admission predicate not found exactly once — the proof needs updating"
+          # Faithful #3437 shape: the legacy global rule (verified = true only)
+          # with the approved-set parameter still BOUND but IGNORED, so the
+          # query stays valid and retrieval returns 0 private rows → Gate G
+          # abstains with insufficient_evidence and no provider call. (Merely
+          # dropping the predicate leaves an unreferenced bind parameter and
+          # turns the turn into a 500 — a broken build, not the defect.)
+          replacement = "return `AND verified = true AND $${approvedParam}::uuid[] IS NOT NULL`; // DEFECT REINTRODUCED FOR THE §8.4 PROOF"
+          p.write_text(src.replace(needle, replacement), encoding="utf-8")
+          print("::warning::Workstream A admission fix REVERTED in this build — the notebook lane is now REQUIRED to fail")
+          PY
+
+      - name: Build · start (gate ON) · assert gate · provision · probe · cleanup
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: factorylm
+          DOPPLER_CONFIG: stg
+        run: |
+          set -euo pipefail
+          [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
+
+          echo "::group::next build (staging)"
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' NODE_ENV=production \
+              doppler run -- ./node_modules/.bin/next build )
+          echo "::endgroup::"
+
+          # Failure-safe teardown, scoped to THIS run: stop the Hub we started
+          # and sweep ONLY the tenant we provisioned (if provisioning got that
+          # far). Runs on every exit path — a failed assertion, a failed probe,
+          # or a normal finish — so a red lane never leaks staging rows.
+          # Cleanup is PROOF: a failed sweep fails the job (exit 1) — but never
+          # hides an EARLIER failure, whose exit code is preserved.
+          BETA_GATE_TENANT=""
+          cleanup_run() {
+            local rc=$?
+            local sweep_rc=0
+            if [ -n "${BETA_GATE_TENANT:-}" ]; then
+              echo "teardown: sweeping run-owned tenant $BETA_GATE_TENANT"
+              ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || sweep_rc=$?
+              if [ "$sweep_rc" -ne 0 ]; then
+                echo "::error::tenant sweep FAILED for $BETA_GATE_TENANT (rc=$sweep_rc) — run-owned staging rows may remain"
+              fi
+            fi
+            pkill -f "next start -p 3100" || true
+            if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+            if [ "$sweep_rc" -ne 0 ]; then exit 1; fi
+            exit 0
+          }
+          trap cleanup_run EXIT
+
+          # Start the Hub with the PRODUCTION gate set EXPLICITLY on the command
+          # line — never inherited from an ambiguous staging value (#3328).
+          # MIRA_CANONICAL_SEAM=1 matches production so provider/model usage is
+          # emitted per turn (the probe asserts it is non-null).
+          # INGEST_URL: docker-compose.staging-vps.yml sets the staging Hub to
+          # `disabled://staging` (mira-ingest-client.ts honours the scheme); the
+          # Doppler stg config alone does not carry it, so /api/health reports
+          # 503 `missing: ["INGEST_URL"]` (run 33264432611). Set the SAME
+          # staging value explicitly. The notebook upload door ingests
+          # in-process (node-knowledge-ingest.ts) and never reads INGEST_URL,
+          # so this changes nothing the probe exercises.
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NODE_ENV=production \
+              doppler run -- env NEXTAUTH_URL=http://localhost:3100 AUTH_TRUST_HOST=true \
+              MIRA_ENFORCE_APPROVED_RETRIEVAL=true MIRA_CANONICAL_SEAM=1 \
+              INGEST_URL="${INGEST_URL:-disabled://staging}" \
+              ./node_modules/.bin/next start -p 3100 > /tmp/hub-notebook.log 2>&1 & )
+
+          ready=
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/auth/csrf/ || true)
+            if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
+            sleep 3
+          done
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; bash tools/qa/redact_ci_log.sh < /tmp/hub-notebook.log; exit 1; fi
+
+          # Non-secret startup assertion: /api/health must be 200 (every
+          # required env present) AND report the EFFECTIVE gate as enforced.
+          # The body is printed on either failure so a 503 names what is
+          # missing instead of dying as a bare curl exit code.
+          hcode=$(curl -s -o /tmp/health.json -w "%{http_code}" http://localhost:3100/api/health/ || true)
+          echo "health: HTTP $hcode $(cat /tmp/health.json 2>/dev/null)"
+          [ "$hcode" = "200" ] || { echo "::error::/api/health is HTTP $hcode — the Hub is not healthy: $(cat /tmp/health.json 2>/dev/null)"; exit 1; }
+          enforced=$(python -c 'import json; print(json.load(open("/tmp/health.json")).get("approvedRetrievalEnforced"))')
+          [ "$enforced" = "True" ] || { echo "::error::MIRA_ENFORCE_APPROVED_RETRIEVAL is not effective (health.approvedRetrievalEnforced=$enforced)"; exit 1; }
+          echo "::notice::effective gate: MIRA_ENFORCE_APPROVED_RETRIEVAL=true (asserted via /api/health, HTTP 200)"
+
+          # Fresh stranger tenant + fresh credentials for THIS run. The tenant
+          # id is exported so the EXIT trap can sweep it on any later failure.
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/probe-env.out
+          set -a
+          # shellcheck disable=SC1090
+          . <(grep '^ENV:' /tmp/probe-env.out | sed 's/^ENV://')
+          set +a
+          [ -n "${BETA_GATE_TENANT:-}" ] || { echo "::error::provisioning emitted no BETA_GATE_TENANT"; exit 1; }
+          echo "::notice::provisioned tenant=$BETA_GATE_TENANT (run-owned; swept by the EXIT trap)"
+
+          export BETA_PROBE_POLL_SECONDS=240
+          if [ "$PROVE_REGRESSION" = "1" ]; then
+            # §8.4 proof — STRUCTURED, not "any failure": the probe's
+            # --expect-regression exits 0 ONLY when auth, gate, notebook,
+            # control source, upload, confirmation, readiness, passage
+            # identity, the unsupported refusal and the cleanup ALL succeeded
+            # and the sentinel turn is exactly HTTP 200 insufficient_evidence
+            # with no citations and no provider usage. A 5xx, timeout, auth,
+            # provider, cleanup or assertion failure stays RED.
+            set +e
+            python tests/beta/_notebook_probe.py --expect-regression --evidence-out /tmp/probe-evidence.json 2>&1 \
+              | bash tools/qa/redact_ci_log.sh | tee /tmp/probe-report.log
+            GATE_RC=${PIPESTATUS[0]}
+            set -e
+            matched=$(python -c 'import json; print(json.load(open("/tmp/probe-evidence.json")).get("outcome",{}).get("expected_regression"))' 2>/dev/null || echo unknown)
+            if [ "$GATE_RC" -ne 0 ] || [ "$matched" != "matched" ]; then
+              echo "::error::§8.4 proof NOT established: outcome.expected_regression=$matched (rc=$GATE_RC) — see probe-report.log"; exit 1
+            fi
+            echo "::notice::§8.4 proof: under the reintroduced verified=false defect the sentinel turn refused provider-free (200 insufficient_evidence, no citations, no usage) with every other step green"
+            exit 0
+          fi
+
+          set +e
+          python -m pytest tests/beta/beta_ready_notebook_confirmed_source.py \
+            --confcutdir=tests/beta -v -rs -s 2>&1 | bash tools/qa/redact_ci_log.sh | tee /tmp/probe-report.log
+          GATE_RC=${PIPESTATUS[0]}
+          set -e
+          exit "$GATE_RC"
+
+      - name: Redact + upload Hub log and probe evidence on failure
+        if: failure() || env.PROVE_REGRESSION == '1'
+        run: |
+          # One redaction script for every uploaded log (tests/beta/test_redact_ci_log.py).
+          bash tools/qa/redact_ci_log.sh < /tmp/hub-notebook.log > /tmp/hub-notebook.redacted.log 2>/dev/null || true
+          [ -f /tmp/probe-evidence.json ] && bash tools/qa/redact_ci_log.sh < /tmp/probe-evidence.json > /tmp/probe-evidence.redacted.json || true
+
+      - uses: actions/upload-artifact@v7
+        if: failure() || env.PROVE_REGRESSION == '1'
+        with:
+          name: notebook-gate-evidence-${{ github.run_id }}
+          path: |
+            /tmp/hub-notebook.redacted.log
+            /tmp/probe-report.log
+            /tmp/probe-evidence.redacted.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── Workstream B: deterministic admission regression (no secrets) ─────────
+  admission-regression:
+    name: Admission fix present (disposable Postgres, gate ON)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      MIRA_INTEGRATION_MIGRATIONS: "001_knowledge_graph.sql,010_kg_uns_path.sql,026_kg_entities_dedupe_and_constraint.sql,027_ai_suggestions.sql,029_kg_approval_state.sql,055_contextualization.sql,056_contextualization_intake.sql,067_ctx_import_batches_approval_cols.sql,027_namespace_direct_uploads.sql,059_namespace_filing_cabinet.sql,068_hub_uploads.sql,072_hub_uploads_content_sha256.sql,073_equipment_notebooks.sql,075_workspace_file_links.sql,076_namespace_uploads_source_reconcile.sql,077_ingest_claim.sql,082_namespace_uploads_node_nullable.sql,084_notebook_turn_basis_and_source_origin.sql,085_notebook_source_canonical_provenance.sql"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Apply the integration schema
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: Workstream A admission suite (RED if the verified=false fix is reverted)
+        working-directory: mira-hub
+        env:
+          MIRA_ENFORCE_APPROVED_RETRIEVAL: "true"
+        run: node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: §7.3 preflight — real asyncpg path on the SAME disposable Postgres (loopback only)
+        env:
+          # The tool refuses any non-loopback host; this is the job's own service DB.
+          PREFLIGHT_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+          MIRA_TEST_DB_CONFIRM: DISPOSABLE
+        run: |
+          set -euo pipefail
+          pip install --quiet pytest -r tools/qa/requirements-preflight.txt
+          python -m pytest tests/beta/test_admission_preflight.py --confcutdir=tests/beta -q
+          # The real-path module must RUN here, never skip: a skip would mean the
+          # loopback DB or the confirm flag went missing and the gate proved nothing.
+          # Keep the collection-safe remote-target guards covered separately,
+          # then bind the disposable-DB proof to the exact real-query test.
+          python -m pytest \
+            tests/beta/test_admission_preflight_pg.py::test_fixture_seed_path_refuses_remote_before_any_write \
+            tests/beta/test_admission_preflight_pg.py::test_remote_url_is_refused_by_connect_even_with_driver_available \
+            --confcutdir=tests/beta -q
+          python -m pytest \
+            tests/beta/test_admission_preflight_pg.py::test_real_connect_select_readonly_rollback_and_admission \
+            --confcutdir=tests/beta -q -rs | tee /tmp/preflight-pg.out
+          if grep -qiE "skipped|no tests ran" /tmp/preflight-pg.out; then
+            echo "::error::preflight real-Postgres tests were skipped — the gate proved nothing"; exit 1
+          fi
+          grep -qE "^1 passed" /tmp/preflight-pg.out || grep -qE " 1 passed" /tmp/preflight-pg.out
