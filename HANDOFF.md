@@ -91,7 +91,8 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | AB | `93f125b73` | not reviewed — the lane could not fetch the PR (GitHub refuses a >300-file diff) | root fix: userinfo detected for every `scheme://authority` form (ftp, s3, custom, upper-case, username-only, IPv6, `file://user@host`); 8/8 boundary mutations killed |
 | AC | `156b84844` | **round 27, four scopes (union = all 19 changed non-evidence files):** A docs **GREEN** (adjudication PASS, evidence-bound) | B ingest **BLOCK** (F1 `OR` predicate sustained; F3/F4 medium) · C crawler-tests **BLOCK** (query-string credentials sustained) · D lane attempt 4 valid BLOCK ×1 (case-sensitive artifact path — false on git path identity; rebuttal written, not adjudicated; superseded by the new head) — lane fix: `fetch_pr` local three-dot fallback |
 | AD | `f7820fc60` | S1 docs: attempt 1 malformed; attempt 2 BLOCK ×1 (case-sensitive-path claim again, false) — superseded | S2 ingest: BLOCK ×3 — F1/F2 a **lane artifact** (redactor turned `credential = …` into `[SECRET]`), F3 the policy-refusal URL hash → fixed in AE. Root fixes in AD: `chunk_exists` → `source_url = ANY(:urls)`; credential-family query-parameter names refused via the common rule; credential refusals log safe origin only |
-| AE | this commit | round 29 — five smaller scopes, union = all 19 changed non-evidence files | `refusal` variable (no redactor false positive); **no refusal path hashes the URL** (`_log_ref` removed; `_safe_origin` everywhere); 13/13 boundary mutants killed |
+| AE | `212861d5f` | **round 29, five scopes (union = all 19 changed non-evidence files), every one a valid BLOCK:** S1 docs — fabricated `urlparse().username` body (false; rebuttal on file) | S2 ingest — scheme-less `user:secret@host` (contract: not a `scheme://authority` form; `mailto:` is the specified negative control), whitespace scope (contract), `= ANY` index (false) — rebuttal on file · S3 crawler-tests — "dir_fd guard may be inverted" (speculation about code outside the slice; locked since round 12), scanner regex coverage remark — false/non-defect · S4 lane — `.log`-as-documentation "bypasses secret scanning" (false: redaction unconditional, locked); **F2 REAL: `float(Retry-After)` raised on an HTTP-date** → root-fixed (round AF); F3 evidence-only exit is by design · S5 lane-tests — case-collision claim ignoring canonicalisation before INSERT (false; locked) |
+| AF | this commit | **unreviewed** — the session's budget ended after the fix; round 30 owed | `_retry_after_seconds`: numeric seconds honoured (bounded to 300 s); HTTP-date / garbage / negative → default backoff, never an exception |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
 PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at
@@ -138,17 +139,23 @@ from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 6. What remains / human actions
 
-1. **Status: PARTIAL at `156b84844` — not closure.** The `377b2a2df` closeout was wrong (the
-   malformed round-26 attempts named a real gap, fixed in round AB). Round 27 ran four smaller
-   scopes covering all 19 changed non-evidence files: **A GREEN; B BLOCK; C BLOCK; D no verdict.**
-   Owed, in order: (1) **`chunk_exists` predicate → `source_url = ANY(:urls)`** (two-element
-   array; same semantics; index condition visible in the diff) red-first, locks + read-allowlist
-   hash migration updated → new head; (2) **owner decision on query-string secrets** (refuse
-   known secret-bearing query keys at the gate / redacted identity + out-of-band fetch URL /
-   accept and document) and its fix if any; (3) scope D attempt 4+ or, after (1)/(2), a fresh
-   round 28 on the new head with the same four scopes; (4) only then any success comment.
-   Malformed = no verdict (preserve, retry); a real finding ⇒ root fix + new head; a false one ⇒
-   one evidence-bound adjudication whose reasons must match the finding ids and quoted evidence.
+1. **Status: PARTIAL — not closure. Code head = this commit (round AF), UNREVIEWED.** Rounds
+   27–29 each root-fixed every real finding (`= ANY` probe; credential-family query names;
+   safe-origin-only refusals with no URL hash; the redactor false positive; `Retry-After`
+   parsing) and every round also produced false BLOCKs that need one evidence-bound
+   adjudication each. Owed next session, in order: (1) **round 30** on this exact head — five
+   scopes (`docs/`+`.claude/`+`PLAN.md`+`HANDOFF.md`; `mira-crawler/ingest/`;
+   `mira-crawler/tests/`; `tools/`+`.github/`; `tests/`), foreground and sequential, union
+   proven against `git diff --name-only origin/main...HEAD` minus evidence artifacts (19 files);
+   (2) for each false BLOCK, one adjudication with an evidence-complete `--paths` scope (add the
+   directory the quoted `+` lines live in) and a **semantic** check that every ruling's reason
+   names the finding's own evidence — a structurally valid PASS with unrelated reasons is
+   recorded as `-invalid`, not GREEN; (3) a real BLOCK ⇒ root fix + new head + round 31;
+   (4) only when every scope holds a valid PASS/adjudication, CI is green on that exact head and
+   every artifact is tracked: the correction comments on #3481/#3268/#3482/#3483.
+   Rebuttals already on file for round 29: S1 (`followup-3481-round29-docs-rebuttal.md`) and
+   S2 (`followup-3481-round29-ingest-rebuttal.md`); S3/S5 dispositions are in CU-03 and need
+   rebuttal files; S4 F1/F3 likewise.
 2. **PR/issue comms** — PR #3481 body + comment, PR #3268 closure pointer, issues #3482/#3483:
    updated to the final head in the final commit.
 3. **Human Gate 9 / merge = Mike.** This branch never merges itself, never marks the convergence

@@ -706,6 +706,24 @@ def test_call_cascade_backs_off_on_429_before_falling_through(monkeypatch):
     assert text == "## VERDICT\nPASS\n" and provider.startswith("groq")
     assert len(calls) == 3  # two 429s retried on the same provider, then success
     assert sleeps[0] == 2.0 and sleeps[1] > 0  # Retry-After honoured, then a default backoff
+
+
+def test_retry_after_is_parsed_defensively(monkeypatch):
+    """#3481 round AE (S4 F2, real): `float(Retry-After)` raised on an HTTP-date
+    value (`Wed, 21 Oct 2026 07:28:00 GMT`), so a provider could turn a rate
+    limit into a crashed review. Numeric seconds are honoured (bounded); any
+    other text — an HTTP-date, garbage, an absurd number — falls back to the
+    default backoff instead of raising."""
+    from gate7_review import _retry_after_seconds
+
+    assert _retry_after_seconds("2", 15.0) == 2.0
+    assert _retry_after_seconds(" 7 ", 15.0) == 7.0
+    assert _retry_after_seconds("Wed, 21 Oct 2026 07:28:00 GMT", 15.0) == 15.0
+    assert _retry_after_seconds("soon", 15.0) == 15.0
+    assert _retry_after_seconds(None, 15.0) == 15.0
+    assert _retry_after_seconds("", 15.0) == 15.0
+    assert _retry_after_seconds("-3", 15.0) == 15.0
+    assert _retry_after_seconds("99999999", 15.0) == 300.0  # bounded, never an hours-long sleep
     assert any("429" in a for a in attempts)
 
 

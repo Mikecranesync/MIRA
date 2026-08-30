@@ -1081,6 +1081,20 @@ def _http_post(url, headers=None, json=None, timeout=None):
     return httpx.post(url, headers=headers, json=json, timeout=timeout)
 
 
+def _retry_after_seconds(header: Optional[str], default: float) -> float:
+    """Seconds to back off from a `Retry-After` header. Numeric seconds are
+    honoured, bounded to five minutes; an HTTP-date, garbage, an empty or a
+    negative value falls back to ``default`` — never an exception (#3481 round
+    AE, S4 F2: `float("Wed, 21 Oct 2026 07:28:00 GMT")` crashed the review)."""
+    try:
+        seconds = float(str(header or "").strip())
+    except ValueError:
+        return default
+    if seconds <= 0:
+        return default
+    return min(seconds, 300.0)
+
+
 def _sleep(seconds: float) -> None:
     """Seam for tests: the backoff wait."""
     import time
@@ -1128,7 +1142,9 @@ def call_cascade(
                 # #3481 round S: with the other providers unavailable, a Groq
                 # 429 turned a rate limit into "no review". Back off on the same
                 # provider (honouring Retry-After) before falling through.
-                wait = float(getattr(r, "headers", {}).get("Retry-After") or 15 * (retry + 1))
+                wait = _retry_after_seconds(
+                    getattr(r, "headers", {}).get("Retry-After"), 15.0 * (retry + 1)
+                )
                 attempts.append(
                     f"{name}: 429 rate-limited — backing off {wait:.0f}s "
                     f"(retry {retry + 1}/{RATE_LIMIT_RETRIES})"
