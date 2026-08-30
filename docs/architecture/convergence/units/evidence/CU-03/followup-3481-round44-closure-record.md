@@ -59,6 +59,55 @@ S4/S5 hold no verdict.** This record does not dress that up.
 - mutations M31–M50 killed (each with byte-identical restore); M41 independently re-verified (3 red); M46 (source-side artifact exclusion restored → 1 red)
 - GitHub required checks on the evidence head: see the PR comment posted after this commit
 
+## Addendum (2026-08-30, same reviewed code head `18cde8db6`; PR head `043614cc7` + this evidence commit)
+
+Continued on the unchanged reviewed-code SHA. The reviewed diff for every scope below is
+byte-identical to the round-44 reviews (the only commits since are evidence-only).
+
+- **S2 attempt 1** (`-attempt1-invalid`): structurally valid BLOCK, semantically invalid — its
+  F2 reason said "no `RETURNING id`" while the visible SQL carries `RETURNING id` and
+  intentionally returns `""` only when `DO NOTHING` inserted no row, and it ignored the
+  visible locks (`test_conflict_action_never_writes_the_colliding_row`,
+  `test_store_chunks_neither_counts_nor_links_a_conflict`). The rebuttal was strengthened with
+  the verbatim contract, the PostgreSQL-only SQL (`= ANY`, the `jsonb`/`::int` expression
+  conflict target), the `_FakeConn`/no-SQLite-harness lock, the round-35 ruling that demanded
+  the guard, and the `RETURNING id` / `scalar_one_or_none` / `return ""  # DO NOTHING fired`
+  lines.
+- **S2 attempt 2** (`-attempt2-invalid`): F2 and F3 **REFUTED** (valid reasons: "returns an
+  empty string on conflict and callers are tested to treat it as no write"); F1 sustained
+  with a tautology — "adds an explicit RuntimeError for non-PostgreSQL DSNs, confirming the
+  engine aborts on such URLs" — which restates the intended, tested behaviour as the defect
+  and engages neither the contract nor the round-35 ruling; F4 (medium) sustained.
+- **S2 attempt 3** (`followup-3481-round44-ingest-adjudication.md`, the standing
+  structurally valid verdict): identical — F2/F3 REFUTED, **F1 SUSTAINED** ("still contains a
+  guard that raises a RuntimeError … confirming the abort behavior"), F4 (medium) SUSTAINED.
+- **S4 attempts 3 and 4, S5 attempts 3 and 4**: bare rulings with no `## RULINGS` section
+  again ⇒ UNKNOWN (preserved). S5's prose refutes all five findings each time; S4's prose
+  flips between F1 sustained/refuted with no reasoning that names a scanning step keyed on
+  `_DOC_SUFFIXES`.
+
+### Genuine blocker — reported, not closed around
+
+1. **S2 F1.** After three fresh calls with the exact contradictory contracts in front of it,
+   the adjudicator's only reason for sustaining is that the guard exists. Whether an
+   intentional, tested, previously *demanded* fail-closed guard is a "defect" is a judgment the
+   lane cannot settle by re-rolling, and re-rolling further would be fishing for a verdict.
+   The two ways to make the finding disappear — removing the guard (reopens round-35 F2) or
+   returning an id on a non-write (reopens round-22 F1/F2) — both reintroduce previously
+   sustained real defects and are **not** taken. **Human decision required (Mike):** accept
+   the PostgreSQL-only invariant as intended behaviour (the lane's position, with the
+   evidence above), or direct a different design.
+2. **S4 / S5.** Four fresh calls each produced no `## RULINGS` section. The adjudicator cannot
+   emit a structurally valid ruling for the lane scopes; UNKNOWN is not PASS and cannot close
+   them. This is a Gate-7 tooling gap (the brief/parse contract for the adjudication phase),
+   to be fixed as its own reviewed change — not by loosening the parser on this PR.
+3. **S2 F4 (medium)** — a `.strip()` on `NEON_DATABASE_URL` before the dialect split; harmless,
+   left for the owner rather than spent as another full review round.
+
+**Gate 7 therefore remains NOT green on `18cde8db6`: S1 PASS, S3 PASS, S2 BLOCK (contested
+as above), S4/S5 no verdict.** Nothing here is a merge request, CI was not polled for a
+"green" claim, and no final correction comments were posted on the basis of this state.
+
 ## Explicitly
 
 NOT merged · convergence backlog NOT marked DONE · worktree NOT removed · CU-04 NOT started ·

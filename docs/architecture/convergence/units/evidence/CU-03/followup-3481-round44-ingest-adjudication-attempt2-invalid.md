@@ -35,10 +35,10 @@
 ## Raw adjudication
 
 ## RULINGS
-- **[ruling: SUSTAINED] [id: F1]** — The diff still contains a guard that raises a `RuntimeError` for any non‑PostgreSQL DSN, confirming the abort behavior.
-- **[ruling: REFUTED] [id: F2]** — The updated `insert_chunk` returns an empty string on conflict and the new tests expect this, disproving the claim that callers need a non‑empty ID.
-- **[ruling: REFUTED] [id: F3]** — The diff adds a comprehensive `_CONFUSABLES` mapping and folding logic, directly addressing the previously incomplete Unicode confusables handling.
-- **[ruling: SUSTAINED] [id: F4]** — Whitespace in `NEON_DATABASE_URL` still leads to a dialect rejection; the diff does not strip the whitespace.
+- **[ruling: SUSTAINED] [id: F1]** — The diff adds an explicit RuntimeError for non‑PostgreSQL DSNs, confirming the engine aborts on such URLs.  
+- **[ruling: REFUTED] [id: F2]** — The diff shows `insert_chunk` returns an empty string on conflict and callers are tested to treat it as no write, contradicting the claim.  
+- **[ruling: REFUTED] [id: F3]** — The diff introduces `_CONFUSABLES` mapping and NFKD normalization, handling the previously missing Unicode confusables.  
+- **[ruling: SUSTAINED] [id: F4]** — The diff still parses the DSN without stripping whitespace, so a padded `NEON_DATABASE_URL` continues to trigger a dialect rejection.  
 
 ## VERDICT
 BLOCK
