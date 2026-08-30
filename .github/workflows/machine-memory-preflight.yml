@@ -1,0 +1,102 @@
+name: Machine-memory preflight
+
+# Manual, protected inspection only.  It never dispatches the historian, writes
+# the database, changes flags, or creates a physical fault.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected target environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      expected_tenant_id:
+        description: Expected tenant UUID (not printed or persisted in the artifact)
+        required: true
+        type: string
+      expected_uns_path:
+        description: Exact CV-101 UNS path expected in observed telemetry
+        required: true
+        type: string
+      expected_deployment_sha:
+        description: Exact inspected checkout SHA
+        required: true
+        type: string
+      expected_heartbeat_config_sha256:
+        description: Approved historian effective-config SHA-256
+        required: true
+        type: string
+      expected_database_identity_hash:
+        description: Approved target database identity SHA-256
+        required: true
+        type: string
+      target_database_host:
+        description: Exact hostname expected from the protected database secret
+        required: true
+        type: string
+      replay_from:
+        description: Inclusive replay start (UTC RFC3339)
+        required: true
+        type: string
+      replay_to:
+        description: Exclusive replay end (UTC RFC3339)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Read-only machine-memory preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    # This environment binding happens before its secret is available.
+    environment: ${{ inputs.environment }}
+    env:
+      DATABASE_URL: ${{ secrets.MACHINE_MEMORY_PREFLIGHT_DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install read-only database client
+        run: python -m pip install --disable-pip-version-check "psycopg[binary]==3.2.9"
+      - name: Capture protected read-only snapshot
+        env:
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_EXPECTED_TENANT_ID: ${{ inputs.expected_tenant_id }}
+          INPUT_EXPECTED_UNS_PATH: ${{ inputs.expected_uns_path }}
+          INPUT_EXPECTED_DEPLOYMENT_SHA: ${{ inputs.expected_deployment_sha }}
+          INPUT_EXPECTED_HEARTBEAT_CONFIG_SHA256: ${{ inputs.expected_heartbeat_config_sha256 }}
+          INPUT_EXPECTED_DATABASE_IDENTITY_HASH: ${{ inputs.expected_database_identity_hash }}
+          INPUT_TARGET_DATABASE_HOST: ${{ inputs.target_database_host }}
+          INPUT_REPLAY_FROM: ${{ inputs.replay_from }}
+          INPUT_REPLAY_TO: ${{ inputs.replay_to }}
+        run: |
+          set -euo pipefail
+          python tools/qa/machine_memory_preflight_snapshot.py \
+            --environment "$INPUT_ENVIRONMENT" \
+            --expected-tenant-id "$INPUT_EXPECTED_TENANT_ID" \
+            --expected-uns-path "$INPUT_EXPECTED_UNS_PATH" \
+            --expected-deployment-sha "$INPUT_EXPECTED_DEPLOYMENT_SHA" \
+            --expected-heartbeat-config-sha256 "$INPUT_EXPECTED_HEARTBEAT_CONFIG_SHA256" \
+            --expected-database-identity-hash "$INPUT_EXPECTED_DATABASE_IDENTITY_HASH" \
+            --target-database-host "$INPUT_TARGET_DATABASE_HOST" \
+            --database-url "$DATABASE_URL" \
+            --replay-from "$INPUT_REPLAY_FROM" \
+            --replay-to "$INPUT_REPLAY_TO" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --output machine-memory-preflight.json
+      - name: Upload redacted preflight record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: machine-memory-preflight-${{ github.run_id }}
+          path: machine-memory-preflight.json
+          if-no-files-found: error
