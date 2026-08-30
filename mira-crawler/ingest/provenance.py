@@ -228,8 +228,15 @@ def _fold_query_name(raw: str) -> str:
 
 
 def _credential_query_name(url: str) -> "str | None":
-    """The first credential-family query-parameter NAME in ``url``, or None."""
-    query = str(url).strip().partition("?")[2].partition("#")[0]
+    """The first credential-family query-parameter NAME in ``url``, or None.
+
+    The query is NFKC-normalised BEFORE it is split (round AM on #3481), so a
+    full-width ``＆`` (U+FF06) or ``；`` (U+FF1B) is a pair separator too —
+    refusing more is the fail-closed direction; values are still never read.
+    """
+    from unicodedata import normalize
+
+    query = normalize("NFKC", str(url).strip().partition("?")[2].partition("#")[0])
     for pair in re.split(r"[&;]", query):
         if not pair:
             continue

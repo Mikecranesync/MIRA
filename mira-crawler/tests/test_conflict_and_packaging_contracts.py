@@ -545,6 +545,9 @@ class TestCanonicalSourceUrl:
             ("http://example.com:00080/x", "http://example.com/x"),
             ("https://user:p%40ss@example.com:443/x", "https://user:p%40ss@example.com/x"),
             ("https://[2001:DB8::1]:443/A", "https://[2001:db8::1]/A"),  # IPv6 + default port
+            # Round AM (#3481, round-36 S3 F2): the digit-spelling rule is host-agnostic.
+            ("https://[2001:DB8::1]:0443/x", "https://[2001:db8::1]/x"),  # IPv6 + leading zero
+            ("http://[::1]:0080/x", "http://[::1]/x"),
             ("http://[::1]:80/A", "http://[::1]/A"),
             ("https://example.com:443", "https://example.com"),  # no path
             ("https://example.com:443?q=1#f", "https://example.com?q=1#f"),
@@ -1146,6 +1149,10 @@ class TestUserinfoRefusedAtTheBoundary:
         "https://example.com/doc.pdf?jwt=abc123",
         "https://example.com/doc.pdf?oauth_token=abc123",
         "https://example.com/doc.pdf?bearer=abc123",
+        # Round AM (#3481, round-36 S2 F2): the query is NFKC-normalised BEFORE it
+        # is split, so a full-width `＆` (U+FF06) or `；` (U+FF1B) is a separator.
+        "https://example.com/doc.pdf?page=2＆token=abc123",
+        "https://example.com/doc.pdf?page=2；api_key=abc123",
     )
     ORDINARY_QUERY = (
         "https://example.com/doc.pdf?q=token",  # the WORD in a value is not a credential

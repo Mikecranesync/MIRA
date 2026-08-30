@@ -482,6 +482,30 @@ def test_filter_diff_paths_prefix_is_a_directory_not_a_substring():
         assert "+in_scope" in out and "+sibling" not in out and "+prefix_only" not in out, scope
 
 
+def test_decision_section_headings_are_matched_case_insensitively():
+    """#3481 round AM (round-36 S5 F1–F3 claimed the `## FINDINGS` / `## VERDICT` /
+    `## NOT REVIEWED` / `## RULINGS` headings are matched case-sensitively and a
+    lower-case heading yields a false PASS). Every heading regex carries `re.I`:
+    a lower-case review validates, its high finding is parsed, and the verdict is
+    BLOCK — and an unparseable shape is UNKNOWN, never PASS."""
+    from gate7_review import (
+        adjudication_verdict_strict,
+        fresh_review_verdict,
+        parse_findings,
+        validate_review_shape,
+    )
+
+    lower = (
+        "## verdict\nPASS\n\n## findings\n- **[severity: high] X** — y\n\n## not reviewed\nnone\n"
+    )
+    assert validate_review_shape(lower) is None
+    assert fresh_review_verdict(lower, parse_findings(lower, strict=True)) == "BLOCK"
+    prior = parse_findings(lower, strict=True)
+    adj = "## rulings\n- **[ruling: refuted] [id: F1]** — r\n\n## verdict\nPASS\n"
+    assert adjudication_verdict_strict(adj, prior) == "PASS"
+    assert adjudication_verdict_strict("## rulings\n\n## verdict\nPASS\n", prior) == "UNKNOWN"
+
+
 def test_diff_paths_excluded_lists_uncovered_files():
     from gate7_review import diff_paths_excluded
 

@@ -254,6 +254,20 @@ class TestReadValidatedSymlinkWalk:
         assert _validated_local_path(stray.resolve().as_uri()) is None
         assert _validated_local_path((base / ".." / "stray.pdf").as_uri()) is None
         assert _validated_local_path((sibling / "doc.pdf").resolve().as_uri()) is None
+        # Round AM (#3481, round-36 S3 F1 — "a case-variant path evades containment
+        # on Windows"): the path is `resolve()`d first, so on a case-insensitive
+        # filesystem a differently-cased spelling resolves to the true-case path
+        # INSIDE the base (contained, never a sibling); on a case-sensitive one it
+        # does not exist and is refused. Either way nothing outside the base is
+        # ever returned, and a `..` spelled through an upper-cased base is refused.
+        from pathlib import Path
+
+        upper = Path(str(base).upper()) / "doc.pdf"
+        got = _validated_local_path(upper.as_uri())
+        assert got is None or got == (base / "doc.pdf").resolve(), got
+        assert (
+            _validated_local_path((Path(str(base).upper()) / ".." / "stray.pdf").as_uri()) is None
+        )
 
     @_POSIX_ONLY
     def test_honest_nested_file_within_base_still_reads(self, tmp_path, monkeypatch):
