@@ -259,6 +259,46 @@ def test_logger_no_cross_batch_edge_without_state():
     assert _types(out2) == [FALLING_EDGE]
 
 
+def test_logger_reports_rows_persisted_across_exact_retry():
+    """Catch treating recomputed diffs as newly written rows on a retry."""
+
+    class SerialRetryStore(InMemoryDiffStore):
+        def __init__(self):
+            super().__init__()
+            self.semantic_identities: set[tuple] = set()
+
+        def persist_diffs(self, diffs):
+            inserted = 0
+            for diff in diffs:
+                identity = (
+                    diff.tenant_id,
+                    diff.to_event_id,
+                    diff.diff_type,
+                    diff.threshold,
+                )
+                if identity not in self.semantic_identities:
+                    self.semantic_identities.add(identity)
+                    self.diffs.append(diff)
+                    inserted += 1
+            return inserted
+
+    readings = [
+        _r("PE-101", "false", 1, eid="from-event"),
+        _r("PE-101", "true", 2, eid="to-event"),
+    ]
+    store = SerialRetryStore()
+    logger = TagDiffLogger(store)
+
+    first = logger.process_batch(readings, DiffConfig(), tenant_id=TENANT)
+    assert len(first) == 1
+    assert logger.last_written_count == 1
+
+    retry = logger.process_batch(readings, DiffConfig(), tenant_id=TENANT)
+    assert len(retry) == 1
+    assert logger.last_written_count == 0
+    assert len(store.diffs) == 1
+
+
 def test_logger_requires_tenant():
     store = InMemoryDiffStore()
     logger = TagDiffLogger(store)

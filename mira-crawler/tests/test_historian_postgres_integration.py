@@ -143,7 +143,7 @@ def _seed_tag_event(schema, tenant, tag, value, ts, *, vt="bool"):
     with eng.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.exec_driver_sql(f"SET search_path TO {schema}, public")
-        conn.execute(
+        event_id = conn.execute(
             text(
                 """
                 INSERT INTO tag_events
@@ -152,11 +152,13 @@ def _seed_tag_event(schema, tenant, tag, value, ts, *, vt="bool"):
                 VALUES
                     (CAST(:tid AS UUID), :tag, :val, :vt, 'good',
                      'plc_bridge', false, to_timestamp(:ts))
+                RETURNING event_id::text
                 """
             ),
             {"tid": tenant, "tag": tag, "val": value, "vt": vt, "ts": ts},
-        )
+        ).scalar_one()
     eng.dispose()
+    return event_id
 
 
 def _scalar_as_app(schema, tenant, sql, params=None, *, tenant_setting="app.current_tenant_id"):
@@ -432,6 +434,88 @@ def test_historizer_cursor_advances_on_zero_diff_batch(pg_schema, monkeypatch):
         {"t": tenant},
     )
     assert float(cur2) == 400.0
+
+
+def test_historizer_crash_retry_does_not_duplicate_tag_diff(pg_schema, monkeypatch):
+    """A retry before cursor save must reuse the committed semantic diff."""
+    from celery_app import app as celery_app
+
+    schema = pg_schema["schema"]
+    store_url = pg_schema["store_url"]
+    tenant = str(uuid.uuid4())
+    from_event_id = _seed_tag_event(schema, tenant, "PE-CRASH", "false", 100.0)
+    to_event_id = _seed_tag_event(schema, tenant, "PE-CRASH", "true", 400.0)
+
+    monkeypatch.setenv("NEON_DATABASE_URL", store_url)
+    monkeypatch.setenv("MIRA_TENANT_ID", tenant)
+    celery_app.conf.task_always_eager = True
+
+    from tasks.tag_diff_historizer import historize_tag_diffs
+
+    first = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert first["status"] == "ok"
+    assert first["diffs_written"] == 1
+
+    # Model a worker crash after the diff transaction commits but before its
+    # cursor commit by putting the cursor back before the changed event.
+    eng = _admin_engine()
+    with eng.begin() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        conn.execute(
+            text(
+                """
+                UPDATE historian_cursor
+                   SET last_event_ts = to_timestamp(100.0)
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        )
+    eng.dispose()
+
+    retry = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert retry["status"] == "ok"
+    assert retry["tag_events_read"] == 1
+    assert retry["diffs_written"] == 0
+
+    eng = _admin_engine()
+    with eng.connect() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        rows = conn.execute(
+            text(
+                """
+                SELECT tenant_id::text, from_event_id::text, to_event_id::text,
+                       diff_type, threshold
+                  FROM tag_event_diffs
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                """
+            ),
+            {"tenant_id": tenant},
+        ).mappings().all()
+        cursor = conn.execute(
+            text(
+                """
+                SELECT EXTRACT(EPOCH FROM last_event_ts)
+                  FROM historian_cursor
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        ).scalar_one()
+    eng.dispose()
+
+    assert [dict(row) for row in rows] == [
+        {
+            "tenant_id": tenant,
+            "from_event_id": from_event_id,
+            "to_event_id": to_event_id,
+            "diff_type": "rising_edge",
+            "threshold": None,
+        }
+    ]
+    assert float(cursor) == 400.0
 
 
 # ---------------------------------------------------------------------------

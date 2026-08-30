@@ -129,21 +129,22 @@ def run_historize_batch(*, store, read_events, config, tenant_id, batch_size) ->
             "last_processed_ts": None,
         }
 
-    diffs = TagDiffLogger(store).process_batch(readings, config, tenant_id=tenant_id)
+    diff_logger = TagDiffLogger(store)
+    diff_logger.process_batch(readings, config, tenant_id=tenant_id)
     last_processed_ts = max(r.event_timestamp for r in readings)
 
     logger.info(
         "historize tenant=%s read=%d diffs=%d last_ts=%s",
         tenant_id,
         len(readings),
-        len(diffs),
+        diff_logger.last_written_count,
         last_processed_ts,
     )
     return {
         "status": "ok",
         "tenant_id": tenant_id,
         "tag_events_read": len(readings),
-        "diffs_written": len(diffs),
+        "diffs_written": diff_logger.last_written_count,
         "last_processed_ts": last_processed_ts,
     }
 

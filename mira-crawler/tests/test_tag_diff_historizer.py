@@ -82,6 +82,32 @@ def test_happy_path_writes_diffs_and_returns_summary():
     assert captured["args"] == (TENANT, None, 500)
 
 
+def test_recomputed_diff_reports_zero_when_store_inserts_zero_rows():
+    """Catch summaries that count computed diffs instead of committed rows."""
+
+    class AlreadyPersistedStore(InMemoryDiffStore):
+        def persist_diffs(self, diffs):
+            return 0
+
+    readings = [
+        _r("PE-101", "false", 1, eid="from-event"),
+        _r("PE-101", "true", 2, eid="to-event"),
+    ]
+
+    summary = run_historize_batch(
+        store=AlreadyPersistedStore(),
+        read_events=lambda *a: readings,
+        config=DiffConfig(),
+        tenant_id=TENANT,
+        batch_size=100,
+    )
+
+    assert summary["status"] == "ok"
+    assert summary["tag_events_read"] == 2
+    assert summary["diffs_written"] == 0
+    assert summary["last_processed_ts"] == 2.0
+
+
 def test_empty_batch_is_ok_with_zero_diffs():
     store = InMemoryDiffStore()
     summary = run_historize_batch(
