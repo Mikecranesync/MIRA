@@ -996,16 +996,32 @@ def diff_paths_excluded(diff: str, prefixes: tuple[str, ...]) -> list[str]:
 
 
 def fetch_pr(number: int) -> tuple[str, str, list[str], str, str]:
-    meta = _gh_json(["pr", "view", str(number), "--json", "title,body,files,headRefOid"])
+    """Title, body, changed paths, unified diff and head SHA of a PR.
+
+    GitHub refuses to serve a PR diff past 300 changed files (HTTP 406
+    `too_large`) and `gh pr view --json files` lists at most 100 — at 319 files
+    the lane could not run on the PR it was proving (#3481 round AB). The same
+    bytes exist locally, so the diff falls back to the PR's three-dot
+    `git diff base...head` from the fetched objects (stated on stderr, which the
+    run's log preserves), and the path list is taken from the diff itself
+    whenever the API's list is shorter — the escalation triggers and the scope
+    notice must see EVERY changed file, never a page of them."""
+    meta = _gh_json(["pr", "view", str(number), "--json", "title,body,files,headRefOid,baseRefOid"])
     paths = [f["path"] for f in meta.get("files", [])]
-    diff = subprocess.run(
-        ["gh", "pr", "diff", str(number)],
-        capture_output=True,
-        text=True,
-        check=True,
-        encoding="utf-8",
-        errors="replace",
-    ).stdout
+    run = dict(capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
+    try:
+        diff = subprocess.run(["gh", "pr", "diff", str(number)], **run).stdout
+    except subprocess.CalledProcessError:
+        rev = f"{meta.get('baseRefOid', '')}...{meta.get('headRefOid', '')}"
+        print(
+            f"Gate 7: GitHub refused the PR diff (too many files); using the local "
+            f"three-dot diff `git diff {rev[:9]}...{rev[-9:]}` from the fetched objects",
+            file=sys.stderr,
+        )
+        diff = subprocess.run(["git", "diff", "--no-color", rev], **run).stdout
+    listed = reviewed_paths(diff or "")
+    if len(listed) > len(paths):
+        paths = listed  # the API pages at 100 files; the diff is complete
     return (
         meta.get("title", ""),
         meta.get("body") or "",

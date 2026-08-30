@@ -1086,6 +1086,68 @@ def test_reviewed_paths_reads_add_modify_delete_and_rename_headers():
     assert reviewed_paths("") == []
 
 
+class _Done:
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+
+def test_fetch_pr_falls_back_to_the_local_three_dot_diff_when_github_refuses_it(monkeypatch):
+    """#3481 round AB: at 319 changed files GitHub refuses the PR diff
+    (HTTP 406 `too_large`, cap 300) and `gh pr view --json files` lists only
+    100 — the lane could not run on the very PR it was proving. The same bytes
+    exist locally: fetch_pr diffs the PR's base...head from the fetched
+    objects, and takes the complete path list from the diff when the API's
+    list is shorter."""
+    import subprocess
+
+    import gate7_review as g7
+
+    meta = {
+        "title": "t",
+        "body": "b",
+        "files": [{"path": "a.py"}],
+        "headRefOid": "h" * 40,
+        "baseRefOid": "b" * 40,
+    }
+    monkeypatch.setattr(g7, "_gh_json", lambda args: meta)
+    calls: list[list[str]] = []
+    local = (
+        "diff --git a/a.py b/a.py\n+1\n"
+        "diff --git a/docs/x.md b/docs/x.md\n+2\n"
+        "diff --git a/tools/y.py b/tools/y.py\n+3\n"
+    )
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[:3] == ["gh", "pr", "diff"]:
+            raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 406: too_large")
+        assert cmd[:3] == ["git", "diff", "--no-color"] and cmd[3] == f"{'b' * 40}...{'h' * 40}"
+        return _Done(local)
+
+    monkeypatch.setattr(g7.subprocess, "run", fake_run)
+    title, body, paths, diff, head = g7.fetch_pr(3481)
+    assert diff == local and head == "h" * 40
+    assert paths == ["a.py", "docs/x.md", "tools/y.py"]  # complete, from the diff
+    assert [c[0] for c in calls] == ["gh", "git"]
+
+
+def test_fetch_pr_uses_the_github_diff_when_it_is_served(monkeypatch):
+    import gate7_review as g7
+
+    meta = {"title": "t", "body": "b", "files": [{"path": "a.py"}], "headRefOid": "h" * 40}
+    monkeypatch.setattr(g7, "_gh_json", lambda args: meta)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return _Done("diff --git a/a.py b/a.py\n+1\n")
+
+    monkeypatch.setattr(g7.subprocess, "run", fake_run)
+    _, _, paths, diff, _ = g7.fetch_pr(1)
+    assert paths == ["a.py"] and "+1" in diff
+    assert [c[0] for c in calls] == ["gh"]  # git is never consulted
+
+
 def _drive_main(monkeypatch, tmp_path, pr_files, diff, argv_extra=()):
     """Run main() against a fake PR: captures the prompt the cascade would be
     sent and returns (exit_code, prompt or None)."""
