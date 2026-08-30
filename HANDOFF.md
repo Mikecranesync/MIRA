@@ -66,7 +66,7 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | T (prior) | `4abb63d00` | PASS 3/3 | valid **BLOCK**: F2/F3 high sustained — the "handed to Gate 9" framing was withdrawn; root-fixed |
 | U | `77b05c0c5` | BLOCK ×2 (slice artifact; mechanism sentence) → adjudication attempts 1–2 malformed (preserved) → attempt 3 **PASS 2/2** | BLOCK ×3 → adjudication **PASS 3/3**; F1(b) guard accepted at the boundary → round V |
 | V | `99f18d8e9` | BLOCK ×1 (settled finding re-raised on a pre-mechanism row) → attempt 1 malformed → attempt 2 **PASS 1/1** | attempt 1 malformed (essay) → attempt 2 **BLOCK ×3**: F1/F2 **real** → root-fixed (round W); F3 false, locked; adjudication attempt 1 malformed, **not retried** (fix, don't adjudicate) |
-| W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 false premise, non-blocking; not adjudicated (fix, don't argue) |
+| W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 **materially right** (kind from the PR file list, not the reviewed diff) → root-fixed (round Y); not adjudicated (fix, don't argue) |
 | X | `8204059a4` | not reviewed — superseded before review by the round-23 F2 correction | F2 was materially right (kind from the PR file list, not the reviewed diff) → root-fixed in round Y |
 | Y | this commit | round 24 — recorded in the final evidence commit | round 24 — a valid BLOCK is fixed, not adjudicated |
 
