@@ -1,9 +1,12 @@
 # HANDOFF — Technician Replay Truth, Workstream C1
 
-**Date:** 2026-08-30  
-**Branch:** `codex/machine-memory-truth-corrected`  
-**Implementation head:** `cb9caf6e72d124eb201db7cccfb473e99f0cc420`  
-**Base:** `origin/main` @ `6250dd442819f172901eb6c724074a2c18f886bb`  
+**Date:** 2026-08-30
+
+**Branch:** `codex/machine-memory-truth-corrected`
+
+**Implementation head:** `cb9caf6e72d124eb201db7cccfb473e99f0cc420`
+
+**Base:** `origin/main` @ `6250dd442819f172901eb6c724074a2c18f886bb`
 **Scope:** Deterministic REPLAY truth only. No deploy, production/Doppler access, shared-database mutation, historian claim, or seven-day claim.
 
 ## Delivered
