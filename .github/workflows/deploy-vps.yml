@@ -451,7 +451,7 @@ jobs:
 
           echo "=== Build images (old containers keep serving) ==="
           # Build BEFORE any teardown. Nothing user-facing is interrupted here.
-          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
+          DOCKER_BUILDKIT=1 doppler run --preserve-env="MIRA_GIT_SHA" --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
 
           echo "=== Swap to new containers (health-gated) ==="
           # --wait blocks until every recreated service is healthy (8 of the 9 targets
@@ -512,7 +512,7 @@ jobs:
           swap_out=$(mktemp)
           swap_rc=0
           # shellcheck disable=SC2086  # WAIT_FLAGS and TARGETS are intentionally word-split
-          doppler run --project factorylm --config prd -- \
+          doppler run --preserve-env="MIRA_GIT_SHA" --project factorylm --config prd -- \
             docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
             $WAIT_FLAGS $TARGETS 2>&1 | tee "$swap_out" || swap_rc=$?
 
@@ -521,7 +521,7 @@ jobs:
               echo "Swap hit a compose name conflict (rc=$swap_rc) — clearing stale containers and retrying once"
               stale_cleanup
               # shellcheck disable=SC2086
-              doppler run --project factorylm --config prd -- \
+              doppler run --preserve-env="MIRA_GIT_SHA" --project factorylm --config prd -- \
                 docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
                 $WAIT_FLAGS $TARGETS
             else

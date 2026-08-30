@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_COMPOSE = ROOT / "docker-compose.saas.yml"
 STAGING_COMPOSE = ROOT / "docker-compose.staging-vps.yml"
 STAGING_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-staging.yml"
+PRODUCTION_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-vps.yml"
+
 
 def _compose(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -39,6 +41,21 @@ def _default_targets(workflow: str) -> list[str]:
     match = re.search(r'TARGETS="\$\{SERVICES:-([^}]*)\}"', workflow)
     assert match, "deploy-staging.yml no longer declares an explicit default TARGETS set"
     return match.group(1).split()
+
+
+def _doppler_compose_invocations(workflow: str, compose_file: str) -> list[str]:
+    """Return logical shell lines where Doppler wraps the selected Compose file."""
+    logical_lines = re.sub(r"\\\r?\n\s*", " ", workflow)
+    return [
+        line.strip()
+        for line in logical_lines.splitlines()
+        if "doppler run" in line and f"docker compose -f {compose_file}" in line
+    ]
+
+
+def _build_and_up_invocations(invocations: list[str], compose_file: str) -> list[str]:
+    command = re.compile(rf"docker compose -f {re.escape(compose_file)} (?:build|up)\b")
+    return [invocation for invocation in invocations if command.search(invocation)]
 
 
 def test_production_historian_worker_forwards_heartbeat_identity_and_config() -> None:
@@ -171,6 +188,29 @@ def test_staging_workflow_targets_and_reports_all_historian_services() -> None:
     )
     assert workflow_document["jobs"]["deploy"]["environment"] == "staging"
     assert "Production mira-* containers still running" in workflow
+
+
+def test_staging_compose_calls_preserve_checked_out_sha_and_never_use_prd() -> None:
+    workflow = STAGING_WORKFLOW.read_text(encoding="utf-8")
+    invocations = _doppler_compose_invocations(workflow, "docker-compose.staging-vps.yml")
+    relevant = _build_and_up_invocations(invocations, "docker-compose.staging-vps.yml")
+
+    assert len(relevant) == 3, "expected staging build, full up, and force-recreate up"
+    assert all('--preserve-env="MIRA_GIT_SHA"' in invocation for invocation in relevant)
+    assert all("--config stg" in invocation for invocation in invocations)
+    assert all("--config prd" not in invocation for invocation in invocations)
+    assert "--preserve-env=true" not in workflow
+
+
+def test_production_build_and_up_calls_preserve_exported_sha_narrowly() -> None:
+    workflow = PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+    invocations = _doppler_compose_invocations(workflow, "docker-compose.saas.yml")
+    relevant = _build_and_up_invocations(invocations, "docker-compose.saas.yml")
+
+    assert len(relevant) == 3, "expected production build, swap up, and recovery up"
+    assert all('--preserve-env="MIRA_GIT_SHA"' in invocation for invocation in relevant)
+    assert all("--config prd" in invocation for invocation in relevant)
+    assert "--preserve-env=true" not in workflow
 
 
 def test_historian_and_redis_stanzas_do_not_reuse_dogfood_wiring() -> None:
