@@ -173,10 +173,72 @@ def classify_origin(url: str, *, policy: "dict | None" = None) -> tuple[str, str
     return ("unclassified", f"origin {host!r} has no entry in the canonical provenance policy")
 
 
-_USERINFO_REFUSED = (
-    "URL carries userinfo (credentials in the authority) — refused; an authenticated "
-    "source uses out-of-band secret-backed request headers, never URL userinfo"
+# Query-parameter NAMES that carry a credential (round AD on #3481, round-27
+# scope C F1 SUSTAINED). Matched on the percent-decoded name, lower-cased, with
+# `-`, `_`, `.` and whitespace removed — so `api_key`, `Api-Key`, `api%5Fkey`
+# and `X-Amz-Signature` all match; values are never inspected (a value that
+# merely contains the word "token" is an ordinary query), and a longer name
+# such as `tokenizer` is not the family.
+_CREDENTIAL_QUERY_NAMES = frozenset(
+    {
+        "token",
+        "accesstoken",
+        "idtoken",
+        "refreshtoken",
+        "apikey",
+        "auth",
+        "authorization",
+        "password",
+        "passwd",
+        "secret",
+        "clientsecret",
+        "signature",
+        "sig",
+        "credential",
+        "xamzsignature",
+        "xamzcredential",
+        "xgoogsignature",
+        "xgoogcredential",
+    }
 )
+_QUERY_NAME_NOISE_RE = re.compile(r"[-_.\s]")
+
+
+def _credential_query_name(url: str) -> "str | None":
+    """The first credential-family query-parameter NAME in ``url``, or None."""
+    from urllib.parse import unquote
+
+    query = str(url).strip().partition("?")[2].partition("#")[0]
+    for pair in re.split(r"[&;]", query):
+        if not pair:
+            continue
+        name = _QUERY_NAME_NOISE_RE.sub("", unquote(pair.split("=", 1)[0])).lower()
+        if name in _CREDENTIAL_QUERY_NAMES:
+            return name
+    return None
+
+
+def url_credential_reason(url: str) -> "str | None":
+    """Why ``url`` must be refused as credential-bearing, or None.
+
+    The ONE boundary rule every gate and store route consults before identity,
+    log or SQL: userinfo in the authority of any ``scheme://authority`` form, or
+    a credential-family query-parameter name. The reason names the class (and,
+    for a query, the normalised parameter NAME) — never a value.
+    """
+    if url_has_userinfo(url):
+        return "userinfo (credentials in the authority)"
+    name = _credential_query_name(url)
+    if name:
+        return f"a credential-like query parameter ({name})"
+    return None
+
+
+def _credential_refused(reason: str) -> str:
+    return (
+        f"URL carries {reason} — refused; an authenticated source uses out-of-band "
+        "secret-backed request headers, never a credential in the URL"
+    )
 
 
 _URL_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
@@ -213,8 +275,9 @@ def url_has_userinfo(url: str) -> bool:
 
 def shared_corpus_allowed(url: str, *, policy: "dict | None" = None) -> tuple[bool, str]:
     """May this URL be written to the shared corpus? Fail-closed."""
-    if url_has_userinfo(url):
-        return (False, _USERINFO_REFUSED)
+    credential = url_credential_reason(url)
+    if credential:
+        return (False, _credential_refused(credential))
     cls, reason = classify_origin(url, policy=policy)
     if cls in _SHARED_OK:
         return (True, reason)
@@ -254,8 +317,9 @@ def enforce_visibility(source_url: str, declared_private: bool) -> tuple[bool, b
     asked, never less, and it can refuse — it can never grant sharing that the
     caller did not request.
     """
-    if url_has_userinfo(source_url):
-        return (False, True, _USERINFO_REFUSED)  # before classification: never a document
+    credential = url_credential_reason(source_url)
+    if credential:  # before classification: a credential-bearing URL is never a document
+        return (False, True, _credential_refused(credential))
     try:
         cls, reason = classify_origin(source_url)
     except Exception as exc:  # unreadable policy -> refuse, never publish

@@ -89,7 +89,8 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | Z | `8db09c2ea` | BLOCK ×3, all false on the diff → adjudication attempt 1 structurally PASS but **substantively void** (reasons unrelated to the findings) — recorded as invalid, not GREEN; fresh docs review on the new head | attempt 1 malformed (preserved) → attempt 2 **valid BLOCK**: Z-C1 **real** (whitespace) and Z-C2 **real, pre-existing** (userinfo persisted) → both root-fixed (round AA); Z-C3 settled/re-raised; Z-C4/Z-C5 false, non-blocking |
 | AA | `24f1db7ff` | BLOCK ×1 on a fabricated quotation → adjudication attempts 1–2 malformed (preserved) — no docs verdict | **nine malformed attempts** (preserved; one overwritten by a re-run after a shell crash) — no code verdict; **but they named a real gap** (`url_has_userinfo` was http/https-only) that the `377b2a2df` closeout wrongly called "code complete" |
 | AB | `93f125b73` | not reviewed — the lane could not fetch the PR (GitHub refuses a >300-file diff) | root fix: userinfo detected for every `scheme://authority` form (ftp, s3, custom, upper-case, username-only, IPv6, `file://user@host`); 8/8 boundary mutations killed |
-| AC | this commit | round 27 — smaller evidence-complete scopes, union = every changed non-evidence file | lane: `fetch_pr` falls back to the local three-dot `git diff base...head` when GitHub refuses the diff; paths from the diff when the API pages (100 of 319) |
+| AC | `156b84844` | **round 27, four scopes (union = all 19 changed non-evidence files):** A docs **GREEN** (adjudication PASS, evidence-bound) | B ingest **BLOCK** (F1 `OR` predicate sustained; F3/F4 medium) · C crawler-tests **BLOCK** (query-string credentials sustained) · D lane attempt 4 valid BLOCK ×1 (case-sensitive artifact path — false on git path identity; rebuttal written, not adjudicated; superseded by the new head) — lane fix: `fetch_pr` local three-dot fallback |
+| AD | this commit | round 28 — five smaller scopes | root fixes: `chunk_exists` → `source_url = ANY(:urls)`; credential-family query-parameter names refused through the common rule (any scheme; decoded, case/separator-insensitive; values never inspected); credential refusals log safe origin only, no hash; F3 recorded as the byte-exact contract |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
 PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at
@@ -136,15 +137,17 @@ from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 6. What remains / human actions
 
-1. **Correction:** the `377b2a2df` closeout ("code complete at `24f1db7ff`") was **wrong** — the
-   malformed round-26 attempts named a real gap (non-http userinfo persisted), fixed in round AB.
-   **Round 27** on the round-AB head: multiple smaller, evidence-complete `--paths` scopes whose
-   union covers every changed non-evidence file (docs + `.claude/`; `mira-crawler/ingest/`;
-   `mira-crawler/tests/`; `tools/` + `tests/` + `.github/` + root config), foreground and
-   sequential, excluded-file receipts preserved, union coverage proven against the exact-head
-   changed-file list. Malformed = no verdict (preserve, retry). A real finding ⇒ root fix + new
-   head; a false one ⇒ one evidence-bound adjudication whose reasons must match the finding ids
-   and quoted evidence (semantic correspondence inspected, not just structural PASS).
+1. **Status: PARTIAL at `156b84844` — not closure.** The `377b2a2df` closeout was wrong (the
+   malformed round-26 attempts named a real gap, fixed in round AB). Round 27 ran four smaller
+   scopes covering all 19 changed non-evidence files: **A GREEN; B BLOCK; C BLOCK; D no verdict.**
+   Owed, in order: (1) **`chunk_exists` predicate → `source_url = ANY(:urls)`** (two-element
+   array; same semantics; index condition visible in the diff) red-first, locks + read-allowlist
+   hash migration updated → new head; (2) **owner decision on query-string secrets** (refuse
+   known secret-bearing query keys at the gate / redacted identity + out-of-band fetch URL /
+   accept and document) and its fix if any; (3) scope D attempt 4+ or, after (1)/(2), a fresh
+   round 28 on the new head with the same four scopes; (4) only then any success comment.
+   Malformed = no verdict (preserve, retry); a real finding ⇒ root fix + new head; a false one ⇒
+   one evidence-bound adjudication whose reasons must match the finding ids and quoted evidence.
 2. **PR/issue comms** — PR #3481 body + comment, PR #3268 closure pointer, issues #3482/#3483:
    updated to the final head in the final commit.
 3. **Human Gate 9 / merge = Mike.** This branch never merges itself, never marks the convergence

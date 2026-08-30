@@ -28,18 +28,24 @@ def _log_ref(url: str) -> str:
     #3481, code F1; round W observation."""
     if not url:
         return "<no url>"
+    return f"{_safe_origin(url)} sha256:{hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _safe_origin(url: str) -> str:
+    """host[:port] only — never userinfo, path, query, fragment, and never a
+    hash. The only thing a credential-bearing refusal may log (round AD on
+    #3481): a hash of a URL that embeds a secret is a hash of the secret."""
     from urllib.parse import urlsplit
 
     try:
-        parts = urlsplit(url)
+        parts = urlsplit(str(url).strip())
         host = parts.hostname or "<no host>"
         if ":" in host:  # an IPv6 literal is written bracketed, so host:port stays unambiguous
             host = f"[{host}]"
         port = parts.port  # raises ValueError for non-numeric port text
-        origin = host if port is None else f"{host}:{port}"
+        return host if port is None else f"{host}:{port}"
     except ValueError:
-        origin = "<unparseable>"
-    return f"{origin} sha256:{hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]}"
+        return "<unparseable>"
 
 
 _SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
@@ -153,21 +159,28 @@ def canonical_source_url(url: str) -> str:
     return f"{scheme}://{_upper_escapes(userinfo)}{at}{host.lower()}{port}{_upper_escapes(tail)}"
 
 
-def _refuse_userinfo(url: str) -> bool:
-    """True — with a credential-free warning — when ``url`` carries userinfo.
-    The store boundary's half of the hop-0 rule (``provenance.url_has_userinfo``):
-    every route that reaches SQL passes through here first."""
+def _refuse_credentials(url: str) -> bool:
+    """True — with a credential-free warning — when ``url`` is credential-bearing
+    (userinfo in any ``scheme://authority`` form, or a credential-family query
+    parameter name). The store boundary's half of the hop-0 rule
+    (``provenance.url_credential_reason``): every route that reaches SQL passes
+    through here first. The warning carries only the safe origin (host[:port])
+    and the reason — **no hash of any byte derived from the credential-bearing
+    URL** (round AD on #3481); the exact-URL correlation hash of ``_log_ref`` is
+    for ordinary policy refusals only."""
     try:
-        from .provenance import url_has_userinfo
+        from .provenance import url_credential_reason
     except ImportError:  # pragma: no cover — flat-path layout
-        from provenance import url_has_userinfo  # type: ignore[no-redef]
+        from provenance import url_credential_reason  # type: ignore[no-redef]
 
-    if not url_has_userinfo(url):
+    reason = url_credential_reason(url)
+    if not reason:
         return False
     logger.warning(
-        "Refusing knowledge_entries access for %s — the URL carries userinfo (credentials); "
-        "authenticated sources use secret-backed request headers, never URL userinfo",
-        _log_ref(url),
+        "Refusing knowledge_entries access for %s — the URL carries %s; authenticated "
+        "sources use secret-backed request headers, never a credential in the URL",
+        _safe_origin(url),
+        reason,
     )
     return True
 
@@ -198,7 +211,7 @@ def chunk_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     """Check if a chunk has already been stored (dedup guard)."""
     from sqlalchemy import text
 
-    if _refuse_userinfo(source_url):
+    if _refuse_credentials(source_url):
         return False  # no query: a credential never reaches the DB, not even as a bind
     # Look up the canonical key insert_chunk writes AND the spelling we were
     # given: rows written before canonicalisation keep their raw casing, and the
@@ -206,16 +219,21 @@ def chunk_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     # only lookup would miss such a row and the recrawl would write a duplicate.
     raw_url = source_url
     source_url = canonical_source_url(source_url)
+    # The two exact spellings are ONE array probe on the UNIQUE index's column —
+    # an index condition by construction (round AD on #3481, round-27 scope B
+    # F1 SUSTAINED against the earlier `OR` of two predicates). Only the two
+    # safe spellings are ever bound; one when they coincide.
+    urls = [source_url] if source_url == raw_url else [source_url, raw_url]
     try:
         with _engine().connect() as conn:
             count = conn.execute(
                 text("""
                     SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = :tid
-                      AND (source_url = :url OR source_url = :raw)
+                      AND source_url = ANY(:urls)
                       AND metadata->>'chunk_index' = :idx
                 """),
-                {"tid": tenant_id, "url": source_url, "raw": raw_url, "idx": str(chunk_index)},
+                {"tid": tenant_id, "urls": urls, "idx": str(chunk_index)},
             ).scalar()
         return (count or 0) > 0
     except Exception as e:
@@ -262,7 +280,7 @@ def insert_chunk(
     # the dedup lookup, before any SQL (Gate 7 round Z on #3481, code F2). The
     # credential is never stripped into another identity and never persisted;
     # an authenticated source uses out-of-band secret-backed headers.
-    if _refuse_userinfo(source_url):
+    if _refuse_credentials(source_url):
         return ""
 
     # One canonical key for every casing of an origin — before provenance and
@@ -530,7 +548,7 @@ def ingested_source_urls(source_urls: list[str], tenant_id: str = "") -> set[str
     # A credential-bearing URL is refused before it is canonicalised or bound:
     # only the safe values are queried, and a refused spelling is never answered
     # (Gate 7 round Z on #3481, code F2). All refused → no query at all.
-    asked = [u for u in asked if not _refuse_userinfo(u)]
+    asked = [u for u in asked if not _refuse_credentials(u)]
     if not asked:
         return set()
     lookup = sorted({*asked, *(canonical_source_url(u) for u in asked)})

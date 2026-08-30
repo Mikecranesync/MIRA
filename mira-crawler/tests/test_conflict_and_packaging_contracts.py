@@ -619,9 +619,8 @@ class TestCanonicalSourceUrl:
         statements = [s for s, _ in captured["all"]]
         assert not any(s.lstrip().upper().startswith("INSERT") for s in statements)
         sql = re.sub(r"\s+", " ", captured["sql"])  # the last statement is the lookup
-        assert "source_url = :url OR source_url = :raw" in sql
-        assert captured["params"]["raw"] == raw
-        assert captured["params"]["url"] == store.canonical_source_url(raw)
+        assert "source_url = ANY(:urls)" in sql
+        assert captured["params"]["urls"] == [store.canonical_source_url(raw), raw]
         assert captured["params"]["tid"] == "tenant-a"  # tenant-scoped, like every read
 
     def test_insert_writes_when_neither_spelling_exists(self, captured):
@@ -749,8 +748,8 @@ class TestCanonicalSourceUrl:
         raw = "HTTPS://EXAMPLE.COM:443/Doc%7a.PDF"
         canon = "https://example.com/Doc%7A.PDF"
         assert store.chunk_exists("tenant-a", raw, 0) is False  # fake DB: 0 rows
-        looked_up = captured["params"]["url"]
-        assert captured["params"]["raw"] == raw  # the historical raw-spelling lookup stays
+        looked_up, historical = captured["params"]["urls"]
+        assert historical == raw  # the historical raw-spelling lookup stays
         assert _insert(True, raw) != ""
         written = captured["params"]["source_url"]
         assert looked_up == written == canon == store.canonical_source_url(raw)
@@ -766,7 +765,7 @@ class TestCanonicalSourceUrl:
             chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
             store.store_chunks(chunks, "tenant-a", is_private=True)
         keys = {
-            (p.get("tid") or p.get("tenant_id"), p.get("url") or p.get("source_url"))
+            (p.get("tid") or p.get("tenant_id"), (p.get("urls") or [p.get("source_url")])[0])
             for _, p in captured["all"]
         }
         assert keys == {("tenant-a", "https://example.com/Doc%7A.PDF")}
@@ -811,11 +810,18 @@ class TestCanonicalSourceUrl:
         raw = "HTTPS://EXAMPLE.COM/Legacy.PDF"
         store.chunk_exists("tenant-a", raw, 0)
         params = captured["params"]
-        assert params["url"] == "https://example.com/Legacy.PDF"
-        assert params["raw"] == raw
+        # Round AD (#3481, round-27 scope B F1 SUSTAINED): the two exact spellings
+        # are bound as ONE array probe — an index condition by construction — never
+        # as an `OR` of two predicates.
+        assert params["urls"] == ["https://example.com/Legacy.PDF", raw]
         sql = re.sub(r"\s+", " ", captured["sql"])
-        assert "source_url = :url" in sql and "source_url = :raw" in sql
+        assert "source_url = ANY(:urls)" in sql
+        assert " OR " not in sql.upper()
         assert "tenant_id = :tid" in sql
+
+    def test_lookup_binds_one_spelling_when_the_input_is_already_canonical(self, captured):
+        store.chunk_exists("tenant-a", "https://example.com/Doc.PDF", 0)
+        assert captured["params"]["urls"] == ["https://example.com/Doc.PDF"]
 
     def test_idempotent(self):
         once = store.canonical_source_url("HTTPS://Example.COM/A?B=c")
@@ -835,7 +841,7 @@ class TestCanonicalSourceUrl:
     def test_lookup_queries_the_same_canonical_key_as_the_write(self, captured):
         upper = "HTTPS://LITERATURE.ROCKWELLAUTOMATION.COM/Idc/Lit.PDF"
         assert store.chunk_exists("tenant-a", upper, 3) is False  # fake DB: 0 rows
-        looked_up = captured["params"]["url"]
+        looked_up = captured["params"]["urls"][0]
         _insert(True, upper)
         written = captured["params"]["source_url"]
         assert looked_up == written == store.canonical_source_url(upper)
@@ -846,7 +852,7 @@ class TestCanonicalSourceUrl:
             chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
             store.store_chunks(chunks, "tenant-a", is_private=True)
         keys = {
-            (p.get("tid") or p.get("tenant_id"), p.get("url") or p.get("source_url"))
+            (p.get("tid") or p.get("tenant_id"), (p.get("urls") or [p.get("source_url")])[0])
             for _, p in captured["all"]
         }
         assert keys == {("tenant-a", "https://example.com/Doc.PDF")}
@@ -1006,6 +1012,100 @@ class TestUserinfoRefusedAtTheBoundary:
         self._no_credential_reached_sql(captured)
         del kg_writer
 
+    # ── Round AD (#3481, round-27 scope C F1 SUSTAINED): a credential-like QUERY
+    # parameter is refused exactly like userinfo — before identity, log or SQL —
+    # through the same common boundary rule. Names are matched decoded,
+    # case-insensitively and separator-insensitively; values are never inspected
+    # (a value that merely contains "token" is an ordinary query).
+
+    CREDENTIAL_QUERY = (
+        "https://example.com/doc.pdf?token=abc123",
+        "https://example.com/doc.pdf?page=2&access_token=abc123",
+        "https://example.com/doc.pdf?ID_TOKEN=abc123",
+        "https://example.com/doc.pdf?api_key=abc123",
+        "https://example.com/doc.pdf?apikey=abc123",
+        "https://example.com/doc.pdf?Api-Key=abc123",
+        "https://example.com/doc.pdf?auth=abc123",
+        "https://example.com/doc.pdf?Authorization=Bearer%20abc123",
+        "https://example.com/doc.pdf?password=abc123",
+        "https://example.com/doc.pdf?passwd=abc123",
+        "https://example.com/doc.pdf?secret=abc123",
+        "https://example.com/doc.pdf?client_secret=abc123",
+        "https://example.com/doc.pdf?signature=abc123",
+        "https://example.com/doc.pdf?sig=abc123",
+        "https://example.com/doc.pdf?credential=abc123",
+        "https://example.com/doc.pdf?X-Amz-Signature=abc123",
+        "https://example.com/doc.pdf?X-Amz-Credential=abc123",
+        "https://example.com/doc.pdf?x-goog-signature=abc123",
+        "https://example.com/doc.pdf?X-Goog-Credential=abc123",
+        "https://example.com/doc.pdf?q=1;token=abc123",  # `;` separator
+        "https://example.com/doc.pdf?%74oken=abc123",  # percent-encoded name
+        "https://example.com/doc.pdf?api%5Fkey=abc123",  # encoded separator in the name
+        "ftp://files.example.com/doc.pdf?token=abc123",  # any scheme
+        "https://example.com/doc.pdf?token=abc123#frag",
+    )
+    ORDINARY_QUERY = (
+        "https://example.com/doc.pdf?q=token",  # the WORD in a value is not a credential
+        "https://example.com/doc.pdf?q=api_key+rotation&page=2",
+        "https://example.com/doc.pdf?v=3&lc=en&limit=10",
+        "https://example.com/doc.pdf?url=https%3A%2F%2Fother.example%2Fx",
+        "https://example.com/doc.pdf?tokenizer=bpe",  # not the family (a longer name)
+        "https://example.com/doc.pdf?signature_help=1",
+        "https://example.com/doc.pdf?",
+        "https://example.com/doc.pdf",
+    )
+
+    def test_credential_query_parameters_are_detected_and_ordinary_ones_are_not(self):
+        for url in self.CREDENTIAL_QUERY:
+            assert provenance.url_credential_reason(url), url
+            assert "abc123" not in (provenance.url_credential_reason(url) or ""), url
+        for url in self.ORDINARY_QUERY:
+            assert provenance.url_credential_reason(url) is None, url
+
+    def test_credential_query_is_refused_before_any_sql_on_every_route(self, captured, caplog):
+        import logging
+
+        for url in self.CREDENTIAL_QUERY:
+            with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+                assert _insert(True, url) == "", url
+                assert store.chunk_exists("tenant-a", url, 0) is False, url
+                chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
+                assert store.store_chunks(chunks, "tenant-a", is_private=True) == 0, url
+                assert store.ingested_source_urls([url], "tenant-a") == set(), url
+            assert "sql" not in captured, url
+            assert provenance.enforce_visibility(url, False)[0] is False, url
+            assert provenance.shared_corpus_allowed(url)[0] is False, url
+        assert "abc123" not in caplog.text
+        assert "sha256:" not in caplog.text  # nothing derived from a credential URL is hashed
+        assert "example.com" in caplog.text and "credential" in caplog.text
+        for sql, params in captured.get("all", []):
+            assert "abc123" not in f"{sql} {params!r}"
+
+    def test_ordinary_queries_still_write_and_the_refusal_log_keeps_its_hash(
+        self, captured, caplog
+    ):
+        import logging
+
+        assert _insert(True, "https://example.com/doc.pdf?v=3&lc=en") != ""
+        assert "v=3&lc=en" in captured["params"]["source_url"]  # identity keeps its query
+        # A policy refusal (blocked origin, no credential) still carries the correlation hash.
+        policy = provenance.load_policy()
+        blocked = next(
+            h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
+        )
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            assert _insert(False, f"https://{blocked}/x.pdf?page=2") == ""
+        assert "sha256:" in caplog.text and "page=2" not in caplog.text
+
+    def test_userinfo_refusal_logs_only_a_safe_origin_and_no_hash(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            assert _insert(True, self.URL) == ""
+        line = [r.getMessage() for r in caplog.records if "credential" in r.getMessage()][-1]
+        assert "example.com:443" in line and "sha256:" not in line
+        assert "hunter2" not in line and "svc" not in line
+
     def test_insert_refuses_userinfo_with_no_sql_and_no_credential_in_logs(
         self, captured, caplog, monkeypatch
     ):
@@ -1084,11 +1184,13 @@ class TestRefusalLogging:
         blocked = next(
             h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
         )
-        url = f"https://{blocked}/private/Secret-Doc-Name.pdf?token=abc123"
+        # An ORDINARY query (no credential-family name): the refusal is the policy's,
+        # and it carries the exact-URL correlation hash — never the path or query.
+        url = f"https://{blocked}/private/Secret-Doc-Name.pdf?page=2&dl=1"
         with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
             assert _insert(False, url) == ""  # refused at the boundary
         text = caplog.text
-        assert "Secret-Doc-Name" not in text and "token=abc123" not in text
+        assert "Secret-Doc-Name" not in text and "page=2" not in text
         assert blocked in text and "sha256:" in text
         assert "sql" not in captured
 
@@ -1126,7 +1228,9 @@ class TestRefusalLogging:
         with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
             assert _insert(False, url) == ""
         assert "hunter2" not in caplog.text and "svc:" not in caplog.text
-        assert blocked in caplog.text and "sha256:" in caplog.text
+        # A credential-bearing refusal logs the safe origin only — and no hash of
+        # anything derived from the credential-bearing URL (round AD).
+        assert blocked in caplog.text and "sha256:" not in caplog.text
 
 
 # ═══════════════════════════════════════════════════════════════════════════
