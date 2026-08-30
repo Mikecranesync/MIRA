@@ -272,7 +272,10 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
     """The destination of a whole-directory copy of ``mira-crawler`` — shell form
     (`COPY mira-crawler/ /app/x/`, `COPY ./mira-crawler /app/x`) or JSON form
     (`COPY ["mira-crawler/", "/app/x/"]`). A subset copy (`COPY mira-crawler/tasks/`)
-    deliberately does NOT match: it would not ship the manifest."""
+    deliberately does NOT match: it would not ship the manifest. A backslash-
+    continued directive is joined into one line first (round AJ on #3481,
+    round-33 S3 F2 SUSTAINED), so a multi-line COPY is matched the same way."""
+    dockerfile_text = re.sub(r"\\\r?\n\s*", " ", dockerfile_text)
     for line in dockerfile_text.splitlines():
         # `COPY [--chown=… --from=…] mira-crawler/ <dest>` — flags are allowed;
         # a non-matching COPY makes the caller's assert fail LOUD (dest is
@@ -296,6 +299,11 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         ("COPY --chown=app:app mira-crawler/ /app/", "/app"),
         ("COPY --from=builder --chown=app:app mira-crawler/ /srv/mc/", "/srv/mc"),
         ('COPY ["mira-crawler/", "/app/mc/"]', "/app/mc"),
+        # Round AJ (#3481, round-33 S3 F2 SUSTAINED): a backslash-continued COPY
+        # is the same directive; the helper joins continuation lines first.
+        ("COPY \\\n    mira-crawler/ \\\n    /app/\n", "/app"),
+        ("COPY --chown=app:app \\\r\n  ./mira-crawler \\\r\n  /srv/mc\r\n", "/srv/mc"),
+        ("COPY \\\n    mira-crawler/tasks/ \\\n    /app/tasks/\n", None),  # subset, continued
         ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
         ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
         ("COPY mira-core/ /app/core/", None),
