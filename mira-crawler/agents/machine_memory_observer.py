@@ -71,19 +71,41 @@ def utc_now() -> datetime:
 # ── pure evaluation ─────────────────────────────────────────────────────────
 
 
-def classify_rows(rows: list[dict[str, Any]]) -> str:
-    """physical / simulated / stale / unknown from the served rows."""
+def classify_rows(rows: list[dict[str, Any]], freshness: dict[str, Any] | None = None) -> str:
+    """physical / simulated / stale / unknown.
+
+    Provenance comes from the served rows themselves (`simulated` /
+    `source_system`, carried on tag_events rows since Workstream C). When a
+    row carries neither (older Hub, or diff rows), the server's freshness
+    roll-up for the asset is the fallback — a window whose only signals are
+    simulated is `simulated`, never `physical`. Unknown provenance is
+    `unknown`, never `physical`: the seven-day gate must not be satisfiable
+    by rows nobody can vouch for.
+    """
     if not rows:
         return "unknown"
-    simulated = sum(
-        1 for r in rows if r.get("simulated") is True or r.get("source_system") == "simulator"
-    )
-    if simulated >= len(rows):
+    known = [r for r in rows if r.get("simulated") is not None or r.get("source_system")]
+    if known:
+        simulated = sum(
+            1 for r in known if r.get("simulated") is True or r.get("source_system") == "simulator"
+        )
+        if simulated >= len(known):
+            return "simulated"
+        bad = sum(1 for r in rows if str(r.get("quality") or "").lower() in ("bad", "stale"))
+        if bad >= len(rows):
+            return "stale"
+        return "physical"
+    f = freshness or {}
+    if f.get("overall") == "simulated" or (
+        int(f.get("simulated") or 0) > 0
+        and int(f.get("live") or 0) == 0
+        and int(f.get("stale") or 0) == 0
+    ):
         return "simulated"
     bad = sum(1 for r in rows if str(r.get("quality") or "").lower() in ("bad", "stale"))
     if bad >= len(rows):
         return "stale"
-    return "physical"
+    return "unknown"
 
 
 def evaluate_observation(
@@ -215,6 +237,11 @@ def observe_once(
         f"/api/assets/{config.asset_id}/history/?pre={config.pre_seconds}&post={config.post_seconds}"
     )
     history_ok = hstatus == 200
+    # The server's own roll-up is the connection fact; the live_tags scan above
+    # is only the fallback when history did not answer.
+    served_overall = (history.get("freshness") or {}).get("overall") if history_ok else None
+    if served_overall in ("live", "stale", "simulated", "unknown"):
+        current = served_overall
     rows = (history.get("rows") or []) if history_ok else []
     cov = (history.get("coverage") or {}) if history_ok else {}
     anchor = (history.get("anchor") or {}) if history_ok else {}
@@ -228,6 +255,9 @@ def observe_once(
         "asset_id": config.asset_id,
         "current_connection": current,
         "historian_heartbeat": {
+            # Honest name: this is the newest derived state window, not a
+            # historizer execution timestamp (none is exposed by the API).
+            "kind": "latest_state_window_derivation",
             "latest_window_state": latest_window.get("state"),
             "latest_window_started_at": latest_window.get("started_at"),
             "windows_available": (history.get("windowsAvailable") is not False)
@@ -256,7 +286,7 @@ def observe_once(
         if history_ok
         else None,
         "quality": sorted({str(r.get("quality")) for r in rows}) if rows else [],
-        "classification": classify_rows(rows),
+        "classification": classify_rows(rows, history.get("freshness") if history_ok else None),
         "coverage": cov or None,
         "api_state_consistent": True,
         "defects": [],

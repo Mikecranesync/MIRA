@@ -578,34 +578,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return safetyStopResponse(safetyTrigger, docIds);
   }
 
-  const retrievalQuery = buildRetrievalQuery(message, history);
-  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
-  // `nodeId === null` arm is the same case — only the general path can reach
-  // here without `validated.ok`, since every other branch returned above.
-  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
-    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
-      nodeId,
-      unsPath: null, // notebook nodes are standalone; scope is the doc set
-      topK: 6,
-      docIds,
-      rawQuery: message,
-      // validateChatSources() has already proven tenant + notebook membership
-      // for every id in docIds — the validated doc set is the boundary, so a
-      // document linked from another notebook's node stays retrievable here.
-      validatedDocScope: true,
-      // Workstream A (#3437/#3468): the SAME server-derived set is the
-      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
-      // validateChatSources derives it (tenant-owned, notebook-linked,
-      // enabled, user_confirmed/verified, not superseded); the client's
-      // `body.sourceDocIds` was only an intersection request. Tenant-private
-      // chunks of these docs are admitted without ever being marked globally
-      // verified — confirmation is admission, not corpus promotion.
-      approvedSourceDocIds: docIds,
-    }),
-  );
-
-  const enc = new TextEncoder();
-
   // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
   // window through the SAME reader the history route uses (fetchMachineHistory
   // — never client-supplied rows), reshapes the Machine Memory header into the
@@ -726,6 +698,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { status: 422 },
     );
   }
+
+  const retrievalQuery = buildRetrievalQuery(message, history);
+  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
+  // `nodeId === null` arm is the same case — only the general path can reach
+  // here without `validated.ok`, since every other branch returned above.
+  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
+    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+      nodeId,
+      unsPath: null, // notebook nodes are standalone; scope is the doc set
+      topK: 6,
+      docIds,
+      rawQuery: message,
+      // validateChatSources() has already proven tenant + notebook membership
+      // for every id in docIds — the validated doc set is the boundary, so a
+      // document linked from another notebook's node stays retrievable here.
+      validatedDocScope: true,
+      // Workstream A (#3437/#3468): the SAME server-derived set is the
+      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+      // validateChatSources derives it (tenant-owned, notebook-linked,
+      // enabled, user_confirmed/verified, not superseded); the client's
+      // `body.sourceDocIds` was only an intersection request. Tenant-private
+      // chunks of these docs are admitted without ever being marked globally
+      // verified — confirmation is admission, not corpus promotion.
+      approvedSourceDocIds: docIds,
+    }),
+  );
+
+  const enc = new TextEncoder();
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:

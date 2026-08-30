@@ -293,8 +293,8 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
 
   it("card title: Machine Replay · N recorded observations around <time> · <freshness>", () => {
     const e = machineEvidenceEntries([entry])[0];
-    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Stale`);
-    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 recorded observation around ${hhmmss(ANCHOR)} · Live`);
+    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · connection at capture: Stale`);
+    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 recorded observation around ${hhmmss(ANCHOR)} · connection at capture: Live`);
     // Unknown freshness is omitted, never guessed.
     expect(replayCardTitle({ rowCount: 3, anchorAt: ANCHOR, freshness: null })).toBe(`Machine Replay · 3 recorded observations around ${hhmmss(ANCHOR)}`);
     // Never "observed changes": /history rows include periodic tag_events
@@ -436,7 +436,7 @@ describe("Workstream C — two clocks, two questions (§9.2)", () => {
   });
 
   it("both clocks: a material ingest lag is named; a negligible one is not", () => {
-    expect(ingestLagNote({ ingestLagMaxMs: 2040 })).toBe("Ingest lagged the machine clock by up to 2.0 s");
+    expect(ingestLagNote({ ingestLagMaxMs: 2040 })).toBe("Recorded up to 2.0 s after it happened");
     expect(ingestLagNote({ ingestLagMaxMs: 400 })).toBeNull();
     expect(ingestLagNote({ ingestLagMaxMs: null })).toBeNull();
     expect(ingestLagNote(null)).toBeNull();

@@ -22,7 +22,7 @@
 
 import type { LiveTag, LatestDiff } from "./machine-memory-response";
 import type { CurrentState } from "./machine-current-state";
-import { ANOMALY_TITLES, isPseudoTopic } from "./anomaly-titles";
+import { conditionDisplayTitle } from "./anomaly-titles";
 
 /** A persisted typed anomaly (run_diff), normalized for the packet. */
 export interface ActiveCondition {
@@ -69,29 +69,10 @@ function ruleIdFromDiffType(diffType: string | null): string | null {
   return diffType.startsWith("anomaly_") ? diffType.slice("anomaly_".length) : null;
 }
 
-/**
- * The technician-facing title of a condition (PRD §9.2 / #3470).
- *
- * Precedence: the title the historian persisted (`metadata.title`, the exact
- * rules_core string) → the canonical rule catalog (anomaly-titles.ts, parity-
- * tested against rules_core) → a humanized rule id. A typed anomaly's
- * `tag_path` is its evidence TOPIC, which may be a derived pseudo-topic such
- * as `_stale_s`; it is never appended to a rule title. Only a plain
- * statistical deviation on a real tag names its tag leaf.
- */
+/** The technician-facing title (PRD §9.2 / #3470) — ONE helper shared with the
+ *  Machine Memory card and the work-order prefill (anomaly-titles.ts). */
 function conditionTitle(diffType: string | null, tagPath: string, persistedTitle?: string | null): string {
-  const persisted = (persistedTitle ?? "").trim();
-  if (persisted) return persisted;
-  const ruleId = ruleIdFromDiffType(diffType);
-  if (ruleId) {
-    const canonical = ANOMALY_TITLES[ruleId];
-    if (canonical) return canonical;
-    // Uncatalogued rule: humanize the id ("A99_FUTURE_RULE" -> "future rule").
-    const words = ruleId.replace(/^A\d+_/, "").replace(/_/g, " ").toLowerCase().trim();
-    return words || "anomaly";
-  }
-  const kind = (diffType ?? "deviation").replace(/_/g, " ");
-  return isPseudoTopic(tagPath) ? kind : `${kind} on ${leafName(tagPath)}`;
+  return conditionDisplayTitle(diffType, tagPath, persistedTitle);
 }
 
 function toMs(t: string | null | undefined): number | null {

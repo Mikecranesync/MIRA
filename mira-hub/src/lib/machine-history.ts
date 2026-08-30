@@ -56,6 +56,12 @@ export interface HistoryAnchor {
 
 export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
+  /** tag_events.simulated (033) — the row's own provenance; null on a diff
+   *  row (037 records none). Lets a reader classify a window as physical /
+   *  simulated without trusting the current-cache freshness roll-up. */
+  simulated: boolean | null;
+  /** tag_events.source_system ('ignition'|'plc_bridge'|'relay'|'simulator'); null on a diff. */
+  source_system: string | null;
 }
 
 /**
@@ -245,7 +251,7 @@ export async function fetchMachineHistory(
     eventRows = await client
       .query(
         `SELECT event_timestamp, ingested_at, uns_path::text AS uns_path,
-                tag_path, value, quality
+                tag_path, value, quality, simulated, source_system
            FROM tag_events
           WHERE tenant_id = $1::uuid
             AND uns_path IS NOT NULL
@@ -300,6 +306,8 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.value == null ? null : String(r.value),
         quality: r.quality == null ? null : String(r.quality),
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
+        source_system: r.source_system == null ? null : String(r.source_system),
       }),
     ),
     ...diffRows.map(
@@ -311,8 +319,10 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.new_value == null ? null : String(r.new_value),
         prev_value: r.prev_value == null ? null : String(r.prev_value),
-        // 037 records no quality on a diff; null, never guessed.
+        // 037 records no quality / provenance on a diff; null, never guessed.
         quality: null,
+        simulated: null,
+        source_system: null,
       }),
     ),
   ].sort((a, b) => {

@@ -271,7 +271,15 @@ export function coverageHeader(h: CoverageView): string {
 export function ingestLagNote(c: Pick<HistoryCoverage, "ingestLagMaxMs"> | null | undefined): string | null {
   const ms = c?.ingestLagMaxMs;
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 1000) return null;
-  return `Ingest lagged the machine clock by up to ${(ms / 1000).toFixed(1)} s`;
+  return `Recorded up to ${(ms / 1000).toFixed(1)} s after it happened`;
+}
+
+/** "first 23:16:02 · last 23:16:41" — the window's recorded bounds (§9.2:
+ *  coverage is labelled from the window). Null when nothing was recorded or
+ *  the server named no bounds. */
+export function recordedBoundsLine(c: Pick<HistoryCoverage, "earliest" | "latest" | "recorded"> | null | undefined): string | null {
+  if (!c || !c.recorded || !c.earliest || !c.latest) return null;
+  return `first ${hhmmss(c.earliest)} · last ${hhmmss(c.latest)}`;
 }
 
 // --- the Ask-MIRA hand-off (§4.4) -------------------------------------------
@@ -365,7 +373,10 @@ export function replayCardTitle(
     "Machine Replay",
     `${recordedObservations(e.rowCount)} around ${hhmmss(e.anchorAt)}`,
   ];
-  if (overall) parts.push(FRESHNESS_LABEL[overall]);
+  // §6.8: the freshness on a HISTORICAL card is the connection as it was
+  // when the turn was captured — labelled as such, never a bare "Live"
+  // beside a recorded count.
+  if (overall) parts.push(`connection at capture: ${FRESHNESS_LABEL[overall]}`);
   return parts.join(" · ");
 }
 

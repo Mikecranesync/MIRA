@@ -29,10 +29,10 @@
 | 2 | Empty window sentence + no `machineEvidence` | old sentence + CTA | `Nothing was recorded in this window. Widen the window or check the gateway.` — no CTA, nothing sent |
 | 3 | Unavailable ≠ empty | distinguished server-side only | `coverage.historyAvailable`, distinct sentences, distinct refusal codes |
 | 4 | Current freshness labelled separately | unlabelled `Live` | `Current connection: Live/Stale/Simulated/No tags` (`data-testid=current-connection`) |
-| 5 | Coverage labelled from the window | count only | `coverage {recorded, events, diffs, historyAvailable, diffsAvailable, admissible, from, to, earliest, latest, ingestLagMaxMs}` on the wire; header from it |
+| 5 | Coverage labelled from the window | count only | `coverage {recorded, events, diffs, historyAvailable, diffsAvailable, admissible, from, to, earliest, latest, ingestLagMaxMs}` on the wire; header + `first … · last …` line from it; rows carry `simulated`/`source_system` provenance |
 | 6 | Empty window never called `Live` | violated | the word only appears inside the labelled current-connection line; tests pin the header |
-| 7 | No `_stale_s` / raw tag / UNS fragment in fault titles | violated | writer persists `metadata.title/message`; Hub prefers persisted title → canonical catalog (`anomaly-titles.ts`, parity-tested against `rules_core.py`) → humanized rule id; pseudo-topics never rendered |
-| 8 | Both clocks visible when materially divergent | per-row only | + `ingestLagMaxMs` → "Ingest lagged the machine clock by up to N s" |
+| 7 | No `_stale_s` / raw tag / UNS fragment in fault titles | violated (packet, Hub card, WO prefill) | writer persists `metadata.title/message`; ONE helper `conditionDisplayTitle()` (persisted title → canonical catalog parity-tested against `rules_core.py` → humanized rule id) feeds the packet, the Hub card, and the WO prefill; pseudo-topics never rendered |
+| 8 | Both clocks visible when materially divergent | per-row only | + `ingestLagMaxMs` → "Recorded up to N s after it happened"; historical cards say `connection at capture: …` |
 | 9 | Failed/empty replay ask persists no fabricated turn | violated (gate off) | route refuses **before** retrieval/provider/persistence: `422 machine_window_empty` / `422 machine_history_unavailable {reason}`; `recordTurn` never called |
 | 10 | §9.3 read-only preflight | none | `tools/machine_memory_preflight.py` (15 reason codes, GO/NO-GO, fail-closed host allowlist + prod-Doppler refusal, tenant required, `--print-command` for Mike) |
 | 11 | §9.4 seven-day observer | none | `tasks.machine_memory_observer` on the existing synthetic-dogfood beat, daily, read-only, inert by default; `series.json` evaluator |
@@ -41,7 +41,8 @@
 ## 3. Files changed
 
 **mira-hub**
-- `src/lib/anomaly-titles.ts` (new) — canonical rule→title catalog + `isPseudoTopic`
+- `src/lib/anomaly-titles.ts` (new) — canonical rule→title catalog, `isPseudoTopic`, `conditionDisplayTitle` (shared by packet, card, WO prefill)
+- `src/components/MachineMemoryCard.tsx` — condition row + work-order prefill use the shared title; `src/components/equipment/notebook-chat-utils.ts` — labelled capture connection on the historical card
 - `src/lib/machine-context-intelligence.ts` — `conditionTitle(diffType, tagPath, persistedTitle)` precedence
 - `src/lib/machine-memory.ts` — `latest_diffs[].title` from `metadata.title`
 - `src/lib/machine-memory-response.ts` — `LatestDiff.title?`
@@ -82,7 +83,7 @@
 | `test_machine_memory_preflight.py` | `ModuleNotFoundError: machine_memory_preflight` | 17/17 |
 | `test_machine_memory_observer.py` | `ModuleNotFoundError: agents.machine_memory_observer` | 11/11 |
 
-Regression: mira-hub machine-memory/notebooks/history/components lanes **380 passed (29 files)**; mira-mobile full suite **326 passed (30 files)**; mira-crawler machine-memory + dogfood + observer **48 passed**; ESLint clean on changed hub files; `tsc --noEmit` 0 errors in changed hub files and mobile; ruff check/format clean; `git diff --check` clean.
+Regression (after both review rounds): mira-hub machine-memory/notebooks/history/components lanes **400 passed (31 files)**; mira-mobile full suite **326 passed (30 files)**; mira-crawler machine-memory + dogfood + observer **53 passed**; ESLint clean on changed hub files; `tsc --noEmit` 0 errors in changed hub files and mobile; ruff check/format clean; `git diff --check` clean.
 
 **Deliberately rewritten legacy tests** (`machine-evidence.test.ts`, 7 cases): they pinned the pre-§9.2 behaviour — empty/unavailable windows answered from documents with an empty machine card, or 412 blaming approved context. Each now pins the new seam contract (422 + code, no provider, no `recordTurn`). This strengthens, not weakens: every "no provider call / nothing persisted" assertion is retained and extended.
 
@@ -115,6 +116,20 @@ The observer's synthetic proof is its test suite (fake Hub, 3 GETs, daily file +
 | P3 | observer followed redirects with the session cookie | `follow_redirects=False` (test-pinned) |
 | P3 | redaction regex narrow | accepted: the daily record never carries the cookie/URL/password by construction |
 
+## 6c. Adversarial review round 2 (product truth / technician UX / PRD conformance) — disposition
+
+| Sev | Finding | Fix |
+|---|---|---|
+| P1 | Hub web `MachineMemoryCard` row + work-order prefill still rendered `tag_path — diff_type` (`…_stale_s — anomaly_A0_OFFLINE`) | ONE shared helper `conditionDisplayTitle()` (`anomaly-titles.ts`) now feeds the packet, the card row, and the WO prefill (`[CV-101] PLC/bridge offline`); pseudo-topics never rendered; tests |
+| P1 | observer could not detect simulated rows — served history rows carried no provenance, so the seven-day gate was fakeable by simulator data | `MachineHistoryRow` now carries `simulated` + `source_system` from `tag_events` (null on diffs); the observer classifies from row provenance, falls back to the server's freshness roll-up, and **never** calls provenance-less rows physical (`unknown` blocks `operational`); tests |
+| P2 | persisted replay cards collapsed the two clocks (`… · Live`) | `… · connection at capture: Live` on both mobile and Hub cards (labelled, per §6.8) |
+| P2 | window bounds shown only relatively | `first hh:mm:ss · last hh:mm:ss` line from `coverage.earliest/latest` on the phone |
+| P2 | preflight prod refusal decorative | already replaced in round 1 (fail-closed allowlist + Doppler-config refusal) |
+| P2 | `historian_heartbeat` overclaims | field keeps its PRD name but carries `kind: "latest_state_window_derivation"`; documented as not a historizer execution timestamp |
+| P3 | "refuses before retrieval" was false (retrieval ran first) | machine-evidence fetch + refusal now precede `retrieveNodeChunks` — the claim is true |
+| P3 | "Ingest lagged the machine clock…" is jargon | "Recorded up to N s after it happened" |
+| P3 | observer verifies API self-consistency, not UI | accepted: the phone renders from the same `coverage`/rows (unit-pinned); a UI-level probe is emulator work (Workstream D/E tooling), noted in §9 |
+
 ## 7. Collision notes
 
 No open PR touches `machine-history.ts`, `machine-context-intelligence.ts`, `ReplayTimeline.tsx`, `SensorSheet.tsx`, `celeryconfig.py`'s synthetic profile, or `run_engine/machine_memory.py` (checked `gh pr list` at session start; #3477 owns `equipment-notebooks.ts` — untouched).
@@ -132,3 +147,4 @@ No open PR touches `machine-history.ts`, `machine-context-intelligence.ts`, `Rep
 - `historian.age_s` uses `machine_state_window.created_at` as the derivation heartbeat (040 has no `updated_at`); a long-open window that is only being *extended* would read older than the last historizer beat. Documented; a dedicated historizer heartbeat row is a follow-up, not a §9.3 requirement.
 - Hub web (`NotebookChat`) has no REPLAY CTA; its persisted-card captions were already honest (`No machine changes recorded in this window` / `Machine history unavailable`) and are unchanged.
 - The mobile `LIVE_UNAVAILABLE_BANNER` ("Live unavailable — showing recorded history") is now shown only on non-empty windows; wording kept to avoid churning a pinned string.
+- The observer's `api_state_consistent` checks the API's own claims against its rows (coverage vs rows vs reason); it does not drive the phone UI. The phone renders from the same fields (unit-pinned), and a device-level probe belongs to the emulator/device tooling.

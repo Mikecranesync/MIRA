@@ -35,3 +35,36 @@ export function isPseudoTopic(tagPath: string): boolean {
   const leaf = tagPath.split(/[./]/).filter(Boolean).pop() ?? tagPath;
   return leaf.startsWith("_");
 }
+
+/** "A2_VFD_FAULT" from "anomaly_A2_VFD_FAULT"; null for plain deviations. */
+export function ruleIdFromDiffType(diffType: string | null | undefined): string | null {
+  if (!diffType) return null;
+  return diffType.startsWith("anomaly_") ? diffType.slice("anomaly_".length) : null;
+}
+
+/**
+ * The ONE technician-facing title of a persisted condition, shared by the
+ * context packet, the Machine Memory card, and the work-order prefill.
+ * Precedence: persisted `metadata.title` → catalog → humanized rule id; a
+ * plain statistical deviation names its tag leaf unless the tag is a
+ * pseudo-topic. Internal identifiers (`_stale_s`, `[default]…`) never appear.
+ */
+export function conditionDisplayTitle(
+  diffType: string | null | undefined,
+  tagPath: string,
+  persistedTitle?: string | null,
+): string {
+  const persisted = (persistedTitle ?? "").trim();
+  if (persisted) return persisted;
+  const ruleId = ruleIdFromDiffType(diffType);
+  if (ruleId) {
+    const canonical = ANOMALY_TITLES[ruleId];
+    if (canonical) return canonical;
+    const words = ruleId.replace(/^A\d+_/, "").replace(/_/g, " ").toLowerCase().trim();
+    return words || "anomaly";
+  }
+  const kind = (diffType ?? "deviation").replace(/_/g, " ");
+  if (isPseudoTopic(tagPath)) return kind;
+  const leaf = String(tagPath).split(/[./]/).filter(Boolean).pop() ?? tagPath;
+  return `${kind} on ${leaf.toLowerCase()}`;
+}

@@ -22,6 +22,7 @@ import {
   formatValue,
   ingestLagNote,
   liveUnavailable,
+  recordedBoundsLine,
   sameWindow,
   tagShortName,
   type AssetHistory,
@@ -49,6 +50,7 @@ export function ReplayTimeline({
   // about the cache and is shown, labelled.
   const unavailable = !coverage.historyAvailable;
   const lag = ingestLagNote(history.coverage);
+  const bounds = recordedBoundsLine(history.coverage);
   return (
     <div className="card replay" data-testid="replay-timeline" data-freshness={freshness.overall}>
       <div className="title">Fault: {hhmmss(anchor.at)}</div>
@@ -82,6 +84,11 @@ export function ReplayTimeline({
           </div>
         )}
       </div>
+      {bounds && (
+        <div className="meta" data-testid="recorded-bounds">
+          {bounds}
+        </div>
+      )}
       {lag && (
         <div className="meta" data-testid="ingest-lag">
           {lag}

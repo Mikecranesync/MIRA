@@ -305,7 +305,7 @@ describe("Sensor REPLAY (S4)", () => {
     mount();
     const card = await screen.findByTestId("machine-replay-card");
     // S5 D5 cross-lane copy, exact: title + fault-window suffix gated on windowId.
-    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Live`);
+    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · connection at capture: Live`);
     expect(card.textContent).toContain("· fault window");
     // Byte-identical to the hub caption, trailing period included (#3461).
     expect(screen.getByText("Grounded in live machine evidence.")).toBeTruthy();
@@ -366,7 +366,8 @@ describe("Workstream C — REPLAY is useful or explicitly unavailable", () => {
     await screen.findByTestId("replay-timeline");
     expect(screen.getByTestId("replay-window-header").textContent).toContain("3 recorded observations in −5 s … +2 s");
     expect(screen.getByTestId("current-connection").textContent).toBe("Current connection: Stale");
-    expect(screen.getByText("Ingest lagged the machine clock by up to 13.8 s")).toBeTruthy();
+    expect(screen.getByText("Recorded up to 13.8 s after it happened")).toBeTruthy();
+    expect(screen.getByTestId("recorded-bounds").textContent).toBe(`first ${hhmmss("2026-08-28T23:16:28.860Z")} · last ${hhmmss("2026-08-28T23:16:31.160Z")}`);
     expect(screen.getByRole("button", { name: "Ask MIRA what happened" })).toBeTruthy();
   });
 

@@ -299,3 +299,52 @@ def test_observer_client_never_follows_redirects_with_the_session():
     import tasks.machine_memory_observer as t
 
     assert "follow_redirects=False" in inspect.getsource(t.HttpxHub)
+
+
+def test_classification_never_calls_provenance_less_rows_physical():
+    """Review finding: served rows without `simulated`/`source_system` (older
+    Hub, diff rows) must not classify as physical — the seven-day gate would
+    otherwise be satisfiable by simulator data."""
+    bare = [
+        {"event_timestamp": "x", "ingested_at": "x", "tag": "t", "quality": "good", "kind": "diff"}
+    ]
+    assert classify_rows(bare) == "unknown"
+    assert (
+        classify_rows(bare, {"overall": "simulated", "simulated": 3, "live": 0, "stale": 0})
+        == "simulated"
+    )
+    assert (
+        classify_rows(bare, {"overall": "live", "simulated": 0, "live": 3, "stale": 0}) == "unknown"
+    )
+    # a row that vouches for itself still wins over the roll-up
+    assert (
+        classify_rows(
+            [{**bare[0], "simulated": False, "source_system": "plc_bridge"}],
+            {"overall": "simulated"},
+        )
+        == "physical"
+    )
+    assert classify_rows([{**bare[0], "simulated": True}], {"overall": "live"}) == "simulated"
+
+
+def test_series_is_not_operational_on_unknown_provenance():
+    def rec(day: int, classification: str):
+        return {
+            "observed_at": (NOW + timedelta(days=day)).isoformat(),
+            "row_count": 5,
+            "classification": classification,
+            "fault_window": {"id": f"w-{day}"},
+            "defects": [],
+            "historian_heartbeat": {"age_s": 60},
+        }
+
+    unknown = evaluate_series([rec(d, "unknown") for d in range(7)], now=NOW + timedelta(days=6))
+    assert unknown["real_fault_window_with_rows"] is False and unknown["operational"] is False
+
+
+def test_current_connection_comes_from_the_served_history_freshness(tmp_path):
+    h = _history(3, overall="stale")
+    hub = FakeHub(history=h)  # memory says live; the served history says stale
+    rec = observe_once(_cfg(tmp_path), hub, now=NOW)
+    assert rec["current_connection"] == "stale"
+    assert rec["historian_heartbeat"]["kind"] == "latest_state_window_derivation"
