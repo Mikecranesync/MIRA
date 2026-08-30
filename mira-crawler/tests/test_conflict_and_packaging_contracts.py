@@ -305,6 +305,11 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
     continued directive is joined into one line first (round AJ on #3481,
     round-33 S3 F2 SUSTAINED), so a multi-line COPY is matched the same way."""
     dockerfile_text = re.sub(r"\\\r?\n\s*", " ", dockerfile_text)
+    # A JSON array spread over lines is joined too (round AT on #3481, round-42
+    # S3 F1 SUSTAINED), whether or not its lines carry a `\` continuation.
+    dockerfile_text = re.sub(
+        r"\[[^\]]*\]", lambda m: re.sub(r"\s*\r?\n\s*", " ", m.group(0)), dockerfile_text
+    )
     for line in dockerfile_text.splitlines():
         # `COPY [--chown=… --from=…] mira-crawler/ <dest>` — flags are allowed;
         # a non-matching COPY makes the caller's assert fail LOUD (dest is
@@ -364,6 +369,11 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         ('COPY "mira-crawler/" "/app/"', "/app"),
         ("COPY 'mira-crawler' '/srv/mc/'", "/srv/mc"),
         ('COPY [ "./mira-crawler" , "/app/x" ]', "/app/x"),  # JSON form, loose spacing
+        # Round AT (#3481, round-42 S3 F1 SUSTAINED): a JSON array spread across
+        # lines is joined whether or not each line ends with a `\` continuation.
+        ('COPY [\n  "mira-crawler/",\n  "/app/"\n]', "/app"),
+        ('COPY [ \\\n  "mira-crawler/", \\\n  "/app/" ]', "/app"),
+        ('COPY [\n  "mira-crawler/tasks/",\n  "/app/tasks/"\n]', None),  # subset, spread
         ('COPY "mira-crawler/tasks/" "/app/tasks/"', None),  # quoted subset copy
         ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
         ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
@@ -1202,6 +1212,12 @@ class TestUserinfoRefusedAtTheBoundary:
         "https://example.com/doc.pdf?pаssword=abc123",  # Cyrillic а (U+0430)
         "https://example.com/doc.pdf?tοken=abc123",  # Greek omicron (U+03BF)
         "https://example.com/doc.pdf?ѕecret=abc123",  # Cyrillic ѕ (U+0455)
+        # Round AT (#3481, round-42 S2 F1 SUSTAINED): the name is percent-decoded
+        # until it stops changing (bounded), so a double- or triple-encoded
+        # spelling folds to the family too — refusing more is fail-closed.
+        "https://example.com/doc.pdf?api%255Fkey=abc123",  # %25 5F -> %5F -> _
+        "https://example.com/doc.pdf?%2574oken=abc123",  # %25 74 -> %74 -> t
+        "https://example.com/doc.pdf?%252574oken=abc123",  # triple
     )
     ORDINARY_QUERY = (
         # A fragment without `=` is an anchor, not a parameter: `#token` and

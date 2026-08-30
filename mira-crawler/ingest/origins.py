@@ -30,19 +30,43 @@ __all__ = ["TASKS_DIR", "discover_feeder_origins", "discover_manifests"]
 TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
 
 
+def _is_url(text: str) -> bool:
+    # Scheme match is case-insensitive (Gate 7 round-12 group A on #3268):
+    # a constant written `HTTPS://...` is still a configured origin, and a
+    # manifest discovery that missed it would leave the policy consistency
+    # test vacuous for that origin. Surrounding whitespace is stripped first
+    # (#3481 round Y): a padded constant is still a configured origin.
+    return text.strip().lower().startswith(("http://", "https://"))
+
+
 def _urls_in(node: ast.AST) -> list[str]:
-    return [
-        n.value.strip()
-        for n in ast.walk(node)
-        if isinstance(n, ast.Constant)
-        and isinstance(n.value, str)
-        # Scheme match is case-insensitive (Gate 7 round-12 group A on #3268):
-        # a constant written `HTTPS://...` is still a configured origin, and a
-        # manifest discovery that missed it would leave the policy consistency
-        # test vacuous for that origin. Surrounding whitespace is stripped first
-        # (#3481 round Y): a padded constant is still a configured origin.
-        and n.value.strip().lower().startswith(("http://", "https://"))
-    ]
+    """Every URL literal under ``node``. A module-level f-string whose literal
+    head is a URL is reported as ONE dynamic origin (`https://{…}/feed.xml`,
+    #3481 round AT) so the policy-consistency proof fails loud on it ("no
+    resolvable host") instead of never seeing it — a feeder cannot build an
+    origin the policy cannot classify. Its inner constants are not reported
+    separately (a bare `https://` is not an origin)."""
+    found: list[str] = []
+    inner: set[int] = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.JoinedStr):
+            rendered = "".join(
+                v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else "{…}"
+                for v in n.values
+            )
+            for v in ast.walk(n):
+                inner.add(id(v))
+            if _is_url(rendered):
+                found.append(rendered.strip())
+    for n in ast.walk(node):
+        if (
+            isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and id(n) not in inner
+            and _is_url(n.value)
+        ):
+            found.append(n.value.strip())
+    return found
 
 
 def discover_manifests(tasks_dir: Path | None = None) -> dict[str, list[str]]:

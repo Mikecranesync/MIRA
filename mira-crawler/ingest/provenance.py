@@ -239,7 +239,16 @@ def _fold_query_name(raw: str) -> str:
     from unicodedata import combining, normalize
     from urllib.parse import unquote
 
-    decomposed = normalize("NFKD", unquote(raw))
+    # Percent-decode until the value stops changing, bounded (round AT on
+    # #3481, round-42 S2 F1 SUSTAINED): `api%255Fkey` -> `api%5Fkey` -> `api_key`.
+    # Refusing a multiply-encoded spelling is the fail-closed direction.
+    decoded = raw
+    for _ in range(5):
+        nxt = unquote(decoded)
+        if nxt == decoded:
+            break
+        decoded = nxt
+    decomposed = normalize("NFKD", decoded)
     stripped = "".join(ch for ch in decomposed if not combining(ch))
     return _QUERY_NAME_NOISE_RE.sub("", stripped.lower().translate(_CONFUSABLES))
 

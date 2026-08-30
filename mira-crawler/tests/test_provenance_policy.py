@@ -112,6 +112,26 @@ def test_discovery_matches_url_constants_case_insensitively(tmp_path):
     }
 
 
+def test_discovery_reports_an_fstring_built_origin_as_dynamic_and_the_proof_fails_loud(tmp_path):
+    """#3481 round AT (round-42 S1 F1 SUSTAINED): a module-level f-string whose
+    literal head is `http(s)://` builds an origin the policy cannot classify.
+    Discovery reports it as a DYNAMIC origin (`https://{…}`) so the consistency
+    proof fails loud on "no resolvable host" instead of never seeing it. (The
+    credential gate itself runs on the URL VALUE at ingest on every route and is
+    unaffected by how the string was built.)"""
+    (tmp_path / "dyn.py").write_text(
+        'HOST = "cdn.example.com"\n'
+        'FEEDS = [f"https://{HOST}/feed.xml", "https://static.example.com/x"]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert set(found["dyn.FEEDS"]) == {"https://{…}/feed.xml", "https://static.example.com/x"}
+    with pytest.raises(AssertionError, match="no resolvable host"):
+        for url in found["dyn.FEEDS"]:
+            cls, reason = provenance.classify_origin(url)
+            assert cls != "unclassified", f"{url}: {reason}"
+
+
 def test_discovery_matches_url_constants_with_surrounding_whitespace(tmp_path):
     """#3481 round Y code F2 (medium, real): a manifest constant written with
     accidental surrounding whitespace (`"  https://…"`) escaped discovery, so the
