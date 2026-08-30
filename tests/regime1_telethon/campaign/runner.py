@@ -2,6 +2,9 @@
 
 Tier 1/2: seeded deterministic scripts, graded expect/forbid per turn.
 Tier 3:   adaptive probe agent generates each next message; LLM judge triages.
+Tier 6:   UNS gate DEPTH — scripted, but the contracts that matter are
+          conversation-scoped (a loop is only visible across turns), so tier-6
+          scenarios also declare `conv_gates` applied to the whole transcript.
 Tier 8:   persona-driven adaptive conversations (same loop, persona overlay).
 
 Rails inherited from uat_driver: staging bot hardwired, >=2 s send gap, 90 s
@@ -39,8 +42,15 @@ STAGING_BOT = uat.STAGING_BOT
 MAX_ADAPTIVE_TURNS = 9
 
 
-async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict]]:
-    """Tier 1/2: run a generated script, grade per turn."""
+async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict], list[str]]:
+    """Run a generated script, grade per turn, then grade the CONVERSATION.
+
+    Returns (passed, transcript, conversation-level notes). The third element
+    exists because tier 6's contracts are relations between turns — "the second
+    identity ask was byte-identical to the first", "a fault code supplied in
+    turn 1 was re-demanded in turn 4" — and a per-turn verdict structurally
+    cannot see them.
+    """
     transcript = []
     last = await client.get_messages(STAGING_BOT, limit=1)
     min_id = last[0].id if last else 0
@@ -58,8 +68,14 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
         # A declared gate is the authoritative contract for that turn; the
         # expect/forbid list grades vocabulary, the gate grades behaviour.
-        if turn.get("gate") == "identifying_question":
-            gv = gates.check_identifying_question(reply, scenario["id"])
+        #
+        # Resolved through gates.TURN_GATES rather than compared against a
+        # literal. The literal form dispatched exactly ONE name, so a scenario
+        # declaring any other gate went silently ungraded and reported PASS —
+        # a check that cannot fail. An unknown name now raises, loudly, rather
+        # than letting a typo disarm its own grading.
+        if turn.get("gate"):
+            gv = gates.resolve_turn_gate(turn["gate"])(reply, scenario["id"])
             if gv:
                 ok = False
                 notes = notes + [str(x) for x in gv]
@@ -76,7 +92,18 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         if not ok:
             passed = False
         await asyncio.sleep(uat.SEND_GAP_S)
-    return passed, transcript
+
+    # Conversation-scoped contracts, opt-in per scenario. Resolved through the
+    # registry for the same reason turn gates are: an unregistered name raises
+    # loudly instead of letting a typo disarm the scenario's own grading.
+    conv_notes: list[str] = []
+    for name in scenario.get("conv_gates", []):
+        for v in gates.resolve_conversation_gate(name)(transcript, scenario["id"]):
+            conv_notes.append(str(v))
+            passed = False
+    for note in conv_notes:
+        print(f"  CONV-GATE {note}")
+    return passed, transcript, conv_notes
 
 
 async def adaptive_conversation(
@@ -148,21 +175,24 @@ async def amain(args) -> int:
     n_pass = n_fail = n_skip = 0
     meta = dict(deploy_sha=args.deploy_sha, seed=args.seed, telegram=str(me.username))
 
-    if args.tier in (1, 2, 9):
+    if args.tier in (1, 2, 6, 9):
         # Tier 9 is the safety curriculum. It rides the scripted path because the
         # turns are fixed, but its authoritative grading is the deterministic gate
         # in campaign/gates.py, applied below — an expect/forbid substring match is
         # not strong enough to gate a release on.
+        #
+        # Tier 6 rides the same path and adds the conversation-scoped half:
+        # `conv_gates` on the scenario, applied inside scripted_conversation.
         gen = importlib.import_module(
             "tests.regime1_telethon.campaign."
-            + {1: "mutators", 2: "state_attacks", 9: "safety"}[args.tier]
+            + {1: "mutators", 2: "state_attacks", 6: "uns_gate_depth", 9: "safety"}[args.tier]
         )
         scenarios = gen.generate(args.seed, args.count)
         for sc in scenarios:
             if sc["id"] in done:
                 n_skip += 1
                 continue
-            ok, transcript = await scripted_conversation(client, sc, args)
+            ok, transcript, conv_notes = await scripted_conversation(client, sc, args)
             # Tier 9: the deterministic safety gate outranks the substring grade.
             # A judge may not overrule it and neither may a lucky expect match.
             if args.tier == 9 and sc.get("safety_case_id"):
@@ -184,6 +214,10 @@ async def amain(args) -> int:
                 args.tier,
                 "PASS" if ok else "FAIL",
                 category="" if ok else "UNTRIAGED",
+                # Conversation-gate violations are the WHOLE verdict for tier 6's
+                # loop scenarios, and they belong to no single turn — without
+                # this the ledger would record a FAIL with no recorded reason.
+                notes="; ".join(conv_notes),
                 **meta,
             )
             if ok:
