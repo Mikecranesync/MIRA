@@ -58,6 +58,18 @@ def test_sql_contract_rejects_decoy_predicates_and_union_branches():
         snapshotter.assert_safe_select_query("replay", bypass)
 
 
+def test_sql_contract_rejects_a_mutated_shipped_registry_entry_with_unscoped_union(monkeypatch):
+    """Would catch validating a mutable query registry against itself."""
+    decoy_union = snapshotter.SHIPPED_QUERIES["replay"] + (
+        " UNION SELECT json_build_object('fault_window_row_count', "
+        "(SELECT count(*) FROM tag_events))"
+    )
+    monkeypatch.setitem(snapshotter.SHIPPED_QUERIES, "replay", decoy_union)
+
+    with pytest.raises(snapshotter.SqlContractError):
+        snapshotter.assert_safe_select_query("replay", snapshotter.SHIPPED_QUERIES["replay"])
+
+
 def test_replay_query_requires_an_actual_fault_trigger_before_counting_evidence():
     """Would catch treating normal physical Ignition telemetry as a fault window."""
     replay = snapshotter.SHIPPED_QUERIES["replay"]

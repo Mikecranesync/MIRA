@@ -130,6 +130,13 @@ FROM scoped_events
 """.strip(),
 }
 
+# Reviewed independently from the mutable runtime registry.  A source edit must
+# deliberately update this review record *and* satisfy the structural contract.
+_REVIEWED_QUERY_SHA256 = {
+    "heartbeat": "9e7733dede60c7608091f41870a2aeeb458f6b32d0b000893a6ce5188258c9c6",
+    "replay": "7564e9798da6dda96c4da68c483a4f37796fe8cdcfa3fb3bd861eebcda638bf5",
+}
+
 
 def canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -192,12 +199,53 @@ def _validate_inputs(inputs: PreflightInputs, inspected_sha: str) -> None:
 
 
 def assert_safe_select_query(name: str, query: str) -> None:
-    """Allow exactly the reviewed fixed statements; execution has no SQL input seam."""
-    if name not in SHIPPED_QUERIES or query != SHIPPED_QUERIES[name]:
+    """Enforce immutable reviewed SQL plus per-relation tenant/bounds predicates."""
+    expected_digest = _REVIEWED_QUERY_SHA256.get(name)
+    if expected_digest is None or hashlib.sha256(query.encode("utf-8")).hexdigest() != expected_digest:
         raise SqlContractError(f"{name}: query_not_allowlisted")
     normalized = " ".join(query.split())
-    if not normalized or ";" in normalized or _FORBIDDEN_SQL.search(normalized):
+    lowered = normalized.lower()
+    if (
+        not normalized
+        or ";" in normalized
+        or "--" in normalized
+        or "/*" in normalized
+        or "*/" in normalized
+        or _FORBIDDEN_SQL.search(normalized)
+        or re.search(r"\b(?:union|intersect|except)\b", lowered)
+        or not lowered.startswith("with ")
+    ):
         raise SqlContractError(f"{name}: non_select_statement")
+    if name == "heartbeat":
+        _require_relation_scopes(
+            name,
+            normalized,
+            "historian_task_heartbeat",
+            ("tenant_id = %s::uuid", "started_at >= %s::timestamptz", "started_at < %s::timestamptz"),
+        )
+    elif name == "replay":
+        _require_relation_scopes(
+            name,
+            normalized,
+            "tag_events",
+            ("tenant_id = %s::uuid", "uns_path = %s::ltree", "event_timestamp >= replay_from", "event_timestamp < replay_to"),
+        )
+
+
+def _require_relation_scopes(
+    name: str, query: str, relation: str, required_predicates: tuple[str, ...]
+) -> None:
+    """Require target predicates in every direct table scope, never a decoy CTE."""
+    matches = list(re.finditer(rf"\bfrom\s+{re.escape(relation)}\b", query, re.IGNORECASE))
+    if relation in {"historian_task_heartbeat", "tag_events"} and not matches:
+        raise SqlContractError(f"{name}: {relation}_scope_missing")
+    for match in matches:
+        following = query[match.end():]
+        boundary = re.search(r"\)\s*(?:,\s*[a-z_]+\s+as\s*\(|select\b)", following, re.IGNORECASE)
+        scope = following[: boundary.start()] if boundary else following
+        lowered_scope = scope.lower()
+        if not all(predicate in lowered_scope for predicate in required_predicates):
+            raise SqlContractError(f"{name}: {relation}_scope_unbounded")
 
 
 def _assert_shipped_queries_safe() -> None:
