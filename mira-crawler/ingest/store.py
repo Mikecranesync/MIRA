@@ -20,16 +20,23 @@ _ENGINE = None
 
 
 def _log_ref(url: str) -> str:
-    """A log-safe reference to a source URL: its origin plus a short hash of the
-    exact URL — enough for an operator to correlate a refusal with a row, never
-    the path or query (which can carry a document name or a token). Gate 7
-    round P on #3481, code F1."""
+    """A log-safe reference to a source URL: its host (plus an explicit port)
+    and a short hash of the exact URL — enough for an operator to correlate a
+    refusal with a row, never the path or query (which can carry a document
+    name or a token) and never the userinfo (which can carry credentials —
+    ``netloc`` includes it; ``hostname``/``port`` do not). Gate 7 round P on
+    #3481, code F1; round W observation."""
     if not url:
         return "<no url>"
     from urllib.parse import urlsplit
 
     try:
-        origin = urlsplit(url).netloc or "<no host>"
+        parts = urlsplit(url)
+        host = parts.hostname or "<no host>"
+        if ":" in host:  # an IPv6 literal is written bracketed, so host:port stays unambiguous
+            host = f"[{host}]"
+        port = parts.port  # raises ValueError for non-numeric port text
+        origin = host if port is None else f"{host}:{port}"
     except ValueError:
         origin = "<unparseable>"
     return f"{origin} sha256:{hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]}"

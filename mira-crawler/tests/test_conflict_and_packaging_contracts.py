@@ -893,9 +893,37 @@ class TestRefusalLogging:
         url = "HTTPS://Example.COM/Path/File.PDF?q=1"
         ref = store._log_ref(url)
         assert ref == store._log_ref(url)
-        assert "Example.COM" in ref and "sha256:" in ref
+        assert ref.startswith("example.com ") and "sha256:" in ref  # host as classified
         assert "/Path/File.PDF" not in ref and "q=1" not in ref
         assert store._log_ref("") == "<no url>"
+
+    # Round-23 (#3481) code observation, real: `urlsplit(url).netloc` carries the
+    # userinfo, so a URL with embedded credentials would have put `user:secret@`
+    # into the refusal log. The reference is host[:port] — never the userinfo.
+
+    def test_log_ref_never_carries_userinfo(self):
+        ref = store._log_ref("https://user:s3cret@Example.COM:8443/private/x.pdf?token=abc")
+        assert ref.startswith("example.com:8443 ") and "sha256:" in ref
+        for secret in ("user", "s3cret", "@", "token=abc", "/private"):
+            assert secret not in ref, secret
+        # An IPv6 literal stays bracketed so host and port cannot be confused.
+        assert store._log_ref("https://[2001:DB8::1]:8443/x").startswith("[2001:db8::1]:8443 ")
+        assert store._log_ref("https://u:p@[::1]/x").startswith("[::1] ")
+        assert store._log_ref("https://example.com:44a/x").startswith("<unparseable> ")
+        assert store._log_ref("https://example.com/x").startswith("example.com ")
+
+    def test_refusal_warning_never_carries_userinfo(self, captured, caplog):
+        import logging
+
+        policy = provenance.load_policy()
+        blocked = next(
+            h for h, e in policy["origins"].items() if e.get("classification") == "blocked"
+        )
+        url = f"https://svc:hunter2@{blocked}/private/doc.pdf"
+        with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+            assert _insert(False, url) == ""
+        assert "hunter2" not in caplog.text and "svc:" not in caplog.text
+        assert blocked in caplog.text and "sha256:" in caplog.text
 
 
 # ═══════════════════════════════════════════════════════════════════════════

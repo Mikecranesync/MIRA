@@ -1126,6 +1126,33 @@ def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_rec
     assert "evidence artifacts" not in "\n".join(receipts_block("h", None, [], kept, "high"))
 
 
+def test_deleted_evidence_artifact_is_dropped_and_receipted():
+    """#3481 round W (a malformed attempt claimed deletions slip through because
+    "the target is /dev/null"). Git's header for a deletion is
+    `diff --git a/X b/X` followed by `deleted file mode`; `/dev/null` appears
+    only on the `+++` line. The exclusion keys on the header, so a deleted
+    artifact is dropped and receipted like any other; a deleted rebuttal or
+    README — author-written — stays in review."""
+    from gate7_review import drop_evidence_artifacts
+
+    e = "docs/architecture/convergence/units/evidence/CU-03/"
+    diff = (
+        f"diff --git a/{e}round-9-review.md b/{e}round-9-review.md\n"
+        "deleted file mode 100644\n"
+        f"--- a/{e}round-9-review.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-raw review text\n"
+        f"diff --git a/{e}r.stderr.log b/{e}r.stderr.log\n"
+        "deleted file mode 100644\n"
+        f"--- a/{e}r.stderr.log\n+++ /dev/null\n@@ -1 +0,0 @@\n-log line\n"
+        f"diff --git a/{e}round-9-rebuttal.md b/{e}round-9-rebuttal.md\n"
+        "deleted file mode 100644\n"
+        f"--- a/{e}round-9-rebuttal.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-author rebuttal\n"
+    )
+    kept, dropped = drop_evidence_artifacts(diff)
+    assert dropped == [e + "round-9-review.md", e + "r.stderr.log"]
+    assert "-raw review text" not in kept and "-log line" not in kept
+    assert "-author rebuttal" in kept
+
+
 def test_scoped_run_tells_the_reviewer_which_files_it_cannot_see():
     """#3481 rounds H–I: a `--paths docs/` review reported "the only file changed
     is CU-03.md" and called the record's true statements about code outside its

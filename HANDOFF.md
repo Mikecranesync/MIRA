@@ -40,8 +40,15 @@ The remaining decision is the human Gate 9 / merge.
    round-22 code F1/F2 (a minted id was returned on conflict and `store_chunks` counted **and**
    KG-linked it).
 
+4. **`_log_ref` never carries userinfo (round X, this commit).** The refusal-warning reference is
+   built from `hostname` (IPv6 re-bracketed, `[2001:db8::1]:8443`) + explicit `port`, never
+   `netloc` (which carries `user:secret@`); `<unparseable>` for non-numeric port text; the
+   exact-URL hash is unchanged. Closes round-23 code F1 (real; reproduced end-to-end in the
+   captured log). Lane: `test_deleted_evidence_artifact_is_dropped_and_receipted` locks that a
+   deleted artifact is dropped (a claim three malformed attempts made; false).
+
 Supporting: `tools/qa/security/knowledge_entries_read_allowlist.yml` re-keyed for the two unchanged
-`store.py` reads (`121→166`, `412→481`; hashes unchanged); four pre-existing test fakes now yield
+`store.py` reads (`121→173`, `412→488`; hashes unchanged); four pre-existing test fakes now yield
 the bound id from `execute()` (the contract changed); two mock-SQL assertions rephrased so
 Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (no allowlist entry).
 
@@ -52,10 +59,12 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | T (prior) | `4abb63d00` | PASS 3/3 | valid **BLOCK**: F2/F3 high sustained — the "handed to Gate 9" framing was withdrawn; root-fixed |
 | U | `77b05c0c5` | BLOCK ×2 (slice artifact; mechanism sentence) → adjudication attempts 1–2 malformed (preserved) → attempt 3 **PASS 2/2** | BLOCK ×3 → adjudication **PASS 3/3**; F1(b) guard accepted at the boundary → round V |
 | V | `99f18d8e9` | BLOCK ×1 (settled finding re-raised on a pre-mechanism row) → attempt 1 malformed → attempt 2 **PASS 1/1** | attempt 1 malformed (essay) → attempt 2 **BLOCK ×3**: F1/F2 **real** → root-fixed (round W); F3 false, locked; adjudication attempt 1 malformed, **not retried** (fix, don't adjudicate) |
-| W | this commit | round 23 — recorded in the final evidence commit | round 23 — a valid BLOCK is fixed, not adjudicated |
+| W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 false premise, non-blocking; not adjudicated (fix, don't argue) |
+| X | this commit | round 24 — recorded in the final evidence commit | round 24 — a valid BLOCK is fixed, not adjudicated |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
-PR's own mock-SQL assertions — fixed here); final-head CI in the final evidence commit.
+PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at
+last poll); final-head CI in the final evidence commit.
 
 ## 4. Verification (exit codes captured directly, no pipelines)
 
@@ -67,17 +76,22 @@ PYTHONIOENCODING=utf-8 PYTHONUTF8=1 py -3 tools/qa/security/check_knowledge_entr
 py -3 -m ruff check mira-crawler/ingest/store.py mira-crawler/tests/test_conflict_and_packaging_contracts.py   # clean
 ```
 
-Mutations (hand-applied to `store.py`, the `TestCanonicalSourceUrl` class run, file restored
-byte-identical after each): 12 exercised — **11 killed**: M1 empty default-port table, M2 escape
-fold removed, M3 escapes decoded, M5 userinfo not folded, M6 any digit run drops the port, M7
-authority-less path not folded, M8 `int()` port conversion restored, M9 boundary guard removed,
-M10 guard looks up even for canonical spellings, M11 a conflict returns the minted id, M12 the
-minted id is returned instead of the DB's; **M4** (`\d+` port digits) is an **equivalent mutant**
-under the string comparison — recorded, not claimed as a lock.
+Mutations (hand-applied to `store.py`, the `TestCanonicalSourceUrl` + `TestRefusalLogging` classes
+run, file restored byte-identical after each): 14 exercised — **13 killed**: M1 empty default-port
+table, M2 escape fold removed, M3 escapes decoded, M5 userinfo not folded, M6 any digit run drops
+the port, M7 authority-less path not folded, M8 `int()` port conversion restored, M9 boundary
+guard removed, M10 guard looks up even for canonical spellings, M11 a conflict returns the minted
+id, M12 the minted id is returned instead of the DB's, M13 `_log_ref` back on `netloc`, M14 IPv6
+unbracketed; **M4** (`\d+` port digits) is an **equivalent mutant** under the string comparison —
+recorded, not claimed as a lock. (The driver's first pass filtered only the canonical class and so
+never ran the refusal locks; widened and re-run — stated here, not hidden.)
 
-Red-first evidence: 22 canonical-identity cases + 1 boundary lock + 4 `RETURNING` locks each
-failed against the head that preceded their fix (`006910b07`, `77b05c0c5`, `99f18d8e9`) and pass
-after; the preserved-direction locks passed before and after.
+Red-first evidence: 22 canonical-identity cases + 1 boundary lock + 4 `RETURNING` locks + 2
+userinfo locks each failed against the head that preceded their fix (`006910b07`, `77b05c0c5`,
+`99f18d8e9`, `fa3041680`) and pass after; the preserved-direction locks passed before and after.
+Operational note: the previous session's process exited while the mutation driver was running and
+left `_upper_escapes` mutated in the working tree; caught by the next slice run (13 red), restored
+from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 5. Residuals (stated, not hidden)
 
@@ -93,9 +107,10 @@ after; the preserved-direction locks passed before and after.
 
 ## 6. What remains / human actions
 
-1. **Round 23** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
+1. **Round 24** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
    in CU-03, the evidence README and here, in the final evidence/record commit. A valid code BLOCK
-   is fixed (new head, new round), never adjudicated away.
+   is fixed (new head, new round), never adjudicated away. Reviews of a superseded head are not
+   retried once the head has moved.
 2. **PR/issue comms** — PR #3481 body + comment, PR #3268 closure pointer, issues #3482/#3483:
    updated to the final head in the final commit.
 3. **Human Gate 9 / merge = Mike.** This branch never merges itself, never marks the convergence
