@@ -951,6 +951,61 @@ class TestUserinfoRefusedAtTheBoundary:
             provenance.enforce_visibility("https://unknown.example.invalid/x", False)[2],
         )
 
+    # ── Round AB (#3481): the policy is ANY URL userinfo, not http/https only.
+    # A `scheme://authority` form of every syntactically valid scheme is checked;
+    # a direct store call with ftp:// or s3:// credentials must be refused the
+    # same way, and `file://user@host/x` fails closed too.
+
+    NON_HTTP = (
+        "ftp://svc:hunter2@files.example.com/doc.pdf",
+        "s3://AKIAKEY:hunter2@bucket/prefix/key",
+        "FTP://SVC:hunter2@Files.Example.COM/x",  # upper-case scheme
+        "ftp://svc@files.example.com/x",  # username only
+        "ftp://svc:hunter2@[2001:db8::1]:2121/x",  # IPv6 authority
+        "sftp://svc:hunter2@files.example.com/x",
+        "custom+scheme.v1://svc:hunter2@host/x",
+        "file://svc@host/share/x.pdf",  # file with userinfo in the authority
+        "  FTP://svc:hunter2@files.example.com/x ",  # padded
+    )
+
+    def test_userinfo_is_detected_for_every_scheme_authority_form(self):
+        for url in self.NON_HTTP:
+            assert provenance.url_has_userinfo(url), url
+        for url in (
+            "ftp://files.example.com/p@th",  # @ in the path
+            "s3://bucket/x?k=a@b",  # @ in the query
+            "ftp://files.example.com/x#a@b",  # @ in the fragment
+            "file:///C:/Docs/a@b.pdf",  # empty authority; @ in the path
+            "file:/share/a@b.pdf",  # no authority at all
+            "/inbox/a@b.pdf",  # bare path
+            "C:\\inbox\\a@b.pdf",  # drive letter
+            "mailto:a@b.example",  # no `//` authority form
+            "ftp://files.example.com/x",
+        ):
+            assert not provenance.url_has_userinfo(url), url
+
+    def test_non_http_userinfo_is_refused_before_any_sql_on_every_route(self, captured, caplog):
+        import logging
+
+        try:
+            from ingest import kg_writer
+        except ImportError:  # container layout
+            from mira_crawler.ingest import kg_writer  # type: ignore[no-redef]
+        for url in self.NON_HTTP:
+            with caplog.at_level(logging.WARNING, logger="mira-crawler.store"):
+                assert _insert(True, url) == "", url
+                assert store.chunk_exists("tenant-a", url, 0) is False, url
+                chunks = [({"text": "c", "chunk_index": 0, "source_url": url}, [0.1, 0.2])]
+                assert store.store_chunks(chunks, "tenant-a", is_private=True) == 0, url
+                assert store.ingested_source_urls([url], "tenant-a") == set(), url
+            assert "sql" not in captured, url  # nothing reached the DB on any route
+            assert provenance.enforce_visibility(url, False)[0] is False, url
+            assert provenance.shared_corpus_allowed(url)[0] is False, url
+        assert "hunter2" not in caplog.text and "AKIAKEY" not in caplog.text
+        assert "svc" not in caplog.text
+        self._no_credential_reached_sql(captured)
+        del kg_writer
+
     def test_insert_refuses_userinfo_with_no_sql_and_no_credential_in_logs(
         self, captured, caplog, monkeypatch
     ):

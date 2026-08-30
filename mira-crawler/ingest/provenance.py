@@ -35,6 +35,7 @@ origin list here.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -178,19 +179,29 @@ _USERINFO_REFUSED = (
 )
 
 
+_URL_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+
+
 def url_has_userinfo(url: str) -> bool:
-    """True when an http/https URL's authority carries userinfo (``user:pass@host``).
+    """True when a ``scheme://authority`` URL of ANY scheme carries userinfo
+    (``user:pass@host``, ``user@host``) in its authority.
 
     Pure, string-based on the same authority slice ``canonical_source_url`` uses
     (everything between ``//`` and the first ``/``, ``?`` or ``#``), so an ``@``
-    in a path, query or fragment is not userinfo. Case- and padding-insensitive
-    on the scheme. Such a URL is refused at the hop-0 gate and at the store
-    boundary (Gate 7 round Z on #3481): a credential is never stripped into
-    another identity, never bound into SQL, never persisted, never logged.
+    in a path, query or fragment is not userinfo, and a value without a
+    ``scheme://`` authority form (bare path, drive letter, ``mailto:``,
+    ``file:/x``) is not a candidate. Every syntactically valid scheme counts —
+    ``ftp``, ``s3``, a custom scheme, upper-case spellings, ``file://user@host`` —
+    because the policy is any URL userinfo, not http/https only (round AB on
+    #3481: the http/https-only first version let a direct store call persist
+    ``ftp://user:pass@host``). Case- and padding-insensitive. Such a URL is
+    refused at the hop-0 gate and at the store boundary: a credential is never
+    stripped into another identity, never bound into SQL, never persisted, never
+    logged.
     """
     s = str(url).strip()
     head, sep, rest = s.partition(":")
-    if not sep or head.lower() not in ("http", "https") or not rest.startswith("//"):
+    if not sep or not _URL_SCHEME_RE.fullmatch(head) or not rest.startswith("//"):
         return False
     authority = rest[2:]
     for stop in "/?#":
