@@ -995,13 +995,16 @@ def drop_evidence_artifacts(diff: str) -> tuple[str, list[str]]:
             header = line[len("diff --git ") :].strip()
             source, _, target = header.rpartition(" b/")
             source = source[2:] if source.startswith("a/") else source
-            # Keyed on BOTH sides (#3481 round I, sustained): an artifact that
-            # merely moves — still a doc/log-class file at its new path — stays
-            # excluded and is receipted under the new path; one that becomes
-            # code (`x.log` -> `x.py`) stays in review. A pure rename carries no
-            # content hunk, so nothing reviewable is lost either way.
-            moved_artifact = is_evidence_artifact(source) and target.lower().endswith(_DOC_SUFFIXES)
-            keep = not (is_evidence_artifact(target) or moved_artifact)
+            # Evidence is a property of the TARGET location only (#3481 round AR,
+            # correcting round I): an artifact moved OUT of units/evidence/ to a
+            # normal doc/log path is no longer evidence-by-location — the
+            # path/classification transition is itself reviewable and may carry
+            # hunks — so it stays in the reviewed diff and is never receipted as
+            # dropped. A move WITHIN units/evidence/ (target still an artifact)
+            # stays excluded and is receipted under its new path; an executable
+            # or structured target stays in review wherever it came from.
+            del source  # the a/ side never decides
+            keep = not is_evidence_artifact(target)
             if not keep:
                 dropped.append(target)
         if keep:

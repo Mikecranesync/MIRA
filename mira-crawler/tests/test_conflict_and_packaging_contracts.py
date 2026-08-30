@@ -240,6 +240,10 @@ class TestConflictVisibility:
             "UPDATE knowledge_entries SET notes='WHERE is a keyword', is_private = TRUE WHERE id = :id",
             "UPDATE knowledge_entries SET notes = 'it''s WHERE', is_private=:p WHERE id = :id",
             "UPDATE knowledge_entries SET notes = 'WHERE -- not a comment', is_private = false",
+            # Round AQ (#3481, round-40 S3 F1): a comment AFTER the table name that
+            # contains WHERE must not end the SET capture early either.
+            "UPDATE knowledge_entries SET /* WHERE */ is_private = true WHERE id = :id",
+            "UPDATE knowledge_entries ke SET -- WHERE\n  ke.is_private = TRUE WHERE ke.id = :id",
         ],
     )
     def test_update_scanner_catches_aliased_lowercase_and_multiline_forms(self, sql):
@@ -273,6 +277,12 @@ def _update_set_clauses(text: str) -> list[str]:
     # the capture early. Double quotes are IDENTIFIERS in PostgreSQL
     # (`"public"."knowledge_entries"`) and are left alone.
     text = re.sub(r"'(?:[^']|'')*'", "''", text)
+    # Then every block / line comment is blanked (round AQ on #3481, round-40
+    # S3 F1): a WHERE inside `/* … */` or `-- …` after the table name must not
+    # end the capture early either. Literals go first so a `--` inside one is
+    # not a comment; the newline of a line comment is kept so tokens stay apart.
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"--[^\n]*", " ", text)
     return [
         m.group(1)
         for m in re.finditer(
@@ -791,6 +801,9 @@ class TestCanonicalSourceUrl:
             ("\thttp://example.com/a%7a\n", "http://example.com/a%7A"),
             ("  FILE:///C:/Docs/x.pdf", "file:///C:/Docs/x.pdf"),
             ("https://example.com/x", "https://example.com/x"),
+            # Round AQ (#3481, round-40 S3 F4): Unicode whitespace is whitespace too.
+            ("\u2003https://Example.com/x\u2003", "https://example.com/x"),  # EM SPACE
+            ("\u00a0http://example.com/y\u3000", "http://example.com/y"),  # NBSP / ideographic
         ],
     )
     def test_surrounding_whitespace_is_stripped_from_a_recognised_url(self, raw, expected):

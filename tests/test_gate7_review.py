@@ -1392,19 +1392,32 @@ def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_rec
     assert "+raw review text" not in kept and "+log line" not in kept
     assert "+index row" in kept and "+author rebuttal" in kept and "+code" in kept
 
-    # #3481 round I (sustained): a rename/move must be keyed on BOTH sides. An
-    # artifact that merely moves (still a doc/log file) stays excluded and is
-    # receipted under its new path; one that becomes code stays in review.
+    # #3481 round AR (corrects round I): evidence is a property of the TARGET
+    # location only. An artifact moved OUT of units/evidence/ to a normal
+    # doc/log path is no longer evidence-by-location — the path/classification
+    # transition is itself reviewable and may carry hunks — so it is KEPT and
+    # never receipted as dropped. A move WITHIN units/evidence/ stays excluded
+    # and receipted under its new path; an executable/structured target stays
+    # in review wherever it came from; a doc moved INTO evidence is excluded.
     moved = (
         f"diff --git a/{e}round-9-review.md b/docs/notes/round-9-review.md\n"
         "similarity index 100%\n"
         f"rename from {e}round-9-review.md\nrename to docs/notes/round-9-review.md\n"
+        f"diff --git a/{e}raw.log b/docs/normal.md\n"
+        "similarity index 80%\n"
+        f"rename from {e}raw.log\nrename to docs/normal.md\n+edited on the way out\n"
         f"diff --git a/{e}r.stderr.log b/tools/r.py\n+now code\n"
+        f"diff --git a/{e}old.md b/{e}CU-03/new.md\n"
+        f"rename from {e}old.md\nrename to {e}CU-03/new.md\n+still evidence\n"
+        f"diff --git a/{e}x.log b/{e}x.py\n+code under evidence\n"
         f"diff --git a/docs/plain.md b/{e}plain.md\n+moved into evidence\n"
     )
     kept2, dropped2 = drop_evidence_artifacts(moved)
-    assert dropped2 == ["docs/notes/round-9-review.md", e + "plain.md"]
-    assert "+now code" in kept2 and "rename to docs/notes" not in kept2
+    assert dropped2 == [e + "CU-03/new.md", e + "plain.md"]
+    assert "rename to docs/notes" in kept2 and "docs/notes/round-9-review.md" not in dropped2
+    assert "+edited on the way out" in kept2 and "docs/normal.md" not in dropped2
+    assert "+now code" in kept2 and "+code under evidence" in kept2
+    assert "+still evidence" not in kept2 and "+moved into evidence" not in kept2
 
     out = "\n".join(receipts_block("h", None, [], kept, "high", artifacts=dropped))
     assert "evidence artifacts excluded" in out

@@ -141,9 +141,9 @@ from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 6. What remains / human actions
 
-1. **Status: PARTIAL — not closure. Code head = this commit (round AP; rounds AF–AO are its
-   predecessors — the round-30–39 outcomes and the AG–AP fixes are in CU-03), UNREVIEWED;
-   the next fresh round is 40 on this exact head.** Rounds
+1. **Status: PARTIAL — not closure. Code head = this commit (round AQ; rounds AF–AP are its
+   predecessors — the round-30–40 outcomes and the AG–AQ fixes are in CU-03), UNREVIEWED;
+   the next fresh round is 41 on this exact head.** Rounds
    27–29 each root-fixed every real finding (`= ANY` probe; credential-family query names;
    safe-origin-only refusals with no URL hash; the redactor false positive; `Retry-After`
    parsing) and every round also produced false BLOCKs that need one evidence-bound
