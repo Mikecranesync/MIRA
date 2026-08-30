@@ -31,6 +31,7 @@ from tag_diff_logger import (
     TagDiff,
     TagDiffLogger,
     TagReading,
+    TagState,
     compute_diffs,
 )
 
@@ -190,16 +191,53 @@ def test_real_provenance_not_flipped():
 
 
 class InMemoryDiffStore:
-    def __init__(self):
-        self.state: dict[str, "object"] = {}
+    def __init__(self, raw_readings=None):
+        self.raw_readings = list(raw_readings or [])
+        self.before_ts = None
         self.diffs: list[TagDiff] = []
 
-    def load_state(self, tenant_id, tag_paths):
-        return {t: self.state[t] for t in tag_paths if t in self.state}
+    def load_state(self, tenant_id, tag_paths, before_ts):
+        self.before_ts = before_ts
+        state = {}
+        for tag_path in tag_paths:
+            prior = [
+                reading
+                for reading in self.raw_readings
+                if reading.tag_path == tag_path and reading.event_timestamp < before_ts
+            ]
+            if prior:
+                latest = max(prior, key=lambda reading: reading.event_timestamp)
+                state[tag_path] = TagState(
+                    last_value=latest.value,
+                    last_quality=latest.quality,
+                    last_event_id=latest.event_id,
+                )
+        return state
 
     def persist_diffs(self, diffs):
         self.diffs.extend(diffs)
         return len(diffs)
+
+
+def test_logger_loads_state_strictly_before_batch_start():
+    raw_readings = [
+        _r("PE-101", "false", 100, eid="e100"),
+        _r("PE-101", "true", 400, eid="e400"),
+        _r("PE-101", "true", 900, eid="e900"),
+    ]
+    store = InMemoryDiffStore(raw_readings)
+
+    diffs = TagDiffLogger(store).process_batch(
+        [raw_readings[1]], DiffConfig(), tenant_id=TENANT
+    )
+
+    assert store.before_ts == 400.0
+    assert len(diffs) == 1
+    assert diffs[0].diff_type == RISING_EDGE
+    assert diffs[0].prev_value == "false"
+    assert diffs[0].new_value == "true"
+    assert diffs[0].from_event_id == "e100"
+    assert diffs[0].to_event_id == "e400"
 
 
 def test_logger_no_cross_batch_edge_without_state():
@@ -213,9 +251,8 @@ def test_logger_no_cross_batch_edge_without_state():
     out1 = logger.process_batch(b1, DiffConfig(), tenant_id=TENANT)
     assert _types(out1) == [RISING_EDGE]
 
-    # Seed carry-forward state (prod NeonDiffStore reads this from tag_events).
-    _, state = compute_diffs(b1, DiffConfig(), tenant_id=TENANT)
-    store.state.update(state)
+    # Seed carry-forward events (prod NeonDiffStore reads from tag_events).
+    store.raw_readings.extend(b1)
 
     b2 = [_r("PE-101", "false", 3)]
     out2 = logger.process_batch(b2, DiffConfig(), tenant_id=TENANT)

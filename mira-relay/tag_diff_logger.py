@@ -329,8 +329,10 @@ def _assign_fault_windows(
 class DiffStore(Protocol):
     """Persistence boundary. NeonDiffStore is prod; tests inject in-memory."""
 
-    def load_state(self, tenant_id: str, tag_paths: list[str]) -> dict[str, TagState]:
-        """Return carry-forward TagState per tag (empty when unknown)."""
+    def load_state(
+        self, tenant_id: str, tag_paths: list[str], before_ts: float
+    ) -> dict[str, TagState]:
+        """Return the latest TagState per tag strictly before ``before_ts``."""
         ...
 
     def persist_diffs(self, diffs: list[TagDiff]) -> int:
@@ -352,7 +354,8 @@ class TagDiffLogger:
         if not readings:
             return []
         tag_paths = sorted({r.tag_path for r in readings})
-        prev_state = self.store.load_state(tenant_id, tag_paths)
+        batch_start = min(r.event_timestamp for r in readings)
+        prev_state = self.store.load_state(tenant_id, tag_paths, batch_start)
         diffs, _ = compute_diffs(readings, config, prev_state, tenant_id=tenant_id)
         if diffs:
             written = self.store.persist_diffs(diffs)
@@ -391,7 +394,9 @@ class NeonDiffStore:
             pool_pre_ping=True,
         )
 
-    def load_state(self, tenant_id: str, tag_paths: list[str]) -> dict[str, TagState]:
+    def load_state(
+        self, tenant_id: str, tag_paths: list[str], before_ts: float
+    ) -> dict[str, TagState]:
         if not tag_paths:
             return {}
         from sqlalchemy import text
@@ -407,10 +412,11 @@ class NeonDiffStore:
                            tag_path, value, quality, event_id::text AS event_id
                       FROM tag_events
                      WHERE tenant_id = :tid AND tag_path = ANY(:tags)
+                       AND event_timestamp < to_timestamp(:before_ts)
                      ORDER BY tag_path, event_timestamp DESC
                     """
                 ),
-                {"tid": tenant_id, "tags": tag_paths},
+                {"tid": tenant_id, "tags": tag_paths, "before_ts": before_ts},
             ).mappings().all()
         return {
             r["tag_path"]: TagState(

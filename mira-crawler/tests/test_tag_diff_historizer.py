@@ -30,7 +30,7 @@ class InMemoryDiffStore:
         self.state: dict = {}
         self.diffs: list[TagDiff] = []
 
-    def load_state(self, tenant_id, tag_paths):
+    def load_state(self, tenant_id, tag_paths, before_ts):
         return {t: self.state[t] for t in tag_paths if t in self.state}
 
     def persist_diffs(self, diffs):
