@@ -29,12 +29,18 @@ claims.
    - **Success:** the design and plans contain no placeholders, name exact files/interfaces/tests,
      cover every approved requirement, and pass `git diff --check` plus plan self-review.
 
-2. **Lane C — complete Machine Memory truth and operational proof**
+2. **Lane C — complete Machine Memory truth and operational proof in three PRs**
    - Implement PRD Workstream C without fabricating live, replay, stale, unavailable, empty, physical,
      or simulated state.
-   - Add the read-only preflight and scheduled observer through existing operational seams.
-   - **Success:** deterministic tests cover all required states; a merge-ready PR and redacted
-     evidence exist; the seven-day production artifact remains explicitly Mike-gated.
+   - C1 owns deterministic Replay/API/UI truth; C2 owns the durable historian heartbeat and
+     read-only preflight; C3 owns the observer/evaluator and UI/API consistency contract.
+   - C2 owns only historian service stanzas in production/staging compose and their deploy wiring.
+     After C2 lands, D owns only the Hub environment/SHA fields needed for the
+     database-identity guard; E owns only dogfood service stanzas, schedule, and
+     shared dogfood-runner integration; S owns only the staging Hub fixture-map
+     fields. Each later lane rebases first and edits only its named stanza.
+   - **Success:** deterministic tests cover all required states; each PR is independently reversible;
+     redacted evidence exists; the seven-day production artifact remains explicitly Mike-gated.
 
 3. **Lane D — complete Android credibility**
    - Make photography actions use native camera capture while preserving the existing evidence path.
@@ -51,7 +57,7 @@ claims.
 5. **Lane S — compose the integrated one-minute showcase**
    - Start only after the reviewed C/D/E interfaces are stable.
    - Compose camera/identity confirmation, Drive Commander/Notebook evidence, grounded answer,
-     citation opening, follow-up/refusal, and save-to-memory through existing seams.
+   citation opening, follow-up/refusal, and Notebook-turn persistence through existing seams.
    - **Success:** the synthetic journey proves the complete experience and reports honest elapsed
      time; no duplicated pipeline, unsafe advice, false live state, or unopenable citation remains.
 
@@ -82,7 +88,7 @@ claims.
 
 - No two active implementation agents may write the same path.
 - Explorers and reviewers are read-only unless explicitly promoted to an implementation lane.
-- Each lane plan lists its complete write allowlist and verification commands.
+- Each lane/PR plan lists its complete write allowlist and verification commands.
 - If an open PR or active worktree overlaps a planned write path, that lane stops until the overlap is
   rebased, superseded, merged, or explicitly reassigned.
 - Lane S may not begin by editing around an incomplete C/D/E contract; it waits or consumes the

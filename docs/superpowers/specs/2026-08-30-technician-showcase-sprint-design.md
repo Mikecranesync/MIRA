@@ -1,10 +1,10 @@
 # FactoryLM Technician Showcase Sprint Design
 
-**Status:** Approved by Mike Crane on 2026-08-30  
-**Sprint owner:** Mike Crane  
-**Implementation:** Claude Code, directed and independently reviewed by Codex  
-**Deploy truth:** `origin/main` at `6250dd442` (PR #3480 merged)  
-**Primary contract:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md`  
+**Status:** Approved by Mike Crane on 2026-08-30
+**Sprint owner:** Mike Crane
+**Implementation:** Claude Code, directed and independently reviewed by Codex
+**Deploy truth:** `origin/main` at `6250dd442` (PR #3480 merged)
+**Primary contract:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md`
 **Product contract:** `docs/prd/2026-08-25-technician-copilot-prd.md`
 
 ## 1. Outcome
@@ -16,7 +16,7 @@ Build the one-minute technician proof:
 A technician with no prior setup must be able to open FactoryLM Technician beside an unfamiliar
 machine, photograph a nameplate or fault display, confirm the proposed identity, receive an honest
 answer with its evidence basis, open the exact cited passage, ask a follow-up or receive a
-provider-free refusal, and preserve the outcome in that machine's existing Notebook/Machine Memory.
+provider-free refusal, and preserve the outcome in that machine's existing Notebook.
 
 The sprint ends with synthetic proof and human field-validation readiness. A human technician or
 design-partner validation claim remains Mike-gated and may not be inferred from synthetic results.
@@ -94,8 +94,9 @@ usage. General reasoning is an explicit per-turn mode and is labelled after relo
 
 - The phone sends bounded conversation history through the existing conversation seam.
 - The evidence-basis label survives reload and cross-device rendering.
-- Saving the outcome uses the existing Notebook/Machine Memory stores. No parallel conversation or
-  machine-memory database is introduced.
+- Saving the outcome persists the canonical turn and evidence in the existing Notebook history only.
+  Machine Memory remains read-only telemetry/history and never stores an AI diagnosis. No parallel
+  conversation or machine-memory database is introduced.
 
 ## 5. Machine Memory truth
 
@@ -126,16 +127,24 @@ observer; it does not authorize a general production-live claim.
 
 The sprint is split into independently reviewable lanes. Parallel writers may not share files.
 
-1. **Lane C — Machine Memory truth and operation.** Owns Workstream C files and its seven-day
-   synthetic observation evidence.
-2. **Lane D — Android credibility.** Owns Workstream D camera and response-contract files.
-3. **Lane E — Synthetic technician gate.** Owns persona, journey, reporting, and cleanup harnesses.
-4. **Lane S — Integrated showcase.** Starts only after C/D/E interfaces are reviewed. It composes
-   existing capabilities and may not fork their implementations.
+1. **Lane C1 — deterministic Machine Memory truth.** Owns the Replay API/mobile contract, anomaly
+   titles, action admission, and provider-free refusal tests.
+2. **Lane C2 — Machine Memory operations.** Owns the tenant/environment-scoped historian heartbeat,
+   read-only preflight workflow, and only the historian service/deploy stanzas needed to run them.
+3. **Lane C3 — Machine Memory observation.** Owns the observer/evaluator and Replay UI/API
+   consistency journey, but no shared scheduler files.
+4. **Lane D — Android credibility.** Owns Workstream D camera and response-contract files and,
+   after C2, only the Hub environment/SHA fields required by its staging database-identity guard.
+5. **Lane E — Synthetic technician gate.** Owns persona, journey, reporting, cleanup, and only the
+   dogfood task/schedule/compose/runbook integration consumed by C3, after C2's staging Redis and
+   historian wiring are on its branch base.
+6. **Lane S — Integrated showcase.** Starts only after C/D/E interfaces are reviewed. It composes
+   existing capabilities, owns only its staging Hub fixture-map fields in shared compose, and may
+   not fork their implementations.
 
-Every lane uses its own worktree and branch, starts at current `origin/main`, follows TDD, commits
-frequently, opens one merge-ready PR, and stops for Codex's independent spec and quality reviews.
-Mike alone merges.
+Every lane/PR uses its own worktree and branch, starts at the reviewed predecessor when an interface
+dependency requires it (otherwise current `origin/main`), follows TDD, commits frequently, opens one
+merge-ready PR, and stops for Codex's independent spec and quality reviews. Mike alone merges.
 
 ## 8. Acceptance
 
@@ -148,8 +157,9 @@ Mike alone merges.
 - Unsupported grounded questions refuse provider-free with no citations.
 - Safety cases STOP and escalate; no unsafe next action is emitted.
 - Tenant isolation and run-owned cleanup pass.
-- The end-to-end synthetic journey records elapsed time, with the one-minute product target reported
-  honestly rather than forced into a passing assertion before human validation.
+- The isolated end-to-end synthetic gate fails above 60 seconds and always records
+  elapsed time. A passing synthetic run supports engineering readiness only; the
+  human product promise still requires the physical and technician gates below.
 
 ### 8.2 Human-gated
 

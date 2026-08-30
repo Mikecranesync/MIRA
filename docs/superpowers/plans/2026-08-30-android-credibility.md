@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Start from current `origin/main` in a fresh isolated worktree after the Machine Memory lane releases `mira-mobile/src/screens/SensorSheet.tsx`.
+- Start from a fresh isolated worktree after C1 releases `SensorSheet.tsx` and C2 migration 086 is merged/rebased onto the branch. Migration 087 may not be authored on a base lacking 086.
 - Do not merge or mechanically rebase PR #3436. Salvage its compatible dependency/options/test ideas only; the new PR supersedes it.
 - Do not merge PR #3454 or move auth cookies/CORS across the WebView boundary. Native remains buffered; issue #3453 stays open absent a Mike-approved ADR.
 - Keep gallery and document selection separate and honestly labelled. Keep QR scanning unchanged.
@@ -89,7 +89,9 @@ Camera copy is exact: cancellation is silent; permission is `Camera permission i
 
 **Files:**
 
-- Create: `mira-hub/db/migrations/086_workspace_file_link_observation.sql`
+- Create: `mira-hub/db/migrations/087_workspace_file_link_observation.sql`
+- Modify: `mira-hub/db/check-migration-order.mjs`
+- Modify: `mira-hub/package.json` (required component version bump)
 - Modify: `mira-hub/src/lib/workspace-files.ts`
 - Modify: `mira-hub/src/app/api/equipment-notebooks/[id]/look/route.ts`
 - Modify: `mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/recognize/route.ts`
@@ -97,6 +99,7 @@ Camera copy is exact: cancellation is silent; permission is `Camera permission i
 - Modify: `mira-mobile/src/api/resources.ts`
 - Modify: `mira-mobile/src/screens/SensorSheet.tsx`
 - Modify: `mira-hub/src/lib/__tests__/workspace-files.test.ts`
+- Create: `mira-hub/src/lib/__tests__/workspace-file-observation-postgres.integration.test.ts`
 - Modify: `mira-hub/src/app/api/equipment-notebooks/[id]/look/__tests__/look.test.ts`
 - Modify: `mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/__tests__/recognize.test.ts`
 - Modify: `mira-hub/src/app/api/equipment-notebooks/[id]/__tests__/get-photos.test.ts`
@@ -105,12 +108,17 @@ Camera copy is exact: cancellation is silent; permission is `Camera permission i
 - Modify: `mira-mobile/src/screens/__tests__/sensor-look.test.tsx`
 
 - [ ] Add migration columns `workspace_file_links.observation_client_key TEXT` and `observed_at TIMESTAMPTZ`, a 1–128 character check for non-null keys, and a backfill `observed_at=created_at` only for existing photo links.
+- [ ] Add migration 087 after 086 in `check-migration-order.mjs`, with its
+  assigned issue header and dependencies. Implementation stops until that issue
+  exists; never invent a number or accept a checker warning. Prove the checker
+  fails when 087 sorts before 086.
 - [ ] Extend `AttachTarget` with `observationClientKey?: string | null`, `WorkspaceFileLink`/`AttachOutcome` with `observedAt:string|null`, and leave non-photo callers compatible.
 - [ ] Write failing relationship tests for same bytes/different key → same file/newer server receipt; same bytes/same key retry → same file/same receipt; a forged client timestamp cannot influence receipt; attachments without an observation key do not overwrite observation metadata.
 - [ ] In the existing attachment upsert, generate `observed_at` in PostgreSQL/server. First photo key stores it; same key preserves it; a different action key on the same SHA/file/notebook updates it.
 - [ ] Send the camera/gallery action key through both LOOK and component-nameplate multipart routes. Fix Sensor LOOK so Retry retains the capture's original key rather than minting one inside each `look()` invocation.
 - [ ] Change Notebook `photos[]` and `photoLinkedToTarget()` to use `COALESCE(l.observed_at,l.created_at)`, never canonical file `created_at`, while retaining tenant, role=`photo`, and raster checks. Prove chat persists that canonical receipt.
 - [ ] Rerun MIME, size, SHA dedup, tenant, park-before-provider-failure, and evidence-linkage tests. Commit `fix(hub,mobile): record camera observation receipt independently of file dedup`.
+- [ ] Run migration 087 and the attachment upsert against the repository's disposable PostgreSQL integration database. Prove same-key preservation, different-key refresh, tenant isolation, and backfill semantics with real constraints/`ON CONFLICT`, not mocks alone.
 
 ## Task 4: Present Android Notebook chat as buffered
 
@@ -148,14 +156,50 @@ Camera copy is exact: cancellation is silent; permission is `Camera permission i
 - Modify only for required test dependencies: `mira-mobile/android/app/build.gradle`
 - Modify: `tools/mobile-e2e/journey.py`
 - Modify: `tools/mobile-e2e/run.sh`
+- Create: `tools/mobile-e2e/staging_server_journey.py`
+- Create: `tools/staging_target_guard.py`
+- Create: `tests/test_staging_target_guard.py`
+- Create: `tests/fixtures/database-identity.v1.json`
+- Create: `mira-hub/src/lib/database-identity.ts`
+- Modify: `mira-hub/src/app/api/health/route.ts`
+- Modify: `mira-hub/src/app/api/health/__tests__/route.test.ts`
+- Modify: `docker-compose.saas.yml` (Hub environment/SHA fields only)
+- Modify: `docker-compose.staging-vps.yml` (staging Hub environment/SHA fields only, after C2)
 - Create: `.github/workflows/android-native-gate.yml`
+- Modify: `.github/workflows/mobile-release-distribute.yml`
+- Create: `tests/test_android_native_workflows.py`
 - Modify: `docs/release/android/README.md`
 - Create: `docs/runbooks/android-camera-buffered-acceptance.md`
 
-- [ ] Replace the generated wrong-package placeholder with correct `com.factorylm.mira` instrumentation. Prove plugin compilation/registration, camera action launches `MediaStore.ACTION_IMAGE_CAPTURE`, and cancellation creates no multipart request or workspace file.
-- [ ] Drive a synthetic JPEG across the real JS/native seam through production `uploadMultipart()` and staging LOOK/nameplate routes; record returned file/link IDs and observation receipt. Prove gallery remains reachable, buffered copy/no Stop, Retry, and evidence opening.
-- [ ] Make `tools/mobile-e2e/run.sh` always rebuild the requested SHA or verify an explicit APK hash; it may never silently reuse a stale APK.
-- [ ] Record a redacted evidence manifest with head SHA, package, versionCode/versionName, native fingerprint, APK variant/SHA-256, signer certificate SHA-256, emulator model/serial/API, exact build/install/test/restore/rollback commands, camera-intent result, staging tenant hash, returned file/link hashes, LOOK/nameplate result, and buffered/no-Stop assertions.
+- [ ] Replace the generated wrong-package placeholder with correct `com.factorylm.mira` instrumentation. Use Espresso Intents/UiAutomator to intercept `MediaStore.ACTION_IMAGE_CAPTURE`, write the run-owned JPEG bytes to the plugin-provided `EXTRA_OUTPUT` URI, return `RESULT_OK`, let the packaged Capacitor bridge produce the JS `File`, and drive the real multipart LOOK/nameplate request to staging. Verify returned file/link hash and receipt server-side. A second run returns `RESULT_CANCELED` through the same bridge and proves zero upload/request.
+- [ ] Keep this fixture responder in the androidTest APK only; it must be absent from debug/release production code. This is the executable native-byte seam replacing the old harness's camera `SKIP`.
+- [ ] Make `tools/mobile-e2e/run.sh` portable across the GitHub macOS runner and Windows developer machines by resolving `adb`/`emulator` from `ANDROID_HOME` without `.exe` assumptions. It always rebuilds the requested SHA or verifies an explicit APK hash; it may never silently reuse a stale APK.
+- [ ] Add the shared staging-target guard. Hub health returns only environment, SHA, and a normalized database-identity SHA-256. Lock normalization in one shared fixture: accept only `postgres|postgresql`; lowercase the non-empty ASCII hostname and remove one trailing dot; use explicit integer port or 5432; percent-decode and require one non-empty ASCII database segment matching `[A-Za-z0-9_.-]+`; hash the exact UTF-8 string `postgres-identity-v1\nhost=<host>\nport=<port>\ndatabase=<database>\n`. User, password, query, fragment, and full canonical string are never returned or logged. Python and TypeScript must match every accepted/rejected vector.
+- [ ] The guard requires `expectedGitSha` as an exact 40-hex reviewed SHA.
+  Before any authentication, registration, SQL, or upload, require
+  `TARGET_ENVIRONMENT=staging`, the protected staging host, explicit staging DB,
+  Hub/local/protected database-identity equality, a non-production URL/database,
+  and `health.gitSha === expectedGitSha`. Missing, malformed, or mismatched SHA
+  blocks. `staging_server_journey.py` and instrumentation use this guard, record
+  returned file/link hashes and receipt, then delete only run-owned resources.
+- [ ] Forward fixed `MIRA_DEPLOYMENT_ENVIRONMENT=production|staging` and the
+  deployed `MIRA_GIT_SHA` into the corresponding Hub service. Reuse C2's
+  checked-out staging SHA export and the existing production deploy SHA; never
+  derive either value from a request or fall back to `unknown`. Compose/static
+  tests prove the health attestation cannot be enabled with a missing or
+  cross-environment identity.
+- [ ] Define `.github/workflows/android-native-gate.yml` with three independent
+  jobs: JS/Hub contract tests on `ubuntu-latest`; a protected
+  `environment: staging` `reactivecircus/android-emulator-runner@v2` job on
+  `macos-14` using API 35, `google_apis`, x86_64, Pixel 6 and the shared guard
+  before its real multipart request; and a protected staging server journey on
+  Ubuntu. Both mutation jobs require explicit staging URL, DB, credentials,
+  protected DB hash, and expected SHA with no repository-secret or production
+  fallback.
+- [ ] Record a redacted automated evidence manifest with head SHA, package, versionCode/versionName, native fingerprint, debug-test APK SHA-256, emulator model/serial/API, exact build/test commands, camera-intent result, staging tenant hash, returned file/link hashes, LOOK/nameplate result, and buffered/no-Stop assertions. Label the debug APK test-only.
+- [ ] Harden the Mike-gated `mobile-release-distribute.yml` with required `expected_sha`; fail before Doppler/secrets unless `github.sha == expected_sha`; build that exact checkout; extract package/version/native fingerprint, APK SHA-256, and complete signer-certificate SHA-256; upload the signed APK plus redacted signed-build manifest as a retained artifact.
+- [ ] Bind debug and release evidence to the same reviewed Git SHA and native fingerprint. Verify the release signer, package, version, APK hash, workflow run, install/restore/rollback independently; never claim debug/release bytes differ only because of signing or optimization.
+- [ ] Add offline workflow tests proving expected-SHA checking happens before secrets, signed APK/manifest upload is required, staging is fail-closed, native-byte/cancel paths are executed, and debug evidence cannot satisfy the release gate.
 - [ ] State explicitly that automated evidence proves intent/plugin/synthetic-byte integration, not a physical lens, viewfinder, permission dialog, or Pixel ergonomics.
 - [ ] Commit `test(mobile): add Android camera and buffered-response acceptance gate`.
 
@@ -188,13 +232,20 @@ Set-Location android
 Set-Location ..\..\mira-hub
 bun install --frozen-lockfile
 bunx vitest run 'src/lib/__tests__/workspace-files.test.ts' 'src/app/api/equipment-notebooks/[id]/look/__tests__/look.test.ts' 'src/app/api/equipment-notebooks/[id]/nameplate/__tests__/recognize.test.ts' 'src/app/api/equipment-notebooks/[id]/__tests__/get-photos.test.ts' 'src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts'
+bun run test:integration:db
 bun run db:check-order
 bunx tsc --noEmit
 Set-Location ..
 git diff --check origin/main...HEAD
 ```
 
-- [ ] Hash and inspect the built APK with `Get-FileHash`, `aapt dump badging`, `apksigner verify --print-certs`, `adb shell dumpsys package com.factorylm.mira`, and `adb shell am instrument -w com.factorylm.mira.test/androidx.test.runner.AndroidJUnitRunner`.
+- [ ] Run staging/release workflow contracts:
+
+```powershell
+python -m pytest tests/test_staging_target_guard.py tests/test_android_native_workflows.py tests/test_machine_memory_historian_compose.py -q
+```
+
+- [ ] Hash and inspect the test APK with `Get-FileHash`, `aapt dump badging`, `adb shell dumpsys package com.factorylm.mira`, and `adb shell am instrument -w com.factorylm.mira.test/androidx.test.runner.AndroidJUnitRunner`. Record that only the later `mobile-release-distribute.yml` artifact is signer-authoritative.
 - [ ] Have Codex independently review specification compliance and code quality at the exact head. Fix release-blocking findings, rerun affected verification, push, and open one reversible PR that says `Supersedes #3436` without closing #3453.
 - [ ] Write `HANDOFF.md` with exact SHA, dependency/license, files, test output, native fingerprint, APK/signer checksums, emulator limitations, rollback, and the physical smoke checklist.
-- [ ] Stop at Mike's Pixel gate: checksum-match/install APK; exercise rear viewfinder, cancellation, permission denial, nameplate and LOOK capture; verify receipt/evidence/opening; verify buffered/no Stop; record build/device/signer; restore/rollback. Workstream D remains open until that artifact exists.
+- [ ] Stop at Mike's release/device gate: dispatch `mobile-release-distribute.yml` for the reviewed SHA; checksum-match/install that signed release APK; exercise rear viewfinder, cancellation, permission denial, nameplate and LOOK capture; verify receipt/evidence/opening; verify buffered/no Stop; record workflow/build/device/signer; restore/rollback. Workstream D remains open until that artifact exists.
