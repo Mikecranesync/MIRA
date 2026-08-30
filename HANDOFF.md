@@ -44,7 +44,8 @@ The remaining decision is the human Gate 9 / merge.
    built from `hostname` (IPv6 re-bracketed, `[2001:db8::1]:8443`) + explicit `port`, never
    `netloc` (which carries `user:secret@`); `<unparseable>` for non-numeric port text; the
    exact-URL hash is unchanged. Closes round-23 code F1 (real; reproduced end-to-end in the
-   captured log). Lane: `test_deleted_evidence_artifact_is_dropped_and_receipted` locks that a
+   captured log). *[Superseded by round AE: `_log_ref` and every URL hash were removed; every
+   refusal logs `_safe_origin` only.]* Lane: `test_deleted_evidence_artifact_is_dropped_and_receipted` locks that a
    deleted artifact is dropped (a claim three malformed attempts made; false).
 
 5. **Lane: `kind` from the reviewed diff (round Y, this commit).** `tools/gate7_review.py` now
@@ -65,7 +66,8 @@ The remaining decision is the human Gate 9 / merge.
    `tasks/ingest.py::shared_corpus_source_allowed`; no second policy implementation) and at the
    store boundary (`insert_chunk`, `chunk_exists`, `ingested_source_urls`) **before
    canonicalisation and before any SQL**; never stripped into another identity, never persisted,
-   never logged (refusal warnings carry `_log_ref` only). Authenticated sources use out-of-band
+   never logged (refusal warnings carry the safe origin only — `_log_ref` and every URL hash
+   were removed in round AE). Authenticated sources use out-of-band
    secret-backed request headers, not URL userinfo. Closes round-25 code F2 (real, pre-existing
    on `main`). Parameter-capture locks prove the literal username/password never enters any SQL
    bind or log across insert, dedup lookup, batch store and the ledger probe (mixed request →

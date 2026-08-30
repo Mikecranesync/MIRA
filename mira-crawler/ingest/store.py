@@ -157,8 +157,9 @@ def _refuse_credentials(url: str) -> bool:
     (``provenance.url_credential_reason``): every route that reaches SQL passes
     through here first. The warning carries only the safe origin (host[:port])
     and the reason — **no hash of any byte derived from the credential-bearing
-    URL** (round AD on #3481); the exact-URL correlation hash of ``_log_ref`` is
-    for ordinary policy refusals only."""
+    URL** (round AD on #3481). No refusal path of any kind hashes a URL: the
+    former ``_log_ref`` correlation hash was removed outright in round AE, and
+    ordinary policy refusals log the same safe origin (``_safe_origin``)."""
     try:
         from .provenance import url_credential_reason
     except ImportError:  # pragma: no cover — flat-path layout
