@@ -12,6 +12,7 @@ import {
   getNotebookDetail,
   askNotebook,
   buildChatHistory,
+  isStoppedTurn,
   attachFileToTargets,
   setSourceEnabled,
   detachSource,
@@ -22,6 +23,7 @@ import {
   canBeChatSource,
   fileCapabilityLabel,
   type NotebookDetail,
+  type NotebookPhoto,
   type NotebookSource,
   type SourcePassage,
   type WorkspaceFile,
@@ -29,16 +31,33 @@ import {
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
+import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
+import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import {
+  photoCapturedLabel,
+  visualCardTitle,
+  visualObservationEntries,
+  type VisualObservationEntry,
+} from "../lib/sensor";
+import {
+  basisCaption,
+  machineEvidenceEntries,
+  replayCardTitle,
+  type MachineEvidenceEntry,
+} from "../lib/replay";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
+import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
+
+const EMPTY_TURN: ChatTurn = { answer: "", citations: [], status: "" };
 
 const QUICK_STARTS = [
   "Diagnose a fault",
@@ -112,19 +131,46 @@ export function NotebookScreen({
   openAddSources,
   backRef,
   onExit,
+  onOpenNotebook,
 }: {
   id: string;
   openAddSources?: boolean;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
+  /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
+   *  scan → notebook transition the Assets tab uses). Optional so existing
+   *  mounts are unchanged; without it the technician stays here. */
+  onOpenNotebook?: (notebookId: string) => void;
 }) {
   const [detail, setDetail] = useState<Loadable<NotebookDetail>>({ state: "loading" });
   const [panel, setPanel] = useState<Panel>(openAddSources ? "sources" : "chat");
   const [sheetOpen, setSheetOpen] = useState(Boolean(openAddSources));
+  // Sensor (LOOK / READ / REPLAY) — a transient instrument in the same Sheet
+  // chrome, never a panel. Opens from the header or the Add-sources sheet.
+  const [sensorOpen, setSensorOpen] = useState(false);
+  // This session's last LOOK. Held HERE, not in the sheet, so closing Sensor
+  // (to read the manual, to check a source) doesn't discard the observation
+  // the technician just took. Deliberately NOT persisted: the observation text
+  // is conversation context, and a Sensor store is out of scope in v0 (§2.4).
+  // The photograph itself IS persisted — it is parked and linked server-side,
+  // and shows in Photos below whatever happens to this state.
+  const [lastLook, setLastLook] = useState<RememberedLook | null>(null);
+  // A linked photo opened for viewing (same FilePreview door as a source).
+  const [openPhoto, setOpenPhoto] = useState<NotebookPhoto | null>(null);
   const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<unknown>(null);
+  // In-flight turn (STRM-1); mirrored in a ref so the abort path can read the
+  // last painted partial without a stale closure.
+  const [pending, setPendingState] = useState<{ q: string; a: ChatTurn } | null>(null);
+  const pendingRef = useRef<{ q: string; a: ChatTurn } | null>(null);
+  const setPending = (p: { q: string; a: ChatTurn } | null) => {
+    pendingRef.current = p;
+    setPendingState(p);
+  };
+  const abortRef = useRef<AbortController | null>(null);
+  const [failedSend, setFailedSend] = useState<PendingSend | null>(null);
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -160,7 +206,7 @@ export function NotebookScreen({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [liveTurns, busy, panel]);
+  }, [liveTurns, busy, panel, pending]);
 
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
@@ -173,29 +219,77 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
+  // Absent on a server that predates the `photos[]` array — no group renders.
+  const photos = detail.data.photos ?? [];
   // One send path for the composer AND follow-up chips (CONV-4). With no
   // source attached the only honest answer is a general one, and the server
   // labels it as such; with sources present this stays the strict grounded
   // path — the mode is never sent as a fallback when retrieval comes back
   // empty. CONV-3: the recent thread rides along so a follow-up has memory.
-  const sendQuestion = async (raw: string) => {
-    const question = raw.trim();
+  //
+  // STRM-1: the answer paints as frames arrive (`pending` is the in-flight
+  // turn; `onUpdate` replaces it per content frame). STRM-2: Stop aborts the
+  // request; the partial text is kept with status "stopped" — no citations, no
+  // follow-ups, because a stopped answer is not an answer. CMPS-2: a failed
+  // send puts the question back in the composer and keeps the exact body for
+  // Retry, so the retry is byte-identical rather than recomputed.
+  const sendQuestion = async (
+    raw: string,
+    replay?: PendingSend,
+    sensor?: SensorAskEvidence,
+  ) => {
+    const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
+    const body: PendingSend = replay ?? {
+      question,
+      scope,
+      mode: scope.length === 0 ? "general" : undefined,
+      // A stopped turn is not an answer: it never enters the thread memory.
+      history: buildChatHistory(
+        turns,
+        liveTurns.filter((t) => t.a.status !== "stopped"),
+      ),
+      // Sensor REPLAY (§4.4) / LOOK (S5 D3): the selected window and the
+      // parked photo ride on the body so a Retry re-sends them byte-identically.
+      ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
+      ...(sensor?.visualEvidence ? { visualEvidence: sensor.visualEvidence } : {}),
+    };
+    const ctl = new AbortController();
+    abortRef.current = ctl;
     setQ("");
+    setFailedSend(null);
     setBusy(true);
     setChatError(null);
+    setPending({ q: question, a: EMPTY_TURN });
     try {
-      const a = await askNotebook(id, question, scope, {
-        mode: scope.length === 0 ? "general" : undefined,
-        history: buildChatHistory(turns, liveTurns),
+      const a = await askNotebook(id, body.question, body.scope, {
+        mode: body.mode,
+        history: body.history,
+        machineEvidence: body.machineEvidence,
+        visualEvidence: body.visualEvidence,
+        signal: ctl.signal,
+        onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
       setLiveTurns((t) => [...t, { q: question, a }]);
     } catch (e) {
-      setChatError(e);
+      if (ctl.signal.aborted) {
+        const partial = pendingRef.current?.a ?? EMPTY_TURN;
+        setLiveTurns((t) => [
+          ...t,
+          { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
+        ]);
+      } else {
+        setQ(question);
+        setFailedSend(body);
+        setChatError(e);
+      }
     } finally {
+      abortRef.current = null;
+      setPending(null);
       setBusy(false);
     }
   };
+  const stopGeneration = () => abortRef.current?.abort();
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
@@ -220,6 +314,16 @@ export function NotebookScreen({
         </button>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
+          {/* Compact Sensor door in the existing header row — no new chrome.
+              The same instrument is reachable from the Add-sources sheet. */}
+          <button
+            className="btn-link"
+            aria-label="Open Sensor"
+            onClick={() => setSensorOpen(true)}
+            style={{ flex: "none" }}
+          >
+            Sensor
+          </button>
           <button
             className="btn-link"
             aria-label="Delete notebook"
@@ -443,6 +547,7 @@ export function NotebookScreen({
               </div>
             );
           })}
+          <NotebookPhotos photos={photos} onOpen={setOpenPhoto} />
         </div>
       )}
 
@@ -469,10 +574,25 @@ export function NotebookScreen({
                 )}
               </>
             )}
-            {turns.map((t) => (
+            {turns.map((t) =>
+              isStoppedTurn(t) ? (
+                // STRM-2 stopped-turn contract on reload: `error` + partial
+                // text is the turn the technician stopped. Same render as the
+                // live "stopped" branch below — partial text, "Stopped"
+                // caption, no citations, no basis, no follow-ups.
+                <div key={t.id}>
+                  <div className="msg-user">{t.question}</div>
+                  <AnswerMarkdown text={t.answerText!} citations={[]} />
+                  <div className="meta answer-stopped">Stopped</div>
+                </div>
+              ) : (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
-                <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                <AnswerMarkdown
+                  text={answerBody(t.answerText, t.answerStatus)}
+                  citations={citationsFromEvidence(t.evidence)}
+                  onCitation={setViewCitation}
+                />
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
@@ -481,6 +601,8 @@ export function NotebookScreen({
                     General guidance — not grounded in this machine's documents.
                   </div>
                 )}
+                <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
+                <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
                 <div>
                   {citationsFromEvidence(t.evidence).map((c) => (
                     <button
@@ -495,11 +617,25 @@ export function NotebookScreen({
                   ))}
                 </div>
               </div>
-            ))}
+              ),
+            )}
             {liveTurns.map((t, i) => (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
-                <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
+                {t.a.status === "stopped" ? (
+                  <>
+                    {t.a.answer.trim() && (
+                      <AnswerMarkdown text={t.a.answer} citations={[]} />
+                    )}
+                    <div className="meta answer-stopped">Stopped</div>
+                  </>
+                ) : (
+                  <AnswerMarkdown
+                    text={answerBody(t.a.answer, t.a.status)}
+                    citations={t.a.citations}
+                    onCitation={setViewCitation}
+                  />
+                )}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
                     last turn only — tapping one sends it as the next turn. */}
                 {!busy &&
@@ -523,6 +659,12 @@ export function NotebookScreen({
                     {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
                   </div>
                 )}
+                {t.a.status !== "stopped" && (
+                  <>
+                    <VisualEvidenceCards entries={t.a.visualEvidence ?? []} />
+                    <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
+                  </>
+                )}
                 <div>
                   {t.a.citations.map((c) => (
                     <button
@@ -538,27 +680,78 @@ export function NotebookScreen({
                 </div>
               </div>
             ))}
-            {busy && <div className="empty">Searching your docs…</div>}
-            {chatError != null && <ErrorState error={chatError} />}
+            {/* In-flight turn (STRM-1): the question posts immediately; the
+                answer paints per content frame. No chips until the turn is
+                final — citations arrive AFTER the content on the wire. */}
+            {pending && (
+              <div aria-live="polite" aria-busy="true">
+                <div className="msg-user">{pending.q}</div>
+                {pending.a.answer ? (
+                  <AnswerMarkdown text={pending.a.answer} citations={[]} />
+                ) : (
+                  <div className="empty">Searching your docs…</div>
+                )}
+              </div>
+            )}
+            {chatError != null && (
+              <>
+                <ErrorState error={chatError} />
+                {failedSend && !busy && (
+                  <div className="chip-row">
+                    <button
+                      className="chip"
+                      onClick={() => void sendQuestion("", failedSend)}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <div className="composer">
-            <input
+            <textarea
+              rows={1}
+              enterKeyHint="send"
+              aria-label="Ask a question"
               placeholder={
                 scope.length === 0 ? "Ask anything — no manual loaded yet" : "Ask a question…"
               }
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                autoGrow(e.target, 20);
+              }}
+              onKeyDown={(e) => {
+                if (
+                  composerKeyAction({
+                    key: e.key,
+                    shiftKey: e.shiftKey,
+                    isComposing: e.nativeEvent.isComposing,
+                    keyCode: e.keyCode,
+                  }) === "send"
+                ) {
+                  e.preventDefault();
+                  if (!busy && q.trim()) void sendQuestion(q);
+                }
+              }}
             />
             <span className="counter">
               {scope.length} source{scope.length === 1 ? "" : "s"}
             </span>
-            <button
-              className="btn-primary"
-              disabled={busy || !q.trim()}
-              onClick={() => void sendQuestion(q)}
-            >
-              Send
-            </button>
+            {busy ? (
+              <button className="btn-primary" aria-label="Stop generating" onClick={stopGeneration}>
+                Stop
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                disabled={!q.trim()}
+                onClick={() => void sendQuestion(q)}
+              >
+                Send
+              </button>
+            )}
           </div>
         </>
       )}
@@ -723,6 +916,25 @@ export function NotebookScreen({
         </Sheet>
       )}
 
+      {openPhoto && (
+        <Sheet label={openPhoto.filename ?? "Photo"} onClose={() => setOpenPhoto(null)}>
+          <h3>{openPhoto.filename ?? "Photo"}</h3>
+          <div className="meta" style={{ marginBottom: 10 }}>
+            {photoCapturedLabel(openPhoto.createdAt ?? openPhoto.linkedAt)}
+          </div>
+          {/* The SAME viewer a source uses — bytes fetched with the session
+              (requestBinary), rendered in-app. No second viewer. */}
+          <FilePreview
+            fileId={openPhoto.fileId}
+            filename={openPhoto.filename ?? "photo"}
+            mimeType={openPhoto.mimeType}
+          />
+          <button style={{ marginTop: 12 }} onClick={() => setOpenPhoto(null)}>
+            Close
+          </button>
+        </Sheet>
+      )}
+
       {attachSource?.fileId && (
         <NotebookSourceAttachSheet
           source={attachSource}
@@ -742,8 +954,153 @@ export function NotebookScreen({
           onChanged={() => {
             refresh();
           }}
+          onOpenSensor={() => {
+            // One sheet at a time: the Add-sources sheet hands off to Sensor,
+            // so BACK from Sensor lands on the notebook, not on a stale sheet.
+            setSheetOpen(false);
+            setSensorOpen(true);
+          }}
         />
       )}
+
+      {sensorOpen && (
+        <SensorSheet
+          notebook={notebook}
+          onClose={() => setSensorOpen(false)}
+          onChanged={refresh}
+          onOpenNotebook={(nid) => {
+            setSensorOpen(false);
+            onOpenNotebook?.(nid);
+          }}
+          onUploadInstead={() => {
+            // Hand off to the Add-sources sheet (one sheet at a time), where
+            // "Upload a PDF manual" is the existing door.
+            setSensorOpen(false);
+            setSheetOpen(true);
+          }}
+          lastLook={lastLook}
+          onLook={setLastLook}
+          onAsk={(question, evidence) => {
+            // One conversation (§2.3): the observation goes through the same
+            // send path as the composer — same scope, same history, same route.
+            setSensorOpen(false);
+            setPanel("chat");
+            void sendQuestion(question, undefined, evidence);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Photographs LINKED to this notebook (`workspace_file_links`, role "photo")
+ *  — what Sensor LOOK parks. They are files, not sources: no include
+ *  checkbox, because they can never be chat scope. The group is what makes the
+ *  LOOK card's "saved to this notebook's files" a checkable claim instead of
+ *  copy with nothing behind it.
+ *
+ *  Nothing to show → nothing rendered: an empty "Photos (0)" heading would
+ *  invite the technician to look for something that isn't there. */
+function NotebookPhotos({
+  photos,
+  onOpen,
+}: {
+  photos: NotebookPhoto[];
+  onOpen: (p: NotebookPhoto) => void;
+}) {
+  if (photos.length === 0) return null;
+  return (
+    <div data-testid="notebook-photos">
+      <div className="meta" style={{ margin: "14px 0 2px" }}>
+        Photos ({photos.length}) — phone photographs saved to this notebook&apos;s
+        files. Not chat sources.
+      </div>
+      {photos.map((p) => (
+        <div key={p.fileId} className="source-row" data-testid="notebook-photo-row">
+          {/* No checkbox: the box means "include in chat", and a linked photo
+              cannot be included — offering one would lie (same rule as a
+              non-searchable source row). */}
+          <span
+            aria-hidden
+            style={{ width: 22, textAlign: "center", color: "var(--fl-ink-muted)" }}
+          >
+            —
+          </span>
+          <SourceThumb fileId={p.fileId} />
+          <div className="grow">
+            <div className="title">{p.filename ?? "Photo"}</div>
+            <div className="meta">{photoCapturedLabel(p.createdAt ?? p.linkedAt)}</div>
+          </div>
+          <button
+            className="detach row-action"
+            title="Open the photo"
+            onClick={() => onOpen(p)}
+          >
+            Open
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Sensor LOOK in the conversation (§4.5, S5 D3): the persisted
+ *  `{kind:"visual_observation"}` entries render as a "Visual observation ·
+ *  Photo captured · HH:MM:SS" card with the parked photo's thumbnail
+ *  (`SourceThumb`, never a markdown <img>). Not a citation, not a chip, and
+ *  never part of the basis. No entry, no card. */
+function VisualEvidenceCards({ entries }: { entries: VisualObservationEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <>
+      {entries.map((e, i) => (
+        <div
+          key={`${e.fileId}-${i}`}
+          className="card sensor-evidence"
+          data-testid="visual-observation-card"
+          style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
+        >
+          <SourceThumb fileId={e.fileId} />
+          <div className="grow">
+            <div className="title">{visualCardTitle(e.capturedAt)}</div>
+            <div className="meta">
+              {e.provenance === "phone_photo" ? "Phone photo" : e.provenance} · saved to this
+              notebook&apos;s files
+            </div>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Sensor REPLAY in the conversation (§4.5, D5): the persisted
+ *  `{kind:"machine_evidence"}` entries render as a "Machine Replay · N observed
+ *  changes around HH:MM:SS · <freshness>" card, and the machine bases
+ *  (`live_machine_evidence` / `machine_history`) get a MUTED caption — amber is
+ *  reserved for `general_reasoning`. Nothing here is inferred: no entry, no
+ *  card; no machine basis, no caption. */
+function MachineEvidenceCards({
+  entries,
+  basis,
+}: {
+  entries: MachineEvidenceEntry[];
+  basis: string | null | undefined;
+}) {
+  const caption = basisCaption(basis);
+  if (entries.length === 0 && !caption) return null;
+  return (
+    <>
+      {entries.map((e, i) => (
+        <div key={`${e.anchorAt}-${i}`} className="card sensor-evidence" data-testid="machine-replay-card">
+          <div className="title">{replayCardTitle(e)}</div>
+          <div className="meta">
+            {e.pre} s before / {e.post} s after · Machine Memory
+            {e.windowId ? " · fault window" : ""}
+          </div>
+        </div>
+      ))}
+      {caption && <div className="evidence-basis-machine">{caption}</div>}
     </>
   );
 }
@@ -883,7 +1240,9 @@ function StudioPanel({
             <div className="meta" style={{ marginBottom: 6 }}>
               Generated {new Date(o.generatedAt).toLocaleString()} · grounded in your sources
             </div>
-            <div className="msg-answer">{o.answer}</div>
+            {/* Same renderer as chat: the "Spec & parts table" prompt asks for
+                a markdown table, so it now renders as one (RNDR-1). */}
+            <AnswerMarkdown text={o.answer} citations={o.citations} onCitation={onCitation} />
             <div>
               {o.citations.map((c) => (
                 <button
@@ -908,11 +1267,15 @@ function AddSourcesSheet({
   attachedFileIds,
   onClose,
   onChanged,
+  onOpenSensor,
 }: {
   notebook: NotebookDetail["notebook"];
   attachedFileIds: string[];
   onClose: () => void;
   onChanged: () => void;
+  /** Sensor entry point (contract §5 S1): one row beside the four source
+   *  types, opening the LOOK / READ / REPLAY instrument. */
+  onOpenSensor: () => void;
 }) {
   const [mode, setMode] = useState<"menu" | "files" | "paste" | "nameplate">("menu");
   const [note, setNote] = useState<string | null>(null);
@@ -1034,6 +1397,9 @@ function AddSourcesSheet({
             </button>
             <button className="sheet-option" onClick={() => setMode("paste")}>
               📋 Paste text (error notes, nameplate data…)
+            </button>
+            <button className="sheet-option" onClick={onOpenSensor}>
+              📡 Sensor — look, read, or replay this machine
             </button>
             {note && <div className="meta">{note}</div>}
             <button style={{ marginTop: 6 }} onClick={onClose}>

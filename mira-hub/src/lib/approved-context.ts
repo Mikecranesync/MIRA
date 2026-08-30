@@ -4,6 +4,17 @@ export interface ApprovedContextSummary {
   approvedSourceCount: number;
   verifiedRelationshipCount: number;
   approvedLiveSignalCount: number;
+  /**
+   * Sensor REPLAY (contract §4.3/§4.4): recorded machine observations the
+   * SERVER re-fetched itself, tenant-scoped, for this turn's window. A replayed
+   * window is by definition not live, so it can never raise
+   * `approvedLiveSignalCount` — but a window MIRA fetched from its own
+   * tenant-scoped tables IS approved context, and without this a stale (i.e.
+   * every) replay refused with 412 wherever MIRA_ENFORCE_APPROVED_RETRIEVAL is
+   * on. OPTIONAL and additive: callers that do not fetch machine evidence omit
+   * it, and their gate behaviour is unchanged.
+   */
+  approvedMachineEvidenceCount?: number;
 }
 
 export interface ApprovedContextRefusal {
@@ -12,6 +23,9 @@ export interface ApprovedContextRefusal {
   approved_source_count: number;
   verified_relationship_count: number;
   approved_live_signal_count: number;
+  /** Present only when the caller supplied `approvedMachineEvidenceCount`, so
+   *  every existing refusal payload is byte-identical. */
+  approved_machine_evidence_count?: number;
   missingContext: MissingContextItem[];
 }
 
@@ -27,7 +41,8 @@ export function approvedContextReady(summary: ApprovedContextSummary): boolean {
   return (
     summary.approvedSourceCount > 0 ||
     summary.verifiedRelationshipCount > 0 ||
-    summary.approvedLiveSignalCount > 0
+    summary.approvedLiveSignalCount > 0 ||
+    (summary.approvedMachineEvidenceCount ?? 0) > 0
   );
 }
 
@@ -38,6 +53,9 @@ export function buildApprovedContextRefusal(summary: ApprovedContextSummary): Ap
     approved_source_count: summary.approvedSourceCount,
     verified_relationship_count: summary.verifiedRelationshipCount,
     approved_live_signal_count: summary.approvedLiveSignalCount,
+    ...(summary.approvedMachineEvidenceCount === undefined
+      ? {}
+      : { approved_machine_evidence_count: summary.approvedMachineEvidenceCount }),
     missingContext: [
       {
         key: "approved_documents",

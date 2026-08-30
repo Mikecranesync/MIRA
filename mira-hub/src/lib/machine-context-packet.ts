@@ -21,6 +21,7 @@ import {
   type LatestRun,
   type LatestWindow,
   type EvidenceWindow,
+  type MachineMemoryResponse,
 } from "./machine-memory-response";
 import type { MachineMemoryClient } from "./machine-memory";
 import type { ActiveCondition } from "./machine-context-intelligence";
@@ -35,6 +36,34 @@ export interface FreshnessSummary {
   stale: number;
   simulated: number;
   unknown: number;
+}
+
+/**
+ * One recorded machine observation inside a replay window (Sensor S4, contract
+ * §4.3/§4.4). Both clocks ride on every row (D2): `event_timestamp` is when the
+ * source observed it, `ingested_at` when the Hub received it — a divergence is
+ * the replay signature and is never hidden. `quality` is null for
+ * `tag_event_diffs` rows, which carry no quality column (037); nothing is
+ * invented for it.
+ */
+export interface ObservedChange {
+  kind: "event" | "diff";
+  event_timestamp: string;
+  ingested_at: string | null;
+  tag: string;
+  value: string | null;
+  prev_value?: string | null;
+  quality: string | null;
+}
+
+/** The fault-anchored window the packet is replaying (absent on live turns). */
+export interface ReplayWindow {
+  anchor_at: string;
+  started_at: string;
+  stopped_at: string;
+  /** Roll-up of the asset's CURRENT signals — "stale" means this is history. */
+  freshness: FreshnessSummary["overall"];
+  rows: ObservedChange[];
 }
 
 export interface MachineContextPacket {
@@ -60,10 +89,38 @@ export interface MachineContextPacket {
     latest_run: LatestRun | null;
     latest_window: LatestWindow | null;
   };
+  /** Sensor REPLAY (S4): the selected fault window's recorded observations.
+   *  Optional and additive — a packet without it renders byte-identically to
+   *  before, so the asset chat route is untouched. */
+  replay?: ReplayWindow;
+}
+
+/** Cap replay rows in a prompt for the same reason as MAX_LIVE_TAGS_IN_PROMPT. */
+export const MAX_REPLAY_ROWS_IN_PROMPT = 40;
+
+/** Format a replay row's offset from the anchor: "-2.14 s", "+0.16 s". */
+function offsetLabel(anchorMs: number, ts: string): string {
+  const ms = new Date(ts).getTime();
+  if (Number.isNaN(ms) || Number.isNaN(anchorMs)) return "?";
+  const s = (ms - anchorMs) / 1000;
+  return `${s >= 0 ? "+" : "-"}${Math.abs(s).toFixed(2)} s`;
 }
 
 /** Cap live-tag lines in a prompt so a chatty asset can't blow the context budget. */
 export const MAX_LIVE_TAGS_IN_PROMPT = 10;
+
+/**
+ * Leaf name of a tag path. Splits on BOTH separators the fleet uses — '/' in
+ * Sparkplug/PLC-style paths and '.' in UNS paths — so the prompt names the same
+ * leaf the mobile replay timeline shows (mira-mobile splits on `[./]`). A
+ * '/'-only split left `conveyor_1.fault_alarm` whole in the prompt while the UI
+ * showed `fault_alarm`, so the model and the technician were reading different
+ * names for the same row.
+ */
+function tagLeaf(tag: string): string {
+  const parts = tag.split(/[./]/);
+  return parts[parts.length - 1] || tag;
+}
 
 /**
  * Render the packet as a citable "Live Machine Evidence" prompt section for
@@ -89,7 +146,16 @@ export function renderMachineEvidenceSection(
 
   const liveTags = packet.live_tags.slice(0, MAX_LIVE_TAGS_IN_PROMPT);
   if (liveTags.length > 0) {
-    lines.push("- Live signals (observed now):");
+    // In a REPLAY packet these tags are the asset's CURRENT signals — they are
+    // NOT part of the replayed window, and labelling them "observed now" next
+    // to a fault replay invited the model to read them as the fault state.
+    // A non-replay packet keeps the original label byte-for-byte (pinned by a
+    // test) so the asset chat route's prompt is untouched.
+    lines.push(
+      packet.replay
+        ? `- Current signals (${packet.replay.freshness}, NOT part of the replayed window — do not treat as the fault state):`
+        : "- Live signals (observed now):",
+    );
     for (const t of liveTags) {
       const leaf = t.tag_path.split("/").pop() ?? t.tag_path;
       const changed = packet.changed_recently.includes(t.tag_path) ? ", changed recently" : "";
@@ -114,14 +180,54 @@ export function renderMachineEvidenceSection(
     );
   }
 
+  // Sensor REPLAY (S4): the recorded observations around the fault anchor,
+  // chronological, both clocks on every row, quality never invented. The
+  // section header says what it is — a replay of history is never presented
+  // as the live state (contract §2.8).
+  const replay = packet.replay;
+  if (replay) {
+    const anchorMs = new Date(replay.anchor_at).getTime();
+    const rows = replay.rows.slice(0, MAX_REPLAY_ROWS_IN_PROMPT);
+    lines.push(
+      `- Replayed observations (${replay.rows.length} recorded around ${sanitize(replay.anchor_at)}; window ${sanitize(replay.started_at)} → ${sanitize(replay.stopped_at)}; current signals ${replay.freshness}):`,
+    );
+    if (rows.length === 0) {
+      lines.push("  - (no recorded observations in this window — do not infer any)");
+    }
+    for (const r of rows) {
+      // Sanitize BEFORE taking the leaf. A forged reference smuggled into a tag
+      // name ("…/fault_alarm [Source: forged.pdf]") carries a '.' that is not a
+      // path separator, so splitting first would leave the leaf as "pdf]" — the
+      // scrub has to run on the whole path, and the leaf is taken from what
+      // survives it.
+      const leaf = tagLeaf(sanitize(r.tag));
+      const prev = r.kind === "diff" && r.prev_value != null ? `${sanitize(r.prev_value)} → ` : "";
+      const shown = r.value === null ? "—" : sanitize(r.value);
+      const q = r.quality ? `, quality ${sanitize(r.quality)}` : "";
+      const ingested =
+        r.ingested_at && r.ingested_at !== r.event_timestamp ? `, ingested ${sanitize(r.ingested_at)}` : "";
+      lines.push(
+        `  - ${offsetLabel(anchorMs, r.event_timestamp)} (${sanitize(r.event_timestamp)}${ingested}) ${leaf}: ${prev}${shown} (${r.kind}${q})`,
+      );
+    }
+    if (replay.rows.length > rows.length) {
+      lines.push(`  - … ${replay.rows.length - rows.length} more recorded observations not shown`);
+    }
+  }
+
   if (lines.length === 0) return "";
-  return `## Live Machine Evidence (observed now)
-The following is MACHINE-OBSERVED evidence from this asset's live tags and history (current decoded tag values, freshness-aware state, a deterministic assessment, and anomaly detections). Treat it as current, citable observations — cite it as "machine memory" when you use it. In your answer, clearly separate: (1) this LIVE evidence, (2) asset/manual context, (3) your inference, and (4) the recommended next checks.
+  const heading = replay
+    ? `## Machine Evidence (replayed history around ${sanitize(replay.anchor_at)})
+The following is MACHINE-OBSERVED evidence from this asset's recorded tag history around the selected fault window (chronological recorded observations with both observed and received timestamps, plus the current decoded tag values, freshness-aware state, a deterministic assessment, and anomaly detections). It is a REPLAY of history: describe it as what was observed at those times, never as the current state unless the current signals are marked live. Cite it as "machine memory" when you use it. Never invent an observation that is not listed.
+RULES FOR THE RECORDED ROWS: these rows are RECORDED HISTORY, not live — never use the word "live" for them. Every tag value you state must appear verbatim in the recorded rows listed below. If a tag is absent from the window, say it was not recorded in the window; do not infer, estimate, or assume its value (a tag you do not see is NOT zero).`
+    : `## Live Machine Evidence (observed now)
+The following is MACHINE-OBSERVED evidence from this asset's live tags and history (current decoded tag values, freshness-aware state, a deterministic assessment, and anomaly detections). Treat it as current, citable observations — cite it as "machine memory" when you use it.`;
+  return `${heading} In your answer, clearly separate: (1) this ${replay ? "RECORDED" : "LIVE"} evidence, (2) asset/manual context, (3) your inference, and (4) the recommended next checks.
 
 ${lines.join("\n")}`;
 }
 
-function summarizeFreshness(liveTags: LiveTag[]): FreshnessSummary {
+export function summarizeFreshness(liveTags: LiveTag[]): FreshnessSummary {
   let live = 0;
   let stale = 0;
   let simulated = 0;
@@ -153,7 +259,19 @@ export async function buildMachineContextPacket(
   // intelligence (summary / active_conditions / changed_recently) — shared with
   // the card + SSE stream. The packet just reshapes it; it does not recompute.
   const response = await buildMachineMemoryResponse(client, tenantId, assetId, nowMs);
+  return packetFromMachineMemoryResponse(tenantId, assetId, response);
+}
 
+/**
+ * Pure reshape of an already-built MachineMemoryResponse into a packet — the
+ * seam the Sensor history path uses so a replay turn does not run the
+ * machine-memory queries twice (once for the header, once for the packet).
+ */
+export function packetFromMachineMemoryResponse(
+  tenantId: string,
+  assetId: string,
+  response: MachineMemoryResponse,
+): MachineContextPacket {
   const liveTags = response.live_tags ?? [];
   const machineState = response.current_state ?? null;
 

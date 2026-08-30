@@ -93,6 +93,10 @@ export const NAV_ITEMS: ReadonlyArray<{
   // Knowledge is one section with sub-tabs: Manuals (KB) · Map (relationship
   // graph) · Suggestions (propose/verify queue). /graph and /proposals redirect in.
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: [...ALL_ROLES], group: "primary" },
+  // Equipment Notebooks — chat with a machine's manuals (PLAT-1, ChatGPT-parity
+  // PRD). Read/chat is tenant-wide by design (shift handoff), so no capability
+  // gate here; the `notebooks.read` capability is PLAT-2's (not invented here).
+  { key: "notebooks",     label: "Notebooks",     icon: "NotebookPen",   href: "/equipment",     roles: [...ALL_ROLES], group: "primary" },
 
   // ── SECONDARY (collapsed under "More") ─────────────────────────────────────
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },

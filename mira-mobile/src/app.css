@@ -146,7 +146,19 @@ label { display: block; font-size: 13px; color: var(--fl-ink-muted); margin: 12p
 }
 .composer { display: flex; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--fl-surface); border-top: 1px solid var(--fl-line); }
 .composer input { flex: 1; }
-.composer button { width: auto; }
+/* CMPS-1: auto-growing textarea, 1–6 rows. `field-sizing: content` is the
+   platform primitive (Chromium 123+ / Android WebView); lib/composer.ts
+   `autoGrow` is the scrollHeight fallback where it is unsupported. */
+.composer textarea {
+  flex: 1;
+  resize: none;
+  field-sizing: content;
+  min-height: 20px;
+  max-height: calc(20px * 6 + 20px);
+  line-height: 20px;
+  overflow-y: auto;
+}
+.composer button { width: auto; align-self: flex-end; }
 
 /* --- Phase 3: five-tab shell (all colors are --fl-* tokens) --- */
 .tabhost { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
@@ -358,6 +370,68 @@ textarea {
 }
 .sheet-option:disabled { color: var(--fl-ink-muted); opacity: 0.6; }
 
+/* Sensor (LOOK / READ / REPLAY) — a mode row is a sheet-option with a bold
+   label over a one-line description. Tokens only; colour never carries mode. */
+.sensor-mode { flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 18px; }
+.sensor-mode-label { font-weight: 600; letter-spacing: 0.04em; }
+
+/* Identity chip (notebook-asset-card tones): colour = state only.
+   green = confirmed, amber = selected-not-confirmed, gray = none/unknown,
+   red = the bound machine cannot be resolved. */
+.asset-chip {
+  border: 1px solid var(--fl-line); border-left-width: 4px;
+  border-radius: var(--fl-radius); background: var(--fl-surface);
+  padding: 8px 10px; margin-bottom: 10px; font-size: 13px;
+}
+.asset-chip .title { font-weight: 600; }
+.asset-chip-confirmed { border-left-color: var(--fl-green); }
+.asset-chip-unconfirmed { border-left-color: var(--fl-amber); }
+.asset-chip-unbound { border-left-color: var(--fl-ink-muted); }
+.asset-chip-unresolvable { border-left-color: var(--fl-red); }
+
+/* Machine-evidence basis caption (mig 084 bases live_machine_evidence /
+   machine_history): MUTED. Amber stays reserved for general_reasoning. */
+.evidence-basis-machine {
+  display: block; margin: 6px 0 0 0; padding: 6px 10px;
+  border-left: 3px solid var(--fl-line-strong);
+  background: var(--fl-surface); color: var(--fl-ink-muted);
+  border-radius: var(--fl-radius); font-size: 12px; line-height: 1.4;
+}
+
+/* REPLAY timeline: rows are observations, colour never decorates them.
+   The banner is amber = degraded (not live); nothing here reads as live. */
+.replay-banner {
+  margin: 8px 0; padding: 6px 10px;
+  border-left: 3px solid var(--fl-amber); background: var(--fl-surface);
+  color: var(--fl-ink); border-radius: var(--fl-radius); font-size: 13px;
+}
+/* Window control (S5 D2): a segmented group; the active segment is selection
+   (accent), never a state colour. */
+.replay-window { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.segmented { display: inline-flex; border: 1px solid var(--fl-line); border-radius: var(--fl-radius); overflow: hidden; }
+.segment {
+  margin: 0; padding: 4px 10px; font-size: 12px; border: 0; border-radius: 0;
+  background: var(--fl-surface); color: var(--fl-ink-muted); min-height: 0; width: auto;
+}
+.segment + .segment { border-left: 1px solid var(--fl-line); }
+.segment-active { background: var(--fl-accent); color: var(--flm-on-primary); }
+.replay-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.replay-row {
+  display: grid; grid-template-columns: 5.5em 1fr auto auto; column-gap: 8px;
+  align-items: baseline; padding: 4px 0; border-top: 1px solid var(--fl-line);
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.replay-t { color: var(--fl-ink-muted); }
+.replay-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-ingested { grid-column: 2 / -1; font-size: 11px; }
+
+/* Sensor camera overlay: the QR viewfinder is NOT a sheet (80% max-height);
+   it takes the screen and registers its own BACK layer above the sheet. */
+.sensor-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: var(--fl-bg); display: flex; flex-direction: column;
+}
+
 .studio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
 .studio-tile {
   border: 1px solid var(--fl-line); border-radius: var(--flm-radius-card);
@@ -373,3 +447,54 @@ textarea {
   font-size: 14px;
 }
 .msg-answer { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+
+/* RNDR-1 / RNDR-2: rendered markdown answers. Block elements own their own
+   spacing, so the pre-wrap of the plain-text fallback is turned off here. */
+.answer-md { white-space: normal; overflow-wrap: anywhere; }
+.answer-md > :first-child { margin-top: 0; }
+.answer-md > :last-child { margin-bottom: 0; }
+.answer-md p, .answer-md ul, .answer-md ol { margin: 0 0 8px; }
+.answer-md ul, .answer-md ol { padding-left: 20px; }
+.answer-md li { margin: 2px 0; }
+.answer-md h1, .answer-md h2, .answer-md h3, .answer-md h4 {
+  font-size: 15px; font-weight: 600; margin: 10px 0 4px;
+}
+.answer-md code {
+  font-family: var(--flm-font-mono); font-size: 12.5px;
+  background: var(--fl-surface); border-radius: var(--fl-radius); padding: 1px 4px;
+}
+.answer-table-wrap { overflow-x: auto; margin: 0 0 8px; }
+.answer-md table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.answer-md th, .answer-md td {
+  border: 1px solid var(--fl-line); padding: 4px 8px; text-align: left; vertical-align: top;
+}
+.answer-md th { background: var(--fl-surface); font-weight: 600; }
+.answer-md blockquote {
+  margin: 0 0 8px; padding-left: 10px; border-left: 2px solid var(--fl-line); color: var(--fl-ink-muted);
+}
+/* A [n] mark inline in the prose: the citation palette, sized to the text. */
+.cite-mark {
+  /* Override the global `button { width: 100%; min-height: 44px }` touch-target
+     rule: an inline [n] mark must flow with the sentence, not break it. */
+  display: inline; width: auto; min-height: 0; border: none; cursor: pointer; padding: 0 4px; margin: 0 1px;
+  background: var(--flm-citation-bg); color: var(--flm-citation-fg);
+  border-radius: var(--flm-radius-pill); font-family: var(--flm-font-mono); font-size: 12px;
+  line-height: inherit; vertical-align: baseline;
+}
+.answer-link { text-decoration: underline; color: var(--fl-ink); }
+.answer-stopped { margin-top: 4px; font-style: italic; }
+.code-block {
+  border: 1px solid var(--fl-line); border-radius: var(--fl-radius);
+  background: var(--fl-surface); margin: 0 0 8px; overflow: hidden;
+}
+.code-block-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 8px; border-bottom: 1px solid var(--fl-line);
+  font-size: 11px; color: var(--fl-ink-muted);
+}
+.code-block-lang { font-family: var(--flm-font-mono); text-transform: lowercase; }
+.code-block-copy { font-size: 12px; padding: 2px 4px; }
+.code-block pre {
+  margin: 0; padding: 8px; overflow-x: auto; font-family: var(--flm-font-mono); font-size: 12.5px;
+}
+.code-block pre code { background: none; padding: 0; }

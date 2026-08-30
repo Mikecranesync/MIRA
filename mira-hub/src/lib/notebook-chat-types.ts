@@ -4,8 +4,30 @@
  * ad-hoc shapes on both sides).
  *
  * Wire format: `data: <json>\n\n` frames on text/event-stream, terminated by
- * the literal `data: [DONE]`. The evidence frame is emitted FIRST so the UI
- * can render citations while the answer streams.
+ * the literal `data: [DONE]`. Real order on an answered turn:
+ * `content`* → `sources` → `evidence` → [`usage`] → `status` → [`followups`].
+ * `sources` arrives AFTER the content deltas (citations are filtered to the
+ * [n] the answer actually used), so a client must buffer content and attach
+ * citations when `sources` lands. Abstain: `sources` (empty) → `status`.
+ * Safety: `sources` (empty) → `content`* → `safety` → `status`.
+ *
+ * STOPPED-TURN CONTRACT (STRM-2, no schema change — `answer_status` is the
+ * three-value CHECK from migration 073; a first-class 'stopped' value would
+ * need a migration and is Mike's call, mira-hub-migrations rule 8):
+ *   - Client-stopped turn (request signal aborted / response cancelled):
+ *     the server persists `answer_status='error'`, `answer_text` = the
+ *     content streamed so far (or NULL if nothing streamed), `evidence=[]`,
+ *     `basis=NULL`. No further frames are written; no fallback provider runs.
+ *   - Provider/cascade failure (every provider failed, or an internal error):
+ *     the server persists `answer_status='error'` with `answer_text=NULL` —
+ *     NEVER the partial text a failed provider may have streamed before it
+ *     died. The wire still ends `sources`(empty) → `evidence` → [`usage`] →
+ *     `status: error` → `[DONE]`.
+ * So the client rule, applied identically live and on reload (hydration):
+ *   `answer_status==='error' && answer_text` non-empty ⇒ render the partial
+ *     with the "Stopped" caption, no citations, no follow-ups, and EXCLUDE
+ *     it from the history sent to the server;
+ *   `answer_status==='error' && answer_text` null ⇒ the existing error copy.
  */
 
 export type EvidenceCitation = {
@@ -114,7 +136,95 @@ export type NotebookEvidenceFrame = {
   basis: EvidenceBasis;
   /** One short sentence the UI may render verbatim as a badge/caption. */
   label: string;
+  /** Sensor REPLAY (contract §4.4, D5): the machine window this turn was
+   *  grounded on. Additive — same frame kind, so FRAME_KINDS is untouched and
+   *  older clients simply ignore the field. */
+  machineEvidence?: MachineEvidenceEntry;
+  /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
+   *  turn was asked with. Additive, same discipline as `machineEvidence`. */
+  visualEvidence?: VisualObservationEntry;
 };
+
+/**
+ * Machine evidence attached to a turn (Sensor REPLAY, contract §4.4 / D5).
+ * Rides INSIDE the turn's existing `evidence[]` JSONB next to
+ * `EvidenceCitation` entries, discriminated by `kind` — no new table, no new
+ * frame kind. It is NOT a citation: it never carries a `docId`, never appears
+ * in `sources.citations` or `sourceSnapshot`, and every `evidence[]` reader
+ * that assumes `{docId}` must skip it (enrichCitationsWithOrigin / listTurns
+ * do; `persistedTurns` on web splits it out).
+ */
+export type MachineEvidenceEntry = {
+  kind: "machine_evidence";
+  assetId: string;
+  /** Canonical ISO anchor (the fault time the window is centred on). */
+  anchorAt: string;
+  pre: number;
+  post: number;
+  /** Recorded observations in the window — the "N observed changes" count. */
+  rowCount: number;
+  /** Roll-up of the asset's CURRENT signals when the turn was served. */
+  freshness: "live" | "stale" | "simulated" | "unknown";
+  runId?: string | null;
+  windowId?: string | null;
+  /**
+   * Why the window is empty, when it is (contract §2.8 honesty). Present ONLY
+   * as `"unavailable"` — the machine-history tables (033/037) are missing in
+   * this environment, so nothing COULD be observed. Absent with `rowCount: 0`
+   * means the opposite and equally honest thing: the tables are there and the
+   * window was genuinely quiet.
+   *
+   * Cross-lane contract (same spelling as `AssetHistory.reason` in
+   * mira-mobile/src/lib/replay.ts, which the phone already reads off
+   * GET /api/assets/[id]/history):
+   *   `reason === "unavailable"` → "Machine history unavailable"
+   *   `rowCount === 0` (no reason) → "No machine changes recorded in this window"
+   * Neither ever renders as "0 observed changes", and neither carries a
+   * machine `basis` — the server leaves the turn on the basis it would have
+   * had without the selection.
+   */
+  reason?: "unavailable" | null;
+};
+
+/** Type guard: an `evidence[]` entry that is machine evidence, not a citation. */
+export function isMachineEvidenceEntry(e: unknown): e is MachineEvidenceEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "machine_evidence" &&
+    typeof (e as { anchorAt?: unknown }).anchorAt === "string"
+  );
+}
+
+/**
+ * Visual observation attached to a turn (Sensor LOOK, S5 D3 cross-lane
+ * contract). The client sends `{fileId, capturedAt}`; the SERVER verifies the
+ * file is a workspace file linked to THIS notebook (workspace_file_links,
+ * same tenant) and re-derives the entry — an unverified/foreign fileId is
+ * ignored silently, never a 4xx. Rides INSIDE `evidence[]` next to citations
+ * and machine entries, discriminated by `kind`. It is NOT a citation: no
+ * `docId`, never in `sources.citations` / `sourceSnapshot`, never changes
+ * `basis`. Readers that assume `{docId}` skip it.
+ */
+export type VisualObservationEntry = {
+  kind: "visual_observation";
+  /** namespace_direct_uploads id — the byte-serving door for the thumbnail. */
+  fileId: string;
+  /** Server-normalized ISO (the phone's capture time, re-serialized). */
+  capturedAt: string;
+  provenance: "phone_photo";
+};
+
+/** Type guard: an `evidence[]` entry that is a visual observation. */
+export function isVisualObservationEntry(e: unknown): e is VisualObservationEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "visual_observation" &&
+    typeof (e as { fileId?: unknown }).fileId === "string" &&
+    typeof (e as { capturedAt?: unknown }).capturedAt === "string"
+  );
+}
 
 export type NotebookChatFrame =
   | NotebookSourcesFrame

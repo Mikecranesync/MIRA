@@ -1,0 +1,121 @@
+name: Beta Probe (production, manual, dry-run by default)
+
+# Workstream B — PRD §8.3 post-deploy probe.
+#
+# Runs the SAME probe the staging beta gate runs (tests/beta/_notebook_probe.py)
+# against PRODUCTION through PUBLIC application APIs only: sign in as an
+# existing QA tenant → run-unique notebook → control document (real retrieval
+# refuses the sentinel) → run-unique sentinel document → readiness →
+# confirmation → cited answer → unsupported refusal → delete only what the
+# run created.
+#
+# DESTINATION IS PINNED. There is no hub_base input: the live target is
+# exactly https://app.factorylm.com, enforced twice — here (constant) and in
+# the probe (BETA_PROBE_EXPECT_ORIGIN: scheme+host+port must match exactly,
+# anything else is REFUSED with exit 2, never a silent dry-run). QA-tenant
+# credentials never enter GitHub secrets: they are read at run time from
+# Doppler `factorylm/prd` (BETA_PROBE_QA_EMAIL / BETA_PROBE_QA_PASSWORD) via
+# the same DOPPLER_TOKEN the deploy workflow uses, and are passed to the probe
+# as process env only — never echoed, never written to an artifact.
+#
+# It is INERT unless BOTH hold:
+#   * inputs.execute == true (an explicit boolean, unchecked by default), and
+#   * both Doppler values resolve non-empty.
+# Otherwise → DRY-RUN: the probe prints what it WOULD do and sends nothing.
+#
+# MIKE OWNS DISPATCH AUTHORIZATION AND THE QA-TENANT CREDENTIALS. No schedule,
+# no workflow_run trigger, no automatic dispatch from any deploy: a merge can be
+# green without this ever running; a design-partner-readiness claim cannot.
+#
+# NEVER: raw production SQL, database URLs, VPS actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: "Send real requests to https://app.factorylm.com (requires both Doppler prd QA values). Unchecked = dry-run, nothing is sent."
+        type: boolean
+        default: false
+
+concurrency:
+  group: beta-probe-prod
+  cancel-in-progress: false
+
+env:
+  # The ONE allowed destination. Not an input, not overridable.
+  PROD_HUB_ORIGIN: "https://app.factorylm.com"
+
+jobs:
+  probe:
+    name: Notebook probe against app.factorylm.com (${{ inputs.execute == true && 'LIVE' || 'DRY-RUN' }})
+    runs-on: ubuntu-latest
+    # The `production` environment carries DOPPLER_TOKEN and any required-
+    # reviewer gate configured on it.
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Install probe deps
+        run: pip install --quiet httpx
+
+      - name: Run the probe (dry-run unless execute=true AND both Doppler prd QA values resolve)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EXECUTE: ${{ inputs.execute == true && '1' || '0' }}
+          BETA_PROBE_HUB_BASE: ${{ env.PROD_HUB_ORIGIN }}
+          BETA_PROBE_EXPECT_ORIGIN: ${{ env.PROD_HUB_ORIGIN }}
+          BETA_PROBE_POLL_SECONDS: "240"
+        run: |
+          set -euo pipefail
+          echo "::notice::Dispatch authorization + QA credentials are Mike's. This job never runs automatically. Destination pinned to $PROD_HUB_ORIGIN."
+          DRY=""
+          if [ "$EXECUTE" != "1" ]; then
+            DRY="--dry-run"; echo "::notice::execute=false → DRY-RUN (no request will be sent)"
+          fi
+          # Credentials come from Doppler factorylm/prd, read only when executing,
+          # only into this process's environment. A missing value → dry-run.
+          if [ -z "$DRY" ]; then
+            if [ -z "${DOPPLER_TOKEN:-}" ]; then
+              DRY="--dry-run"; echo "::notice::DOPPLER_TOKEN absent → DRY-RUN (no request will be sent)"
+            else
+              BETA_PROBE_EMAIL="$(doppler secrets get BETA_PROBE_QA_EMAIL --project factorylm --config prd --plain 2>/dev/null || true)"
+              BETA_PROBE_PASSWORD="$(doppler secrets get BETA_PROBE_QA_PASSWORD --project factorylm --config prd --plain 2>/dev/null || true)"
+              if [ -z "$BETA_PROBE_EMAIL" ] || [ -z "$BETA_PROBE_PASSWORD" ]; then
+                DRY="--dry-run"; echo "::notice::BETA_PROBE_QA_EMAIL/PASSWORD not set in Doppler factorylm/prd → DRY-RUN (no request will be sent)"
+                unset BETA_PROBE_EMAIL BETA_PROBE_PASSWORD
+              else
+                echo "::add-mask::$BETA_PROBE_PASSWORD"; echo "::add-mask::$BETA_PROBE_EMAIL"
+                export BETA_PROBE_EMAIL BETA_PROBE_PASSWORD
+              fi
+            fi
+          fi
+          # Raw evidence lives ONLY under /tmp and is never uploaded as-is:
+          # failure strings can echo response bodies. The if:always step
+          # below redacts it before the artifact is taken.
+          # shellcheck disable=SC2086
+          python tests/beta/_notebook_probe.py $DRY --evidence-out /tmp/probe-evidence.raw.json \
+            2>&1 | bash tools/qa/redact_ci_log.sh
+
+      - name: Redact evidence before upload (always)
+        if: always()
+        run: |
+          if [ -f /tmp/probe-evidence.raw.json ]; then
+            bash tools/qa/redact_ci_log.sh < /tmp/probe-evidence.raw.json > /tmp/probe-evidence.json
+            rm -f /tmp/probe-evidence.raw.json
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: beta-probe-prod-evidence-${{ github.run_id }}
+          path: /tmp/probe-evidence.json
+          retention-days: 14
+          if-no-files-found: ignore
