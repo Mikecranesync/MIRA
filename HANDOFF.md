@@ -204,3 +204,44 @@ Deferred items from the same review, now done: **citation identity** — `judge_
 | 4 Prod entry point | ✅ `beta-probe-prod.yml`, manual, boolean + secrets gated, dry-run default, Mike owns dispatch |
 | 5 Historical repair | ✅ no mutation; §7.3 read-only preflight report with real admission + before/after (§5), loopback-only |
 | 6 Verify + hand off | ✅ this file; commits + PR (unmerged) |
+
+---
+
+# Workstream C2 — Machine Memory operations preflight (2026-08-30)
+
+## Status
+
+**Implementation and final reviews: PASS at product head `28b73002e458f902efcfb95c91af377d95304a1d`.** This branch is intentionally stacked on the reviewed C1 head `2a31fa900d891b755597ceda0d763d5bc8182489` / PR #3484. No merge, deploy, workflow dispatch, Doppler access, shared database access, production/staging call, or equipment/control write occurred.
+
+Issue: #3485. Branch: `codex/machine-memory-operations`.
+
+## What shipped on the branch
+
+- Durable tenant-scoped historian execution heartbeat with generation-safe start/finish writes, exact deployed SHA/environment/effective-config fingerprints, redacted database constraints, RLS mutation enforcement, and a required CI PostgreSQL gate.
+- Manual protected-environment preflight that is read-only, query-digest pinned, tenant/UNS/bounds scoped, secure-TLS only, artifact allowlisted/redacted, and structurally fail-closed for stale/replayed/simulated/bad-quality/unknown-provenance or malformed evidence.
+- Canonical physical-fault admission through a persisted rising-edge diff and non-null fault-window identity; dispatcher-selected raw/stuck-high rows cannot substitute.
+- Staging and production historian worker/beat wiring with Doppler-preserved reviewed SHA, default deployment targets, four bounded healthchecks, and staging/production wait-on-health behavior.
+- Correct strict-before tag-diff baseline plus crash/retry idempotency: semantic duplicate suppression under a tenant advisory lock, honest inserted-row counts, cursor advancement, and persisted fault-window UUID reuse for late neighbors.
+
+## Exact final verification
+
+Independent verification at `28b73002e458f902efcfb95c91af377d95304a1d`:
+
+- `114 passed` — preflight evaluator/workflow/SQL/CV-101 suites.
+- `49 passed` — heartbeat and tag-diff focused suites.
+- `14 passed` — historian Compose/deployment health-gate suite.
+- `31 passed` — architecture suite (two pre-existing non-failing `SyntaxWarning` notices).
+- `5 passed, 0 skipped` — full historian PostgreSQL integration file against a uniquely named, loopback-only `postgres:16.10-alpine` server with TLS active and production writes executed as non-bypass `factorylm_app`. This includes cross-tenant INSERT/update rejection, reversed terminal-time rejection, strict-before false→true diffing, crash-after-diff/before-cursor retry, late-neighbor shared fault-window UUID, and run-store RLS.
+- Ruff, migration ordering, four workflow YAML parses, four actionlint checks, health-probe compilation/execution stubs, and `git diff --check 2a31fa900...HEAD` all passed.
+- Exact HEAD and tracked worktree were clean before and after. The run-owned container, volume, certificate directory, and two earlier failed-setup disposable schemas were identity-checked and removed; zero test resources remain.
+
+Final independent review rulings:
+
+- **Architecture / industrial safety: PASS.** No PLC/control-write surface; heartbeat timing and deployment health are fail-closed.
+- **Security / RLS: PASS.** No tenant, target, TLS, artifact-redaction, config-attestation, CI-gate, temporal, retry, or fault-window bypass remained.
+
+Local detailed evidence is intentionally ignored under `.superpowers/sdd/2026-08-30-machine-memory-operations-preflight/`; this tracked section is the durable redacted receipt.
+
+## Honest merge boundary
+
+PR #3484 is currently open and conflicting with the latest `main`; C2 must remain a stacked PR against `codex/machine-memory-truth-corrected` until C1 is rebased/merged. Do not describe C2 as directly mergeable to `main` until that dependency is resolved. No production Machine Memory readiness claim is made by this branch; the manual preflight still requires Mike-authorized protected-environment inputs and a real physical CV-101 fault window.

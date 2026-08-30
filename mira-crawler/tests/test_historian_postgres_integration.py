@@ -28,11 +28,14 @@ written correct-and-skipped and is meant to run on staging.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import uuid
+from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("MIRA_TEST_DATABASE_URL"),
@@ -52,6 +55,7 @@ _MIGRATION_FILES = [
     "037_tag_event_diffs.sql",
     "038_machine_runs.sql",
     "057_historian_cursor.sql",
+    "086_historian_task_heartbeat.sql",
 ]
 
 
@@ -139,7 +143,7 @@ def _seed_tag_event(schema, tenant, tag, value, ts, *, vt="bool"):
     with eng.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.exec_driver_sql(f"SET search_path TO {schema}, public")
-        conn.execute(
+        event_id = conn.execute(
             text(
                 """
                 INSERT INTO tag_events
@@ -148,14 +152,16 @@ def _seed_tag_event(schema, tenant, tag, value, ts, *, vt="bool"):
                 VALUES
                     (CAST(:tid AS UUID), :tag, :val, :vt, 'good',
                      'plc_bridge', false, to_timestamp(:ts))
+                RETURNING event_id::text
                 """
             ),
             {"tid": tenant, "tag": tag, "val": value, "vt": vt, "ts": ts},
-        )
+        ).scalar_one()
     eng.dispose()
+    return event_id
 
 
-def _scalar_as_app(schema, tenant, sql, params=None):
+def _scalar_as_app(schema, tenant, sql, params=None, *, tenant_setting="app.current_tenant_id"):
     """Run a SELECT as factorylm_app under RLS for ``tenant``; return the scalar."""
     eng = _admin_engine()
     try:
@@ -163,12 +169,244 @@ def _scalar_as_app(schema, tenant, sql, params=None):
             conn.exec_driver_sql("SET ROLE factorylm_app")
             conn.exec_driver_sql(f"SET search_path TO {schema}, public")
             conn.execute(
-                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
-                {"tid": tenant},
+                text("SELECT set_config(:setting, :tid, true)"),
+                {"setting": tenant_setting, "tid": tenant},
             )
             return conn.execute(text(sql), params or {}).scalar()
     finally:
         eng.dispose()
+
+
+def _set_tag_diff_cursor(schema, tenant, timestamp):
+    """Reset only the disposable fixture's tag-diff cursor to model a crash."""
+    eng = _admin_engine()
+    try:
+        with eng.begin() as conn:
+            conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+            conn.execute(
+                text(
+                    """
+                    UPDATE historian_cursor
+                       SET last_event_ts = to_timestamp(:timestamp)
+                     WHERE tenant_id = CAST(:tenant_id AS UUID)
+                       AND source = 'tag_diff'
+                    """
+                ),
+                {"tenant_id": tenant, "timestamp": timestamp},
+            )
+    finally:
+        eng.dispose()
+
+
+# ---------------------------------------------------------------------------
+# #3485 — durable historian task heartbeat
+# ---------------------------------------------------------------------------
+
+
+def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
+    """Exercise migration 086 as the non-bypass app role in a disposable schema."""
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tasks"))
+    try:
+        from historize_runs import HeartbeatContext, HistorianHeartbeatStore
+    finally:
+        sys.path.pop(0)
+
+    schema = pg_schema["schema"]
+    tenant = str(uuid.uuid4())
+    other_tenant = str(uuid.uuid4())
+    detail = {
+        "config_sha256": "a" * 64,
+        "counts": {"fault_trigger_tags": 1, "machine_memory_paths": 1, "run_trigger_paths": 1},
+        "fault_trigger_tag_hashes": ["b" * 64],
+        "machine_memory_path_hashes": ["c" * 64],
+        "run_diff_enabled": True,
+        "run_trigger_path_hashes": ["d" * 64],
+    }
+    context = HeartbeatContext(
+        tenant_id=tenant,
+        deployment_environment="staging",
+        software_version="e" * 40,
+        detail=detail,
+    )
+    app_engine = create_engine(pg_schema["store_url"], future=True)
+    try:
+        store = HistorianHeartbeatStore(engine=app_engine, tenant_id=tenant)
+        generation_a = store.start(context)
+
+        row = _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        )
+        assert row == "running:1:true"
+
+        # A second start is an upsert, increments exactly once, and deliberately
+        # leaves a new crash-shaped `running` record distinguishable.
+        generation_b = store.start(context)
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT run_count FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == 2
+        # A's terminal update must not overwrite the newer B generation.
+        assert store.finish(context, status="ok", generation=generation_a) is False
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == "running:2:true"
+
+        assert store.finish(context, status="ok", generation=generation_b) is True
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NOT NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == "ok:2:true"
+
+        with pytest.raises(IntegrityError):
+            with app_engine.begin() as conn:
+                conn.execute(
+                    text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant}
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE historian_task_heartbeat
+                           SET finished_at = started_at - INTERVAL '1 second'
+                         WHERE tenant_id = CAST(:tenant_id AS UUID)
+                           AND task_name = 'historize_runs'
+                        """
+                    ),
+                    {"tenant_id": tenant},
+                )
+
+        assert _scalar_as_app(
+            schema,
+            other_tenant,
+            "SELECT count(*) FROM historian_task_heartbeat",
+        ) == 0
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT count(*) FROM historian_task_heartbeat",
+            tenant_setting="app.tenant_id",
+        ) == 1
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT has_table_privilege(current_user, 'historian_task_heartbeat', 'DELETE')",
+        ) is False
+
+        # RLS protects mutations, not only reads: tenant A cannot create a row
+        # for B or move its owned row across the tenant boundary.
+        with pytest.raises(DBAPIError):
+            with app_engine.begin() as conn:
+                conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO historian_task_heartbeat
+                            (tenant_id, deployment_environment, task_name, started_at,
+                             status, software_version, detail)
+                        VALUES
+                            (CAST(:other_tenant AS UUID), 'staging', 'cross_tenant_probe',
+                             NOW(), 'running', :software_version, CAST(:detail AS JSONB))
+                        """
+                    ),
+                    {
+                        "other_tenant": other_tenant,
+                        "software_version": "f" * 40,
+                        "detail": json.dumps(detail),
+                    },
+                )
+        with pytest.raises(DBAPIError):
+            with app_engine.begin() as conn:
+                conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                conn.execute(
+                    text(
+                        """
+                        UPDATE historian_task_heartbeat
+                           SET tenant_id = CAST(:other_tenant AS UUID)
+                         WHERE tenant_id = CAST(:tenant AS UUID)
+                           AND task_name = 'historize_runs'
+                        """
+                    ),
+                    {"tenant": tenant, "other_tenant": other_tenant},
+                )
+
+        # All constraints are enforced by Postgres while acting as the
+        # non-bypass app role, not merely checked in Python.
+        insert_sql = text(
+            """
+            INSERT INTO historian_task_heartbeat
+                (tenant_id, deployment_environment, task_name, started_at, finished_at,
+                 status, software_version, detail)
+            VALUES
+                (CAST(:tenant_id AS UUID), :deployment_environment, 'constraint_probe',
+                 NOW(), :finished_at, :status, :software_version, CAST(:detail AS JSONB))
+            """
+        )
+        def invalid_detail(**changes):
+            value = json.loads(json.dumps(detail))
+            value.update(changes)
+            return json.dumps(value)
+
+        def invalid_row(**changes):
+            value = {
+                "deployment_environment": "staging",
+                "finished_at": None,
+                "status": "running",
+                "software_version": "f" * 40,
+                "detail": json.dumps(detail),
+            }
+            value.update(changes)
+            return value
+
+        count_variants = [
+            {**detail["counts"], "unexpected": 1},
+            {"fault_trigger_tags": 1, "machine_memory_paths": 1},
+            {**detail["counts"], "fault_trigger_tags": -1},
+            {**detail["counts"], "fault_trigger_tags": 1.5},
+            {**detail["counts"], "fault_trigger_tags": "1"},
+        ]
+        invalid_rows = [
+            invalid_row(deployment_environment="qa"),
+            invalid_row(status="bogus"),
+            invalid_row(software_version="f" * 39),
+            invalid_row(detail="{}"),
+            invalid_row(detail=invalid_detail(config_sha256="A" * 64)),
+            invalid_row(
+                detail=invalid_detail(
+                    machine_memory_path_hashes=["https://secret.invalid/path"]
+                )
+            ),
+            invalid_row(
+                detail=invalid_detail(run_trigger_path_hashes=["d" * 63, 7])
+            ),
+            invalid_row(detail=invalid_detail(error_code="RAW_DATABASE_ERROR")),
+            invalid_row(detail=invalid_detail(raw_path="enterprise.secret.asset")),
+            invalid_row(finished_at="NOW()"),
+            invalid_row(status="ok"),
+        ]
+        invalid_rows.extend(
+            invalid_row(detail=invalid_detail(counts=counts))
+            for counts in count_variants
+        )
+        for invalid in invalid_rows:
+            with pytest.raises(IntegrityError):
+                with app_engine.begin() as conn:
+                    conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                    params = {"tenant_id": tenant, **invalid}
+                    if params["finished_at"] == "NOW()":
+                        params["finished_at"] = datetime.now(timezone.utc)
+                    conn.execute(insert_sql, params)
+    finally:
+        app_engine.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +472,177 @@ def test_historizer_cursor_advances_on_zero_diff_batch(pg_schema, monkeypatch):
         {"t": tenant},
     )
     assert float(cur2) == 400.0
+
+
+def test_historizer_crash_retry_does_not_duplicate_tag_diff(pg_schema, monkeypatch):
+    """A retry before cursor save must reuse the committed semantic diff."""
+    from celery_app import app as celery_app
+
+    schema = pg_schema["schema"]
+    store_url = pg_schema["store_url"]
+    tenant = str(uuid.uuid4())
+    from_event_id = _seed_tag_event(schema, tenant, "PE-CRASH", "false", 100.0)
+    to_event_id = _seed_tag_event(schema, tenant, "PE-CRASH", "true", 400.0)
+
+    monkeypatch.setenv("NEON_DATABASE_URL", store_url)
+    monkeypatch.setenv("MIRA_TENANT_ID", tenant)
+    celery_app.conf.task_always_eager = True
+
+    from tasks.tag_diff_historizer import historize_tag_diffs
+
+    first = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert first["status"] == "ok"
+    assert first["diffs_written"] == 1
+
+    # Model a worker crash after the diff transaction commits but before its
+    # cursor commit by putting the cursor back before the changed event.
+    eng = _admin_engine()
+    with eng.begin() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        conn.execute(
+            text(
+                """
+                UPDATE historian_cursor
+                   SET last_event_ts = to_timestamp(100.0)
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        )
+    eng.dispose()
+
+    retry = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert retry["status"] == "ok"
+    assert retry["tag_events_read"] == 1
+    assert retry["diffs_written"] == 0
+
+    eng = _admin_engine()
+    with eng.connect() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        rows = conn.execute(
+            text(
+                """
+                SELECT tenant_id::text, from_event_id::text, to_event_id::text,
+                       diff_type, threshold
+                  FROM tag_event_diffs
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                """
+            ),
+            {"tenant_id": tenant},
+        ).mappings().all()
+        cursor = conn.execute(
+            text(
+                """
+                SELECT EXTRACT(EPOCH FROM last_event_ts)
+                  FROM historian_cursor
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        ).scalar_one()
+    eng.dispose()
+
+    assert [dict(row) for row in rows] == [
+        {
+            "tenant_id": tenant,
+            "from_event_id": from_event_id,
+            "to_event_id": to_event_id,
+            "diff_type": "rising_edge",
+            "threshold": None,
+        }
+    ]
+    assert float(cursor) == 400.0
+
+
+def test_historizer_fault_window_retry_reuses_committed_window(pg_schema, monkeypatch):
+    """A late neighbor after a cursor crash must join the trigger's DB window."""
+    from celery_app import app as celery_app
+
+    schema = pg_schema["schema"]
+    store_url = pg_schema["store_url"]
+    tenant = str(uuid.uuid4())
+    trigger_from = _seed_tag_event(schema, tenant, "Fault_Alarm", "false", 100.0)
+    neighbor_from = _seed_tag_event(
+        schema, tenant, "Motor_State", "RUN", 200.0, vt="string"
+    )
+    trigger_to = _seed_tag_event(schema, tenant, "Fault_Alarm", "true", 400.0)
+
+    monkeypatch.setenv("NEON_DATABASE_URL", store_url)
+    monkeypatch.setenv("MIRA_TENANT_ID", tenant)
+    monkeypatch.setenv(
+        "TAG_DIFF_CONFIG_JSON",
+        json.dumps(
+            {
+                "fault_trigger_tags": ["Fault_Alarm"],
+                "fault_window_seconds": 5.0,
+            }
+        ),
+    )
+    celery_app.conf.task_always_eager = True
+
+    from tasks.tag_diff_historizer import historize_tag_diffs
+
+    first = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert first["diffs_written"] == 1
+
+    # The trigger diff committed, but its cursor did not. A newly observed
+    # neighbor arrives inside that trigger's logical fault window.
+    _set_tag_diff_cursor(schema, tenant, 200.0)
+    neighbor_to = _seed_tag_event(
+        schema, tenant, "Motor_State", "FAULT", 403.0, vt="string"
+    )
+    retry_with_neighbor = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert retry_with_neighbor["tag_events_read"] == 2
+    assert retry_with_neighbor["diffs_written"] == 1
+
+    # Repeating the same crash gap is a fully idempotent retry: neither member
+    # is inserted again, and the outer task can still advance its cursor.
+    _set_tag_diff_cursor(schema, tenant, 200.0)
+    exact_retry = historize_tag_diffs.apply(kwargs={"tenant_id": tenant}).get()
+    assert exact_retry["tag_events_read"] == 2
+    assert exact_retry["diffs_written"] == 0
+
+    eng = _admin_engine()
+    with eng.connect() as conn:
+        conn.exec_driver_sql(f"SET search_path TO {schema}, public")
+        rows = conn.execute(
+            text(
+                """
+                SELECT tag_path, from_event_id::text, to_event_id::text,
+                       diff_type, fault_window_id::text
+                  FROM tag_event_diffs
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                 ORDER BY event_timestamp
+                """
+            ),
+            {"tenant_id": tenant},
+        ).mappings().all()
+        cursor = conn.execute(
+            text(
+                """
+                SELECT EXTRACT(EPOCH FROM last_event_ts)
+                  FROM historian_cursor
+                 WHERE tenant_id = CAST(:tenant_id AS UUID)
+                   AND source = 'tag_diff'
+                """
+            ),
+            {"tenant_id": tenant},
+        ).scalar_one()
+    eng.dispose()
+
+    assert len(rows) == 2
+    assert [
+        (row["tag_path"], row["from_event_id"], row["to_event_id"], row["diff_type"])
+        for row in rows
+    ] == [
+        ("Fault_Alarm", trigger_from, trigger_to, "rising_edge"),
+        ("Motor_State", neighbor_from, neighbor_to, "value_changed"),
+    ]
+    assert rows[0]["fault_window_id"] is not None
+    assert rows[1]["fault_window_id"] == rows[0]["fault_window_id"]
+    assert float(cursor) == 403.0
 
 
 # ---------------------------------------------------------------------------

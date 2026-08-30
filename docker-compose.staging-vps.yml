@@ -33,6 +33,111 @@
 #   4901 → atlas-minio UI   (prod 9001)
 
 services:
+  # ─── Machine Memory historian — isolated staging services ─────────────────
+  stg-mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: stg-mira-redis
+    networks:
+      - staging-net
+    volumes:
+      - stg-mira-redis-data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  stg-mira-historian-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: stg-mira-historian-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q historian --loglevel=info
+    depends_on:
+      stg-mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://stg-mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://stg-mira-redis:6379/1
+      - MIRA_DEPLOYMENT_ENVIRONMENT=staging
+      - MIRA_GIT_SHA=${MIRA_GIT_SHA:-unknown}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - TAG_DIFF_BATCH_SIZE=${TAG_DIFF_BATCH_SIZE:-1000}
+      - TAG_DIFF_CONFIG_JSON=${TAG_DIFF_CONFIG_JSON:-}
+      # Run-diff remains fail-closed until explicitly enabled in staging.
+      - MIRA_RUN_DIFF_ENABLED=${MIRA_RUN_DIFF_ENABLED:-0}
+      - MIRA_RUN_TRIGGERS=${MIRA_RUN_TRIGGERS:-}
+      - MIRA_BASELINE_NORMAL_RUN_COUNT=${MIRA_BASELINE_NORMAL_RUN_COUNT:-5}
+      - MIRA_BASELINE_MIN_RUNS=${MIRA_BASELINE_MIN_RUNS:-2}
+      - MIRA_SNAPSHOT_PRE_SECONDS=${MIRA_SNAPSHOT_PRE_SECONDS:-300}
+      - MIRA_SNAPSHOT_POST_SECONDS=${MIRA_SNAPSHOT_POST_SECONDS:-300}
+      - MIRA_MACHINE_MEMORY_UNS_PATHS=${MIRA_MACHINE_MEMORY_UNS_PATHS:-}
+      - MIRA_RUN_LOOKBACK_SECONDS=${MIRA_RUN_LOOKBACK_SECONDS:-3600}
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import socket; from mira_crawler.celery_app import app;
+          node = "celery@" + socket.gethostname();
+          inspector = app.control.inspect(destination=[node], timeout=3);
+          ping = (inspector.ping() or {}).get(node);
+          queues = (inspector.active_queues() or {}).get(node, []);
+          names = {queue.get("name") for queue in queues};
+          raise SystemExit(0 if ping and "historian" in names else 1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  stg-mira-historian-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: stg-mira-historian-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      stg-mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://stg-mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://stg-mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=historian
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |-
+          from pathlib import Path
+          from mira_crawler.celery_app import app
+
+          argv = [arg for arg in Path("/proc/1/cmdline").read_bytes().decode("utf-8").split("\0") if arg]
+          valid_app = "-A" in argv and argv[argv.index("-A") + 1] == "mira_crawler.celery_app"
+          if not (any(Path(arg).name == "celery" for arg in argv) and "beat" in argv and valid_app):
+              raise SystemExit(1)
+          with app.connection_for_read() as connection:
+              connection.ensure_connection(max_retries=1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # ─── Atlas CMMS — staging DB + storage ─────────────────────────────────────
   atlas-db:
     mem_limit: 1g
@@ -592,5 +697,6 @@ networks:
     driver: bridge
 
 volumes:
+  stg-mira-redis-data:
   stg-atlas-pgdata:
   stg-atlas-minio:

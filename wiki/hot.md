@@ -1,3 +1,9 @@
+# Hot Cache — 2026-08-30 — Machine Memory operations preflight (stacked PR #3510)
+
+`codex/machine-memory-operations` is proposed as stacked PR #3510 on C1 PR #3484. Product head `28b73002e` passed final architecture/security review, 114 preflight/CV-101 tests, 49 heartbeat/tag-diff tests, 14 deploy-health tests, 31 architecture tests, and all 5 TLS PostgreSQL integrations with zero skips as non-bypass `factorylm_app`. Durable receipt: `HANDOFF.md` Workstream C2 section. No deploy/dispatch/Doppler/shared-DB/equipment action. **Next:** resolve/rebase and merge #3484, rebase #3510 onto `main`, then rerun required CI; Mike owns merge and any protected-environment physical-fault preflight.
+
+---
+
 # Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
 
 `feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).

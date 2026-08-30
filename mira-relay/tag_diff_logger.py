@@ -329,8 +329,10 @@ def _assign_fault_windows(
 class DiffStore(Protocol):
     """Persistence boundary. NeonDiffStore is prod; tests inject in-memory."""
 
-    def load_state(self, tenant_id: str, tag_paths: list[str]) -> dict[str, TagState]:
-        """Return carry-forward TagState per tag (empty when unknown)."""
+    def load_state(
+        self, tenant_id: str, tag_paths: list[str], before_ts: float
+    ) -> dict[str, TagState]:
+        """Return the latest TagState per tag strictly before ``before_ts``."""
         ...
 
     def persist_diffs(self, diffs: list[TagDiff]) -> int:
@@ -343,27 +345,44 @@ class TagDiffLogger:
 
     def __init__(self, store: DiffStore) -> None:
         self.store = store
+        self.last_written_count = 0
 
     def process_batch(
         self, readings: list[TagReading], config: DiffConfig, *, tenant_id: str
     ) -> list[TagDiff]:
+        self.last_written_count = 0
         if not tenant_id:
             raise ValueError("tenant_required")
         if not readings:
             return []
         tag_paths = sorted({r.tag_path for r in readings})
-        prev_state = self.store.load_state(tenant_id, tag_paths)
+        batch_start = min(r.event_timestamp for r in readings)
+        prev_state = self.store.load_state(tenant_id, tag_paths, batch_start)
         diffs, _ = compute_diffs(readings, config, prev_state, tenant_id=tenant_id)
         if diffs:
-            written = self.store.persist_diffs(diffs)
+            self.last_written_count = self.store.persist_diffs(diffs)
             logger.info(
                 "TAG_DIFFS tenant=%s readings=%d diffs=%d written=%d",
                 tenant_id,
                 len(readings),
                 len(diffs),
-                written,
+                self.last_written_count,
             )
         return diffs
+
+
+def _resolve_existing_fault_window_id(
+    existing_ids: list[Optional[str]],
+) -> Optional[str]:
+    """Return one persisted window id, or fail closed on fractured evidence."""
+    if not existing_ids:
+        return None
+    if any(window_id is None for window_id in existing_ids):
+        raise ValueError("missing_existing_fault_window_id")
+    distinct = set(existing_ids)
+    if len(distinct) != 1:
+        raise ValueError("conflicting_existing_fault_windows")
+    return next(iter(distinct))
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -391,7 +410,9 @@ class NeonDiffStore:
             pool_pre_ping=True,
         )
 
-    def load_state(self, tenant_id: str, tag_paths: list[str]) -> dict[str, TagState]:
+    def load_state(
+        self, tenant_id: str, tag_paths: list[str], before_ts: float
+    ) -> dict[str, TagState]:
         if not tag_paths:
             return {}
         from sqlalchemy import text
@@ -407,10 +428,11 @@ class NeonDiffStore:
                            tag_path, value, quality, event_id::text AS event_id
                       FROM tag_events
                      WHERE tenant_id = :tid AND tag_path = ANY(:tags)
+                       AND event_timestamp < to_timestamp(:before_ts)
                      ORDER BY tag_path, event_timestamp DESC
                     """
                 ),
-                {"tid": tenant_id, "tags": tag_paths},
+                {"tid": tenant_id, "tags": tag_paths, "before_ts": before_ts},
             ).mappings().all()
         return {
             r["tag_path"]: TagState(
@@ -429,6 +451,8 @@ class NeonDiffStore:
         from sqlalchemy import text
 
         tenant_id = diffs[0].tenant_id
+        if any(d.tenant_id != tenant_id for d in diffs):
+            raise ValueError("mixed_tenant_diff_batch")
         params = [
             {
                 "tenant_id": d.tenant_id,
@@ -453,35 +477,97 @@ class NeonDiffStore:
         # Map each distinct local fault-window key to a real UUID so DB rows get
         # proper UUIDs while the in-batch grouping is preserved.
         window_uuids: dict[str, Optional[str]] = {}
+        inserted = 0
         with self._engine().begin() as conn:
             conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
-            for p in params:
-                key = p["fw_key"]
-                if key is None:
-                    p["fault_window_id"] = None
-                    continue
-                if key not in window_uuids:
-                    window_uuids[key] = conn.execute(
-                        text("SELECT gen_random_uuid()::text")
-                    ).scalar()
-                p["fault_window_id"] = window_uuids[key]
+            # Cursor save is a later transaction. Serialize a tenant's diff
+            # writes here so concurrent retries cannot race the duplicate
+            # check even though the schema has no matching UNIQUE constraint.
             conn.execute(
-                text(
-                    """
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:tid, 0))"),
+                {"tid": tenant_id},
+            )
+            window_groups: dict[str, list[dict[str, Any]]] = {}
+            for p in params:
+                if p["fw_key"] is not None:
+                    window_groups.setdefault(p["fw_key"], []).append(p)
+
+            existing_window_sql = text(
+                """
+                WITH members AS (
+                    SELECT item
+                      FROM jsonb_array_elements(
+                           CAST(:semantic_members AS JSONB)
+                      ) AS member(item)
+                )
+                SELECT existing.fault_window_id::text
+                  FROM tag_event_diffs existing
+                  JOIN members
+                    ON existing.to_event_id IS NOT DISTINCT FROM
+                       CAST(members.item ->> 'to_event_id' AS UUID)
+                   AND existing.diff_type = members.item ->> 'diff_type'
+                   AND existing.threshold IS NOT DISTINCT FROM
+                       CAST(members.item ->> 'threshold' AS DOUBLE PRECISION)
+                 WHERE existing.tenant_id = CAST(:tenant_id AS UUID)
+                """
+            )
+            for key, group in window_groups.items():
+                semantic_members = json.dumps(
+                    [
+                        {
+                            "to_event_id": p["to_event_id"],
+                            "diff_type": p["diff_type"],
+                            "threshold": p["threshold"],
+                        }
+                        for p in group
+                    ]
+                )
+                existing_ids = (
+                    conn.execute(
+                        existing_window_sql,
+                        {
+                            "tenant_id": tenant_id,
+                            "semantic_members": semantic_members,
+                        },
+                    )
+                    .scalars()
+                    .all()
+                )
+                existing_window = _resolve_existing_fault_window_id(existing_ids)
+                window_uuids[key] = existing_window or conn.execute(
+                    text("SELECT gen_random_uuid()::text")
+                ).scalar()
+
+            for p in params:
+                p["fault_window_id"] = window_uuids.get(p["fw_key"])
+            insert_sql = text(
+                """
                     INSERT INTO tag_event_diffs
                         (tenant_id, uns_path, tag_path, diff_type,
                          prev_value, new_value, value_type, threshold,
                          from_event_id, to_event_id, fault_window_id,
                          source_system, simulated, event_timestamp, metadata)
-                    VALUES
-                        (:tenant_id, CAST(:uns_path AS LTREE), :tag_path, :diff_type,
+                    SELECT
+                         CAST(:tenant_id AS UUID), CAST(:uns_path AS LTREE),
+                         :tag_path, :diff_type,
                          :prev_value, :new_value, :value_type, :threshold,
                          CAST(:from_event_id AS UUID), CAST(:to_event_id AS UUID),
                          CAST(:fault_window_id AS UUID),
                          :source_system, :simulated,
-                         to_timestamp(:event_timestamp), CAST(:metadata AS JSONB))
-                    """
-                ),
-                params,
+                         to_timestamp(:event_timestamp), CAST(:metadata AS JSONB)
+                     WHERE NOT EXISTS (
+                           SELECT 1
+                             FROM tag_event_diffs existing
+                            WHERE existing.tenant_id = CAST(:tenant_id AS UUID)
+                              AND existing.to_event_id IS NOT DISTINCT FROM
+                                  CAST(:to_event_id AS UUID)
+                              AND existing.diff_type = :diff_type
+                              AND existing.threshold IS NOT DISTINCT FROM :threshold
+                     )
+                    RETURNING 1
+                """
             )
-        return len(diffs)
+            for p in params:
+                if conn.execute(insert_sql, p).scalar_one_or_none() is not None:
+                    inserted += 1
+        return inserted

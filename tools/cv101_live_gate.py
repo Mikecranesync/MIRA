@@ -58,6 +58,8 @@ import json
 import sys
 from typing import Optional
 
+from machine_history_provenance import classify_event
+
 EXIT_GO = 0
 EXIT_NOGO = 1
 EXIT_UNKNOWN = 2
@@ -70,9 +72,6 @@ CAUSE_PROVENANCE = "PROVENANCE"  # synthetic traffic answering for the rig
 CAUSE_QUALITY = "GATEWAY_QUALITY"  # collector says the values are bad
 CAUSE_STALE = "STALE_OBSERVATION"  # observations too old
 CAUSE_SCOPE = "SCOPE"  # wrong tag set
-
-_SYNTHETIC_SOURCES = {"simulator", "simlab"}
-
 
 class Verdict:
     def __init__(self, ok: bool, cause: Optional[str], lines: list, exit_code: int):
@@ -111,11 +110,28 @@ def classify(
             EXIT_NOGO,
         )
 
-    # Prefer a real (non-synthetic) group; a simulator group must never satisfy
-    # the physical gate, but it is reported so SimLab traffic is never mistaken
-    # for silence.
-    physical = [r for r in rows if not _is_synthetic(r)]
-    synthetic = [r for r in rows if _is_synthetic(r)]
+    # CV-101 accepts exactly one provenance pair.  Keep every non-synthetic row
+    # in the partition rather than dropping it: an approved group cannot mask a
+    # foreign physical gateway or unknown provenance in the same probe result.
+    physical = [r for r in rows if _is_cv101_physical(r)]
+    synthetic = [r for r in rows if classify_event(r).provenance == "simulated"]
+    non_approved = [
+        r
+        for r in rows
+        if classify_event(r).provenance != "simulated" and not _is_cv101_physical(r)
+    ]
+
+    if non_approved:
+        names = ", ".join(_label(r) for r in non_approved)
+        return Verdict(
+            False,
+            CAUSE_PROVENANCE,
+            [
+                "NO-GO: non-approved provenance is present (%s)." % names,
+                "  CV-101 requires exactly ignition/cv101-bench-gw with simulated=false.",
+            ],
+            EXIT_NOGO,
+        )
 
     if not physical:
         names = ", ".join(_label(r) for r in synthetic)
@@ -123,8 +139,8 @@ def classify(
             False,
             CAUSE_PROVENANCE,
             [
-                "NO-GO: only SYNTHETIC traffic is present (%s)." % names,
-                "  SimLab/simulated rows can never satisfy the physical CV-101 gate.",
+                "NO-GO: no positively approved CV-101 physical traffic is present (%s)." % names,
+                "  Only ignition/cv101-bench-gw with simulated=false can satisfy this gate.",
             ],
             EXIT_NOGO,
         )
@@ -247,10 +263,9 @@ def classify(
     )
 
 
-def _is_synthetic(r: dict) -> bool:
-    if r.get("simulated") in (True, "t", "true", "True"):
-        return True
-    return str(r.get("source_system") or "").lower() in _SYNTHETIC_SOURCES
+def _is_cv101_physical(r: dict) -> bool:
+    """CV-101 is stricter than generic physical provenance: exact approved pair."""
+    return classify_event(r).cv101_approved
 
 
 def _label(r: dict) -> str:

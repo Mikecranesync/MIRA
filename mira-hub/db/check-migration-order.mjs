@@ -16,7 +16,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+// Test-only override lets CI prove an intentionally bad ordering without
+// mutating the repository's real migrations directory.
+const MIGRATIONS_DIR = process.env.MIRA_MIGRATIONS_DIR || path.join(__dirname, "migrations");
 
 // ---------------------------------------------------------------------------
 // Dependency map — hand-maintained.
@@ -36,6 +38,11 @@ const DEP_MAP = [
   { pattern: /008-tenants-rls/,      issue: "#578", deps: ["#562", "#565", "#566", "#568", "#574", "#576"] },
   { pattern: /009-sso/,              issue: "#579", deps: ["#578"] },
   { pattern: /010-pwa-sync/,         issue: "#575", deps: ["#565"] },
+  // The durable task heartbeat builds on the existing historian foundation.
+  // Keep the cursor pattern number-agnostic so an isolated checker test can
+  // prove the failure mode by placing that foundation after 086.
+  { pattern: /\d+_historian_cursor/, issue: "#2343", deps: [] },
+  { pattern: /086_historian_task_heartbeat/, issue: "#3485", deps: ["#2343"] },
 ];
 
 // ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ class InMemoryDiffStore:
         self.state: dict = {}
         self.diffs: list[TagDiff] = []
 
-    def load_state(self, tenant_id, tag_paths):
+    def load_state(self, tenant_id, tag_paths, before_ts):
         return {t: self.state[t] for t in tag_paths if t in self.state}
 
     def persist_diffs(self, diffs):
@@ -80,6 +80,32 @@ def test_happy_path_writes_diffs_and_returns_summary():
     assert [d.diff_type for d in store.diffs] == [RISING_EDGE, FALLING_EDGE]
     # The core asks the reader for the implicit cursor (since_ts=None) + batch_size.
     assert captured["args"] == (TENANT, None, 500)
+
+
+def test_recomputed_diff_reports_zero_when_store_inserts_zero_rows():
+    """Catch summaries that count computed diffs instead of committed rows."""
+
+    class AlreadyPersistedStore(InMemoryDiffStore):
+        def persist_diffs(self, diffs):
+            return 0
+
+    readings = [
+        _r("PE-101", "false", 1, eid="from-event"),
+        _r("PE-101", "true", 2, eid="to-event"),
+    ]
+
+    summary = run_historize_batch(
+        store=AlreadyPersistedStore(),
+        read_events=lambda *a: readings,
+        config=DiffConfig(),
+        tenant_id=TENANT,
+        batch_size=100,
+    )
+
+    assert summary["status"] == "ok"
+    assert summary["tag_events_read"] == 2
+    assert summary["diffs_written"] == 0
+    assert summary["last_processed_ts"] == 2.0
 
 
 def test_empty_batch_is_ok_with_zero_diffs():

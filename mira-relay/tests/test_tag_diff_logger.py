@@ -19,6 +19,9 @@ Covered behaviours (PLAN.md P5):
 
 from __future__ import annotations
 
+import json
+
+import tag_diff_logger
 from tag_diff_logger import (
     FALLING_EDGE,
     QUALITY_DEGRADED,
@@ -28,9 +31,11 @@ from tag_diff_logger import (
     THRESHOLD_CROSS_LOW,
     VALUE_CHANGED,
     DiffConfig,
+    NeonDiffStore,
     TagDiff,
     TagDiffLogger,
     TagReading,
+    TagState,
     compute_diffs,
 )
 
@@ -190,16 +195,53 @@ def test_real_provenance_not_flipped():
 
 
 class InMemoryDiffStore:
-    def __init__(self):
-        self.state: dict[str, "object"] = {}
+    def __init__(self, raw_readings=None):
+        self.raw_readings = list(raw_readings or [])
+        self.before_ts = None
         self.diffs: list[TagDiff] = []
 
-    def load_state(self, tenant_id, tag_paths):
-        return {t: self.state[t] for t in tag_paths if t in self.state}
+    def load_state(self, tenant_id, tag_paths, before_ts):
+        self.before_ts = before_ts
+        state = {}
+        for tag_path in tag_paths:
+            prior = [
+                reading
+                for reading in self.raw_readings
+                if reading.tag_path == tag_path and reading.event_timestamp < before_ts
+            ]
+            if prior:
+                latest = max(prior, key=lambda reading: reading.event_timestamp)
+                state[tag_path] = TagState(
+                    last_value=latest.value,
+                    last_quality=latest.quality,
+                    last_event_id=latest.event_id,
+                )
+        return state
 
     def persist_diffs(self, diffs):
         self.diffs.extend(diffs)
         return len(diffs)
+
+
+def test_logger_loads_state_strictly_before_batch_start():
+    raw_readings = [
+        _r("PE-101", "false", 100, eid="e100"),
+        _r("PE-101", "true", 400, eid="e400"),
+        _r("PE-101", "true", 900, eid="e900"),
+    ]
+    store = InMemoryDiffStore(raw_readings)
+
+    diffs = TagDiffLogger(store).process_batch(
+        [raw_readings[1]], DiffConfig(), tenant_id=TENANT
+    )
+
+    assert store.before_ts == 400.0
+    assert len(diffs) == 1
+    assert diffs[0].diff_type == RISING_EDGE
+    assert diffs[0].prev_value == "false"
+    assert diffs[0].new_value == "true"
+    assert diffs[0].from_event_id == "e100"
+    assert diffs[0].to_event_id == "e400"
 
 
 def test_logger_no_cross_batch_edge_without_state():
@@ -213,13 +255,180 @@ def test_logger_no_cross_batch_edge_without_state():
     out1 = logger.process_batch(b1, DiffConfig(), tenant_id=TENANT)
     assert _types(out1) == [RISING_EDGE]
 
-    # Seed carry-forward state (prod NeonDiffStore reads this from tag_events).
-    _, state = compute_diffs(b1, DiffConfig(), tenant_id=TENANT)
-    store.state.update(state)
+    # Seed carry-forward events (prod NeonDiffStore reads from tag_events).
+    store.raw_readings.extend(b1)
 
     b2 = [_r("PE-101", "false", 3)]
     out2 = logger.process_batch(b2, DiffConfig(), tenant_id=TENANT)
     assert _types(out2) == [FALLING_EDGE]
+
+
+def test_logger_reports_rows_persisted_across_exact_retry():
+    """Catch treating recomputed diffs as newly written rows on a retry."""
+
+    class SerialRetryStore(InMemoryDiffStore):
+        def __init__(self):
+            super().__init__()
+            self.semantic_identities: set[tuple] = set()
+
+        def persist_diffs(self, diffs):
+            inserted = 0
+            for diff in diffs:
+                identity = (
+                    diff.tenant_id,
+                    diff.to_event_id,
+                    diff.diff_type,
+                    diff.threshold,
+                )
+                if identity not in self.semantic_identities:
+                    self.semantic_identities.add(identity)
+                    self.diffs.append(diff)
+                    inserted += 1
+            return inserted
+
+    readings = [
+        _r("PE-101", "false", 1, eid="from-event"),
+        _r("PE-101", "true", 2, eid="to-event"),
+    ]
+    store = SerialRetryStore()
+    logger = TagDiffLogger(store)
+
+    first = logger.process_batch(readings, DiffConfig(), tenant_id=TENANT)
+    assert len(first) == 1
+    assert logger.last_written_count == 1
+
+    retry = logger.process_batch(readings, DiffConfig(), tenant_id=TENANT)
+    assert len(retry) == 1
+    assert logger.last_written_count == 0
+    assert len(store.diffs) == 1
+
+
+def test_neon_store_retry_reuses_existing_fault_window_for_new_group_member(monkeypatch):
+    """Catch a retry splitting a late neighbor from its committed trigger."""
+
+    class FakeResult:
+        def __init__(self, *, scalar=None, scalars=None):
+            self._scalar = scalar
+            self._scalars = list(scalars or [])
+
+        def scalar(self):
+            return self._scalar
+
+        def scalar_one_or_none(self):
+            return self._scalar
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self._scalars
+
+    class FakeConnection:
+        def __init__(self):
+            self.rows: dict[tuple, dict] = {}
+            self.next_window = 0
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            params = params or {}
+            if "gen_random_uuid" in sql:
+                self.next_window += 1
+                return FakeResult(
+                    scalar=f"00000000-0000-0000-0000-{self.next_window:012d}"
+                )
+            identity = (
+                params.get("tenant_id"),
+                params.get("to_event_id"),
+                params.get("diff_type"),
+                params.get("threshold"),
+            )
+            if "semantic_members" in params:
+                existing_windows = []
+                for member in json.loads(params["semantic_members"]):
+                    member_identity = (
+                        params["tenant_id"],
+                        member["to_event_id"],
+                        member["diff_type"],
+                        member["threshold"],
+                    )
+                    row = self.rows.get(member_identity)
+                    if row is not None:
+                        existing_windows.append(row["fault_window_id"])
+                return FakeResult(scalars=existing_windows)
+            if "INSERT INTO tag_event_diffs" in sql:
+                if identity in self.rows:
+                    return FakeResult(scalar=None)
+                self.rows[identity] = dict(params)
+                return FakeResult(scalar=1)
+            return FakeResult()
+
+    class FakeTransaction:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            return self.connection
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakeEngine:
+        def __init__(self):
+            self.connection = FakeConnection()
+
+        def begin(self):
+            return FakeTransaction(self.connection)
+
+    trigger = TagDiff(
+        tenant_id=TENANT,
+        tag_path="Fault_Alarm",
+        diff_type=RISING_EDGE,
+        prev_value="false",
+        new_value="true",
+        value_type="bool",
+        event_timestamp=400.0,
+        from_event_id="00000000-0000-0000-0000-000000000100",
+        to_event_id="00000000-0000-0000-0000-000000000400",
+        fault_window_id="first-local-key",
+    )
+    retried_trigger = TagDiff(**{**trigger.__dict__, "fault_window_id": "retry-local-key"})
+    late_neighbor = TagDiff(
+        tenant_id=TENANT,
+        tag_path="Motor_State",
+        diff_type=VALUE_CHANGED,
+        prev_value="RUN",
+        new_value="FAULT",
+        value_type="string",
+        event_timestamp=403.0,
+        from_event_id="00000000-0000-0000-0000-000000000200",
+        to_event_id="00000000-0000-0000-0000-000000000403",
+        fault_window_id="retry-local-key",
+    )
+    engine = FakeEngine()
+    store = NeonDiffStore("postgresql://unused")
+    monkeypatch.setattr(store, "_engine", lambda: engine)
+
+    assert store.persist_diffs([trigger]) == 1
+    assert store.persist_diffs([retried_trigger, late_neighbor]) == 1
+    assert store.persist_diffs([retried_trigger, late_neighbor]) == 0
+
+    assert len(engine.connection.rows) == 2
+    window_ids = {row["fault_window_id"] for row in engine.connection.rows.values()}
+    assert window_ids == {"00000000-0000-0000-0000-000000000001"}
+
+
+def test_existing_fault_window_resolution_fails_closed_on_conflict():
+    """Catch silently choosing one UUID from a fractured persisted group."""
+    try:
+        tag_diff_logger._resolve_existing_fault_window_id(
+            [
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002",
+            ]
+        )
+        assert False, "expected conflicting existing fault windows to fail closed"
+    except ValueError as exc:
+        assert str(exc) == "conflicting_existing_fault_windows"
 
 
 def test_logger_requires_tenant():
