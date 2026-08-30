@@ -7,6 +7,7 @@
  * same hook with `postNotebookChat`; nothing in this file parses display text
  * for control state. Keyword → fixture map below.
  */
+import { useMemo, useState } from "react";
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -64,6 +65,40 @@ const fixtureTransport: SpikeTransport = (message, signal, onRawChunk) =>
       onRawChunk(raw);
     }, 400);
   });
+
+/**
+ * Real-HTTP SSE probe transport (spike device-pass lane). Same platform
+ * primitives as the mobile `requestStream` (STRM-1): `window.fetch` +
+ * `body.getReader()` + AbortSignal. On web this streams incrementally and
+ * Stop aborts the server run (assert via GET /labs/chat-spike/stream). On a
+ * Capacitor WebView with the CapacitorHttp fetch patch the body arrives as
+ * ONE buffered chunk and the abort never reaches the server — the honest
+ * platform limit this probe exists to observe (#3453). `onHttpChunk` reports
+ * the delivery granularity so the proof is readable on-screen.
+ */
+function makeLiveTransport(onHttpChunk: (count: number) => void): SpikeTransport {
+  return async (message, signal, onRawChunk) => {
+    const res = await fetch("/labs/chat-spike/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`probe stream failed: ${res.status}`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let raw = "";
+    let chunks = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      raw += dec.decode(value, { stream: true });
+      chunks += 1;
+      onHttpChunk(chunks);
+      onRawChunk(raw);
+    }
+  };
+}
 
 const SpikeText: TextMessagePartComponent = () => (
   <div style={{ color: "var(--foreground)" }}>
@@ -190,8 +225,14 @@ function AssistantMessage() {
 }
 
 export function ChatSpike() {
+  const [live, setLive] = useState(false);
+  const [httpChunks, setHttpChunks] = useState(0);
+  const transport = useMemo(
+    () => (live ? makeLiveTransport(setHttpChunks) : fixtureTransport),
+    [live],
+  );
   const { runtime } = useMiraChatRuntime({
-    transport: fixtureTransport,
+    transport,
     initialRows: PERSISTED_ROWS,
   });
 
@@ -202,6 +243,21 @@ export function ChatSpike() {
           <strong>Compatibility spike</strong> (dev-only, fixture transport). Try: a plain question ·
           “what happened at 14:03” · “is it safe to open the cabinet live” · “torque spec” ·
           “unknown frame” · “fail”. Stop mid-stream to prove STRM-2.
+          <label className="mt-1 flex items-center gap-2">
+            <input
+              type="checkbox"
+              data-testid="live-toggle"
+              checked={live}
+              onChange={(e) => {
+                setLive(e.target.checked);
+                setHttpChunks(0);
+              }}
+            />
+            Live SSE probe (real HTTP stream — web: incremental; device: one buffered chunk)
+          </label>
+          {live ? (
+            <div data-testid="chunk-count">HTTP chunks this stream: {httpChunks}</div>
+          ) : null}
         </div>
         <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
           <ThreadPrimitive.Viewport className="relative min-h-0 flex-1 overflow-y-auto pr-1" autoScroll>
