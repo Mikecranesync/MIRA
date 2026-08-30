@@ -1075,7 +1075,10 @@ export async function validateChatSources(
   tenantId: string,
   notebookId: string,
   requestedDocIds: string[],
-): Promise<{ ok: true; docIds: string[]; nodeId: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; docIds: string[]; nodeId: string; remapped?: Record<string, string> }
+  | { ok: false; error: string }
+> {
   if (!Array.isArray(requestedDocIds) || requestedDocIds.length === 0) {
     return { ok: false, error: "no_sources_selected" };
   }
@@ -1105,11 +1108,45 @@ export async function validateChatSources(
       [tenantId, notebookId, requestedDocIds],
     );
     const valid = new Set(res.rows.map((r: Record<string, unknown>) => String(r.doc_id)));
-    const rejectedOrForeign = requestedDocIds.filter((d) => !valid.has(d));
-    if (rejectedOrForeign.length > 0) {
+    const nodeId = String(nb.rows[0].node_id);
+    const stale = requestedDocIds.filter((d) => !valid.has(d));
+    if (stale.length === 0) {
+      return { ok: true as const, docIds: requestedDocIds, nodeId };
+    }
+    // #3442: a nameplate re-confirm supersedes the derived doc while an open
+    // client still holds the OLD doc id in its chat scope. The technician's
+    // intent ("use my nameplate") is unambiguous, so a requested id that is a
+    // PROVEN superseded member of this notebook maps to the visible successor
+    // for the same origin photo. The successor must clear the exact
+    // positive-trust bar a directly-requested member does — this is a rename,
+    // never a widening. Anything else stale stays a hard refusal.
+    const remapRes = await c.query(
+      `SELECT DISTINCT ON (old.doc_id)
+              old.doc_id::text AS old_doc_id,
+              cur.doc_id::text AS new_doc_id
+         FROM equipment_notebook_sources old
+         JOIN equipment_notebook_sources cur
+           ON cur.tenant_id = old.tenant_id
+          AND cur.notebook_id = old.notebook_id
+          AND cur.origin_file_id = old.origin_file_id
+        WHERE old.tenant_id = $1::uuid AND old.notebook_id = $2::uuid
+          AND old.doc_id = ANY($3::uuid[])
+          AND old.superseded_at IS NOT NULL
+          AND old.origin_file_id IS NOT NULL
+          AND cur.superseded_at IS NULL
+          AND cur.match_state IN ('user_confirmed', 'verified')
+          AND cur.enabled_by_default = true
+        ORDER BY old.doc_id, cur.created_at DESC, cur.doc_id DESC`,
+      [tenantId, notebookId, stale],
+    );
+    const remapped = new Map<string, string>(
+      remapRes.rows.map((r: Record<string, unknown>) => [String(r.old_doc_id), String(r.new_doc_id)]),
+    );
+    if (stale.some((d) => !remapped.has(d))) {
       return { ok: false as const, error: "source_not_in_notebook" };
     }
-    return { ok: true as const, docIds: requestedDocIds, nodeId: String(nb.rows[0].node_id) };
+    const docIds = [...new Set(requestedDocIds.map((d) => (valid.has(d) ? d : remapped.get(d) as string)))];
+    return { ok: true as const, docIds, nodeId, remapped: Object.fromEntries(remapped) };
   });
 }
 
