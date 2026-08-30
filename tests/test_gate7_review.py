@@ -1013,18 +1013,105 @@ def test_pr_kind_classifies_documentation_code_and_mixed():
     assert pr_kind([]) == "code"
 
 
-def test_scoped_paths_keeps_only_the_scope_and_kind_follows_it():
-    """CU-03 follow-up (#3481): a `--paths docs/` run was briefed as 'partly
-    documentation' because kind came from the FULL file list, and the reviewer
-    reported the out-of-scope code as missing three rounds running. Kind must
-    follow what the reviewer will actually see."""
-    from gate7_review import scoped_paths
+_E = "docs/architecture/convergence/units/evidence/CU-03/"
 
-    files = ["tools/x.py", "docs/a.md", "docs/evidence/b.md"]
-    assert scoped_paths(files, ("docs/",)) == ["docs/a.md", "docs/evidence/b.md"]
-    assert pr_kind(scoped_paths(files, ("docs/",))) == "documentation"
-    assert pr_kind(scoped_paths(files, ("tools/",))) == "code"
-    assert pr_kind(files) == "mixed"
+
+def _section(path: str, body: str = "+x\n", *, header: str = "") -> str:
+    return (
+        f"diff --git a/{path} b/{path}\n{header}--- a/{path}\n+++ b/{path}\n@@ -0,0 +1 @@\n{body}"
+    )
+
+
+def test_kind_is_derived_from_the_reviewed_diff_not_the_pr_file_list():
+    """#3481 round W, code F2 (medium, materially right): `kind` came from the
+    PR's file list — scoped, but BEFORE the artifact drop — so code plus its
+    preserved raw evidence was briefed as "mixed" although every artifact had
+    been dropped from what the reviewer saw. Kind is classified from the diff
+    that is actually sent: after `--paths` scoping AND after the exclusion."""
+    from gate7_review import drop_evidence_artifacts, filter_diff_paths, reviewed_paths
+
+    code_plus_evidence = _section("tools/x.py") + _section(_E + "round-9-review.md", "+raw\n")
+    docs_plus_evidence = _section("docs/notes.md") + _section(_E + "r.stderr.log", "+log\n")
+    pr_files = ["tools/x.py", _E + "round-9-review.md"]
+    assert pr_kind(pr_files) == "mixed"  # the PR's file list — the wrong input
+    kept, _ = drop_evidence_artifacts(code_plus_evidence)
+    assert reviewed_paths(kept) == ["tools/x.py"]
+    assert pr_kind(reviewed_paths(kept)) == "code"
+    kept, _ = drop_evidence_artifacts(docs_plus_evidence)
+    assert reviewed_paths(kept) == ["docs/notes.md"]
+    assert pr_kind(reviewed_paths(kept)) == "documentation"
+    # --include-evidence: the artifacts ARE seen, so they count (as documentation).
+    assert pr_kind(reviewed_paths(code_plus_evidence)) == "mixed"
+    # Scope first, then drop: a docs slice of a mixed PR is a documentation review.
+    scoped = filter_diff_paths(code_plus_evidence + docs_plus_evidence, ("docs/",))
+    kept, _ = drop_evidence_artifacts(scoped)
+    assert pr_kind(reviewed_paths(kept)) == "documentation"
+    assert pr_kind(reviewed_paths(filter_diff_paths(code_plus_evidence, ("tools/",)))) == "code"
+
+
+def test_reviewed_paths_reads_add_modify_delete_and_rename_headers():
+    from gate7_review import reviewed_paths
+
+    diff = (
+        "diff --git a/new.py b/new.py\nnew file mode 100644\n--- /dev/null\n+++ b/new.py\n+1\n"
+        "diff --git a/mod.md b/mod.md\n--- a/mod.md\n+++ b/mod.md\n-1\n+2\n"
+        "diff --git a/gone.py b/gone.py\ndeleted file mode 100644\n--- a/gone.py\n+++ /dev/null\n-1\n"
+        "diff --git a/old.md b/docs/renamed.md\nsimilarity index 90%\nrename from old.md\n"
+        "rename to docs/renamed.md\n--- a/old.md\n+++ b/docs/renamed.md\n+moved\n"
+    )
+    assert reviewed_paths(diff) == ["new.py", "mod.md", "gone.py", "docs/renamed.md"]
+    assert pr_kind(reviewed_paths(diff)) == "mixed"
+    assert reviewed_paths("") == []
+
+
+def _drive_main(monkeypatch, tmp_path, pr_files, diff, argv_extra=()):
+    """Run main() against a fake PR: captures the prompt the cascade would be
+    sent and returns (exit_code, prompt or None)."""
+    import gate7_review as g7
+
+    seen: dict = {}
+    monkeypatch.setattr(g7, "fetch_pr", lambda n: ("t", "b", pr_files, diff, "deadbeef"))
+
+    def fake_cascade(prompt, **kw):
+        seen["prompt"] = prompt
+        return (
+            "## VERDICT\nPASS\n\n## FINDINGS\n\n## NOT REVIEWED\n- none\n",
+            "fake",
+            ["fake: ok"],
+        )
+
+    monkeypatch.setattr(g7, "call_cascade", fake_cascade)
+    rc = g7.main(["3481", "-o", str(tmp_path / "out.md"), *argv_extra])
+    return rc, seen.get("prompt")
+
+
+def test_main_briefs_code_plus_raw_evidence_as_a_code_review(monkeypatch, tmp_path):
+    diff = _section("tools/x.py") + _section(_E + "round-9-review.md", "+raw\n")
+    rc, prompt = _drive_main(monkeypatch, tmp_path, ["tools/x.py", _E + "round-9-review.md"], diff)
+    assert rc == 0 and prompt is not None
+    assert "historical EVIDENCE" not in prompt  # the documentation/mixed brief is absent
+    assert "+raw" not in prompt  # the artifact was dropped
+
+
+def test_main_briefs_docs_plus_raw_evidence_as_a_documentation_review(monkeypatch, tmp_path):
+    diff = _section("docs/notes.md") + _section(_E + "r.stderr.log", "+log\n")
+    rc, prompt = _drive_main(monkeypatch, tmp_path, ["docs/notes.md", _E + "r.stderr.log"], diff)
+    assert rc == 0 and prompt is not None
+    assert "historical EVIDENCE" in prompt  # briefed as documentation
+
+
+def test_main_exits_without_a_review_when_only_raw_evidence_remains(monkeypatch, tmp_path, capsys):
+    diff = _section(_E + "round-9-review.md", "+raw\n") + _section(_E + "r.stderr.log", "+log\n")
+    rc, prompt = _drive_main(
+        monkeypatch, tmp_path, [_E + "round-9-review.md", _E + "r.stderr.log"], diff
+    )
+    assert rc == 1 and prompt is None  # no provider call, no verdict invented
+    assert "nothing left to review" in capsys.readouterr().err
+    # --include-evidence puts the artifacts in scope: reviewed, as documentation.
+    rc, prompt = _drive_main(
+        monkeypatch, tmp_path, [_E + "round-9-review.md"], diff, ("--include-evidence",)
+    )
+    assert rc == 0 and prompt is not None and "historical EVIDENCE" in prompt
 
 
 def test_the_brief_never_asserts_a_round_budget_or_cap():

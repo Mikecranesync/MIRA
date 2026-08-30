@@ -47,6 +47,13 @@ The remaining decision is the human Gate 9 / merge.
    captured log). Lane: `test_deleted_evidence_artifact_is_dropped_and_receipted` locks that a
    deleted artifact is dropped (a claim three malformed attempts made; false).
 
+5. **Lane: `kind` from the reviewed diff (round Y, this commit).** `tools/gate7_review.py` now
+   classifies the PR kind from `reviewed_paths(diff)` — the post-scope, post-artifact-drop diff —
+   instead of the PR's file list, which still carried dropped artifacts (code + raw evidence was
+   briefed as "mixed"). `scoped_paths` removed. `main()`-level locks: code + raw evidence ⇒ code
+   brief; docs + raw evidence ⇒ documentation brief; evidence-only ⇒ exit 1, no provider call;
+   `--include-evidence` ⇒ documentation. Closes round-23 code F2 (medium, materially right).
+
 Supporting: `tools/qa/security/knowledge_entries_read_allowlist.yml` re-keyed for the two unchanged
 `store.py` reads (`121→173`, `412→488`; hashes unchanged); four pre-existing test fakes now yield
 the bound id from `execute()` (the contract changed); two mock-SQL assertions rephrased so
@@ -60,7 +67,8 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | U | `77b05c0c5` | BLOCK ×2 (slice artifact; mechanism sentence) → adjudication attempts 1–2 malformed (preserved) → attempt 3 **PASS 2/2** | BLOCK ×3 → adjudication **PASS 3/3**; F1(b) guard accepted at the boundary → round V |
 | V | `99f18d8e9` | BLOCK ×1 (settled finding re-raised on a pre-mechanism row) → attempt 1 malformed → attempt 2 **PASS 1/1** | attempt 1 malformed (essay) → attempt 2 **BLOCK ×3**: F1/F2 **real** → root-fixed (round W); F3 false, locked; adjudication attempt 1 malformed, **not retried** (fix, don't adjudicate) |
 | W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 false premise, non-blocking; not adjudicated (fix, don't argue) |
-| X | this commit | round 24 — recorded in the final evidence commit | round 24 — a valid BLOCK is fixed, not adjudicated |
+| X | `8204059a4` | not reviewed — superseded before review by the round-23 F2 correction | F2 was materially right (kind from the PR file list, not the reviewed diff) → root-fixed in round Y |
+| Y | this commit | round 24 — recorded in the final evidence commit | round 24 — a valid BLOCK is fixed, not adjudicated |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
 PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at

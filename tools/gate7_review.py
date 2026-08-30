@@ -293,15 +293,23 @@ def pr_kind(changed_paths: list[str]) -> str:
     return "code"
 
 
-def scoped_paths(changed_paths: list[str], prefixes: tuple[str, ...]) -> list[str]:
-    """The changed paths a --paths scope keeps. Pure.
+def reviewed_paths(diff: str) -> list[str]:
+    """The b/ path of every file section of a unified diff — the files a
+    reviewer briefed with THIS diff will actually see. Pure.
 
-    A scoped run must brief the reviewer on what it will actually SEE. Classifying
-    from the full PR file list told a docs-only scope it was reviewing a "partly
-    documentation" change, and the reviewer then reported the (out-of-scope)
-    code as missing, three rounds running (CU-03 follow-up, PR #3481).
+    Kind is classified from the diff that is sent, after `--paths` scoping AND
+    after the evidence-artifact exclusion — never from the PR's file list.
+    Classifying from the full list briefed a docs-only scope as "partly
+    documentation" (#3481 rounds D–F); classifying from the scoped list but
+    before the exclusion briefed code plus its dropped raw evidence as "mixed"
+    (round W, code F2). A deletion's header still names its path
+    (`diff --git a/X b/X`); a rename's names the new path.
     """
-    return [p for p in changed_paths if any(p.startswith(pre) for pre in prefixes)]
+    return [
+        line.rsplit(" b/", 1)[-1].strip()
+        for line in diff.splitlines()
+        if line.startswith("diff --git ")
+    ]
 
 
 def settled_block(prior_reports: list[str]) -> str:
@@ -1289,8 +1297,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         file=sys.stderr,
     )
     receipts = receipts_block(head_sha, a.paths, excluded, diff, "high", artifacts=artifacts)
-    # Classified from the files the reviewer/adjudicator will actually SEE.
-    kind = pr_kind(scoped_paths(paths, tuple(a.paths)) if a.paths else paths)
+    # Classified from the files the reviewer/adjudicator will actually SEE: the
+    # diff as scoped and with the evidence artifacts already dropped — not the
+    # PR's file list (round W, code F2: that list still carried the dropped
+    # artifacts, so code + raw evidence was briefed as "mixed").
+    kind = pr_kind(reviewed_paths(diff))
 
     if a.adjudicate:
         try:
