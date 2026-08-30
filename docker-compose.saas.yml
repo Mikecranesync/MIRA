@@ -1026,6 +1026,8 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://mira-redis:6379/0
       - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - MIRA_DEPLOYMENT_ENVIRONMENT=production
+      - MIRA_GIT_SHA=${MIRA_GIT_SHA:-unknown}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - TAG_DIFF_BATCH_SIZE=${TAG_DIFF_BATCH_SIZE:-1000}

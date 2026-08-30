@@ -80,6 +80,15 @@ jobs:
             git reset --hard origin/main
           fi
 
+          # Heartbeat identity must describe the exact checked-out deployment.
+          # Missing, abbreviated, uppercase, or otherwise malformed values fail
+          # before compose can start a historian with misleading evidence.
+          export MIRA_GIT_SHA="$(git rev-parse HEAD)"
+          if ! printf '%s\n' "$MIRA_GIT_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Checked-out MIRA_GIT_SHA is not exactly 40 lowercase hex characters"
+            exit 1
+          fi
+
           # mira-bot-telegram MUST be in the default set: the staging Telegram
           # smoke (nameplate photo -> Drive Commander pack answer) runs against
           # stg-mira-bot-telegram, and build/force-recreate below are scoped to
@@ -88,7 +97,7 @@ jobs:
           # is intentionally NOT here — staging runs no Slack bot (see the
           # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
           # deliberately omitted), so adding it would fail `compose build`.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram}"
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram stg-mira-redis stg-mira-historian-worker stg-mira-historian-beat}"
           echo "Rebuild targets: $TARGETS"
 
           if [ "${RESET_VOLUMES:-false}" = "true" ]; then
@@ -99,7 +108,11 @@ jobs:
 
           echo "=== Pre-deploy cleanup: remove any stale stg-* containers ==="
           for svc in $TARGETS atlas-api atlas-db atlas-minio; do
-            docker rm -f "stg-${svc}" 2>/dev/null || true
+            case "$svc" in
+              stg-*) container="$svc" ;;
+              *) container="stg-${svc}" ;;
+            esac
+            docker rm -f "$container" 2>/dev/null || true
           done
 
           # Deploy identity — `/VERSION` was retired 2026-08-02 (#3064); the
@@ -139,6 +152,10 @@ jobs:
           echo "=== Deploy complete ==="
           doppler run --project factorylm --config stg -- \
             docker compose -f docker-compose.staging-vps.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+          echo "=== Machine Memory historian status ==="
+          doppler run --project factorylm --config stg -- \
+            docker compose -f docker-compose.staging-vps.yml ps stg-mira-redis stg-mira-historian-worker stg-mira-historian-beat
 
           # Hard guard — fail loudly if any production container disappeared.
           PROD_RUNNING=$(docker ps --filter "name=^mira-" --filter "status=running" --format '{{.Names}}' | grep -v '^stg-' | wc -l)
