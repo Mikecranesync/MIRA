@@ -235,6 +235,11 @@ class TestConflictVisibility:
             "UPDATE -- nothing to see\n    knowledge_entries SET is_private = TRUE WHERE id = :id",
             "UPDATE /* a */ /* b */ public./* c */knowledge_entries SET is_private = :p WHERE id = :id",
             "UPDATE\n  -- one\n  /* two */\n  knowledge_entries ke\n  SET ke.is_private = false",
+            # Round AN (#3481, round-37 S3 F2): a WHERE (or a comment marker) inside a
+            # string literal must not end the SET capture early.
+            "UPDATE knowledge_entries SET notes='WHERE is a keyword', is_private = TRUE WHERE id = :id",
+            "UPDATE knowledge_entries SET notes = 'it''s WHERE', is_private=:p WHERE id = :id",
+            "UPDATE knowledge_entries SET notes = 'WHERE -- not a comment', is_private = false",
         ],
     )
     def test_update_scanner_catches_aliased_lowercase_and_multiline_forms(self, sql):
@@ -263,6 +268,11 @@ def _update_set_clauses(text: str) -> list[str]:
     or line (`-- …`) comments anywhere between UPDATE and the table name cannot
     hide it (round AK, round-34 S3 F1 SUSTAINED)."""
     gap = r"(?:\s|/\*.*?\*/|--[^\n]*\n)"  # whitespace or a SQL comment
+    # String-literal bodies are blanked first (round AN on #3481, round-37 S3 F2):
+    # a WHERE or a comment marker inside `'…'` (with `''` escapes) must not end
+    # the capture early. Double quotes are IDENTIFIERS in PostgreSQL
+    # (`"public"."knowledge_entries"`) and are left alone.
+    text = re.sub(r"'(?:[^']|'')*'", "''", text)
     return [
         m.group(1)
         for m in re.finditer(

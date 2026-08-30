@@ -916,6 +916,20 @@ def _gh_json(args: list[str]) -> dict:
     return json.loads(out.stdout)
 
 
+def _path_in_scope(path: str, prefixes: tuple[str, ...]) -> bool:
+    """Does a diff path fall under one of the `--paths` prefixes? A prefix is a
+    directory (normalised to end with `/`) or an exact file — never a substring
+    (#3481 round AL) — and the comparison is case-insensitive (#3481 round AN),
+    so a differently-cased spelling can neither escape nor be excluded by case.
+    Pure."""
+    p_low = path.lower()
+    for p in prefixes:
+        q = p.lower()
+        if p_low == q or p_low.startswith(q if q.endswith("/") else q + "/"):
+            return True
+    return False
+
+
 def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
     """Keep only the file sections of a unified diff whose b/ path starts with
     one of the prefixes. Used for per-file-group review of large PRs.
@@ -929,10 +943,7 @@ def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
     for line in diff.splitlines(keepends=True):
         if line.startswith("diff --git "):
             target = line.rsplit(" b/", 1)[-1].strip()
-            keep = any(
-                target == p or target.startswith(p if p.endswith("/") else p + "/")
-                for p in prefixes
-            )
+            keep = _path_in_scope(target, prefixes)
         if keep:
             kept.append(line)
     return "".join(kept)
@@ -1002,10 +1013,7 @@ def diff_paths_excluded(diff: str, prefixes: tuple[str, ...]) -> list[str]:
     for line in diff.splitlines():
         if line.startswith("diff --git "):
             target = line.rsplit(" b/", 1)[-1].strip()
-            if not any(
-                target == p or target.startswith(p if p.endswith("/") else p + "/")
-                for p in prefixes
-            ):
+            if not _path_in_scope(target, prefixes):
                 excluded.append(target)
     return excluded
 

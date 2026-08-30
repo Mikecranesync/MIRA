@@ -506,6 +506,38 @@ def test_decision_section_headings_are_matched_case_insensitively():
     assert adjudication_verdict_strict("## rulings\n\n## verdict\nPASS\n", prior) == "UNKNOWN"
 
 
+def test_a_second_findings_section_is_unknown_never_a_pass_that_drops_it():
+    """#3481 round AN (round-37 S5 F1 claimed a high finding in a SECOND
+    `## FINDINGS` block is silently dropped and the verdict is PASS). The shape
+    validator requires exactly one `## FINDINGS`; a second one is a malformed
+    attempt ⇒ UNKNOWN — never PASS, never a dropped finding."""
+    from gate7_review import fresh_review_verdict, parse_findings, validate_review_shape
+
+    two = (
+        "## VERDICT\nPASS\n\n## FINDINGS\n- **[severity: low] a** — b\n\n"
+        "## FINDINGS\n- **[severity: high] c** — d\n\n## NOT REVIEWED\nnone\n"
+    )
+    assert validate_review_shape(two) is not None
+    assert fresh_review_verdict(two, parse_findings(two, strict=True)) == "UNKNOWN"
+
+
+def test_scope_prefixes_match_case_insensitively():
+    """#3481 round AN (round-37 S4 F1): a `--paths` prefix and a diff path are
+    compared case-insensitively, so a differently-cased spelling of a scoped
+    directory can neither escape nor be excluded by case alone; the
+    directory-not-substring rule is unchanged."""
+    from gate7_review import diff_paths_excluded, filter_diff_paths
+
+    diff = (
+        "diff --git a/Docs/a.md b/Docs/a.md\n+upper\n"
+        "diff --git a/docs/b.md b/docs/b.md\n+lower\n"
+        "diff --git a/docs_extra/c.py b/docs_extra/c.py\n+sibling\n"
+    )
+    out = filter_diff_paths(diff, ("docs/",))
+    assert "+upper" in out and "+lower" in out and "+sibling" not in out
+    assert diff_paths_excluded(diff, ("DOCS",)) == ["docs_extra/c.py"]
+
+
 def test_diff_paths_excluded_lists_uncovered_files():
     from gate7_review import diff_paths_excluded
 
