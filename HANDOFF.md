@@ -1,4 +1,40 @@
-# HANDOFF — Technician Beta Recovery, Workstream B
+# HANDOFF — Technician Replay Truth, Workstream C1
+
+**Date:** 2026-08-30  
+**Branch:** `codex/machine-memory-truth-corrected`  
+**Implementation head:** `cb9caf6e72d124eb201db7cccfb473e99f0cc420`  
+**Base:** `origin/main` @ `6250dd442819f172901eb6c724074a2c18f886bb`  
+**Scope:** Deterministic REPLAY truth only. No deploy, production/Doppler access, shared-database mutation, historian claim, or seven-day claim.
+
+## Delivered
+
+- Separates current connection freshness from the historical window's returned-row, observation, provenance, quality, and admissibility counts.
+- Admits only good-quality physical observations from the positive producer/connection contract; diffs never count as observations. A shared fixture locks spoofed, simulated, unknown, and CV-101 cases.
+- Makes empty, unavailable, simulated-only, bad-quality-only, unknown-provenance, and legacy-unsafe windows non-actionable in mobile and provider-free at the Notebook chat boundary.
+- Adds the shared A0–A10/A12 anomaly catalog, additive producer title/message metadata, safe historical fallback, and canonical work-order prefill titles without internal tag/path leakage.
+- Preserves rolling compatibility but distrusts the predecessor `historicalCoverage` shape unless it contains the corrected `returnedRowCount` discriminator.
+
+## Verification
+
+- Hub focused suites: **92 passed**.
+- Mobile Replay suites: **53 passed**; production `tsc --noEmit && vite build` passed.
+- Crawler producer suite: **26 passed**; Ruff passed.
+- Named no-write proofs: **6 passed**.
+- Targeted Hub ESLint: clean.
+- `git diff --check`: clean; pre-commit secret/scope checks passed.
+- Hub production compilation passed under Webpack, then the repository-wide type phase stopped on unchanged `origin/main` export `Viewer` in `mira-hub/src/app/(hub)/command-center/page.ts`. Turbopack cannot follow this Windows worktree's externally pointed `node_modules` symlink. Neither failure is in this diff.
+- `freshness-guard.sh` could not execute under this host's WSL Git because the Windows worktree `.git` pointer is not a WSL-valid repository path. Exact base/head are recorded above instead.
+
+## Remaining gates
+
+- Exact-head standards/spec reviews must be PASS before PR handoff.
+- Open an unmerged PR referencing #3469 and #3470 without auto-closing them.
+- Workstream C remains incomplete: durable historian heartbeat, operations preflight, scheduled observation, deployed UI/API proof, and Mike's seven-day production gate are owned by C2/C3.
+- Current physical-data blocker remains run `33297349547`: `REPLAY`, `STALE_OBSERVATION`, `GATEWAY_QUALITY`.
+
+---
+
+# Prior handoff — Technician Beta Recovery, Workstream B
 
 **Date:** 2026-08-29
 **Branch:** `codex/technician-beta-recovery-b` (worktree `C:/Users/hharp/.codex/worktrees/technician-beta-recovery-b`)
