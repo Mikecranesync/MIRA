@@ -112,6 +112,26 @@ def test_discovery_matches_url_constants_case_insensitively(tmp_path):
     }
 
 
+def test_discovery_matches_url_constants_with_surrounding_whitespace(tmp_path):
+    """#3481 round Y code F2 (medium, real): a manifest constant written with
+    accidental surrounding whitespace (`"  https://…"`) escaped discovery, so the
+    consistency proof above would not have demanded a policy entry for its
+    origin. Discovery strips before matching and reports the stripped URL."""
+    (tmp_path / "padded.py").write_text(
+        'FEEDS = ["  https://padded.example.com/feed.xml", "HTTPS://tail.example.com/x  "]\n',
+        encoding="utf-8",
+    )
+    found = origins_mod.discover_manifests(tmp_path)
+    assert set(found["padded.FEEDS"]) == {
+        "https://padded.example.com/feed.xml",
+        "HTTPS://tail.example.com/x",
+    }
+    assert set(origins_mod.discover_feeder_origins(tmp_path)) == {
+        "padded.example.com",
+        "tail.example.com",
+    }
+
+
 def test_every_entry_is_well_formed(policy):
     """Each entry states a valid classification, a reason, and who decided."""
     bad = []

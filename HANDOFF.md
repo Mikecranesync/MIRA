@@ -68,7 +68,8 @@ Contract 13 (`tests/test_architecture.py`) does not read them as a new writer (n
 | V | `99f18d8e9` | BLOCK ×1 (settled finding re-raised on a pre-mechanism row) → attempt 1 malformed → attempt 2 **PASS 1/1** | attempt 1 malformed (essay) → attempt 2 **BLOCK ×3**: F1/F2 **real** → root-fixed (round W); F3 false, locked; adjudication attempt 1 malformed, **not retried** (fix, don't adjudicate) |
 | W | `fa3041680` | BLOCK ×1 (same settled finding, third time) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 **real** (`_log_ref` leaked userinfo) → root-fixed (round X); F2 **materially right** (kind from the PR file list, not the reviewed diff) → root-fixed (round Y); not adjudicated (fix, don't argue) |
 | X | `8204059a4` | not reviewed — superseded before review by the round-23 F2 correction | F2 was materially right (kind from the PR file list, not the reviewed diff) → root-fixed in round Y |
-| Y | this commit | round 24 — recorded in the final evidence commit | round 24 — a valid BLOCK is fixed, not adjudicated |
+| Y | `60c61870d` | BLOCK ×1 (fabricated `is_evidence_artifact` body) → adjudication **PASS 1/1** | attempts 1–3 malformed (preserved) → attempt 4 **BLOCK ×2**: F1 fabricated (no `dict(rulings)`; locked explicitly), F2 **real** (`_urls_in` whitespace) → root-fixed (round Z); not adjudicated |
+| Z | this commit | round 25 — recorded in the final evidence commit | round 25 — a valid BLOCK is fixed, not adjudicated |
 
 CI: green on `77b05c0c5` (33 pass); **Architecture Check red on `99f18d8e9`** (Contract 13 on this
 PR's own mock-SQL assertions — fixed in `fa3041680`, where CI went green again: 30 pass / 0 fail at
@@ -115,7 +116,7 @@ from the committed line, re-verified (245 passed) before anything was committed.
 
 ## 6. What remains / human actions
 
-1. **Round 24** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
+1. **Round 25** — fresh full-scope docs + code Gate 7 reviews of this exact pushed head; recorded
    in CU-03, the evidence README and here, in the final evidence/record commit. A valid code BLOCK
    is fixed (new head, new round), never adjudicated away. Reviews of a superseded head are not
    retried once the head has moved.

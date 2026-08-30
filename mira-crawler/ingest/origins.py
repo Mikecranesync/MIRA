@@ -32,15 +32,16 @@ TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
 
 def _urls_in(node: ast.AST) -> list[str]:
     return [
-        n.value
+        n.value.strip()
         for n in ast.walk(node)
         if isinstance(n, ast.Constant)
         and isinstance(n.value, str)
         # Scheme match is case-insensitive (Gate 7 round-12 group A on #3268):
         # a constant written `HTTPS://...` is still a configured origin, and a
         # manifest discovery that missed it would leave the policy consistency
-        # test vacuous for that origin.
-        and n.value.lower().startswith(("http://", "https://"))
+        # test vacuous for that origin. Surrounding whitespace is stripped first
+        # (#3481 round Y): a padded constant is still a configured origin.
+        and n.value.strip().lower().startswith(("http://", "https://"))
     ]
 
 

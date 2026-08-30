@@ -843,6 +843,28 @@ def test_duplicate_ruling_masking_an_omission_cannot_pass():
     assert adjudication_verdict([("REFUTED", "F1"), ("REFUTED", "F1")], prior) == "UNKNOWN"
 
 
+def test_a_later_refuted_never_overrides_an_earlier_sustained():
+    """#3481 round Y code F1 claimed a `dict(rulings)` keeps the LAST ruling per id,
+    so `F1 SUSTAINED` followed by `F1 REFUTED` would launder a high into a PASS.
+    No such dict exists: the bijection check voids the adjudication on the first
+    repeated id, whichever ruling came first — and the strict (fresh-output)
+    path inherits it."""
+    from gate7_review import adjudication_verdict, adjudication_verdict_strict
+
+    prior = [Finding("high", "a"), Finding("medium", "b")]
+    complete = [("SUSTAINED", "F1"), ("REFUTED", "F1"), ("REFUTED", "F2")]
+    assert adjudication_verdict(complete, prior) == "UNKNOWN"
+    assert adjudication_verdict(list(reversed(complete)), prior) == "UNKNOWN"
+    raw = (
+        "## RULINGS\n"
+        "- **[ruling: SUSTAINED] [id: F1]** — quote missing\n"
+        "- **[ruling: REFUTED] [id: F1]** — on reflection\n"
+        "- **[ruling: REFUTED] [id: F2]** — quote present\n"
+        "## VERDICT\nPASS\n"
+    )
+    assert adjudication_verdict_strict(raw, prior) == "UNKNOWN"
+
+
 def test_invented_ids_with_the_right_count_cannot_pass():
     """Gate 9 re-review evasion: wholly invented REFUTED titles with a matching
     count PASSed. Ids not assigned from the prior report void the adjudication."""
