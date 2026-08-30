@@ -65,11 +65,13 @@ def _input(**overrides):
         "fault_window_to": "2026-08-30T12:00:00Z",
         "replay_from": "2026-08-30T11:58:00Z",
         "replay_to": "2026-08-30T12:00:00Z",
-        "fault_window_row_count": 5,
-        "fault_window_physical_observation_count": 5,
+        "fault_window_row_count": 12,
+        "fault_window_physical_observation_count": 12,
         "fault_window_simulated_observation_count": 0,
         "fault_window_bad_quality_observation_count": 0,
         "fault_window_unknown_provenance_count": 0,
+        "fault_window_distinct_observed_timestamps": 1,
+        "fault_window_tag_count": 12,
     }
     values.update(overrides)
     return preflight.MachineMemoryPreflightInput(**values)
@@ -87,6 +89,41 @@ def test_healthy_complete_input_is_a_deterministic_go():
     assert first.snapshot_json == second.snapshot_json
 
 
+def test_running_heartbeat_with_a_fresh_finish_is_never_go():
+    """Would catch treating a stuck execution as a successful terminal heartbeat."""
+    verdict = preflight.evaluate(_input(heartbeat_status="running"))
+    assert verdict.status == preflight.NO_GO
+    assert "HISTORIAN_STUCK_RUNNING" in _codes(verdict)
+
+
+def test_fresh_ingest_cannot_mask_a_stale_source_observation():
+    """Would catch a GO when receipt time advances while source time is frozen."""
+    verdict = preflight.evaluate(_input(latest_event_at="2026-08-30T11:00:00Z"))
+    assert verdict.status == preflight.NO_GO
+    assert "STALE_OBSERVATION" in _codes(verdict)
+
+
+def test_replayed_observed_timestamp_cannot_produce_go():
+    """Would catch 100 physical rows carrying one frozen source timestamp."""
+    verdict = preflight.evaluate(
+        _input(
+            fault_window_row_count=100,
+            fault_window_physical_observation_count=100,
+            fault_window_distinct_observed_timestamps=1,
+            fault_window_tag_count=12,
+        )
+    )
+    assert verdict.status == preflight.NO_GO
+    assert "REPLAY" in _codes(verdict)
+
+
+def test_incomplete_cv101_tag_scope_cannot_produce_go():
+    """Would catch a narrow/partial stream being accepted as complete CV-101 evidence."""
+    verdict = preflight.evaluate(_input(fault_window_tag_count=11))
+    assert verdict.status == preflight.NO_GO
+    assert "SCOPE" in _codes(verdict)
+
+
 @pytest.mark.parametrize(
     ("changes", "code"),
     [
@@ -101,9 +138,9 @@ def test_healthy_complete_input_is_a_deterministic_go():
         ({"heartbeat_status": "error"}, "HISTORIAN_LAST_RUN_FAILED"),
         ({"fault_window_identity": None}, "FAULT_WINDOW_UNOBSERVED"),
         ({"fault_window_row_count": 0, "fault_window_physical_observation_count": 0}, "FAULT_WINDOW_EMPTY"),
-        ({"fault_window_physical_observation_count": 0, "fault_window_simulated_observation_count": 5}, "SIMULATED_ONLY"),
+        ({"fault_window_row_count": 5, "fault_window_physical_observation_count": 0, "fault_window_simulated_observation_count": 5}, "SIMULATED_ONLY"),
         ({"fault_window_bad_quality_observation_count": 5}, "GATEWAY_QUALITY_BAD"),
-        ({"fault_window_physical_observation_count": 4, "fault_window_unknown_provenance_count": 1}, "UNKNOWN_PROVENANCE"),
+        ({"fault_window_row_count": 5, "fault_window_physical_observation_count": 4, "fault_window_unknown_provenance_count": 1}, "UNKNOWN_PROVENANCE"),
         ({"observed_heartbeat_config_sha256": "f" * 64}, "HISTORIAN_CONFIG_MISMATCH"),
         ({"heartbeat_software_version": "f" * 40}, "HISTORIAN_CONFIG_MISMATCH"),
         ({"heartbeat_software_version": None}, "HISTORIAN_VERSION_UNKNOWN"),

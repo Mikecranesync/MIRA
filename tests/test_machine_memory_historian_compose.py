@@ -213,6 +213,12 @@ def test_production_build_and_up_calls_preserve_exported_sha_narrowly() -> None:
     assert "--preserve-env=true" not in workflow
 
 
+def test_production_default_targets_include_historian_worker_and_beat() -> None:
+    """Would catch a normal production deploy leaving the heartbeat services stale."""
+    workflow = PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+    assert {"mira-historian-worker", "mira-historian-beat"} <= set(_default_targets(workflow))
+
+
 def test_historian_and_redis_stanzas_do_not_reuse_dogfood_wiring() -> None:
     production = _compose(PRODUCTION_COMPOSE)["services"]
     staging = _compose(STAGING_COMPOSE)["services"]

@@ -75,7 +75,7 @@ def test_replay_query_requires_an_actual_fault_trigger_before_counting_evidence(
     replay = snapshotter.SHIPPED_QUERIES["replay"]
     assert "default_conveyor_fault_alarm" in replay
     assert "fault_trigger" in replay
-    assert "lower(trim(coalesce(value, '')))" in replay
+    assert "lower(trim(coalesce(trigger_event.value, '')))" in replay
     trigger = replay.split("fault_trigger AS (", 1)[1].split("), scoped_events", 1)[0]
     for predicate in (
         "source_system = 'ignition'",
@@ -92,3 +92,41 @@ def test_replay_query_keeps_the_served_bounds_even_when_the_fault_trigger_is_lat
     scoped = replay.split("scoped_events AS (", 1)[1].split(")\nSELECT", 1)[0]
     assert "event_timestamp >= replay_from" in scoped
     assert "event_timestamp >= trigger_at" not in scoped
+
+
+def test_replay_query_uses_canonical_rising_edge_not_a_stuck_high_raw_alarm():
+    """Would catch a truthy raw tag_events row fabricating a fault window."""
+    replay = snapshotter.SHIPPED_QUERIES["replay"]
+    trigger = replay.split("fault_trigger AS (", 1)[1].split("), scoped_events", 1)[0]
+    assert "FROM tag_event_diffs" in trigger
+    for predicate in (
+        "diff_type = 'rising_edge'",
+        "fault_window_id IS NOT NULL",
+        "to_event_id",
+        "JOIN tag_events",
+    ):
+        assert predicate in trigger
+    assert "FROM tag_events\n      CROSS JOIN replay_bounds" not in trigger
+
+
+def test_fault_trigger_introduces_bounds_before_using_them_for_raw_evidence():
+    """Would catch SQL that references replay bounds before its CROSS JOIN scope."""
+    replay = snapshotter.SHIPPED_QUERIES["replay"]
+    trigger = replay.split("fault_trigger AS (", 1)[1].split("), scoped_events", 1)[0]
+    assert trigger.index("CROSS JOIN replay_bounds") < trigger.index(
+        "trigger_event.event_timestamp >= replay_from"
+    )
+
+
+def test_scoped_events_selects_tag_path_for_the_counted_scope_metric():
+    """Would catch `count(DISTINCT tag_path)` referencing a column dropped by the CTE."""
+    replay = snapshotter.SHIPPED_QUERIES["replay"]
+    scoped = replay.split("scoped_events AS (", 1)[1].split(")\nSELECT", 1)[0]
+    assert "tag_path" in scoped.split("FROM tag_events", 1)[0]
+
+
+def test_sql_contract_scopes_canonical_diffs_and_raw_event_join():
+    """Would catch dropping tenant/time bounds from a newly added diff relation."""
+    replay = snapshotter.SHIPPED_QUERIES["replay"]
+    assert "tag_event_diffs" in replay
+    snapshotter.assert_safe_select_query("replay", replay)

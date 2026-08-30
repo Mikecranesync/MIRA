@@ -56,6 +56,8 @@ class MachineMemoryPreflightInput:
     fault_window_simulated_observation_count: int | None
     fault_window_bad_quality_observation_count: int | None
     fault_window_unknown_provenance_count: int | None
+    fault_window_distinct_observed_timestamps: int | None
+    fault_window_tag_count: int | None
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,12 @@ def _snapshot(status: str, codes: list[str], data: MachineMemoryPreflightInput) 
             "unknown_provenance_count": data.fault_window_unknown_provenance_count
             if _valid_count(data.fault_window_unknown_provenance_count)
             else None,
+            "distinct_observed_timestamps": data.fault_window_distinct_observed_timestamps
+            if _valid_count(data.fault_window_distinct_observed_timestamps)
+            else None,
+            "tag_count": data.fault_window_tag_count
+            if _valid_count(data.fault_window_tag_count)
+            else None,
         },
     }
     return json.dumps(safe, sort_keys=True, separators=(",", ":"))
@@ -153,8 +161,10 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
             data.fault_window_row_count,
             data.fault_window_physical_observation_count,
             data.fault_window_simulated_observation_count,
-            data.fault_window_bad_quality_observation_count,
-            data.fault_window_unknown_provenance_count,
+                data.fault_window_bad_quality_observation_count,
+                data.fault_window_unknown_provenance_count,
+                data.fault_window_distinct_observed_timestamps,
+                data.fault_window_tag_count,
         )
     )
     if not isinstance(data.heartbeat_detail, dict):
@@ -216,7 +226,7 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     elif _timestamp(data.heartbeat_started_at) is None:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
-    if data.heartbeat_status == "running" and data.heartbeat_finished_at is None:
+    if data.heartbeat_status == "running":
         add("HISTORIAN_STUCK_RUNNING")
     elif data.heartbeat_finished_at is None:
         add("HISTORIAN_EXECUTION_UNOBSERVED")
@@ -228,13 +238,19 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     if data.heartbeat_status is None:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
-    elif data.heartbeat_status not in {"ok", "running"}:
+    elif data.heartbeat_status in {"disabled", "error", "no_triggers", "missing_config"}:
         add("HISTORIAN_LAST_RUN_FAILED")
+    elif data.heartbeat_status not in {"ok", "running"}:
+        unknown = True
+        add("CRITICAL_FACT_UNKNOWN")
 
     now = _timestamp(data.now)
     ingested = _timestamp(data.latest_ingested_at)
     if now and ingested and now - ingested > _seconds(_MAX_AGE_SECONDS):
         add("INGEST_STALE")
+    observed = _timestamp(data.latest_event_at)
+    if now and observed and now - observed > _seconds(_MAX_AGE_SECONDS):
+        add("STALE_OBSERVATION")
 
     if data.fault_window_identity is None:
         unknown = True
@@ -267,6 +283,18 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
         add("CRITICAL_FACT_UNKNOWN")
     if data.fault_window_row_count == 0 or data.fault_window_physical_observation_count == 0:
         add("FAULT_WINDOW_EMPTY")
+    if _valid_count(data.fault_window_tag_count) and data.fault_window_tag_count < 12:
+        add("SCOPE")
+    if (
+        _valid_count(data.fault_window_row_count)
+        and _valid_count(data.fault_window_distinct_observed_timestamps)
+        and _valid_count(data.fault_window_tag_count)
+        and data.fault_window_row_count > 0
+        and data.fault_window_tag_count > 0
+    ):
+        scans = data.fault_window_row_count / data.fault_window_tag_count
+        if scans > 0 and data.fault_window_distinct_observed_timestamps / scans < 0.5:
+            add("REPLAY")
     if data.fault_window_physical_observation_count == 0 and (data.fault_window_simulated_observation_count or 0) > 0:
         add("SIMULATED_ONLY")
     if (data.fault_window_bad_quality_observation_count or 0) > 0:

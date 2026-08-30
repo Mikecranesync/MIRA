@@ -17,6 +17,7 @@ import subprocess
 import sys
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl, urlsplit
@@ -25,13 +26,13 @@ REPO = Path(__file__).resolve().parents[2]
 EXPECTED_UNS_PATH = "enterprise.home_garage.conveyor_lab.conveyor_1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
-_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 _FORBIDDEN_SQL = re.compile(
     r"\b(?:insert|update|delete|merge|copy|create|alter|drop|grant|revoke|call|do|set)\b",
     re.IGNORECASE,
 )
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 _SAFE_DSN_OPTIONS = {"sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout"}
+_SECURE_SSLMODES = {"require", "verify-ca", "verify-full"}
 
 
 class PreflightInputError(ValueError):
@@ -89,35 +90,44 @@ SELECT json_build_object(
 WITH replay_bounds AS (
     SELECT %s::timestamptz AS replay_from, %s::timestamptz AS replay_to
 ), fault_trigger AS (
-    SELECT min(event_timestamp) AS trigger_at
-      FROM tag_events
+    SELECT min(d.fault_window_id::text) AS fault_window_id,
+           count(DISTINCT d.fault_window_id) AS fault_window_count
+      FROM tag_event_diffs d
       CROSS JOIN replay_bounds
-     WHERE tenant_id = %s::uuid
-       AND uns_path = %s::ltree
-       AND event_timestamp >= replay_from
-       AND event_timestamp < replay_to
-       AND tag_path = 'default_conveyor_fault_alarm'
-       AND source_system = 'ignition'
-       AND source_connection_id = 'cv101-bench-gw'
-       AND simulated = false
-       AND quality = 'good'
-       AND lower(trim(coalesce(value, ''))) IN ('true', '1', 'active', 'faulted')
+      JOIN tag_events trigger_event
+        ON trigger_event.event_id = d.to_event_id
+       AND trigger_event.tenant_id = %s::uuid
+       AND trigger_event.uns_path = %s::ltree
+       AND trigger_event.event_timestamp >= replay_from
+       AND trigger_event.event_timestamp < replay_to
+     WHERE d.tenant_id = %s::uuid
+       AND d.uns_path = %s::ltree
+       AND d.event_timestamp >= replay_from
+       AND d.event_timestamp < replay_to
+       AND d.tag_path = 'default_conveyor_fault_alarm'
+       AND d.diff_type = 'rising_edge'
+       AND d.fault_window_id IS NOT NULL
+       AND trigger_event.source_system = 'ignition'
+       AND trigger_event.source_connection_id = 'cv101-bench-gw'
+       AND trigger_event.simulated = false
+       AND trigger_event.quality = 'good'
+       AND lower(trim(coalesce(trigger_event.value, ''))) IN ('true', '1', 'active', 'faulted')
 ), scoped_events AS (
-    SELECT event_id, event_timestamp, ingested_at, quality, source_system,
+    SELECT event_id, tag_path, event_timestamp, ingested_at, quality, source_system,
            source_connection_id, simulated
       FROM tag_events
       CROSS JOIN replay_bounds
       CROSS JOIN fault_trigger
      WHERE tenant_id = %s::uuid
        AND uns_path = %s::ltree
-       AND trigger_at IS NOT NULL
+       AND fault_window_count = 1
        AND event_timestamp >= replay_from
        AND event_timestamp < replay_to
 )
 SELECT json_build_object(
     'latest_ingested_at', max(ingested_at),
     'latest_event_at', max(event_timestamp),
-    'fault_window_identity', CASE WHEN (SELECT trigger_at FROM fault_trigger) IS NULL THEN NULL ELSE encode(digest(coalesce(string_agg(event_id::text, ',' ORDER BY event_timestamp, event_id), ''), 'sha256'), 'hex') END,
+    'fault_window_identity', CASE WHEN (SELECT fault_window_count FROM fault_trigger) = 1 THEN encode(digest((SELECT fault_window_id FROM fault_trigger), 'sha256'), 'hex') ELSE NULL END,
     'fault_window_from', (SELECT replay_from FROM replay_bounds),
     'fault_window_to', (SELECT replay_to FROM replay_bounds),
     'fault_window_row_count', count(*),
@@ -125,6 +135,8 @@ SELECT json_build_object(
     'fault_window_simulated_observation_count', count(*) FILTER (WHERE simulated = true OR source_system = 'simulator'),
     'fault_window_bad_quality_observation_count', count(*) FILTER (WHERE quality IN ('bad', 'stale', 'uncertain')),
     'fault_window_unknown_provenance_count', count(*) FILTER (WHERE NOT (source_system = 'ignition' AND source_connection_id = 'cv101-bench-gw' AND simulated = false) AND NOT (simulated = true OR source_system = 'simulator'))
+    ,'fault_window_distinct_observed_timestamps', count(DISTINCT event_timestamp)
+    ,'fault_window_tag_count', count(DISTINCT tag_path)
 )
 FROM scoped_events
 """.strip(),
@@ -134,7 +146,7 @@ FROM scoped_events
 # deliberately update this review record *and* satisfy the structural contract.
 _REVIEWED_QUERY_SHA256 = {
     "heartbeat": "9e7733dede60c7608091f41870a2aeeb458f6b32d0b000893a6ce5188258c9c6",
-    "replay": "7564e9798da6dda96c4da68c483a4f37796fe8cdcfa3fb3bd861eebcda638bf5",
+    "replay": "7b62590b4e77d4d89e069b83563090fd0e32591624142289155a146ab8dfb80f",
 }
 
 
@@ -146,7 +158,8 @@ def database_identity_hash(database_url: str) -> str:
     """Hash the supplied target identity without retaining its credentials or URL."""
     try:
         parsed = urlsplit(database_url)
-        query_keys = {key.lower() for key, _value in parse_qsl(parsed.query, keep_blank_values=True)}
+        query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        query_keys = {key.lower() for key, _value in query_pairs}
         port = parsed.port or 5432
     except ValueError as exc:
         raise PreflightInputError("DATABASE_URL_INVALID") from exc
@@ -154,6 +167,9 @@ def database_identity_hash(database_url: str) -> str:
         raise PreflightInputError("DATABASE_URL_INVALID")
     if parsed.fragment or not query_keys.issubset(_SAFE_DSN_OPTIONS):
         raise PreflightInputError("DATABASE_URL_REDIRECT_OPTION")
+    sslmodes = [value.lower() for key, value in query_pairs if key.lower() == "sslmode"]
+    if len(sslmodes) != 1 or sslmodes[0] not in _SECURE_SSLMODES:
+        raise PreflightInputError("DATABASE_TLS_INVALID")
     database = parsed.path.lstrip("/")
     if not database or "/" in database:
         raise PreflightInputError("DATABASE_URL_INVALID")
@@ -190,9 +206,11 @@ def _validate_inputs(inputs: PreflightInputs, inspected_sha: str) -> None:
         raise PreflightInputError("DATABASE_TARGET_MISMATCH")
     if database_identity_hash(inputs.database_url) != inputs.expected_database_identity_hash:
         raise PreflightInputError("DATABASE_IDENTITY_MISMATCH")
-    if not (_TIMESTAMP.fullmatch(inputs.replay_from) and _TIMESTAMP.fullmatch(inputs.replay_to)):
+    replay_from = _rfc3339_instant(inputs.replay_from)
+    replay_to = _rfc3339_instant(inputs.replay_to)
+    if replay_from is None or replay_to is None:
         raise PreflightInputError("REPLAY_BOUNDS_INVALID")
-    if inputs.replay_from >= inputs.replay_to:
+    if replay_from >= replay_to:
         raise PreflightInputError("REPLAY_BOUNDS_INVALID")
     if not inputs.workflow_run_id.isdecimal():
         raise PreflightInputError("WORKFLOW_RUN_ID_INVALID")
@@ -230,14 +248,20 @@ def assert_safe_select_query(name: str, query: str) -> None:
             "tag_events",
             ("tenant_id = %s::uuid", "uns_path = %s::ltree", "event_timestamp >= replay_from", "event_timestamp < replay_to"),
         )
+        _require_relation_scopes(
+            name,
+            normalized,
+            "tag_event_diffs",
+            ("tenant_id = %s::uuid", "uns_path = %s::ltree", "event_timestamp >= replay_from", "event_timestamp < replay_to"),
+        )
 
 
 def _require_relation_scopes(
     name: str, query: str, relation: str, required_predicates: tuple[str, ...]
 ) -> None:
     """Require target predicates in every direct table scope, never a decoy CTE."""
-    matches = list(re.finditer(rf"\bfrom\s+{re.escape(relation)}\b", query, re.IGNORECASE))
-    if relation in {"historian_task_heartbeat", "tag_events"} and not matches:
+    matches = list(re.finditer(rf"\b(?:from|join)\s+{re.escape(relation)}\b", query, re.IGNORECASE))
+    if relation in {"historian_task_heartbeat", "tag_events", "tag_event_diffs"} and not matches:
         raise SqlContractError(f"{name}: {relation}_scope_missing")
     for match in matches:
         following = query[match.end():]
@@ -300,6 +324,7 @@ def collect_snapshot(
             (
                 inputs.replay_from, inputs.replay_to, inputs.expected_tenant_id,
                 inputs.expected_uns_path, inputs.expected_tenant_id, inputs.expected_uns_path,
+                inputs.expected_tenant_id, inputs.expected_uns_path,
             ),
         )
         cursor.execute("COMMIT")
@@ -332,6 +357,8 @@ def collect_snapshot(
         "fault_window_simulated_observation_count": replay.get("fault_window_simulated_observation_count"),
         "fault_window_bad_quality_observation_count": replay.get("fault_window_bad_quality_observation_count"),
         "fault_window_unknown_provenance_count": replay.get("fault_window_unknown_provenance_count"),
+        "fault_window_distinct_observed_timestamps": replay.get("fault_window_distinct_observed_timestamps"),
+        "fault_window_tag_count": replay.get("fault_window_tag_count"),
     }
 
 
@@ -340,7 +367,17 @@ def _safe_hash(value: object, pattern: re.Pattern[str] = _SHA256) -> str | None:
 
 
 def _safe_time(value: object) -> str | None:
-    return value if isinstance(value, str) and _TIMESTAMP.fullmatch(value) else None
+    return value if _rfc3339_instant(value) is not None else None
+
+
+def _rfc3339_instant(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _safe_count(value: object) -> int | None:
@@ -391,6 +428,7 @@ def _redact_snapshot(snapshot: Mapping[str, object]) -> dict[str, object]:
         "fault_window_row_count", "fault_window_physical_observation_count",
         "fault_window_simulated_observation_count", "fault_window_bad_quality_observation_count",
         "fault_window_unknown_provenance_count",
+        "fault_window_distinct_observed_timestamps", "fault_window_tag_count",
     ):
         safe[key] = _safe_count(snapshot.get(key))
     return safe

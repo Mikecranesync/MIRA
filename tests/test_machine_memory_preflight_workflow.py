@@ -29,7 +29,8 @@ snapshotter = _load()
 TENANT = "11111111-1111-4111-8111-111111111111"
 SHA = "a" * 40
 HASH = "b" * 64
-URL = "postgresql://operator:password@staging-db.example.test:5432/mira"
+INSECURE_URL = "postgresql://operator:password@staging-db.example.test:5432/mira"
+URL = INSECURE_URL + "?sslmode=require"
 
 
 def _inputs(**overrides):
@@ -86,13 +87,65 @@ def test_target_altering_database_url_options_fail_before_connecting(query):
         called = True
         raise AssertionError("must not connect")
 
-    redirected_url = URL + "?" + query
+    redirected_url = URL + "&" + query
     with pytest.raises(snapshotter.PreflightInputError):
         snapshotter.collect_snapshot(
             _inputs(database_url=redirected_url), connect=connect, inspected_sha=SHA
         )
 
     assert not called
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        INSECURE_URL,
+        INSECURE_URL + "?sslmode=disable",
+        URL + "&sslmode=verify-full",
+    ],
+)
+def test_plaintext_or_ambiguous_sslmode_fails_before_connecting(database_url):
+    """Would catch accepting a DSN that can downgrade or ambiguously select TLS."""
+    called = False
+
+    def connect(_url):
+        nonlocal called
+        called = True
+        raise AssertionError("must not connect")
+
+    with pytest.raises(snapshotter.PreflightInputError):
+        snapshotter.collect_snapshot(
+            _inputs(database_url=database_url), connect=connect, inspected_sha=SHA
+        )
+    assert not called
+
+
+def test_offset_replay_bounds_are_ordered_as_aware_instants_not_strings():
+    """Would catch lexical comparison rejecting a valid fractional-offset interval."""
+    rows = iter([{"heartbeat_count": 1, "heartbeat_environment": "staging"}, {}])
+
+    class Cursor:
+        def execute(self, _statement, _params=None):
+            return None
+
+        def fetchone(self):
+            return (next(rows),)
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def close(self):
+            return None
+
+    snapshotter.collect_snapshot(
+        _inputs(
+            replay_from="2026-08-30T12:00:00.900+01:00",
+            replay_to="2026-08-30T11:30:00.100+00:00",
+        ),
+        connect=lambda _url: Connection(),
+        inspected_sha=SHA,
+    )
 
 
 def test_snapshot_queries_share_read_only_transaction_and_local_tenant_setting():
@@ -124,7 +177,7 @@ def test_snapshot_queries_share_read_only_transaction_and_local_tenant_setting()
     )
     query_params = {statement: params for statement, params in trace if statement in snapshotter.SHIPPED_QUERIES.values()}
     assert len(query_params[snapshotter.SHIPPED_QUERIES["heartbeat"]]) == 3
-    assert len(query_params[snapshotter.SHIPPED_QUERIES["replay"]]) == 6
+    assert len(query_params[snapshotter.SHIPPED_QUERIES["replay"]]) == 8
 
 
 def test_db_observed_environment_mismatch_fails_closed_not_as_the_dispatch_input():
@@ -226,6 +279,22 @@ def test_artifact_allowlist_drops_hostile_observed_content_even_for_unknown():
     assert hostile not in rendered
     assert artifact["verdict"] == "UNKNOWN"
     assert artifact["ordered_reason_codes"] == []
+
+
+def test_artifact_allowlist_keeps_only_validated_replay_shape_counts():
+    """Would catch raw count/text evidence leaking through a new artifact field."""
+    artifact = snapshotter.build_artifact(
+        snapshot={
+            "fault_window_distinct_observed_timestamps": 4,
+            "fault_window_tag_count": "12\nsecret",
+        },
+        verdict={"status": "UNKNOWN", "reasons": []},
+        workflow_run_id="123456",
+        commit_sha=SHA,
+    )
+    safe = artifact["snapshot"]
+    assert safe["fault_window_distinct_observed_timestamps"] == 4
+    assert safe["fault_window_tag_count"] is None
 
 
 def test_manual_workflow_is_environment_bound_and_cannot_deploy_or_fetch_doppler():

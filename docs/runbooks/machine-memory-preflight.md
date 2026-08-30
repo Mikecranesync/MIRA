@@ -28,9 +28,11 @@ Supply all required values from the reviewed operations record:
 The protected environment supplies `MACHINE_MEMORY_PREFLIGHT_DATABASE_URL` plus
 the environment-scoped variables `MACHINE_MEMORY_PREFLIGHT_DATABASE_IDENTITY_HASH`
 and `MACHINE_MEMORY_PREFLIGHT_DATABASE_HOST`. Dispatchers cannot select or replace
-these database trust anchors. The URL accepts only explicit TLS/timeout query
-parameters; target-altering parameters such as `host`, `service`, or `options`
-are rejected before a connection is opened.
+these database trust anchors. The URL must carry exactly one secure
+`sslmode`—`require`, `verify-ca`, or `verify-full`—and accepts only explicit
+TLS/timeout query parameters. Target-altering parameters such as `host`,
+`service`, or `options`, absent/duplicate TLS modes, and plaintext/downgrade
+modes are rejected before a connection is opened.
 Do not paste a URL into an input, issue, log, or artifact.
 
 ## What the workflow proves
@@ -42,17 +44,23 @@ not emit the URL, username, password, query string, database name, or canonical
 identity.
 
 It then opens one explicit `BEGIN TRANSACTION READ ONLY` transaction and applies
-`SET LOCAL app.current_tenant_id` before every fixed, tenant-scoped CTE/SELECT.
+transaction-local `set_config('app.current_tenant_id', ..., true)` before every
+fixed, tenant-scoped CTE/SELECT.
 The snapshot reads the historian heartbeat/effective-config evidence and the
-bounded CV-101 event window: event and ingest times, deterministic window hash,
-row/provenance/quality counts, and exact replay bounds. It never accepts SQL or
-an endpoint from an input.
+bounded CV-101 event window: event and ingest times, distinct observed timestamps,
+tag count, deterministic canonical fault-window hash, row/provenance/quality
+counts, and exact replay bounds. Admission requires the canonical
+`tag_event_diffs` rising edge for `default_conveyor_fault_alarm`, a non-null
+fault-window UUID, and a joined physical/good raw event; a stuck-high raw tag
+never creates a window. It never accepts SQL or an endpoint from an input.
 
 The pure evaluator decides `GO`, `NO_GO`, or `UNKNOWN` from those observed facts.
 Expected inputs express the reviewed target/configuration only; they never replace
 observed heartbeat or database facts. Missing/malformed targets or secrets, query
 failures, `UNKNOWN`, and `NO_GO` all fail the workflow and can never be reported
-as `GO`.
+as `GO`. `GO` also requires a terminal heartbeat status of `ok`, fresh source
+observation time, a per-scan live ratio of at least 0.5, and at least 12 CV-101
+tags; fresh database receipt time alone is not evidence of live telemetry.
 
 ## Artifact and interpretation
 
