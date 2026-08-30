@@ -12,7 +12,7 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
-export const API_BASE = "https://app.factorylm.com";
+export const API_BASE = "http://165.245.138.91:4101";
 const JAR_KEY = "flm.cookiejar.v1";
 
 export type ApiErrorKind =

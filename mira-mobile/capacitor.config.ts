@@ -16,6 +16,9 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
   },
+  android: {
+    allowMixedContent: true,
+  },
   plugins: {
     // Signed OTA web-bundle updates (ADR-0034 amendment).
     LiveUpdate: {
