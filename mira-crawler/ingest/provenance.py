@@ -260,12 +260,25 @@ def url_has_userinfo(url: str) -> bool:
     refused at the hop-0 gate and at the store boundary: a credential is never
     stripped into another identity, never bound into SQL, never persisted, never
     logged.
+
+    A **network-path reference** — ``//authority/path`` with no scheme (RFC 3986
+    §4.2) — has an authority too, and its userinfo is userinfo (round AH on
+    #3481, round-31 S2 F1): it parses to scheme ``""``, which the visibility
+    floor classifies as *local*, so without this rule ``//user:pass@host/x``
+    would be written tenant-private with the credential in ``source_url``. An
+    opaque ``scheme:path`` value with an ``@`` (``mailto:a@b``,
+    ``user:secret@host/path``) has no authority and stays a non-candidate —
+    the two forms are syntactically indistinguishable, no crawler route
+    produces the latter, and the hop-0 gate admits only http/https/file.
     """
     s = str(url).strip()
-    head, sep, rest = s.partition(":")
-    if not sep or not _URL_SCHEME_RE.fullmatch(head) or not rest.startswith("//"):
-        return False
-    authority = rest[2:]
+    if s.startswith("//"):
+        authority = s[2:]  # network-path reference: an authority with no scheme
+    else:
+        head, sep, rest = s.partition(":")
+        if not sep or not _URL_SCHEME_RE.fullmatch(head) or not rest.startswith("//"):
+            return False
+        authority = rest[2:]
     for stop in "/?#":
         idx = authority.find(stop)
         if idx != -1:

@@ -972,6 +972,13 @@ class TestUserinfoRefusedAtTheBoundary:
         "custom+scheme.v1://svc:hunter2@host/x",
         "file://svc@host/share/x.pdf",  # file with userinfo in the authority
         "  FTP://svc:hunter2@files.example.com/x ",  # padded
+        # Round AH (#3481, round-31 S2 F1, real): a network-path reference
+        # (RFC 3986 §4.2, `//authority/path`) has an authority and no scheme;
+        # its userinfo is userinfo. Before this it parsed as scheme "" → local
+        # → written tenant-private WITH the credential in source_url.
+        "//svc:hunter2@files.example.com/doc.pdf",
+        "  //svc@files.example.com/x ",  # padded, username only
+        "//svc:hunter2@[2001:db8::1]:2121/x",  # IPv6 authority
     )
 
     def test_userinfo_is_detected_for_every_scheme_authority_form(self):
@@ -987,8 +994,34 @@ class TestUserinfoRefusedAtTheBoundary:
             "C:\\inbox\\a@b.pdf",  # drive letter
             "mailto:a@b.example",  # no `//` authority form
             "ftp://files.example.com/x",
+            "//files.example.com/p@th",  # network-path reference; @ in the path
+            "//files.example.com/x?k=a@b",  # network-path reference; @ in the query
+            "//files.example.com/x",  # network-path reference; no userinfo
+            "//nas/share/a@b.pdf",  # a forward-slash UNC path; @ in the path
         ):
             assert not provenance.url_has_userinfo(url), url
+
+    def test_a_network_path_reference_with_userinfo_is_refused_not_stored_as_local(self):
+        """Round AH (#3481, round-31 S2 F1, real). `//user:pass@host/x` has no
+        scheme, so `is_local_source` calls it local; the credential rule must
+        still see its authority — otherwise the write boundary stores the row
+        tenant-private with the credential in `source_url`."""
+        for url in ("//svc:hunter2@files.example.com/doc.pdf", "  //svc@files.example.com/x "):
+            assert provenance.url_has_userinfo(url), url
+            assert (
+                provenance.url_credential_reason(url) == "userinfo (credentials in the authority)"
+            )
+            allowed, is_private, reason = provenance.enforce_visibility(url, False)
+            assert (allowed, is_private) == (False, True), url
+            assert "hunter2" not in reason and "svc" not in reason, reason
+            assert provenance.shared_corpus_allowed(url)[0] is False
+        # The rule never widens: a network-path reference without userinfo still
+        # classifies exactly as before (scheme "" → local → written private).
+        assert provenance.enforce_visibility("//files.example.com/x", False) == (
+            True,
+            True,
+            "local: local filesystem source — always private",
+        )
 
     def test_non_http_userinfo_is_refused_before_any_sql_on_every_route(self, captured, caplog):
         import logging
