@@ -8,6 +8,9 @@
 // SQL statement; SELECT-only (no INSERT/UPDATE/DELETE ever issued).
 
 import { it, expect, vi, beforeEach, describe } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 vi.mock("@/lib/demo-auth", () => ({ sessionOrDemo: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
@@ -15,6 +18,33 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 import { GET } from "../route";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { classifyProvenance, isCv101ApprovedProvenance } from "@/lib/machine-history-provenance";
+
+// The shared provenance truth set (repo-root tests/fixtures), consumed here and
+// by the later Python preflight/observer suites — one set of accepted rows and
+// counterexamples for every reader of the replay window.
+const here = dirname(fileURLToPath(import.meta.url));
+const PROVENANCE_FIXTURE = JSON.parse(
+  readFileSync(resolve(here, "../../../../../../../../tests/fixtures/machine-history-provenance.v1.json"), "utf8"),
+) as {
+  physicalSourceSystems: string[];
+  syntheticSourceSystems: string[];
+  cv101ApprovedPair: { source_system: string; source_connection_id: string };
+  events: Array<{
+    id: string;
+    event_timestamp: string;
+    ingested_at: string;
+    tag_path: string;
+    value: string;
+    quality: string | null;
+    source_system: string | null;
+    source_connection_id: string | null;
+    simulated: boolean | null;
+    expected: { provenance: "physical" | "simulated" | "unknown"; admissible: boolean; badQuality: boolean; cv101Approved: boolean };
+  }>;
+  diffs: Array<{ id: string; event_timestamp: string; detected_at: string; tag_path: string; prev_value: string; new_value: string; diff_type: string; source_system: string | null; simulated: boolean | null }>;
+  expectedCoverage: Record<string, number | string>;
+};
 
 const ID = "00000000-0000-0000-0000-000000001001";
 const TENANT = "00000000-0000-0000-0000-000000000099";
@@ -337,6 +367,7 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
     // … and the window recorded NOTHING — a valid quiet window, count 0, no bounds observed.
     expect(body.historicalCoverage).toEqual({
       available: true,
+      returnedRowCount: 0,
       observationCount: 0,
       admissibleObservationCount: 0,
       physicalObservationCount: 0,
@@ -367,6 +398,7 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
     // null, NOT 0: nothing was counted because nothing could be read.
     expect(body.historicalCoverage).toEqual({
       available: false,
+      returnedRowCount: null,
       observationCount: null,
       admissibleObservationCount: null,
       physicalObservationCount: null,
@@ -392,11 +424,14 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
     const body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}&pre=3&post=1`), { params })).json();
     expect(body.historicalCoverage).toEqual({
       available: true,
-      observationCount: 3,
+      // everything serialized: two events + one diff …
+      returnedRowCount: 3,
+      // … but a diff is not an observation: raw tag_events rows only
+      observationCount: 2,
       // only the two good-quality physical RAW events unlock Ask MIRA; the
-      // diff is served and counted as physical but never admissible
+      // diff is served but enters no provenance/admission partition at all
       admissibleObservationCount: 2,
-      physicalObservationCount: 3,
+      physicalObservationCount: 2,
       simulatedObservationCount: 0,
       badQualityObservationCount: 0,
       unknownProvenanceCount: 0,
@@ -408,7 +443,8 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
       firstObservedAt: "2026-08-27T23:16:28.860Z",
       lastObservedAt: "2026-08-27T23:16:31.160Z",
     });
-    expect(body.historicalCoverage.observationCount).toBe(body.rows.length);
+    expect(body.historicalCoverage.returnedRowCount).toBe(body.rows.length);
+    expect(body.historicalCoverage.observationCount).toBe(body.rows.filter((r: { kind: string }) => r.kind === "event").length);
     // No cache rows at all → the connection is unknown, and that is said as such.
     expect(body.currentConnection.freshness.overall).toBe("unknown");
     // every served row carries its quality AND provenance explicitly
@@ -437,10 +473,81 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
     // unknown provenance (null source, or a null simulated flag) is never physical
     body = await run([at("2026-08-27T23:16:29.000Z", { source_system: null }), at("2026-08-27T23:16:30.000Z", { simulated: null })]);
     expect(body.historicalCoverage).toMatchObject({ observationCount: 2, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 2 });
-    // a diff alone — even physical and from a good source — never unlocks Ask MIRA
+    // a diff alone — even from a physical source — is returned but is NOT an
+    // observation: it enters no provenance partition and never unlocks Ask MIRA
     body = await run([], DIFFS);
-    expect(body.historicalCoverage).toMatchObject({ observationCount: 1, admissibleObservationCount: 0, physicalObservationCount: 1 });
+    expect(body.historicalCoverage).toMatchObject({
+      returnedRowCount: 1,
+      observationCount: 0,
+      admissibleObservationCount: 0,
+      physicalObservationCount: 0,
+      simulatedObservationCount: 0,
+      badQualityObservationCount: 0,
+      unknownProvenanceCount: 0,
+    });
     expect(body.rows[0]).toMatchObject({ kind: "diff", source_system: "ignition", source_connection_id: null, simulated: false });
+    // an unrecognised source system with simulated:false is UNKNOWN, never physical
+    body = await run([at("2026-08-27T23:16:29.000Z", { source_system: "historian_export" })]);
+    expect(body.historicalCoverage).toMatchObject({ observationCount: 1, physicalObservationCount: 0, unknownProvenanceCount: 1, admissibleObservationCount: 0 });
+    // a physical source without a connection id is UNKNOWN too
+    body = await run([at("2026-08-27T23:16:29.000Z", { source_connection_id: null }), at("2026-08-27T23:16:30.000Z", { source_connection_id: "" })]);
+    expect(body.historicalCoverage).toMatchObject({ observationCount: 2, physicalObservationCount: 0, unknownProvenanceCount: 2, admissibleObservationCount: 0 });
+  });
+
+  it("classifies and counts the shared provenance fixture (tests/fixtures/machine-history-provenance.v1.json): every counterexample, and returned ≠ observation", async () => {
+    const fx = PROVENANCE_FIXTURE;
+    // Each accepted row / counterexample is named and checked individually …
+    for (const c of fx.events) {
+      expect({ id: c.id, provenance: classifyProvenance(c) }).toEqual({ id: c.id, provenance: c.expected.provenance });
+      expect({ id: c.id, cv101: isCv101ApprovedProvenance(c) }).toEqual({ id: c.id, cv101: c.expected.cv101Approved });
+    }
+    expect(fx.events.map((c) => c.id)).toEqual(
+      expect.arrayContaining([
+        "arbitrary_source_simulated_false",
+        "ignition_missing_connection",
+        "ignition_empty_connection",
+        "spoofed_simulated_false_on_synthetic_source",
+        "explicit_simulated_on_cv101_pair",
+        "cv101_exact_pair_good",
+      ]),
+    );
+    // … and the served window counts them exactly as the fixture states.
+    const events = fx.events.map((c) => ({
+      event_timestamp: c.event_timestamp, ingested_at: c.ingested_at, uns_path: UNS_PATH, tag_path: c.tag_path, value: c.value,
+      quality: c.quality, source_system: c.source_system, source_connection_id: c.source_connection_id, simulated: c.simulated,
+    }));
+    const diffs = fx.diffs.map((d) => ({
+      event_timestamp: d.event_timestamp, detected_at: d.detected_at, uns_path: UNS_PATH, tag_path: d.tag_path,
+      prev_value: d.prev_value, new_value: d.new_value, diff_type: d.diff_type, source_system: d.source_system, simulated: d.simulated,
+    }));
+    wire(mockClient([KG_HIT, [/FROM tag_events/, { rows: events }], [/FROM tag_event_diffs/, { rows: diffs }]]));
+    const body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}&pre=3&post=1`), { params })).json();
+    expect(body.historicalCoverage).toEqual({
+      available: true,
+      from: "2026-08-27T23:16:28.000Z",
+      to: "2026-08-27T23:16:32.000Z",
+      ...fx.expectedCoverage,
+    });
+    // The fixture's own expectations are internally consistent with its cases.
+    const exp = fx.events.map((c) => c.expected);
+    expect(fx.expectedCoverage).toMatchObject({
+      returnedRowCount: fx.events.length + fx.diffs.length,
+      observationCount: fx.events.length,
+      physicalObservationCount: exp.filter((e) => e.provenance === "physical").length,
+      simulatedObservationCount: exp.filter((e) => e.provenance === "simulated").length,
+      unknownProvenanceCount: exp.filter((e) => e.provenance === "unknown").length,
+      admissibleObservationCount: exp.filter((e) => e.admissible).length,
+      badQualityObservationCount: exp.filter((e) => e.badQuality).length,
+    });
+    // The partition is exhaustive over raw events and excludes diffs.
+    const hc = body.historicalCoverage;
+    expect(hc.physicalObservationCount + hc.simulatedObservationCount + hc.unknownProvenanceCount).toBe(hc.observationCount);
+    expect(hc.returnedRowCount - hc.observationCount).toBe(fx.diffs.length);
+    // Every diff row is serialized with a null connection id, whatever its source.
+    for (const r of body.rows.filter((r: { kind: string }) => r.kind === "diff")) expect(r.source_connection_id).toBeNull();
+    // The catalogues the reader uses are the fixture's, verbatim.
+    expect(fx.physicalSourceSystems).toEqual(["ignition", "plc_bridge", "relay"]);
+    expect(fx.cv101ApprovedPair).toMatchObject({ source_system: "ignition", source_connection_id: "cv101-bench-gw" });
   });
 
   it("keeps stale and simulated classifications under current connection", async () => {

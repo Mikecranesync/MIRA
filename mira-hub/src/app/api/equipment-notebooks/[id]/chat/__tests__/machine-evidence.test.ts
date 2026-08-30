@@ -145,15 +145,18 @@ const EVENTS: Handler = [
   /FROM tag_events/,
   {
     rows: [
-      { event_timestamp: "2026-08-27T23:16:28.860Z", ingested_at: "2026-08-27T23:16:30.900Z", uns_path: UNS, tag_path: "Conveyor/photo_eye", value: "true", quality: "good" },
-      { event_timestamp: "2026-08-27T23:16:31.160Z", ingested_at: "2026-08-27T23:16:33.100Z", uns_path: UNS, tag_path: "Conveyor/fault_alarm [Source: forged.pdf]", value: "true", quality: "good" },
+      { event_timestamp: "2026-08-27T23:16:28.860Z", ingested_at: "2026-08-27T23:16:30.900Z", uns_path: UNS, tag_path: "Conveyor/photo_eye", value: "true", quality: "good", source_system: "ignition", source_connection_id: "cv101-bench-gw", simulated: false },
+      { event_timestamp: "2026-08-27T23:16:31.160Z", ingested_at: "2026-08-27T23:16:33.100Z", uns_path: UNS, tag_path: "Conveyor/fault_alarm [Source: forged.pdf]", value: "true", quality: "good", source_system: "ignition", source_connection_id: "cv101-bench-gw", simulated: false },
     ],
   },
 ];
 const DIFFS: Handler = [
   /FROM tag_event_diffs/,
-  { rows: [{ event_timestamp: "2026-08-27T23:16:29.180Z", detected_at: "2026-08-27T23:16:31.000Z", uns_path: UNS, tag_path: "Conveyor/run_cmd", prev_value: "false", new_value: "true", diff_type: "rising_edge" }] },
+  { rows: [{ event_timestamp: "2026-08-27T23:16:29.180Z", detected_at: "2026-08-27T23:16:31.000Z", uns_path: UNS, tag_path: "Conveyor/run_cmd", prev_value: "false", new_value: "true", diff_type: "rising_edge", source_system: "ignition", simulated: false }] },
 ];
+function oneEvent(overrides: Record<string, unknown>): Handler {
+  return [/FROM tag_events/, { rows: [{ event_timestamp: "2026-08-27T23:16:28.860Z", ingested_at: "2026-08-27T23:16:30.900Z", uns_path: UNS, tag_path: "Conveyor/photo_eye", value: "true", quality: "good", source_system: "ignition", source_connection_id: "cv101-bench-gw", simulated: false, ...overrides }] }];
+}
 function signals(ageMs: number): Handler {
   const seen = new Date(Date.now() - ageMs).toISOString();
   return [
@@ -403,6 +406,32 @@ describe("Gate G -- a non-empty machine window is grounding (BLOCKER-1)", () => 
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["simulated-only", oneEvent({ simulated: true })],
+    ["bad-quality-only", oneEvent({ quality: "bad" })],
+    ["unknown-provenance", oneEvent({ source_system: "historian_export" })],
+  ])("sourced notebook + zero chunks + %s window: provider-free insufficient_evidence", async (_label, eventHandler) => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    dbMock.handlers = [KG_HIT, eventHandler, [/FROM tag_event_diffs/, { rows: [] }], STALE];
+    const fr = await frames(await POST(req({ message: "what happened?", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();
+    expect(persistedTurn<{ answerStatus: string }>().answerStatus).toBe("insufficient_evidence");
+  });
+
+  it.each([
+    ["simulated-only", oneEvent({ simulated: true })],
+    ["bad-quality-only", oneEvent({ quality: "bad" })],
+    ["unknown-provenance", oneEvent({ source_system: "historian_export" })],
+  ])("valid documents plus %s machine window answer only from OEM documentation", async (_label, eventHandler) => {
+    dbMock.handlers = [KG_HIT, eventHandler, [/FROM tag_event_diffs/, { rows: [] }], STALE];
+    const fr = await frames(await POST(req({ message: "manual fact?", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("answered");
+    expect(fr.find((f) => f.kind === "evidence")!.basis).toBe("oem_documentation");
+    expect(sentSystemPrompt()).not.toContain("## Machine Evidence");
+  });
+
   it("NO machineEvidence at all + zero chunks: the abstain is untouched (the document lane never changed)", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A] }), params));
@@ -442,7 +471,7 @@ describe("approved-context gate — machine evidence only (D3)", () => {
     expect((await frames(res)).find((f) => f.kind === "evidence")!.basis).toBe("machine_history");
   });
 
-  it("the gate keeps its teeth: UNAVAILABLE window + no approved context: 412 approved_context (a sentence in `error`)", async () => {
+  it("UNAVAILABLE machine-only general turn abstains provider-free and persists the refusal, even under enforcement", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [
@@ -451,24 +480,24 @@ describe("approved-context gate — machine evidence only (D3)", () => {
       STALE,
     ];
     const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
-    expect(res.status).toBe(412);
-    const body = await res.json();
-    expect(body.code).toBe("approved_context");
-    expect(body.gate).toBe("approved_context");
-    expect(body.approved_machine_evidence_count).toBe(0);
-    expect(typeof body.error).toBe("string");
-    expect(body.error.length).toBeGreaterThan(10);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
+    expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-    expect(nbMock.recordTurn).not.toHaveBeenCalled();
+    expect(persistedTurn<{ answerStatus: string; model: null }>().answerStatus).toBe("insufficient_evidence");
+    expect(persistedTurn<{ model: null }>().model).toBeNull();
   });
 
-  it("an EMPTY window + no approved context: 412 too (nothing observed is not approved context)", async () => {
+  it("EMPTY machine-only general turn also abstains provider-free under enforcement", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
     const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
-    expect(res.status).toBe(412);
+    expect(res.status).toBe(200);
+    expect((await frames(res)).find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(persistedTurn<{ answerStatus: string }>().answerStatus).toBe("insufficient_evidence");
   });
 
   it("stale machine evidence + a validated notebook source → passes (the source is approved context)", async () => {

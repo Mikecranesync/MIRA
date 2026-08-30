@@ -1386,28 +1386,40 @@ export async function getAssetHistory(
     badQualityObservationCount: null,
     unknownProvenanceCount: null,
   };
-  const historicalCoverage: HistoricalCoverage = hc
+  // Older bodies: the served rows are the only facts. Diffs are returned rows
+  // but never observations, so the two counts are derived separately.
+  const eventRows = rows.filter((row) => row.kind !== "diff");
+  // `returnedRowCount` is the discriminator for the corrected server-owned
+  // provenance contract. The immediately preceding wire shape also exposed a
+  // `historicalCoverage` object, but its admission counts were unsafe. Treat
+  // that shape as legacy and derive only non-authoritative row totals.
+  const hasCurrentCoverageContract =
+    hc != null && Object.prototype.hasOwnProperty.call(hc, "returnedRowCount");
+  const historicalCoverage: HistoricalCoverage = hasCurrentCoverageContract
     ? {
-        available: hc.available !== false,
-        observationCount: count(hc.observationCount),
-        admissibleObservationCount: count(hc.admissibleObservationCount),
-        physicalObservationCount: count(hc.physicalObservationCount),
-        simulatedObservationCount: count(hc.simulatedObservationCount),
-        badQualityObservationCount: count(hc.badQualityObservationCount),
-        unknownProvenanceCount: count(hc.unknownProvenanceCount),
-        from: hc.from != null ? String(hc.from) : (from ?? ""),
-        to: hc.to != null ? String(hc.to) : (to ?? ""),
-        firstObservedAt: hc.firstObservedAt != null ? String(hc.firstObservedAt) : null,
-        lastObservedAt: hc.lastObservedAt != null ? String(hc.lastObservedAt) : null,
+        available: hc!.available !== false,
+        returnedRowCount: count(hc!.returnedRowCount),
+        observationCount: count(hc!.observationCount),
+        admissibleObservationCount: count(hc!.admissibleObservationCount),
+        physicalObservationCount: count(hc!.physicalObservationCount),
+        simulatedObservationCount: count(hc!.simulatedObservationCount),
+        badQualityObservationCount: count(hc!.badQualityObservationCount),
+        unknownProvenanceCount: count(hc!.unknownProvenanceCount),
+        from: hc!.from != null ? String(hc!.from) : (from ?? ""),
+        to: hc!.to != null ? String(hc!.to) : (to ?? ""),
+        firstObservedAt: hc!.firstObservedAt != null ? String(hc!.firstObservedAt) : null,
+        lastObservedAt: hc!.lastObservedAt != null ? String(hc!.lastObservedAt) : null,
       }
-    : reason === "unavailable"
-      ? { available: false, observationCount: null, ...noCounts, from: from ?? "", to: to ?? "", firstObservedAt: null, lastObservedAt: null }
+    : reason === "unavailable" || hc?.available === false
+      ? { available: false, returnedRowCount: null, observationCount: null, ...noCounts, from: hc?.from != null ? String(hc.from) : (from ?? ""), to: hc?.to != null ? String(hc.to) : (to ?? ""), firstObservedAt: null, lastObservedAt: null }
       : {
           available: true,
-          observationCount: rows.length,
+          returnedRowCount: rows.length,
+          observationCount: eventRows.length,
           ...noCounts,
-          from: from ?? "",
-          to: to ?? "",
+          from: hc?.from != null ? String(hc.from) : (from ?? ""),
+          to: hc?.to != null ? String(hc.to) : (to ?? ""),
+          // observed bounds = earliest/latest SERVED row, same as the Hub
           firstObservedAt: rows.length ? String(rows[0].event_timestamp ?? "") : null,
           lastObservedAt: rows.length ? String(rows[rows.length - 1].event_timestamp ?? "") : null,
         };

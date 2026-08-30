@@ -23,6 +23,9 @@ import { isUndefinedRelationOrColumn, type MachineMemoryClient } from "@/lib/mac
 import { resolveAssetUnsPath } from "@/lib/asset-uns-path";
 import { buildMachineMemoryResponse, type MachineMemoryResponse } from "@/lib/machine-memory-response";
 import { summarizeFreshness, type FreshnessSummary, type ObservedChange } from "@/lib/machine-context-packet";
+import { classifyProvenance } from "@/lib/machine-history-provenance";
+
+export { classifyProvenance } from "@/lib/machine-history-provenance";
 
 export const DEFAULT_PRE_SECONDS = 5;
 export const DEFAULT_POST_SECONDS = 2;
@@ -65,26 +68,12 @@ export interface MachineHistoryRow extends ObservedChange {
 }
 
 /**
- * Source systems that are synthetic by construction (033 header + SimLab).
- * A row from any of these is `simulated` regardless of its `simulated` flag.
- */
-const SYNTHETIC_SOURCE_SYSTEMS = new Set(["simulator", "simlab", "synthetic", "demo_simulator"]);
-
-type Provenance = "physical" | "simulated" | "unknown";
-
-/** Physical ONLY when both the flag and the source system positively say so. */
-export function classifyProvenance(row: Pick<MachineHistoryRow, "source_system" | "simulated">): Provenance {
-  const src = row.source_system == null ? null : String(row.source_system).trim().toLowerCase();
-  if (row.simulated === true || (src != null && SYNTHETIC_SOURCE_SYSTEMS.has(src))) return "simulated";
-  if (src == null || src === "" || row.simulated !== false) return "unknown";
-  return "physical";
-}
-
-/**
  * The ONE admissibility rule (PRD §9.2): a raw `tag_events` observation whose
- * quality is exactly `good` and whose provenance is positively physical.
- * Diffs (037 carries no quality), bad/unknown quality, simulated rows and
- * unknown provenance never unlock Ask MIRA.
+ * quality is exactly `good` and whose provenance is positively physical
+ * (`classifyProvenance` in machine-history-provenance: recognised producer +
+ * `simulated === false` + non-empty connection id). Diffs (037 carries no
+ * quality and no connection), bad/null quality, simulated rows and unknown
+ * provenance never unlock Ask MIRA.
  */
 export function isAdmissibleObservation(row: MachineHistoryRow): boolean {
   return row.kind === "event" && row.quality === "good" && classifyProvenance(row) === "physical";
@@ -107,13 +96,16 @@ export interface CurrentConnection {
  */
 export interface HistoricalCoverage {
   available: boolean;
+  /** Everything serialized in `rows`: raw events PLUS diffs. */
+  returnedRowCount: number | null;
+  /** Raw `tag_events` rows only. physical + simulated + unknown = this. */
   observationCount: number | null;
   /** Raw good-quality physical events only — the ONLY number that may unlock
    *  Ask MIRA (`isAdmissibleObservation`). Diffs never count here. */
   admissibleObservationCount: number | null;
   physicalObservationCount: number | null;
   simulatedObservationCount: number | null;
-  /** Raw events whose quality is not exactly `good` (a null quality counts). */
+  /** PHYSICAL raw events whose quality is not exactly `good` (null counts). */
   badQualityObservationCount: number | null;
   unknownProvenanceCount: number | null;
   /** The RETURNED window bounds (`[at-pre, at+post]`, clamped). */
@@ -387,6 +379,7 @@ export async function fetchMachineHistory(
   const historicalCoverage: HistoricalCoverage = reason
     ? {
         available: false,
+        returnedRowCount: null,
         observationCount: null,
         admissibleObservationCount: null,
         physicalObservationCount: null,
@@ -423,27 +416,38 @@ export async function fetchMachineHistory(
 
 /**
  * Count what the served rows actually are (PRD §9.2). Server-owned: the
- * client never derives admissibility. Provenance buckets partition every row
- * (physical + simulated + unknown = observationCount); bad quality is counted
- * on raw events only, since a diff carries no quality at all.
+ * client never derives admissibility. `returnedRowCount` is everything
+ * serialized (events + diffs); every other count is over RAW EVENTS ONLY —
+ * a diff is a derived transition, not an observation, so it enters no
+ * provenance or admission partition. Provenance buckets partition the raw
+ * events exactly (physical + simulated + unknown = observationCount); bad
+ * quality is counted within the physical bucket only.
  */
 export function summarizeCoverage(rows: MachineHistoryRow[], from: string, to: string): HistoricalCoverage {
+  let observations = 0;
   let admissible = 0;
   let physical = 0;
   let simulated = 0;
   let unknown = 0;
   let badQuality = 0;
   for (const r of rows) {
+    if (r.kind !== "event") continue;
+    observations += 1;
     const p = classifyProvenance(r);
-    if (p === "physical") physical += 1;
-    else if (p === "simulated") simulated += 1;
-    else unknown += 1;
-    if (r.kind === "event" && r.quality !== "good") badQuality += 1;
-    if (isAdmissibleObservation(r)) admissible += 1;
+    if (p === "simulated") {
+      simulated += 1;
+    } else if (p === "physical") {
+      physical += 1;
+      if (r.quality === "good") admissible += 1;
+      else badQuality += 1;
+    } else {
+      unknown += 1;
+    }
   }
   return {
     available: true,
-    observationCount: rows.length,
+    returnedRowCount: rows.length,
+    observationCount: observations,
     admissibleObservationCount: admissible,
     physicalObservationCount: physical,
     simulatedObservationCount: simulated,

@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "description": "Shared provenance/admissibility truth set for the Machine Memory replay window (PRD §9.2, plan 2026-08-30-technician-machine-memory-truth Task 1). Consumed by the Hub history route test now and by the later Python preflight/observer suites. Every case carries the raw 033/037 provenance columns and the expected classification; nothing here is derived at load time.",
+  "contract": {
+    "physical": "source_system in physicalSourceSystems AND simulated === false AND non-empty source_connection_id",
+    "simulated": "simulated === true OR source_system in syntheticSourceSystems (a synthetic source outranks a spoofed simulated:false)",
+    "unknown": "every other combination — null/absent source, null simulated, missing/empty connection, or an unrecognised source system even with simulated:false",
+    "admissible": "kind === 'event' AND provenance === 'physical' AND quality === 'good'",
+    "badQuality": "kind === 'event' AND provenance === 'physical' AND quality !== 'good' (null counts)",
+    "returnedRowCount": "serialized events + diffs",
+    "observationCount": "raw tag_events rows only; physical + simulated + unknown partition it exactly",
+    "diffs": "contribute to returnedRowCount only; never to any observation/admission partition; source_connection_id is always null on a 037 row"
+  },
+  "physicalSourceSystems": ["ignition", "plc_bridge", "relay"],
+  "syntheticSourceSystems": ["simulator", "simlab", "synthetic", "demo_simulator"],
+  "cv101ApprovedPair": {
+    "source_system": "ignition",
+    "source_connection_id": "cv101-bench-gw",
+    "note": "CV-101 production proof is stricter than generic Replay: exact pair until Mike changes it. Generic admission does not require this pair."
+  },
+  "events": [
+    {
+      "id": "cv101_exact_pair_good",
+      "event_timestamp": "2026-08-27T23:16:28.100Z",
+      "ingested_at": "2026-08-27T23:16:28.900Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": "cv101-bench-gw",
+      "simulated": false,
+      "expected": { "provenance": "physical", "admissible": true, "badQuality": false, "cv101Approved": true }
+    },
+    {
+      "id": "plc_bridge_good",
+      "event_timestamp": "2026-08-27T23:16:28.200Z",
+      "ingested_at": "2026-08-27T23:16:29.000Z",
+      "tag_path": "Conveyor/run_cmd",
+      "value": "true",
+      "quality": "good",
+      "source_system": "plc_bridge",
+      "source_connection_id": "bridge-conn-1",
+      "simulated": false,
+      "expected": { "provenance": "physical", "admissible": true, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "ignition_other_connection_good",
+      "event_timestamp": "2026-08-27T23:16:28.300Z",
+      "ingested_at": "2026-08-27T23:16:29.100Z",
+      "tag_path": "Conveyor/vfd_dc_bus",
+      "value": "320.4",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": "some-other-gw",
+      "simulated": false,
+      "expected": { "provenance": "physical", "admissible": true, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "relay_bad_quality",
+      "event_timestamp": "2026-08-27T23:16:28.400Z",
+      "ingested_at": "2026-08-27T23:16:29.200Z",
+      "tag_path": "Conveyor/vfd_output_hz",
+      "value": "0",
+      "quality": "bad",
+      "source_system": "relay",
+      "source_connection_id": "relay-conn-1",
+      "simulated": false,
+      "expected": { "provenance": "physical", "admissible": false, "badQuality": true, "cv101Approved": false }
+    },
+    {
+      "id": "relay_null_quality",
+      "event_timestamp": "2026-08-27T23:16:28.500Z",
+      "ingested_at": "2026-08-27T23:16:29.300Z",
+      "tag_path": "Conveyor/vfd_current",
+      "value": "1.2",
+      "quality": null,
+      "source_system": "relay",
+      "source_connection_id": "relay-conn-1",
+      "simulated": false,
+      "expected": { "provenance": "physical", "admissible": false, "badQuality": true, "cv101Approved": false }
+    },
+    {
+      "id": "arbitrary_source_simulated_false",
+      "event_timestamp": "2026-08-27T23:16:28.600Z",
+      "ingested_at": "2026-08-27T23:16:29.400Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "historian_export",
+      "source_connection_id": "export-1",
+      "simulated": false,
+      "expected": { "provenance": "unknown", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "ignition_missing_connection",
+      "event_timestamp": "2026-08-27T23:16:28.700Z",
+      "ingested_at": "2026-08-27T23:16:29.500Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": null,
+      "simulated": false,
+      "expected": { "provenance": "unknown", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "ignition_empty_connection",
+      "event_timestamp": "2026-08-27T23:16:28.800Z",
+      "ingested_at": "2026-08-27T23:16:29.600Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": "   ",
+      "simulated": false,
+      "expected": { "provenance": "unknown", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "spoofed_simulated_false_on_synthetic_source",
+      "event_timestamp": "2026-08-27T23:16:29.000Z",
+      "ingested_at": "2026-08-27T23:16:29.700Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "simulator",
+      "source_connection_id": "sim-conn-1",
+      "simulated": false,
+      "expected": { "provenance": "simulated", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "explicit_simulated_on_cv101_pair",
+      "event_timestamp": "2026-08-27T23:16:29.100Z",
+      "ingested_at": "2026-08-27T23:16:29.800Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": "cv101-bench-gw",
+      "simulated": true,
+      "expected": { "provenance": "simulated", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "simlab_source",
+      "event_timestamp": "2026-08-27T23:16:29.200Z",
+      "ingested_at": "2026-08-27T23:16:29.900Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "bad",
+      "source_system": "simlab",
+      "source_connection_id": null,
+      "simulated": true,
+      "expected": { "provenance": "simulated", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "null_simulated_flag",
+      "event_timestamp": "2026-08-27T23:16:29.300Z",
+      "ingested_at": "2026-08-27T23:16:30.000Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": "ignition",
+      "source_connection_id": "cv101-bench-gw",
+      "simulated": null,
+      "expected": { "provenance": "unknown", "admissible": false, "badQuality": false, "cv101Approved": false }
+    },
+    {
+      "id": "null_source_system",
+      "event_timestamp": "2026-08-27T23:16:29.400Z",
+      "ingested_at": "2026-08-27T23:16:30.100Z",
+      "tag_path": "Conveyor/photo_eye",
+      "value": "true",
+      "quality": "good",
+      "source_system": null,
+      "source_connection_id": "cv101-bench-gw",
+      "simulated": false,
+      "expected": { "provenance": "unknown", "admissible": false, "badQuality": false, "cv101Approved": false }
+    }
+  ],
+  "diffs": [
+    {
+      "id": "diff_physical_source_never_counted",
+      "event_timestamp": "2026-08-27T23:16:28.250Z",
+      "detected_at": "2026-08-27T23:16:30.000Z",
+      "tag_path": "Conveyor/run_cmd",
+      "prev_value": "false",
+      "new_value": "true",
+      "diff_type": "rising_edge",
+      "source_system": "ignition",
+      "simulated": false
+    },
+    {
+      "id": "diff_simulated_never_counted",
+      "event_timestamp": "2026-08-27T23:16:29.050Z",
+      "detected_at": "2026-08-27T23:16:30.100Z",
+      "tag_path": "Conveyor/photo_eye",
+      "prev_value": "false",
+      "new_value": "true",
+      "diff_type": "rising_edge",
+      "source_system": "simulator",
+      "simulated": true
+    }
+  ],
+  "expectedCoverage": {
+    "returnedRowCount": 15,
+    "observationCount": 13,
+    "admissibleObservationCount": 3,
+    "physicalObservationCount": 5,
+    "simulatedObservationCount": 3,
+    "badQualityObservationCount": 2,
+    "unknownProvenanceCount": 5,
+    "firstObservedAt": "2026-08-27T23:16:28.100Z",
+    "lastObservedAt": "2026-08-27T23:16:29.400Z"
+  }
+}

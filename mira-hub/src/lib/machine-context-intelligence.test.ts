@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveContextIntelligence } from "./machine-context-intelligence";
+import { ANOMALY_CATALOG, canonicalAnomalyTitle, canonicalDiffTitle } from "./machine-anomaly-catalog";
 import type { LiveTag, LatestDiff } from "./machine-memory-response";
 import type { CurrentState } from "./machine-current-state";
 
@@ -130,6 +131,88 @@ describe("deriveContextIntelligence", () => {
       recentChangeWindowS: 120,
     });
     expect(out.changed_recently).toEqual(["x/vfd_frequency"]);
+  });
+
+  describe("canonical anomaly titles (PRD §9.2 — one shared catalog, no raw fragments)", () => {
+    const diff = (over: Partial<LatestDiff>): LatestDiff => ({
+      diff_id: "d",
+      tag_path: "x",
+      severity: "critical",
+      diff_type: null,
+      observed: null,
+      baseline: null,
+      delta_percent: null,
+      event_timestamp: null,
+      next_check: null,
+      ...over,
+    });
+
+    it("A0 on the _stale_s pseudo-topic renders 'PLC/bridge offline' — never the internal field name", () => {
+      const out = deriveContextIntelligence({
+        machine_state: { state: "comm_down", since: null, fresh: false },
+        live_tags: [],
+        latest_diffs: [diff({ diff_type: "anomaly_A0_OFFLINE", tag_path: "_stale_s", next_check: "check the bridge service" })],
+        nowMs: NOW,
+      });
+      expect(out.active_conditions[0].title).toBe("PLC/bridge offline");
+      expect(out.active_conditions[0].title).not.toMatch(/_stale_s/);
+      // the active-fault summary leads with the canonical title AND keeps the next check
+      expect(out.summary).toBe("Active fault: PLC/bridge offline. Next: check the bridge service");
+    });
+
+    it("A2 stays canonical and the persisted metadata title can NOT override a known rule", () => {
+      const out = deriveContextIntelligence({
+        machine_state: null,
+        live_tags: [],
+        latest_diffs: [diff({ diff_type: "anomaly_A2_VFD_FAULT", tag_path: "[default]MIRA_IOCheck/VFD/vfd_fault_code", title: "something a row said" })],
+        nowMs: NOW,
+      });
+      expect(out.active_conditions[0].title).toBe("GS10 drive fault active");
+    });
+
+    it("the complete known catalog is A0–A10 plus A12 — there is no A11", () => {
+      expect(Object.keys(ANOMALY_CATALOG).sort()).toEqual(
+        [
+          "A0_OFFLINE",
+          "A1_COMM_STALE",
+          "A2_VFD_FAULT",
+          "A3_ESTOP_WIRING",
+          "A4_DIRECTION_FAULT",
+          "A5_ILLEGAL_RUN",
+          "A6_DRIVE_NOT_RESPONDING",
+          "A7_FREQ_NOT_TRACKING",
+          "A8_OVERCURRENT",
+          "A9_DC_BUS",
+          "A10_FREQ_STUCK_ZERO",
+          "A12_PHOTOEYE_JAM",
+        ].sort(),
+      );
+      expect(Object.keys(ANOMALY_CATALOG).some((k) => k.startsWith("A11"))).toBe(false);
+      for (const t of Object.values(ANOMALY_CATALOG)) expect(t).not.toMatch(/_stale_s|\[default\]|enterprise\./);
+    });
+
+    it("raw UNS paths / [default] provider prefixes / pseudo-topics never enter a title", () => {
+      expect(canonicalAnomalyTitle("A9_DC_BUS", "enterprise.home_garage.conveyor_lab.conveyor_1")).toBe("DC bus voltage out of range");
+      // unknown rule with an internal-looking persisted title: the title is rejected
+      const t = canonicalAnomalyTitle("A99_CUSTOM", "[default]MIRA_IOCheck/VFD/_stale_s", "enterprise.site.area._stale_s");
+      expect(t).not.toMatch(/_stale_s|\[default\]|enterprise\./);
+      expect(t).toBe("custom");
+      // unknown rule with a sane persisted title: it is used (sanitized)
+      expect(canonicalAnomalyTitle("A99_CUSTOM", "x/y", "  Custom   thing  ")).toBe("Custom thing");
+    });
+
+    it("unknown non-anomaly diffs degrade deterministically to '<kind> on <leaf>'", () => {
+      expect(canonicalAnomalyTitle(null, "[default]MIRA_IOCheck/VFD/vfd_dc_bus")).toBe("deviation on vfd dc bus");
+      expect(canonicalDiffTitle("[default]MIRA_IOCheck", "x/vfd_current")).toBe("deviation on vfd current");
+      expect(canonicalDiffTitle("enterprise.site.area", "x/vfd_current")).toBe("deviation on vfd current");
+      const out = deriveContextIntelligence({
+        machine_state: null,
+        live_tags: [],
+        latest_diffs: [diff({ diff_type: "baseline_deviation", tag_path: "x/vfd_current", severity: "info" })],
+        nowMs: NOW,
+      });
+      expect(out.active_conditions[0].title).toBe("baseline deviation on vfd current");
+    });
   });
 
   it("is honest when the drive health cannot be confirmed while stopped", () => {

@@ -28,6 +28,7 @@ import {
 import { ReplayTimeline } from "./ReplayTimeline";
 import {
   REPLAY_DEFAULT_WINDOW,
+  isReplayActionable,
   replayQuestion,
   type HistoryResult,
   type MachineEvidenceWindow,
@@ -578,23 +579,27 @@ function ReplayPanel({
     );
 
   const { history } = result;
-  // The window MIRA is asked about is the window the technician is looking
-  // at: the one the rows were fetched for, as the server echoed it.
-  const machineEvidence: MachineEvidenceWindow = {
-    assetId,
-    anchorAt: history.anchor.at,
-    pre: history.pre,
-    post: history.post,
-  };
+  const actionable = isReplayActionable(history);
   return (
     <>
       <ReplayTimeline history={history} onWindowChange={setWindow} />
-      <button
-        className="btn-primary"
-        onClick={() => onAsk(replayQuestion(history.anchor.at), { machineEvidence })}
-      >
-        Ask MIRA what happened
-      </button>
+      {actionable && (
+        <button
+          className="btn-primary"
+          onClick={() =>
+            onAsk(replayQuestion(history.anchor.at), {
+              machineEvidence: {
+                assetId,
+                anchorAt: history.anchor.at,
+                pre: history.pre,
+                post: history.post,
+              },
+            })
+          }
+        >
+          Ask MIRA what happened
+        </button>
+      )}
     </>
   );
 }

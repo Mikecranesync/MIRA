@@ -28,6 +28,9 @@ export interface MachineMemoryClient {
 
 export interface MachineMemoryDiff extends Record<string, unknown> {
   next_check: string | null;
+  /** Producer-written canonical title from metadata (additive; null on
+   *  historical rows — readers fall back to the shared catalog). */
+  title: string | null;
 }
 
 export interface MachineMemory {
@@ -45,8 +48,9 @@ export interface MachineMemory {
  *   `isUndefinedRelationOrColumn`).
  * - `latest_window` / `windows_available`: newest machine_state_window row;
  *   040-not-applied is tolerated (null + windows_available=false).
- * - `latest_diffs`: newest ≤5 run_diff rows, each with `next_check` surfaced
- *   from metadata; 040 columns missing falls back to the 038 column set.
+ * - `latest_diffs`: newest ≤5 run_diff rows, each with `next_check` and
+ *   `title` surfaced from metadata; 040 columns missing falls back to the
+ *   038 column set.
  */
 export async function fetchMachineMemory(
   client: MachineMemoryClient,
@@ -120,10 +124,14 @@ export async function fetchMachineMemory(
     latest_run: latestRun,
     latest_window: latestWindow,
     windows_available: windowsAvailable,
-    latest_diffs: latestDiffs.map((d) => ({
-      ...d,
-      next_check: (d.metadata as { next_check?: string } | null)?.next_check ?? null,
-    })),
+    latest_diffs: latestDiffs.map((d) => {
+      const meta = d.metadata as { next_check?: string; title?: unknown } | null;
+      return {
+        ...d,
+        next_check: meta?.next_check ?? null,
+        title: typeof meta?.title === "string" && meta.title.trim() ? meta.title : null,
+      };
+    }),
   };
 }
 

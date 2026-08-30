@@ -66,6 +66,10 @@ export interface CurrentConnection {
  *  The two are never collapsed into one another. */
 export interface HistoricalCoverage {
   available: boolean;
+  /** Everything the server serialized in `rows`: raw events PLUS diffs. */
+  returnedRowCount: number | null;
+  /** Raw `tag_events` observations only — a diff is a derived transition, not
+   *  an observation, and enters no provenance/admission partition. */
   observationCount: number | null;
   /** Server-owned admissibility (raw good-quality physical events only). The
    *  ONLY number that may unlock Ask MIRA. `null` = the server never said, which
@@ -139,6 +143,20 @@ export const FRESHNESS_TITLE: Record<Freshness, string> = {
 };
 
 export const LIVE_UNAVAILABLE_BANNER = "Live unavailable — showing recorded history";
+export const REPLAY_EMPTY_COPY =
+  "Nothing was recorded in this window. Widen the window or check the gateway.";
+
+export function isReplayActionable(
+  history: Pick<AssetHistory, "historicalCoverage" | "reason">,
+): boolean {
+  const count = history.historicalCoverage.admissibleObservationCount;
+  return (
+    history.reason !== "unavailable" &&
+    history.historicalCoverage.available &&
+    count !== null &&
+    count > 0
+  );
+}
 
 /** Stale, simulated, and unknown all mean "not live". Only `live` is live. */
 export function liveUnavailable(freshness: Pick<FreshnessSummary, "overall"> | null | undefined): boolean {
