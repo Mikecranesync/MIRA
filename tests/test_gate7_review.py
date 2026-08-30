@@ -538,6 +538,22 @@ def test_scope_prefixes_match_case_insensitively():
     assert diff_paths_excluded(diff, ("DOCS",)) == ["docs_extra/c.py"]
 
 
+def test_a_dot_segment_in_a_scoped_path_is_never_in_scope():
+    """#3481 round AP (round-39 S5 F1 claimed `docs/../src/secret.py` is kept by a
+    `--paths docs/` slice). git refuses `..` path components in any tree, so no
+    real diff header carries one; the lane is defensive anyway: a path with a
+    `..` segment is never in scope and is receipted as excluded."""
+    from gate7_review import diff_paths_excluded, filter_diff_paths
+
+    diff = (
+        "diff --git a/docs/../src/secret.py b/docs/../src/secret.py\n+traversal\n"
+        "diff --git a/docs/a.md b/docs/a.md\n+in_scope\n"
+    )
+    out = filter_diff_paths(diff, ("docs/",))
+    assert "+in_scope" in out and "+traversal" not in out
+    assert diff_paths_excluded(diff, ("docs/",)) == ["docs/../src/secret.py"]
+
+
 def test_diff_paths_excluded_lists_uncovered_files():
     from gate7_review import diff_paths_excluded
 

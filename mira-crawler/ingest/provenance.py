@@ -218,13 +218,30 @@ _CREDENTIAL_QUERY_NAMES = frozenset(
 _QUERY_NAME_NOISE_RE = re.compile(r"[^0-9a-z]")
 
 
+# Latin-lookalike letters (Cyrillic and Greek) mapped to their Latin twins
+# before folding (round AP on #3481): `pаssword` with a Cyrillic а must fold to
+# `password`. Only visually identical lower-case letters are mapped; the map
+# is applied after NFKD + lower-casing, so upper-case twins fold through it too.
+_CONFUSABLES = str.maketrans(
+    {
+        "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x",  # Cyrillic
+        "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "ɡ": "g", "һ": "h", "ԛ": "q", "ԝ": "w",
+        "ο": "o", "ν": "v", "ι": "i", "κ": "k", "α": "a", "τ": "t",  # Greek
+    }
+)  # fmt: skip
+
+
 def _fold_query_name(raw: str) -> str:
-    """The comparison key of a query-parameter name: percent-decoded, NFKC,
-    lower-cased, every non-alphanumeric character removed. Pure."""
-    from unicodedata import normalize
+    """The comparison key of a query-parameter name: percent-decoded, NFKD with
+    every combining mark dropped (`pássword` → `password`), lower-cased,
+    Latin-lookalike Cyrillic/Greek letters mapped to Latin, then every
+    non-alphanumeric byte removed. Pure."""
+    from unicodedata import combining, normalize
     from urllib.parse import unquote
 
-    return _QUERY_NAME_NOISE_RE.sub("", normalize("NFKC", unquote(raw)).lower())
+    decomposed = normalize("NFKD", unquote(raw))
+    stripped = "".join(ch for ch in decomposed if not combining(ch))
+    return _QUERY_NAME_NOISE_RE.sub("", stripped.lower().translate(_CONFUSABLES))
 
 
 def _credential_query_name(url: str) -> "str | None":

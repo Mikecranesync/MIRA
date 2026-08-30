@@ -923,6 +923,10 @@ def _path_in_scope(path: str, prefixes: tuple[str, ...]) -> bool:
     so a differently-cased spelling can neither escape nor be excluded by case.
     Pure."""
     p_low = path.lower()
+    # git refuses `..` path components in any tree, so no real header carries
+    # one; defensively (#3481 round AP) such a path is never in scope.
+    if ".." in p_low.split("/"):
+        return False
     for p in prefixes:
         q = p.lower()
         if p_low == q or p_low.startswith(q if q.endswith("/") else q + "/"):

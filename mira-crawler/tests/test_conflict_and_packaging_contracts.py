@@ -304,13 +304,15 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         # token, so a subset copy or a single-file copy still returns None.
         # `COPY` is matched case-insensitively: Docker instructions are
         # case-insensitive (round AL on #3481, round-35 S3 F1 SUSTAINED).
+        # Tokens may be quoted with `"` or `'` in the shell form (round AP on
+        # #3481, round-39 S3 F1); the JSON form tolerates loose spacing.
         m = re.match(
-            r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+([^\s#]+)\s*(?:#.*)?$",
+            r"\s*COPY\s+(?:--\S+\s+)*([\"']?)(?:\./)?mira-crawler/?\1\s+([\"']?)([^\s#\"']+)\2\s*(?:#.*)?$",
             line,
             re.I,
         )
         if m:
-            return m.group(1).rstrip("/")
+            return m.group(3).rstrip("/")
         m = re.match(
             r'\s*COPY\s+(?:--\S+\s+)*\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*(?:#.*)?$',
             line,
@@ -348,6 +350,11 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         ('Copy ["mira-crawler/", "/app/mc/"]', "/app/mc"),
         ("COPY mira-crawler/ extra/ /app/", None),  # multi-source: not the whole-dir form
         ("COPY mira-crawler/ mira-core/ /app/  # two sources", None),
+        # Round AP (#3481, round-39 S3 F1): quoted tokens in the shell form.
+        ('COPY "mira-crawler/" "/app/"', "/app"),
+        ("COPY 'mira-crawler' '/srv/mc/'", "/srv/mc"),
+        ('COPY [ "./mira-crawler" , "/app/x" ]', "/app/x"),  # JSON form, loose spacing
+        ('COPY "mira-crawler/tasks/" "/app/tasks/"', None),  # quoted subset copy
         ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
         ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
         ("COPY mira-core/ /app/core/", None),
@@ -1169,6 +1176,13 @@ class TestUserinfoRefusedAtTheBoundary:
         "https://example.com/doc.pdf#access_token=abc123",
         "https://example.com/doc.pdf?page=2#api_key=abc123",
         "https://example.com/doc.pdf#state=x&token=abc123",
+        # Round AP (#3481, round-38 S2 F1 / round-39 S2 F2): diacritics are
+        # stripped (NFKD, combining marks dropped) and Latin-lookalike Cyrillic /
+        # Greek letters are mapped to their Latin twins before folding.
+        "https://example.com/doc.pdf?p%C3%A1ssword=abc123",  # pássword
+        "https://example.com/doc.pdf?pаssword=abc123",  # Cyrillic а (U+0430)
+        "https://example.com/doc.pdf?tοken=abc123",  # Greek omicron (U+03BF)
+        "https://example.com/doc.pdf?ѕecret=abc123",  # Cyrillic ѕ (U+0455)
     )
     ORDINARY_QUERY = (
         # A fragment without `=` is an anchor, not a parameter: `#token` and
