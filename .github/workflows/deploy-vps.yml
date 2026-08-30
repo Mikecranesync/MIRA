@@ -31,8 +31,16 @@ on:
         options:
           - "false"
           - "true"
+      skip_drift_check:
+        description: "Skip the prod migration-drift gate (only when the deploy does NOT depend on the pending migration — REQUIRES skip_reason)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
       skip_reason:
-        description: "Why is the staging gate being skipped? (Required when skip_staging_gate=true; auto-opens an audit issue)"
+        description: "Why is a gate being skipped? (Required when skip_staging_gate=true OR skip_drift_check=true; auto-opens an audit issue)"
         required: false
         default: ""
 
@@ -189,6 +197,96 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Deploy-order gate (2026-08-18, after the #3245 incident — migrations
+      # 075/076/077 merged to main + the code that depends on them deployed to
+      # prod, but the migrations sat unapplied for ~21h; same class as the
+      # 2026-07-14 061-064 incident, 9 days of asset-enrich 500s). The Staging
+      # Gate above proves the code was GRADED; it says nothing about whether the
+      # target DB has the schema that code requires. Refuse to deploy code onto a
+      # prod DB that is missing a merged migration. Read-only: SELECTs
+      # schema_migrations only (same tool as migration-drift-check.yml). Escape
+      # hatch: dispatch with skip_drift_check=true (+ skip_reason) ONLY when the
+      # deploy genuinely does not depend on the pending migration.
+      - name: Validate + audit drift-check bypass
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_drift_check == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+          REASON: ${{ github.event.inputs.skip_reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REASON// /}" ]; then
+            echo "::error::skip_drift_check=true requires a non-empty skip_reason (e.g. 'hotfix: bot 409 fix, does not touch the pending 07x schema')."
+            exit 1
+          fi
+          SHORT_SHA="${SHA:0:8}"
+          {
+            echo "## drift-check bypass — audit record"
+            echo ""
+            echo "A production deploy was triggered with \`skip_drift_check=true\`, so it shipped code WITHOUT confirming prod has every merged migration."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Actor | @${ACTOR} |"
+            echo "| SHA | \`${SHA}\` |"
+            echo "| Reason | ${REASON} |"
+            echo "| Run | [${RUN_URL}](${RUN_URL}) |"
+            echo ""
+            echo "### Follow-up — required"
+            echo "- [ ] Promote any pending prod migrations: \`gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run\` (review) then \`mode=apply\`."
+            echo "- [ ] Confirm \`migration-drift-check.yml -f target=prod\` reports 0 drift, then close this issue."
+            echo ""
+            echo "_Auto-filed by \`.github/workflows/deploy-vps.yml\` deploy-order gate._"
+          } > drift_bypass_issue_body.md
+          # Non-fatal (same posture as the staging-gate bypass): an audit-log
+          # failure must never block a production hotfix.
+          gh issue create \
+            --repo "$REPO" \
+            --title "drift-check bypass: deploy by @${ACTOR} at ${SHORT_SHA}" \
+            --body-file drift_bypass_issue_body.md \
+            || echo "::warning::Could not auto-open the drift-check-bypass audit issue. Deploy continues — record the bypass manually. Reason: ${REASON}"
+
+      # Doppler CLI (repo standard — same as apply-migrations.yml /
+      # migration-drift-check.yml) so the drift gate can resolve the prod DB URL.
+      - name: Install Doppler CLI (for the drift gate)
+        if: github.event.inputs.skip_drift_check != 'true'
+        uses: dopplerhq/cli-action@v4
+
+      - name: Verify prod migration drift = 0 (deploy-order gate)
+        # Runs on the automatic (workflow_run) path too: inputs are empty there,
+        # so skip_drift_check != 'true' and the gate is ALWAYS enforced for
+        # auto-deploys. Only a deliberate operator dispatch can bypass it.
+        if: github.event.inputs.skip_drift_check != 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet psycopg2-binary
+          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$URL" ]; then echo "::error::empty prod DATABASE_URL (factorylm/prd) — cannot verify drift"; exit 1; fi
+          echo "::add-mask::$URL"
+          if python3 tools/migration_drift.py --database-url "$URL" | tee /tmp/deploy_drift.out; then
+            echo "✓ prod migration drift = 0 — deploy-order verified, proceeding"
+          else
+            {
+              echo "## ⛔ Deploy blocked — prod is missing a merged migration"
+              echo '```'
+              cat /tmp/deploy_drift.out
+              echo '```'
+              echo "Apply first (dev→staging→prod is already done for staging on merge):"
+              echo '```'
+              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run   # review"
+              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=apply     # then apply"
+              echo '```'
+              echo "Then re-run this deploy. If this deploy genuinely does NOT depend on the pending migration, dispatch deploy-vps with skip_drift_check=true + skip_reason."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Prod has unapplied migration(s) — deploying this code could 500 on the missing schema (the #3245 class). See the job summary to apply, or bypass with skip_drift_check=true for a verified-independent hotfix."
+            exit 1
+          fi
 
       - name: Set up SSH
         run: |

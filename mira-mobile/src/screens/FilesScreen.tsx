@@ -22,6 +22,7 @@ import { ApiError } from "../api/client";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { FilePreview } from "./FilePreview";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+import { Sheet } from "./Sheet";
 
 export type FilesRoute = { name: "list" } | { name: "detail"; fileId: string };
 
@@ -50,8 +51,11 @@ export function formatSize(bytes: number): string {
 /** Processing state, stated honestly — "not searchable" is never dressed up as
  *  "processing" for a file the pipeline will never index. */
 export function processingLabel(f: Pick<WorkspaceFile, "capability" | "indexed">): string {
+  // `indexed` is the server's truth: a photo whose text was read (OCR, EVID-4)
+  // is searchable even though its capability stays "viewable".
+  if (f.indexed) return "Searchable source · indexed";
   if (f.capability !== "indexable") return fileCapabilityLabel(f.capability);
-  return f.indexed ? "Searchable source · indexed" : "Indexing—not searchable yet";
+  return "Indexing—not searchable yet";
 }
 
 export function attachedLabel(linkCount: number): string {
@@ -103,8 +107,7 @@ export function PickWorkspaceFileSheet({
   const rows = state.state === "ready" ? state.data.filter((f) => !exclude.has(f.id)) : [];
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet label={title} onClose={onClose}>
         <h3>{title}</h3>
         {hint && (
           <div className="meta" style={{ marginBottom: 8 }}>
@@ -147,8 +150,7 @@ export function PickWorkspaceFileSheet({
         <button style={{ marginTop: 6 }} onClick={onClose}>
           Cancel
         </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

@@ -9,6 +9,7 @@
 // response from a single place. See docs/perf/live-latency-budget.md Tier 2.
 
 import { fetchMachineMemory, fetchLiveSignals, type MachineMemoryClient } from "@/lib/machine-memory";
+import { resolveAssetUnsPath } from "@/lib/asset-uns-path";
 import { classifyTagFreshness, rollupFreshness, tagStatuses } from "@/lib/command-center-freshness";
 import { deriveCurrentState, type WindowRow, type CurrentState } from "@/lib/machine-current-state";
 import { formatTagValue } from "@/lib/gs10-display";
@@ -99,17 +100,7 @@ export async function buildMachineMemoryResponse(
   // uses. Do NOT join machine_run/run_diff to cmms_equipment directly:
   // cmms_equipment.tenant_id is TEXT, kg_entities/machine_run tenant_id is
   // UUID (uuid = text errors). This is a separate lookup, not a join.
-  const unsPath = await client
-    .query(
-      `SELECT uns_path::text AS uns_path
-         FROM kg_entities
-        WHERE tenant_id = $1
-          AND entity_type = 'equipment'
-          AND (id::text = $2 OR entity_id = $2)
-        LIMIT 1`,
-      [tenantId, id],
-    )
-    .then((r) => (r.rows[0]?.uns_path as string | undefined) ?? null);
+  const unsPath = await resolveAssetUnsPath(client, tenantId, id);
 
   if (!unsPath) {
     return {

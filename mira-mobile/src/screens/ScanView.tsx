@@ -11,12 +11,20 @@ import QrScanner from "qr-scanner";
 
 type Status = "idle" | "starting" | "scanning" | "denied" | "no-camera" | "error";
 
+/** How the text arrived: a camera decode or the manual-entry fallback. Both
+ *  are selections; the caller records which so the server can label it. */
+export type ScanVia = "qr" | "manual_entry";
+
 export function ScanView({
   onResult,
   onCancel,
+  cancelLabel = "← Assets",
 }: {
-  onResult: (text: string) => void;
+  onResult: (text: string, via: ScanVia) => void;
   onCancel: () => void;
+  /** Where Cancel returns to. The view is mounted from the Assets tab and from
+   *  the Sensor sheet; the label must name the real destination. */
+  cancelLabel?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scannerRef = useRef<QrScanner | null>(null);
@@ -51,7 +59,7 @@ export function ScanView({
           if (firedRef.current) return;
           firedRef.current = true;
           teardown();
-          onResult(result.data);
+          onResult(result.data, "qr");
         },
         {
           highlightScanRegion: true,
@@ -80,7 +88,7 @@ export function ScanView({
   return (
     <div className="content bottompad">
       <button className="btn-link" onClick={onCancel}>
-        ← Assets
+        {cancelLabel}
       </button>
       <div className="scanbox">
         <video ref={videoRef} playsInline muted />
@@ -132,7 +140,7 @@ export function ScanView({
         <button
           style={{ width: "auto" }}
           disabled={!manualTag.trim()}
-          onClick={() => onResult(manualTag.trim())}
+          onClick={() => onResult(manualTag.trim(), "manual_entry")}
         >
           Go
         </button>

@@ -127,29 +127,40 @@ capabilities:
     environments:
       dev: unset
       staging: unset
-      production: "true"                    # Doppler factorylm/prd, observed 2026-08-19
+      production: "true"                    # Doppler factorylm/prd; in-container 2026-08-27
     state: production_enabled
     owner: null
     owner_missing: "No owner recorded for a security-relevant control."
-    ci_jobs: []
+    ci_jobs:
+      - capability-closure
     required_checks: []
-    evidence: []
+    evidence:
+      - path: tests/test_approved_retrieval_plumbing.py
+        note: >-
+          Every consumer's compose environment forwards the flag; with the
+          container-shaped value 'true' recall_knowledge emits 'AND verified = true'
+          on every knowledge_entries stream (hermetic, captured SQL). Direction
+          check, staging 2026-08-26: 83,540 verified public (OEM corpus
+          backfilled), 255 verified private, 711 UNverified private — gate-on
+          hides only unapproved uploads, the designed direction.
+      - path: docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md
+        note: >-
+          Production runtime proof 2026-08-27 after #3416 deployed (dd65c57eb):
+          MIRA_ENFORCE_APPROVED_RETRIEVAL=true inside all five consumer
+          containers; approval_gate_enabled() True in-process; recall_knowledge
+          in mira-ask-saas returned 28 verified=false rows across 162 with the
+          gate off and 0 with it on.
     rollback: >-
-      Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd. Note the
-      flag currently has no runtime effect — see blocker.
+      Unset MIRA_ENFORCE_APPROVED_RETRIEVAL in Doppler factorylm/prd (the compose
+      default is 'false'); redeploy the consumers.
     blocker: >-
-      P0 #3328 — CONFIGURED ON, ENFORCED OFF. The flag is 'true' in Doppler prd
-      and appears in ZERO docker-compose files, so it is never forwarded into a
-      container; neon_recall.py:136 reads its "false" default. The registry
-      records the INTENT (production: "true") deliberately, so the
-      enabled_but_unplumbed rule fires and stays visible until #3328 is fixed.
-    acknowledged_rules:
-      - "enabled_but_unplumbed"
-      - "production_no_evidence"
+      Was P0 #3328 (configured ON, enforced OFF: 'true' in Doppler prd, forwarded
+      by no compose file). Plumbed in #3416 (merged dd65c57eb, v3.297.5) and
+      proven at runtime on prod 2026-08-27 (see evidence). Remaining: no owner.
+    acknowledged_rules: []
     promotion_criteria:
-      - "Fix #3328 — forward the variable in each consuming service's environment block."
-      - "Confirm the intended enforcement direction before it takes effect; turning it genuinely on changes retrieval for any tenant with unverified rows."
-      - "Add a test asserting the gate is reachable from a container-shaped environment."
+      - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
+      - "Record an owner."
     review_by: "2026-09-05"
 
   # =========================================================================
@@ -259,6 +270,43 @@ capabilities:
       - "A confirmation-gated flow so identity is proposed, never asserted."
       - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
     review_by: "2026-10-19"
+
+  # =========================================================================
+  - id: photo_ocr_evidence
+    purpose: "Turn a photographed page/label/spec table into indexed, citable text (EVID-4, Tesseract)."
+    customer_outcome: "A technician photographs a spec table and chat can cite it — the citation opens the photo."
+    feature_flag: PHOTO_OCR_ENABLED
+    entrypoints:
+      - "mira-bots/ask_api/ocr_extract.py"
+      - "mira-hub/src/lib/photo-ocr.ts"
+      - "mira-hub/src/app/api/files/route.ts"
+    consumers:
+      - "mira-ask                            # docker-compose.saas.yml:541"
+      - "mira-hub                            # docker-compose.saas.yml:848"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "Awaiting Mike's merge + Doppler flip (PR #3430); no one has observed it live yet."
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - path: mira-bots/tests/test_ask_api_ocr_extract.py
+        note: "13 offline cases: every degradation path returns available:false, never 500; quality math."
+      - path: mira-hub/src/app/api/files/__tests__/upload-photo-ocr.test.ts
+        note: "8 route cases: OCR text rides the ordinary ingestTextToNode writer against the photo's own file row; flag-off parity."
+    rollback: "Set PHOTO_OCR_ENABLED=0 (both services) — photos revert to viewable-only; already-indexed OCR chunks stay citable."
+    reason: >-
+      Shipped dark. The EVID-4 live gate (photo of a spec table -> cited answer
+      sourced from it) has not been run against prod: needs the Doppler flip,
+      a mira-ask image rebuild (Dockerfile adds tesseract), and a real photo.
+    promotion_criteria:
+      - "PHOTO_OCR_ENABLED=1 in Doppler factorylm/prd for mira-ask AND mira-hub; deploy services=mira-ask,mira-hub."
+      - "One real spec-table photo -> [1] citation whose file opens the photograph, on prod (server-side proof acceptable)."
+      - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
+    review_by: "2026-10-26"
 
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a

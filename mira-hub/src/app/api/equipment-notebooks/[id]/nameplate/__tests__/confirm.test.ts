@@ -26,6 +26,7 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   // 085 provenance contract
   findVisibleOriginSource: vi.fn(async () => null),
   supersedePriorOriginSources: vi.fn(async () => []),
+  markNameplateDocVerified: vi.fn(async () => 0),
 }));
 vi.mock("@/lib/workspace-files", () => ({
   getFile: vi.fn(),
@@ -74,6 +75,7 @@ import {
   setSourceState,
   updateNotebook,
   findVisibleOriginSource,
+  markNameplateDocVerified,
   supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
 import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
@@ -175,6 +177,7 @@ beforeEach(() => {
   vi.mocked(getNotebook).mockResolvedValue(notebook);
   vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
   vi.mocked(supersedePriorOriginSources).mockResolvedValue([]);
+  vi.mocked(markNameplateDocVerified).mockResolvedValue(0);
   vi.mocked(getFile).mockResolvedValue({
     file: { id: PHOTO_FILE_ID } as never,
     links: [
@@ -906,6 +909,30 @@ describe("canonical-evidence contract (085)", () => {
     expect(res.status).toBe(200);
     expect(parkOrReuseFile).toHaveBeenCalled();
     expect(supersedePriorOriginSources).toHaveBeenCalled();
+  });
+
+  it("records the technician's approval: chunks marked verified after a successful attach (#3437 nameplate lane)", async () => {
+    happyIngestMocks();
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(markNameplateDocVerified).toHaveBeenCalledWith(TENANT_ID, NAMEPLATE_DOC_ID);
+    const attachOrder = vi.mocked(attachSource).mock.invocationCallOrder[0];
+    const verifyOrder = vi.mocked(markNameplateDocVerified).mock.invocationCallOrder[0];
+    expect(verifyOrder).toBeGreaterThan(attachOrder);
+  });
+
+  it("a verified-mark failure degrades to unverified, never a 500", async () => {
+    happyIngestMocks();
+    vi.mocked(markNameplateDocVerified).mockRejectedValue(new Error("db down"));
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+  });
+
+  it("never marks anything when the attach failed (no citable source, no approval)", async () => {
+    happyIngestMocks();
+    vi.mocked(attachSource).mockResolvedValue({ ok: false, error: "notebook_not_found" });
+    await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(markNameplateDocVerified).not.toHaveBeenCalled();
   });
 
   it("a supersede failure does not fail a confirm that already attached its source", async () => {

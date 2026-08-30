@@ -8,11 +8,17 @@
  * evidence → structured `insufficient_evidence`, no provider call, no invented
  * answer (Gate G). Every turn persists its source snapshot + evidence (§8.3).
  *
- * Frames (typed — src/lib/notebook-chat-types.ts): `sources` first, `content`
- * deltas, `status` last, then `data: [DONE]`. Under MIRA_CANONICAL_SEAM a
- * `usage` frame carrying per-turn spend is emitted before `status`; existing
- * clients ignore unknown kinds (mira-mobile sse.ts is an if/else-if chain),
- * so the addition is backward compatible.
+ * Frames (typed — src/lib/notebook-chat-types.ts). REAL wire order, per path:
+ *   answered : `content`* → `sources` → `evidence` → [`usage`] → `status`
+ *              → [`followups`] → `data: [DONE]`
+ *   abstain  : `sources` (empty) → `status` → `[DONE]`
+ *   safety   : `sources` (empty) → `content`* → `safety` → `status` → `[DONE]`
+ * `sources` is emitted AFTER generation on the answered path — citations are
+ * filtered to the [n] the answer actually used, which is unknowable before
+ * the model finishes. `usage` (MIRA_CANONICAL_SEAM only) rides before
+ * `status`; existing clients ignore unknown kinds (mira-mobile sse.ts is an
+ * if/else-if chain), so additive frames are backward compatible.
+ * chat-stop-persist.test.ts pins this order so the comment cannot drift again.
  *
  * PROVIDER SELECTION: `providers()` below is the LEGACY inline cascade and is
  * the fallback path. When MIRA_CANONICAL_SEAM=1 the turn is served by the
@@ -23,6 +29,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -64,14 +71,29 @@ import {
   facetEvidencePages,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
+import {
+  packetFromMachineMemoryResponse,
+  renderMachineEvidenceSection,
+  type MachineContextPacket,
+} from "@/lib/machine-context-packet";
+import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
+import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
+import { photoLinkedToTarget } from "@/lib/workspace-files";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 import type {
   EvidenceCitation,
+  MachineEvidenceEntry,
   NotebookContentFrame,
   NotebookEvidenceFrame,
   NotebookFollowupsFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
+  VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
@@ -387,11 +409,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
-  let body: { message?: string; sourceDocIds?: string[]; history?: unknown; mode?: string };
+  let body: {
+    message?: string;
+    sourceDocIds?: string[];
+    history?: unknown;
+    mode?: string;
+    /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
+     *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
+    machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
+    /** Sensor LOOK (S5 D3 cross-lane contract): the phone photo this turn was
+     *  asked with. NOTHING here is trusted but the file id: the server verifies
+     *  the file is linked to this notebook AS A PHOTO and re-derives the whole
+     *  entry (capture time included) from the stored file row; unverified →
+     *  ignored. `capturedAt` is still accepted for client compatibility and is
+     *  never read. */
+    visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  // Machine-evidence selection (§4.4). Validated up front so a malformed
+  // window is a 400, never a silent "answered without the machine".
+  let machineRequest: { assetId: string; at: string; pre: number; post: number } | null = null;
+  if (body.machineEvidence !== undefined && body.machineEvidence !== null) {
+    const me = body.machineEvidence;
+    const assetId = typeof me?.assetId === "string" ? me.assetId.trim() : "";
+    const at = parseAnchor(me?.anchorAt);
+    if (!assetId || !at) {
+      return NextResponse.json(
+        { error: "machine_evidence_invalid", message: "machineEvidence needs assetId and an ISO-8601 anchorAt." },
+        { status: 400 },
+      );
+    }
+    machineRequest = { assetId, at, pre: clampSpan(me.pre, 5), post: clampSpan(me.post, 2) };
+  }
+  // Visual-evidence claim (D3). Never a 4xx: a malformed or foreign claim is
+  // dropped silently and the turn is answered without it. The claim is a FILE
+  // ID and nothing else — `capturedAt` is client-supplied, so it is neither
+  // required nor read (the server derives the capture time from the file row).
+  let visualClaimFileId: string | null = null;
+  if (body.visualEvidence && typeof body.visualEvidence === "object") {
+    const raw = body.visualEvidence.fileId;
+    const fileId = typeof raw === "string" ? raw.trim() : "";
+    if (fileId) visualClaimFileId = fileId;
   }
   // Spec §1.1 — a technician with nothing configured must still get help, and
   // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
@@ -531,16 +593,103 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // for every id in docIds — the validated doc set is the boundary, so a
       // document linked from another notebook's node stays retrievable here.
       validatedDocScope: true,
+      // Workstream A (#3437/#3468): the SAME server-derived set is the
+      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+      // validateChatSources derives it (tenant-owned, notebook-linked,
+      // enabled, user_confirmed/verified, not superseded); the client's
+      // `body.sourceDocIds` was only an intersection request. Tenant-private
+      // chunks of these docs are admitted without ever being marked globally
+      // verified — confirmation is admission, not corpus promotion.
+      approvedSourceDocIds: docIds,
     }),
   );
 
   const enc = new TextEncoder();
 
+  // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
+  // window through the SAME reader the history route uses (fetchMachineHistory
+  // — never client-supplied rows), reshapes the Machine Memory header into the
+  // context packet, and attaches the recorded observations as the packet's
+  // replay window. This is the block assets/[id]/chat/route.ts already runs
+  // for live turns (buildMachineContextPacket + renderMachineEvidenceSection
+  // with sanitizeMachineMemoryField), ported here; document retrieval above
+  // is untouched. Own try/catch, same as the asset route: a missing 033/037/
+  // 040 env or any error never drops the notebook context already built.
+  let machinePacket: MachineContextPacket | null = null;
+  let machineEntry: MachineEvidenceEntry | null = null;
+  if (machineRequest) {
+    const mr = machineRequest;
+    try {
+      const result = await withTenantContext(ctx.tenantId, (c) =>
+        fetchMachineHistory(c, ctx.tenantId, mr.assetId, { at: mr.at, pre: mr.pre, post: mr.post }),
+      );
+      if (result.ok) {
+        const h = result.history;
+        machinePacket = packetFromMachineMemoryResponse(ctx.tenantId, mr.assetId, h.summary);
+        machinePacket.replay = {
+          anchor_at: h.anchor.at,
+          started_at: h.from,
+          stopped_at: h.to,
+          freshness: h.freshness.overall,
+          rows: h.rows,
+        };
+        // Anchored-window variant of the evidence window (same EvidenceWindow
+        // shape the card uses) so the prompt names the replayed bounds.
+        machinePacket.evidence.window = { started_at: h.from, stopped_at: h.to, uns_path: h.uns_path };
+        machineEntry = {
+          kind: "machine_evidence",
+          assetId: mr.assetId,
+          anchorAt: h.anchor.at,
+          pre: h.pre,
+          post: h.post,
+          rowCount: h.rows.length,
+          freshness: h.freshness.overall,
+          runId: h.anchor.runId ?? null,
+          windowId: h.anchor.windowId ?? null,
+          // Contract §2.8: "the tables are missing" and "the window was
+          // genuinely quiet" are DIFFERENT sentences. The reader already
+          // distinguishes them; carry that distinction to the clients instead
+          // of flattening both into "0 observed changes".
+          ...(h.reason ? { reason: h.reason } : {}),
+        };
+      } else {
+        console.warn("[notebook-chat] machine evidence not available:", result.error);
+      }
+    } catch (err) {
+      console.error("[notebook-chat] machine evidence fetch failed (continuing without it):", err);
+      machinePacket = null;
+      machineEntry = null;
+    }
+  }
+  // Nothing observed → nothing to ground on (contract §2.8, D2). A window that
+  // is `unavailable` (033/037 missing in this env) or genuinely empty must not
+  // move `basis` to a machine basis and must not put a MACHINE section in the
+  // prompt — an empty section is an invitation to infer. The ENTRY is still
+  // persisted (with `rowCount: 0` and its `reason`, when it has one) so both
+  // clients can say which of the two happened. Nulling the packet also keeps
+  // the machine-only approved-context gate off a turn that isn't using
+  // machine evidence.
+  const groundedMachineEntry: MachineEvidenceEntry | null =
+    machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
+  if (!groundedMachineEntry) machinePacket = null;
+
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
-  // is the one path allowed past this gate. Gate G itself is unchanged: with
-  // sources selected and nothing retrieved, MIRA still refuses without calling
-  // a provider.
-  if (chunks.length === 0 && !general) {
+  // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
+  // with sources selected and nothing retrieved and nothing else grounding the
+  // turn, MIRA still refuses without calling a provider.
+  //
+  // The third clause is the Sensor REPLAY correction. A served, non-empty
+  // machine window IS grounding — it is recorded observation, re-fetched by the
+  // server from its own tenant-scoped tables. Before it, the REPLAY question
+  // ("what happened around the fault at …") abstained on every notebook that
+  // had at least one enabled source, because a fault-window question retrieves
+  // no manual chunks: the window was fetched, then thrown away unanswered.
+  // `groundedMachineEntry` is non-null ONLY for a window with rows that is not
+  // `unavailable` (see above), so an empty or unavailable window leaves this
+  // gate exactly as it was — and a turn with no `machineEvidence` at all can
+  // never reach the third clause, which is what keeps document refusal
+  // behaviour byte-identical.
+  if (chunks.length === 0 && !general && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     await recordTurn(ctx.tenantId, notebookId, {
       question: message,
@@ -582,6 +731,68 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
+
+  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
+  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
+  // raster MIME), then re-derive the WHOLE entry server-side — including
+  // `capturedAt`, which comes from the stored file row, never from the client.
+  // Anything else (a manual PDF that merely happens to be linked, a foreign
+  // file, a stored-only type) → ignored silently; the turn still answers.
+  // Never a citation, never in sourceSnapshot, never moves `basis`.
+  let visualEntry: VisualObservationEntry | null = null;
+  if (visualClaimFileId) {
+    try {
+      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
+      if (photo) {
+        visualEntry = {
+          kind: "visual_observation",
+          fileId: photo.fileId,
+          capturedAt: photo.capturedAt,
+          provenance: "phone_photo",
+        };
+      } else {
+        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
+      }
+    } catch (err) {
+      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
+      visualEntry = null;
+    }
+  }
+
+  // Approved-context gate — for MACHINE evidence only (D3). Mirrors the asset
+  // chat route's summary: live real signals count as approved context; the
+  // notebook's validated (user_confirmed/verified) sources are its approved
+  // documents. Verified kg relationships are not counted on this route (the
+  // asset route's inline SQL is not extracted; 0 is the conservative value).
+  // Turns WITHOUT machine evidence never reach this gate, so document
+  // retrieval behaviour is byte-identical to before.
+  //
+  // `approvedMachineEvidenceCount` is the fourth counter (approved-context.ts):
+  // a REPLAYED window is never live, so `approvedLiveSignalCount` is 0 for it —
+  // on prod, where MIRA_ENFORCE_APPROVED_RETRIEVAL=true, every replay of a
+  // notebook without retrieved chunks was refusing 412. Recorded observations
+  // the SERVER re-fetched from its own tenant-scoped tables are approved
+  // context; that is what "the server re-derives" means. The gate keeps its
+  // teeth: it now runs for ANY turn that asked for machine grounding, so a
+  // window that came back empty or unavailable with no approved documents
+  // still refuses.
+  if (machineRequest && approvedAskEnforcementEnabled()) {
+    const approvedSummary = {
+      approvedSourceCount: new Set(chunks.map((c) => c.docId).filter(Boolean)).size,
+      verifiedRelationshipCount: 0,
+      approvedLiveSignalCount: machinePacket ? machinePacket.freshness.live : 0,
+      approvedMachineEvidenceCount: groundedMachineEntry ? groundedMachineEntry.rowCount : 0,
+    };
+    if (!approvedContextReady(approvedSummary)) {
+      const refusal = buildApprovedContextRefusal(approvedSummary);
+      // `error` is a sentence (mira-mobile renders it verbatim); `code` is the
+      // discriminator.
+      return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
+    }
+  }
+  const machineSection = machinePacket
+    ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
+    : "";
 
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers
@@ -644,9 +855,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } else if (classifyBroad(message).broad) {
     coverageDirective = `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`;
   }
+  // Machine evidence rides after the base prompt and BEFORE appendManualContext
+  // — the exact order the asset chat route uses. With no machine evidence the
+  // string is byte-identical to before.
+  const basePrompt = general ? GENERAL_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
+  const withMachine = machineSection ? `${basePrompt}\n\n${machineSection}` : basePrompt;
   const systemPrompt = general
-    ? GENERAL_SYSTEM_PROMPT + machineContext
-    : appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + coverageDirective;
+    ? withMachine + machineContext
+    : appendManualContext(withMachine, chunks) + machineContext + coverageDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -663,7 +879,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
   );
 
+  // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
+  // the request signal (client aborted the fetch / socket closed) and the
+  // response stream being cancelled by the runtime — both fold into ONE
+  // signal. `abortedRead` is a handled-rejection sentinel raced against the
+  // provider read so a stalled upstream cannot keep a stopped turn alive; it
+  // is created once and never awaited on its own, so it can't leak as an
+  // unhandled rejection.
+  const clientAbort = new AbortController();
+  const onClientGone = () => clientAbort.abort();
+  req.signal?.addEventListener("abort", onClientGone, { once: true });
+  const abortedRead = new Promise<never>((_, reject) =>
+    clientAbort.signal.addEventListener(
+      "abort",
+      () => reject(new DOMException("client stopped generation", "AbortError")),
+      { once: true },
+    ),
+  );
+  abortedRead.catch(() => {});
+
   const stream = new ReadableStream<Uint8Array>({
+    cancel() {
+      clientAbort.abort();
+    },
     async start(controller) {
       // Citations are emitted AFTER generation, filtered to what the answer
       // actually cited — so a refusal ships no pages and a grounded answer ships
@@ -690,9 +928,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const turnStartedAt = Date.now();
       let rawUsage: unknown = null;
       let capped = false;
+      // The provider whose stream was open when the client stopped — the
+      // partial turn is recorded against it, and its upstream read is
+      // cancelled so a stopped answer costs no further tokens.
+      let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+      let activeProvider: { name: string; model: string } | null = null;
 
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
+        // STRM-2: a stopped turn must never open a second provider stream.
+        // The catch block below breaks on abort, but the two NON-throwing
+        // `continue` paths (non-OK / empty-body response, empty responseBuffer)
+        // also land here — checking once at the top of the loop covers all of
+        // them (e.g. Groq 429 arriving after the technician tapped Stop).
+        if (clientAbort.signal.aborted) break cascade;
         try {
           const res = await fetch(provider.url, {
             method: "POST",
@@ -724,7 +973,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                       : {}),
                   },
             ),
-            signal: AbortSignal.timeout(30_000),
+            // The client-stop signal is composed with the timeout so a stop
+            // during the connect phase aborts the upstream request instead
+            // of waiting on the provider to answer first.
+            signal: composeTimeout(clientAbort.signal, 30_000),
           });
           if (!res.ok || !res.body) {
             // Record the attempt BEFORE continuing: an HTTP-level rejection is
@@ -734,11 +986,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             continue;
           }
           const reader = res.body.getReader();
+          activeReader = reader;
+          activeProvider = { name: provider.name, model: provider.model };
           const dec = new TextDecoder();
           let buffer = "";
           let finished = false;
           while (!finished) {
-            const { done, value } = await reader.read();
+            // Race the upstream read against the client-stop signal: a stop
+            // must interrupt a read that is waiting on a slow provider, not
+            // wait for the next delta to notice it.
+            const { done, value } = await Promise.race([reader.read(), abortedRead]);
             if (done) break;
             buffer += dec.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -807,6 +1064,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
           if (seam) attempted.push(provider.name);
         } catch (err) {
+          // Client stopped generation (STRM-2). Checked BEFORE the cascade
+          // classifier: the race rejects with an AbortError, and a cancelled
+          // controller makes enqueue throw a TypeError — neither is a
+          // provider failure, and a stopped turn must never retry on the
+          // next provider.
+          if (clientAbort.signal.aborted) break cascade;
           if (!isProviderCascadeError(err)) {
             // A bug in this route, not a provider outage — fail loud with a
             // DISTINCT status so it can never read as provider exhaustion.
@@ -822,6 +1085,79 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           continue; // cascade to next provider
         }
       }
+
+      // STRM-2: the technician stopped the answer. Nothing more is written to
+      // the (already cancelled) stream. The partial text is persisted as an
+      // `error` turn — a stopped answer is not an answer — with no citations,
+      // no basis and no follow-ups, so nothing downstream can mistake it for
+      // a grounded reply. Spend is still recorded when the seam is on: the
+      // tokens were consumed whether or not the technician read them.
+      if (clientAbort.signal.aborted) {
+        req.signal?.removeEventListener("abort", onClientGone);
+        activeReader?.cancel().catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          // already cancelled by the consumer
+        }
+        let partial = responseBuffer.join("");
+        // Same second bracket guard as the answered path: a general partial
+        // must not carry [n] markers that resolve to no document.
+        if (general) partial = partial.replace(/\s*\[\d+\]/g, "");
+        const partialText = partial.length ? partial : null;
+        const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
+        try {
+          await recordTurn(ctx.tenantId, notebookId, {
+            question: message,
+            answerStatus: "error",
+            answerText: partialText,
+            enabledSourceDocIds: docIds,
+            evidence: [],
+            model: stoppedModel,
+            basis: null,
+            ...assetSnapshot,
+          });
+        } catch (err) {
+          console.error("[notebook-chat] recordTurn (stopped) failed:", err instanceof Error ? err.message : err);
+        }
+        if (seam) {
+          const stoppedUsage: TurnUsage = activeProvider
+            ? {
+                ...usageFromRaw(
+                  activeProvider.name,
+                  activeProvider.model,
+                  rawUsage as never,
+                  routeReasonFor(attempted),
+                  attempted,
+                  "error",
+                ),
+                // The provider `usage` block rides the FINAL chunk, which a
+                // stopped turn never receives — so on a stop the token counts
+                // are UNKNOWN, not zero. estimateCostUsd() turns all-null
+                // counts into 0.000000, which is a positive claim that a turn
+                // that really did burn tokens was free: it disappears into
+                // SUM(cost_usd_estimate) and is NOT caught by
+                // tenantSpendSince's `unpriced_turns` (… IS NULL) filter.
+                // Unknown cost stays NULL — persist-usage.ts's own rule.
+                ...(rawUsage ? {} : { costUsdEstimate: null }),
+              }
+            : exhaustedUsage(attempted);
+          logTurnUsage({ tenantId: ctx.tenantId, notebookId }, stoppedUsage);
+          await persistTurnUsage(
+            {
+              tenantId: ctx.tenantId,
+              notebookId,
+              question: message,
+              answerText: partialText,
+              citationsPresent: false,
+              latencyMs: Date.now() - turnStartedAt,
+            },
+            stoppedUsage,
+          );
+        }
+        return;
+      }
+      req.signal?.removeEventListener("abort", onClientGone);
 
       let answerText = responseBuffer.join("");
 
@@ -853,17 +1189,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // stops at `status` has still received it, same discipline as `usage`.
       // Says out loud what the answer rests on, so general reasoning can never
       // be mistaken for a manual.
-      const evidenceFrame: NotebookEvidenceFrame = general
-        ? {
-            kind: "evidence",
-            basis: "general_reasoning",
-            label: "General guidance — not grounded in this machine's documents.",
-          }
-        : {
-            kind: "evidence",
-            basis: "oem_documentation",
-            label: "Grounded in this notebook's sources.",
-          };
+      // With machine evidence (§4.4): `live_machine_evidence` only when the
+      // asset's CURRENT signals roll up fresh; anything else is
+      // `machine_history` — a replay is never labelled live (contract §2.8).
+      // An empty or unavailable window claims NO machine basis (see
+      // `machineGrounded` above): the turn keeps the basis it would have had
+      // without the selection, and the entry rides along additively so the
+      // client can render the honest caption.
+      const evidenceFrame: NotebookEvidenceFrame = groundedMachineEntry
+        ? groundedMachineEntry.freshness === "live"
+          ? {
+              kind: "evidence",
+              basis: "live_machine_evidence",
+              label: general
+                ? "Grounded in live machine evidence — no documents for this machine."
+                : "Grounded in live machine evidence and this notebook's sources.",
+            }
+          : {
+              kind: "evidence",
+              basis: "machine_history",
+              label: general
+                ? "Grounded in recorded machine history — not live, no documents for this machine."
+                : "Grounded in recorded machine history and this notebook's sources — not live.",
+            }
+        : general
+          ? {
+              kind: "evidence",
+              basis: "general_reasoning",
+              label: "General guidance — not grounded in this machine's documents.",
+            }
+          : {
+              kind: "evidence",
+              basis: "oem_documentation",
+              label: "Grounded in this notebook's sources.",
+            };
+      // The machine entry and the verified visual observation ride on the SAME
+      // frame, additively — the basis and label above are untouched by them.
+      if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
+      if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
@@ -919,7 +1282,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerStatus,
           answerText: served ? answerText : null,
           enabledSourceDocIds: docIds,
-          evidence: emittedCitations,
+          // D5: the machine window rides INSIDE evidence[] next to the
+          // citations, discriminated by `kind`. Never in `citations` or
+          // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
+          evidence: served
+            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : [])]
+            : emittedCitations,
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.

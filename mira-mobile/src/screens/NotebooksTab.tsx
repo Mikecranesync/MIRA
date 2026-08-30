@@ -12,6 +12,7 @@ import {
   type NameplateCandidate,
 } from "../api/resources";
 import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-flow";
+import { openNotebookTransition } from "../lib/scan-landing";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
 
@@ -78,6 +79,10 @@ export function NotebooksTab({
         openAddSources={route.openAddSources}
         backRef={notebookBack}
         onExit={() => setRoute({ name: "home" })}
+        // Sensor READ landed on another machine: same transition a scan from
+        // the Assets tab takes (already on the chat tab, so only the notebook
+        // route half applies).
+        onOpenNotebook={(nid) => setRoute(openNotebookTransition(nid).notebookRoute)}
       />
     );
   return (

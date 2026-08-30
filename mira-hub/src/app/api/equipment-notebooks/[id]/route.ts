@@ -14,6 +14,7 @@ import {
   listTurns,
   updateNotebook,
 } from "@/lib/equipment-notebooks";
+import { listFilesForTarget } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +26,32 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const notebook = await getNotebook(ctx.tenantId, id);
   if (!notebook) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const [sources, turns] = await Promise.all([
+  const [sources, turns, photos] = await Promise.all([
     listSources(ctx.tenantId, id),
     listTurns(ctx.tenantId, id),
+    // S5 D1 (hub half): linked LOOK photos (workspace_file_links role
+    // "photo") as a SEPARATE additive array — reuses listFilesForTarget,
+    // touches neither the sources semantics nor the trust gate. A failure
+    // here never hides the notebook.
+    listFilesForTarget(ctx.tenantId, "equipment_notebook", id)
+      .then((files) =>
+        files
+          .filter((f) => f.link.role === "photo")
+          .map((f) => ({
+            fileId: f.id,
+            filename: f.filename,
+            mimeType: f.mimeType,
+            sizeBytes: f.sizeBytes,
+            createdAt: f.createdAt,
+            linkedAt: f.link.createdAt,
+          })),
+      )
+      .catch((err) => {
+        console.error("[equipment-notebooks] photo listing failed (continuing without it):", err);
+        return [];
+      }),
   ]);
-  return NextResponse.json({ notebook, sources, turns });
+  return NextResponse.json({ notebook, sources, turns, photos });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -20,6 +20,7 @@ import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
 import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
+import { closeTopTransientLayer } from "./lib/transient-layer";
 import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
 import { MoreTab } from "./screens/More";
 
@@ -80,6 +81,10 @@ export default function App() {
   // Android hardware back: give the active tab's stack first refusal.
   useEffect(() => {
     const sub = CapApp.addListener("backButton", ({ canGoBack: _ }) => {
+      // An open transient layer (fullscreen viewer today; sheets to follow)
+      // outranks every screen stack: BACK closes the most recently opened
+      // layer first — viewer, then sheet, then navigation (#3427, PRD §11).
+      if (closeTopTransientLayer()) return;
       const consumed = backHandler.current?.() ?? false;
       if (!consumed) void CapApp.minimizeApp();
     });

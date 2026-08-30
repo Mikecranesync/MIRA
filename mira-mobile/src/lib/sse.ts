@@ -1,6 +1,11 @@
-// Pure SSE frame parser for the Hub chat endpoints (sources → content* →
-// status → [DONE]). Exported standalone so it is unit-testable and reusable by
-// the Phase-4 streamed variant (same frames, incremental delivery).
+// Pure SSE frame parser for the Hub chat endpoints. Actual wire order:
+// content* → sources → evidence → [usage] → status → [followups] → [DONE].
+// One incremental parser (`createChatSseParser`) owns the frame semantics;
+// `parseChatSse` is the one-shot convenience over it, so a streamed turn
+// (STRM-1) and a buffered turn are byte-identical by construction.
+
+import { machineEvidenceEntries, type MachineEvidenceEntry } from "./replay";
+import { visualObservationEntries, type VisualObservationEntry } from "./sensor";
 
 export interface ChatCitation {
   citationId: string;
@@ -33,6 +38,14 @@ export interface ChatTurn {
   evidenceLabel?: string;
   /** Deterministic follow-up questions (CONV-4) — answered turns only. */
   followups?: string[];
+  /** Sensor REPLAY (D5): `{kind:"machine_evidence"}` entries the server put
+   *  in the turn's evidence[] and echoed on the existing `evidence` frame.
+   *  Absent on servers that predate it; never inferred. */
+  machineEvidence?: MachineEvidenceEntry[];
+  /** Sensor LOOK (S5 D3): `{kind:"visual_observation"}` entries the server
+   *  re-derived from `body.visualEvidence` and echoed on the same `evidence`
+   *  frame. Never a citation. Absent = none. */
+  visualEvidence?: VisualObservationEntry[];
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -42,6 +55,9 @@ export function normalizeCitations(raw: unknown): ChatCitation[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter(
+      // A `{kind:"machine_evidence"}` entry (D5) shares the array but is not
+      // a citation: no citationId, so it is skipped here by construction and
+      // read by `machineEvidenceEntries` instead.
       (c): c is Record<string, unknown> =>
         typeof c === "object" && c !== null && "citationId" in c,
     )
@@ -56,18 +72,33 @@ export function normalizeCitations(raw: unknown): ChatCitation[] {
     }));
 }
 
-export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
+/** Incremental SSE parser. Feed raw body chunks in any split (mid-line,
+ *  mid-frame, mid-terminator); `turn()` returns the state so far, so the UI can
+ *  re-render on every `content` frame; `finish()` flushes a trailing frame
+ *  that never got its blank-line terminator. Same frame semantics as the
+ *  old one-shot parse — that function is now implemented on top of this. */
+export interface ChatSseParser {
+  push(chunk: string): ChatTurn;
+  finish(): ChatTurn;
+  turn(): ChatTurn;
+}
+
+export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let answer = "";
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
-  for (const block of body.split("\n\n")) {
+  let machineEvidence: MachineEvidenceEntry[] | undefined;
+  let visualEvidence: VisualObservationEntry[] | undefined;
+  let buffer = "";
+
+  const applyBlock = (block: string) => {
     const line = block.trim();
-    if (!line.startsWith("data:")) continue;
+    if (!line.startsWith("data:")) return;
     const payload = line.slice(5).trim();
-    if (payload === "[DONE]") continue;
+    if (payload === "[DONE]") return;
     try {
       const frame = JSON.parse(payload) as Record<string, unknown>;
       if (frame.kind === "content") answer += String(frame.content ?? "");
@@ -81,10 +112,65 @@ export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
       } else if (frame.kind === "evidence") {
         evidenceBasis = String(frame.basis ?? "");
         evidenceLabel = String(frame.label ?? "");
+        // Same frame kind (no new SSE frame, D5). The Hub puts the entry on
+        // the frame as ONE object (`machineEvidence: {kind:"machine_evidence",…}`,
+        // chat/route.ts evidenceFrame) and, additively, the LOOK photo the
+        // same way (`visualEvidence: {kind:"visual_observation",…}`); an
+        // echoed evidence[] array is also read. Every carrier is flattened
+        // and each entry goes to its own reader by `kind` — so a visual entry
+        // riding in the machine field (or vice versa) is still found.
+        const carried: unknown[] = [];
+        for (const raw of [frame.machineEvidence, frame.visualEvidence, frame.evidence, frame.entries]) {
+          if (raw == null) continue;
+          if (Array.isArray(raw)) carried.push(...raw);
+          else carried.push(raw);
+        }
+        const entries = machineEvidenceEntries(carried);
+        if (entries.length) machineEvidence = entries;
+        const visual = visualObservationEntries(carried);
+        if (visual.length) visualEvidence = visual;
       }
     } catch {
       /* keep parsing subsequent frames */
     }
-  }
-  return { answer, citations, status, evidenceBasis, evidenceLabel, followups };
+  };
+
+  const turn = (): ChatTurn => ({
+    answer,
+    citations,
+    status,
+    evidenceBasis,
+    evidenceLabel,
+    followups,
+    ...(machineEvidence ? { machineEvidence } : {}),
+    ...(visualEvidence ? { visualEvidence } : {}),
+  });
+
+  return {
+    push(chunk) {
+      buffer += chunk;
+      // A frame is complete only at its blank-line terminator; whatever
+      // follows the last one stays buffered for the next chunk.
+      let i: number;
+      while ((i = buffer.indexOf("\n\n")) !== -1) {
+        applyBlock(buffer.slice(0, i));
+        buffer = buffer.slice(i + 2);
+      }
+      return turn();
+    },
+    finish() {
+      if (buffer.length) {
+        applyBlock(buffer);
+        buffer = "";
+      }
+      return turn();
+    },
+    turn,
+  };
+}
+
+export function parseChatSse(body: string, httpStatus = 200): ChatTurn {
+  const p = createChatSseParser(httpStatus);
+  p.push(body);
+  return p.finish();
 }

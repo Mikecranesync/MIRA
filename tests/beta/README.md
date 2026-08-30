@@ -12,6 +12,9 @@ One question decides beta readiness:
 | `beta_ready_upload_retrieval_citation.py` | **The RELEASE GATE.** Run explicitly (name isn't `test_*` on purpose — it hits live dev/staging endpoints). `xfail(strict)` until the gap closes. |
 | `test_upload_retrieval_citation.py` | Lane-2 twin: a runnable anchor (`test_retrieval_reads_only_knowledge_entries`, passes now) + the same end-to-end gate (`xfail`). Collected by normal `pytest`. |
 | `_gate.py` | The one real flow both files call: upload the fixture → poll → ask → judge citation. Never seeds `knowledge_entries` directly (that would hide the gap). |
+| `beta_ready_notebook_confirmed_source.py` | **Workstream B production-equivalent gate.** The NOTEBOOK product contract (mobile's calls) under the production flag `MIRA_ENFORCE_APPROVED_RETRIEVAL=true`: run-unique document + sentinel, refuse-before-upload, readiness polled on the contract, confirmation, exact doc/page citation, provider usage, provider-free unsupported refusal, run-owned cleanup. Skips without `BETA_PROBE_*`. CI: `beta-gate.yml` job `notebook-gate`. |
+| `_notebook_probe.py` | The reusable probe behind that gate; also a CLI (`python tests/beta/_notebook_probe.py`, DRY-RUN unless every input is present) used by `beta-probe-prod.yml` (manual, Mike-dispatched, `execute=true` + QA secrets required). Public app APIs only — no SQL. |
+| `test_notebook_probe.py` | Offline tests pinning the probe's judge (no other document, exact page, non-null provider, provider-free refusal, gate-state assertion, dry-run inertness, redaction). |
 | `fixtures/gs10_fault_codes.pdf` | The manual under test (GS10 fault `oC` = overcurrent). Regenerate: `python3 fixtures/_make_gs10_pdf.py`. |
 
 ## Run

@@ -99,7 +99,9 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     googleSub: (r.google_sub as string) ?? null,
     tenantId: String(r.tenant_id),
     name: (r.name as string) ?? null,
-    role: String(r.role ?? "owner"),
+    // hub_users.role is NOT NULL DEFAULT 'owner' (signup creator). A row that
+    // somehow lacks it maps to "" — least privilege — never to owner (#2360).
+    role: typeof r.role === "string" ? r.role : "",
     status: (r.status as UserStatus) ?? "trial",
     trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
     plan: (r.plan as string) ?? null,

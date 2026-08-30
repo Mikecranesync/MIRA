@@ -24,6 +24,7 @@ import {
 import { resolveScan, type ScanOutcome } from "../lib/scan-landing";
 import { extractAssetTag } from "../lib/tags";
 import { AttachFileSheet } from "./AttachFileSheet";
+import { Sheet } from "./Sheet";
 import { FilePreview } from "./FilePreview";
 import {
   fileTypeIcon,
@@ -32,13 +33,13 @@ import {
   PickWorkspaceFileSheet,
 } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
-import { ScanView } from "./ScanView";
+import { ScanView, type ScanVia } from "./ScanView";
 
 export type AssetsRoute =
   | { name: "list" }
   | { name: "detail"; id: string }
   | { name: "scan" }
-  | { name: "tag"; tag: string; error?: string };
+  | { name: "tag"; tag: string; error?: string; via?: ScanVia };
 
 export function AssetsTab({
   route,
@@ -67,11 +68,11 @@ export function AssetsTab({
     return (
       <ScanView
         onCancel={() => setRoute({ name: "list" })}
-        onResult={(text) => {
+        onResult={(text, via) => {
           const tag = extractAssetTag(text);
           setRoute(
             tag
-              ? { name: "tag", tag }
+              ? { name: "tag", tag, via }
               : { name: "tag", tag: "", error: `Not a FactoryLM asset code: ${text}` },
           );
         }}
@@ -82,6 +83,7 @@ export function AssetsTab({
       <TagLanding
         tag={route.tag}
         error={route.error}
+        via={route.via}
         onOpenNotebook={openNotebook}
         onOpenAsset={(id) => setRoute({ name: "detail", id })}
         onHome={() => setRoute({ name: "list" })}
@@ -430,8 +432,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
       )}
 
       {openFile && (
-        <div className="sheet-backdrop" onClick={() => setOpenFile(null)}>
-          <div className="sheet" onClick={(ev) => ev.stopPropagation()}>
+        <Sheet label={openFile.filename} onClose={() => setOpenFile(null)}>
             <h3>{openFile.filename}</h3>
             <FilePreview
               fileId={openFile.fileId}
@@ -441,8 +442,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
             <button style={{ marginTop: 12 }} onClick={() => setOpenFile(null)}>
               Close
             </button>
-          </div>
-        </div>
+        </Sheet>
       )}
       {pickOpen && (
         <PickWorkspaceFileSheet
@@ -487,12 +487,14 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
 function TagLanding({
   tag,
   error,
+  via = "qr",
   onOpenNotebook,
   onOpenAsset,
   onHome,
 }: {
   tag: string;
   error?: string;
+  via?: ScanVia;
   onOpenNotebook: (notebookId: string) => void;
   onOpenAsset: (assetId: string) => void;
   onHome: () => void;
@@ -505,7 +507,7 @@ function TagLanding({
     if (!tag || error) return;
     let cancelled = false;
     setOutcome(null);
-    void resolveScan(tag, { getAssetByTag, openAssetNotebook }).then((o) => {
+    void resolveScan(tag, { getAssetByTag, openAssetNotebook }, via).then((o) => {
       if (cancelled) return;
       if (o.kind === "notebook") onOpenNotebook(o.notebookId);
       else setOutcome(o);
@@ -513,7 +515,7 @@ function TagLanding({
     return () => {
       cancelled = true;
     };
-  }, [tag, error]);
+  }, [tag, error, via]);
 
   return (
     <div className="content bottompad">

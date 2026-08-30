@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,13 @@ export const dynamic = "force-dynamic";
  *
  * Returns chunks for a specific source document, plus the fault codes
  * extracted from those chunks (joined through kg_relationships).
+ *
+ * Tenant scoping: `knowledge_entries` reads use the hybrid-corpus filter
+ * `(is_private = false OR tenant_id = $caller)` on the raw owner pool (see
+ * /api/library/tree and .claude/rules/knowledge-entries-tenant-scoping.md) —
+ * a shared OEM document is readable by every tenant, a private upload only by
+ * its owner. Because the raw pool bypasses RLS, the pure-tenant KG tables in
+ * the fault-code join carry an explicit `tenant_id = $caller` predicate.
  *
  * `document_id` is the URL-safe base64 of the source_url (encoded by
  * /api/library/documents). We decode and use it as the WHERE filter.
@@ -72,19 +79,19 @@ export async function GET(req: Request) {
   }
 
   try {
-    const data = await withTenantContext(ctx.tenantId, async (c) => {
-      const { rows: meta } = await c.query(
+    const data = await (async () => {
+      const { rows: meta } = await pool.query(
         `SELECT
             metadata->>'title' AS title,
             COUNT(*)::text     AS total_chunks
           FROM knowledge_entries
-          WHERE tenant_id = $1 AND source_url = $2
+          WHERE (is_private = false OR tenant_id = $1) AND source_url = $2
           GROUP BY metadata->>'title'
           ORDER BY total_chunks DESC NULLS LAST
           LIMIT 1`,
         [ctx.tenantId, sourceUrl],
       );
-      const { rows: chunks } = await c.query(
+      const { rows: chunks } = await pool.query(
         `SELECT
             id::text,
             LEFT(content, 220) AS preview,
@@ -96,7 +103,7 @@ export async function GET(req: Request) {
             equipment_entity_id::text,
             created_at
           FROM knowledge_entries
-          WHERE tenant_id = $1 AND source_url = $2
+          WHERE (is_private = false OR tenant_id = $1) AND source_url = $2
           ORDER BY source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST
           LIMIT $3 OFFSET $4`,
         [ctx.tenantId, sourceUrl, limit, offset],
@@ -104,7 +111,9 @@ export async function GET(req: Request) {
       // Fault codes attached to ANY chunk from this document, deduped.
       // We join through kg_relationships.source_chunk_id (every fault
       // edge cites the chunk that justified it — spec §3.2).
-      const { rows: faults } = await c.query(
+      // kg_relationships / kg_entities are pure-tenant tables: explicit
+      // tenant predicates because the raw pool does not apply their RLS.
+      const { rows: faults } = await pool.query(
         `SELECT DISTINCT
             fc.id::text AS id,
             fc.name     AS name,
@@ -114,14 +123,15 @@ export async function GET(req: Request) {
           JOIN kg_entities      fc ON fc.id = r.target_entity
           JOIN knowledge_entries ke ON ke.id = r.source_chunk_id
           WHERE r.tenant_id = $1
+            AND fc.tenant_id = $1
             AND r.relation_type = 'has_fault'
-            AND ke.tenant_id = $1
+            AND (ke.is_private = false OR ke.tenant_id = $1)
             AND ke.source_url = $2
           ORDER BY code NULLS LAST, name`,
         [ctx.tenantId, sourceUrl],
       );
       return { meta, chunks, faults };
-    });
+    })();
 
     const totalChunks = Number(data.meta[0]?.total_chunks ?? 0);
     const chunks = data.chunks.map((r: Record<string, unknown>) => ({

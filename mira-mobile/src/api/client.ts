@@ -137,6 +137,9 @@ interface RequestOpts {
    *  caller provides an idempotency key (safe replay by contract). */
   idempotencyKey?: string;
   timeoutMs?: number;
+  /** Non-2xx statuses whose BODY is the answer (e.g. a 404 `no_fault_window`
+   *  that carries the latest window state). Returned instead of thrown. */
+  acceptStatuses?: number[];
 }
 
 async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse> {
@@ -196,7 +199,10 @@ async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse>
   return { status: res.status, data, text };
 }
 
-function errorFromStatus(status: number, data: unknown): ApiError {
+/** Typed error for a non-2xx status. Exported so a resource that ACCEPTS some
+ *  statuses (a body that is the answer) can still throw the same error for
+ *  the rest — one status→error mapping. */
+export function errorFromStatus(status: number, data: unknown): ApiError {
   const detail =
     (typeof data === "object" && data !== null && "error" in data
       ? String((data as { error: unknown }).error)
@@ -212,8 +218,15 @@ function errorFromStatus(status: number, data: unknown): ApiError {
  *  fetch patch rebuilds real multipart in native code (FormData cannot cross
  *  the plugin bridge) and we attach the session Cookie explicitly from OUR
  *  jar; in the dev browser it is a plain fetch through the vite proxy with
- *  browser cookies. NOT retried — callers own replay semantics. */
-export async function uploadMultipart(path: string, form: FormData): Promise<ApiResponse> {
+ *  browser cookies. NOT retried — callers own replay semantics.
+ *  `acceptStatuses`: same contract as `request()` — a non-2xx whose BODY is
+ *  the answer (e.g. LOOK's 502/503 that still carries the parked file) is
+ *  returned instead of thrown. Default: none (existing callers unchanged). */
+export async function uploadMultipart(
+  path: string,
+  form: FormData,
+  opts: { acceptStatuses?: number[] } = {},
+): Promise<ApiResponse> {
   await loadJar();
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = {};
@@ -242,8 +255,125 @@ export async function uploadMultipart(path: string, form: FormData): Promise<Api
   if (res.status === 401 && !suppressAuthEvents) {
     for (const fn of authExpiredListeners) fn();
   }
-  if (res.status >= 200 && res.status < 300) return { status: res.status, data, text };
+  if ((res.status >= 200 && res.status < 300) || opts.acceptStatuses?.includes(res.status))
+    return { status: res.status, data, text };
   throw errorFromStatus(res.status, data);
+}
+
+// --- streamed POST (chat SSE) -----------------------------------------------
+
+export interface StreamOpts {
+  json: unknown;
+  /** Called with each raw body chunk as it arrives, in order. */
+  onChunk: (chunk: string) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** Streamed POST for the chat SSE endpoints (STRM-1).
+ *
+ *  Why not `request()`: CapacitorHttp.request has no body stream — it hands
+ *  back the whole body after the last byte, which is the "up to 120 s blind"
+ *  gap this seam closes. `window.fetch` + `body.getReader()` is the platform
+ *  primitive for incremental delivery, and it also gives us AbortSignal for
+ *  Stop (STRM-2). Cookie/auth handling is the SAME as `uploadMultipart`: on
+ *  native the session Cookie comes from OUR jar and rides the explicit header
+ *  through the Capacitor fetch patch (which forwards headers natively); in the
+ *  dev browser the vite proxy + browser cookies apply.
+ *
+ *  Honesty note on the device: with the CapacitorHttp fetch patch enabled
+ *  (capacitor.config.ts), a POST is fulfilled natively and delivered to the
+ *  WebView as ONE buffered Response, so `onChunk` currently fires once on
+ *  Android — the parser + UI path is identical, only the granularity differs.
+ *  True token streaming on device needs the raw WebView fetch
+ *  (`CapacitorWebFetch`), which in turn needs the Hub to CORS-allow the app
+ *  origin and the session cookie to live in the WebView store — the Hub-side
+ *  CORS + cookie prerequisite tracked in #3453 (hub-streaming lane). Until
+ *  that lands, Stop on device is client-side only: the read loop cancels
+ *  delivery, but the abort never reaches the server, so the server persists a
+ *  full answered turn rather than a stopped one. NOT retried — a chat turn is
+ *  not idempotent. */
+export async function requestStream(path: string, opts: StreamOpts): Promise<ApiResponse> {
+  await loadJar();
+  const native = Capacitor.isNativePlatform();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (native) {
+    const cookies = cookieHeader();
+    if (cookies) headers["Cookie"] = cookies;
+  }
+  if (opts.signal?.aborted) throw opts.signal.reason ?? new DOMException("Aborted", "AbortError");
+
+  const timeoutCtl = new AbortController();
+  const timer = setTimeout(() => timeoutCtl.abort(), opts.timeoutMs ?? 120_000);
+  const onAbort = () => timeoutCtl.abort(opts.signal?.reason);
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+  let text = "";
+  let status = 0;
+  try {
+    let res: Response;
+    try {
+      res = await fetch(native ? API_BASE + path : path, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(opts.json),
+        signal: timeoutCtl.signal,
+        ...(native ? {} : { credentials: "include" as const }),
+      });
+    } catch (e) {
+      if (timeoutCtl.signal.aborted && opts.signal?.aborted) throw e; // caller's Stop
+      throw new ApiError("network", null, String(e));
+    }
+    status = res.status;
+    if (native) storeSetCookies(Object.fromEntries(res.headers.entries()));
+    if (status === 401 && !suppressAuthEvents) {
+      for (const fn of authExpiredListeners) fn();
+    }
+    if (status < 200 || status >= 300) {
+      const errText = await res.text().catch(() => "");
+      let data: unknown = null;
+      try {
+        data = JSON.parse(errText);
+      } catch {
+        data = null;
+      }
+      throw errorFromStatus(status, data);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      // No stream support (old WebView): degrade to one chunk, same contract.
+      text = await res.text();
+      opts.onChunk(text);
+    } else {
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        // Stop is honored HERE too, not only by the platform's reader: a
+        // buffered Response (Capacitor fetch patch) never rejects its read,
+        // so an abort would otherwise deliver the whole body after Stop.
+        if (timeoutCtl.signal.aborted) {
+          void reader.cancel().catch(() => {});
+          throw opts.signal?.reason ?? new DOMException("Aborted", "AbortError");
+        }
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) {
+          text += chunk;
+          opts.onChunk(chunk);
+        }
+      }
+      const tail = decoder.decode();
+      if (tail) {
+        text += tail;
+        opts.onChunk(tail);
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
+    if (native) await saveJar();
+  }
+  return { status, data: null, text };
 }
 
 // --- authenticated binary retrieval -----------------------------------------
@@ -344,6 +474,7 @@ export async function request(path: string, opts: RequestOpts = {}): Promise<Api
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status >= 200 && res.status < 300) return res;
+    if (opts.acceptStatuses?.includes(res.status)) return res;
     throw errorFromStatus(res.status, res.data);
   }
   throw new ApiError("network", null, String(lastNetworkErr ?? "request failed"));

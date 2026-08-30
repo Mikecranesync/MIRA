@@ -123,10 +123,16 @@ async function pickOne(
   }
 }
 
-/** The nameplate photo, from the phone's own image picker. The mime is
- *  resolved (never trusted raw): see `imageMimeOf`. */
+/** A photo, from the phone's own image picker. The mime is resolved (never
+ *  trusted raw): see `imageMimeOf`. `fallbackName` only matters when the
+ *  picker returns no filename. */
+export function pickPhoto(fallbackName = "photo.jpg"): Promise<File | null> {
+  return pickOne(() => FilePicker.pickImages({ limit: 1 }), fallbackName, imageMimeOf);
+}
+
+/** The nameplate photo — the same picker, kept under its historical name. */
 export function pickNameplatePhoto(): Promise<File | null> {
-  return pickOne(() => FilePicker.pickImages({ limit: 1 }), "nameplate.jpg", imageMimeOf);
+  return pickPhoto("nameplate.jpg");
 }
 
 /**

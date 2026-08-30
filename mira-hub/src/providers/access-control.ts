@@ -3,8 +3,7 @@
 import type { AccessControlProvider } from "@refinedev/core";
 import { getSession } from "next-auth/react";
 import type { Capability } from "@/lib/capabilities";
-
-type Role = "technician" | "manager" | "scheduler" | "admin" | "operator" | "owner";
+import { NO_ROLE, sessionRole, type Role } from "@/lib/role";
 
 type ResourcePermissions = {
   actions: string[];
@@ -44,7 +43,11 @@ export const accessControlProvider: AccessControlProvider = {
     if (!resource) return { can: false };
 
     const session = await getSession();
-    const role = ((session?.user as { role?: Role } | undefined)?.role ?? "owner") as Role;
+    const role = sessionRole(session);
+    if (role === NO_ROLE) {
+      // Absent, malformed, or unknown role → fail closed (#2360 doctrine).
+      return { can: false, reason: `No resolved role can ${action} on ${resource}` };
+    }
     if (role === "owner") {
       return { can: true };
     }
@@ -90,6 +93,10 @@ export const NAV_ITEMS: ReadonlyArray<{
   // Knowledge is one section with sub-tabs: Manuals (KB) · Map (relationship
   // graph) · Suggestions (propose/verify queue). /graph and /proposals redirect in.
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: [...ALL_ROLES], group: "primary" },
+  // Equipment Notebooks — chat with a machine's manuals (PLAT-1, ChatGPT-parity
+  // PRD). Read/chat is tenant-wide by design (shift handoff), so no capability
+  // gate here; the `notebooks.read` capability is PLAT-2's (not invented here).
+  { key: "notebooks",     label: "Notebooks",     icon: "NotebookPen",   href: "/equipment",     roles: [...ALL_ROLES], group: "primary" },
 
   // ── SECONDARY (collapsed under "More") ─────────────────────────────────────
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },

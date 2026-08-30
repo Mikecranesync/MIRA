@@ -29,6 +29,12 @@ RUN apt-get update -qq \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir paddlepaddle==3.3.1 paddleocr==3.7.0
 
+# Photo OCR (ask_api/ocr_extract.py, EVID-4; flagged by PHOTO_OCR_ENABLED —
+# default off). tesseract-ocr + the English pack are Apache-2.0 Debian
+# packages; pytesseract (Apache-2.0) is the thin CLI wrapper. No model preload:
+# nothing costs RAM until the first request, and the binary is cheap to run.
+RUN apt-get update -qq     && apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-eng     && rm -rf /var/lib/apt/lists/*     && pip install --no-cache-dir pytesseract==0.3.13
+
 COPY shared/ ./shared/
 COPY prompts/ ./prompts/
 COPY ask_api/ ./ask_api/

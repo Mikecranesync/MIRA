@@ -15,6 +15,9 @@ x-bot-common-env: &bot-common-env
   KNOWLEDGE_COLLECTION_ID: ${KNOWLEDGE_COLLECTION_ID:-}
   NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
   MIRA_TENANT_ID: ${MIRA_TENANT_ID:-}
+  # Approval-gated retrieval (#3328): Doppler sets this, but compose forwards a
+  # variable only when named here. Read by mira-bots/shared/neon_recall.py.
+  MIRA_ENFORCE_APPROVED_RETRIEVAL: ${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
   VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
   INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -209,6 +212,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -277,6 +281,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
       - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
       # ISOLATED paid print-vision interpreter (PrintSense) — NOT part of the
@@ -385,6 +390,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
       - SLACK_ALLOWED_CHANNELS=${SLACK_ALLOWED_CHANNELS:-}
@@ -536,6 +542,10 @@ services:
       NAMEPLATE_DETECT_ENABLED: "${NAMEPLATE_DETECT_ENABLED:-0}"
       NAMEPLATE_DET_MODEL: "${NAMEPLATE_DET_MODEL:-PP-OCRv5_mobile_det}"
       NAMEPLATE_DETECT_TIMEOUT: "${NAMEPLATE_DETECT_TIMEOUT:-30}"
+      # Photo OCR (POST /ocr/extract, EVID-4). Tesseract, no preload; default
+      # off — the hub keeps photos viewable-only until this is "1" on BOTH sides.
+      PHOTO_OCR_ENABLED: "${PHOTO_OCR_ENABLED:-0}"
+      PHOTO_OCR_TIMEOUT: "${PHOTO_OCR_TIMEOUT:-45}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
@@ -747,6 +757,7 @@ services:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
       # Embedder for the Hub's OWN vector path — both halves of it:
       #   write: lib/node-knowledge-ingest.ts::embedPendingNodeChunks (embed-on-write)
       #   read:  lib/agents/asset-intelligence.ts::searchKB (query embedding)
@@ -838,6 +849,10 @@ services:
       # /nameplate/detect when this is "1", so a single Doppler flip turns the
       # whole path on/off. Any detector failure reads the original photo.
       - NAMEPLATE_DETECT_ENABLED=${NAMEPLATE_DETECT_ENABLED:-0}
+      # Photo OCR shares one switch with mira-ask's /ocr/extract: when "1", a
+      # photo filed at a node/notebook is read by tesseract and its text is
+      # indexed as a citable source (EVID-4). Off = photos stay viewable-only.
+      - PHOTO_OCR_ENABLED=${PHOTO_OCR_ENABLED:-0}
       # Nameplate recognition runs IN THE HUB (src/lib/nameplate). TOGETHERAI_API_KEY
       # is already supplied further down with the AI-Reports LLM cascade, so the
       # recognizer is configured — but the VISION MODEL selectors were missing,
