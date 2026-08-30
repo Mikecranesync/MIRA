@@ -28,14 +28,6 @@ on:
         description: Approved historian effective-config SHA-256
         required: true
         type: string
-      expected_database_identity_hash:
-        description: Approved target database identity SHA-256
-        required: true
-        type: string
-      target_database_host:
-        description: Exact hostname expected from the protected database secret
-        required: true
-        type: string
       replay_from:
         description: Inclusive replay start (UTC RFC3339)
         required: true
@@ -57,6 +49,8 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       DATABASE_URL: ${{ secrets.MACHINE_MEMORY_PREFLIGHT_DATABASE_URL }}
+      EXPECTED_DATABASE_IDENTITY_HASH: ${{ vars.MACHINE_MEMORY_PREFLIGHT_DATABASE_IDENTITY_HASH }}
+      TARGET_DATABASE_HOST: ${{ vars.MACHINE_MEMORY_PREFLIGHT_DATABASE_HOST }}
 
     steps:
       - uses: actions/checkout@v6
@@ -74,8 +68,6 @@ jobs:
           INPUT_EXPECTED_UNS_PATH: ${{ inputs.expected_uns_path }}
           INPUT_EXPECTED_DEPLOYMENT_SHA: ${{ inputs.expected_deployment_sha }}
           INPUT_EXPECTED_HEARTBEAT_CONFIG_SHA256: ${{ inputs.expected_heartbeat_config_sha256 }}
-          INPUT_EXPECTED_DATABASE_IDENTITY_HASH: ${{ inputs.expected_database_identity_hash }}
-          INPUT_TARGET_DATABASE_HOST: ${{ inputs.target_database_host }}
           INPUT_REPLAY_FROM: ${{ inputs.replay_from }}
           INPUT_REPLAY_TO: ${{ inputs.replay_to }}
         run: |
@@ -86,8 +78,8 @@ jobs:
             --expected-uns-path "$INPUT_EXPECTED_UNS_PATH" \
             --expected-deployment-sha "$INPUT_EXPECTED_DEPLOYMENT_SHA" \
             --expected-heartbeat-config-sha256 "$INPUT_EXPECTED_HEARTBEAT_CONFIG_SHA256" \
-            --expected-database-identity-hash "$INPUT_EXPECTED_DATABASE_IDENTITY_HASH" \
-            --target-database-host "$INPUT_TARGET_DATABASE_HOST" \
+            --expected-database-identity-hash "$EXPECTED_DATABASE_IDENTITY_HASH" \
+            --target-database-host "$TARGET_DATABASE_HOST" \
             --database-url "$DATABASE_URL" \
             --replay-from "$INPUT_REPLAY_FROM" \
             --replay-to "$INPUT_REPLAY_TO" \

@@ -23,10 +23,14 @@ Supply all required values from the reviewed operations record:
 - tenant UUID that owns the expected CV-101 telemetry;
 - exact UNS path: `enterprise.home_garage.conveyor_lab.conveyor_1`;
 - inspected deployment commit SHA and approved historian effective-config hash;
-- approved database-identity hash and the expected target host;
 - an exact UTC replay interval (`replay_from` inclusive, `replay_to` exclusive).
 
-The protected environment supplies `MACHINE_MEMORY_PREFLIGHT_DATABASE_URL`.
+The protected environment supplies `MACHINE_MEMORY_PREFLIGHT_DATABASE_URL` plus
+the environment-scoped variables `MACHINE_MEMORY_PREFLIGHT_DATABASE_IDENTITY_HASH`
+and `MACHINE_MEMORY_PREFLIGHT_DATABASE_HOST`. Dispatchers cannot select or replace
+these database trust anchors. The URL accepts only explicit TLS/timeout query
+parameters; target-altering parameters such as `host`, `service`, or `options`
+are rejected before a connection is opened.
 Do not paste a URL into an input, issue, log, or artifact.
 
 ## What the workflow proves

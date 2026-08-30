@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 REPO = Path(__file__).resolve().parents[2]
 EXPECTED_UNS_PATH = "enterprise.home_garage.conveyor_lab.conveyor_1"
@@ -30,6 +30,8 @@ _FORBIDDEN_SQL = re.compile(
     r"\b(?:insert|update|delete|merge|copy|create|alter|drop|grant|revoke|call|do|set)\b",
     re.IGNORECASE,
 )
+_REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_SAFE_DSN_OPTIONS = {"sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout"}
 
 
 class PreflightInputError(ValueError):
@@ -38,6 +40,10 @@ class PreflightInputError(ValueError):
 
 class SqlContractError(ValueError):
     """A shipped query violates the static SELECT-only contract."""
+
+
+class ObservedFactError(ValueError):
+    """Observed database facts are missing, ambiguous, or contradict the target."""
 
 
 @dataclass(frozen=True)
@@ -59,41 +65,61 @@ class PreflightInputs:
 # a half-open interval, so the replay counts have exact, reproducible bounds.
 SHIPPED_QUERIES = {
     "heartbeat": """
-WITH latest_heartbeat AS (
+WITH scoped_heartbeats AS (
     SELECT deployment_environment, started_at, finished_at, status, software_version, detail
       FROM historian_task_heartbeat
      WHERE tenant_id = %s::uuid
-       AND deployment_environment = %s
        AND task_name = 'historize_runs'
        AND started_at >= %s::timestamptz
        AND started_at < %s::timestamptz
      ORDER BY started_at DESC
-     LIMIT 1
 )
 SELECT json_build_object(
-    'heartbeat_environment', (SELECT deployment_environment FROM latest_heartbeat),
-    'heartbeat_started_at', (SELECT started_at FROM latest_heartbeat),
-    'heartbeat_finished_at', (SELECT finished_at FROM latest_heartbeat),
-    'heartbeat_status', (SELECT status FROM latest_heartbeat),
-    'heartbeat_software_version', (SELECT software_version FROM latest_heartbeat),
-    'heartbeat_detail', (SELECT detail FROM latest_heartbeat),
+    'heartbeat_count', (SELECT count(*) FROM scoped_heartbeats),
+    'heartbeat_environment', (SELECT deployment_environment FROM scoped_heartbeats LIMIT 1),
+    'heartbeat_started_at', (SELECT started_at FROM scoped_heartbeats LIMIT 1),
+    'heartbeat_finished_at', (SELECT finished_at FROM scoped_heartbeats LIMIT 1),
+    'heartbeat_status', (SELECT status FROM scoped_heartbeats LIMIT 1),
+    'heartbeat_software_version', (SELECT software_version FROM scoped_heartbeats LIMIT 1),
+    'heartbeat_detail', (SELECT detail FROM scoped_heartbeats LIMIT 1),
     'now', current_timestamp
 )
 """.strip(),
     "replay": """
-WITH scoped_events AS (
+WITH replay_bounds AS (
+    SELECT %s::timestamptz AS replay_from, %s::timestamptz AS replay_to
+), fault_trigger AS (
+    SELECT min(event_timestamp) AS trigger_at
+      FROM tag_events
+      CROSS JOIN replay_bounds
+     WHERE tenant_id = %s::uuid
+       AND uns_path = %s::ltree
+       AND event_timestamp >= replay_from
+       AND event_timestamp < replay_to
+       AND tag_path = 'default_conveyor_fault_alarm'
+       AND source_system = 'ignition'
+       AND source_connection_id = 'cv101-bench-gw'
+       AND simulated = false
+       AND quality = 'good'
+       AND lower(trim(coalesce(value, ''))) IN ('true', '1', 'active', 'faulted')
+), scoped_events AS (
     SELECT event_id, event_timestamp, ingested_at, quality, source_system,
            source_connection_id, simulated
       FROM tag_events
+      CROSS JOIN replay_bounds
+      CROSS JOIN fault_trigger
      WHERE tenant_id = %s::uuid
        AND uns_path = %s::ltree
-       AND event_timestamp >= %s::timestamptz
-       AND event_timestamp < %s::timestamptz
+       AND trigger_at IS NOT NULL
+       AND event_timestamp >= replay_from
+       AND event_timestamp < replay_to
 )
 SELECT json_build_object(
     'latest_ingested_at', max(ingested_at),
     'latest_event_at', max(event_timestamp),
-    'fault_window_identity', encode(digest(coalesce(string_agg(event_id::text, ',' ORDER BY event_timestamp, event_id), ''), 'sha256'), 'hex'),
+    'fault_window_identity', CASE WHEN (SELECT trigger_at FROM fault_trigger) IS NULL THEN NULL ELSE encode(digest(coalesce(string_agg(event_id::text, ',' ORDER BY event_timestamp, event_id), ''), 'sha256'), 'hex') END,
+    'fault_window_from', (SELECT replay_from FROM replay_bounds),
+    'fault_window_to', (SELECT replay_to FROM replay_bounds),
     'fault_window_row_count', count(*),
     'fault_window_physical_observation_count', count(*) FILTER (WHERE source_system = 'ignition' AND source_connection_id = 'cv101-bench-gw' AND simulated = false),
     'fault_window_simulated_observation_count', count(*) FILTER (WHERE simulated = true OR source_system = 'simulator'),
@@ -111,10 +137,16 @@ def canonical_json(value: object) -> str:
 
 def database_identity_hash(database_url: str) -> str:
     """Hash the supplied target identity without retaining its credentials or URL."""
-    parsed = urlsplit(database_url)
+    try:
+        parsed = urlsplit(database_url)
+        query_keys = {key.lower() for key, _value in parse_qsl(parsed.query, keep_blank_values=True)}
+        port = parsed.port or 5432
+    except ValueError as exc:
+        raise PreflightInputError("DATABASE_URL_INVALID") from exc
     if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname or not parsed.path:
         raise PreflightInputError("DATABASE_URL_INVALID")
-    port = parsed.port or 5432
+    if parsed.fragment or not query_keys.issubset(_SAFE_DSN_OPTIONS):
+        raise PreflightInputError("DATABASE_URL_REDIRECT_OPTION")
     database = parsed.path.lstrip("/")
     if not database or "/" in database:
         raise PreflightInputError("DATABASE_URL_INVALID")
@@ -160,21 +192,12 @@ def _validate_inputs(inputs: PreflightInputs, inspected_sha: str) -> None:
 
 
 def assert_safe_select_query(name: str, query: str) -> None:
-    """Reject any shipped query outside the narrow tenant-scoped read contract."""
+    """Allow exactly the reviewed fixed statements; execution has no SQL input seam."""
+    if name not in SHIPPED_QUERIES or query != SHIPPED_QUERIES[name]:
+        raise SqlContractError(f"{name}: query_not_allowlisted")
     normalized = " ".join(query.split())
-    lowered = normalized.lower()
-    if not normalized or ";" in normalized:
-        raise SqlContractError(f"{name}: multi_statement_or_empty")
-    if not (lowered.startswith("select ") or lowered.startswith("with ")):
-        raise SqlContractError(f"{name}: not_select_cte")
-    if _FORBIDDEN_SQL.search(normalized):
-        raise SqlContractError(f"{name}: forbidden_statement")
-    if "tenant_id = %s::uuid" not in normalized:
-        raise SqlContractError(f"{name}: tenant_scope_missing")
-    if "event_timestamp >= %s::timestamptz" not in normalized and "started_at >= %s::timestamptz" not in normalized:
-        raise SqlContractError(f"{name}: replay_lower_bound_missing")
-    if "< %s::timestamptz" not in normalized:
-        raise SqlContractError(f"{name}: replay_upper_bound_missing")
+    if not normalized or ";" in normalized or _FORBIDDEN_SQL.search(normalized):
+        raise SqlContractError(f"{name}: non_select_statement")
 
 
 def _assert_shipped_queries_safe() -> None:
@@ -213,16 +236,23 @@ def collect_snapshot(
     try:
         cursor = connection.cursor()
         cursor.execute("BEGIN TRANSACTION READ ONLY")
-        cursor.execute("SET LOCAL app.current_tenant_id = %s", (inputs.expected_tenant_id,))
+        cursor.execute("SELECT set_config('app.current_tenant_id', %s, true)", (inputs.expected_tenant_id,))
         heartbeat = _fetch_json(
             cursor,
             SHIPPED_QUERIES["heartbeat"],
-            (inputs.expected_tenant_id, inputs.environment, inputs.replay_from, inputs.replay_to),
+            (inputs.expected_tenant_id, inputs.replay_from, inputs.replay_to),
         )
+        if heartbeat.get("heartbeat_count") != 1:
+            raise ObservedFactError("HEARTBEAT_CARDINALITY_INVALID")
+        if heartbeat.get("heartbeat_environment") != inputs.environment:
+            raise ObservedFactError("HEARTBEAT_ENVIRONMENT_MISMATCH")
         replay = _fetch_json(
             cursor,
             SHIPPED_QUERIES["replay"],
-            (inputs.expected_tenant_id, inputs.expected_uns_path, inputs.replay_from, inputs.replay_to),
+            (
+                inputs.replay_from, inputs.replay_to, inputs.expected_tenant_id,
+                inputs.expected_uns_path, inputs.expected_tenant_id, inputs.expected_uns_path,
+            ),
         )
         cursor.execute("COMMIT")
     finally:
@@ -245,8 +275,8 @@ def collect_snapshot(
         "heartbeat_software_version": heartbeat.get("heartbeat_software_version"),
         "heartbeat_detail": heartbeat.get("heartbeat_detail"),
         "fault_window_identity": replay.get("fault_window_identity"),
-        "fault_window_from": inputs.replay_from,
-        "fault_window_to": inputs.replay_to,
+        "fault_window_from": replay.get("fault_window_from"),
+        "fault_window_to": replay.get("fault_window_to"),
         "replay_from": inputs.replay_from,
         "replay_to": inputs.replay_to,
         "fault_window_row_count": replay.get("fault_window_row_count"),
@@ -257,26 +287,65 @@ def collect_snapshot(
     }
 
 
+def _safe_hash(value: object, pattern: re.Pattern[str] = _SHA256) -> str | None:
+    return value if isinstance(value, str) and pattern.fullmatch(value) else None
+
+
+def _safe_time(value: object) -> str | None:
+    return value if isinstance(value, str) and _TIMESTAMP.fullmatch(value) else None
+
+
+def _safe_count(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _safe_hashes(value: object) -> list[str] | None:
+    if not isinstance(value, list) or not all(_safe_hash(item) for item in value):
+        return None
+    return list(value)
+
+
 def _redact_snapshot(snapshot: Mapping[str, object]) -> dict[str, object]:
-    """Keep only hashes, timestamps, booleans, counts, and approved reason inputs."""
-    allowed = {
-        key: value
-        for key, value in snapshot.items()
-        if key
-        not in {
-            "expected_tenant_id", "tenant", "raw_url", "database_url", "expected_uns_path",
-        }
+    """Construct an artifact snapshot from an explicit typed safe-field allowlist."""
+    detail = snapshot.get("heartbeat_detail")
+    safe_detail = {
+        "config_sha256": _safe_hash(detail.get("config_sha256")) if isinstance(detail, dict) else None,
+        "run_diff_enabled": detail.get("run_diff_enabled") if isinstance(detail, dict) and isinstance(detail.get("run_diff_enabled"), bool) else None,
+        "machine_memory_path_hashes": _safe_hashes(detail.get("machine_memory_path_hashes")) if isinstance(detail, dict) else None,
+        "run_trigger_path_hashes": _safe_hashes(detail.get("run_trigger_path_hashes")) if isinstance(detail, dict) else None,
+        "fault_trigger_tag_hashes": _safe_hashes(detail.get("fault_trigger_tag_hashes")) if isinstance(detail, dict) else None,
     }
-    detail = allowed.get("heartbeat_detail")
-    if isinstance(detail, dict):
-        allowed["heartbeat_detail"] = {
-            key: detail.get(key)
-            for key in (
-                "config_sha256", "run_diff_enabled", "machine_memory_path_hashes",
-                "run_trigger_path_hashes", "fault_trigger_tag_hashes",
-            )
-        }
-    return allowed
+    environments = {"staging", "production"}
+    safe = {
+        "expected_environment": snapshot.get("expected_environment") if snapshot.get("expected_environment") in environments else None,
+        "observed_environment": snapshot.get("observed_environment") if snapshot.get("observed_environment") in environments else None,
+        "expected_heartbeat_config_sha256": _safe_hash(snapshot.get("expected_heartbeat_config_sha256")),
+        "observed_heartbeat_config_sha256": _safe_hash(snapshot.get("observed_heartbeat_config_sha256")),
+        "expected_deployment_sha": _safe_hash(snapshot.get("expected_deployment_sha"), _GIT_SHA),
+        "inspected_deployment_sha": _safe_hash(snapshot.get("inspected_deployment_sha"), _GIT_SHA),
+        "expected_database_identity_hash": _safe_hash(snapshot.get("expected_database_identity_hash")),
+        "observed_database_identity_hash": _safe_hash(snapshot.get("observed_database_identity_hash")),
+        "now": _safe_time(snapshot.get("now")),
+        "latest_ingested_at": _safe_time(snapshot.get("latest_ingested_at")),
+        "latest_event_at": _safe_time(snapshot.get("latest_event_at")),
+        "heartbeat_started_at": _safe_time(snapshot.get("heartbeat_started_at")),
+        "heartbeat_finished_at": _safe_time(snapshot.get("heartbeat_finished_at")),
+        "heartbeat_status": snapshot.get("heartbeat_status") if snapshot.get("heartbeat_status") in {"running", "ok", "error", "disabled", "no_triggers", "missing_config"} else None,
+        "heartbeat_software_version": _safe_hash(snapshot.get("heartbeat_software_version"), _GIT_SHA),
+        "heartbeat_detail": safe_detail,
+        "fault_window_identity": _safe_hash(snapshot.get("fault_window_identity")),
+        "fault_window_from": _safe_time(snapshot.get("fault_window_from")),
+        "fault_window_to": _safe_time(snapshot.get("fault_window_to")),
+        "replay_from": _safe_time(snapshot.get("replay_from")),
+        "replay_to": _safe_time(snapshot.get("replay_to")),
+    }
+    for key in (
+        "fault_window_row_count", "fault_window_physical_observation_count",
+        "fault_window_simulated_observation_count", "fault_window_bad_quality_observation_count",
+        "fault_window_unknown_provenance_count",
+    ):
+        safe[key] = _safe_count(snapshot.get(key))
+    return safe
 
 
 def _sql_hash() -> str:
@@ -287,13 +356,17 @@ def build_artifact(
     *, snapshot: Mapping[str, object], verdict: Mapping[str, object], workflow_run_id: str, commit_sha: str
 ) -> dict[str, object]:
     reasons = verdict.get("reasons", [])
-    codes = [item.get("code") for item in reasons if isinstance(item, dict) and isinstance(item.get("code"), str)]
+    codes = [
+        item.get("code") for item in reasons
+        if isinstance(item, dict) and isinstance(item.get("code"), str) and _REASON_CODE.fullmatch(item["code"])
+    ]
+    status = verdict.get("status") if verdict.get("status") in {"GO", "NO_GO", "UNKNOWN"} else "UNKNOWN"
     return {
         "snapshot": _redact_snapshot(snapshot),
-        "verdict": verdict.get("status", "UNKNOWN"),
+        "verdict": status,
         "ordered_reason_codes": codes,
-        "commit_sha": commit_sha,
-        "workflow_run_id": workflow_run_id,
+        "commit_sha": _safe_hash(commit_sha, _GIT_SHA) or "unknown",
+        "workflow_run_id": workflow_run_id if workflow_run_id.isdecimal() else "unknown",
         "sql_sha256": _sql_hash(),
     }
 
