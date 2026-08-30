@@ -60,11 +60,11 @@ const FAULT_WINDOW: [RegExp, { rows: unknown[] }] = [
 // Two events + one diff, deliberately supplied OUT of order, with an
 // ingested_at that lags event_timestamp (the replay signature, D2).
 const EVENTS = [
-  { event_timestamp: "2026-08-27T23:16:31.160Z", ingested_at: "2026-08-27T23:16:33.100Z", uns_path: UNS_PATH, tag_path: "Conveyor/fault_alarm", value: "true", quality: "good" },
-  { event_timestamp: "2026-08-27T23:16:28.860Z", ingested_at: "2026-08-27T23:16:30.900Z", uns_path: UNS_PATH, tag_path: "Conveyor/photo_eye", value: "true", quality: "good" },
+  { event_timestamp: "2026-08-27T23:16:31.160Z", ingested_at: "2026-08-27T23:16:33.100Z", uns_path: UNS_PATH, tag_path: "Conveyor/fault_alarm", value: "true", quality: "good", source_system: "ignition", source_connection_id: "conn-1", simulated: false },
+  { event_timestamp: "2026-08-27T23:16:28.860Z", ingested_at: "2026-08-27T23:16:30.900Z", uns_path: UNS_PATH, tag_path: "Conveyor/photo_eye", value: "true", quality: "good", source_system: "ignition", source_connection_id: "conn-1", simulated: false },
 ];
 const DIFFS = [
-  { event_timestamp: "2026-08-27T23:16:29.180Z", detected_at: "2026-08-27T23:16:31.000Z", uns_path: UNS_PATH, tag_path: "Conveyor/run_cmd", prev_value: "false", new_value: "true", diff_type: "rising_edge" },
+  { event_timestamp: "2026-08-27T23:16:29.180Z", detected_at: "2026-08-27T23:16:31.000Z", uns_path: UNS_PATH, tag_path: "Conveyor/run_cmd", prev_value: "false", new_value: "true", diff_type: "rising_edge", source_system: "ignition", simulated: false },
 ];
 
 beforeEach(() => {
@@ -298,6 +298,155 @@ describe("header + freshness (existing model, never re-derived)", () => {
     );
     const body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params })).json();
     expect(body.freshness.overall).toBe("simulated");
+  });
+});
+
+// ── Workstream C (PRD §9.2): current connection ≠ historical coverage ────────
+//
+// The cache's freshness ("is the machine talking to us NOW") and the served
+// window's coverage ("what did Machine Memory RECORD then") are different
+// facts. The wire carries both, explicitly, so no client can ever label an
+// empty historical window "Live" because the current signals happen to be fresh.
+describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
+  const signal = (tag: string, seen: string, simulated = false) => ({
+    plc_tag: tag, last_value_text: null, last_value_numeric: "1", last_value_bool: null,
+    last_seen_at: seen, last_changed_at: seen, simulated, expected_freshness_seconds: null, uns_path: UNS_PATH,
+  });
+  const fresh = () => new Date(Date.now() - 2_000).toISOString();
+  const stale = () => new Date(Date.now() - 10 * 60_000).toISOString();
+
+  it("reports current live connection separately from an empty historical window", async () => {
+    wire(
+      mockClient([
+        KG_HIT,
+        [/FROM tag_events/, { rows: [] }],
+        [/FROM tag_event_diffs/, { rows: [] }],
+        [/FROM live_signal_cache/, { rows: [signal("a", fresh())] }],
+      ]),
+    );
+    const body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}&pre=3&post=1`), { params })).json();
+    // The connection is live NOW …
+    expect(body.currentConnection).toEqual({ freshness: { overall: "live", live: 1, stale: 0, simulated: 0, unknown: 0 } });
+    // … and the window recorded NOTHING — a valid quiet window, count 0, no bounds observed.
+    expect(body.historicalCoverage).toEqual({
+      available: true,
+      observationCount: 0,
+      admissibleObservationCount: 0,
+      physicalObservationCount: 0,
+      simulatedObservationCount: 0,
+      badQualityObservationCount: 0,
+      unknownProvenanceCount: 0,
+      from: "2026-08-27T23:16:28.000Z",
+      to: "2026-08-27T23:16:32.000Z",
+      firstObservedAt: null,
+      lastObservedAt: null,
+    });
+    expect(body.rows).toEqual([]);
+    expect(body).not.toHaveProperty("reason");
+    // Coverage never carries a freshness word: "live" is a fact about the
+    // cache, not about the window.
+    expect(JSON.stringify(body.historicalCoverage)).not.toMatch(/live|stale|simulated/i);
+    // Compatibility alias: the old top-level freshness is still the same object.
+    expect(body.freshness).toEqual(body.currentConnection.freshness);
+  });
+
+  it("reports missing history tables as unavailable rather than zero", async () => {
+    wire(mockClient([KG_HIT, [/FROM tag_events/, undefinedTable("tag_events")], [/FROM live_signal_cache/, { rows: [signal("a", fresh())] }]]));
+    const res = await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.historicalCoverage.available).toBe(false);
+    // null, NOT 0: nothing was counted because nothing could be read.
+    expect(body.historicalCoverage).toEqual({
+      available: false,
+      observationCount: null,
+      admissibleObservationCount: null,
+      physicalObservationCount: null,
+      simulatedObservationCount: null,
+      badQualityObservationCount: null,
+      unknownProvenanceCount: null,
+      from: "2026-08-27T23:16:26.000Z",
+      to: "2026-08-27T23:16:33.000Z",
+      firstObservedAt: null,
+      lastObservedAt: null,
+    });
+    expect(body.historicalCoverage.firstObservedAt).toBeNull();
+    expect(body.historicalCoverage.lastObservedAt).toBeNull();
+    expect(body.rows).toEqual([]);
+    expect(body.reason).toBe("unavailable");
+    // The current connection is still reported on its own — the cache is a
+    // different table and it answered.
+    expect(body.currentConnection.freshness.overall).toBe("live");
+  });
+
+  it("reports returned and observed bounds for non-empty history", async () => {
+    wire(mockClient([KG_HIT, [/FROM tag_events/, { rows: EVENTS }], [/FROM tag_event_diffs/, { rows: DIFFS }]]));
+    const body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}&pre=3&post=1`), { params })).json();
+    expect(body.historicalCoverage).toEqual({
+      available: true,
+      observationCount: 3,
+      // only the two good-quality physical RAW events unlock Ask MIRA; the
+      // diff is served and counted as physical but never admissible
+      admissibleObservationCount: 2,
+      physicalObservationCount: 3,
+      simulatedObservationCount: 0,
+      badQualityObservationCount: 0,
+      unknownProvenanceCount: 0,
+      // the RETURNED window (what was asked for, clamped) …
+      from: "2026-08-27T23:16:28.000Z",
+      to: "2026-08-27T23:16:32.000Z",
+      // … and the OBSERVED bounds (earliest/latest row actually served) — the
+      // two differ, and both are the server's numbers.
+      firstObservedAt: "2026-08-27T23:16:28.860Z",
+      lastObservedAt: "2026-08-27T23:16:31.160Z",
+    });
+    expect(body.historicalCoverage.observationCount).toBe(body.rows.length);
+    // No cache rows at all → the connection is unknown, and that is said as such.
+    expect(body.currentConnection.freshness.overall).toBe("unknown");
+    // every served row carries its quality AND provenance explicitly
+    expect(body.rows.map((r: Record<string, unknown>) => [r.kind, r.quality, r.source_system, r.source_connection_id, r.simulated])).toEqual([
+      ["event", "good", "ignition", "conn-1", false],
+      ["diff", null, "ignition", null, false],
+      ["event", "good", "ignition", "conn-1", false],
+    ]);
+  });
+
+  it("simulated-only, bad-quality-only and unknown-provenance windows never produce an admissible observation", async () => {
+    const at = (ts: string, extra: Record<string, unknown>) => ({
+      event_timestamp: ts, ingested_at: ts, uns_path: UNS_PATH, tag_path: "Conveyor/photo_eye", value: "true", quality: "good",
+      source_system: "ignition", source_connection_id: "conn-1", simulated: false, ...extra,
+    });
+    const run = async (events: unknown[], diffs: unknown[] = []) => {
+      wire(mockClient([KG_HIT, [/FROM tag_events/, { rows: events }], [/FROM tag_event_diffs/, { rows: diffs }]]));
+      return (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}&pre=3&post=1`), { params })).json();
+    };
+    // simulated flag, or a synthetic source system, is simulated either way
+    let body = await run([at("2026-08-27T23:16:29.000Z", { simulated: true }), at("2026-08-27T23:16:30.000Z", { source_system: "simlab" })]);
+    expect(body.historicalCoverage).toMatchObject({ available: true, observationCount: 2, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 2, badQualityObservationCount: 0, unknownProvenanceCount: 0 });
+    // physical but not good quality
+    body = await run([at("2026-08-27T23:16:29.000Z", { quality: "bad" }), at("2026-08-27T23:16:30.000Z", { quality: null })]);
+    expect(body.historicalCoverage).toMatchObject({ observationCount: 2, admissibleObservationCount: 0, physicalObservationCount: 2, simulatedObservationCount: 0, badQualityObservationCount: 2, unknownProvenanceCount: 0 });
+    // unknown provenance (null source, or a null simulated flag) is never physical
+    body = await run([at("2026-08-27T23:16:29.000Z", { source_system: null }), at("2026-08-27T23:16:30.000Z", { simulated: null })]);
+    expect(body.historicalCoverage).toMatchObject({ observationCount: 2, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 2 });
+    // a diff alone — even physical and from a good source — never unlocks Ask MIRA
+    body = await run([], DIFFS);
+    expect(body.historicalCoverage).toMatchObject({ observationCount: 1, admissibleObservationCount: 0, physicalObservationCount: 1 });
+    expect(body.rows[0]).toMatchObject({ kind: "diff", source_system: "ignition", source_connection_id: null, simulated: false });
+  });
+
+  it("keeps stale and simulated classifications under current connection", async () => {
+    wire(mockClient([KG_HIT, [/FROM tag_events/, { rows: EVENTS }], [/FROM live_signal_cache/, { rows: [signal("a", stale())] }]]));
+    let body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params })).json();
+    expect(body.currentConnection.freshness.overall).toBe("stale");
+    expect(body.historicalCoverage.observationCount).toBe(2);
+    expect(body.historicalCoverage).not.toHaveProperty("freshness");
+
+    wire(mockClient([KG_HIT, [/FROM tag_events/, { rows: EVENTS }], [/FROM live_signal_cache/, { rows: [signal("a", fresh(), true)] }]]));
+    body = await (await GET(new Request(`http://t/api/assets/${ID}/history?at=${FAULT_AT}`), { params })).json();
+    expect(body.currentConnection.freshness.overall).toBe("simulated");
+    expect(body.historicalCoverage.available).toBe(true);
+    expect(body.historicalCoverage).not.toHaveProperty("freshness");
   });
 });
 

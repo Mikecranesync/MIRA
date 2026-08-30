@@ -223,6 +223,124 @@ describe("getAssetHistory", () => {
     expect(r.ok && r.history.reason).toBe("unavailable");
     expect(r.ok && r.history.rows).toEqual([]);
   });
+
+  // Workstream C (PRD §9.2): the explicit contract. Current-connection
+  // freshness and historical-window coverage are two objects on the wire and
+  // two objects on the phone; `null` (nothing could be counted) and `0`
+  // (nothing was recorded) stay distinct end to end.
+  describe("currentConnection / historicalCoverage (explicit contract)", () => {
+    const base = {
+      anchor: { at: ANCHOR, source: "state_window", windowId: "w-1", runId: null },
+      rows: [],
+      summary: {},
+      provenance: "machine_memory",
+      window: { from: "2026-08-28T23:15:31.000Z", to: "2026-08-28T23:16:41.000Z", pre: 60, post: 10 },
+    };
+
+    it("maps a live current connection beside a valid EMPTY window: observationCount 0, not null", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 },
+          currentConnection: { freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 } },
+          historicalCoverage: { available: true, observationCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR, pre: 60, post: 10 });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.currentConnection).toEqual({ freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 } });
+      expect(r.history.historicalCoverage).toEqual({
+        available: true,
+        observationCount: 0,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+      expect(r.history.historicalCoverage.observationCount).not.toBeNull();
+      // the compatibility alias still resolves to the same freshness
+      expect(r.history.freshness).toEqual(r.history.currentConnection.freshness);
+    });
+
+    it("maps an UNAVAILABLE window: available false, observationCount null (never coerced to 0)", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          reason: "unavailable",
+          freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 },
+          currentConnection: { freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 } },
+          historicalCoverage: { available: false, observationCount: null, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.reason).toBe("unavailable");
+      expect(r.history.historicalCoverage.available).toBe(false);
+      expect(r.history.historicalCoverage.observationCount).toBeNull();
+      expect(r.history.currentConnection.freshness.overall).toBe("stale");
+    });
+
+    it("maps a non-empty window's observed bounds verbatim", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [
+            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" },
+          ],
+          freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 },
+          currentConnection: { freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 } },
+          historicalCoverage: { available: true, observationCount: 1, from: base.window.from, to: base.window.to, firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:28.860Z" },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.historicalCoverage).toEqual({
+        available: true,
+        observationCount: 1,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: "2026-08-28T23:16:28.860Z",
+        lastObservedAt: "2026-08-28T23:16:28.860Z",
+      });
+      expect(r.history.currentConnection.freshness.overall).toBe("simulated");
+    });
+
+    it("an OLDER server body (no explicit objects) derives coverage from what it did say — and never invents a count for an unavailable window", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: { ...base, rows: [], reason: "unavailable", freshness: { overall: "unknown" } },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.historicalCoverage).toEqual({
+        available: false,
+        observationCount: null,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+      expect(r.history.currentConnection.freshness.overall).toBe("unknown");
+
+      request.mockResolvedValue({ status: 200, data: { ...base, rows: [], freshness: { overall: "live", live: 1 } } });
+      const q = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(q.ok && q.history.historicalCoverage).toEqual({
+        available: true,
+        observationCount: 0,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+    });
+  });
 });
 
 describe("askNotebook body.machineEvidence (§4.4) — additive only", () => {

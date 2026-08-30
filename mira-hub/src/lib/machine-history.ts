@@ -58,6 +58,32 @@ export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
 }
 
+/**
+ * What the asset's CURRENT signal cache says right now (PRD §9.2). Derived
+ * ONLY from `summary.live_tags` — it is a fact about the connection, never
+ * about the replayed window.
+ */
+export interface CurrentConnection {
+  freshness: FreshnessSummary;
+}
+
+/**
+ * What the served historical window actually covered (PRD §9.2). Derived ONLY
+ * from the rows served. `available:false` (the history tables are missing)
+ * carries `observationCount:null` — nothing could be counted — which is a
+ * different fact from a valid quiet window's `observationCount:0`.
+ */
+export interface HistoricalCoverage {
+  available: boolean;
+  observationCount: number | null;
+  /** The RETURNED window bounds (`[at-pre, at+post]`, clamped). */
+  from: string;
+  to: string;
+  /** The OBSERVED bounds — earliest/latest served row — or null when none. */
+  firstObservedAt: string | null;
+  lastObservedAt: string | null;
+}
+
 export interface MachineHistory {
   anchor: HistoryAnchor;
   pre: number;
@@ -67,7 +93,10 @@ export interface MachineHistory {
   to: string;
   uns_path: string;
   rows: MachineHistoryRow[];
+  /** @deprecated compatibility alias for `currentConnection.freshness`. */
   freshness: FreshnessSummary;
+  currentConnection: CurrentConnection;
+  historicalCoverage: HistoricalCoverage;
   /** The Machine Memory header ("what MIRA thinks now") — same builder as the card. */
   summary: MachineMemoryResponse;
   provenance: "machine_memory";
@@ -306,6 +335,19 @@ export async function fetchMachineHistory(
     if (!Number.isNaN(startMs) && startMs <= anchorMs && anchorMs <= stopMs) anchor.runId = run.run_id;
   }
 
+  // Coverage comes from the served rows only (already ordered by
+  // event_timestamp). An unavailable window has nothing to count: null, not 0.
+  const historicalCoverage: HistoricalCoverage = reason
+    ? { available: false, observationCount: null, from, to, firstObservedAt: null, lastObservedAt: null }
+    : {
+        available: true,
+        observationCount: rows.length,
+        from,
+        to,
+        firstObservedAt: rows.length ? rows[0].event_timestamp : null,
+        lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
+      };
+
   return {
     ok: true,
     history: {
@@ -317,6 +359,8 @@ export async function fetchMachineHistory(
       uns_path: unsPath,
       rows,
       freshness,
+      currentConnection: { freshness },
+      historicalCoverage,
       summary,
       provenance: "machine_memory",
       ...(reason ? { reason } : {}),
@@ -331,7 +375,11 @@ export function historyResponseBody(h: MachineHistory): Record<string, unknown> 
     anchor: h.anchor,
     window: { from: h.from, to: h.to, pre: h.pre, post: h.post },
     rows: h.rows,
+    // Compatibility alias (PRD §9.2): first-party clients read the two
+    // explicit objects below; `freshness` stays for older consumers only.
     freshness: h.freshness,
+    currentConnection: h.currentConnection,
+    historicalCoverage: h.historicalCoverage,
     summary: h.summary,
     provenance: h.provenance,
     ...(h.reason ? { reason: h.reason } : {}),

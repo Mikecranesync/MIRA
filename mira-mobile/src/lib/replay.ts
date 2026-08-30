@@ -47,10 +47,34 @@ export interface HistoryAnchor {
   runId?: string | null;
 }
 
+/** Mirrors mira-hub/src/lib/machine-history.ts CurrentConnection (PRD §9.2):
+ *  what the asset's CURRENT signal cache says now. A fact about the
+ *  connection, never about the replayed window. */
+export interface CurrentConnection {
+  freshness: FreshnessSummary;
+}
+
+/** Mirrors mira-hub/src/lib/machine-history.ts HistoricalCoverage (PRD §9.2):
+ *  what the served window actually covered. `available:false` means the
+ *  history tables were missing and `observationCount` is null — nothing could
+ *  be counted. A valid quiet window is `available:true` + `observationCount:0`.
+ *  The two are never collapsed into one another. */
+export interface HistoricalCoverage {
+  available: boolean;
+  observationCount: number | null;
+  from: string;
+  to: string;
+  firstObservedAt: string | null;
+  lastObservedAt: string | null;
+}
+
 export interface AssetHistory {
   anchor: HistoryAnchor;
   rows: HistoryRow[];
+  /** @deprecated compatibility alias for `currentConnection.freshness`. */
   freshness: FreshnessSummary;
+  currentConnection: CurrentConnection;
+  historicalCoverage: HistoricalCoverage;
   /** MachineMemoryResponse-shaped header; only `summary` is read here. */
   summary: { summary?: string | null; uns_path?: string | null } & Record<string, unknown>;
   provenance: "machine_memory";
