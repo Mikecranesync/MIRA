@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 69,
-    "apiRoutes": 179
+    "pages": 70,
+    "apiRoutes": 180
   },
   "pages": [
     "/admin",
@@ -36,6 +36,7 @@
     "/knowledge/manuals",
     "/knowledge/map",
     "/knowledge/suggestions",
+    "/labs/chat-spike",
     "/library",
     "/login",
     "/m/[assetTag]",
