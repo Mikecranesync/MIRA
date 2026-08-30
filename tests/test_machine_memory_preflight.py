@@ -201,6 +201,17 @@ def test_malformed_heartbeat_hash_collections_are_unknown_not_go(field, value):
     assert "CRITICAL_FACT_UNKNOWN" in _codes(verdict)
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["machine_memory_path_hashes", "fault_trigger_tag_hashes"],
+)
+def test_none_active_heartbeat_hash_collections_are_unknown_without_exception(field):
+    detail = {**_input().heartbeat_detail, field: None}
+    verdict = preflight.evaluate(_input(heartbeat_detail=detail))
+    assert verdict.status == preflight.UNKNOWN
+    assert _codes(verdict)[0] == "CRITICAL_FACT_UNKNOWN"
+
+
 def test_reasons_have_stable_priority_order():
     verdict = preflight.evaluate(
         _input(

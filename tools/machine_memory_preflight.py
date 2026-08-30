@@ -188,9 +188,11 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     detail = data.heartbeat_detail if isinstance(data.heartbeat_detail, dict) else {}
     if detail.get("run_diff_enabled") is not True:
         add("RUN_DIFF_DISABLED")
-    if EXPECTED_CV101_UNS_PATH_HASH not in detail.get("machine_memory_path_hashes", []):
+    machine_memory_hashes = detail.get("machine_memory_path_hashes")
+    fault_trigger_hashes = detail.get("fault_trigger_tag_hashes")
+    if _valid_hash_collection(machine_memory_hashes) and EXPECTED_CV101_UNS_PATH_HASH not in machine_memory_hashes:
         add("CV101_UNS_NOT_CONFIGURED")
-    if EXPECTED_FAULT_TRIGGER_HASH not in detail.get("fault_trigger_tag_hashes", []):
+    if _valid_hash_collection(fault_trigger_hashes) and EXPECTED_FAULT_TRIGGER_HASH not in fault_trigger_hashes:
         add("FAULT_TRIGGER_TAGS_NOT_CONFIGURED")
     if detail.get("config_sha256") != data.observed_heartbeat_config_sha256 or (
         data.observed_heartbeat_config_sha256 != data.expected_heartbeat_config_sha256
