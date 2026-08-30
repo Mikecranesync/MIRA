@@ -439,22 +439,50 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:504":
+  "mira-hub/src/lib/manual-rag.ts:559":
     approved_classification: TENANT-ONLY
-    query_sha256: "0b558a5abf27f336cc7396681c7f8a4f93b8a5bbec94e35840f67a068e685061"
-    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): ORDER BY gained a deterministic tiebreak (rank DESC, doc_id, page_start, source_page — Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged."
+    query_sha256: "a7e484eba481400b3092cae4bd2e0a0f4851a95a3fd139aae1b5027808def767"
+    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): ORDER BY gained a deterministic tiebreak (rank DESC, doc_id, page_start, source_page — Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :504->:559 after the approvedSourceFilterSql helper + option doc): the approval clause is now ${approvalClauseMain} = '' (gate off) | 'AND verified = true' (no server-derived set) | 'AND (verified = true OR (is_private = true AND doc_id = ANY($6::uuid[])))' — the OR branch admits ONLY is_private=true rows already inside tenant_id=$1 AND doc_id=ANY($5) (the validated notebook doc scope) whose doc is in the SERVER-derived confirmed set validateChatSources returned (intersected with $5 app-side, never widened). Tenant predicate byte-identical; shared/OEM rows still require verified=true; re-reviewed TENANT-ONLY."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:540":
+  "mira-hub/src/lib/manual-rag.ts:600":
     approved_classification: TENANT-ONLY
-    query_sha256: "b5e429d9cf1349e5c67a3a035ee9174da5eef612e5168a1f91d360a0e23263d6"
-    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): lane gained an explicit ORDER BY (doc_id, page_start, source_page) — it previously had NO ordering at all, so row order was arbitrary (Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged."
+    query_sha256: "f229072b2e19e1d626422be593cd50793235647de698ebf8eedbcf42bceb7af3"
+    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): lane gained an explicit ORDER BY (doc_id, page_start, source_page) — it previously had NO ordering at all, so row order was arbitrary (Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :540->:600): approval clause is now ${approvalClauseExact} — the same three shapes as the BM25 pass, with the server-derived set bound as the lane's next free param after the $5 doc scope. Same narrowing-only admission (is_private=true AND tenant_id=$1 AND doc in validated scope AND doc in confirmed set); tenant predicate byte-identical; re-reviewed TENANT-ONLY."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
+  "mira-hub/src/lib/__tests__/approved-source-admission.integration.test.ts:161":
+    approved_classification: TENANT-ONLY
+    query_sha256: "a19fac90fad5d3795b5f25ec76f2108a20def603b9d74ac8b9523a89dd672629"
+    reason: "NOT a corpus read: the Workstream A integration suite's fixture DELETE (cleanup) on a DISPOSABLE Postgres (TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE guarded in beforeAll), scoped to the three fixture tenant ids the suite itself seeded. No production data, no OEM corpus."
+  "mira-hub/src/lib/__tests__/approved-source-admission.integration.test.ts:201":
+    approved_classification: TENANT-ONLY
+    query_sha256: "aa0214bdd3bd02977808522b6620535bc28e3e17043dacebee1cf630763a51d3"
+    reason: "Test oracle, not a retrieval surface: counts verified=true rows for the FIXTURE tenant on the disposable DB to prove PRD §7.3 — the corrected admission query makes a pre-#3440 confirmed source retrievable with NO data rewrite (count stays 0 before/after). Tenant-only by construction (the suite's own tenant)."
+  "mira-hub/src/lib/__tests__/approved-source-admission.test.ts:65":
+    approved_classification: UNFILTERED
+    query_sha256: "c4d97f6facd5d193f7384ad6e475852cd848f4c2b70fe3148ef1c582fb6f2667"
+    reason: "Not a database read: a regex assertion (/FROM knowledge_entries/.test) locating the generated SQL in a MOCK client's call log to prove the server-derived admission predicate is emitted on both retrieval lanes (Workstream A). No connection, no data. Same pattern as notebook-isolation.test.ts:50."
+  "mira-hub/src/lib/__tests__/approved-source-admission.test.ts:93":
+    approved_classification: TENANT-ONLY
+    query_sha256: "2a63be644708d67d0385b30388b4ea79e4e1040428f5327ee073f86445586c3e"
+    reason: "Not a database read: mock-client regex assertion (case 9) proving the approved set is intersected with the validated doc scope. The checker's context window happens to include the neighbouring 'WHERE tenant_id = $1' string assertion, hence TENANT-ONLY; no connection, no data."
+  "mira-hub/src/lib/__tests__/approved-source-admission.test.ts:109":
+    approved_classification: UNFILTERED
+    query_sha256: "d43025623638ce63a80636b9cd5b06cbc4732ee20a1485877fd0b8ba66596c1b"
+    reason: "Not a database read: mock-client regex assertion for the empty-intersection branch (must fall back to the bare 'AND verified = true' rule). No connection, no data."
+  "mira-hub/src/lib/__tests__/approved-source-admission.test.ts:118":
+    approved_classification: UNFILTERED
+    query_sha256: "b145684d99e32d3e5c1fbf1497b3ab9f1589e7200fe4ec8eb759c89a053386cf"
+    reason: "Not a database read: mock-client regex assertion for case 11 (no approved set ⇒ predicate byte-identical to the pre-existing gate; NodeChat path unchanged). No connection, no data."
+  "mira-hub/src/lib/__tests__/approved-source-admission.test.ts:140":
+    approved_classification: UNFILTERED
+    query_sha256: "09556ecc067d0a8ea62f428a489f4366a2948cc2ec8ecb0872df75713eb7734b"
+    reason: "Not a database read: mock-client regex assertion for the gate-off branch (no verified/is_private predicate at all). No connection, no data."
   "mira-hub/src/lib/__tests__/provenance-canonical-evidence.integration.test.ts:166":
     approved_classification: TENANT-ONLY
     query_sha256: "b611e5ad84c7e4de57cc5a5e22b63a941aac598ab43b3bb29d5c79f41d9be4b6"
@@ -1290,3 +1318,37 @@ approved:
       SELECT 1 FROM knowledge_entries dup
        WHERE dup.tenant_id::text = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
          AND dup.source_url = ke.source_url
+  "tests/beta/test_admission_preflight_pg.py:138":
+    approved_classification: TENANT-ONLY
+    query_sha256: "2188cb4d98d683bb45064e325e53316903441da43ec4dc602cf634c684847119"
+    reason: "NOT a corpus read: the §7.3 preflight real-Postgres suite's fixture DELETE
+      (module teardown) on a DISPOSABLE loopback Postgres (PREFLIGHT_DATABASE_URL +
+      MIRA_TEST_DB_CONFIRM=DISPOSABLE guarded by the module skipif; the tool under test
+      refuses any non-loopback host), scoped to the two fixture tenant ids the suite
+      itself seeded. No production data, no OEM corpus."
+    query_snippet: |
+      "DELETE FROM knowledge_entries WHERE tenant_id IN ($1::uuid, $2::uuid)", TENANT, OTHER
+  "tools/qa/notebook_source_admission_preflight.py:88":
+    approved_classification: TENANT-ONLY
+    query_sha256: "af19d177d4bb0a4d33873abea96d576437384d91a682d12321e4fbd44e62fd04"
+    reason: "PRD §7.3 read-only preflight REPORT (Workstream B, PR #3480). Pure-tenant
+      by design, not a hybrid surface: it joins knowledge_entries ONLY through the
+      caller's own equipment_notebook_sources rows (s.tenant_id = $1::uuid AND
+      k.tenant_id = s.tenant_id) to count that tenant's confirmed-source chunks and
+      whether any carries verified=true. Counting shared OEM rows (is_private=false)
+      here would report ANOTHER corpus as this tenant's admission state — the exact
+      mistake listSources() avoids for the same reason. Aggregates, per source,
+      chunks_total / chunks_v2 and the v2-scoped decision counts (is_private,
+      verified, admissible = ingest_route='v2' AND (verified OR is_private)) to
+      compute the REAL current admission; shared verified=false and legacy-route-only
+      sources are reported as EXCLUDED, never counted as admissible. Runs inside an
+      explicit asyncpg transaction(readonly=True) that is ROLLED BACK, connects to
+      loopback hosts ONLY (no override; --print-sql merely PREPARES the statement
+      for a reviewed db-inspect.yml step), and is never executed against production
+      from a session (tests/beta/test_admission_preflight.py + _pg.py)."
+    query_snippet: |
+      FROM equipment_notebook_sources s
+        LEFT JOIN knowledge_entries k
+               ON k.doc_id = s.doc_id
+              AND k.tenant_id = s.tenant_id
+       WHERE s.tenant_id = $1::uuid

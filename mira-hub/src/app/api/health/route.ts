@@ -18,6 +18,12 @@ export function GET() {
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
   };
 
+  // Effective retrieval-approval gate (Workstream B, PRD §8.2). Non-secret:
+  // it is the boolean `manual-rag.ts` reads, surfaced so the beta gate and the
+  // production probe can ASSERT they run against the production gate instead
+  // of inferring it from a compose default (#3328 is what that costs).
+  const approvedRetrievalEnforced = process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
+
   const required = ["NEON_DATABASE_URL", "INGEST_URL"] as const;
   const missing = required.filter((k) => !process.env[k]);
 
@@ -28,5 +34,11 @@ export function GET() {
     );
   }
 
-  return NextResponse.json({ status: "ok", service: "mira-hub", ...identity, ts: Date.now() });
+  return NextResponse.json({
+    status: "ok",
+    service: "mira-hub",
+    ...identity,
+    approvedRetrievalEnforced,
+    ts: Date.now(),
+  });
 }
