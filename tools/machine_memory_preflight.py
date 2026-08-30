@@ -246,10 +246,10 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
 
     now = _timestamp(data.now)
     ingested = _timestamp(data.latest_ingested_at)
-    if now and ingested and now - ingested > _seconds(_MAX_AGE_SECONDS):
+    if now and ingested and abs(now - ingested) > _seconds(_MAX_AGE_SECONDS):
         add("INGEST_STALE")
     observed = _timestamp(data.latest_event_at)
-    if now and observed and now - observed > _seconds(_MAX_AGE_SECONDS):
+    if now and observed and abs(now - observed) > _seconds(_MAX_AGE_SECONDS):
         add("STALE_OBSERVATION")
 
     if data.fault_window_identity is None:

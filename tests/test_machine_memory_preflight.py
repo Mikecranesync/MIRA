@@ -103,6 +103,20 @@ def test_fresh_ingest_cannot_mask_a_stale_source_observation():
     assert "STALE_OBSERVATION" in _codes(verdict)
 
 
+def test_future_source_observation_cannot_produce_go():
+    """Would catch a GO when source evidence is one hour ahead of the evaluator."""
+    verdict = preflight.evaluate(_input(latest_event_at="2026-08-30T13:00:00Z"))
+    assert verdict.status == preflight.NO_GO
+    assert "STALE_OBSERVATION" in _codes(verdict)
+
+
+def test_future_ingestion_cannot_produce_go():
+    """Would catch a GO when receipt evidence is one hour ahead of the evaluator."""
+    verdict = preflight.evaluate(_input(latest_ingested_at="2026-08-30T13:00:00Z"))
+    assert verdict.status == preflight.NO_GO
+    assert "INGEST_STALE" in _codes(verdict)
+
+
 def test_replayed_observed_timestamp_cannot_produce_go():
     """Would catch 100 physical rows carrying one frozen source timestamp."""
     verdict = preflight.evaluate(
