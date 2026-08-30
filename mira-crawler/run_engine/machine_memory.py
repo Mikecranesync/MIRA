@@ -12,8 +12,10 @@ Orchestrates, per (tenant, uns_path), over any RunStore:
      window's snapshot; persisted as run_diff rows with
      ``diff_type='anomaly_<RULE_ID>'``, window_id parent, severity mapped
      CRITICAL->'critical' HIGH->'warning' MEDIUM->'info' (raw severity kept in
-     metadata.severity_raw), NEXT_CHECK guidance in metadata.next_check, and
-     evidence pointers from_event_id/to_event_id.
+     metadata.severity_raw), NEXT_CHECK guidance in metadata.next_check, the
+     rule's canonical title/message in metadata.title/metadata.message
+     (additive, PRD §9.2 — readers still resolve known rules through the Hub
+     catalog), and evidence pointers from_event_id/to_event_id.
 
 Pure w.r.t. I/O: talks only to the RunStore Protocol; unit-testable with
 ``InMemoryRunStore``. Unapproved/unmapped tag paths never enter a snapshot;
@@ -270,6 +272,8 @@ def historize_machine_memory(
                 event_timestamp=ev_ts,
                 metadata={
                     "severity_raw": a.severity,
+                    "title": a.title,
+                    "message": a.message,
                     "next_check": NEXT_CHECK.get(a.rule_id, ""),
                     "confidence": a.confidence,
                     "components": a.components,

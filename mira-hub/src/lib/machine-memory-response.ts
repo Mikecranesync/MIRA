@@ -44,6 +44,10 @@ export interface LatestDiff {
   delta_percent: number | null;
   event_timestamp: string | null;
   next_check: string | null;
+  /** Producer-written `metadata.title` (additive, PRD §9.2). Readers resolve
+   *  the display title through machine-anomaly-catalog, which outranks this
+   *  for every known rule; it is a fallback for unknown rules only. */
+  title?: string | null;
 }
 
 export interface EvidenceWindow {

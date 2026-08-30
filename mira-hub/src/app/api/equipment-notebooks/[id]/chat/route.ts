@@ -617,6 +617,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 040 env or any error never drops the notebook context already built.
   let machinePacket: MachineContextPacket | null = null;
   let machineEntry: MachineEvidenceEntry | null = null;
+  let admissibleMachineObservationCount = 0;
   if (machineRequest) {
     const mr = machineRequest;
     try {
@@ -652,6 +653,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // of flattening both into "0 observed changes".
           ...(h.reason ? { reason: h.reason } : {}),
         };
+        admissibleMachineObservationCount = h.historicalCoverage.admissibleObservationCount ?? 0;
       } else {
         console.warn("[notebook-chat] machine evidence not available:", result.error);
       }
@@ -670,7 +672,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // the machine-only approved-context gate off a turn that isn't using
   // machine evidence.
   const groundedMachineEntry: MachineEvidenceEntry | null =
-    machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
+    machineEntry && admissibleMachineObservationCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
   if (!groundedMachineEntry) machinePacket = null;
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
@@ -689,7 +691,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // gate exactly as it was — and a turn with no `machineEvidence` at all can
   // never reach the third clause, which is what keeps document refusal
   // behaviour byte-identical.
-  if (chunks.length === 0 && !general && !groundedMachineEntry) {
+  if (chunks.length === 0 && !groundedMachineEntry && (!general || machineRequest !== null)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     await recordTurn(ctx.tenantId, notebookId, {
       question: message,
@@ -781,7 +783,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       approvedSourceCount: new Set(chunks.map((c) => c.docId).filter(Boolean)).size,
       verifiedRelationshipCount: 0,
       approvedLiveSignalCount: machinePacket ? machinePacket.freshness.live : 0,
-      approvedMachineEvidenceCount: groundedMachineEntry ? groundedMachineEntry.rowCount : 0,
+      approvedMachineEvidenceCount: groundedMachineEntry ? admissibleMachineObservationCount : 0,
     };
     if (!approvedContextReady(approvedSummary)) {
       const refusal = buildApprovedContextRefusal(approvedSummary);

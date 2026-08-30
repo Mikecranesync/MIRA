@@ -110,6 +110,13 @@ class TestCommStale:
         assert a1.severity == "critical"
         assert a1.metadata["severity_raw"] == "CRITICAL"
         assert "RS-485" in a1.metadata["next_check"]
+        # Additive producer metadata (PRD §9.2): the canonical title/message
+        # ride on the persisted row so readers need no rule catalog — while
+        # the Hub catalog still outranks it for known rules.
+        assert a1.metadata["title"] == "GS10 RS-485 link down"
+        assert a1.metadata["title"] == a1.title
+        assert a1.metadata["message"] == a1.message
+        assert a1.metadata["message"]
 
         # Evidence pointers hit the actual comm_ok=false fixture rows.
         comm_rows = [

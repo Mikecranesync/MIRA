@@ -22,13 +22,14 @@
 
 import type { LiveTag, LatestDiff } from "./machine-memory-response";
 import type { CurrentState } from "./machine-current-state";
+import { canonicalDiffTitle, ruleIdFromDiffType } from "./machine-anomaly-catalog";
 
 /** A persisted typed anomaly (run_diff), normalized for the packet. */
 export interface ActiveCondition {
   /** Rule id when the diff is a typed anomaly (e.g. "A2_VFD_FAULT"), else null. */
   rule_id: string | null;
   severity: "info" | "warning" | "critical";
-  /** Short human title derived from the diff type + tag. */
+  /** Canonical technician-facing title (machine-anomaly-catalog). */
   title: string;
   tag_path: string;
   /** The recommended next check carried on the anomaly, if any. */
@@ -62,23 +63,14 @@ function leafName(tagPath: string): string {
   return (i >= 0 ? s.slice(i + 1) : s).toLowerCase();
 }
 
-/** "anomaly_A2_VFD_FAULT" -> "A2_VFD_FAULT"; plain diff types -> null. */
-function ruleIdFromDiffType(diffType: string | null): string | null {
-  if (!diffType) return null;
-  return diffType.startsWith("anomaly_") ? diffType.slice("anomaly_".length) : null;
-}
-
-/** A readable title from the diff type + tag leaf, no rule catalog needed. */
-function conditionTitle(diffType: string | null, tagPath: string): string {
-  const leaf = leafName(tagPath);
-  const ruleId = ruleIdFromDiffType(diffType);
-  if (ruleId) {
-    // "A2_VFD_FAULT" -> "vfd fault" (drop the leading rule index, humanize).
-    const words = ruleId.replace(/^A\d+_/, "").replace(/_/g, " ").toLowerCase().trim();
-    return words ? `${words} on ${leaf}` : `anomaly on ${leaf}`;
-  }
-  const kind = (diffType ?? "deviation").replace(/_/g, " ");
-  return `${kind} on ${leaf}`;
+/**
+ * The title comes from the ONE shared catalog (machine-anomaly-catalog): a
+ * known rule's canonical title always; a sanitized persisted title only for
+ * unknown rules; "<kind> on <leaf>" for plain diffs. Internal pseudo-topics
+ * such as `_stale_s` never reach the technician.
+ */
+function conditionTitle(d: LatestDiff): string {
+  return canonicalDiffTitle(d.diff_type, d.tag_path, d.title ?? null);
 }
 
 function toMs(t: string | null | undefined): number | null {
@@ -158,7 +150,7 @@ export function deriveContextIntelligence(input: IntelligenceInput): ContextInte
     .map((d) => ({
       rule_id: ruleIdFromDiffType(d.diff_type),
       severity: d.severity,
-      title: conditionTitle(d.diff_type, d.tag_path),
+      title: conditionTitle(d),
       tag_path: d.tag_path,
       next_check: d.next_check,
     }))

@@ -23,6 +23,9 @@ import { isUndefinedRelationOrColumn, type MachineMemoryClient } from "@/lib/mac
 import { resolveAssetUnsPath } from "@/lib/asset-uns-path";
 import { buildMachineMemoryResponse, type MachineMemoryResponse } from "@/lib/machine-memory-response";
 import { summarizeFreshness, type FreshnessSummary, type ObservedChange } from "@/lib/machine-context-packet";
+import { classifyProvenance } from "@/lib/machine-history-provenance";
+
+export { classifyProvenance } from "@/lib/machine-history-provenance";
 
 export const DEFAULT_PRE_SECONDS = 5;
 export const DEFAULT_POST_SECONDS = 2;
@@ -56,6 +59,61 @@ export interface HistoryAnchor {
 
 export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
+  /** Provenance, carried verbatim from the row (033 / 037). `null` means the
+   *  source did not say — which is NEVER treated as physical. */
+  source_system: string | null;
+  /** 033 only; 037 records no connection on a diff → always null there. */
+  source_connection_id: string | null;
+  simulated: boolean | null;
+}
+
+/**
+ * The ONE admissibility rule (PRD §9.2): a raw `tag_events` observation whose
+ * quality is exactly `good` and whose provenance is positively physical
+ * (`classifyProvenance` in machine-history-provenance: recognised producer +
+ * `simulated === false` + non-empty connection id). Diffs (037 carries no
+ * quality and no connection), bad/null quality, simulated rows and unknown
+ * provenance never unlock Ask MIRA.
+ */
+export function isAdmissibleObservation(row: MachineHistoryRow): boolean {
+  return row.kind === "event" && row.quality === "good" && classifyProvenance(row) === "physical";
+}
+
+/**
+ * What the asset's CURRENT signal cache says right now (PRD §9.2). Derived
+ * ONLY from `summary.live_tags` — it is a fact about the connection, never
+ * about the replayed window.
+ */
+export interface CurrentConnection {
+  freshness: FreshnessSummary;
+}
+
+/**
+ * What the served historical window actually covered (PRD §9.2). Derived ONLY
+ * from the rows served. `available:false` (the history tables are missing)
+ * carries `observationCount:null` — nothing could be counted — which is a
+ * different fact from a valid quiet window's `observationCount:0`.
+ */
+export interface HistoricalCoverage {
+  available: boolean;
+  /** Everything serialized in `rows`: raw events PLUS diffs. */
+  returnedRowCount: number | null;
+  /** Raw `tag_events` rows only. physical + simulated + unknown = this. */
+  observationCount: number | null;
+  /** Raw good-quality physical events only — the ONLY number that may unlock
+   *  Ask MIRA (`isAdmissibleObservation`). Diffs never count here. */
+  admissibleObservationCount: number | null;
+  physicalObservationCount: number | null;
+  simulatedObservationCount: number | null;
+  /** PHYSICAL raw events whose quality is not exactly `good` (null counts). */
+  badQualityObservationCount: number | null;
+  unknownProvenanceCount: number | null;
+  /** The RETURNED window bounds (`[at-pre, at+post]`, clamped). */
+  from: string;
+  to: string;
+  /** The OBSERVED bounds — earliest/latest served row — or null when none. */
+  firstObservedAt: string | null;
+  lastObservedAt: string | null;
 }
 
 export interface MachineHistory {
@@ -67,7 +125,10 @@ export interface MachineHistory {
   to: string;
   uns_path: string;
   rows: MachineHistoryRow[];
+  /** @deprecated compatibility alias for `currentConnection.freshness`. */
   freshness: FreshnessSummary;
+  currentConnection: CurrentConnection;
+  historicalCoverage: HistoricalCoverage;
   /** The Machine Memory header ("what MIRA thinks now") — same builder as the card. */
   summary: MachineMemoryResponse;
   provenance: "machine_memory";
@@ -216,7 +277,7 @@ export async function fetchMachineHistory(
     eventRows = await client
       .query(
         `SELECT event_timestamp, ingested_at, uns_path::text AS uns_path,
-                tag_path, value, quality
+                tag_path, value, quality, source_system, source_connection_id, simulated
            FROM tag_events
           WHERE tenant_id = $1::uuid
             AND uns_path IS NOT NULL
@@ -242,7 +303,7 @@ export async function fetchMachineHistory(
       diffRows = await client
         .query(
           `SELECT event_timestamp, detected_at, uns_path::text AS uns_path,
-                  tag_path, prev_value, new_value, diff_type
+                  tag_path, prev_value, new_value, diff_type, source_system, simulated
              FROM tag_event_diffs
             WHERE tenant_id = $1::uuid
               AND uns_path IS NOT NULL
@@ -271,6 +332,9 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.value == null ? null : String(r.value),
         quality: r.quality == null ? null : String(r.quality),
+        source_system: r.source_system == null ? null : String(r.source_system),
+        source_connection_id: r.source_connection_id == null ? null : String(r.source_connection_id),
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
     ...diffRows.map(
@@ -284,6 +348,10 @@ export async function fetchMachineHistory(
         prev_value: r.prev_value == null ? null : String(r.prev_value),
         // 037 records no quality on a diff; null, never guessed.
         quality: null,
+        source_system: r.source_system == null ? null : String(r.source_system),
+        // 037 carries no connection id.
+        source_connection_id: null,
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
   ].sort((a, b) => {
@@ -306,6 +374,25 @@ export async function fetchMachineHistory(
     if (!Number.isNaN(startMs) && startMs <= anchorMs && anchorMs <= stopMs) anchor.runId = run.run_id;
   }
 
+  // Coverage comes from the served rows only (already ordered by
+  // event_timestamp). An unavailable window has nothing to count: null, not 0.
+  const historicalCoverage: HistoricalCoverage = reason
+    ? {
+        available: false,
+        returnedRowCount: null,
+        observationCount: null,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
+        from,
+        to,
+        firstObservedAt: null,
+        lastObservedAt: null,
+      }
+    : summarizeCoverage(rows, from, to);
+
   return {
     ok: true,
     history: {
@@ -317,11 +404,59 @@ export async function fetchMachineHistory(
       uns_path: unsPath,
       rows,
       freshness,
+      currentConnection: { freshness },
+      historicalCoverage,
       summary,
       provenance: "machine_memory",
       ...(reason ? { reason } : {}),
       diffsAvailable,
     },
+  };
+}
+
+/**
+ * Count what the served rows actually are (PRD §9.2). Server-owned: the
+ * client never derives admissibility. `returnedRowCount` is everything
+ * serialized (events + diffs); every other count is over RAW EVENTS ONLY —
+ * a diff is a derived transition, not an observation, so it enters no
+ * provenance or admission partition. Provenance buckets partition the raw
+ * events exactly (physical + simulated + unknown = observationCount); bad
+ * quality is counted within the physical bucket only.
+ */
+export function summarizeCoverage(rows: MachineHistoryRow[], from: string, to: string): HistoricalCoverage {
+  let observations = 0;
+  let admissible = 0;
+  let physical = 0;
+  let simulated = 0;
+  let unknown = 0;
+  let badQuality = 0;
+  for (const r of rows) {
+    if (r.kind !== "event") continue;
+    observations += 1;
+    const p = classifyProvenance(r);
+    if (p === "simulated") {
+      simulated += 1;
+    } else if (p === "physical") {
+      physical += 1;
+      if (r.quality === "good") admissible += 1;
+      else badQuality += 1;
+    } else {
+      unknown += 1;
+    }
+  }
+  return {
+    available: true,
+    returnedRowCount: rows.length,
+    observationCount: observations,
+    admissibleObservationCount: admissible,
+    physicalObservationCount: physical,
+    simulatedObservationCount: simulated,
+    badQualityObservationCount: badQuality,
+    unknownProvenanceCount: unknown,
+    from,
+    to,
+    firstObservedAt: rows.length ? rows[0].event_timestamp : null,
+    lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
   };
 }
 
@@ -331,7 +466,11 @@ export function historyResponseBody(h: MachineHistory): Record<string, unknown> 
     anchor: h.anchor,
     window: { from: h.from, to: h.to, pre: h.pre, post: h.post },
     rows: h.rows,
+    // Compatibility alias (PRD §9.2): first-party clients read the two
+    // explicit objects below; `freshness` stays for older consumers only.
     freshness: h.freshness,
+    currentConnection: h.currentConnection,
+    historicalCoverage: h.historicalCoverage,
     summary: h.summary,
     provenance: h.provenance,
     ...(h.reason ? { reason: h.reason } : {}),

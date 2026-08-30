@@ -10,6 +10,7 @@ import {
   FRESHNESS_LABEL,
   FRESHNESS_TITLE,
   LIVE_UNAVAILABLE_BANNER,
+  REPLAY_EMPTY_COPY,
   REPLAY_WINDOW_PRESETS,
   clocksDiverge,
   formatRelativeSeconds,
@@ -33,7 +34,8 @@ export function ReplayTimeline({
    *  for (`history.pre/post`) — the same numbers Ask MIRA sends. */
   onWindowChange?: (w: ReplayWindow) => void;
 }) {
-  const { anchor, rows, freshness, summary } = history;
+  const { anchor, rows, currentConnection, historicalCoverage, summary } = history;
+  const freshness = currentConnection.freshness;
   const label = FRESHNESS_LABEL[freshness.overall];
   const current: ReplayWindow = { pre: history.pre, post: history.post };
   // Server degradation (§4.3): the machine-history tables are missing. There is
@@ -47,19 +49,20 @@ export function ReplayTimeline({
       <div className="title">Fault: {hhmmss(anchor.at)}</div>
       <div className="meta">
         {summary.summary?.trim() || "Machine Memory window"}
-        {unavailable ? null : (
-          <>
-            {" · "}
-            <span title={FRESHNESS_TITLE[freshness.overall]} data-testid="freshness-label">
-              {label}
-            </span>
-          </>
-        )}
         {anchor.source === "state_window" ? " · anchored on the recorded fault window" : ""}
+      </div>
+      <div className="meta" data-testid="current-connection">
+        <span>Current connection</span>
+        {": "}
+        <span title={FRESHNESS_TITLE[freshness.overall]} data-testid="freshness-label">
+          {label}
+        </span>
       </div>
       <div className="replay-window">
         <span className="meta" data-testid="replay-window-header">
-          {unavailable ? `−${current.pre} s … +${current.post} s` : replayWindowHeader(rows.length, current)}
+          {unavailable
+            ? `−${current.pre} s … +${current.post} s`
+            : replayWindowHeader(historicalCoverage.observationCount ?? 0, current)}
         </span>
         {onWindowChange && (
           <div className="segmented" role="group" aria-label="Replay window">
@@ -91,10 +94,9 @@ export function ReplayTimeline({
           no recorded history to show.
         </div>
       )}
-      {!unavailable && rows.length === 0 && (
+      {!unavailable && historicalCoverage.observationCount === 0 && (
         <div className="meta" style={{ marginTop: 8 }}>
-          No recorded changes in the {history.pre} s before / {history.post} s
-          after this fault.
+          {REPLAY_EMPTY_COPY}
         </div>
       )}
       {rows.length > 0 && (

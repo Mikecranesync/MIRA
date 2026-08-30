@@ -94,7 +94,7 @@ describe("MachineMemoryCard", () => {
     const href = hrefMatch![1].replace(/&amp;/g, "&");
     const params = new URLSearchParams(href.split("?")[1]);
 
-    expect(params.get("prefill_title")).toBe("[CV-101] anomaly_A1_COMM_STALE on cv101.motor_current");
+    expect(params.get("prefill_title")).toBe("[CV-101] GS10 RS-485 link down");
     expect(params.get("prefill_description")).toBe("warning — next check: verify VFD comm cable");
     expect(params.get("source_run_diff_id")).toBe("d1");
   });
@@ -236,6 +236,38 @@ describe("MachineMemoryCard", () => {
     // carries the type but URL-encoded, so this matches rows only)
     expect(html.match(/— anomaly_A9_DC_BUS/g)).toHaveLength(1);
     expect(html).toContain("×4");
+  });
+
+  it("renders the canonical anomaly title from the shared catalog — A0 on _stale_s reads 'PLC/bridge offline'", () => {
+    const withA0: MachineMemoryResponse = {
+      ...POPULATED,
+      latest_diffs: [
+        {
+          ...POPULATED.latest_diffs[0],
+          diff_id: "d0",
+          tag_path: "_stale_s",
+          severity: "critical",
+          diff_type: "anomaly_A0_OFFLINE",
+          title: "a persisted title that must not win",
+          next_check: "check the bridge service",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={withA0} poll={false} />,
+    );
+    expect(html).toContain("PLC/bridge offline");
+    expect(html).not.toContain("a persisted title that must not win");
+    const href = html.match(/href="([^"]*\/workorders\/new[^"]*)"/)?.[1];
+    expect(href).toBeDefined();
+    const decodedHref = decodeURIComponent(href!.replaceAll("&amp;", "&"));
+    const params = new URL(decodedHref, "https://mira.invalid").searchParams;
+    expect(params.get("prefill_title")).toBe("[CV-101] PLC/bridge offline");
+    expect(decodedHref).not.toMatch(/_stale_s|anomaly_A0_OFFLINE/);
+    // Internal pseudo-topics never appear anywhere in technician-facing output,
+    // including deep-link query parameters.
+    expect(decodeURIComponent(html)).not.toContain("_stale_s");
+    expect(html).toContain("Next check: check the bridge service");
   });
 
   it("renders State: comm_down when current_state downgrades", () => {

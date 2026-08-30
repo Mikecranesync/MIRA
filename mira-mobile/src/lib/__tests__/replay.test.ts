@@ -22,6 +22,7 @@ import { normalizeCitations, parseChatSse } from "../sse";
 import {
   FRESHNESS_LABEL,
   LIVE_UNAVAILABLE_BANNER,
+  REPLAY_EMPTY_COPY,
   REPLAY_DEFAULT_WINDOW,
   REPLAY_WINDOW_CAP,
   REPLAY_WINDOW_PRESETS,
@@ -29,6 +30,7 @@ import {
   clocksDiverge,
   formatRelativeSeconds,
   liveUnavailable,
+  isReplayActionable,
   machineEvidenceEntries,
   recordedObservations,
   replayCardTitle,
@@ -141,26 +143,8 @@ describe("getAssetHistory", () => {
     expect(replayWindowHeader(r.history.rows.length, { pre: r.history.pre, post: r.history.post })).toBe(
       "0 recorded observations in −60 s … +10 s",
     );
-    // … and so does the window Ask MIRA is handed (SensorSheet builds
-    // machineEvidence from history.pre/post), so the two can never disagree.
-    const machineEvidence = {
-      assetId: "asset-1",
-      anchorAt: r.history.anchor.at,
-      pre: r.history.pre,
-      post: r.history.post,
-    };
-    const sse = 'data: {"kind":"status","status":"answered"}\n\n';
-    requestStream.mockImplementation(async (_p: string, o: { onChunk: (c: string) => void }) => {
-      o.onChunk(sse);
-      return { status: 200, data: null, text: sse };
-    });
-    await askNotebook("nb-1", "what happened?", [], { machineEvidence });
-    expect(requestStream.mock.calls[0][1].json.machineEvidence).toEqual({
-      assetId: "asset-1",
-      anchorAt: ANCHOR,
-      pre: 60,
-      post: 10,
-    });
+    // A valid quiet window maps its server bounds but is not actionable.
+    expect(isReplayActionable(r.history)).toBe(false);
   });
 
   it("derives the window from the server's absolute bounds when only from/to are named", async () => {
@@ -222,6 +206,285 @@ describe("getAssetHistory", () => {
     const r = await getAssetHistory("asset-1", { at: ANCHOR });
     expect(r.ok && r.history.reason).toBe("unavailable");
     expect(r.ok && r.history.rows).toEqual([]);
+  });
+
+  // Workstream C (PRD §9.2): the explicit contract. Current-connection
+  // freshness and historical-window coverage are two objects on the wire and
+  // two objects on the phone; `null` (nothing could be counted) and `0`
+  // (nothing was recorded) stay distinct end to end.
+  describe("currentConnection / historicalCoverage (explicit contract)", () => {
+    const base = {
+      anchor: { at: ANCHOR, source: "state_window", windowId: "w-1", runId: null },
+      rows: [],
+      summary: {},
+      provenance: "machine_memory",
+      window: { from: "2026-08-28T23:15:31.000Z", to: "2026-08-28T23:16:41.000Z", pre: 60, post: 10 },
+    };
+
+    it("pins exact empty copy and the complete server-owned actionability predicate", () => {
+      expect(REPLAY_EMPTY_COPY).toBe(
+        "Nothing was recorded in this window. Widen the window or check the gateway.",
+      );
+      const coverage = {
+        available: true, returnedRowCount: 1, observationCount: 1,
+        admissibleObservationCount: 1, physicalObservationCount: 1,
+        simulatedObservationCount: 0, badQualityObservationCount: 0,
+        unknownProvenanceCount: 0, from: "a", to: "b",
+        firstObservedAt: "a", lastObservedAt: "b",
+      };
+      expect(isReplayActionable({ reason: null, historicalCoverage: coverage })).toBe(true);
+      expect(isReplayActionable({ reason: null, historicalCoverage: { ...coverage, admissibleObservationCount: 0 } })).toBe(false);
+      expect(isReplayActionable({ reason: null, historicalCoverage: { ...coverage, admissibleObservationCount: null } })).toBe(false);
+      expect(isReplayActionable({ reason: null, historicalCoverage: { ...coverage, available: false } })).toBe(false);
+      expect(isReplayActionable({ reason: "unavailable", historicalCoverage: coverage })).toBe(false);
+    });
+
+    it("maps a live current connection beside a valid EMPTY window: observationCount 0, not null", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 },
+          currentConnection: { freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 } },
+          historicalCoverage: { available: true, returnedRowCount: 0, observationCount: 0, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR, pre: 60, post: 10 });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.currentConnection).toEqual({ freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 } });
+      expect(r.history.historicalCoverage).toEqual({
+        available: true,
+        returnedRowCount: 0,
+        observationCount: 0,
+        admissibleObservationCount: 0,
+        physicalObservationCount: 0,
+        simulatedObservationCount: 0,
+        badQualityObservationCount: 0,
+        unknownProvenanceCount: 0,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+      expect(r.history.historicalCoverage.observationCount).not.toBeNull();
+      // the compatibility alias still resolves to the same freshness
+      expect(r.history.freshness).toEqual(r.history.currentConnection.freshness);
+    });
+
+    it("maps an UNAVAILABLE window: available false, observationCount null (never coerced to 0)", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          reason: "unavailable",
+          freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 },
+          currentConnection: { freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 } },
+          historicalCoverage: { available: false, returnedRowCount: null, observationCount: null, admissibleObservationCount: null, physicalObservationCount: null, simulatedObservationCount: null, badQualityObservationCount: null, unknownProvenanceCount: null, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.reason).toBe("unavailable");
+      expect(r.history.historicalCoverage.available).toBe(false);
+      expect(r.history.historicalCoverage.returnedRowCount).toBeNull();
+      expect(r.history.historicalCoverage.observationCount).toBeNull();
+      expect(r.history.historicalCoverage.admissibleObservationCount).toBeNull();
+      expect(r.history.historicalCoverage.physicalObservationCount).toBeNull();
+      expect(r.history.historicalCoverage.simulatedObservationCount).toBeNull();
+      expect(r.history.historicalCoverage.badQualityObservationCount).toBeNull();
+      expect(r.history.historicalCoverage.unknownProvenanceCount).toBeNull();
+      expect(r.history.currentConnection.freshness.overall).toBe("stale");
+    });
+
+    it("maps a non-empty window's observed bounds verbatim", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [
+            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event", source_system: "ignition", source_connection_id: "conn-1", simulated: false },
+            { event_timestamp: "2026-08-28T23:16:29.180Z", ingested_at: "2026-08-28T23:16:31.000Z", uns_path: "u", tag: "b", value: true, prev_value: false, quality: null, kind: "diff", source_system: "ignition", source_connection_id: null, simulated: false },
+          ],
+          freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 },
+          currentConnection: { freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 } },
+          historicalCoverage: { available: true, returnedRowCount: 2, observationCount: 1, admissibleObservationCount: 1, physicalObservationCount: 1, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:29.180Z" },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.historicalCoverage).toEqual({
+        available: true,
+        returnedRowCount: 2,
+        observationCount: 1,
+        admissibleObservationCount: 1,
+        physicalObservationCount: 1,
+        simulatedObservationCount: 0,
+        badQualityObservationCount: 0,
+        unknownProvenanceCount: 0,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: "2026-08-28T23:16:28.860Z",
+        lastObservedAt: "2026-08-28T23:16:29.180Z",
+      });
+      expect(r.history.currentConnection.freshness.overall).toBe("simulated");
+      // provenance rides on every row verbatim — the client never derives it
+      expect(r.history.rows.map((x) => [x.kind, x.source_system, x.source_connection_id, x.simulated])).toEqual([
+        ["event", "ignition", "conn-1", false],
+        ["diff", "ignition", null, false],
+      ]);
+    });
+
+    it("an OLDER server body (no explicit objects) derives coverage from what it did say — and never invents a count for an unavailable window", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: { ...base, rows: [], reason: "unavailable", freshness: { overall: "unknown" } },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.historicalCoverage).toEqual({
+        available: false,
+        returnedRowCount: null,
+        observationCount: null,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+      expect(r.history.currentConnection.freshness.overall).toBe("unknown");
+
+      request.mockResolvedValue({ status: 200, data: { ...base, rows: [], freshness: { overall: "live", live: 1 } } });
+      const q = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(q.ok && q.history.historicalCoverage).toEqual({
+        available: true,
+        returnedRowCount: 0,
+        observationCount: 0,
+        // an older server never stated admissibility/provenance, so the client
+        // does NOT invent it — null, which never unlocks Ask MIRA
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
+        from: "2026-08-28T23:15:31.000Z",
+        to: "2026-08-28T23:16:41.000Z",
+        firstObservedAt: null,
+        lastObservedAt: null,
+      });
+    });
+
+    it("an OLDER server body WITH rows still gets no admissibility invented: observationCount from the rows, admissible null, row provenance null", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [{ event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" }],
+          freshness: { overall: "live", live: 1 },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.history.historicalCoverage.returnedRowCount).toBe(1);
+      expect(r.history.historicalCoverage.observationCount).toBe(1);
+      expect(r.history.historicalCoverage.admissibleObservationCount).toBeNull();
+      expect(r.history.historicalCoverage.physicalObservationCount).toBeNull();
+      expect(r.history.rows[0]).toMatchObject({ source_system: null, source_connection_id: null, simulated: null });
+    });
+
+    it("an OLDER server body with a diff row: returnedRowCount counts it, observationCount does not (a diff is never an observation)", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [
+            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" },
+            { event_timestamp: "2026-08-28T23:16:29.180Z", ingested_at: "2026-08-28T23:16:31.000Z", uns_path: "u", tag: "b", value: true, prev_value: false, quality: null, kind: "diff" },
+          ],
+          freshness: { overall: "live", live: 1 },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok && r.history.historicalCoverage).toMatchObject({
+        available: true,
+        returnedRowCount: 2,
+        observationCount: 1,
+        admissibleObservationCount: null,
+        // observed bounds span every SERVED row (same rule as the Hub)
+        firstObservedAt: "2026-08-28T23:16:28.860Z",
+        lastObservedAt: "2026-08-28T23:16:29.180Z",
+      });
+    });
+
+    it("a server body whose coverage names observationCount but omits the admissibility counts leaves them null (older contract, never coerced to 0)", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [{ event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" }],
+          currentConnection: { freshness: { overall: "live", live: 1, stale: 0, simulated: 0, unknown: 0 } },
+          historicalCoverage: { available: true, observationCount: 1, from: base.window.from, to: base.window.to, firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:28.860Z" },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok && r.history.historicalCoverage).toMatchObject({
+        returnedRowCount: 1,
+        observationCount: 1,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
+      });
+    });
+
+    it("fails closed for the predecessor coverage contract even when it supplied unsafe populated counts", async () => {
+      request.mockResolvedValue({
+        status: 200,
+        data: {
+          ...base,
+          rows: [
+            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" },
+            { event_timestamp: "2026-08-28T23:16:29.180Z", ingested_at: "2026-08-28T23:16:31.000Z", uns_path: "u", tag: "b", value: true, prev_value: false, quality: null, kind: "diff" },
+          ],
+          currentConnection: { freshness: { overall: "live", live: 1, stale: 0, simulated: 0, unknown: 0 } },
+          // This is the immediately preceding wire shape: it had coverage and
+          // unsafe admission counts, but no returnedRowCount discriminator.
+          historicalCoverage: {
+            available: true,
+            observationCount: 2,
+            admissibleObservationCount: 2,
+            physicalObservationCount: 2,
+            simulatedObservationCount: 0,
+            badQualityObservationCount: 0,
+            unknownProvenanceCount: 0,
+            from: base.window.from,
+            to: base.window.to,
+            firstObservedAt: "2026-08-28T23:16:28.860Z",
+            lastObservedAt: "2026-08-28T23:16:29.180Z",
+          },
+        },
+      });
+      const r = await getAssetHistory("asset-1", { at: ANCHOR });
+      expect(r.ok && r.history.historicalCoverage).toMatchObject({
+        available: true,
+        returnedRowCount: 2,
+        observationCount: 1,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
+      });
+    });
   });
 });
 

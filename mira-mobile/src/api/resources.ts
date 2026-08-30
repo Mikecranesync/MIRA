@@ -10,7 +10,13 @@ import {
   requestStream,
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
-import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
+import type {
+  AssetHistory,
+  FreshnessSummary,
+  HistoricalCoverage,
+  HistoryResult,
+  MachineEvidenceWindow,
+} from "../lib/replay";
 import type { VisualEvidence } from "../lib/sensor";
 
 // --- auth -------------------------------------------------------------------
@@ -1357,9 +1363,74 @@ export async function getAssetHistory(
   const anchor = (d.anchor ?? {}) as Record<string, unknown>;
   const w = (d.window ?? {}) as Record<string, unknown>;
   const anchorAt = String(anchor.at ?? "");
-  const freshness = (d.freshness ?? {}) as Record<string, unknown>;
   const rows = Array.isArray(d.rows) ? (d.rows as Record<string, unknown>[]) : [];
+  const reason = d.reason === "unavailable" ? "unavailable" : null;
+  // PRD §9.2: the explicit contract, when the server speaks it; otherwise the
+  // current connection is the top-level freshness (the old alias) and coverage
+  // is derived from the facts the server DID state — `reason` + the served
+  // rows. An unavailable window never gets a count invented for it.
+  const cc = (d.currentConnection ?? {}) as Record<string, unknown>;
+  const freshness = (cc.freshness ?? d.freshness ?? {}) as Record<string, unknown>;
   const overall = String(freshness.overall ?? "unknown");
+  const hc = (d.historicalCoverage ?? null) as Record<string, unknown> | null;
+  const from = w.from != null ? String(w.from) : null;
+  const to = w.to != null ? String(w.to) : null;
+  // A count the server did not state is null — NEVER 0 and never derived
+  // from the rows. Admissibility in particular is server-owned; a client that
+  // invented it could unlock Ask MIRA on simulated or bad-quality history.
+  const count = (v: unknown): number | null => (hc?.available === false || v == null ? null : Number(v));
+  const noCounts = {
+    admissibleObservationCount: null,
+    physicalObservationCount: null,
+    simulatedObservationCount: null,
+    badQualityObservationCount: null,
+    unknownProvenanceCount: null,
+  };
+  // Older bodies: the served rows are the only facts. Diffs are returned rows
+  // but never observations, so the two counts are derived separately.
+  const eventRows = rows.filter((row) => row.kind !== "diff");
+  // `returnedRowCount` is the discriminator for the corrected server-owned
+  // provenance contract. The immediately preceding wire shape also exposed a
+  // `historicalCoverage` object, but its admission counts were unsafe. Treat
+  // that shape as legacy and derive only non-authoritative row totals.
+  const hasCurrentCoverageContract =
+    hc != null && Object.prototype.hasOwnProperty.call(hc, "returnedRowCount");
+  const historicalCoverage: HistoricalCoverage = hasCurrentCoverageContract
+    ? {
+        available: hc!.available !== false,
+        returnedRowCount: count(hc!.returnedRowCount),
+        observationCount: count(hc!.observationCount),
+        admissibleObservationCount: count(hc!.admissibleObservationCount),
+        physicalObservationCount: count(hc!.physicalObservationCount),
+        simulatedObservationCount: count(hc!.simulatedObservationCount),
+        badQualityObservationCount: count(hc!.badQualityObservationCount),
+        unknownProvenanceCount: count(hc!.unknownProvenanceCount),
+        from: hc!.from != null ? String(hc!.from) : (from ?? ""),
+        to: hc!.to != null ? String(hc!.to) : (to ?? ""),
+        firstObservedAt: hc!.firstObservedAt != null ? String(hc!.firstObservedAt) : null,
+        lastObservedAt: hc!.lastObservedAt != null ? String(hc!.lastObservedAt) : null,
+      }
+    : reason === "unavailable" || hc?.available === false
+      ? { available: false, returnedRowCount: null, observationCount: null, ...noCounts, from: hc?.from != null ? String(hc.from) : (from ?? ""), to: hc?.to != null ? String(hc.to) : (to ?? ""), firstObservedAt: null, lastObservedAt: null }
+      : {
+          available: true,
+          returnedRowCount: rows.length,
+          observationCount: eventRows.length,
+          ...noCounts,
+          from: hc?.from != null ? String(hc.from) : (from ?? ""),
+          to: hc?.to != null ? String(hc.to) : (to ?? ""),
+          // observed bounds = earliest/latest SERVED row, same as the Hub
+          firstObservedAt: rows.length ? String(rows[0].event_timestamp ?? "") : null,
+          lastObservedAt: rows.length ? String(rows[rows.length - 1].event_timestamp ?? "") : null,
+        };
+  const freshnessSummary: FreshnessSummary = {
+    overall:
+      overall === "live" || overall === "stale" || overall === "simulated" ? overall : "unknown",
+    live: Number(freshness.live ?? 0),
+    stale: Number(freshness.stale ?? 0),
+    simulated: Number(freshness.simulated ?? 0),
+    unknown: Number(freshness.unknown ?? 0),
+  };
   const history: AssetHistory = {
     anchor: {
       at: anchorAt,
@@ -1376,18 +1447,17 @@ export async function getAssetHistory(
       prev_value: (row.prev_value as AssetHistory["rows"][number]["prev_value"]) ?? null,
       quality: row.quality != null ? String(row.quality) : null,
       kind: row.kind === "diff" ? "diff" : "event",
+      source_system: row.source_system != null ? String(row.source_system) : null,
+      source_connection_id: row.source_connection_id != null ? String(row.source_connection_id) : null,
+      simulated: typeof row.simulated === "boolean" ? row.simulated : null,
     })),
-    freshness: {
-      overall:
-        overall === "live" || overall === "stale" || overall === "simulated" ? overall : "unknown",
-      live: Number(freshness.live ?? 0),
-      stale: Number(freshness.stale ?? 0),
-      simulated: Number(freshness.simulated ?? 0),
-      unknown: Number(freshness.unknown ?? 0),
-    },
+    // One freshness object, two names: the explicit contract and the alias.
+    freshness: freshnessSummary,
+    currentConnection: { freshness: freshnessSummary },
+    historicalCoverage,
     summary: (d.summary ?? {}) as AssetHistory["summary"],
     provenance: "machine_memory",
-    reason: d.reason === "unavailable" ? "unavailable" : null,
+    reason,
     // The window the SERVER fetched, which is nested (`historyResponseBody`
     // emits `window:{from,to,pre,post}`), NOT the one we asked for. The server
     // clamps to the §4.3 120 s cap, so echoing the request would misname the
@@ -1397,8 +1467,8 @@ export async function getAssetHistory(
     // server's.
     pre: windowSeconds(w.pre, anchorAt, w.from, -1) ?? Number(d.pre ?? opts.pre ?? 5),
     post: windowSeconds(w.post, anchorAt, w.to, 1) ?? Number(d.post ?? opts.post ?? 2),
-    from: w.from != null ? String(w.from) : null,
-    to: w.to != null ? String(w.to) : null,
+    from,
+    to,
   };
   return { ok: true, history };
 }

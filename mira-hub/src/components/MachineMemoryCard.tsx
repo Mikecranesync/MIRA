@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MachineMemoryResponse, LatestDiff, LiveTag } from "@/lib/machine-memory-response";
+import { canonicalDiffTitle } from "@/lib/machine-anomaly-catalog";
 
 // Single source of truth for the response shape is @/lib/machine-memory-response
 // (shared with the GET route and the SSE stream route). Re-exported here so
@@ -238,7 +239,13 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
                   />
                   <div className="min-w-0">
                     <p style={{ color: "var(--foreground)" }}>
-                      <span className="font-mono">{d.tag_path}</span>
+                      <span>{canonicalDiffTitle(d.diff_type, d.tag_path, d.title ?? null)}</span>
+                      {isTechnicianTagPath(d.tag_path) ? (
+                        <span className="font-mono" style={{ color: "var(--foreground-muted)" }}>
+                          {" "}
+                          {d.tag_path}
+                        </span>
+                      ) : null}
                       {d.diff_type ? <span style={{ color: "var(--foreground-subtle)" }}> — {d.diff_type}</span> : null}
                       {count > 1 && (
                         <span
@@ -367,6 +374,13 @@ function Sparkline({ points }: { points: SparkPoint[] }) {
   );
 }
 
+/** A tag path worth showing beside the title: real tags only, never an
+ * internal pseudo-topic such as A0's `_stale_s` (PRD §9.2). */
+function isTechnicianTagPath(tagPath: string): boolean {
+  const leaf = tagPath.split(/[/.]/).filter(Boolean).pop() ?? tagPath;
+  return !leaf.startsWith("_");
+}
+
 /** Collapse repeated anomalies (same tag_path + diff_type) into one row with a
  * count — persistent MED anomalies re-fire per state window (issue #2431);
  * showing four identical DC-bus rows helps nobody. Keeps the newest (the API
@@ -415,7 +429,7 @@ function assetLabelFromUnsPath(unsPath: string | null): string {
  * diff (master-plan T4 — the anomaly→work-order link). */
 function workOrderPrefillHref(unsPath: string | null, diff: LatestDiff): string {
   const label = assetLabelFromUnsPath(unsPath);
-  const title = `[${label}] ${diff.diff_type ?? "anomaly"} on ${diff.tag_path}`;
+  const title = `[${label}] ${canonicalDiffTitle(diff.diff_type, diff.tag_path, diff.title ?? null)}`;
   const description = diff.next_check
     ? `${diff.severity} — next check: ${diff.next_check}`
     : diff.severity;

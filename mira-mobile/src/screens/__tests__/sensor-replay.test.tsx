@@ -71,11 +71,13 @@ const history = (overall: "live" | "stale") => ({
   history: {
     anchor: { at: ANCHOR, source: "state_window", windowId: "w-1", runId: null },
     rows: [
-      { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.000Z", uns_path: "u", tag: "cv101/photo_eye", value: true, prev_value: null, quality: "good", kind: "event" },
-      { event_timestamp: "2026-08-28T23:16:30.270Z", ingested_at: "2026-08-28T23:16:30.400Z", uns_path: "u", tag: "cv101/speed_feedback", value: 12.5, prev_value: 48.2, quality: "uncertain", kind: "diff" },
-      { event_timestamp: "2026-08-28T23:16:31.160Z", ingested_at: "2026-08-28T23:16:45.000Z", uns_path: "u", tag: "cv101/state", value: "faulted", prev_value: "running", quality: "good", kind: "diff" },
+      { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.000Z", uns_path: "u", tag: "cv101/photo_eye", value: true, prev_value: null, quality: "good", kind: "event", source_system: "ignition", source_connection_id: "cv101-bench-gw", simulated: false },
+      { event_timestamp: "2026-08-28T23:16:30.270Z", ingested_at: "2026-08-28T23:16:30.400Z", uns_path: "u", tag: "cv101/speed_feedback", value: 12.5, prev_value: 48.2, quality: "uncertain", kind: "diff", source_system: "ignition", source_connection_id: null, simulated: false },
+      { event_timestamp: "2026-08-28T23:16:31.160Z", ingested_at: "2026-08-28T23:16:45.000Z", uns_path: "u", tag: "cv101/state", value: "faulted", prev_value: "running", quality: "good", kind: "diff", source_system: "ignition", source_connection_id: null, simulated: false },
     ],
     freshness: { overall, live: overall === "live" ? 3 : 0, stale: overall === "stale" ? 3 : 0, simulated: 0, unknown: 0 },
+    currentConnection: { freshness: { overall, live: overall === "live" ? 3 : 0, stale: overall === "stale" ? 3 : 0, simulated: 0, unknown: 0 } },
+    historicalCoverage: { available: true, returnedRowCount: 3, observationCount: 1, admissibleObservationCount: 1, physicalObservationCount: 1, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 0, from: "2026-08-28T23:15:31.000Z", to: "2026-08-28T23:16:41.000Z", firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:28.860Z" },
     summary: { summary: "CV-101 faulted after drive inhibit." },
     provenance: "machine_memory",
     reason: null,
@@ -128,6 +130,7 @@ describe("Sensor REPLAY (S4)", () => {
     // S5 D2: the phone names its window; the server default (5 s / 2 s) is never relied on.
     expect(getAssetHistory).toHaveBeenCalledWith("asset-1", { pre: 60, post: 10 });
     expect(tl.getAttribute("data-freshness")).toBe("stale");
+    expect(screen.getByText("Current connection")).toBeTruthy();
     expect(screen.getByTestId("freshness-label").textContent).toBe("Stale");
     expect(screen.getByText("Live unavailable — showing recorded history")).toBeTruthy();
     const rows = screen.getAllByRole("listitem");
@@ -152,6 +155,7 @@ describe("Sensor REPLAY (S4)", () => {
     await openReplay();
     await screen.findByTestId("replay-timeline");
     expect(screen.queryByText(/Live unavailable/)).toBeNull();
+    expect(screen.getByText("Current connection")).toBeTruthy();
     expect(screen.getByTestId("freshness-label").textContent).toBe("Live");
   });
 
@@ -203,7 +207,7 @@ describe("Sensor REPLAY (S4)", () => {
   it("tables unavailable → says so; no fabricated timeline", async () => {
     getNotebookDetail.mockResolvedValue(bound());
     const h = history("stale");
-    getAssetHistory.mockResolvedValue({ ok: true, history: { ...h.history, rows: [], reason: "unavailable" } });
+    getAssetHistory.mockResolvedValue({ ok: true, history: { ...h.history, rows: [], reason: "unavailable", historicalCoverage: { ...h.history.historicalCoverage, available: false, returnedRowCount: null, observationCount: null, admissibleObservationCount: null, physicalObservationCount: null, simulatedObservationCount: null, badQualityObservationCount: null, unknownProvenanceCount: null, firstObservedAt: null, lastObservedAt: null } } });
     mount();
     await openReplay();
     await screen.findByTestId("replay-timeline");
@@ -212,8 +216,34 @@ describe("Sensor REPLAY (S4)", () => {
     // Nothing was read, so nothing is counted and nothing is labelled: an
     // "0 recorded observations · Stale" header would claim it was quiet.
     expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/recorded observation/);
-    expect(screen.queryByTestId("freshness-label")).toBeNull();
+    expect(screen.getByTestId("current-connection").textContent).toBe("Current connection: Stale");
     expect(screen.queryByText(/Live unavailable/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
+  });
+
+  it("valid quiet window uses the exact empty copy and is not actionable", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    const h = history("live");
+    getAssetHistory.mockResolvedValue({ ok: true, history: { ...h.history, rows: [], historicalCoverage: { ...h.history.historicalCoverage, returnedRowCount: 0, observationCount: 0, admissibleObservationCount: 0, physicalObservationCount: 0, firstObservedAt: null, lastObservedAt: null } } });
+    mount();
+    await openReplay();
+    expect(await screen.findByText("Nothing was recorded in this window. Widen the window or check the gateway.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
+  });
+
+  it.each([
+    ["simulated-only", { admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 1, unknownProvenanceCount: 0 }],
+    ["bad-quality-only", { admissibleObservationCount: 0, physicalObservationCount: 1, simulatedObservationCount: 0, badQualityObservationCount: 1, unknownProvenanceCount: 0 }],
+    ["unknown-provenance", { admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 0, unknownProvenanceCount: 1 }],
+  ])("%s recorded window is visible but never actionable", async (_label, coverage) => {
+    getNotebookDetail.mockResolvedValue(bound());
+    const h = history("stale");
+    getAssetHistory.mockResolvedValue({ ok: true, history: { ...h.history, historicalCoverage: { ...h.history.historicalCoverage, ...coverage } } });
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
   });
 
   it("S5 D2: the header names the fetched window and the segmented control re-fetches on widen", async () => {
@@ -224,7 +254,7 @@ describe("Sensor REPLAY (S4)", () => {
     await screen.findByTestId("replay-timeline");
     expect(getAssetHistory).toHaveBeenCalledTimes(1);
     expect(getAssetHistory.mock.calls[0]).toEqual(["asset-1", { pre: 60, post: 10 }]);
-    expect(screen.getByTestId("replay-window-header").textContent).toBe("3 recorded observations in −60 s … +10 s");
+    expect(screen.getByTestId("replay-window-header").textContent).toBe("1 recorded observation in −60 s … +10 s");
     const group = screen.getByRole("group", { name: "Replay window" });
     const buttons = Array.from(group.querySelectorAll("button"));
     expect(buttons.map((b) => b.textContent)).toEqual(["±5 s", "60 s", "120 s"]);
@@ -237,7 +267,7 @@ describe("Sensor REPLAY (S4)", () => {
     await waitFor(() => expect(getAssetHistory).toHaveBeenCalledTimes(2));
     expect(getAssetHistory.mock.calls[1]).toEqual(["asset-1", { pre: 120, post: 10 }]);
     await waitFor(() =>
-      expect(screen.getByTestId("replay-window-header").textContent).toBe("3 recorded observations in −120 s … +10 s"),
+      expect(screen.getByTestId("replay-window-header").textContent).toBe("1 recorded observation in −120 s … +10 s"),
     );
     expect(screen.getByRole("button", { name: "120 s" }).getAttribute("aria-pressed")).toBe("true");
     // Narrow to ±5 s → re-fetch again.
