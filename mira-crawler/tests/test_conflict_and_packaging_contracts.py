@@ -224,6 +224,11 @@ class TestConflictVisibility:
             "update knowledge_entries ke set content = :c, is_private=:p where id = :id",
             "UPDATE knowledge_entries\n   SET metadata = :m,\n       is_private = :p\n WHERE id = :id",
             "UPDATE knowledge_entries SET is_private = false",  # no WHERE at all
+            # Round AI (#3481, round-32 S3 F1 SUSTAINED): a schema-qualified spelling
+            # must not hide an assignment from the scanner.
+            "UPDATE public.knowledge_entries SET is_private = false WHERE id = :id",
+            'UPDATE "public"."knowledge_entries" SET is_private = TRUE WHERE id = :id',
+            "update mira.knowledge_entries ke set ke.is_private = :p where ke.id = :id",
         ],
     )
     def test_update_scanner_catches_aliased_lowercase_and_multiline_forms(self, sql):
@@ -246,11 +251,15 @@ class TestConflictVisibility:
 
 def _update_set_clauses(text: str) -> list[str]:
     """Everything between `UPDATE knowledge_entries` and its WHERE (or the end of
-    the text) — alias, SET list and all — for every UPDATE in ``text``."""
+    the text) — alias, SET list and all — for every UPDATE in ``text``. A
+    schema-qualified spelling (`public.knowledge_entries`, quoted or not) is the
+    same table (round AI on #3481, round-32 S3 F1 SUSTAINED)."""
     return [
         m.group(1)
         for m in re.finditer(
-            r"UPDATE\s+knowledge_entries\b(.*?)(?:\bWHERE\b|\Z)", text, re.I | re.S
+            r"UPDATE\s+(?:\"?\w+\"?\s*\.\s*)?\"?knowledge_entries\"?(.*?)(?:\bWHERE\b|\Z)",
+            text,
+            re.I | re.S,
         )
     ]
 
