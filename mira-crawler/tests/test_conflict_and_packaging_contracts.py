@@ -229,6 +229,12 @@ class TestConflictVisibility:
             "UPDATE public.knowledge_entries SET is_private = false WHERE id = :id",
             'UPDATE "public"."knowledge_entries" SET is_private = TRUE WHERE id = :id',
             "update mira.knowledge_entries ke set ke.is_private = :p where ke.id = :id",
+            # Round AK (#3481, round-34 S3 F1 SUSTAINED): a block or line comment
+            # between UPDATE and the (schema-qualified) table name must not hide it.
+            "UPDATE /* hidden */ knowledge_entries SET is_private = false WHERE id = :id",
+            "UPDATE -- nothing to see\n    knowledge_entries SET is_private = TRUE WHERE id = :id",
+            "UPDATE /* a */ /* b */ public./* c */knowledge_entries SET is_private = :p WHERE id = :id",
+            "UPDATE\n  -- one\n  /* two */\n  knowledge_entries ke\n  SET ke.is_private = false",
         ],
     )
     def test_update_scanner_catches_aliased_lowercase_and_multiline_forms(self, sql):
@@ -253,11 +259,14 @@ def _update_set_clauses(text: str) -> list[str]:
     """Everything between `UPDATE knowledge_entries` and its WHERE (or the end of
     the text) — alias, SET list and all — for every UPDATE in ``text``. A
     schema-qualified spelling (`public.knowledge_entries`, quoted or not) is the
-    same table (round AI on #3481, round-32 S3 F1 SUSTAINED)."""
+    same table (round AI on #3481, round-32 S3 F1 SUSTAINED), and block (`/* … */`)
+    or line (`-- …`) comments anywhere between UPDATE and the table name cannot
+    hide it (round AK, round-34 S3 F1 SUSTAINED)."""
+    gap = r"(?:\s|/\*.*?\*/|--[^\n]*\n)"  # whitespace or a SQL comment
     return [
         m.group(1)
         for m in re.finditer(
-            r"UPDATE\s+(?:\"?\w+\"?\s*\.\s*)?\"?knowledge_entries\"?(.*?)(?:\bWHERE\b|\Z)",
+            rf"UPDATE{gap}+(?:\"?\w+\"?{gap}*\.{gap}*)?\"?knowledge_entries\"?(.*?)(?:\bWHERE\b|\Z)",
             text,
             re.I | re.S,
         )
@@ -280,11 +289,15 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         # `COPY [--chown=… --from=…] mira-crawler/ <dest>` — flags are allowed;
         # a non-matching COPY makes the caller's assert fail LOUD (dest is
         # None); it can never pass a Dockerfile that omits the directory.
-        m = re.match(r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+(\S+)\s*$", line)
+        # A trailing `# comment` after the destination is tolerated (round AK on
+        # #3481, round-34 S3 F2 SUSTAINED); the destination itself is still one
+        # token, so a subset copy or a single-file copy still returns None.
+        m = re.match(r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+([^\s#]+)\s*(?:#.*)?$", line)
         if m:
             return m.group(1).rstrip("/")
         m = re.match(
-            r'\s*COPY\s+(?:--\S+\s+)*\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*$', line
+            r'\s*COPY\s+(?:--\S+\s+)*\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*(?:#.*)?$',
+            line,
         )
         if m:
             return m.group(1).rstrip("/")
@@ -304,6 +317,13 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         ("COPY \\\n    mira-crawler/ \\\n    /app/\n", "/app"),
         ("COPY --chown=app:app \\\r\n  ./mira-crawler \\\r\n  /srv/mc\r\n", "/srv/mc"),
         ("COPY \\\n    mira-crawler/tasks/ \\\n    /app/tasks/\n", None),  # subset, continued
+        # Round AK (#3481, round-34 S3 F2 SUSTAINED): a trailing `# comment` after
+        # the destination is tolerated; a subset copy with one still returns None.
+        ("COPY mira-crawler/ /app/  # copy the whole crawler directory", "/app"),
+        ('COPY ["mira-crawler/", "/app/mc/"]  # json form, commented', "/app/mc"),
+        ("COPY --chown=app:app ./mira-crawler /srv/mc # flags + comment", "/srv/mc"),
+        ("COPY mira-crawler/tasks/ /app/tasks/  # subset: manifest absent", None),
+        ("COPY mira-crawler/requirements-celery.txt /app/r.txt  # one file", None),
         ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
         ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
         ("COPY mira-core/ /app/core/", None),
