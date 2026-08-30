@@ -62,6 +62,12 @@ as `GO`. `GO` also requires a terminal heartbeat status of `ok`, fresh source
 observation time, a per-scan live ratio of at least 0.5, and at least 12 CV-101
 tags; fresh database receipt time alone is not evidence of live telemetry.
 
+The heartbeat hashes the same parsed values the historian executes. UNS paths
+must already be lowercase, dotted, ltree-safe values; slash-form, uppercase,
+empty, or duplicate paths are rejected before a heartbeat row is written. The
+required fault-trigger tag is matched exactly. Stored evidence contains only
+SHA-256 digests and counts, never raw paths, tags, connection values, or errors.
+
 ## Artifact and interpretation
 
 The workflow uploads `machine-memory-preflight-<run-id>` even on a non-GO result.

@@ -1139,9 +1139,10 @@ jobs:
       - name: Install disposable-PostgreSQL heartbeat test dependencies
         run: pip install pytest sqlalchemy psycopg2-binary celery
 
-      - name: Prove durable historian heartbeat RLS contract (SKIP fails)
+      - name: Prove heartbeat unit, orchestration, and durable RLS contracts (SKIP fails)
         run: |
           set -o pipefail
+          pytest mira-crawler/tests/test_historian_heartbeat.py -q
           pytest mira-crawler/tests/test_historian_postgres_integration.py -q -k historian_heartbeat_upsert_rls_constraints_and_no_delete | tee heartbeat-postgres.out
           ! grep -qi "skipped" heartbeat-postgres.out
 

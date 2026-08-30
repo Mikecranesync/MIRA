@@ -7,6 +7,27 @@
 
 BEGIN;
 
+-- PostgreSQL forbids subqueries directly inside CHECK expressions. Keep the
+-- JSON-array walk in one immutable, schema-local helper so malformed/raw
+-- evidence is rejected by the table itself. The fixed search path prevents
+-- function-body name resolution from being influenced by a caller.
+CREATE OR REPLACE FUNCTION historian_heartbeat_hash_array_is_valid(value JSONB)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog
+AS $function$
+    SELECT jsonb_typeof(value) = 'array'
+       AND NOT EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements(value) AS element(item)
+             WHERE jsonb_typeof(item) <> 'string'
+                OR item #>> '{}' !~ '^[0-9a-f]{64}$'
+       );
+$function$;
+
 CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
     tenant_id               UUID NOT NULL,
     deployment_environment  TEXT NOT NULL
@@ -16,6 +37,7 @@ CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
     finished_at             TIMESTAMPTZ,
     status                  TEXT NOT NULL
         CHECK (status IN ('running', 'ok', 'error', 'disabled', 'no_triggers', 'missing_config')),
+    CHECK ((status = 'running') = (finished_at IS NULL)),
     software_version        TEXT NOT NULL
         CHECK (software_version ~ '^[0-9a-f]{40}$' AND software_version <> 'unknown'),
     run_count               BIGINT NOT NULL DEFAULT 1 CHECK (run_count >= 1),
@@ -29,12 +51,38 @@ CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
             AND detail ? 'machine_memory_path_hashes'
             AND detail ? 'run_diff_enabled'
             AND detail ? 'run_trigger_path_hashes'
+            AND jsonb_typeof(detail -> 'config_sha256') = 'string'
+            AND detail ->> 'config_sha256' ~ '^[0-9a-f]{64}$'
             AND jsonb_typeof(detail -> 'counts') = 'object'
-            AND jsonb_typeof(detail -> 'fault_trigger_tag_hashes') = 'array'
-            AND jsonb_typeof(detail -> 'machine_memory_path_hashes') = 'array'
+            AND (detail -> 'counts' - ARRAY[
+                'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'
+            ]) = '{}'::jsonb
+            AND detail -> 'counts' ?& ARRAY[
+                'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'
+            ]
+            AND jsonb_typeof(detail -> 'counts' -> 'fault_trigger_tags') = 'number'
+            AND jsonb_typeof(detail -> 'counts' -> 'machine_memory_paths') = 'number'
+            AND jsonb_typeof(detail -> 'counts' -> 'run_trigger_paths') = 'number'
+            AND detail -> 'counts' ->> 'fault_trigger_tags' ~ '^(0|[1-9][0-9]*)$'
+            AND detail -> 'counts' ->> 'machine_memory_paths' ~ '^(0|[1-9][0-9]*)$'
+            AND detail -> 'counts' ->> 'run_trigger_paths' ~ '^(0|[1-9][0-9]*)$'
+            AND historian_heartbeat_hash_array_is_valid(
+                detail -> 'fault_trigger_tag_hashes'
+            )
+            AND historian_heartbeat_hash_array_is_valid(
+                detail -> 'machine_memory_path_hashes'
+            )
             AND jsonb_typeof(detail -> 'run_diff_enabled') = 'boolean'
-            AND jsonb_typeof(detail -> 'run_trigger_path_hashes') = 'array'
-            AND (NOT detail ? 'error_code' OR detail ->> 'error_code' = 'HISTORIAN_PIPELINE_ERROR')
+            AND historian_heartbeat_hash_array_is_valid(
+                detail -> 'run_trigger_path_hashes'
+            )
+            AND (
+                NOT detail ? 'error_code'
+                OR (
+                    jsonb_typeof(detail -> 'error_code') = 'string'
+                    AND detail ->> 'error_code' = 'HISTORIAN_PIPELINE_ERROR'
+                )
+            )
             AND (detail - ARRAY[
                 'config_sha256', 'counts', 'error_code', 'fault_trigger_tag_hashes',
                 'machine_memory_path_hashes', 'run_diff_enabled',
@@ -76,4 +124,5 @@ COMMIT;
 -- BEGIN;
 -- DROP POLICY IF EXISTS historian_task_heartbeat_tenant ON historian_task_heartbeat;
 -- DROP TABLE IF EXISTS historian_task_heartbeat;
+-- DROP FUNCTION IF EXISTS historian_heartbeat_hash_array_is_valid(JSONB);
 -- COMMIT;

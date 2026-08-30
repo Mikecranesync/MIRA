@@ -27,8 +27,8 @@ def _env(**overrides: str) -> dict[str, str]:
         "MIRA_DEPLOYMENT_ENVIRONMENT": "staging",
         "MIRA_GIT_SHA": SHA,
         "MIRA_RUN_DIFF_ENABLED": "1",
-        "MIRA_RUN_TRIGGERS": "demo/cell1/conveyor/cv101=vfd_freq:0.1",
-        "MIRA_MACHINE_MEMORY_UNS_PATHS": "demo/cell1/conveyor/cv101",
+        "MIRA_RUN_TRIGGERS": "demo.cell1.conveyor.cv101=vfd_freq:0.1",
+        "MIRA_MACHINE_MEMORY_UNS_PATHS": "demo.cell1.conveyor.cv101",
         "TAG_DIFF_CONFIG_JSON": json.dumps(
             {"fault_trigger_tags": ["default_conveyor_fault_alarm"]}
         ),
@@ -42,8 +42,8 @@ def test_heartbeat_context_canonicalizes_only_permitted_evidence():
     first = historize_runs.build_heartbeat_context(_env())
     second = historize_runs.build_heartbeat_context(
         _env(
-            MIRA_RUN_TRIGGERS=" demo/cell1/conveyor/cv101 = vfd_freq : 0.1 ",
-            MIRA_MACHINE_MEMORY_UNS_PATHS=" demo/cell1/conveyor/cv101 ",
+            MIRA_RUN_TRIGGERS=" demo.cell1.conveyor.cv101 = vfd_freq : 0.1 ",
+            MIRA_MACHINE_MEMORY_UNS_PATHS=" demo.cell1.conveyor.cv101 ",
             TAG_DIFF_CONFIG_JSON=' { "fault_trigger_tags" : [ "default_conveyor_fault_alarm" ] } ',
         )
     )
@@ -56,7 +56,7 @@ def test_heartbeat_context_canonicalizes_only_permitted_evidence():
     assert first.detail["fault_trigger_tag_hashes"] == [
         hashlib.sha256(b"default_conveyor_fault_alarm").hexdigest()
     ]
-    assert "demo/cell1/conveyor/cv101" not in json.dumps(first.detail)
+    assert "demo.cell1.conveyor.cv101" not in json.dumps(first.detail)
     assert "default_conveyor_fault_alarm" not in json.dumps(first.detail)
 
 
@@ -74,11 +74,132 @@ def test_heartbeat_context_rejects_invalid_deployment_identity(name, value):
         historize_runs.build_heartbeat_context(_env(**{name: value}))
 
 
-def test_heartbeat_context_requires_normalized_fault_trigger_tag():
+def test_heartbeat_context_requires_exact_fault_trigger_tag():
     with pytest.raises(ValueError, match="fault_trigger_tags_invalid"):
         historize_runs.build_heartbeat_context(
             _env(TAG_DIFF_CONFIG_JSON='{"fault_trigger_tags":["other_alarm"]}')
         )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error_code"),
+    [
+        ({"MIRA_RUN_TRIGGERS": "demo/cell1/conveyor/cv101=vfd_freq:0.1"}, "uns_path_invalid"),
+        ({"MIRA_RUN_TRIGGERS": "Demo.Cell1.Conveyor.Cv101=vfd_freq:0.1"}, "uns_path_invalid"),
+        ({"MIRA_MACHINE_MEMORY_UNS_PATHS": "demo/cell1/conveyor/cv101"}, "uns_path_invalid"),
+        ({"MIRA_MACHINE_MEMORY_UNS_PATHS": "Demo.Cell1.Conveyor.Cv101"}, "uns_path_invalid"),
+        (
+            {"TAG_DIFF_CONFIG_JSON": '{"fault_trigger_tags":["DEFAULT_CONVEYOR_FAULT_ALARM"]}'},
+            "fault_trigger_tags_invalid",
+        ),
+        (
+            {"TAG_DIFF_CONFIG_JSON": '{"fault_trigger_tags":[" default_conveyor_fault_alarm "]}'},
+            "fault_trigger_tags_invalid",
+        ),
+        (
+            {"MIRA_MACHINE_MEMORY_UNS_PATHS": "demo.cell1.conveyor.cv101,demo.cell1.conveyor.cv101"},
+            "uns_path_invalid",
+        ),
+    ],
+)
+def test_heartbeat_context_rejects_runtime_values_that_cannot_be_attested_exactly(
+    overrides, error_code
+):
+    """Invalid runtime targets fail closed instead of sharing a normalized proof."""
+    with pytest.raises(ValueError, match=error_code):
+        historize_runs.build_heartbeat_context(_env(**overrides))
+
+
+def test_effective_config_is_the_single_runtime_and_attestation_representation():
+    config = historize_runs.build_effective_historian_config(
+        _env(
+            MIRA_RUN_TRIGGERS=" demo.cell1.conveyor.cv101 = vfd_freq : 0.10 ",
+            MIRA_MACHINE_MEMORY_UNS_PATHS=" demo.cell1.conveyor.cv101 , demo.cell1.mixer.mx1 ",
+            MIRA_RUN_K_SIGMA=" 3.00 ",
+        )
+    )
+    context = historize_runs.build_heartbeat_context(_env(), effective_config=config)
+
+    assert list(config.triggers) == ["demo.cell1.conveyor.cv101"]
+    assert config.triggers["demo.cell1.conveyor.cv101"].tag_path == "vfd_freq"
+    assert config.triggers["demo.cell1.conveyor.cv101"].threshold == 0.1
+    assert config.uns_paths == (
+        "demo.cell1.conveyor.cv101",
+        "demo.cell1.mixer.mx1",
+    )
+    assert config.k_sigma == 3.0
+    assert context.detail["machine_memory_path_hashes"] == [
+        hashlib.sha256(path.encode()).hexdigest()
+        for path in config.machine_memory_paths
+    ]
+
+
+def test_task_rejects_invalid_effective_config_before_heartbeat_start(monkeypatch):
+    _configure_task_env(
+        monkeypatch,
+        MIRA_MACHINE_MEMORY_UNS_PATHS="demo/cell1/conveyor/cv101",
+    )
+    heartbeat = _TaskHeartbeatStore()
+    monkeypatch.setattr(historize_runs, "_engine", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "HistorianHeartbeatStore", lambda **_kwargs: heartbeat)
+
+    result = historize_runs.historize_runs()
+
+    assert result == {"status": "error", "error": "missing_config"}
+    assert heartbeat.events == []
+
+
+def test_task_executes_the_exact_paths_and_settings_attested_by_heartbeat(monkeypatch):
+    primary = "demo.cell1.conveyor.cv101"
+    secondary = "demo.cell1.mixer.mx1"
+    _configure_task_env(
+        monkeypatch,
+        MIRA_RUN_TRIGGERS=f" {primary} = vfd_freq : 0.10 ",
+        MIRA_MACHINE_MEMORY_UNS_PATHS=f" {secondary} , {primary} ",
+        MIRA_RUN_LOOKBACK_SECONDS=" 42.0 ",
+        MIRA_RUN_K_SIGMA=" 4.0 ",
+        MIRA_ANOMALY_COOLDOWN_SECONDS=" 90.0 ",
+    )
+    heartbeat = _TaskHeartbeatStore()
+    observed = {"machine_memory": []}
+    monkeypatch.setattr(historize_runs, "_engine", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "HistorianHeartbeatStore", lambda **_kwargs: heartbeat)
+
+    def read_events(_url, _tenant, *, uns_paths, lookback_seconds):
+        observed["read"] = (uns_paths, lookback_seconds)
+        return []
+
+    def run_pipeline(_readings, _store, triggers, **settings):
+        observed["run"] = (triggers, settings)
+        return {"status": "ok"}
+
+    def run_machine_memory(_store, _tenant, uns_path, _rows, **settings):
+        observed["machine_memory"].append((uns_path, settings["anomaly_cooldown_seconds"]))
+        return {
+            "windows_upserted": 0,
+            "anomaly_diffs_written": 0,
+            "anomalies_cooldown_suppressed": 0,
+            "latest_window": None,
+            "unmapped_tags": [],
+        }
+
+    monkeypatch.setattr(historize_runs, "_read_recent_events", read_events)
+    monkeypatch.setattr(historize_runs, "NeonRunStore", lambda _url: object())
+    monkeypatch.setattr(historize_runs, "run_historization", run_pipeline)
+    monkeypatch.setattr(historize_runs, "historize_machine_memory", run_machine_memory)
+
+    assert historize_runs.historize_runs()["status"] == "ok"
+    context = heartbeat.events[0][1]
+    assert observed["read"] == ([primary, secondary], 42.0)
+    assert list(observed["run"][0]) == [primary]
+    assert observed["run"][1]["k_sigma"] == 4.0
+    assert observed["machine_memory"] == [(primary, 90.0), (secondary, 90.0)]
+    assert context.detail["run_trigger_path_hashes"] == [
+        hashlib.sha256(primary.encode()).hexdigest()
+    ]
+    assert context.detail["machine_memory_path_hashes"] == [
+        hashlib.sha256(path.encode()).hexdigest() for path in (primary, secondary)
+    ]
 
 
 class _RecordingConnection:
@@ -149,10 +270,31 @@ def test_heartbeat_migration_locks_identity_rls_and_no_delete_privilege():
     assert "PRIMARY KEY (tenant_id, deployment_environment, task_name)" in migration
     assert "CHECK (deployment_environment IN ('development', 'staging', 'production'))" in migration
     assert "CHECK (status IN ('running', 'ok', 'error', 'disabled', 'no_triggers', 'missing_config'))" in migration
+    assert "CHECK ((status = 'running') = (finished_at IS NULL))" in migration
+    assert "historian_heartbeat_hash_array_is_valid" in migration
+    assert "detail ->> 'config_sha256' ~ '^[0-9a-f]{64}$'" in migration
+    assert "detail -> 'counts' - ARRAY[" in migration
+    assert "'fault_trigger_tags', 'machine_memory_paths', 'run_trigger_paths'" in migration
+    assert "jsonb_typeof(detail -> 'counts' -> 'fault_trigger_tags') = 'number'" in migration
+    assert "~ '^(0|[1-9][0-9]*)$'" in migration
     assert "NULLIF(current_setting('app.tenant_id', true), '')::UUID" in migration
     assert "NULLIF(current_setting('app.current_tenant_id', true), '')::UUID" in migration
     assert "GRANT SELECT, INSERT, UPDATE ON historian_task_heartbeat TO factorylm_app" in migration
     assert "REVOKE DELETE ON historian_task_heartbeat FROM factorylm_app" in migration
+
+
+def test_heartbeat_ci_job_runs_units_and_real_rls_contract_with_skip_guard():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job = workflow.split("  historian-heartbeat-postgres:", 1)[1].split(
+        "\n  ocr-recall-gate:", 1
+    )[0]
+
+    assert "mira-crawler/tests/test_historian_heartbeat.py" in job
+    assert "mira-crawler/tests/test_historian_postgres_integration.py" in job
+    assert "historian_heartbeat_upsert_rls_constraints_and_no_delete" in job
+    assert '! grep -qi "skipped" heartbeat-postgres.out' in job
 
 
 def test_migration_order_checker_rejects_heartbeat_before_historian_foundation(tmp_path):

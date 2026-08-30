@@ -32,9 +32,10 @@ import json
 import os
 import pathlib
 import uuid
+from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("MIRA_TEST_DATABASE_URL"),
@@ -261,29 +262,109 @@ def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
             "SELECT has_table_privilege(current_user, 'historian_task_heartbeat', 'DELETE')",
         ) is False
 
+        # RLS protects mutations, not only reads: tenant A cannot create a row
+        # for B or move its owned row across the tenant boundary.
+        with pytest.raises(DBAPIError):
+            with app_engine.begin() as conn:
+                conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO historian_task_heartbeat
+                            (tenant_id, deployment_environment, task_name, started_at,
+                             status, software_version, detail)
+                        VALUES
+                            (CAST(:other_tenant AS UUID), 'staging', 'cross_tenant_probe',
+                             NOW(), 'running', :software_version, CAST(:detail AS JSONB))
+                        """
+                    ),
+                    {
+                        "other_tenant": other_tenant,
+                        "software_version": "f" * 40,
+                        "detail": json.dumps(detail),
+                    },
+                )
+        with pytest.raises(DBAPIError):
+            with app_engine.begin() as conn:
+                conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
+                conn.execute(
+                    text(
+                        """
+                        UPDATE historian_task_heartbeat
+                           SET tenant_id = CAST(:other_tenant AS UUID)
+                         WHERE tenant_id = CAST(:tenant AS UUID)
+                           AND task_name = 'historize_runs'
+                        """
+                    ),
+                    {"tenant": tenant, "other_tenant": other_tenant},
+                )
+
         # All constraints are enforced by Postgres while acting as the
         # non-bypass app role, not merely checked in Python.
         insert_sql = text(
             """
             INSERT INTO historian_task_heartbeat
-                (tenant_id, deployment_environment, task_name, started_at, status,
-                 software_version, detail)
+                (tenant_id, deployment_environment, task_name, started_at, finished_at,
+                 status, software_version, detail)
             VALUES
-                (CAST(:tenant_id AS UUID), :deployment_environment, 'constraint_probe', NOW(),
-                 :status, :software_version, CAST(:detail AS JSONB))
+                (CAST(:tenant_id AS UUID), :deployment_environment, 'constraint_probe',
+                 NOW(), :finished_at, :status, :software_version, CAST(:detail AS JSONB))
             """
         )
-        invalid_rows = [
-            {"deployment_environment": "qa", "status": "running", "software_version": "f" * 40, "detail": json.dumps(detail)},
-            {"deployment_environment": "staging", "status": "bogus", "software_version": "f" * 40, "detail": json.dumps(detail)},
-            {"deployment_environment": "staging", "status": "running", "software_version": "f" * 39, "detail": json.dumps(detail)},
-            {"deployment_environment": "staging", "status": "running", "software_version": "f" * 40, "detail": "{}"},
+        def invalid_detail(**changes):
+            value = json.loads(json.dumps(detail))
+            value.update(changes)
+            return json.dumps(value)
+
+        def invalid_row(**changes):
+            value = {
+                "deployment_environment": "staging",
+                "finished_at": None,
+                "status": "running",
+                "software_version": "f" * 40,
+                "detail": json.dumps(detail),
+            }
+            value.update(changes)
+            return value
+
+        count_variants = [
+            {**detail["counts"], "unexpected": 1},
+            {"fault_trigger_tags": 1, "machine_memory_paths": 1},
+            {**detail["counts"], "fault_trigger_tags": -1},
+            {**detail["counts"], "fault_trigger_tags": 1.5},
+            {**detail["counts"], "fault_trigger_tags": "1"},
         ]
+        invalid_rows = [
+            invalid_row(deployment_environment="qa"),
+            invalid_row(status="bogus"),
+            invalid_row(software_version="f" * 39),
+            invalid_row(detail="{}"),
+            invalid_row(detail=invalid_detail(config_sha256="A" * 64)),
+            invalid_row(
+                detail=invalid_detail(
+                    machine_memory_path_hashes=["https://secret.invalid/path"]
+                )
+            ),
+            invalid_row(
+                detail=invalid_detail(run_trigger_path_hashes=["d" * 63, 7])
+            ),
+            invalid_row(detail=invalid_detail(error_code="RAW_DATABASE_ERROR")),
+            invalid_row(detail=invalid_detail(raw_path="enterprise.secret.asset")),
+            invalid_row(finished_at="NOW()"),
+            invalid_row(status="ok"),
+        ]
+        invalid_rows.extend(
+            invalid_row(detail=invalid_detail(counts=counts))
+            for counts in count_variants
+        )
         for invalid in invalid_rows:
             with pytest.raises(IntegrityError):
                 with app_engine.begin() as conn:
                     conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant})
-                    conn.execute(insert_sql, {"tenant_id": tenant, **invalid})
+                    params = {"tenant_id": tenant, **invalid}
+                    if params["finished_at"] == "NOW()":
+                        params["finished_at"] = datetime.now(timezone.utc)
+                    conn.execute(insert_sql, params)
     finally:
         app_engine.dispose()
 
