@@ -27,6 +27,11 @@ export interface HistoryRow {
   prev_value?: string | number | boolean | null;
   quality: string | null;
   kind: "event" | "diff";
+  /** Provenance, verbatim from the Hub (033/037). Absent on an older server →
+   *  null, never guessed. */
+  source_system: string | null;
+  source_connection_id: string | null;
+  simulated: boolean | null;
 }
 
 export type Freshness = "live" | "stale" | "simulated" | "unknown";
@@ -62,6 +67,14 @@ export interface CurrentConnection {
 export interface HistoricalCoverage {
   available: boolean;
   observationCount: number | null;
+  /** Server-owned admission fact: raw event rows that are physical AND good
+   *  quality. Null when the server never stated it (older body) — the phone
+   *  never derives admissibility from a row count it cannot vouch for. */
+  admissibleObservationCount: number | null;
+  physicalObservationCount: number | null;
+  simulatedObservationCount: number | null;
+  badQualityObservationCount: number | null;
+  unknownProvenanceCount: number | null;
   from: string;
   to: string;
   firstObservedAt: string | null;

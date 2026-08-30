@@ -244,7 +244,7 @@ describe("getAssetHistory", () => {
           ...base,
           freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 },
           currentConnection: { freshness: { overall: "live", live: 2, stale: 0, simulated: 0, unknown: 0 } },
-          historicalCoverage: { available: true, observationCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+          historicalCoverage: { available: true, observationCount: 0, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 0, badQualityObservationCount: 0, unknownProvenanceCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
         },
       });
       const r = await getAssetHistory("asset-1", { at: ANCHOR, pre: 60, post: 10 });
@@ -254,6 +254,11 @@ describe("getAssetHistory", () => {
       expect(r.history.historicalCoverage).toEqual({
         available: true,
         observationCount: 0,
+        admissibleObservationCount: 0,
+        physicalObservationCount: 0,
+        simulatedObservationCount: 0,
+        badQualityObservationCount: 0,
+        unknownProvenanceCount: 0,
         from: "2026-08-28T23:15:31.000Z",
         to: "2026-08-28T23:16:41.000Z",
         firstObservedAt: null,
@@ -272,7 +277,7 @@ describe("getAssetHistory", () => {
           reason: "unavailable",
           freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 },
           currentConnection: { freshness: { overall: "stale", live: 0, stale: 1, simulated: 0, unknown: 0 } },
-          historicalCoverage: { available: false, observationCount: null, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
+          historicalCoverage: { available: false, observationCount: null, admissibleObservationCount: null, physicalObservationCount: null, simulatedObservationCount: null, badQualityObservationCount: null, unknownProvenanceCount: null, from: base.window.from, to: base.window.to, firstObservedAt: null, lastObservedAt: null },
         },
       });
       const r = await getAssetHistory("asset-1", { at: ANCHOR });
@@ -281,6 +286,7 @@ describe("getAssetHistory", () => {
       expect(r.history.reason).toBe("unavailable");
       expect(r.history.historicalCoverage.available).toBe(false);
       expect(r.history.historicalCoverage.observationCount).toBeNull();
+      expect(r.history.historicalCoverage.admissibleObservationCount).toBeNull();
       expect(r.history.currentConnection.freshness.overall).toBe("stale");
     });
 
@@ -290,11 +296,11 @@ describe("getAssetHistory", () => {
         data: {
           ...base,
           rows: [
-            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event" },
+            { event_timestamp: "2026-08-28T23:16:28.860Z", ingested_at: "2026-08-28T23:16:29.100Z", uns_path: "u", tag: "a", value: true, quality: "good", kind: "event", source_system: "simulator", source_connection_id: null, simulated: true },
           ],
           freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 },
           currentConnection: { freshness: { overall: "simulated", live: 0, stale: 0, simulated: 1, unknown: 0 } },
-          historicalCoverage: { available: true, observationCount: 1, from: base.window.from, to: base.window.to, firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:28.860Z" },
+          historicalCoverage: { available: true, observationCount: 1, admissibleObservationCount: 0, physicalObservationCount: 0, simulatedObservationCount: 1, badQualityObservationCount: 0, unknownProvenanceCount: 0, from: base.window.from, to: base.window.to, firstObservedAt: "2026-08-28T23:16:28.860Z", lastObservedAt: "2026-08-28T23:16:28.860Z" },
         },
       });
       const r = await getAssetHistory("asset-1", { at: ANCHOR });
@@ -303,12 +309,20 @@ describe("getAssetHistory", () => {
       expect(r.history.historicalCoverage).toEqual({
         available: true,
         observationCount: 1,
+        // served and counted — but simulated, so it unlocks nothing
+        admissibleObservationCount: 0,
+        physicalObservationCount: 0,
+        simulatedObservationCount: 1,
+        badQualityObservationCount: 0,
+        unknownProvenanceCount: 0,
         from: "2026-08-28T23:15:31.000Z",
         to: "2026-08-28T23:16:41.000Z",
         firstObservedAt: "2026-08-28T23:16:28.860Z",
         lastObservedAt: "2026-08-28T23:16:28.860Z",
       });
       expect(r.history.currentConnection.freshness.overall).toBe("simulated");
+      // the row carries its quality and provenance explicitly, verbatim
+      expect(r.history.rows[0]).toMatchObject({ quality: "good", source_system: "simulator", source_connection_id: null, simulated: true });
     });
 
     it("an OLDER server body (no explicit objects) derives coverage from what it did say — and never invents a count for an unavailable window", async () => {
@@ -322,6 +336,11 @@ describe("getAssetHistory", () => {
       expect(r.history.historicalCoverage).toEqual({
         available: false,
         observationCount: null,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
         from: "2026-08-28T23:15:31.000Z",
         to: "2026-08-28T23:16:41.000Z",
         firstObservedAt: null,
@@ -331,9 +350,16 @@ describe("getAssetHistory", () => {
 
       request.mockResolvedValue({ status: 200, data: { ...base, rows: [], freshness: { overall: "live", live: 1 } } });
       const q = await getAssetHistory("asset-1", { at: ANCHOR });
+      // an older server never stated admissibility, so it stays UNKNOWN (null)
+      // rather than being derived from a row count the client cannot vouch for
       expect(q.ok && q.history.historicalCoverage).toEqual({
         available: true,
         observationCount: 0,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
         from: "2026-08-28T23:15:31.000Z",
         to: "2026-08-28T23:16:41.000Z",
         firstObservedAt: null,

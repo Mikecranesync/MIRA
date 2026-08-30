@@ -56,6 +56,35 @@ export interface HistoryAnchor {
 
 export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
+  /** Provenance, verbatim from the row (033/037). `source_connection_id` is
+   *  null on a diff (037 records none); `simulated` null when unknown. */
+  source_system: string | null;
+  source_connection_id: string | null;
+  simulated: boolean | null;
+}
+
+/** Source systems that are synthetic by definition, whatever `simulated` says. */
+export const SYNTHETIC_SOURCE_SYSTEMS: ReadonlySet<string> = new Set([
+  "simulator",
+  "simlab",
+  "synthetic",
+  "demo_simulator",
+]);
+
+export type RowProvenance = "physical" | "simulated" | "unknown";
+
+/** Provenance of one served row. Unknown (null source or null flag) is never
+ *  physical — an unproven origin cannot unlock Ask MIRA. */
+export function rowProvenance(row: Pick<MachineHistoryRow, "source_system" | "simulated">): RowProvenance {
+  if (row.source_system == null || row.simulated == null) return "unknown";
+  if (row.simulated === true || SYNTHETIC_SOURCE_SYSTEMS.has(row.source_system)) return "simulated";
+  return "physical";
+}
+
+/** Admissible = a RAW event row (never a diff), physical, quality "good". The
+ *  server-owned fact Ask MIRA admission keys on (PRD §9.2). */
+export function isAdmissibleRow(row: MachineHistoryRow): boolean {
+  return row.kind === "event" && row.quality === "good" && rowProvenance(row) === "physical";
 }
 
 /**
@@ -76,6 +105,14 @@ export interface CurrentConnection {
 export interface HistoricalCoverage {
   available: boolean;
   observationCount: number | null;
+  /** Raw event rows that are physical AND quality "good" — the only rows that
+   *  can unlock Ask MIRA. Diffs and unknown provenance never count. */
+  admissibleObservationCount: number | null;
+  physicalObservationCount: number | null;
+  simulatedObservationCount: number | null;
+  /** Physical raw event rows whose quality is not "good". */
+  badQualityObservationCount: number | null;
+  unknownProvenanceCount: number | null;
   /** The RETURNED window bounds (`[at-pre, at+post]`, clamped). */
   from: string;
   to: string;
@@ -245,7 +282,7 @@ export async function fetchMachineHistory(
     eventRows = await client
       .query(
         `SELECT event_timestamp, ingested_at, uns_path::text AS uns_path,
-                tag_path, value, quality
+                tag_path, value, quality, source_system, source_connection_id, simulated
            FROM tag_events
           WHERE tenant_id = $1::uuid
             AND uns_path IS NOT NULL
@@ -271,7 +308,7 @@ export async function fetchMachineHistory(
       diffRows = await client
         .query(
           `SELECT event_timestamp, detected_at, uns_path::text AS uns_path,
-                  tag_path, prev_value, new_value, diff_type
+                  tag_path, prev_value, new_value, diff_type, source_system, simulated
              FROM tag_event_diffs
             WHERE tenant_id = $1::uuid
               AND uns_path IS NOT NULL
@@ -300,6 +337,9 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.value == null ? null : String(r.value),
         quality: r.quality == null ? null : String(r.quality),
+        source_system: r.source_system == null ? null : String(r.source_system),
+        source_connection_id: r.source_connection_id == null ? null : String(r.source_connection_id),
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
     ...diffRows.map(
@@ -313,6 +353,10 @@ export async function fetchMachineHistory(
         prev_value: r.prev_value == null ? null : String(r.prev_value),
         // 037 records no quality on a diff; null, never guessed.
         quality: null,
+        source_system: r.source_system == null ? null : String(r.source_system),
+        // 037 records no connection id on a diff; null, never guessed.
+        source_connection_id: null,
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
   ].sort((a, b) => {
@@ -338,15 +382,20 @@ export async function fetchMachineHistory(
   // Coverage comes from the served rows only (already ordered by
   // event_timestamp). An unavailable window has nothing to count: null, not 0.
   const historicalCoverage: HistoricalCoverage = reason
-    ? { available: false, observationCount: null, from, to, firstObservedAt: null, lastObservedAt: null }
-    : {
-        available: true,
-        observationCount: rows.length,
+    ? {
+        available: false,
+        observationCount: null,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
         from,
         to,
-        firstObservedAt: rows.length ? rows[0].event_timestamp : null,
-        lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
-      };
+        firstObservedAt: null,
+        lastObservedAt: null,
+      }
+    : coverageOfRows(rows, from, to);
 
   return {
     ok: true,
@@ -366,6 +415,41 @@ export async function fetchMachineHistory(
       ...(reason ? { reason } : {}),
       diffsAvailable,
     },
+  };
+}
+
+/** Coverage of a served (available) window — every count from the rows only.
+ *  Rows are already ordered by event_timestamp, so the bounds are the ends. */
+export function coverageOfRows(rows: MachineHistoryRow[], from: string, to: string): HistoricalCoverage {
+  let physical = 0;
+  let simulated = 0;
+  let unknown = 0;
+  let badQuality = 0;
+  let admissible = 0;
+  for (const r of rows) {
+    const p = rowProvenance(r);
+    if (p === "unknown") unknown++;
+    else if (p === "simulated") simulated++;
+    else {
+      physical++;
+      if (r.kind === "event") {
+        if (r.quality === "good") admissible++;
+        else badQuality++;
+      }
+    }
+  }
+  return {
+    available: true,
+    observationCount: rows.length,
+    admissibleObservationCount: admissible,
+    physicalObservationCount: physical,
+    simulatedObservationCount: simulated,
+    badQualityObservationCount: badQuality,
+    unknownProvenanceCount: unknown,
+    from,
+    to,
+    firstObservedAt: rows.length ? rows[0].event_timestamp : null,
+    lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
   };
 }
 
