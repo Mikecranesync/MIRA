@@ -292,12 +292,19 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         # A trailing `# comment` after the destination is tolerated (round AK on
         # #3481, round-34 S3 F2 SUSTAINED); the destination itself is still one
         # token, so a subset copy or a single-file copy still returns None.
-        m = re.match(r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+([^\s#]+)\s*(?:#.*)?$", line)
+        # `COPY` is matched case-insensitively: Docker instructions are
+        # case-insensitive (round AL on #3481, round-35 S3 F1 SUSTAINED).
+        m = re.match(
+            r"\s*COPY\s+(?:--\S+\s+)*(?:\./)?mira-crawler/?\s+([^\s#]+)\s*(?:#.*)?$",
+            line,
+            re.I,
+        )
         if m:
             return m.group(1).rstrip("/")
         m = re.match(
             r'\s*COPY\s+(?:--\S+\s+)*\[\s*"(?:\./)?mira-crawler/?"\s*,\s*"([^"]+)"\s*\]\s*(?:#.*)?$',
             line,
+            re.I,
         )
         if m:
             return m.group(1).rstrip("/")
@@ -324,6 +331,13 @@ def _whole_dir_copy_dest(dockerfile_text: str) -> str | None:
         ("COPY --chown=app:app ./mira-crawler /srv/mc # flags + comment", "/srv/mc"),
         ("COPY mira-crawler/tasks/ /app/tasks/  # subset: manifest absent", None),
         ("COPY mira-crawler/requirements-celery.txt /app/r.txt  # one file", None),
+        # Round AL (#3481, round-35 S3 F1 + F2 SUSTAINED): Docker instructions are
+        # case-insensitive, so `copy` is the same directive; a multi-source COPY is
+        # never the whole-directory form (the destination is one token, anchored).
+        ("copy mira-crawler/ /app/", "/app"),
+        ('Copy ["mira-crawler/", "/app/mc/"]', "/app/mc"),
+        ("COPY mira-crawler/ extra/ /app/", None),  # multi-source: not the whole-dir form
+        ("COPY mira-crawler/ mira-core/ /app/  # two sources", None),
         ("COPY mira-crawler/tasks/ /app/mira_crawler/tasks/", None),  # subset: manifest absent
         ("COPY mira-crawler/requirements-celery.txt /app/requirements.txt", None),
         ("COPY mira-core/ /app/core/", None),
@@ -1113,6 +1127,25 @@ class TestUserinfoRefusedAtTheBoundary:
         "https://example.com/doc.pdf?api%5Fkey=abc123",  # encoded separator in the name
         "ftp://files.example.com/doc.pdf?token=abc123",  # any scheme
         "https://example.com/doc.pdf?token=abc123#frag",
+        # Round AL (#3481, round-35 S2 F1 + S3 F4 SUSTAINED): the name is folded
+        # through NFKC and stripped of every non-alphanumeric byte, so Unicode
+        # punctuation or a stray delimiter inside the name cannot hide it, and the
+        # family covers the common session/client/key spellings.
+        "https://example.com/doc.pdf?api‑key=abc123",  # U+2011 non-breaking hyphen
+        "https://example.com/doc.pdf?api＿key=abc123",  # U+FF3F full-width low line
+        "https://example.com/doc.pdf?ａpi_key=abc123",  # full-width letter, NFKC → a
+        "https://example.com/doc.pdf?api%26key=abc123",  # `&` inside the name (round 32 F2)
+        "https://example.com/doc.pdf?auth_token=abc123",
+        "https://example.com/doc.pdf?sessionid=abc123",
+        "https://example.com/doc.pdf?session_token=abc123",
+        "https://example.com/doc.pdf?clientToken=abc123",
+        "https://example.com/doc.pdf?AccessKey=abc123",
+        "https://example.com/doc.pdf?secret-key=abc123",
+        "https://example.com/doc.pdf?private_key=abc123",
+        "https://example.com/doc.pdf?api_secret=abc123",
+        "https://example.com/doc.pdf?jwt=abc123",
+        "https://example.com/doc.pdf?oauth_token=abc123",
+        "https://example.com/doc.pdf?bearer=abc123",
     )
     ORDINARY_QUERY = (
         "https://example.com/doc.pdf?q=token",  # the WORD in a value is not a credential
@@ -1124,6 +1157,22 @@ class TestUserinfoRefusedAtTheBoundary:
         "https://example.com/doc.pdf?",
         "https://example.com/doc.pdf",
     )
+
+    def test_store_engine_is_postgresql_only_by_construction(self, monkeypatch):
+        """Round AL (#3481, round-35 S2 F2 SUSTAINED — "`= ANY(:urls)` would fail
+        on SQLite/MySQL"). `= ANY(array)` is PostgreSQL's scalar-array operator and
+        `knowledge_entries` lives only in NeonDB; the engine now refuses any other
+        dialect at construction, so a non-PostgreSQL back-end is impossible by
+        construction, not by assumption."""
+        import ingest.store as store_mod
+
+        monkeypatch.setattr(store_mod, "_ENGINE", None)
+        for bad in ("sqlite:///x.db", "mysql://u@h/db", "mariadb+pymysql://u@h/db"):
+            monkeypatch.setenv("NEON_DATABASE_URL", bad)
+            with pytest.raises(RuntimeError, match="PostgreSQL"):
+                store_mod._engine()
+            assert store_mod._ENGINE is None, bad
+        monkeypatch.setattr(store_mod, "_ENGINE", None)
 
     def test_credential_query_parameters_are_detected_and_ordinary_ones_are_not(self):
         for url in self.CREDENTIAL_QUERY:

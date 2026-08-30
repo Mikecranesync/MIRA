@@ -174,18 +174,32 @@ def classify_origin(url: str, *, policy: "dict | None" = None) -> tuple[str, str
 
 
 # Query-parameter NAMES that carry a credential (round AD on #3481, round-27
-# scope C F1 SUSTAINED). Matched on the percent-decoded name, lower-cased, with
-# `-`, `_`, `.` and whitespace removed — so `api_key`, `Api-Key`, `api%5Fkey`
-# and `X-Amz-Signature` all match; values are never inspected (a value that
-# merely contains the word "token" is an ordinary query), and a longer name
-# such as `tokenizer` is not the family.
+# scope C F1 SUSTAINED). Matched on the percent-decoded name, NFKC-normalised,
+# lower-cased, with EVERY non-alphanumeric character removed (round AL on
+# #3481: a U+2011 hyphen, a full-width underscore, a full-width letter or a
+# stray `&` inside the name all fold to the same key — refusing more is the
+# fail-closed direction) — so `api_key`, `Api-Key`, `api%5Fkey`, `api‑key` and
+# `X-Amz-Signature` all match; values are never inspected (a value that merely
+# contains the word "token" is an ordinary query), and a longer name such as
+# `tokenizer` is not the family.
 _CREDENTIAL_QUERY_NAMES = frozenset(
     {
         "token",
         "accesstoken",
         "idtoken",
         "refreshtoken",
+        "authtoken",
+        "sessiontoken",
+        "clienttoken",
+        "oauthtoken",
+        "bearer",
+        "jwt",
+        "sessionid",
         "apikey",
+        "accesskey",
+        "secretkey",
+        "privatekey",
+        "apisecret",
         "auth",
         "authorization",
         "password",
@@ -201,18 +215,25 @@ _CREDENTIAL_QUERY_NAMES = frozenset(
         "xgoogcredential",
     }
 )
-_QUERY_NAME_NOISE_RE = re.compile(r"[-_.\s]")
+_QUERY_NAME_NOISE_RE = re.compile(r"[^0-9a-z]")
+
+
+def _fold_query_name(raw: str) -> str:
+    """The comparison key of a query-parameter name: percent-decoded, NFKC,
+    lower-cased, every non-alphanumeric character removed. Pure."""
+    from unicodedata import normalize
+    from urllib.parse import unquote
+
+    return _QUERY_NAME_NOISE_RE.sub("", normalize("NFKC", unquote(raw)).lower())
 
 
 def _credential_query_name(url: str) -> "str | None":
     """The first credential-family query-parameter NAME in ``url``, or None."""
-    from urllib.parse import unquote
-
     query = str(url).strip().partition("?")[2].partition("#")[0]
     for pair in re.split(r"[&;]", query):
         if not pair:
             continue
-        name = _QUERY_NAME_NOISE_RE.sub("", unquote(pair.split("=", 1)[0])).lower()
+        name = _fold_query_name(pair.split("=", 1)[0])
         if name in _CREDENTIAL_QUERY_NAMES:
             return name
     return None

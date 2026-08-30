@@ -189,6 +189,16 @@ def _engine():
     url = os.environ.get("NEON_DATABASE_URL")
     if not url:
         raise RuntimeError("NEON_DATABASE_URL not set")
+    # PostgreSQL-only by construction (round AL on #3481): the dedup probes use
+    # `= ANY(array)`, PostgreSQL's scalar-array operator, and knowledge_entries
+    # lives only in NeonDB. Any other dialect is refused before an engine exists,
+    # so "what if this ran on SQLite" is impossible rather than assumed.
+    dialect = url.split(":", 1)[0].split("+", 1)[0].lower()
+    if dialect not in ("postgresql", "postgres"):
+        raise RuntimeError(
+            f"NEON_DATABASE_URL must be a PostgreSQL URL (dialect {dialect!r} refused); "
+            "the knowledge_entries store is PostgreSQL-only"
+        )
 
     _ENGINE = create_engine(
         url,

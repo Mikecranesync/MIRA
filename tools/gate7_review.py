@@ -918,13 +918,21 @@ def _gh_json(args: list[str]) -> dict:
 
 def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
     """Keep only the file sections of a unified diff whose b/ path starts with
-    one of the prefixes. Used for per-file-group review of large PRs."""
+    one of the prefixes. Used for per-file-group review of large PRs.
+
+    A prefix names a directory or an exact file, never a substring (#3481 round
+    AL): a bare directory prefix is normalised to end with `/`, so `docs`
+    keeps `docs/...` and never `docs_extra/...`; a prefix that is an exact
+    changed path (`PLAN.md`) keeps that file."""
     kept: list[str] = []
     keep = False
     for line in diff.splitlines(keepends=True):
         if line.startswith("diff --git "):
             target = line.rsplit(" b/", 1)[-1].strip()
-            keep = any(target.startswith(p) for p in prefixes)
+            keep = any(
+                target == p or target.startswith(p if p.endswith("/") else p + "/")
+                for p in prefixes
+            )
         if keep:
             kept.append(line)
     return "".join(kept)
@@ -943,7 +951,11 @@ def is_evidence_artifact(path: str) -> bool:
     seven rounds quoted them back as "the documentation claims …" — judging the
     wrong author — and neither the documentation brief, the decision-point
     reminder nor reworded records changed that (#3483). Pure."""
-    if not path.startswith(_EVIDENCE_DIR):
+    # The directory prefix is compared case-insensitively (#3481 round AL): a
+    # differently-cased spelling of the evidence directory is still the evidence
+    # directory. The suffix, README and rebuttal rules below are unchanged, so
+    # nothing executable can hide under either spelling.
+    if not path.lower().startswith(_EVIDENCE_DIR):
         return False
     name = path.rsplit("/", 1)[-1].lower()
     # Only documentation/log files are artifacts. Anything executable or
@@ -990,7 +1002,10 @@ def diff_paths_excluded(diff: str, prefixes: tuple[str, ...]) -> list[str]:
     for line in diff.splitlines():
         if line.startswith("diff --git "):
             target = line.rsplit(" b/", 1)[-1].strip()
-            if not any(target.startswith(p) for p in prefixes):
+            if not any(
+                target == p or target.startswith(p if p.endswith("/") else p + "/")
+                for p in prefixes
+            ):
                 excluded.append(target)
     return excluded
 

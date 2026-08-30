@@ -467,6 +467,21 @@ def test_filter_diff_paths_no_match_is_empty():
     assert filter_diff_paths(_sample_diff(), ("mira-hub/",)) == ""
 
 
+def test_filter_diff_paths_prefix_is_a_directory_not_a_substring():
+    """#3481 round AL (round-35 S5 F1 claimed `"docs_extra/x".startswith("docs/")` is
+    True). A scope prefix carries its trailing slash, so a sibling directory that
+    shares leading characters is never kept, and a bare prefix without a slash is
+    normalised to one before matching."""
+    diff = (
+        "diff --git a/docs/a.md b/docs/a.md\n+in_scope\n"
+        "diff --git a/docs_extra/secret.py b/docs_extra/secret.py\n+sibling\n"
+        "diff --git a/docsx.py b/docsx.py\n+prefix_only\n"
+    )
+    for scope in (("docs/",), ("docs",)):
+        out = filter_diff_paths(diff, scope)
+        assert "+in_scope" in out and "+sibling" not in out and "+prefix_only" not in out, scope
+
+
 def test_diff_paths_excluded_lists_uncovered_files():
     from gate7_review import diff_paths_excluded
 
@@ -1281,6 +1296,17 @@ def test_preserved_evidence_artifacts_are_dropped_from_the_reviewed_diff_and_rec
     # the directory must never become a place to hide code from the gate.
     for smuggled in ("run.sh", "helper.py", "policy.yaml", "payload.json", "x.ts", "Dockerfile"):
         assert not is_evidence_artifact(e + smuggled), smuggled
+    # #3481 round AL (round-35 S4 F2, the seventh re-raise): the directory prefix is
+    # compared case-insensitively, so a differently-cased spelling of the evidence
+    # directory is still the evidence directory; the suffix, README and rebuttal
+    # rules are unchanged, so nothing executable can hide under either spelling.
+    E2 = "Docs/Architecture/Convergence/Units/Evidence/CU-03/"
+    assert is_evidence_artifact(E2 + "round-1-crash.log")
+    assert is_evidence_artifact(E2 + "followup-3481-round5-docs-adjudication.stderr.log")
+    assert not is_evidence_artifact(E2 + "README.md")
+    assert not is_evidence_artifact(E2 + "round-12-groupA-rebuttal.md")
+    assert not is_evidence_artifact(E2 + "helper.py")
+    assert not is_evidence_artifact("docs_extra/architecture/convergence/units/evidence/x.log")
 
     diff = (
         f"diff --git a/{e}README.md b/{e}README.md\n+index row\n"
