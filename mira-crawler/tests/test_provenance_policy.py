@@ -126,7 +126,9 @@ def test_discovery_reports_an_fstring_built_origin_as_dynamic_and_the_proof_fail
     )
     found = origins_mod.discover_manifests(tmp_path)
     assert set(found["dyn.FEEDS"]) == {"https://{…}/feed.xml", "https://static.example.com/x"}
-    with pytest.raises(AssertionError, match="no resolvable host"):
+    cls, reason = provenance.classify_origin("https://{…}/feed.xml")
+    assert cls == "unclassified" and "{…}" in reason, (cls, reason)
+    with pytest.raises(AssertionError, match=r"https://\{…\}/feed.xml"):
         for url in found["dyn.FEEDS"]:
             cls, reason = provenance.classify_origin(url)
             assert cls != "unclassified", f"{url}: {reason}"
