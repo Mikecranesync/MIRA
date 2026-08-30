@@ -308,6 +308,60 @@ capabilities:
       - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
     review_by: "2026-10-26"
 
+  # =========================================================================
+  - id: machine_memory_observer_cv101
+    purpose: >-
+      Daily READ-ONLY observation of CV-101 Machine Memory through the Hub's
+      public tenant-scoped APIs (version, machine-memory, history) on the
+      existing synthetic-dogfood beat; writes one JSON record per scheduled day
+      plus a series.json that computes the PRD §9.4 seven-day gate from the
+      daily files. Never a fault generator, never an equipment write, never SQL.
+    customer_outcome: >-
+      "Machine Memory is operational" becomes a measured claim: seven distinct
+      consecutive scheduled days with no misleading-live / unavailable-as-empty
+      defect and at least one real (non-simulated) CV-101 fault window with
+      recorded rows - instead of a demo assertion.
+    feature_flag: MACHINE_MEMORY_OBSERVER_ENABLED
+    entrypoints:
+      - "mira-crawler/tasks/machine_memory_observer.py       # celery task (synthetic queue)"
+      - "mira-crawler/agents/machine_memory_observer.py      # observe_once / evaluate_series (pure)"
+      - "mira-crawler/celeryconfig.py                        # beat entry registered only when ENABLED=1"
+    consumers:
+      - "mira-synthetic-dogfood-worker + -beat   # docker-compose.saas.yml MACHINE_MEMORY_OBSERVER_* env"
+      - "docs/runbooks/machine-memory-preflight-and-observer.md"
+    schema: []
+    environments:
+      dev: unset
+      staging: unset
+      production: unset                       # compose default 0 - ships DARK until Mike enables (Doppler prd)
+    state: deployed_disabled
+    reason: >-
+      Workstream C (PRD §9.4, PR #3486): code-ready and unit-proven with a fake
+      Hub; the seven-day series can only accrue with wall-clock time after Mike
+      sets the observer credentials/asset id in Doppler prd and redeploys the
+      dogfood worker + beat.
+    owner: "Mike Harper"
+    ci_jobs:
+      - test-unit            # mira-crawler/tests/test_machine_memory_observer.py (registration, beat gating, provenance, series)
+    evidence:
+      - "docs/runbooks/machine-memory-preflight-and-observer.md"
+      - "HANDOFF.md"
+    rollback: >-
+      Set MACHINE_MEMORY_OBSERVER_ENABLED=0 (or leave unset - compose default 0)
+      and redeploy mira-synthetic-dogfood-worker/-beat; the beat entry disappears
+      and the task returns {enabled:false}. No schema.
+    blocker: >-
+      Ships dark. Operational only after the seven-day series.json in
+      /opt/mira/data/synthetic-dogfood/machine-memory-observer/ reports
+      operational:true with a real fault window (Mike attaches it at the §9.5 exit gate).
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
+      - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
+    review_by: "2026-09-30"
+    notes: >-
+      Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
+
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
 # reason: `--discover` fails when a gate flag is in neither list, so a new flag

@@ -130,7 +130,8 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `MIRA_MACHINE_MEMORY_UNS_PATHS` | `mira-crawler/tasks/historize_runs.py` — extra `uns_path`s (comma-separated) to derive state windows + A0-A12 anomaly diffs for, even without a `MIRA_RUN_TRIGGERS` entry (migration 040). |
 | `MACHINE_MEMORY_OBSERVER_ENABLED` | `mira-crawler/tasks/machine_memory_observer.py` — `1` enables the daily READ-ONLY CV-101 Machine Memory observer on the synthetic-dogfood beat (PRD §9.4). Default `0` (inert). Forwarded by `docker-compose.saas.yml` (mira-synthetic-dogfood-worker). |
 | `MACHINE_MEMORY_OBSERVER_ASSET_ID` | The CV-101 `kg_entities` id the observer reads through `/api/assets/{id}/history/` + `/machine-memory/`. |
-| `MACHINE_MEMORY_OBSERVER_EMAIL` / `MACHINE_MEMORY_OBSERVER_PASSWORD` | An EXISTING login in the tenant that owns CV-101 (the observer signs in; it never registers). Doppler-managed; never in the image. `MACHINE_MEMORY_OBSERVER_COOKIE` is the pre-minted-session alternative. |
+| `MACHINE_MEMORY_OBSERVER_EMAIL` | Login (an EXISTING user in the tenant that owns CV-101) the observer signs in with; it never registers. Doppler-managed; never in the image. |
+| `MACHINE_MEMORY_OBSERVER_PASSWORD` | Password for `MACHINE_MEMORY_OBSERVER_EMAIL`. Doppler-managed; never printed or written to the observer's report files. |
 | `MQTT_INGEST_BROKER_HOST` | `mira-relay/mqtt_ingest/config.py` — Sparkplug B subscriber broker hostname. Default `mosquitto`. |
 | `MQTT_INGEST_BROKER_PORT` | `mira-relay/mqtt_ingest/config.py` — broker port. Default `1883` (`8883` for TLS). |
 | `MQTT_INGEST_TLS` | `mira-relay/mqtt_ingest/config.py` — `"1"`/`"true"` enables TLS to the broker. |
