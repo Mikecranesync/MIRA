@@ -1,167 +1,150 @@
-# HANDOFF — Technician Beta Recovery, Workstream B
+# HANDOFF — Technician Beta Recovery, Workstream C (Machine Memory truth and operation)
 
-**Date:** 2026-08-29
-**Branch:** `codex/technician-beta-recovery-b` (worktree `C:/Users/hharp/.codex/worktrees/technician-beta-recovery-b`)
-**Base:** `origin/main` @ `4a695bf311241ec4e2b9d0a269a3630ff7477bcd` (Workstream A merged as #3468 fix)
-**PRD:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md` §8 (delivery-sequence PR 2)
-**Scope delivered:** Workstream B only. Workstreams C–E untouched. No merge, no deploy, no production call, and no SQL against any shared environment happened in this session. **No production or Doppler `factorylm/prd` access; the staging job used Doppler `factorylm/stg` as designed** (the dispatched **staging** `beta-gate.yml` runs are documented in §3; `beta-probe-prod.yml` was never dispatched).
-**Status:** GREEN — offline/disposable-DB slice, normal PR CI on the tested code SHA `05f2fd7b635661138cbd2ba1646ea507b88fd23b` (final-code green run 33274870905, §3), and the accepted **final staging §8.4 proof** (§3: run 33275277204, notebook job 99160779033, artifact 9721315393). Check state is dynamic (a later docs-only head may show BLOCKED while its checks run) — read `gh pr checks 3480` for the live value. Human gates: PR review + merge (Mike); production probe dispatch + QA-tenant Doppler values (Mike).
+**Date:** 2026-08-30
+**Branch:** `codex/technician-beta-recovery-c` (worktree `C:/Users/hharp/.codex/worktrees/technician-beta-recovery-c`)
+**Base:** `origin/main` @ `6250dd442819f172901eb6c724074a2c18f886bb` (Workstream B merged, #3480)
+**PRD:** `docs/prd/2026-08-29-technician-beta-recovery-prd.md` §9 (delivery-sequence PR 3A)
+**Scope delivered:** Workstream C only. Workstreams A and B were **not redone**; D and E untouched.
+**Status:** GREEN for code + deterministic tests + local disposable-DB proof. HELD PR — no merge, no deploy. Human/time gates in §8.
+**Production posture:** no production mutation, deploy, dispatch, Doppler `factorylm/prd` read/change, production SQL, or bench action occurred in this session.
 
 ---
 
-## 1. Root cause / why the old gate was not production-equivalent
+## 1. Root causes (traced, not guessed)
 
-- `beta-gate.yml` proved the **NodeChat** `/files/` door with the **shared GS10 fixture** and inherited whatever `MIRA_ENFORCE_APPROVED_RETRIEVAL` staging happened to have. Under the production flag the NodeChat route keeps the legacy `verified = true` rule (`namespace/node/[id]/chat/route.ts:327` filters `chunk.verified === true`), so that lane could not exercise — or catch — the #3437/#3468 defect at all.
-- The behaviour production depends on is the **notebook** contract (`equipment-notebooks/[id]/chat` → `validateChatSources` → `retrieveNodeChunks({approvedSourceDocIds})`), where confirmed tenant-private chunks stay `knowledge_entries.verified=false` and are admitted only through the server-derived confirmed set (Workstream A).
-- The health door had no non-secret way to say which gate is effective (#3328 class), so nothing could *assert* the flag.
+| # | Symptom (issue) | Root cause |
+|---|---|---|
+| 1 | Empty REPLAY window still offered **Ask MIRA what happened**, then 412 (#3469) | `SensorSheet.ReplayPanel` rendered the CTA for every 200 history; the route only refused later, via the approved-context gate, blaming "approved asset context" for what was really "nothing recorded". |
+| 2 | Header read `… · Live · anchored …` beside **0 recorded observations** (#3470) | `ReplayTimeline` printed the current-cache freshness roll-up (`FRESHNESS_LABEL`) unlabelled on the same line as the window — two facts, one sentence (PRD §6.8). |
+| 3 | Fault title `offline on _stale_s` (#3470) | The historian persists an anomaly's **evidence topic** as `run_diff.tag_path` (A0's pseudo-topic `_stale_s`) and did **not** persist the rule title; `conditionTitle()` composed "<rule words> on <tag leaf>". |
+| 4 | An empty replay ask could persist an `answered` turn wearing an empty machine-evidence card (gate off), or 412 (gate on) | The route answered from documents when the served window had zero rows; the refusal lived in the wrong seam. |
+| 5 | No way to know, without secrets, whether Machine Memory is operational on CV-101 | No preflight; `db-inspect.yml` only has schema-drift probes. |
+| 6 | The differentiating faculty had no continuous proof | No observer on the scheduled synthetic-dogfood runner. |
 
-## 2. Design (smallest coherent diff)
+## 2. CURRENT → REQUIRED gap table — final disposition
 
-| File | Change |
-|---|---|
-| `tests/beta/_notebook_probe.py` | **One reusable probe** (library + CLI). Public Hub APIs only, in mobile's order: `GET /api/health/` (HTTP 200 **and** `approvedRetrievalEnforced` must be true) → `POST /api/equipment-notebooks/` → grounded chat with no sources = `422 no_sources_selected` (the product's explicit honest state, no provider) → a **run-unique CONTROL document** (vocabulary disjoint from both questions) uploaded via `POST /api/namespace/node/{nodeId}/files/`, attached via `POST …/sources/` (= `user_confirmed`), readiness **polled** on `GET /api/equipment-notebooks/{id}/` until `canChat` (no fixed sleep) → the sentinel asked over the control source through **real retrieval** → must be **HTTP 200 `insufficient_evidence`, zero citations, no usage frame** → the **run-unique SENTINEL PDF** (pure-python writer, code `QZxxxxxx` + value on page 2) uploaded / attached / readiness-polled the same way (a `201` without `fileId` is not a successful upload) → sentinel asked with `[control, sentinel]` in scope → judge on **server identity only**: `answered`, ≥1 citation, every citation `docId` = the sentinel upload, page 2, server `quote` carries code+value, `fileId` = the id the upload door issued, `usage.provider`/`model` non-null → `GET …/passage/?page=2` carries the sentinel → unsupported question → `insufficient_evidence`, zero citations, no usage → **cleanup is proof**: links detached → notebook → uploads → files → node, every status 2xx/404 or the probe fails, even after an earlier failure. Every step records `ok`; the report carries a structured `outcome` and `expected_regression_outcome()` recognises only the deliberate-defect signature (§8.4). Redacted JSON evidence + timings. DRY-RUN (exit 0, zero requests) unless hub base + auth are present; **`ProbeRefused` (exit 2, zero requests)** when the base is not a bare http(s) origin or differs from `BETA_PROBE_EXPECT_ORIGIN`. Signs in with an *existing* login when given email/password; never registers. |
-| `tests/beta/beta_ready_notebook_confirmed_source.py` | The pytest release-gate entry; skips without `BETA_PROBE_*`. |
-| `tests/beta/test_notebook_probe.py` · `test_redact_ci_log.py` · `test_beta_gate_workflow_contract.py` · `test_admission_preflight.py` · `test_admission_preflight_pg.py` | Offline tests for the probe (judge, flow order, cleanup proof, origin pin, structured outcome, env immutability), the log redactor, the workflow contract (no raw `cat` of a Hub log; only `.redacted.log` uploaded; the CI lane names the exact real-Postgres test), and the §7.3 preflight (unit + real asyncpg path on a disposable loopback Postgres). Current count: **89 passed, 2 skipped** in the 9-file `tests/beta` command (§4). |
-| `mira-hub/src/app/api/health/route.ts` (+ `__tests__/route.test.ts`) | Additive non-secret field `approvedRetrievalEnforced` = `MIRA_ENFORCE_APPROVED_RETRIEVAL === "true"` (the exact boolean `manual-rag.ts` reads). Lets CI and the prod probe **assert** the effective gate. |
-| `mira-hub/scripts/provision-beta-gate.ts` (+ `src/lib/__tests__/provision-beta-gate.test.ts`) | Cryptographically fresh per-run password (never emitted); emits `BETA_PROBE_HUB_BASE`/`BETA_PROBE_COOKIE` only on full success; **self-cleans on any post-registration failure** (`BETA_GATE_FAIL_AFTER` test hook proves mirror/signin/node failures sweep the tenant and print no `ENV:` lines); `--cleanup` removes notebook-lane tables, `knowledge_entries`, `hub_uploads`, `kg_entities`, `tenants`, then `hub_users` → `hub_tenants` (FK order), and **verifies** all three tenant rows are gone (throws otherwise). |
-| `tools/qa/notebook_source_admission_preflight.py` (+ `tools/qa/requirements-preflight.txt`) | PRD §7.3 read-only preflight report — see §5. Driver **asyncpg 0.31.0 (Apache-2.0)**, pinned; loopback-only, no override. |
-| `tools/qa/redact_ci_log.sh` | One redaction filter for every printed/uploaded CI log (session cookie, Bearer/Authorization, password/apiKey/token, `scheme://user:pass@`, Doppler `dp.*`). |
-| `tools/qa/security/knowledge_entries_read_allowlist.yml` | The preflight SELECT approved as `TENANT-ONLY` with a written justification + `query_sha256` (pure-tenant join through the caller's own `equipment_notebook_sources`). |
-| `.github/workflows/beta-gate.yml` | Legacy job: Hub log printed/uploaded only through the redactor; sweep failure is red while an earlier gate failure keeps its exit code. **`notebook-gate`**: Hub started **explicitly** with `MIRA_ENFORCE_APPROVED_RETRIEVAL=true MIRA_CANONICAL_SEAM=1 INGEST_URL=disabled://staging` (staging-compose parity), `/api/health/` asserted HTTP 200 + flag, fresh tenant per run, **EXIT trap** sweeps only that tenant and propagates a sweep failure without masking an earlier one, redacted artifacts. **`admission-regression`** (no secrets, `postgres:16`): the Workstream A suite under the flag **plus** the preflight unit + real-asyncpg tests on the same disposable DB. **`prove_regression`** (dispatch only) reverts the admission predicate in the built Hub and passes **only** on the probe's structured `--expect-regression` outcome. `pull_request.paths` cover every load-bearing dependency of the lane. Line 49 (`actions/checkout@v6`) untouched — Dependabot #2251's hunk rebases mechanically. |
-| `.github/workflows/beta-probe-prod.yml` | Manual-only (`workflow_dispatch`; no schedule, no `workflow_run`); **no destination input** — the constant `https://app.factorylm.com`, re-validated by the probe. Credentials read at run time from **Doppler `factorylm/prd`** (`BETA_PROBE_QA_EMAIL`/`BETA_PROBE_QA_PASSWORD`, masked, env-only; no GitHub email/password secrets); inert unless `execute: true` **and** both values resolve. Raw evidence only under `/tmp`, redacted in an `if: always()` step, only the redacted file uploaded (14-day retention). States in output that Mike owns dispatch + credentials. |
-| `mira-hub/package.json` | 2.30.0 → 2.31.0; `bun install --frozen-lockfile` re-verified green. Root `/VERSION` stays retired. |
-| `tests/beta/README.md` | File table updated. |
+| # | §9 requirement | Before | After (this PR) |
+|---|---|---|---|
+| 1 | CTA only when ≥1 admissible row and `reason != unavailable` | always rendered | server `coverage.admissible`; `canAskWhatHappened()` gates the button |
+| 2 | Empty window sentence + no `machineEvidence` | old sentence + CTA | `Nothing was recorded in this window. Widen the window or check the gateway.` — no CTA, nothing sent |
+| 3 | Unavailable ≠ empty | distinguished server-side only | `coverage.historyAvailable`, distinct sentences, distinct refusal codes |
+| 4 | Current freshness labelled separately | unlabelled `Live` | `Current connection: Live/Stale/Simulated/No tags` (`data-testid=current-connection`) |
+| 5 | Coverage labelled from the window | count only | `coverage {recorded, events, diffs, historyAvailable, diffsAvailable, admissible, from, to, earliest, latest, ingestLagMaxMs}` on the wire; header + `first … · last …` line from it; rows carry `simulated`/`source_system` provenance |
+| 6 | Empty window never called `Live` | violated | the word only appears inside the labelled current-connection line; tests pin the header |
+| 7 | No `_stale_s` / raw tag / UNS fragment in fault titles | violated (packet, Hub card, WO prefill) | writer persists `metadata.title/message`; ONE helper `conditionDisplayTitle()` (persisted title → canonical catalog parity-tested against `rules_core.py` → humanized rule id) feeds the packet, the Hub card, and the WO prefill; pseudo-topics never rendered |
+| 8 | Both clocks visible when materially divergent | per-row only | + `ingestLagMaxMs` → "Recorded up to N s after it happened"; historical cards say `connection at capture: …` |
+| 9 | Failed/empty replay ask persists no fabricated turn | violated (gate off) | route refuses **before** retrieval/provider/persistence: `422 machine_window_empty` / `422 machine_history_unavailable {reason}`; `recordTurn` never called |
+| 10 | §9.3 read-only preflight | none | `tools/machine_memory_preflight.py` (15 reason codes, GO/NO-GO, fail-closed host allowlist + prod-Doppler refusal, tenant required, `--print-command` for Mike) |
+| 11 | §9.4 seven-day observer | none | `tasks.machine_memory_observer` on the existing synthetic-dogfood beat, daily, read-only, inert by default; `series.json` evaluator |
+| 12 | Invariants | held | one conversation/evidence model/route; no new store, historian, or scheduler; provider-free refusals; tenant-scoped reads; read-only equipment |
 
-## 3. Red → green evidence
+## 3. Files changed
 
-**Probe unit tests (RED before implementation):**
-```
-ModuleNotFoundError: No module named 'tests.beta._notebook_probe'   (1 error during collection)
-```
-**GREEN:** `python -m pytest tests/beta/test_notebook_probe.py tests/beta/test_gate_harness.py tests/beta/test_gate_sources.py tests/beta/beta_ready_notebook_confirmed_source.py --confcutdir=tests/beta -q` → `38 passed, 1 skipped` (the skip = the live gate without env, by design).
+**mira-hub**
+- `src/lib/anomaly-titles.ts` (new) — canonical rule→title catalog, `isPseudoTopic`, `conditionDisplayTitle` (shared by packet, card, WO prefill)
+- `src/components/MachineMemoryCard.tsx` — condition row + work-order prefill use the shared title; `src/components/equipment/notebook-chat-utils.ts` — labelled capture connection on the historical card
+- `src/lib/machine-context-intelligence.ts` — `conditionTitle(diffType, tagPath, persistedTitle)` precedence
+- `src/lib/machine-memory.ts` — `latest_diffs[].title` from `metadata.title`
+- `src/lib/machine-memory-response.ts` — `LatestDiff.title?`
+- `src/lib/machine-history.ts` — `HistoryCoverage`, `deriveCoverage()`, `coverage` on the wire
+- `src/app/api/equipment-notebooks/[id]/chat/route.ts` — the §9.2 refusal seam (`422 machine_window_empty` / `422 machine_history_unavailable` / `503 machine_history_read_failed`)
+- tests: `src/lib/__tests__/machine-history-coverage.test.ts` (new), `src/app/api/equipment-notebooks/[id]/chat/__tests__/replay-empty-window.test.ts` (new), `src/lib/machine-context-intelligence.test.ts` (+5), `…/chat/__tests__/machine-evidence.test.ts` (7 legacy cases rewritten to the new contract — see §4)
 
-**Deterministic regression (disposable Postgres 16, gate ON) — the §8.4 shape:**
-- fix present: `approved-source-admission.integration.test.ts` → `10 passed (10)`
-- admission predicate reverted locally (`approvedSourceFilterSql` → `approvalFilterSql()`): → `9 failed | 1 passed (10)` (cases 1–9 red; only "no approved set ⇒ legacy rule" stays green)
-- restored: `10 passed (10)`; `git diff --stat mira-hub/src/lib/manual-rag.ts` → empty (byte-identical to main).
+**mira-mobile**
+- `src/lib/replay.ts` — `HistoryCoverage`, `effectiveCoverage`, `canAskWhatHappened`, `currentConnectionLabel`, `coverageHeader`, `ingestLagNote`, PRD sentences
+- `src/api/resources.ts` — maps `coverage`
+- `src/screens/ReplayTimeline.tsx` — two labelled facts; empty/unavailable sentences; lag note
+- `src/screens/SensorSheet.tsx` — CTA gated on `canAskWhatHappened`
+- tests: `src/lib/__tests__/replay.test.ts` (+5), `src/screens/__tests__/sensor-replay.test.tsx` (+4, 3 legacy assertions moved from `freshness-label` to `current-connection`)
 
-**Health route:** `route.test.ts` → `2 passed` (`"true"`→true; `"false"`/`"1"`/unset→false; no secret values, exact key set).
+**mira-crawler**
+- `run_engine/machine_memory.py` — persists `metadata.title` + `metadata.message` (additive)
+- `agents/machine_memory_observer.py` (new), `tasks/machine_memory_observer.py` (new), `celery_app.py` (task module registered), `celeryconfig.py` (route, rate limit, flag-gated daily beat entry on the synthetic-dogfood profile)
+- tests: `tests/test_machine_memory_observer.py` (new, 11 — incl. task-registration + beat-gating + no-redirect pins), `tests/test_machine_memory.py` (+1)
 
-**CLI dry-run (no env):** `python tests/beta/_notebook_probe.py` → prints `DRY-RUN … no request was sent`, exit 0; the unit test asserts `httpx.Client` is never constructed.
+**tools / tests / docs / infra**
+- `tools/machine_memory_preflight.py` (new) + `tests/test_machine_memory_preflight.py` (new, 17)
+- `tests/regime7_ignition/test_anomaly_title_catalog_parity.py` (new, 3)
+- `docker-compose.saas.yml` — observer env on `mira-synthetic-dogfood-worker` + the flag on `-beat` (default `0`)
+- `docs/prd/2026-08-28-sensor-v0-contract.md` — §4.4 amended for the §9.2 refusal semantics
+- `docs/env-vars.md` — observer vars; `docs/runbooks/machine-memory-preflight-and-observer.md` (new)
 
-**Live staging lane — GREEN with the fix, final code (tested SHA `05f2fd7b635661138cbd2ba1646ea507b88fd23b`):** run **33274870905** (https://github.com/Mikecranesync/MIRA/actions/runs/33274870905), notebook job **99159722200** (https://github.com/Mikecranesync/MIRA/actions/runs/33274870905/job/99159722200) — the PR's own `beta-gate.yml` run on the final code: gate asserted via `/api/health` (HTTP 200, `approvedRetrievalEnforced: true`), fresh tenant, control document uploaded/confirmed and the sentinel refused over it through real retrieval (200 `insufficient_evidence`, no citation, no usage), run-unique sentinel upload → confirm → readiness on the contract → sentinel `answered` on server identity (doc/page/quote/fileId + provider usage), passage identity on page 2, unsupported question `insufficient_evidence` with no usage frame, cleanup links → notebook → uploads → files → node all 2xx, tenant swept.
+## 4. RED → GREEN evidence
 
-Historical (round-1 probe, superseded): green run 33264885272 / job 99133085783 (https://github.com/Mikecranesync/MIRA/actions/runs/33264885272).
+| Suite | RED (before implementation) | GREEN |
+|---|---|---|
+| `machine-context-intelligence.test.ts` (§9.2 titles) | `expected 'offline on _stale_s' to be 'PLC/bridge offline'` (4 ×) | 11/11 |
+| `machine-history-coverage.test.ts` | `expected undefined to deeply equal {recorded: 3…}` (4 ×) | 4/4 |
+| `replay-empty-window.test.ts` | 6 × (route answered 200 / persisted) | 7/7 (incl. 503 read-failed) |
+| `test_anomaly_title_catalog_parity.py` | `missing catalog: …/anomaly-titles.ts` | 3/3 |
+| `test_machine_memory.py::TestAnomalyTitlePersisted` | `KeyError: 'title'` | 27/27 |
+| `replay.test.ts` (§9.2 helpers) | `canAskWhatHappened is not a function` (5 ×) | 45/45 |
+| `sensor-replay.test.tsx` (§9.2 UI) | 3 × (CTA rendered, no `current-connection`, old sentence) | 16/16 |
+| `test_machine_memory_preflight.py` | `ModuleNotFoundError: machine_memory_preflight` | 17/17 |
+| `test_machine_memory_observer.py` | `ModuleNotFoundError: agents.machine_memory_observer` | 11/11 |
 
-**§8.4 exit gate — FINAL, accepted live proof on the tested code SHA `05f2fd7b635661138cbd2ba1646ea507b88fd23b`:** run **33275277204** (https://github.com/Mikecranesync/MIRA/actions/runs/33275277204), `beta-gate.yml` dispatched with `prove_regression=true` from this branch — staging only; `beta-probe-prod.yml` was never dispatched — no production or Doppler `factorylm/prd` access; the staging job used Doppler `factorylm/stg` as designed. All three jobs succeeded; the notebook lane is job **99160779033** (https://github.com/Mikecranesync/MIRA/actions/runs/33275277204/job/99160779033); redacted evidence artifact **9721315393** (https://github.com/Mikecranesync/MIRA/actions/runs/33275277204/artifacts/9721315393). Structured outcome from the redacted log, under the reintroduced Workstream A defect (`::warning::Workstream A admission fix REVERTED in this build`), same production flag (`health: HTTP 200 … "approvedRetrievalEnforced":true`), fresh tenant `e05f15bc-30b2-4859-a6a9-dc0e64f30918`:
-- every precondition step `ok: true` — gate_state, create_notebook, pre_upload_no_sources (422), control_upload (201), control_confirm (201), control_readiness, **pre_upload_control_refusal (HTTP 200 `insufficient_evidence` through real retrieval)**, upload (201), confirm_source (201), readiness;
-- **sentinel_answer `ok: false` — exactly the defect signature:** `outcome.sentinel_turn = {http: 200, status: "insufficient_evidence", citations: 0, usage_present: false}`; failures `status='insufficient_evidence', expected 'answered' ("I couldn't find that in the selected sources.")`, `no citation emitted for a run-owned fact`, `answer does not state the sentinel value 154`, `provider usage missing/null on an answered turn`;
-- passage_identity `ok: true`, unsupported_refusal `ok: true` (200 `insufficient_evidence`, no usage), cleanup `ok: true` (file links GET 200 + both detaches 200, notebook 200, upload 200, control_upload 200, file 200, control_file 200, node 200);
-- `outcome`: `setup_ok: true`, `passage_identity_ok: true`, `unsupported_refusal_ok: true`, `cleanup_ok: true`, **`expected_regression: "matched"`** → `EXPECTED-REGRESSION MATCHED: sentinel turn refused provider-free with everything else green` → job green by the structured outcome, not by grep;
-- teardown: `cleaned tenant e05f15bc-… (auth + data rows verified gone)`.
+Regression (after both review rounds): mira-hub machine-memory/notebooks/history/components lanes **400 passed (31 files)**; mira-mobile full suite **326 passed (30 files)**; mira-crawler machine-memory + dogfood + observer **53 passed**; ESLint clean on changed hub files; `tsc --noEmit` 0 errors in changed hub files and mobile; ruff check/format clean; `git diff --check` clean.
 
-Earlier proofs, superseded by the run above and kept for history only: run 33265180078 (round-1 probe, faithful #3437 shape, `insufficient_evidence`/no citation/no usage; earlier attempt 33265056350 failed via an HTTP 500 from an unreferenced bind parameter and was corrected in `16f4c46f7`).
+**Deliberately rewritten legacy tests** (`machine-evidence.test.ts`, 7 cases): they pinned the pre-§9.2 behaviour — empty/unavailable windows answered from documents with an empty machine card, or 412 blaming approved context. Each now pins the new seam contract (422 + code, no provider, no `recordTurn`). This strengthens, not weakens: every "no provider call / nothing persisted" assertion is retained and extended.
 
-## 4. Verification commands (exact)
+## 5. Local / disposable proof (outside production)
 
-```bash
-# worktree root; keep cwd here (hooks resolve root-relative)
-PYTHONUTF8=1 python -m pytest tests/beta/test_notebook_probe.py tests/beta/test_admission_preflight.py tests/beta/test_admission_preflight_pg.py tests/beta/test_redact_ci_log.py tests/beta/test_beta_gate_workflow_contract.py tests/beta/test_gate_harness.py tests/beta/test_gate_sources.py tests/beta/beta_ready_notebook_confirmed_source.py tests/beta/beta_ready_upload_retrieval_citation.py --confcutdir=tests/beta -q   # 89 passed, 2 skipped (the two live gates) — with PREFLIGHT_DATABASE_URL=<loopback> MIRA_TEST_DB_CONFIRM=DISPOSABLE set; without them the one DB-touching test skips (88 passed, 3 skipped). Fixture seed/teardown connect through the tool's own loopback gate (pre.assert_safe_target) before any statement
-python -m pip install -r tools/qa/requirements-preflight.txt                              # asyncpg 0.31.0 (Apache-2.0)
-(cd mira-hub && node node_modules/vitest/vitest.mjs run src/lib/__tests__/provision-beta-gate.test.ts)   # 5 passed
-PYTHONUTF8=1 python tests/beta/_notebook_probe.py                       # DRY-RUN, rc=0
-uvx ruff check tests/beta/_notebook_probe.py tests/beta/test_notebook_probe.py tests/beta/beta_ready_notebook_confirmed_source.py
-actionlint .github/workflows/beta-gate.yml .github/workflows/beta-probe-prod.yml
-(cd mira-hub && node node_modules/vitest/vitest.mjs run src/app/api/health)            # 2 passed
-(cd mira-hub && npx eslint src/app/api/health scripts/provision-beta-gate.ts)          # clean
-(cd mira-hub && node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json)        # 0 errors in touched files (32 pre-existing elsewhere, same set as Workstream A §6)
-git diff --check -- . ':!PLAN.md'                                                      # clean (PLAN.md hard-break spaces are operator-authored)
+Disposable `postgres:16` with migrations 033 + 038 + 040 applied, a seeded CV-101 `faulted` window and 31 `plc_bridge` rows (local only; nothing shared):
 
-# regression proof (disposable DB)
-docker run -d --name mira-wsb-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test -p 5602:5432 postgres:16
-export TEST_DATABASE_URL="postgres://postgres:testpw@127.0.0.1:5602/mira_test" MIRA_TEST_DB_CONFIRM=DISPOSABLE
-export MIRA_INTEGRATION_MIGRATIONS="<the list in beta-gate.yml admission-regression env>"
-(cd mira-hub && node scripts/setup-integration-db.mjs)
-(cd mira-hub && MIRA_ENFORCE_APPROVED_RETRIEVAL=true node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission)
-docker rm -f mira-wsb-pg
-```
+- wrong tenant + run-diff off → `NO-GO` `[RUN_DIFF_DISABLED, CV101_NOT_CONFIGURED, NO_FAULT_TRIGGERS, INGEST_NONE, HISTORIAN_NONE, NO_FAULT_WINDOW]` (exit 1)
+- configured tenant, rows 20 min old → `NO-GO [INGEST_STALE]` with `fault_window.row_count=31, classification=physical, historian.age_s=33` — the honest verdict for a stale feed
+- + one fresh ingest row → **`GO []`** (exit 0)
+- `--db-url postgres://…ep-prod-1.neon.tech/…` → `REFUSED` (exit 2); `--print-command` prints the operator invocation and runs nothing
 
-## 5. Historical repair — closed honestly (PRD §7.3 / PLAN step 5)
+The observer's synthetic proof is its test suite (fake Hub, 3 GETs, daily file + `series.json` with `days_observed`, `operational:false`, `SEVEN_DAYS_NOT_ACCRUED`). It has **not** been run against staging/production from this session.
 
-No backfill/migration ships. Workstream A case 4 proved a pre-fix confirmed source with `verified=false` chunks is retrievable through the corrected admission with the tenant's verified-count 0→0; `admission-regression` now re-proves that on every PR.
+## 6. Dry-run / inert-by-default semantics
 
-PRD §7.3 still requires a **tenant-scoped, read-only preflight/repair report** with counts before and after, even when the conclusion is "no rewrite". That is `tools/qa/notebook_source_admission_preflight.py`:
+- Preflight: read-only connection (`default_transaction_read_only=on`, autocommit, SELECT only), never prints the URL/password. **Fail-closed allowlist gate** (review finding): only loopback or an operator-named dev/staging host (`--allow-host` / `MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS`) is readable, a `prd|prod|production` Doppler shell is refused regardless, a tenant is required (`TENANT_REQUIRED`, no query without one), and a driver failure prints only `DB_CONNECT_FAILED`. `--allow-production-by-operator` is Mike's lift via `--print-command`.
+- Observer: `MACHINE_MEMORY_OBSERVER_ENABLED=0` by default in compose (worker **and** beat); the beat entry is registered only when `1`, the task module is registered in `celery_app._TASK_MODULES` (test-pinned), the task returns `{enabled:false}` and builds no client when off. When enabled it signs in as an **existing** user (never registers), performs GETs only, and never follows redirects with the session.
 
-- **One SELECT, one tenant.** `s.tenant_id = $1::uuid` and `k.tenant_id = s.tenant_id`, no write verb; run inside an explicit asyncpg `transaction(readonly=True)` that is **rolled back**, never committed.
-- **Real current admission, not an assumption.** Per confirmed/enabled/visible source it aggregates `chunks_total` and `chunks_v2` (the total / eligible split — `manual-rag.ts` reads `ingest_route = 'v2'` only) and the **v2-scoped decision counts** `chunks_v2_private`, `chunks_v2_verified`, `chunks_admissible` (= v2 ∧ (verified ∨ private)). `current_admission_result ∈ {admitted, excluded}`, `admission_path ∈ {verified_mark_present, admitted_via_confirmation, excluded_shared_unverified, excluded_legacy_route_only, no_chunks}`. A legacy verified chunk never decides; shared/OEM `verified=false` and legacy-only sources are **excluded**.
-- **Before / after.** Two snapshots of the same rows, an all-zero `delta`, `mutations_performed: 0`, idempotent across runs ignoring `generated_at`; `conclusion: no_rewrite_required`.
-- **Executable access is loopback-only, with no override** (`localhost`/`127.0.0.1`/`::1`), enforced in `main()` *and* inside `_connect()` before the driver is imported — a denylist could not recognise the production pooler host, and an allow variable would be an arbitrary-remote escape hatch. `--print-sql` only **prepares** the tenant-bound statement; `db-inspect.yml` is static and accepts no arbitrary SQL, so running it on staging means adding a reviewed probe step there (Mike's call). Nothing here executes it.
-- **Driver:** asyncpg 0.31.0 (Apache-2.0), pinned in `tools/qa/requirements-preflight.txt`. No LGPL dependency.
-- **Tests:** `test_admission_preflight.py` (24, same-shaped fake connection) and `test_admission_preflight_pg.py` (2, the real `_connect` + SELECT + read-only rollback + legacy/v2/mixed/shared/verified/no-chunk admission on a disposable loopback Postgres; wired into `admission-regression`). Not executed against any shared environment.
+## 6b. Adversarial review round 1 (architecture / security / data-isolation) — disposition
 
-## 6. Dry-run semantics + the human gate
+| Sev | Finding | Fix |
+|---|---|---|
+| P1 | prod-URL refusal was a hostname denylist; real Neon hosts carry no `prod` marker | replaced with the fail-closed allowlist + Doppler-config refusal above; tests use real Neon host shapes |
+| P1 | observer task never registered on the worker; beat entry always scheduled | `celery_app._TASK_MODULES` += `machine_memory_observer`; beat entry only when enabled; flag forwarded to the beat container; registration test |
+| P2 | preflight scanned across tenants when `MIRA_TENANT_ID` unset | `TENANT_REQUIRED`, no query issued |
+| P2 | contract change (empty window → 422) buried as a test rewrite | `docs/prd/2026-08-28-sensor-v0-contract.md` §4.4 amended; stated in PR body; **decision for Mike:** "documents attached + empty replay window → 422" (chosen) vs "answer from documents without a card" |
+| P2 | transient history read failure surfaced as `machine_history_unavailable` | `503 machine_history_read_failed` — "Machine Memory could not be read just now. Try again in a moment." |
+| P3 | driver error could print host/user; `sslmode=prefer` | `DB_CONNECT_FAILED` only; `require` except loopback |
+| P3 | observer followed redirects with the session cookie | `follow_redirects=False` (test-pinned) |
+| P3 | redaction regex narrow | accepted: the daily record never carries the cookie/URL/password by construction |
 
-- `beta-probe-prod.yml`: manual dispatch only; **no `hub_base` input** — the destination is the constant `https://app.factorylm.com`, and the probe re-checks it (`BETA_PROBE_EXPECT_ORIGIN`: scheme+host+port must match exactly; path/query/userinfo/other host → `REFUSED`, exit 2, never a silent dry-run). `execute` unchecked → dry-run. `execute` checked → the job reads `BETA_PROBE_QA_EMAIL` / `BETA_PROBE_QA_PASSWORD` from **Doppler `factorylm/prd`** (the deploy workflow's `DOPPLER_TOKEN`; no GitHub email/password secrets), masks them, and passes them as process env only; either value missing → dry-run. Live runs use public APIs against an **existing** QA tenant (registration is not used: `/api/auth/register` does not mirror the data-side `tenants` row).
-- Mike: sets the two Doppler `prd` values (never read from this session), dispatches with `execute=true`, reads `probe-evidence.json` (14-day retention). A merge may be green without this; a design-partner-readiness claim may not (PRD §8.3).
+## 6c. Adversarial review round 2 (product truth / technician UX / PRD conformance) — disposition
+
+| Sev | Finding | Fix |
+|---|---|---|
+| P1 | Hub web `MachineMemoryCard` row + work-order prefill still rendered `tag_path — diff_type` (`…_stale_s — anomaly_A0_OFFLINE`) | ONE shared helper `conditionDisplayTitle()` (`anomaly-titles.ts`) now feeds the packet, the card row, and the WO prefill (`[CV-101] PLC/bridge offline`); pseudo-topics never rendered; tests |
+| P1 | observer could not detect simulated rows — served history rows carried no provenance, so the seven-day gate was fakeable by simulator data | `MachineHistoryRow` now carries `simulated` + `source_system` from `tag_events` (null on diffs); the observer classifies from row provenance, falls back to the server's freshness roll-up, and **never** calls provenance-less rows physical (`unknown` blocks `operational`); tests |
+| P2 | persisted replay cards collapsed the two clocks (`… · Live`) | `… · connection at capture: Live` on both mobile and Hub cards (labelled, per §6.8) |
+| P2 | window bounds shown only relatively | `first hh:mm:ss · last hh:mm:ss` line from `coverage.earliest/latest` on the phone |
+| P2 | preflight prod refusal decorative | already replaced in round 1 (fail-closed allowlist + Doppler-config refusal) |
+| P2 | `historian_heartbeat` overclaims | field keeps its PRD name but carries `kind: "latest_state_window_derivation"`; documented as not a historizer execution timestamp |
+| P3 | "refuses before retrieval" was false (retrieval ran first) | machine-evidence fetch + refusal now precede `retrieveNodeChunks` — the claim is true |
+| P3 | "Ingest lagged the machine clock…" is jargon | "Recorded up to N s after it happened" |
+| P3 | observer verifies API self-consistency, not UI | accepted: the phone renders from the same `coverage`/rows (unit-pinned); a UI-level probe is emulator work (Workstream D/E tooling), noted in §9 |
 
 ## 7. Collision notes
 
-- **PR #3477** (`equipment-notebooks.ts`, its domain test, 2 mobile files): **not edited, not read for edits**. The probe consumes its public contract only; #3477's successor-id remap composes (the probe sends the id it uploaded, the server derives the admitted set).
-- **Dependabot #2251** (`actions/checkout@v6→v7` on `beta-gate.yml:49`): line untouched; new jobs pin `@v6` consistently — a mechanical rebase either way.
-- No open PR touches `beta-gate.yml`, `health/route.ts`, `provision-beta-gate.ts`, or `tests/beta/` (checked `gh pr list` at session start).
+No open PR touches `machine-history.ts`, `machine-context-intelligence.ts`, `ReplayTimeline.tsx`, `SensorSheet.tsx`, `celeryconfig.py`'s synthetic profile, or `run_engine/machine_memory.py` (checked `gh pr list` at session start; #3477 owns `equipment-notebooks.ts` — untouched).
 
-## 7b. First CI run finding (run 33264432611) — fixed
+## 8. What remains human / production / time-gated
 
-`notebook-gate` died before provisioning: `/api/health` returned **503 `missing: ["INGEST_URL"]`** (`curl -sf` → exit 22). Cause: `docker-compose.staging-vps.yml` sets the staging Hub `INGEST_URL=disabled://staging` (honoured by `mira-ingest-client.ts`), but the CI job starts the Hub from the Doppler stg config alone, which does not carry it; the legacy job never queried health so it never tripped. Fix: the isolated Hub start now sets `INGEST_URL="${INGEST_URL:-disabled://staging}"` explicitly (staging-compose parity; the notebook upload door ingests in-process via `node-knowledge-ingest.ts` and never reads `INGEST_URL`). The assertion was **not** weakened: health must be HTTP **200** *and* `approvedRetrievalEnforced == true`; the body is printed on either failure. The step also gained an `EXIT` trap that stops the Hub and sweeps the run's own `BETA_GATE_TENANT` (only if provisioning emitted one) on every exit path, and fails if provisioning emitted no tenant id. Local `shellcheck` of the extracted run block was **not completed** (the local validation hung and was interrupted); GitHub's actionlint check on the PR is the validation of record.
+1. **Merge = Mike.** PR is HELD.
+2. **Production preflight**: Mike runs the printed command with `factorylm/prd` Doppler access; any `MIRA_RUN_DIFF_ENABLED` / UNS-path / trigger change is a Doppler change Mike makes.
+3. **Observer enablement**: Mike sets `MACHINE_MEMORY_OBSERVER_*` in Doppler and redeploys the dogfood worker/beat via `deploy-vps.yml`.
+4. **Seven consecutive scheduled days** can only accrue with wall-clock time after (3); `series.json` reports it — never asserted. At least one **real** (non-simulated) CV-101 fault window with rows is required; if none occurs, Mike creates one with the bench's physical controls.
+5. **Pixel device acceptance** of the new REPLAY copy (emulator/unit-proven here).
 
-## 7c. Review round 2 — six P1 findings, test-first (RED → GREEN)
+## 9. Accepted lower-severity limitations
 
-RED was captured as **assertion failures** with the tests collecting against the pre-fix code (`24 failed, 23 passed`; e.g. `missing behaviour: _notebook_probe.expected_regression_outcome is not implemented`, `Failed: DID NOT RAISE` for the origin pin, `assert 6 == 9` for cleanup targets, `assert (not True)` for a control refusal that answered). GREEN: `tests/beta` → **68 passed, 2 skipped**.
-
-| # | Finding | Fix | Tests |
-|---|---|---|---|
-| 1 | prod workflow sent QA credentials to a dispatcher-controlled `hub_base` | input removed; destination constant + `BETA_PROBE_EXPECT_ORIGIN` strict origin validation in the probe (`ProbeRefused`, exit 2); credentials from Doppler `factorylm/prd` at run time, masked, env-only | `test_origin_pin_refuses_any_other_destination`, `test_hub_base_must_be_a_bare_http_origin`, `test_main_refused_origin_is_loud_not_dry_run` |
-| 2 | pre-upload step never exercised retrieval (`sourceDocIds=[]` → 422) | a run-unique **control** document (vocabulary disjoint from the sentinel and unsupported questions) is uploaded + confirmed + readiness-polled first; the sentinel is asked over it through real retrieval and must be **HTTP 200 `insufficient_evidence`, no citations, no usage**; the sentinel turn then runs with `[control, sentinel]` in scope so "no other document cited" is real; control upload/file/links are cleaned like everything else | `test_control_refusal_must_be_provider_free_and_uncited`, `…_answer_before_sentinel_upload_fails_the_lane`, `…_must_be_http_200_sse_not_422`, happy-path order (`chats[0] < uploads[0] < chats[1] < uploads[1] < …`) |
-| 3 | `prove_regression` accepted any pytest failure | the probe records `ok` per step and a structured `outcome`; `expected_regression_outcome()` matches **only** setup ∧ passage ∧ unsupported-refusal ∧ cleanup all green **and** sentinel turn exactly 200/`insufficient_evidence`/0 citations/no usage; CLI `--expect-regression` exits 0 only on a match and writes `outcome.expected_regression` to the evidence JSON; the workflow reads that JSON field (no grep) | `test_expected_regression_outcome_matches_only_the_deliberate_defect_signature`, `…_rejects_everything_else` (answered / 500 / cleanup 500 / provider-called / gate off), `test_main_expect_regression_exit_codes` |
-| 4 | staging sweep omitted `hub_users`/`hub_tenants`; EXIT trap swallowed sweep failures | `--cleanup` now deletes `hub_users` (FK → `hub_tenants`) then `hub_tenants` then verifies all three auth/data tenant rows are gone (throws otherwise); the trap captures `$?`, runs the sweep, exits with the earlier failure code if any, else 1 on sweep failure, else 0 | TypeScript lint/tsc; sweep verified live only in CI |
-| 5 | `or True` vacuous env test | fresh module load (not `reload`, which would swap exception classes under other modules) with `os.environ` snapshot before/after import, config load, and a refused load | `test_env_is_never_written_by_import_or_config` |
-| 6 | PRD §7.3 preflight report missing | `tools/qa/notebook_source_admission_preflight.py` (see §5) | `tests/beta/test_admission_preflight.py` (11) |
-
-### Round 3 — the §7.3 preflight tool, provisioner, workflows (final design; all test-first)
-
-Every item below was RED as an assertion against the pre-fix code before implementation (historical RED counts, for the record only: `7 failed, 14 passed` for the first preflight cut; `8 failed, 16 passed, 2 skipped` for the asyncpg/v2 redesign; single assertion failures for the fileId, connect-path, cleanup-propagation and workflow-contract items). Current result: **89 passed, 2 skipped** in the 9-file `tests/beta` command with a disposable loopback Postgres (88 passed, 3 skipped without one — only the single DB-touching test skips; the fixture-guard and connect-guard tests run everywhere); `provision-beta-gate.test.ts` **5 passed**.
-
-**§7.3 preflight tool — ONE current implementation** (`tools/qa/notebook_source_admission_preflight.py`, described in full in §5):
-- **Target gate is fail-closed and NOT overridable.** A denylist could not recognise the documented production Neon pooler host (`ep-…-pooler.us-east-2.aws.neon.tech` carries no `prod`/`prd` marker); an allow variable would be an arbitrary-remote escape hatch (a first draft had one and was removed — `test_no_host_override_exists_in_the_tool` pins its absence). Executable access is **loopback-only**, enforced in `main()` *and* inside `_connect()` before the driver is imported (`test_remote_hosts_are_always_refused` ×4 incl. the prod pooler host, `test_connect_itself_refuses_remote_hosts_before_any_driver_call`, `test_main_refuses_opaque_remote_host_and_writes_nothing`). `--print-sql` only **prepares** the statement; `db-inspect.yml` is static and accepts no arbitrary SQL, so a staging run needs a reviewed probe step there (`test_print_sql_emits_the_select_for_db_inspect_without_connecting`). **Disclosure:** one RED run of the pre-fix guard let `main()` reach the driver's connect with the prod pooler hostname and the test's dummy `u:p` credentials; it failed at the network layer (insecure/unreachable) — no real credential, session, or query — and is exactly the hole the gate now closes.
-- **Real current admission under the v2-scoped predicate.** `manual-rag.ts` reads `ingest_route = 'v2'` only, so the SELECT reports `chunks_total` / `chunks_v2` (total / eligible) and scopes the **decision** counts to v2: `chunks_v2_private`, `chunks_v2_verified`, `chunks_admissible = count(k.id) FILTER (WHERE ingest_route='v2' AND (verified OR is_private))`. `current_admission_result ∈ {admitted, excluded}`; `admission_path ∈ {verified_mark_present, admitted_via_confirmation, excluded_shared_unverified, excluded_legacy_route_only, no_chunks}`. A legacy verified chunk never decides (fixture `d7`); confirmed shared/OEM `verified=false`, legacy-only, and zero-chunk sources are **excluded** (`test_run_preflight_computes_the_real_current_admission_result`, `test_legacy_only_and_mixed_route_sources`, `test_query_aggregates_privacy_verification_and_route_per_source`; expected summary derived from the fixture rows, not observed output).
-- **Counts before and after.** `before`/`after` snapshots of the same rows, all-zero `delta`, `mutations_performed: 0`, idempotent ignoring `generated_at` (`test_before_and_after_snapshots_are_identical_with_zero_delta`, `test_two_runs_over_the_same_rows_are_idempotent_ignoring_generated_at`).
-- **Driver + real path.** asyncpg **0.31.0 (Apache-2.0)**, pinned in `tools/qa/requirements-preflight.txt` — the earlier psycopg (LGPL) pin was rejected on licence grounds and never committed. `run_preflight` starts an explicit `transaction(readonly=True)`, runs ONE `fetch`, and **rolls back**; `test_admission_preflight_pg.py` exercises `_connect` + the real SELECT + rollback + legacy/v2/mixed/shared/verified/no-chunk admission on a disposable loopback Postgres and is wired into `admission-regression` with `MIRA_TEST_DB_CONFIRM=DISPOSABLE` and a hard failure if the module skips. The SELECT and the fixture teardown DELETE are allow-listed for `check_knowledge_entries_filters.py` as `TENANT-ONLY` with written justifications and backfilled hashes.
-
-**Probe / workflows / provisioner:**
-- A `201` upload without `fileId` is not a successful upload: the step fails, the source is never confirmed, the created upload row is still cleaned (`test_upload_without_server_file_id_is_not_a_successful_upload`).
-- Legacy `upload-retrieval-citation` job: the Hub log is printed only through `redact_ci_log.sh` (High from the standards re-review) and the sweep no longer runs under `|| true` — a failed sweep exits 1 while an earlier gate failure keeps its own code. `test_beta_gate_workflow_contract.py` forbids any raw `cat` of a Hub log and allows only `.redacted.log` uploads.
-- Provisioner: cryptographically fresh per-run password (never emitted); **self-cleans on any post-registration failure** and **propagates a failed self-clean as an `AggregateError` carrying both the original error and the sweep error** (successful cleanup behaviour unchanged) — `provision-beta-gate.test.ts` forces failures after mirror/signin/node (tenant swept, no `ENV:` lines, no password) and a forced sweep failure (AggregateError with both errors).
-- Production probe workflow: raw evidence only under `/tmp/probe-evidence.raw.json`, redacted in an `if: always()` step, only the redacted file uploaded. `test_redact_ci_log.py` never selects the System32 WSL launcher. `beta-gate.yml` `pull_request.paths` include the preflight tool and its requirements file, so tool-only changes trigger the gate.
-
-Also folded in from the independent security review of the branch diff (no High): **M1** connection-string / Doppler-token shapes were not redacted and the legacy job uploaded its Hub log raw → one shared `tools/qa/redact_ci_log.sh` (session cookie, Bearer/Authorization, password/apiKey/token assignments, `scheme://user:pass@`, `dp.st/pt/ct.*`) used by both jobs and by the readiness-failure `cat` (**L1**); pinned by `tests/beta/test_redact_ci_log.py`. **L2** prod evidence retention 30→14 days. **L3** (`/api/health` reveals a non-secret gate boolean) accepted as designed.
-
-Deferred items from the same review, now done: **citation identity** — `judge_answered` additionally requires a run-doc citation whose server-derived `quote` carries the sentinel code **and** value, and (when present) a `fileId` equal to the id the upload door issued — both server identities, nothing client-trusted (`test_judge_answered_requires_server_excerpt_to_carry_the_sentinel`, `…_requires_server_file_identity_when_known`); **PR path coverage** — `beta-gate.yml` `pull_request.paths` now lists every load-bearing dependency of the notebook lane (workspace-files, uploads, local-upload, document-readiness, notebook-query, chat types, quote-window, approved-context, session, tenant-context, db, inference, files/uploads/auth/health routes, migrations, package.json/bun.lock/next.config, the redaction script); **mira-hub component version** — `mira-hub/package.json` bumped 2.30.0 → **2.31.0** (meaningful Hub change: health gate-state field + probe-facing contract), with the lockfile re-checked so `bun install --frozen-lockfile` still passes (bun does not pin the root package version in `bun.lock`; `Checked 943 installs … (no changes)` under `--frozen-lockfile`). The retired root `/VERSION` is **not** reintroduced — the overall version is derived by `version-tag.yml` from this PR's Conventional Commit type on merge. `mira-hub/AGENTS.md` still references `/VERSION`; left untouched (docs, out of scope).
-
-## 8. Honest limitations / risks
-
-1. The final probe (control document, structured outcome, excerpt/file identity, v2-scoped preflight, pinned CI node) is proven live on the tested SHA `05f2fd7b6` by the final-code green run 33274870905 and the §8.4 regression run 33275277204 (§3); normal PR CI on that SHA was green at the time of the proof (check state is dynamic — later docs-only heads re-run checks). Standalone local `shellcheck`/`actionlint` invocations hung on this Windows host and were **not completed**; the pre-commit hook's actionlint/shellcheck on staged files and GitHub's actionlint check are the validation of record.
-2. Cleanup is **proof, not observation**: the active session cookie (supplied or minted by email/password sign-in) is held outside the `try` and reused in `finally`; every run-owned `DELETE` (notebook, upload, file) must return 2xx or 404, and any other status or exception is a probe **failure** (tests: cleanup 500, cleanup exception, 404-as-gone, email/password cleanup auth). Order (all public APIs, all proof-checked): `GET /api/files/{fileId}/` → `DELETE /api/files/{fileId}/links/{linkId}/` for each link of the run-unique file (the upload door filed it at the notebook's node; without the detach the file delete is a 409 `has_links`) → `DELETE` notebook → `DELETE` upload → `DELETE` file → `DELETE /api/namespace/node/{nodeId}/` (notebook delete deliberately keeps the backing kg node, so the run removes it explicitly, last). A links-GET that is not 200/404, a refused detach, or any other non-2xx/404 status fails the probe while the remaining targets are still attempted (tests: order pinned, links GET 500, detach 409). Residual rows cannot contaminate a later run (fresh sentinel; citation `docId` must equal the run's own upload).
-3. `require_usage` defaults on (production runs `MIRA_CANONICAL_SEAM=1`); `BETA_PROBE_REQUIRE_USAGE=0` documents the legacy-cascade escape hatch, never used by CI.
-4. `tests/beta/test_upload_retrieval_citation.py::test_retrieval_reads_only_knowledge_entries` fails under `--confcutdir=tests/beta` (`No module named 'shared'` — it needs the parent conftest's sys.path); pre-existing (#2077), unrelated, unchanged.
-5. The legacy NodeChat lane remains **not** production-equivalent by design (§1); replacing it is a product decision outside this PR.
-
-## 9. PLAN.md row-by-row
-
-| PLAN step | Result |
-|---|---|
-| 1 Preflight/trace | ✅ clean worktree on `4a695bf31`, hooks resolve, no prod overrides; contract traced from routes + mobile client; #3477/#2251 boundaries honored |
-| 2 Reusable probe | ✅ `_notebook_probe.py` (library + CLI), public APIs only, run-unique doc/sentinel, contract readiness, confirmation, exact doc/page/provider, other-tenant exclusion, provider-free refusals, redacted evidence |
-| 3 Staging CI | ✅ explicit flag + health assertion, fresh tenant per run, `admission-regression`, `prove_regression`, redacted artifacts |
-| 4 Prod entry point | ✅ `beta-probe-prod.yml`, manual, boolean + secrets gated, dry-run default, Mike owns dispatch |
-| 5 Historical repair | ✅ no mutation; §7.3 read-only preflight report with real admission + before/after (§5), loopback-only |
-| 6 Verify + hand off | ✅ this file; commits + PR (unmerged) |
+- `historian.age_s` uses `machine_state_window.created_at` as the derivation heartbeat (040 has no `updated_at`); a long-open window that is only being *extended* would read older than the last historizer beat. Documented; a dedicated historizer heartbeat row is a follow-up, not a §9.3 requirement.
+- Hub web (`NotebookChat`) has no REPLAY CTA; its persisted-card captions were already honest (`No machine changes recorded in this window` / `Machine history unavailable`) and are unchanged.
+- The mobile `LIVE_UNAVAILABLE_BANNER` ("Live unavailable — showing recorded history") is now shown only on non-empty windows; wording kept to avoid churning a pinned string.
+- The observer's `api_state_consistent` checks the API's own claims against its rows (coverage vs rows vs reason); it does not drive the phone UI. The phone renders from the same fields (unit-pinned), and a device-level probe belongs to the emulator/device tooling.

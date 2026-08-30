@@ -56,10 +56,45 @@ export interface HistoryAnchor {
 
 export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
+  /** tag_events.simulated (033) — the row's own provenance; null on a diff
+   *  row (037 records none). Lets a reader classify a window as physical /
+   *  simulated without trusting the current-cache freshness roll-up. */
+  simulated: boolean | null;
+  /** tag_events.source_system ('ignition'|'plc_bridge'|'relay'|'simulator'); null on a diff. */
+  source_system: string | null;
+}
+
+/**
+ * Historical-window COVERAGE (Workstream C, PRD §9.2 / §6.8) — what was
+ * recorded in THIS window, as a fact separate from current-cache freshness.
+ * `admissible` is the one boolean a client may gate "Ask MIRA what happened"
+ * on: at least one recorded observation AND the history source answered.
+ */
+export interface HistoryCoverage {
+  /** events + diffs actually returned for the window. */
+  recorded: number;
+  events: number;
+  diffs: number;
+  /** False only when tag_events itself is missing (`reason: "unavailable"`). */
+  historyAvailable: boolean;
+  diffsAvailable: boolean;
+  /** recorded > 0 && historyAvailable. Never true for an empty window. */
+  admissible: boolean;
+  /** The served window bounds (canonical ISO). */
+  from: string;
+  to: string;
+  /** First / last recorded event_timestamp in the window, null when empty. */
+  earliest: string | null;
+  latest: string | null;
+  /** Largest |ingested_at − event_timestamp| across the rows (ms); null when
+   *  empty or no row carries both clocks. Surfaced so the two clocks stay
+   *  visible when they materially diverge (§9.2). */
+  ingestLagMaxMs: number | null;
 }
 
 export interface MachineHistory {
   anchor: HistoryAnchor;
+  coverage: HistoryCoverage;
   pre: number;
   post: number;
   /** The replayed window bounds `[at-pre, at+post]` (canonical ISO). */
@@ -216,7 +251,7 @@ export async function fetchMachineHistory(
     eventRows = await client
       .query(
         `SELECT event_timestamp, ingested_at, uns_path::text AS uns_path,
-                tag_path, value, quality
+                tag_path, value, quality, simulated, source_system
            FROM tag_events
           WHERE tenant_id = $1::uuid
             AND uns_path IS NOT NULL
@@ -271,6 +306,8 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.value == null ? null : String(r.value),
         quality: r.quality == null ? null : String(r.quality),
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
+        source_system: r.source_system == null ? null : String(r.source_system),
       }),
     ),
     ...diffRows.map(
@@ -282,8 +319,10 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.new_value == null ? null : String(r.new_value),
         prev_value: r.prev_value == null ? null : String(r.prev_value),
-        // 037 records no quality on a diff; null, never guessed.
+        // 037 records no quality / provenance on a diff; null, never guessed.
         quality: null,
+        simulated: null,
+        source_system: null,
       }),
     ),
   ].sort((a, b) => {
@@ -306,10 +345,20 @@ export async function fetchMachineHistory(
     if (!Number.isNaN(startMs) && startMs <= anchorMs && anchorMs <= stopMs) anchor.runId = run.run_id;
   }
 
+  const coverage = deriveCoverage(rows, {
+    from,
+    to,
+    events: eventRows.length,
+    diffs: diffRows.length,
+    historyAvailable: !reason,
+    diffsAvailable,
+  });
+
   return {
     ok: true,
     history: {
       anchor,
+      coverage,
       pre,
       post,
       from,
@@ -325,11 +374,46 @@ export async function fetchMachineHistory(
   };
 }
 
+/** Pure: the coverage facts of a served window. Exported for unit tests. */
+export function deriveCoverage(
+  rows: ReadonlyArray<Pick<MachineHistoryRow, "event_timestamp" | "ingested_at">>,
+  facts: { from: string; to: string; events: number; diffs: number; historyAvailable: boolean; diffsAvailable: boolean },
+): HistoryCoverage {
+  let earliest: number | null = null;
+  let latest: number | null = null;
+  let lag: number | null = null;
+  for (const r of rows) {
+    const e = new Date(r.event_timestamp).getTime();
+    if (Number.isNaN(e)) continue;
+    earliest = earliest === null ? e : Math.min(earliest, e);
+    latest = latest === null ? e : Math.max(latest, e);
+    if (r.ingested_at) {
+      const i = new Date(r.ingested_at).getTime();
+      if (!Number.isNaN(i)) lag = Math.max(lag ?? 0, Math.abs(i - e));
+    }
+  }
+  const recorded = rows.length;
+  return {
+    recorded,
+    events: facts.events,
+    diffs: facts.diffs,
+    historyAvailable: facts.historyAvailable,
+    diffsAvailable: facts.diffsAvailable,
+    admissible: recorded > 0 && facts.historyAvailable,
+    from: facts.from,
+    to: facts.to,
+    earliest: earliest === null ? null : new Date(earliest).toISOString(),
+    latest: latest === null ? null : new Date(latest).toISOString(),
+    ingestLagMaxMs: lag,
+  };
+}
+
 /** The wire shape of GET /api/assets/[id]/history (contract §4.3). */
 export function historyResponseBody(h: MachineHistory): Record<string, unknown> {
   return {
     anchor: h.anchor,
     window: { from: h.from, to: h.to, pre: h.pre, post: h.post },
+    coverage: h.coverage,
     rows: h.rows,
     freshness: h.freshness,
     summary: h.summary,

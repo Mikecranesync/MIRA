@@ -207,7 +207,7 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     expect(html).toContain('data-testid="machine-replay-card"');
     expect(html).toContain('data-freshness="stale"');
-    expect(html).toMatch(/Machine Replay · 7 recorded observations around \d{2}:\d{2}:\d{2} · Stale</);
+    expect(html).toMatch(/Machine Replay · 7 recorded observations around \d{2}:\d{2}:\d{2} · connection at capture: Stale</);
     expect(html).not.toContain("observed change");
     expect(html).toContain("Grounded in recorded machine history — not live.</p>");
     // Not a citation: no supporting-passage chip, no [n] button.
@@ -225,9 +225,9 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
         />,
       );
     expect(mk("live")).toContain("1 recorded observation around");
-    expect(mk("live")).toContain("· Live</span>");
-    expect(mk("simulated")).toContain("· Simulated</span>");
-    expect(mk("simulated")).not.toContain("· Live</span>");
+    expect(mk("live")).toContain("connection at capture: Live</span>");
+    expect(mk("simulated")).toContain("connection at capture: Simulated</span>");
+    expect(mk("simulated")).not.toContain("connection at capture: Live</span>");
   });
 
   // §2.8: an empty card must say WHICH empty it is. A "0 recorded observations"

@@ -79,7 +79,9 @@ export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: strin
   if (e.reason === "unavailable") return MACHINE_HISTORY_UNAVAILABLE_CAPTION;
   if (e.rowCount === 0) return MACHINE_NO_CHANGES_CAPTION;
   const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
-  return `Machine Replay · ${recordedObservationsPhrase(e.rowCount)} around ${clock(e.anchorAt)} · ${fresh}`;
+  // §6.8 (Workstream C): a historical card's freshness is the connection AS
+  // IT WAS at capture — labelled, never a bare "Live" beside a recorded count.
+  return `Machine Replay · ${recordedObservationsPhrase(e.rowCount)} around ${clock(e.anchorAt)} · connection at capture: ${fresh}`;
 }
 
 /** "Visual observation · Photo captured · 02:14:21" (contract §4.5, S5 D3). */

@@ -76,6 +76,10 @@ task_routes = {
     "mira_eval.score_conversation_eval": {"queue": "historian"},
     "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
+    # CV-101 Machine Memory observer (PRD §9.4) — READ-ONLY daily GETs on the
+    # same dedicated synthetic queue; inert unless MACHINE_MEMORY_OBSERVER_ENABLED=1.
+    "mira_crawler.tasks.machine_memory_observer.*": {"queue": "synthetic"},
+    "tasks.machine_memory_observer.*": {"queue": "synthetic"},
     # Technician-journey validation swarm — same dedicated synthetic queue
     # (PRD §8.2: extend the existing worker, do not add a second scheduler).
     "mira_crawler.tasks.journey_swarm.*": {"queue": "synthetic"},
@@ -122,6 +126,8 @@ task_annotations = {
     # rate limit is a defensive cap so a manual burst can't stampede.
     "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
     "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle": {"rate_limit": "1/h"},
+    # Observer is three GETs; the cap only stops a manual burst.
+    "tasks.machine_memory_observer.observe_cv101_machine_memory": {"rate_limit": "6/h"},
     # A journey run drives many real turns through the engine — keep it rare.
     "tasks.journey_swarm.run_journey_swarm": {"rate_limit": "1/h"},
 }
@@ -142,7 +148,24 @@ _SYNTHETIC_DOGFOOD_SCHEDULE = {
         "task": "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle",
         "schedule": crontab(minute=0, hour="*/6"),
     },
+    # CV-101 Machine Memory observer (PRD §9.4): ONE observation per scheduled
+    # day, read-only, on the existing synthetic-dogfood runner (no second
+    # scheduler). 06:15 UTC keeps it off the dogfood (:00) and swarm (:30)
+    # minutes. Always registered; the task is inert unless
+    # MACHINE_MEMORY_OBSERVER_ENABLED=1, so a dev beat stays quiet. The
+    # seven-day series is computed from the daily files it writes — it can
+    # only accrue with wall-clock time, never be asserted.
 }
+
+# Registered ONLY when enabled: a disabled deployment must publish nothing
+# (an always-scheduled entry would still put one message a day on the
+# queue). The same flag gates the task body, so beat + worker agree.
+if os.getenv("MACHINE_MEMORY_OBSERVER_ENABLED") == "1":
+    _SYNTHETIC_DOGFOOD_SCHEDULE["machine-memory-observer-daily"] = {
+        "task": "tasks.machine_memory_observer.observe_cv101_machine_memory",
+        "schedule": crontab(minute=15, hour=6),
+        "options": {"queue": "synthetic", "expires": 3600},
+    }
 
 # Technician-journey validation swarm (PRD §8.2/§11-P4).
 #

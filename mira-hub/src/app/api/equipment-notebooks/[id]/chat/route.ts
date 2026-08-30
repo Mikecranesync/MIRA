@@ -77,7 +77,7 @@ import {
   type MachineContextPacket,
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
-import { clampSpan, fetchMachineHistory, parseAnchor } from "@/lib/machine-history";
+import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -578,34 +578,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return safetyStopResponse(safetyTrigger, docIds);
   }
 
-  const retrievalQuery = buildRetrievalQuery(message, history);
-  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
-  // `nodeId === null` arm is the same case — only the general path can reach
-  // here without `validated.ok`, since every other branch returned above.
-  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
-    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
-      nodeId,
-      unsPath: null, // notebook nodes are standalone; scope is the doc set
-      topK: 6,
-      docIds,
-      rawQuery: message,
-      // validateChatSources() has already proven tenant + notebook membership
-      // for every id in docIds — the validated doc set is the boundary, so a
-      // document linked from another notebook's node stays retrievable here.
-      validatedDocScope: true,
-      // Workstream A (#3437/#3468): the SAME server-derived set is the
-      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
-      // validateChatSources derives it (tenant-owned, notebook-linked,
-      // enabled, user_confirmed/verified, not superseded); the client's
-      // `body.sourceDocIds` was only an intersection request. Tenant-private
-      // chunks of these docs are admitted without ever being marked globally
-      // verified — confirmation is admission, not corpus promotion.
-      approvedSourceDocIds: docIds,
-    }),
-  );
-
-  const enc = new TextEncoder();
-
   // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
   // window through the SAME reader the history route uses (fetchMachineHistory
   // — never client-supplied rows), reshapes the Machine Memory header into the
@@ -617,6 +589,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 040 env or any error never drops the notebook context already built.
   let machinePacket: MachineContextPacket | null = null;
   let machineEntry: MachineEvidenceEntry | null = null;
+  // Workstream C (§9.2): why the served window is NOT grounding, when it
+  // isn't — kept apart so "nothing recorded" and "no history source" are
+  // never one sentence.
+  let machineUnavailableReason: "no_uns_path" | "no_fault_window" | "unavailable" | "fetch_failed" | null = null;
+  let machineCoverage: HistoryCoverage | null = null;
   if (machineRequest) {
     const mr = machineRequest;
     try {
@@ -625,6 +602,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
       if (result.ok) {
         const h = result.history;
+        machineCoverage = h.coverage;
+        if (h.reason === "unavailable") machineUnavailableReason = "unavailable";
         machinePacket = packetFromMachineMemoryResponse(ctx.tenantId, mr.assetId, h.summary);
         machinePacket.replay = {
           anchor_at: h.anchor.at,
@@ -654,11 +633,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         };
       } else {
         console.warn("[notebook-chat] machine evidence not available:", result.error);
+        machineUnavailableReason = result.error;
       }
     } catch (err) {
-      console.error("[notebook-chat] machine evidence fetch failed (continuing without it):", err);
+      console.error("[notebook-chat] machine evidence fetch failed:", err);
       machinePacket = null;
       machineEntry = null;
+      machineUnavailableReason = "fetch_failed";
     }
   }
   // Nothing observed → nothing to ground on (contract §2.8, D2). A window that
@@ -672,6 +653,79 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const groundedMachineEntry: MachineEvidenceEntry | null =
     machineEntry && machineEntry.rowCount > 0 && machineEntry.reason !== "unavailable" ? machineEntry : null;
   if (!groundedMachineEntry) machinePacket = null;
+
+  // Workstream C (PRD §9.2 / #3469): a replay ask whose served window holds
+  // no admissible recorded observation is REFUSED here — at the seam that
+  // owns the truth — before any retrieval-backed answer, any provider call,
+  // and any persistence. Answering from documents while carrying an empty
+  // machine-evidence card, or letting the approved-context gate blame
+  // "approved asset context", would both dress an empty window as evidence.
+  // The two empties stay distinct: `machine_window_empty` (the history source
+  // answered: nothing recorded) vs `machine_history_unavailable` (no source
+  // to ask). `error` is a sentence (mira-mobile renders it verbatim); `code`
+  // is the discriminator. Nothing is recorded: a refused replay is not a turn.
+  if (machineRequest && !groundedMachineEntry) {
+    // A transient read failure is NOT "history unavailable": the source
+    // exists, the read failed. Say so and let the client retry (503), rather
+    // than telling the technician the machine has no history.
+    if (machineUnavailableReason === "fetch_failed") {
+      return NextResponse.json(
+        {
+          error: "Machine Memory could not be read just now. Try again in a moment.",
+          code: "machine_history_read_failed",
+        },
+        { status: 503 },
+      );
+    }
+    const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
+    if (windowEmpty) {
+      return NextResponse.json(
+        {
+          error: "Nothing was recorded in this window. Widen the window or check the gateway.",
+          code: "machine_window_empty",
+          coverage: machineCoverage,
+        },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json(
+      {
+        error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
+        code: "machine_history_unavailable",
+        reason: machineUnavailableReason ?? "unavailable",
+        coverage: machineCoverage,
+      },
+      { status: 422 },
+    );
+  }
+
+  const retrievalQuery = buildRetrievalQuery(message, history);
+  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
+  // `nodeId === null` arm is the same case — only the general path can reach
+  // here without `validated.ok`, since every other branch returned above.
+  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
+    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+      nodeId,
+      unsPath: null, // notebook nodes are standalone; scope is the doc set
+      topK: 6,
+      docIds,
+      rawQuery: message,
+      // validateChatSources() has already proven tenant + notebook membership
+      // for every id in docIds — the validated doc set is the boundary, so a
+      // document linked from another notebook's node stays retrievable here.
+      validatedDocScope: true,
+      // Workstream A (#3437/#3468): the SAME server-derived set is the
+      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+      // validateChatSources derives it (tenant-owned, notebook-linked,
+      // enabled, user_confirmed/verified, not superseded); the client's
+      // `body.sourceDocIds` was only an intersection request. Tenant-private
+      // chunks of these docs are admitted without ever being marked globally
+      // verified — confirmation is admission, not corpus promotion.
+      approvedSourceDocIds: docIds,
+    }),
+  );
+
+  const enc = new TextEncoder();
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:

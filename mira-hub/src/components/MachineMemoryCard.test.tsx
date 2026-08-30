@@ -72,8 +72,11 @@ describe("MachineMemoryCard", () => {
 
     expect(html).toContain("Run: closed");
     expect(html).toContain("State: idle");
-    expect(html).toContain("cv101.motor_current");
-    expect(html).toContain("anomaly_A1_COMM_STALE");
+    // Workstream C (PRD §9.2): the canonical rule title + the tag LEAF, never
+    // the raw diff_type / full tag_path pair.
+    expect(html).toContain("GS10 RS-485 link down");
+    expect(html).toContain("motor_current");
+    expect(html).not.toContain("anomaly_A1_COMM_STALE");
     expect(html).toContain("Next check: verify VFD comm cable");
     expect(html).toContain("Evidence: tag_events");
   });
@@ -94,7 +97,8 @@ describe("MachineMemoryCard", () => {
     const href = hrefMatch![1].replace(/&amp;/g, "&");
     const params = new URLSearchParams(href.split("?")[1]);
 
-    expect(params.get("prefill_title")).toBe("[CV-101] anomaly_A1_COMM_STALE on cv101.motor_current");
+    // Workstream C (PRD §9.2): the canonical condition title, never `diff_type on tag_path`.
+    expect(params.get("prefill_title")).toBe("[CV-101] GS10 RS-485 link down");
     expect(params.get("prefill_description")).toBe("warning — next check: verify VFD comm cable");
     expect(params.get("source_run_diff_id")).toBe("d1");
   });
@@ -232,9 +236,10 @@ describe("MachineMemoryCard", () => {
     const html = renderToStaticMarkup(
       <MachineMemoryCard assetId="asset-1" initialData={withDups} poll={false} />,
     );
-    // one visible diff row (the "— <type>" span; the WO prefill href also
-    // carries the type but URL-encoded, so this matches rows only)
-    expect(html.match(/— anomaly_A9_DC_BUS/g)).toHaveLength(1);
+    // one visible diff row: the canonical title renders once (Workstream C —
+    // the row no longer prints the raw diff_type)
+    expect(html.match(/data-testid="condition-title"/g)).toHaveLength(1);
+    expect(html).toContain("DC bus voltage out of range");
     expect(html).toContain("×4");
   });
 
@@ -261,5 +266,45 @@ describe("MachineMemoryCard", () => {
     );
     expect(html).not.toContain("No machine runs recorded for this asset yet.");
     expect(html).toContain("Live signals");
+  });
+});
+
+
+// ── Workstream C (PRD §9.2 / #3470): no internal identifier as a fault title ──
+describe("condition titles on the card and the work-order prefill", () => {
+  const a0: MachineMemoryResponse = {
+    ...POPULATED,
+    latest_diffs: [
+      {
+        ...POPULATED.latest_diffs[0],
+        tag_path: "enterprise.home_garage.conveyor_lab.conveyor_1._stale_s",
+        diff_type: "anomaly_A0_OFFLINE",
+        severity: "critical",
+        next_check: "Check the PLC bridge / Modbus link.",
+      },
+    ],
+  };
+
+  it("renders the canonical rule title for A0 and never the _stale_s pseudo-topic", () => {
+    const html = renderToStaticMarkup(<MachineMemoryCard assetId="asset-1" initialData={a0} poll={false} />);
+    expect(html).toContain("PLC/bridge offline");
+    expect(html).not.toContain("_stale_s");
+    expect(html).not.toContain("anomaly_A0_OFFLINE");
+  });
+
+  it("prefers a persisted metadata.title and keeps a real tag leaf for statistical deviations", () => {
+    const persisted = { ...a0, latest_diffs: [{ ...a0.latest_diffs[0], title: "GS10 drive fault active (ocA)", diff_type: "anomaly_A2_VFD_FAULT", tag_path: "vfd/vfd101/fault_code" }] };
+    expect(renderToStaticMarkup(<MachineMemoryCard assetId="asset-1" initialData={persisted} poll={false} />)).toContain("GS10 drive fault active (ocA)");
+    const dev = { ...a0, latest_diffs: [{ ...a0.latest_diffs[0], diff_type: "deviation", tag_path: "cv101.vfd_dc_bus", severity: "warning" as const }] };
+    const html = renderToStaticMarkup(<MachineMemoryCard assetId="asset-1" initialData={dev} poll={false} />);
+    expect(html).toContain("deviation on vfd_dc_bus");
+  });
+
+  it("work-order prefill title never carries diff_type/tag_path internals", () => {
+    const html = renderToStaticMarkup(<MachineMemoryCard assetId="asset-1" initialData={a0} poll={false} />);
+    const href = html.match(/href="([^"]*workorders\/new[^"]*)"/)![1].replace(/&amp;/g, "&");
+    const params = new URLSearchParams(href.split("?")[1]);
+    expect(params.get("prefill_title")).toBe("[CV-101] PLC/bridge offline");
+    expect(href).not.toContain("_stale_s");
   });
 });

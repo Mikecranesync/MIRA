@@ -422,9 +422,9 @@ describe("machineReplayCaption", () => {
   const clock = () => "23:16:31";
   it("counts, anchors and names freshness honestly", () => {
     // S5 D5 cross-lane contract: mobile's replayCardTitle shape + the shared FRESHNESS_LABEL vocabulary.
-    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · Stale");
-    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 recorded observation around 23:16:31 · Live");
-    expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · Simulated");
+    expect(machineReplayCaption(machine, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · connection at capture: Stale");
+    expect(machineReplayCaption({ ...machine, rowCount: 1, freshness: "live" }, clock)).toBe("Machine Replay · 1 recorded observation around 23:16:31 · connection at capture: Live");
+    expect(machineReplayCaption({ ...machine, freshness: "simulated" }, clock)).toBe("Machine Replay · 7 recorded observations around 23:16:31 · connection at capture: Simulated");
     // m1: the rows are not all CHANGES — a kind:"event" row is a periodic
     // sample with no prev_value, so the caption must not claim otherwise.
     expect(machineReplayCaption(machine, clock)).not.toContain("observed change");

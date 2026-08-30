@@ -191,6 +191,11 @@ describe("rows", () => {
     ]);
     expect(body.rows[0]).toEqual({
       kind: "event",
+      // Workstream C: tag_events provenance rides on the wire (null when the
+      // fixture row carries none), so a reader can classify without trusting
+      // the current-cache freshness roll-up.
+      simulated: null,
+      source_system: null,
       event_timestamp: "2026-08-27T23:16:28.860Z",
       ingested_at: "2026-08-27T23:16:30.900Z",
       uns_path: UNS_PATH,
@@ -202,6 +207,8 @@ describe("rows", () => {
     // records none — nothing is invented for it).
     expect(body.rows[1]).toEqual({
       kind: "diff",
+      simulated: null,
+      source_system: null,
       event_timestamp: "2026-08-27T23:16:29.180Z",
       ingested_at: "2026-08-27T23:16:31.000Z",
       uns_path: UNS_PATH,
