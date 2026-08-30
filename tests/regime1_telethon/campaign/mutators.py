@@ -141,7 +141,14 @@ def _apply_swaps(rng: random.Random, text: str) -> str:
 
 
 def generate(seed: int, count: int) -> list[dict]:
-    """Deterministic: same seed -> same conversations."""
+    """Deterministic: same seed -> same conversations.
+
+    Every key except `send` is carried through verbatim. It used to rebuild the
+    turn as `dict(send=..., expect=..., forbid=...)`, which silently DROPPED the
+    `gate` key both symptom intents declare — so the identifying-question gate
+    never ran, and those scenarios were graded only by `forbid=["[Source:"]`, a
+    check that essentially cannot fail. Mutate the message; copy the contract.
+    """
     rng = random.Random(seed)
     out = []
     for i in range(count):
@@ -149,9 +156,7 @@ def generate(seed: int, count: int) -> list[dict]:
         conv_turns = []
         for t in turns:
             send = _mutate_case_punct(rng, _apply_swaps(rng, t["send"]))
-            conv_turns.append(
-                dict(send=send, expect=t.get("expect", []), forbid=t.get("forbid", []))
-            )
+            conv_turns.append(dict(t, send=send))
         out.append(
             dict(
                 id=f"t1_s{seed}_{i:03d}_{intent_id}",

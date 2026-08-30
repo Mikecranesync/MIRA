@@ -2,7 +2,11 @@
 
 Tier 1/2: seeded deterministic scripts, graded expect/forbid per turn.
 Tier 3:   adaptive probe agent generates each next message; LLM judge triages.
+Tier 4:   session control — the same scripted loop, plus scenario-declared
+          conversation gates and a third verdict, INCONCLUSIVE, for a scenario
+          whose capability never got exercised.
 Tier 8:   persona-driven adaptive conversations (same loop, persona overlay).
+Tier 9:   safety curriculum (scripted; the deterministic safety gate decides).
 
 Rails inherited from uat_driver: staging bot hardwired, >=2 s send gap, 90 s
 reply timeout, text only. FAIL/SUSPECT conversations are frozen (full
@@ -31,6 +35,7 @@ from tests.regime1_telethon.campaign import judge as judge_mod
 from tests.regime1_telethon.campaign import safety as safety_mod
 from tests.regime1_telethon.campaign import ledger
 from tests.regime1_telethon.campaign import probe as probe_mod
+from tests.regime1_telethon.campaign import session_control
 from tests.regime1_telethon.campaign.personas import PERSONAS
 
 uat = importlib.import_module("tests.regime1_telethon.uat_driver")
@@ -39,8 +44,15 @@ STAGING_BOT = uat.STAGING_BOT
 MAX_ADAPTIVE_TURNS = 9
 
 
-async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict]]:
-    """Tier 1/2: run a generated script, grade per turn."""
+async def scripted_conversation(client, scenario, args) -> tuple[str, list[dict]]:
+    """Tier 1/2/4/9: run a generated script, grade per turn.
+
+    Returns a VERDICT STRING, not a bool. Tier 4 needs a third state: two of
+    its scenarios depend on something outside their own control (a
+    non-deterministic clarifier emitting a numbered list, and a cancel lane
+    that does not exist with MIRA_USE_DST=0), and a green cell that really
+    means "we could not tell" is worse than no scenario at all.
+    """
     transcript = []
     last = await client.get_messages(STAGING_BOT, limit=1)
     min_id = last[0].id if last else 0
@@ -58,8 +70,11 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
         # A declared gate is the authoritative contract for that turn; the
         # expect/forbid list grades vocabulary, the gate grades behaviour.
-        if turn.get("gate") == "identifying_question":
-            gv = gates.check_identifying_question(reply, scenario["id"])
+        # Resolved through the registry rather than an if-chain, so a gate
+        # declared on a turn that is really transcript-scoped raises here
+        # instead of mis-grading silently.
+        if turn.get("gate"):
+            gv = gates.resolve_turn_gate(turn["gate"])(reply, scenario["id"])
             if gv:
                 ok = False
                 notes = notes + [str(x) for x in gv]
@@ -76,7 +91,30 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         if not ok:
             passed = False
         await asyncio.sleep(uat.SEND_GAP_S)
-    return passed, transcript
+
+    # Scenario-declared conversation gates + the "was this capability actually
+    # exercised?" precondition. Both are transcript-scoped, so they run once,
+    # here, after the whole script. Tiers that declare neither keep the old
+    # two-state behaviour untouched.
+    verdict, conv_notes = "PASS" if passed else "FAIL", []
+    if scenario.get("conv_gates") or scenario.get("precondition"):
+        verdict, conv_notes = session_control.grade_conversation(
+            scenario, transcript, turn_ok=passed
+        )
+    for note in conv_notes:
+        print(f"  GATE {note}")
+    if conv_notes:
+        ledger.turn(
+            args.campaign,
+            scenario["id"],
+            args.tier,
+            len(scenario["turns"]),
+            "conversation",
+            "",
+            grade=verdict,
+            notes="; ".join(conv_notes),
+        )
+    return verdict, transcript
 
 
 async def adaptive_conversation(
@@ -148,21 +186,23 @@ async def amain(args) -> int:
     n_pass = n_fail = n_skip = 0
     meta = dict(deploy_sha=args.deploy_sha, seed=args.seed, telegram=str(me.username))
 
-    if args.tier in (1, 2, 9):
+    if args.tier in (1, 2, 4, 9):
         # Tier 9 is the safety curriculum. It rides the scripted path because the
         # turns are fixed, but its authoritative grading is the deterministic gate
         # in campaign/gates.py, applied below — an expect/forbid substring match is
         # not strong enough to gate a release on.
+        # Tier 4 is session control: same scripted path, plus scenario-declared
+        # conversation gates and the INCONCLUSIVE verdict.
         gen = importlib.import_module(
             "tests.regime1_telethon.campaign."
-            + {1: "mutators", 2: "state_attacks", 9: "safety"}[args.tier]
+            + {1: "mutators", 2: "state_attacks", 4: "session_control", 9: "safety"}[args.tier]
         )
         scenarios = gen.generate(args.seed, args.count)
         for sc in scenarios:
             if sc["id"] in done:
                 n_skip += 1
                 continue
-            ok, transcript = await scripted_conversation(client, sc, args)
+            verdict, transcript = await scripted_conversation(client, sc, args)
             # Tier 9: the deterministic safety gate outranks the substring grade.
             # A judge may not overrule it and neither may a lucky expect match.
             if args.tier == 9 and sc.get("safety_case_id"):
@@ -175,24 +215,27 @@ async def amain(args) -> int:
                         case, reply
                     ) + gates.check_no_control_action(reply, case.id)
                     if gate_violations:
-                        ok = False
+                        verdict = "FAIL"
                         for gv in gate_violations:
                             print(f"  GATE {gv}")
             ledger.verdict(
                 args.campaign,
                 sc["id"],
                 args.tier,
-                "PASS" if ok else "FAIL",
-                category="" if ok else "UNTRIAGED",
+                verdict,
+                category="" if verdict == "PASS" else "UNTRIAGED",
                 **meta,
             )
-            if ok:
+            if verdict == "PASS":
                 n_pass += 1
             else:
+                # INCONCLUSIVE freezes too: "we could not tell" is exactly the
+                # transcript a human needs to look at, and for the cancel-lane
+                # scenario that frozen transcript IS the deliverable.
                 n_fail += 1
                 p = ledger.freeze(args.campaign, sc["id"], transcript, dict(scenario=sc, **meta))
                 print(f"FROZEN: {p.name}")
-            print(f"{'PASS' if ok else 'FAIL'}  {sc['id']}")
+            print(f"{verdict}  {sc['id']}")
     elif args.tier in (3, 8):
         personas = list(PERSONAS) if args.tier == 8 else [""]
         for i in range(args.count):
