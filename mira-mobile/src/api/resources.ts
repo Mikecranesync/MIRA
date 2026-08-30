@@ -1375,21 +1375,37 @@ export async function getAssetHistory(
   const hc = (d.historicalCoverage ?? null) as Record<string, unknown> | null;
   const from = w.from != null ? String(w.from) : null;
   const to = w.to != null ? String(w.to) : null;
+  // A count the server did not state is null — NEVER 0 and never derived
+  // from the rows. Admissibility in particular is server-owned; a client that
+  // invented it could unlock Ask MIRA on simulated or bad-quality history.
+  const count = (v: unknown): number | null => (hc?.available === false || v == null ? null : Number(v));
+  const noCounts = {
+    admissibleObservationCount: null,
+    physicalObservationCount: null,
+    simulatedObservationCount: null,
+    badQualityObservationCount: null,
+    unknownProvenanceCount: null,
+  };
   const historicalCoverage: HistoricalCoverage = hc
     ? {
         available: hc.available !== false,
-        observationCount:
-          hc.available === false || hc.observationCount == null ? null : Number(hc.observationCount),
+        observationCount: count(hc.observationCount),
+        admissibleObservationCount: count(hc.admissibleObservationCount),
+        physicalObservationCount: count(hc.physicalObservationCount),
+        simulatedObservationCount: count(hc.simulatedObservationCount),
+        badQualityObservationCount: count(hc.badQualityObservationCount),
+        unknownProvenanceCount: count(hc.unknownProvenanceCount),
         from: hc.from != null ? String(hc.from) : (from ?? ""),
         to: hc.to != null ? String(hc.to) : (to ?? ""),
         firstObservedAt: hc.firstObservedAt != null ? String(hc.firstObservedAt) : null,
         lastObservedAt: hc.lastObservedAt != null ? String(hc.lastObservedAt) : null,
       }
     : reason === "unavailable"
-      ? { available: false, observationCount: null, from: from ?? "", to: to ?? "", firstObservedAt: null, lastObservedAt: null }
+      ? { available: false, observationCount: null, ...noCounts, from: from ?? "", to: to ?? "", firstObservedAt: null, lastObservedAt: null }
       : {
           available: true,
           observationCount: rows.length,
+          ...noCounts,
           from: from ?? "",
           to: to ?? "",
           firstObservedAt: rows.length ? String(rows[0].event_timestamp ?? "") : null,
@@ -1419,6 +1435,9 @@ export async function getAssetHistory(
       prev_value: (row.prev_value as AssetHistory["rows"][number]["prev_value"]) ?? null,
       quality: row.quality != null ? String(row.quality) : null,
       kind: row.kind === "diff" ? "diff" : "event",
+      source_system: row.source_system != null ? String(row.source_system) : null,
+      source_connection_id: row.source_connection_id != null ? String(row.source_connection_id) : null,
+      simulated: typeof row.simulated === "boolean" ? row.simulated : null,
     })),
     // One freshness object, two names: the explicit contract and the alias.
     freshness: freshnessSummary,

@@ -197,9 +197,13 @@ describe("rows", () => {
       tag: "Conveyor/photo_eye",
       value: "true",
       quality: "good",
+      source_system: "ignition",
+      source_connection_id: "conn-1",
+      simulated: false,
     });
     // The diff row: prev → new, ingested_at = detected_at, quality null (037
-    // records none — nothing is invented for it).
+    // records none — nothing is invented for it), no connection id (037
+    // carries none).
     expect(body.rows[1]).toEqual({
       kind: "diff",
       event_timestamp: "2026-08-27T23:16:29.180Z",
@@ -209,6 +213,9 @@ describe("rows", () => {
       value: "true",
       prev_value: "false",
       quality: null,
+      source_system: "ignition",
+      source_connection_id: null,
+      simulated: false,
     });
     for (const r of body.rows) {
       expect(typeof r.event_timestamp).toBe("string");
@@ -343,9 +350,10 @@ describe("currentConnection vs historicalCoverage (PRD §9.2)", () => {
     });
     expect(body.rows).toEqual([]);
     expect(body).not.toHaveProperty("reason");
-    // Coverage never carries a freshness word: "live" is a fact about the
-    // cache, not about the window.
-    expect(JSON.stringify(body.historicalCoverage)).not.toMatch(/live|stale|simulated/i);
+    // Coverage never carries a freshness word as a VALUE: "live" is a fact
+    // about the cache, not about the window. (Keys such as
+    // `simulatedObservationCount` name a provenance count, not a freshness.)
+    expect(Object.values(body.historicalCoverage).join(" ")).not.toMatch(/live|stale|simulated/i);
     // Compatibility alias: the old top-level freshness is still the same object.
     expect(body.freshness).toEqual(body.currentConnection.freshness);
   });

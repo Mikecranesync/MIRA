@@ -56,6 +56,38 @@ export interface HistoryAnchor {
 
 export interface MachineHistoryRow extends ObservedChange {
   uns_path: string | null;
+  /** Provenance, carried verbatim from the row (033 / 037). `null` means the
+   *  source did not say — which is NEVER treated as physical. */
+  source_system: string | null;
+  /** 033 only; 037 records no connection on a diff → always null there. */
+  source_connection_id: string | null;
+  simulated: boolean | null;
+}
+
+/**
+ * Source systems that are synthetic by construction (033 header + SimLab).
+ * A row from any of these is `simulated` regardless of its `simulated` flag.
+ */
+const SYNTHETIC_SOURCE_SYSTEMS = new Set(["simulator", "simlab", "synthetic", "demo_simulator"]);
+
+type Provenance = "physical" | "simulated" | "unknown";
+
+/** Physical ONLY when both the flag and the source system positively say so. */
+export function classifyProvenance(row: Pick<MachineHistoryRow, "source_system" | "simulated">): Provenance {
+  const src = row.source_system == null ? null : String(row.source_system).trim().toLowerCase();
+  if (row.simulated === true || (src != null && SYNTHETIC_SOURCE_SYSTEMS.has(src))) return "simulated";
+  if (src == null || src === "" || row.simulated !== false) return "unknown";
+  return "physical";
+}
+
+/**
+ * The ONE admissibility rule (PRD §9.2): a raw `tag_events` observation whose
+ * quality is exactly `good` and whose provenance is positively physical.
+ * Diffs (037 carries no quality), bad/unknown quality, simulated rows and
+ * unknown provenance never unlock Ask MIRA.
+ */
+export function isAdmissibleObservation(row: MachineHistoryRow): boolean {
+  return row.kind === "event" && row.quality === "good" && classifyProvenance(row) === "physical";
 }
 
 /**
@@ -76,6 +108,14 @@ export interface CurrentConnection {
 export interface HistoricalCoverage {
   available: boolean;
   observationCount: number | null;
+  /** Raw good-quality physical events only — the ONLY number that may unlock
+   *  Ask MIRA (`isAdmissibleObservation`). Diffs never count here. */
+  admissibleObservationCount: number | null;
+  physicalObservationCount: number | null;
+  simulatedObservationCount: number | null;
+  /** Raw events whose quality is not exactly `good` (a null quality counts). */
+  badQualityObservationCount: number | null;
+  unknownProvenanceCount: number | null;
   /** The RETURNED window bounds (`[at-pre, at+post]`, clamped). */
   from: string;
   to: string;
@@ -245,7 +285,7 @@ export async function fetchMachineHistory(
     eventRows = await client
       .query(
         `SELECT event_timestamp, ingested_at, uns_path::text AS uns_path,
-                tag_path, value, quality
+                tag_path, value, quality, source_system, source_connection_id, simulated
            FROM tag_events
           WHERE tenant_id = $1::uuid
             AND uns_path IS NOT NULL
@@ -271,7 +311,7 @@ export async function fetchMachineHistory(
       diffRows = await client
         .query(
           `SELECT event_timestamp, detected_at, uns_path::text AS uns_path,
-                  tag_path, prev_value, new_value, diff_type
+                  tag_path, prev_value, new_value, diff_type, source_system, simulated
              FROM tag_event_diffs
             WHERE tenant_id = $1::uuid
               AND uns_path IS NOT NULL
@@ -300,6 +340,9 @@ export async function fetchMachineHistory(
         tag: String(r.tag_path),
         value: r.value == null ? null : String(r.value),
         quality: r.quality == null ? null : String(r.quality),
+        source_system: r.source_system == null ? null : String(r.source_system),
+        source_connection_id: r.source_connection_id == null ? null : String(r.source_connection_id),
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
     ...diffRows.map(
@@ -313,6 +356,10 @@ export async function fetchMachineHistory(
         prev_value: r.prev_value == null ? null : String(r.prev_value),
         // 037 records no quality on a diff; null, never guessed.
         quality: null,
+        source_system: r.source_system == null ? null : String(r.source_system),
+        // 037 carries no connection id.
+        source_connection_id: null,
+        simulated: typeof r.simulated === "boolean" ? r.simulated : null,
       }),
     ),
   ].sort((a, b) => {
@@ -338,15 +385,20 @@ export async function fetchMachineHistory(
   // Coverage comes from the served rows only (already ordered by
   // event_timestamp). An unavailable window has nothing to count: null, not 0.
   const historicalCoverage: HistoricalCoverage = reason
-    ? { available: false, observationCount: null, from, to, firstObservedAt: null, lastObservedAt: null }
-    : {
-        available: true,
-        observationCount: rows.length,
+    ? {
+        available: false,
+        observationCount: null,
+        admissibleObservationCount: null,
+        physicalObservationCount: null,
+        simulatedObservationCount: null,
+        badQualityObservationCount: null,
+        unknownProvenanceCount: null,
         from,
         to,
-        firstObservedAt: rows.length ? rows[0].event_timestamp : null,
-        lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
-      };
+        firstObservedAt: null,
+        lastObservedAt: null,
+      }
+    : summarizeCoverage(rows, from, to);
 
   return {
     ok: true,
@@ -366,6 +418,41 @@ export async function fetchMachineHistory(
       ...(reason ? { reason } : {}),
       diffsAvailable,
     },
+  };
+}
+
+/**
+ * Count what the served rows actually are (PRD §9.2). Server-owned: the
+ * client never derives admissibility. Provenance buckets partition every row
+ * (physical + simulated + unknown = observationCount); bad quality is counted
+ * on raw events only, since a diff carries no quality at all.
+ */
+export function summarizeCoverage(rows: MachineHistoryRow[], from: string, to: string): HistoricalCoverage {
+  let admissible = 0;
+  let physical = 0;
+  let simulated = 0;
+  let unknown = 0;
+  let badQuality = 0;
+  for (const r of rows) {
+    const p = classifyProvenance(r);
+    if (p === "physical") physical += 1;
+    else if (p === "simulated") simulated += 1;
+    else unknown += 1;
+    if (r.kind === "event" && r.quality !== "good") badQuality += 1;
+    if (isAdmissibleObservation(r)) admissible += 1;
+  }
+  return {
+    available: true,
+    observationCount: rows.length,
+    admissibleObservationCount: admissible,
+    physicalObservationCount: physical,
+    simulatedObservationCount: simulated,
+    badQualityObservationCount: badQuality,
+    unknownProvenanceCount: unknown,
+    from,
+    to,
+    firstObservedAt: rows.length ? rows[0].event_timestamp : null,
+    lastObservedAt: rows.length ? rows[rows.length - 1].event_timestamp : null,
   };
 }
 
