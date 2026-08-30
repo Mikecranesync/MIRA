@@ -271,6 +271,7 @@ def test_heartbeat_migration_locks_identity_rls_and_no_delete_privilege():
     assert "CHECK (deployment_environment IN ('development', 'staging', 'production'))" in migration
     assert "CHECK (status IN ('running', 'ok', 'error', 'disabled', 'no_triggers', 'missing_config'))" in migration
     assert "CHECK ((status = 'running') = (finished_at IS NULL))" in migration
+    assert "CHECK (finished_at IS NULL OR finished_at >= started_at)" in migration
     assert "historian_heartbeat_hash_array_is_valid" in migration
     assert "(detail ->> 'config_sha256') ~ '^[0-9a-f]{64}$'" in migration
     assert "(detail -> 'counts') - ARRAY[" in migration

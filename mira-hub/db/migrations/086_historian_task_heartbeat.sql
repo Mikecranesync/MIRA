@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS historian_task_heartbeat (
     status                  TEXT NOT NULL
         CHECK (status IN ('running', 'ok', 'error', 'disabled', 'no_triggers', 'missing_config')),
     CHECK ((status = 'running') = (finished_at IS NULL)),
+    CHECK (finished_at IS NULL OR finished_at >= started_at),
     software_version        TEXT NOT NULL
         CHECK (software_version ~ '^[0-9a-f]{40}$' AND software_version <> 'unknown'),
     run_count               BIGINT NOT NULL DEFAULT 1 CHECK (run_count >= 1),

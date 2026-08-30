@@ -96,6 +96,43 @@ def test_running_heartbeat_with_a_fresh_finish_is_never_go():
     assert "HISTORIAN_STUCK_RUNNING" in _codes(verdict)
 
 
+def test_heartbeat_finished_beyond_future_skew_tolerance_is_never_go():
+    verdict = preflight.evaluate(
+        _input(heartbeat_finished_at="2026-08-30T13:00:00Z")
+    )
+    assert verdict.status == preflight.NO_GO
+    assert "HISTORIAN_EXECUTION_STALE" in _codes(verdict)
+
+
+def test_heartbeat_cannot_finish_before_it_started():
+    verdict = preflight.evaluate(
+        _input(
+            heartbeat_started_at="2026-08-30T11:59:50Z",
+            heartbeat_finished_at="2026-08-30T11:59:40Z",
+        )
+    )
+    assert verdict.status == preflight.NO_GO
+    assert "HISTORIAN_EXECUTION_INVALID" in _codes(verdict)
+
+
+@pytest.mark.parametrize(
+    ("started_at", "finished_at"),
+    [
+        ("2026-08-30T11:59:50Z", "2026-08-30T12:05:00Z"),
+        ("2026-08-30T11:54:50Z", "2026-08-30T11:55:00Z"),
+    ],
+)
+def test_heartbeat_exact_skew_boundaries_remain_accepted(started_at, finished_at):
+    verdict = preflight.evaluate(
+        _input(
+            heartbeat_started_at=started_at,
+            heartbeat_finished_at=finished_at,
+        )
+    )
+    assert verdict.status == preflight.GO
+    assert _codes(verdict) == []
+
+
 def test_fresh_ingest_cannot_mask_a_stale_source_observation():
     """Would catch a GO when receipt time advances while source time is frozen."""
     verdict = preflight.evaluate(_input(latest_event_at="2026-08-30T11:00:00Z"))

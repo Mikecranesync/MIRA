@@ -221,20 +221,26 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
     ):
         add("HISTORIAN_CONFIG_MISMATCH")
 
+    heartbeat_started = _timestamp(data.heartbeat_started_at)
+    heartbeat_finished = _timestamp(data.heartbeat_finished_at)
+    now = _timestamp(data.now)
     if data.heartbeat_started_at is None:
         add("HISTORIAN_EXECUTION_UNOBSERVED")
-    elif _timestamp(data.heartbeat_started_at) is None:
+    elif heartbeat_started is None:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
     if data.heartbeat_status == "running":
         add("HISTORIAN_STUCK_RUNNING")
     elif data.heartbeat_finished_at is None:
         add("HISTORIAN_EXECUTION_UNOBSERVED")
-    elif _timestamp(data.heartbeat_finished_at) is None:
+    elif heartbeat_finished is None:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
-    elif _timestamp(data.now) and _timestamp(data.now) - _timestamp(data.heartbeat_finished_at) > _seconds(_MAX_AGE_SECONDS):
-        add("HISTORIAN_EXECUTION_STALE")
+    else:
+        if now and abs(now - heartbeat_finished) > _seconds(_MAX_AGE_SECONDS):
+            add("HISTORIAN_EXECUTION_STALE")
+        if heartbeat_started and heartbeat_finished < heartbeat_started:
+            add("HISTORIAN_EXECUTION_INVALID")
     if data.heartbeat_status is None:
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
@@ -244,7 +250,6 @@ def evaluate(data: MachineMemoryPreflightInput) -> MachineMemoryPreflightVerdict
         unknown = True
         add("CRITICAL_FACT_UNKNOWN")
 
-    now = _timestamp(data.now)
     ingested = _timestamp(data.latest_ingested_at)
     if now and ingested and abs(now - ingested) > _seconds(_MAX_AGE_SECONDS):
         add("INGEST_STALE")

@@ -268,6 +268,23 @@ def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
             "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
         ) == "ok:2:true"
 
+        with pytest.raises(IntegrityError):
+            with app_engine.begin() as conn:
+                conn.execute(
+                    text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant}
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE historian_task_heartbeat
+                           SET finished_at = started_at - INTERVAL '1 second'
+                         WHERE tenant_id = CAST(:tenant_id AS UUID)
+                           AND task_name = 'historize_runs'
+                        """
+                    ),
+                    {"tenant_id": tenant},
+                )
+
         assert _scalar_as_app(
             schema,
             other_tenant,

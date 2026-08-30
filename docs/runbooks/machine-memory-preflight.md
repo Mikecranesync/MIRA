@@ -61,6 +61,8 @@ failures, `UNKNOWN`, and `NO_GO` all fail the workflow and can never be reported
 as `GO`. `GO` also requires a terminal heartbeat status of `ok`, fresh source
 observation time, a per-scan live ratio of at least 0.5, and at least 12 CV-101
 tags; fresh database receipt time alone is not evidence of live telemetry.
+The terminal heartbeat must finish on or after it starts and within the approved
+five-minute past/future clock-skew window; either exact boundary remains valid.
 
 The heartbeat hashes the same parsed values the historian executes. UNS paths
 must already be lowercase, dotted, ltree-safe values; slash-form, uppercase,
