@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Micro820 discharge-conveyor v4.2.2 package now removes the undeclared `e_stop_ok` dependency that caused CCW `PROG2(174,0): E_STOP_OK: undeclared identifier`, while preserving the existing E-stop and wiring-fault permissive logic.
 - Hub production deploy wiring now passes the shared Hub-to-Atlas SSO signing configuration into `mira-hub`, and synthetic QA seeding can consume Doppler-backed per-persona credentials without logging password values.
 - Hub CMMS links now go through a signed Hub-to-Atlas SSO handoff so authenticated Hub users land in FactoryLM Works without re-entering credentials.
 - Hub lint debt is cleared across app pages, shared components, and e2e probes so `mira-hub` ESLint runs with zero errors and zero warnings.

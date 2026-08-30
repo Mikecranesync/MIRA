@@ -1,7 +1,7 @@
 """SimLab Evaluation Service tests — Phase P1 of the platform-oracle plan.
 
 Asserts the reusable scoring service (``simlab.evaluation``):
-1. ``run_all`` returns one ``ScenarioScore`` per scenario (6).
+1. ``run_all`` returns one ``ScenarioScore`` per scenario.
 2. The oracle/reference answerer (``ground_truth_answerer``) passes every
    scenario on every dimension (positive control proving the pipeline is wired).
 3. The honest evidence-only answerer lights up asset/evidence/citation but
@@ -28,10 +28,10 @@ from simlab.evaluation import (
 from simlab.scenarios import SCENARIOS, get_scenario
 
 
-def test_run_all_returns_six_scores() -> None:
-    """run_all yields exactly one ScenarioScore per scenario (A–F)."""
+def test_run_all_returns_one_score_per_scenario() -> None:
+    """run_all yields exactly one ScenarioScore per registered scenario."""
     scores = run_all(ground_truth_answerer)
-    assert len(scores) == len(SCENARIOS) == 6
+    assert len(scores) == len(SCENARIOS)
     assert all(isinstance(s, ScenarioScore) for s in scores)
     assert {s.scenario_id for s in scores} == set(SCENARIOS.keys())
 
@@ -93,15 +93,15 @@ def test_to_json_schema() -> None:
 
     assert blob["schema_version"] == 1
     agg = blob["aggregate"]
-    assert agg["scenario_count"] == 6
-    assert agg["passed"] == 6  # oracle passes all
+    assert agg["scenario_count"] == len(SCENARIOS)
+    assert agg["passed"] == len(SCENARIOS)  # oracle passes all
     assert agg["pass_rate"] == 1.0
     assert 0.0 <= agg["mean_overall"] <= 1.0
     assert agg["dimension_weights"] == dict(DIMENSION_WEIGHTS)
     # Weights are a proper distribution.
     assert round(sum(DIMENSION_WEIGHTS.values()), 6) == 1.0
 
-    assert len(blob["scenarios"]) == 6
+    assert len(blob["scenarios"]) == len(SCENARIOS)
     expected_keys = {
         "scenario_id",
         "passed",
@@ -129,7 +129,7 @@ def test_to_markdown_schema() -> None:
     md = to_markdown(scores)
 
     assert "# SimLab Evaluation Scorecard" in md
-    assert "**Passed:** 6/6" in md
+    assert f"**Passed:** {len(SCENARIOS)}/{len(SCENARIOS)}" in md
     assert "Mean overall" in md
     # Header row carries the five PRD dimensions.
     assert "Asset | RootCause | EvidRecall | Citation | Action" in md

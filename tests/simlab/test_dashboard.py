@@ -37,14 +37,16 @@ def client(tmp_path: Path) -> Any:
 
 def test_scorecard_oracle_passes_all(client: Any) -> None:
     """The oracle answerer is the positive control: every scenario passes."""
+    from simlab.scenarios import SCENARIOS
+
     r = client.get("/simlab/eval/scorecard?answerer=oracle")
     assert r.status_code == 200
     data = r.json()
     assert data["schema_version"] == 1
     assert data["answerer"] == "oracle"
     agg = data["aggregate"]
-    assert agg["scenario_count"] == 6
-    assert agg["passed"] == 6
+    assert agg["scenario_count"] == len(SCENARIOS)
+    assert agg["passed"] == len(SCENARIOS)
     assert agg["pass_rate"] == 1.0
     assert {"oracle", "evidence_only"} <= set(data["answerers"])
     # each scenario carries the five graded dimensions

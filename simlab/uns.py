@@ -38,6 +38,7 @@ DISPLAY_LABELS: dict[str, str] = {
     PLANT: "Plant1",
     AREA: "JuiceBottling",
     LINE: "Line01",
+    "discharge_conveyor01": "DischargeConveyor01",
 }
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")

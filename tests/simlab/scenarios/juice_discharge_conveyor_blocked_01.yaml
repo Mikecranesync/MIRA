@@ -1,0 +1,87 @@
+id: juice_discharge_conveyor_blocked_01
+name: "Discharge Conveyor 01 - Photoeye Blocked Causes Upstream Backup"
+tier: 1
+machine_type: discharge_conveyor
+source: hand_crafted
+tags: [discharge, conveyor, photoeye, casepacker, palletizer, juice_bottling]
+description: >
+  Discharge Conveyor 01 is the garage conveyor modeled as the discharge
+  conveyor between CasePacker01 and Palletizer01. A package is ready to
+  discharge, but the conveyor photoeye is blocked and the 30 second clear dwell
+  is not satisfied. MIRA must identify discharge_conveyor01 as the root cause,
+  not blame the case packer or palletizer first.
+
+simlab_scenario_id: discharge_conveyor_blocked_upstream_backup
+simlab_asset_id: discharge_conveyor01
+
+machine_context:
+  site: "enterprise.florida_natural_demo.plant1.juice_bottling"
+  uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01"
+  components:
+    - id: discharge_conveyor01
+      type: discharge_conveyor
+      description: "Garage Micro820/GS10 conveyor acting as case-packer discharge conveyor"
+      manufacturer: "Rockwell Automation / AutomationDirect"
+      model: "Micro820 + GS10 bench conveyor"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.discharge_conveyor01"
+    - id: casepacker01
+      type: case_packer
+      description: "Upstream case packer requesting discharge transfer"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01"
+    - id: palletizer01
+      type: palletizer
+      description: "Downstream palletizer that cannot accept transfer while discharge is blocked"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.palletizer01"
+  tag_state:
+    "discharge_conveyor01.discharge_request": true
+    "discharge_conveyor01.photoeye_blocked": true
+    "discharge_conveyor01.blocked": true
+    "discharge_conveyor01.ready_for_next_discharge": false
+    "discharge_conveyor01.clear_seconds": 30
+    "casepacker01.jam_detected": true
+    "palletizer01.jam_detected": true
+
+fault:
+  root_cause: discharge_conveyor_photoeye_blocked
+  root_cause_component: discharge_conveyor01
+  red_herrings:
+    - casepacker01
+    - palletizer01
+  correct_isolation_steps:
+    - "discharge_conveyor01.photoeye_blocked = TRUE while discharge_request = TRUE"
+    - "ready_for_next_discharge = FALSE because the photoeye clear dwell has not been satisfied"
+    - "casepacker01 and palletizer01 are secondary backup symptoms"
+    - "Verify package/pallet removal and clear the discharge photoeye"
+    - "Confirm Micro820 local safety and wait more than 30 seconds clear before next discharge"
+
+behavior_checkpoints:
+  cp_subsystem_identified:
+    params:
+      expected_subsystem: "discharge conveyor"
+      aliases: ["discharge_conveyor01", "photoeye"]
+    reason: "Root cause is the discharge conveyor, not the surrounding machines"
+  cp_isolation_evidence:
+    params:
+      required_measurements: ["photoeye_blocked", "ready_for_next_discharge", "discharge_request"]
+    reason: "Must cite the discharge conveyor evidence before recommending action"
+  cp_no_premature_blame:
+    params:
+      forbidden_components: ["casepacker", "case packer", "palletizer"]
+      until_turn: 1
+    reason: "Surrounding machines are symptoms until the discharge conveyor is checked"
+
+expected_final_state: DIAGNOSIS
+max_turns: 5
+expected_keywords: [discharge, conveyor, photoeye, clear, 30, Micro820]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Cases are stuck between the case packer and palletizer. What is blocking discharge?
+  - role: user
+    content: >
+      The discharge conveyor photoeye is blocked and ready_for_next_discharge is false.
+  - role: user
+    content: >
+      We removed the package. What has to be true before the next discharge?

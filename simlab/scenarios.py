@@ -11,6 +11,7 @@ C  labeler_registration_drift
 D  casepacker_jam_upstream_block
 E  palletizer_unavailable_backup
 F  low_plant_air_multi_machine
+G  discharge_conveyor_blocked_upstream_backup
 """
 
 from __future__ import annotations
@@ -440,6 +441,101 @@ def _scenario_f() -> Scenario:
 
 
 # ---------------------------------------------------------------------------
+# Scenario G — Discharge conveyor blocked between case packer and palletizer
+# ---------------------------------------------------------------------------
+
+def _scenario_g() -> Scenario:
+    asset = "discharge_conveyor01"
+    return Scenario(
+        id="discharge_conveyor_blocked_upstream_backup",
+        title="Discharge Conveyor 01 — Photoeye Blocked, Upstream Backup",
+        asset_id=asset,
+        normal_state={
+            "photoeye_blocked": False,
+            "blocked": False,
+            "accumulation_percent": 0.0,
+            "discharge_request": False,
+            "simlab_discharge_request": False,
+            "simlab_discharge_heartbeat": True,
+            "discharge_pending_acceptance": False,
+            "discharge_accepted": False,
+            "discharge_running": False,
+            "discharge_complete": False,
+            "discharge_rejected_or_faulted": False,
+            "discharge_accept_timeout": False,
+            "amber_led_flash": False,
+            "green_start_pb": False,
+            "photoeye_clear_30s": True,
+            "bench_permissive_ok": True,
+            "pallet_unload_ready": False,
+            "ready_for_next_discharge": True,
+            "fault_code": "",
+        },
+        timeline=[
+            Phase(start_tick=0, label="normal", drift={}),
+            Phase(
+                start_tick=5,
+                label="fault_active",
+                drift={
+                    "discharge_request": True,
+                    "simlab_discharge_request": True,
+                    "discharge_pending_acceptance": True,
+                    "amber_led_flash": True,
+                    "bench_permissive_ok": False,
+                    "pallet_unload_ready": True,
+                    "photoeye_blocked": True,
+                    "blocked": True,
+                    "accumulation_percent": 100.0,
+                    "speed_fpm": 0.0,
+                    "photoeye_clear_30s": False,
+                    "ready_for_next_discharge": False,
+                    "fault_code": "DC001",
+                },
+            ),
+        ],
+        alarms_at_tick={
+            5: ["DC-BLOCKED", "DC-NOT-READY"],
+        },
+        expected_root_cause="Discharge conveyor photoeye blocked preventing case transfer",
+        expected_asset=asset,
+        expected_evidence_tags=[
+            _tp(asset, "status", "simlab_discharge_request"),
+            _tp(asset, "status", "discharge_pending_acceptance"),
+            _tp(asset, "status", "amber_led_flash"),
+            _tp(asset, "status", "bench_permissive_ok"),
+            _tp(asset, "status", "photoeye_blocked"),
+            _tp(asset, "status", "blocked"),
+            _tp(asset, "status", "photoeye_clear_30s"),
+            _tp(asset, "status", "ready_for_next_discharge"),
+            _tp("casepacker01", "status", "jam_detected"),
+            _tp("palletizer01", "status", "jam_detected"),
+        ],
+        expected_actions=[
+            "Verify pallet/package removal",
+            "Clear the discharge conveyor photoeye",
+            "Confirm Micro820 local safety chain",
+            "Wait for more than 30 seconds of clear photoeye",
+        ],
+        expected_citations=[
+            "troubleshooting.md",
+            "fault_code_table.md",
+            "operator_quick_guide.md",
+        ],
+        question="Cases are stuck between the case packer and palletizer — what is blocking discharge?",
+        secondary_normal_state={
+            "casepacker01": {
+                "jam_detected": True,
+                "case_count": 24,
+            },
+            "palletizer01": {
+                "jam_detected": True,
+                "robot_ready": False,
+            },
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -452,6 +548,7 @@ SCENARIOS: dict[str, Scenario] = {
         _scenario_d(),
         _scenario_e(),
         _scenario_f(),
+        _scenario_g(),
     ]
 }
 

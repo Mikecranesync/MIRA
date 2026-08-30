@@ -90,6 +90,22 @@ def test_juice_tags() -> None:
             assert tag_def.default is not None, f"{asset.asset_id}.{tag_name}: default is None"
 
 
+def test_discharge_conveyor_sits_between_casepacker_and_palletizer() -> None:
+    """The garage conveyor is modeled as the bottling-line discharge conveyor."""
+    line = build_line()
+    asset_ids = [asset.asset_id for asset in line.assets]
+
+    assert asset_ids.index("casepacker01") < asset_ids.index("discharge_conveyor01")
+    assert asset_ids.index("discharge_conveyor01") < asset_ids.index("palletizer01")
+
+    discharge = line.asset("discharge_conveyor01")
+    assert discharge.asset_type == "discharge_conveyor"
+    assert discharge.tags["photoeye_blocked"].default is False
+    assert discharge.tags["clear_seconds"].default == 30
+    assert discharge.tags["discharge_request"].default is False
+    assert discharge.tags["ready_for_next_discharge"].default is True
+
+
 # ---------------------------------------------------------------------------
 # 3. UNS stability / MQTT round-trip
 # ---------------------------------------------------------------------------
@@ -159,6 +175,25 @@ def test_juice_alarms_fire() -> None:
                         f"active at tick {pre_tick} (before fault phase) — "
                         f"alarm test is vacuous"
                     )
+
+
+def test_discharge_conveyor_blocked_upstream_backup_scenario() -> None:
+    """Blocked discharge conveyor scenario points evidence at discharge_conveyor01."""
+    sid = "discharge_conveyor_blocked_upstream_backup"
+    eng = _fresh_engine(sid)
+    eng.advance(15)
+
+    active_codes = {a["code"] for a in eng.active_alarms()}
+    assert "DC-BLOCKED" in active_codes
+
+    ev = assemble_evidence(eng, get_scenario(sid))
+    assert ev.asset_id == "discharge_conveyor01"
+
+    found_paths = {e["uns_path"] for e in ev.abnormal_tags}
+    expected_paths = set(get_scenario(sid).expected_evidence_tags)
+    assert expected_paths <= found_paths
+    assert any("casepacker01" in path for path in found_paths)
+    assert any("palletizer01" in path for path in found_paths)
 
 
 # ---------------------------------------------------------------------------

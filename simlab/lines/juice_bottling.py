@@ -8,6 +8,7 @@ Process flow (left to right, accumulation/backup propagates upstream):
         → Capper01 → Labeler01 → CasePacker01 → Palletizer01
 
 Utilities: AirSystem01, CIPSkid01.
+DischargeConveyor01 is the garage conveyor stand-in between CasePacker01 and Palletizer01.
 """
 
 from __future__ import annotations
@@ -32,6 +33,9 @@ from simlab.models import (
     LineModel,
     PlantModel,
     Severity,
+    TagCategory,
+    TagDef,
+    ValueType,
 )
 from simlab.packml import PackMLState
 
@@ -567,6 +571,197 @@ def _casepacker01() -> AssetModel:
 
 
 # ---------------------------------------------------------------------------
+# DischargeConveyor01
+# ---------------------------------------------------------------------------
+
+def _discharge_conveyor01() -> AssetModel:
+    """Garage conveyor stand-in used as the case-packer discharge conveyor."""
+    tags = conveyor_zone_tags()
+    tags.update(
+        {
+            "discharge_request": TagDef(
+                name="discharge_request",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="Case packer requests discharge transfer toward the palletizer.",
+            ),
+            "simlab_discharge_request": TagDef(
+                name="simlab_discharge_request",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="High-level SimLab request bit; PLC must treat this as request only.",
+            ),
+            "simlab_discharge_heartbeat": TagDef(
+                name="simlab_discharge_heartbeat",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=True,
+                description="Optional bridge heartbeat proving the request source is alive.",
+            ),
+            "discharge_pending_acceptance": TagDef(
+                name="discharge_pending_acceptance",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True while a remote discharge request is waiting for local human acceptance.",
+            ),
+            "discharge_accepted": TagDef(
+                name="discharge_accepted",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True after a clean rising edge of the local green/start push button.",
+            ),
+            "discharge_running": TagDef(
+                name="discharge_running",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True only while the PLC has accepted and is running the discharge conveyor.",
+            ),
+            "discharge_complete": TagDef(
+                name="discharge_complete",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True after an accepted discharge stops on photoeye blocked.",
+            ),
+            "discharge_rejected_or_faulted": TagDef(
+                name="discharge_rejected_or_faulted",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True when the request is canceled, times out, or a permissive/fault stops the cycle.",
+            ),
+            "discharge_accept_timeout": TagDef(
+                name="discharge_accept_timeout",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="True when the human acceptance button was not pressed before timeout.",
+            ),
+            "amber_led_flash": TagDef(
+                name="amber_led_flash",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="Logical amber flash state while pending; physical output must be verified first.",
+            ),
+            "green_start_pb": TagDef(
+                name="green_start_pb",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="Bench green/start push button input, verified as PBRun/_IO_EM_DI_04 in the current PLC map.",
+            ),
+            "photoeye_clear_30s": TagDef(
+                name="photoeye_clear_30s",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=True,
+                description="True when the photoeye has been clear for more than 30 seconds.",
+            ),
+            "bench_permissive_ok": TagDef(
+                name="bench_permissive_ok",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=True,
+                description="Composite local permissive: E-stop OK, stop clear, drive ready, no fault, photoeye clear dwell satisfied.",
+            ),
+            "pallet_unload_ready": TagDef(
+                name="pallet_unload_ready",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=False,
+                description="Palletizer/case-discharge permissive for accepting the next package.",
+            ),
+            "clear_seconds": TagDef(
+                name="clear_seconds",
+                category=TagCategory.PROCESS,
+                value_type=ValueType.INT,
+                default=30,
+                unit="s",
+                description="Required photoeye-clear dwell before the next discharge is allowed.",
+            ),
+            "ready_for_next_discharge": TagDef(
+                name="ready_for_next_discharge",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=True,
+                description="True when the photoeye has been clear long enough for the next cycle.",
+            ),
+            "micro820_control_authority": TagDef(
+                name="micro820_control_authority",
+                category=TagCategory.STATUS,
+                value_type=ValueType.BOOL,
+                default=True,
+                description="True when the bench Micro820/garage conveyor owns motion control.",
+            ),
+        }
+    )
+    return AssetModel(
+        asset_id="discharge_conveyor01",
+        asset_type="discharge_conveyor",
+        display_name="Discharge Conveyor 01",
+        baseline="belt_conveyor",
+        tags=tags,
+        fault_codes=[
+            FaultCode(
+                code="DC001",
+                label="Discharge Photoeye Blocked",
+                description=(
+                    "Discharge conveyor photoeye remains blocked while the case packer "
+                    "is requesting transfer."
+                ),
+                severity=Severity.FAULT,
+                likely_cause=(
+                    "Package/pallet not removed, blocked photoeye beam, or downstream "
+                    "palletizer not accepting discharge."
+                ),
+                recommended_action=(
+                    "Verify pallet/package removal, clear the photoeye, and confirm "
+                    "Micro820 local safety before the next discharge."
+                ),
+            ),
+            FaultCode(
+                code="DC002",
+                label="Clear Timer Not Satisfied",
+                description="Photoeye has not been clear for the required 30 second dwell.",
+                severity=Severity.WARN,
+                likely_cause="Product still present or the photoeye just cleared.",
+                recommended_action="Wait for more than 30 seconds of clear photoeye before cycling.",
+            ),
+        ],
+        alarms=[
+            AlarmDef(
+                code="DC-BLOCKED",
+                severity=Severity.FAULT,
+                message="DischargeConveyor01: photoeye blocked; transfer cannot complete.",
+                source_tag="photoeye_blocked",
+                predicate=lambda v: v is True,
+                fault_code="DC001",
+            ),
+            AlarmDef(
+                code="DC-NOT-READY",
+                severity=Severity.WARN,
+                message="DischargeConveyor01: clear dwell not satisfied for next discharge.",
+                source_tag="ready_for_next_discharge",
+                predicate=lambda v: v is False,
+                fault_code="DC002",
+            ),
+        ],
+        docs=[
+            "operator_quick_guide.md",
+            "troubleshooting.md",
+            "fault_code_table.md",
+        ],
+        packml_default=PackMLState.IDLE,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Palletizer01
 # ---------------------------------------------------------------------------
 
@@ -793,6 +988,7 @@ def build_line() -> LineModel:
             _capper01(),
             _labeler01(),
             _casepacker01(),
+            _discharge_conveyor01(),
             _palletizer01(),
         ],
         utilities=[

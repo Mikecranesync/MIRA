@@ -45,12 +45,12 @@ def _engine_at(scenario_id: str, ticks: int) -> SimEngine:
 def _synthetic_correct_reply(scenario) -> str:
     """Build a CORRECT free-text reply using ONLY the scenario's ground truth.
 
-    Pulls the expected root cause, expected asset, a couple of expected evidence
+    Pulls the expected root cause, expected asset, several expected evidence
     tags, and an expected citation filename. This is the positive control: if the
     grader can't pass a reply assembled from its own answer key, the rubric or
     evidence wiring has regressed.
     """
-    evidence_snippet = " ".join(scenario.expected_evidence_tags[:2])
+    evidence_snippet = " ".join(scenario.expected_evidence_tags[:3])
     citation = scenario.expected_citations[0] if scenario.expected_citations else ""
     return (
         f"Root cause: {scenario.expected_root_cause}. "

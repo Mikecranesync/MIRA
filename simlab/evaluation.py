@@ -60,6 +60,7 @@ DEFAULT_MANIFEST_TICKS: dict[str, int] = {
     "casepacker_jam_upstream_block": 15,        # CP-JAM @10 latched; jam_detected True
     "palletizer_unavailable_backup": 10,        # robot_ready False @5; casepacker backs up
     "low_plant_air_multi_machine": 40,          # AS-LOW-PRESS @30; header at 55 psi
+    "discharge_conveyor_blocked_upstream_backup": 15,  # DC-BLOCKED @5; clear dwell blocked
 }
 
 

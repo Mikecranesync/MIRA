@@ -25,6 +25,8 @@ Depalletizer01 → ConveyorZone01 → ConveyorZone02 → Rinser01 → Filler01
 
 **Accumulation / backup propagation:** A stoppage at any downstream machine causes the upstream conveyor accumulation zones to fill. When `conveyorzone02.accumulation_percent` = 100%, upstream machines are forced to hold. This is how Scenarios D and E generate multi-machine symptoms from a single root cause.
 
+`DischargeConveyor01` maps the existing garage Micro820/GS10 conveyor into the line as the case-packer discharge conveyor between `casepacker01` and `palletizer01`. SimLab models it headlessly by default; the real Micro820 remains the safety and motion-control authority for any future opt-in bench bridge.
+
 ---
 
 ## UNS Tree
@@ -152,7 +154,7 @@ enterprise
 
 ---
 
-## Six Scenarios (A–F)
+## Seven Scenarios (A-G)
 
 | ID | Title | Primary Asset | Root Cause | Question Posed |
 |----|-------|--------------|------------|----------------|
@@ -162,6 +164,7 @@ enterprise
 | D | Case Packer Jam Blocks Line | casepacker01 | `jam_detected` = TRUE; upstream accumulation fills; labeler and capper forced to hold | "The whole line slowed down — where's the problem?" |
 | E | Palletizer Unavailable Backs Up Cases | palletizer01 | `robot_ready` = FALSE (E-stop); casepacker discharge backs up; upstream fills | "Cases piling up — what's happening?" |
 | F | Low Plant Air — Multi-Machine Symptoms | airsystem01 | `header_pressure_psi` drops; `low_air_alarm` = TRUE; depalletizer vacuum, filler bowl, capper chute, case packer cylinders all degraded | "Multiple machines are throwing faults — what's the root cause?" |
+| G | Discharge Conveyor Blocked — Upstream Backup | discharge_conveyor01 | Discharge photoeye blocked while transfer is requested; 30 second clear dwell not satisfied | "Cases are stuck between the case packer and palletizer — what is blocking discharge?" |
 
 ---
 
@@ -260,6 +263,7 @@ The honest engine test uses the real Supervisor (via `tests/simlab/runner.py`) a
 - `simlab/` — all simulator source code
 - `simlab/docs/<asset_id>/` — synthetic maintenance document fixtures
 - `tests/simlab/` — deterministic test suite (10 test modules)
+- `docs/simlab/garage-conveyor-discharge-conveyor.md` — garage conveyor to bottling-line discharge conveyor mapping
 - `tests/simlab/scenarios/` — YAML scenario definitions for runner.py
 - `docs/simlab/factory-io-optional-adapter.md` — Factory I/O visual layer (optional, not authoritative)
 - `docs/simlab/SIMLAB_BUILD_TASK.md` — full delegation spec (locked interfaces)
