@@ -236,8 +236,16 @@ def _credential_query_name(url: str) -> "str | None":
     """
     from unicodedata import normalize
 
-    query = normalize("NFKC", str(url).strip().partition("?")[2].partition("#")[0])
-    for pair in re.split(r"[&;]", query):
+    s = str(url).strip()
+    query = normalize("NFKC", s.partition("?")[2].partition("#")[0])
+    # The fragment takes the same rule for `name=value` pairs (round AO on
+    # #3481): it is never sent to a server, but it IS persisted in source_url
+    # (an OAuth implicit-flow `#access_token=…` is the canonical case). A
+    # fragment without `=` is an anchor (`#token`, `#signature` are ordinary
+    # section ids in a manual), not a parameter.
+    fragment = normalize("NFKC", s.partition("#")[2])
+    pairs = re.split(r"[&;]", query) + [p for p in re.split(r"[&;]", fragment) if "=" in p]
+    for pair in pairs:
         if not pair:
             continue
         name = _fold_query_name(pair.split("=", 1)[0])

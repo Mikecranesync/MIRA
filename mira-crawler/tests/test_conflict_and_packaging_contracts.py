@@ -1163,8 +1163,19 @@ class TestUserinfoRefusedAtTheBoundary:
         # is split, so a full-width `＆` (U+FF06) or `；` (U+FF1B) is a separator.
         "https://example.com/doc.pdf?page=2＆token=abc123",
         "https://example.com/doc.pdf?page=2；api_key=abc123",
+        # Round AO (#3481, round-38 S2 F2): a fragment is never sent to a server but
+        # IS persisted in source_url, so `name=value` pairs in it take the same rule
+        # (an OAuth implicit-flow `#access_token=…` is the canonical case).
+        "https://example.com/doc.pdf#access_token=abc123",
+        "https://example.com/doc.pdf?page=2#api_key=abc123",
+        "https://example.com/doc.pdf#state=x&token=abc123",
     )
     ORDINARY_QUERY = (
+        # A fragment without `=` is an anchor, not a parameter: `#token` and
+        # `#signature` are ordinary section ids in a manual (round AO).
+        "https://example.com/doc.pdf#token",
+        "https://example.com/doc.pdf#signature",
+        "https://example.com/doc.pdf?page=2#section-3",
         "https://example.com/doc.pdf?q=token",  # the WORD in a value is not a credential
         "https://example.com/doc.pdf?q=api_key+rotation&page=2",
         "https://example.com/doc.pdf?v=3&lc=en&limit=10",
