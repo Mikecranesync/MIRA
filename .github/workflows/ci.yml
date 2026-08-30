@@ -1492,25 +1492,32 @@ jobs:
           # *gate*.
           require_success capability-closure    "$CAPABILITY_RESULT"
           require_success docs-fault-codes      "$DOCS_FAULT_CODES_RESULT"
-          require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"
           # Informative only until promoted: print, never fail.
           echo "module-suites: '$MODULE_SUITES_RESULT' (not yet gated — see promotion note)"
 
-          # test-unit: the only gated job allowed to skip, and ONLY on a genuine
-          # docs-only PR (changes succeeded AND code did not change).
+          # test-unit and historian-heartbeat-postgres may skip ONLY on a
+          # genuine docs-only PR (changes succeeded AND code did not change).
+          # On code PRs both must succeed; an unknown filter state stays
+          # fail-closed and requires actual success from both jobs.
           if [ "$CODE_CHANGED" = "true" ]; then
             require_success test-unit "$TEST_UNIT_RESULT"
             # Same `code == 'true'` condition as test-unit, so gated the same way.
             require_success bench-harness-tests "$BENCH_HARNESS_RESULT"
+            require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"
           elif [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "false" ]; then
             case "$TEST_UNIT_RESULT" in
               success|skipped) echo "test-unit: '$TEST_UNIT_RESULT' (allowed — docs-only PR)" ;;
               *) echo "::error::test-unit must be success or skipped on a docs-only PR (result: '$TEST_UNIT_RESULT')"; fail=1 ;;
             esac
+            case "$HISTORIAN_HEARTBEAT_RESULT" in
+              success|skipped) echo "historian-heartbeat-postgres: '$HISTORIAN_HEARTBEAT_RESULT' (allowed — docs-only PR)" ;;
+              *) echo "::error::historian-heartbeat-postgres must be success or skipped on a docs-only PR (result: '$HISTORIAN_HEARTBEAT_RESULT')"; fail=1 ;;
+            esac
           else
             # changes failed or CODE_CHANGED is not a clean true/false — do not
-            # excuse test-unit; it must have actually succeeded.
+            # excuse either conditional job; both must have actually succeeded.
             require_success test-unit "$TEST_UNIT_RESULT"
+            require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"
           fi
 
           if [ "$fail" -ne 0 ]; then

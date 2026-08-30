@@ -297,7 +297,7 @@ def test_heartbeat_ci_job_runs_units_and_real_rls_contract_with_skip_guard():
     assert '! grep -qi "skipped" heartbeat-postgres.out' in job
 
 
-def test_heartbeat_postgres_job_is_dependency_and_result_checked_by_ci_gate():
+def test_heartbeat_postgres_job_mirrors_code_and_docs_only_ci_gate_semantics():
     workflow = (
         Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
     ).read_text(encoding="utf-8")
@@ -308,10 +308,18 @@ def test_heartbeat_postgres_job_is_dependency_and_result_checked_by_ci_gate():
         "HISTORIAN_HEARTBEAT_RESULT: "
         "${{ needs.historian-heartbeat-postgres.result }}"
     ) in gate
-    assert (
+    code_changed = gate.split('if [ "$CODE_CHANGED" = "true" ]; then', 1)[1]
+    code_branch, remaining = code_changed.split("elif", 1)
+    docs_branch, unknown_branch = remaining.split("else", 1)
+    required = (
         'require_success historian-heartbeat-postgres "$HISTORIAN_HEARTBEAT_RESULT"'
-        in gate
     )
+
+    assert required in code_branch
+    assert 'case "$HISTORIAN_HEARTBEAT_RESULT" in' in docs_branch
+    assert "success|skipped" in docs_branch
+    assert required in unknown_branch.split("fi", 1)[0]
+    assert gate.count(required) == 2
 
 
 def test_migration_order_checker_rejects_heartbeat_before_historian_foundation(tmp_path):
