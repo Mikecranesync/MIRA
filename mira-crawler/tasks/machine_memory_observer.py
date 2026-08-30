@@ -45,7 +45,7 @@ class HttpxHub:
     def __init__(self, base: str, cookie: str | None, email: str | None, password: str | None):
         import httpx
 
-        self._client = httpx.Client(base_url=base, timeout=60, follow_redirects=True)
+        self._client = httpx.Client(base_url=base, timeout=60, follow_redirects=False)
         self._cookie = cookie
         if not self._cookie and email and password:
             self._cookie = self._sign_in(email, password)

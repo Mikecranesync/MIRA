@@ -265,3 +265,37 @@ def test_series_file_is_rewritten_from_daily_records(tmp_path):
     assert series["days_observed"] == 2
     assert series["operational"] is False
     assert series["code_ready"] is True
+
+
+def test_task_is_registered_on_the_worker_and_beat_entry_is_flag_gated(monkeypatch):
+    """Review finding: a beat entry for an unregistered task is a daily
+    'unregistered task' error, and an always-scheduled entry publishes even
+    when disabled. Both are pinned here."""
+    import importlib
+    import sys
+
+    import celery_app
+
+    assert "tasks.machine_memory_observer.observe_cv101_machine_memory" in celery_app.app.tasks
+
+    monkeypatch.setenv("CELERY_BEAT_PROFILE", "synthetic-dogfood")
+    monkeypatch.delenv("MACHINE_MEMORY_OBSERVER_ENABLED", raising=False)
+    sys.modules.pop("celeryconfig", None)
+    cfg = importlib.import_module("celeryconfig")
+    assert "machine-memory-observer-daily" not in cfg.beat_schedule
+
+    monkeypatch.setenv("MACHINE_MEMORY_OBSERVER_ENABLED", "1")
+    sys.modules.pop("celeryconfig", None)
+    cfg = importlib.import_module("celeryconfig")
+    entry = cfg.beat_schedule["machine-memory-observer-daily"]
+    assert entry["task"] == "tasks.machine_memory_observer.observe_cv101_machine_memory"
+    assert entry["options"]["queue"] == "synthetic"
+    sys.modules.pop("celeryconfig", None)
+
+
+def test_observer_client_never_follows_redirects_with_the_session():
+    import inspect
+
+    import tasks.machine_memory_observer as t
+
+    assert "follow_redirects=False" in inspect.getsource(t.HttpxHub)

@@ -25,7 +25,7 @@ Answers "is Machine Memory operational for CV-101?" with a **GO / NO-GO** and
 | latest CV-101 fault window + row count | newest `faulted/estopped` window, `tag_events` in `[start−60 s, end+10 s]` |
 | physical / simulated / stale / unknown | `tag_events.simulated`, `quality`, `source_system` |
 
-Reason codes: `DB_NOT_CONFIGURED`, `RUN_DIFF_DISABLED`, `CV101_NOT_CONFIGURED`,
+Reason codes: `DB_NOT_CONFIGURED`, `DB_CONNECT_FAILED`, `TENANT_REQUIRED`, `RUN_DIFF_DISABLED`, `CV101_NOT_CONFIGURED`,
 `NO_FAULT_TRIGGERS`, `TABLES_UNAVAILABLE`, `INGEST_NONE`, `INGEST_STALE`,
 `HISTORIAN_NONE`, `HISTORIAN_STALE`, `NO_FAULT_WINDOW`, `FAULT_WINDOW_EMPTY`,
 `ROWS_SIMULATED`, `ROWS_STALE_QUALITY`. `TABLES_UNAVAILABLE` (no source) is
@@ -39,10 +39,15 @@ python tools/machine_memory_preflight.py --json
 # exit 0 = GO, 1 = NO-GO, 2 = refused/usage
 ```
 
-The tool **refuses** any database URL whose host or database name looks like
-production (`prod`, `prd`, `production`). Read-only inspection of staging goes
-through the approved paths (`db-inspect.yml`, or a `factorylm/stg` read-only
-URL).
+The gate is **fail-closed**: a database URL is readable only when its host is
+loopback (`127.0.0.1`, `localhost`, `::1`) or an operator-named dev/staging
+host (`--allow-host <host>` or `MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS`), **and**
+the shell is not a production Doppler config (`DOPPLER_CONFIG` /
+`DOPPLER_ENVIRONMENT` / `MIRA_ENV` = `prd|prod|production` → refused). Real Neon
+hosts carry no "prod" marker, so a hostname denylist would be theatre. A
+tenant is **required** (`MIRA_TENANT_ID` or `--tenant-id`) — without one the
+tool issues no query and reports `TENANT_REQUIRED`. A driver connection
+failure is reported as `DB_CONNECT_FAILED` with no host/user printed.
 
 ### Production (Mike)
 
@@ -60,7 +65,11 @@ recommend (`MIRA_RUN_DIFF_ENABLED=1`, `MIRA_MACHINE_MEMORY_UNS_PATHS`,
 ## 2. Seven-day observer — `tasks.machine_memory_observer.observe_cv101_machine_memory`
 
 Runs on the **existing** synthetic-dogfood beat (`CELERY_BEAT_PROFILE=synthetic-dogfood`,
-daily 06:15 UTC, queue `synthetic`). Inert unless `MACHINE_MEMORY_OBSERVER_ENABLED=1`.
+daily 06:15 UTC, queue `synthetic`). The beat entry is registered **only when**
+`MACHINE_MEMORY_OBSERVER_ENABLED=1` (the same flag gates the task body and is
+forwarded to both the worker and the beat container), so a disabled deployment
+publishes nothing. The task module is in `celery_app._TASK_MODULES`; a test pins
+its registration.
 It performs three GETs with the observer's own session and writes its own files:
 
 ```

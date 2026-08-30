@@ -693,6 +693,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // to ask). `error` is a sentence (mira-mobile renders it verbatim); `code`
   // is the discriminator. Nothing is recorded: a refused replay is not a turn.
   if (machineRequest && !groundedMachineEntry) {
+    // A transient read failure is NOT "history unavailable": the source
+    // exists, the read failed. Say so and let the client retry (503), rather
+    // than telling the technician the machine has no history.
+    if (machineUnavailableReason === "fetch_failed") {
+      return NextResponse.json(
+        {
+          error: "Machine Memory could not be read just now. Try again in a moment.",
+          code: "machine_history_read_failed",
+        },
+        { status: 503 },
+      );
+    }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
     if (windowEmpty) {
       return NextResponse.json(

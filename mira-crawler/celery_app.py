@@ -64,6 +64,7 @@ _TASK_MODULES = (
     "ingest",
     "intent_digest",
     "journey_swarm",
+    "machine_memory_observer",
     "linkedin",
     "patents",
     "playwright_crawler",

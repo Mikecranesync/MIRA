@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -51,6 +50,8 @@ FAULT_POST_S = 10
 
 REASON_CODES: dict[str, str] = {
     "DB_NOT_CONFIGURED": "No NEON_DATABASE_URL / --db-url; DB facts could not be read.",
+    "DB_CONNECT_FAILED": "The read-only database connection failed (details withheld; no host/user is printed).",
+    "TENANT_REQUIRED": "MIRA_TENANT_ID / --tenant-id is required: the preflight never reads across tenants.",
     "RUN_DIFF_DISABLED": "MIRA_RUN_DIFF_ENABLED is not '1' — the historian is a no-op.",
     "CV101_NOT_CONFIGURED": "CV-101's UNS path is in neither MIRA_MACHINE_MEMORY_UNS_PATHS nor MIRA_RUN_TRIGGERS.",
     "NO_FAULT_TRIGGERS": "MIRA_RUN_TRIGGERS names no trigger tag (no run segmentation).",
@@ -76,15 +77,41 @@ class ProductionRefused(Exception):
     """The database URL looks like production; this tool never reads it."""
 
 
-_PROD_RE = re.compile(r"(^|[^a-z])(prod|prd|production)([^a-z]|$)", re.I)
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+_PROD_ENV_KEYS = ("DOPPLER_CONFIG", "DOPPLER_ENVIRONMENT", "MIRA_ENV")
 
 
-def assert_not_production(db_url: str) -> None:
-    u = urlparse(db_url)
-    probe = f"{u.hostname or ''} {u.path or ''}"
-    if _PROD_RE.search(probe):
+def allowed_hosts(env: dict[str, str], extra: list[str] | None = None) -> set[str]:
+    """Loopback + operator-named dev/staging hosts. NEVER production."""
+    hosts = set(LOOPBACK_HOSTS)
+    hosts.update(
+        h.strip().lower()
+        for h in env.get("MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS", "").split(",")
+        if h.strip()
+    )
+    hosts.update(h.strip().lower() for h in (extra or []) if h.strip())
+    return hosts
+
+
+def assert_not_production(
+    db_url: str, env: dict[str, str] | None = None, extra_hosts: list[str] | None = None
+) -> None:
+    """Fail CLOSED: a database URL is readable only when its host is on the
+    allowlist (loopback, or a dev/staging host the operator named), and the
+    shell is not a production Doppler config. Real Neon hosts carry no
+    'prod' marker (`ep-<words>-<id>.<region>.aws.neon.tech`), so a denylist
+    on the hostname is theatre; the allowlist is the gate."""
+    env = env or {}
+    for key in _PROD_ENV_KEYS:
+        if env.get(key, "").strip().lower() in ("prd", "prod", "production"):
+            raise ProductionRefused(
+                f"{key}={env[key]} names production; prepare the command for Mike with --print-command"
+            )
+    host = (urlparse(db_url).hostname or "").lower()
+    if host not in allowed_hosts(env, extra_hosts):
         raise ProductionRefused(
-            "refusing a production-looking database URL; prepare the command for Mike with --print-command"
+            "database host is not on the dev/staging allowlist (loopback, MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS, "
+            "or --allow-host); production is never read from a code session — use --print-command for Mike"
         )
 
 
@@ -147,8 +174,10 @@ def collect_db_facts(query: Query, tenant_id: str, uns_path: str, now: datetime)
         "historian": {},
         "fault_window": {},
     }
-    tenant = (tenant_id,) if tenant_id else ()
-    tenant_pred = "tenant_id = %s::uuid AND " if tenant_id else ""
+    if not tenant_id:
+        raise ValueError("tenant_id is required — the preflight never scans across tenants")
+    tenant = (tenant_id,)
+    tenant_pred = "tenant_id = %s::uuid AND "
 
     # Ingest heartbeat under the CV-101 subtree.
     try:
@@ -320,9 +349,19 @@ def run_preflight(
     cv101_uns_path: str = DEFAULT_CV101_UNS_PATH,
 ) -> dict[str, Any]:
     db_facts = None
-    if query is not None:
-        db_facts = collect_db_facts(query, env.get("MIRA_TENANT_ID", ""), cv101_uns_path, now)
+    extra_reasons: list[str] = []
+    tenant_id = env.get("MIRA_TENANT_ID", "").strip()
+    if query is not None and not tenant_id:
+        extra_reasons.append("TENANT_REQUIRED")
+    elif query is not None:
+        db_facts = collect_db_facts(query, tenant_id, cv101_uns_path, now)
     report = evaluate(env, db_facts, cv101_uns_path=cv101_uns_path)
+    for r in extra_reasons:
+        if r not in report["reasons"]:
+            report["reasons"].insert(0, r)
+            report["reason_text"][r] = REASON_CODES[r]
+    if report["reasons"]:
+        report["verdict"] = "NO-GO"
     report["checked_at"] = now.astimezone(timezone.utc).isoformat()
     report["read_only"] = True
     return report
@@ -396,6 +435,17 @@ def main(
         help="print the production invocation for Mike; run nothing",
     )
     ap.add_argument(
+        "--allow-host",
+        action="append",
+        default=[],
+        help="add a dev/staging host to the allowlist (never production)",
+    )
+    ap.add_argument(
+        "--tenant-id",
+        default=None,
+        help="tenant UUID (default: MIRA_TENANT_ID); required for any DB read",
+    )
+    ap.add_argument(
         "--allow-production-by-operator",
         action="store_true",
         help="operator-only: lift the production-URL refusal",
@@ -411,19 +461,34 @@ def main(
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
 
+    if args.tenant_id:
+        env = {**env, "MIRA_TENANT_ID": args.tenant_id}
     query: Query | None = db
+    connect_failed = False
     if query is None:
         url = args.db_url or env.get("NEON_DATABASE_URL", "")
         if url:
             if not args.allow_production_by_operator:
                 try:
-                    assert_not_production(url)
+                    assert_not_production(url, env, args.allow_host)
                 except ProductionRefused as exc:
                     print(f"REFUSED: {exc}", file=sys.stderr)
                     return 2
-            query = _psycopg_query(url)
+            try:
+                query = _psycopg_query(url)
+            except Exception as exc:  # noqa: BLE001 — never print host/user from a driver error
+                print(
+                    f"DB_CONNECT_FAILED: {type(exc).__name__} (details withheld)", file=sys.stderr
+                )
+                connect_failed = True
 
     report = run_preflight(env, query, now=now, cv101_uns_path=args.cv101_uns_path)
+    if connect_failed:
+        report["verdict"] = "NO-GO"
+        report["reasons"] = ["DB_CONNECT_FAILED"] + [
+            r for r in report["reasons"] if r != "DB_NOT_CONFIGURED"
+        ]
+        report["reason_text"] = {r: REASON_CODES[r] for r in report["reasons"]}
     print(json.dumps(report, indent=2, default=str) if args.json else _render_text(report))
     return 0 if report["verdict"] == "GO" else 1
 

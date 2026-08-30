@@ -154,6 +154,17 @@ describe("empty / unavailable replay asks are refused at the seam (§9.2)", () =
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
+  it("a TRANSIENT history read failure is 503 machine_history_read_failed — not 'unavailable', nothing persisted", async () => {
+    dbMock.handlers = [KG_HIT, [/FROM machine_state_window/, () => { throw new Error("connection reset"); }], STALE];
+    const res = await POST(req({ message: "what happened?", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("machine_history_read_failed");
+    expect(body.error).toMatch(/Try again/);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
   it("a NON-empty window is unchanged: 200, answered, machine_history basis, provider called, turn persisted", async () => {
     dbMock.handlers = [KG_HIT, EVENTS, [/FROM tag_event_diffs/, { rows: [] }], STALE];
     const res = await POST(req({ message: "what happened?", sourceDocIds: [DOC_A], machineEvidence: ME }), params);

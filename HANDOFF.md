@@ -34,7 +34,7 @@
 | 7 | No `_stale_s` / raw tag / UNS fragment in fault titles | violated | writer persists `metadata.title/message`; Hub prefers persisted title → canonical catalog (`anomaly-titles.ts`, parity-tested against `rules_core.py`) → humanized rule id; pseudo-topics never rendered |
 | 8 | Both clocks visible when materially divergent | per-row only | + `ingestLagMaxMs` → "Ingest lagged the machine clock by up to N s" |
 | 9 | Failed/empty replay ask persists no fabricated turn | violated (gate off) | route refuses **before** retrieval/provider/persistence: `422 machine_window_empty` / `422 machine_history_unavailable {reason}`; `recordTurn` never called |
-| 10 | §9.3 read-only preflight | none | `tools/machine_memory_preflight.py` (13 reason codes, GO/NO-GO, prod-URL refusal, `--print-command` for Mike) |
+| 10 | §9.3 read-only preflight | none | `tools/machine_memory_preflight.py` (15 reason codes, GO/NO-GO, fail-closed host allowlist + prod-Doppler refusal, tenant required, `--print-command` for Mike) |
 | 11 | §9.4 seven-day observer | none | `tasks.machine_memory_observer` on the existing synthetic-dogfood beat, daily, read-only, inert by default; `series.json` evaluator |
 | 12 | Invariants | held | one conversation/evidence model/route; no new store, historian, or scheduler; provider-free refusals; tenant-scoped reads; read-only equipment |
 
@@ -46,7 +46,7 @@
 - `src/lib/machine-memory.ts` — `latest_diffs[].title` from `metadata.title`
 - `src/lib/machine-memory-response.ts` — `LatestDiff.title?`
 - `src/lib/machine-history.ts` — `HistoryCoverage`, `deriveCoverage()`, `coverage` on the wire
-- `src/app/api/equipment-notebooks/[id]/chat/route.ts` — the §9.2 refusal seam (`machine_window_empty` / `machine_history_unavailable`)
+- `src/app/api/equipment-notebooks/[id]/chat/route.ts` — the §9.2 refusal seam (`422 machine_window_empty` / `422 machine_history_unavailable` / `503 machine_history_read_failed`)
 - tests: `src/lib/__tests__/machine-history-coverage.test.ts` (new), `src/app/api/equipment-notebooks/[id]/chat/__tests__/replay-empty-window.test.ts` (new), `src/lib/machine-context-intelligence.test.ts` (+5), `…/chat/__tests__/machine-evidence.test.ts` (7 legacy cases rewritten to the new contract — see §4)
 
 **mira-mobile**
@@ -58,13 +58,14 @@
 
 **mira-crawler**
 - `run_engine/machine_memory.py` — persists `metadata.title` + `metadata.message` (additive)
-- `agents/machine_memory_observer.py` (new), `tasks/machine_memory_observer.py` (new), `celeryconfig.py` (route, rate limit, daily beat entry on the synthetic-dogfood profile)
-- tests: `tests/test_machine_memory_observer.py` (new, 9), `tests/test_machine_memory.py` (+1)
+- `agents/machine_memory_observer.py` (new), `tasks/machine_memory_observer.py` (new), `celery_app.py` (task module registered), `celeryconfig.py` (route, rate limit, flag-gated daily beat entry on the synthetic-dogfood profile)
+- tests: `tests/test_machine_memory_observer.py` (new, 11 — incl. task-registration + beat-gating + no-redirect pins), `tests/test_machine_memory.py` (+1)
 
 **tools / tests / docs / infra**
-- `tools/machine_memory_preflight.py` (new) + `tests/test_machine_memory_preflight.py` (new, 13)
+- `tools/machine_memory_preflight.py` (new) + `tests/test_machine_memory_preflight.py` (new, 17)
 - `tests/regime7_ignition/test_anomaly_title_catalog_parity.py` (new, 3)
-- `docker-compose.saas.yml` — observer env on `mira-synthetic-dogfood-worker` (default `0`)
+- `docker-compose.saas.yml` — observer env on `mira-synthetic-dogfood-worker` + the flag on `-beat` (default `0`)
+- `docs/prd/2026-08-28-sensor-v0-contract.md` — §4.4 amended for the §9.2 refusal semantics
 - `docs/env-vars.md` — observer vars; `docs/runbooks/machine-memory-preflight-and-observer.md` (new)
 
 ## 4. RED → GREEN evidence
@@ -73,13 +74,13 @@
 |---|---|---|
 | `machine-context-intelligence.test.ts` (§9.2 titles) | `expected 'offline on _stale_s' to be 'PLC/bridge offline'` (4 ×) | 11/11 |
 | `machine-history-coverage.test.ts` | `expected undefined to deeply equal {recorded: 3…}` (4 ×) | 4/4 |
-| `replay-empty-window.test.ts` | 6 × (route answered 200 / persisted) | 6/6 |
+| `replay-empty-window.test.ts` | 6 × (route answered 200 / persisted) | 7/7 (incl. 503 read-failed) |
 | `test_anomaly_title_catalog_parity.py` | `missing catalog: …/anomaly-titles.ts` | 3/3 |
 | `test_machine_memory.py::TestAnomalyTitlePersisted` | `KeyError: 'title'` | 27/27 |
 | `replay.test.ts` (§9.2 helpers) | `canAskWhatHappened is not a function` (5 ×) | 45/45 |
 | `sensor-replay.test.tsx` (§9.2 UI) | 3 × (CTA rendered, no `current-connection`, old sentence) | 16/16 |
-| `test_machine_memory_preflight.py` | `ModuleNotFoundError: machine_memory_preflight` | 13/13 |
-| `test_machine_memory_observer.py` | `ModuleNotFoundError: agents.machine_memory_observer` | 9/9 |
+| `test_machine_memory_preflight.py` | `ModuleNotFoundError: machine_memory_preflight` | 17/17 |
+| `test_machine_memory_observer.py` | `ModuleNotFoundError: agents.machine_memory_observer` | 11/11 |
 
 Regression: mira-hub machine-memory/notebooks/history/components lanes **380 passed (29 files)**; mira-mobile full suite **326 passed (30 files)**; mira-crawler machine-memory + dogfood + observer **48 passed**; ESLint clean on changed hub files; `tsc --noEmit` 0 errors in changed hub files and mobile; ruff check/format clean; `git diff --check` clean.
 
@@ -98,8 +99,21 @@ The observer's synthetic proof is its test suite (fake Hub, 3 GETs, daily file +
 
 ## 6. Dry-run / inert-by-default semantics
 
-- Preflight: read-only connection (`default_transaction_read_only=on`, autocommit, SELECT only), never prints the URL/password, refuses prod-looking URLs unless `--allow-production-by-operator` (Mike).
-- Observer: `MACHINE_MEMORY_OBSERVER_ENABLED=0` by default in compose; with `0` the task returns `{enabled:false}` and builds no client, writes no file. When enabled it signs in as an **existing** user (never registers) and performs GETs only.
+- Preflight: read-only connection (`default_transaction_read_only=on`, autocommit, SELECT only), never prints the URL/password. **Fail-closed allowlist gate** (review finding): only loopback or an operator-named dev/staging host (`--allow-host` / `MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS`) is readable, a `prd|prod|production` Doppler shell is refused regardless, a tenant is required (`TENANT_REQUIRED`, no query without one), and a driver failure prints only `DB_CONNECT_FAILED`. `--allow-production-by-operator` is Mike's lift via `--print-command`.
+- Observer: `MACHINE_MEMORY_OBSERVER_ENABLED=0` by default in compose (worker **and** beat); the beat entry is registered only when `1`, the task module is registered in `celery_app._TASK_MODULES` (test-pinned), the task returns `{enabled:false}` and builds no client when off. When enabled it signs in as an **existing** user (never registers), performs GETs only, and never follows redirects with the session.
+
+## 6b. Adversarial review round 1 (architecture / security / data-isolation) — disposition
+
+| Sev | Finding | Fix |
+|---|---|---|
+| P1 | prod-URL refusal was a hostname denylist; real Neon hosts carry no `prod` marker | replaced with the fail-closed allowlist + Doppler-config refusal above; tests use real Neon host shapes |
+| P1 | observer task never registered on the worker; beat entry always scheduled | `celery_app._TASK_MODULES` += `machine_memory_observer`; beat entry only when enabled; flag forwarded to the beat container; registration test |
+| P2 | preflight scanned across tenants when `MIRA_TENANT_ID` unset | `TENANT_REQUIRED`, no query issued |
+| P2 | contract change (empty window → 422) buried as a test rewrite | `docs/prd/2026-08-28-sensor-v0-contract.md` §4.4 amended; stated in PR body; **decision for Mike:** "documents attached + empty replay window → 422" (chosen) vs "answer from documents without a card" |
+| P2 | transient history read failure surfaced as `machine_history_unavailable` | `503 machine_history_read_failed` — "Machine Memory could not be read just now. Try again in a moment." |
+| P3 | driver error could print host/user; `sslmode=prefer` | `DB_CONNECT_FAILED` only; `require` except loopback |
+| P3 | observer followed redirects with the session cookie | `follow_redirects=False` (test-pinned) |
+| P3 | redaction regex narrow | accepted: the daily record never carries the cookie/URL/password by construction |
 
 ## 7. Collision notes
 

@@ -193,19 +193,80 @@ def test_reason_codes_are_stable_and_documented():
         "ROWS_SIMULATED",
         "ROWS_STALE_QUALITY",
         "DB_NOT_CONFIGURED",
+        "DB_CONNECT_FAILED",
+        "TENANT_REQUIRED",
     }
 
 
-def test_refuses_production_database_urls():
-    for url in (
-        "postgres://u:p@ep-prod-123.neon.tech/neondb",
-        "postgresql://u:p@db.prd.example/neondb",
-        "postgres://u:p@host/mira_production",
-    ):
-        with pytest.raises(pf.ProductionRefused):
-            pf.assert_not_production(url)
-    pf.assert_not_production("postgres://u:p@ep-staging-1.neon.tech/neondb")
-    pf.assert_not_production("postgres://postgres:testpw@127.0.0.1:5602/mira_test")
+def test_production_refusal_is_an_allowlist_not_a_hostname_denylist():
+    # Real Neon hosts carry no "prod" marker — the review found a substring
+    # denylist refused only fabricated names. The gate is fail-CLOSED: only
+    # loopback or an operator-named dev/staging host may be read.
+    prod_shape = "postgres://u:p@ep-lively-bread-a1b2c3d4-pooler.us-east-2.aws.neon.tech/neondb"
+    staging_shape = "postgres://u:p@ep-polished-hall-ahcqtcxe-pooler.us-east-2.aws.neon.tech/neondb"
+    with pytest.raises(pf.ProductionRefused):
+        pf.assert_not_production(prod_shape, {})
+    with pytest.raises(pf.ProductionRefused):
+        pf.assert_not_production(staging_shape, {})  # not named → refused
+    pf.assert_not_production(
+        staging_shape,
+        {
+            "MACHINE_MEMORY_PREFLIGHT_ALLOWED_HOSTS": "ep-polished-hall-ahcqtcxe-pooler.us-east-2.aws.neon.tech"
+        },
+    )
+    pf.assert_not_production(
+        staging_shape, {}, ["ep-polished-hall-ahcqtcxe-pooler.us-east-2.aws.neon.tech"]
+    )
+    pf.assert_not_production("postgres://postgres:testpw@127.0.0.1:5602/mira_test", {})
+    pf.assert_not_production("postgres://postgres:testpw@localhost/mira_test", {})
+
+
+def test_a_production_doppler_shell_is_refused_even_for_an_allowlisted_host():
+    url = "postgres://postgres:testpw@127.0.0.1:5602/mira_test"
+    for key in ("DOPPLER_CONFIG", "DOPPLER_ENVIRONMENT", "MIRA_ENV"):
+        for value in ("prd", "prod", "production"):
+            with pytest.raises(pf.ProductionRefused):
+                pf.assert_not_production(url, {key: value})
+    pf.assert_not_production(url, {"DOPPLER_CONFIG": "stg"})
+
+
+def test_main_refuses_before_connecting(capsys):
+    rc = pf.main(
+        ["--db-url", "postgres://u:p@ep-lively-bread-a1b2c3d4.us-east-2.aws.neon.tech/neondb"],
+        env=_env(),
+        db=None,
+    )
+    err = capsys.readouterr().err
+    assert rc == 2 and "REFUSED" in err and "ep-lively-bread" not in err
+
+
+def test_tenant_is_required_for_any_db_read():
+    db = _healthy_db()
+    report = pf.run_preflight(_env(MIRA_TENANT_ID=""), db, now=NOW, cv101_uns_path=CV101)
+    assert report["verdict"] == "NO-GO"
+    assert report["reasons"][0] == "TENANT_REQUIRED"
+    assert db.sql == []  # no query was issued without a tenant
+
+
+def test_connect_failure_is_a_reason_code_without_host_or_user(monkeypatch, capsys):
+    def boom(_url):
+        raise RuntimeError('connection to server at "ep-secret-host" user "alice" failed')
+
+    monkeypatch.setattr(pf, "_psycopg_query", boom)
+    rc = pf.main(
+        [
+            "--json",
+            "--db-url",
+            "postgres://alice:pw@127.0.0.1:5602/mira_test",
+            "--now",
+            NOW.isoformat(),
+        ],
+        env=_env(),
+    )
+    out, err = capsys.readouterr()
+    assert rc == 1
+    assert json.loads(out)["reasons"][0] == "DB_CONNECT_FAILED"
+    assert "ep-secret-host" not in out + err and "alice" not in out + err
 
 
 def test_output_never_contains_the_database_url_or_password(capsys):

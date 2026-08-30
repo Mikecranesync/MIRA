@@ -1007,6 +1007,9 @@ services:
       - CELERY_BEAT_PROFILE=synthetic-dogfood
       # Cadence knob — change the schedule without rebuilding the image.
       - JOURNEY_SWARM_CRON_HOURS=${JOURNEY_SWARM_CRON_HOURS:-*/6}
+      # The observer beat entry exists only when enabled (PRD §9.4) — same
+      # flag as the worker, so a disabled deployment publishes nothing.
+      - MACHINE_MEMORY_OBSERVER_ENABLED=${MACHINE_MEMORY_OBSERVER_ENABLED:-0}
     networks:
       - mira-net
     volumes:

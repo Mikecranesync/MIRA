@@ -155,12 +155,17 @@ _SYNTHETIC_DOGFOOD_SCHEDULE = {
     # MACHINE_MEMORY_OBSERVER_ENABLED=1, so a dev beat stays quiet. The
     # seven-day series is computed from the daily files it writes — it can
     # only accrue with wall-clock time, never be asserted.
-    "machine-memory-observer-daily": {
+}
+
+# Registered ONLY when enabled: a disabled deployment must publish nothing
+# (an always-scheduled entry would still put one message a day on the
+# queue). The same flag gates the task body, so beat + worker agree.
+if os.getenv("MACHINE_MEMORY_OBSERVER_ENABLED") == "1":
+    _SYNTHETIC_DOGFOOD_SCHEDULE["machine-memory-observer-daily"] = {
         "task": "tasks.machine_memory_observer.observe_cv101_machine_memory",
         "schedule": crontab(minute=15, hour=6),
         "options": {"queue": "synthetic", "expires": 3600},
-    },
-}
+    }
 
 # Technician-journey validation swarm (PRD §8.2/§11-P4).
 #
