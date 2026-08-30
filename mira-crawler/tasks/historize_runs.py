@@ -29,9 +29,13 @@ Config (env):
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass
 
 try:
     from mira_crawler.celery_app import app
@@ -50,6 +54,191 @@ except ImportError:
     from run_engine.store import NeonRunStore
 
 logger = logging.getLogger("mira-crawler.tasks.historize_runs")
+
+_DEPLOYMENT_ENVIRONMENTS = {"development", "staging", "production"}
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_REQUIRED_FAULT_TRIGGER = "default_conveyor_fault_alarm"
+
+
+@dataclass(frozen=True)
+class HeartbeatContext:
+    """The identity and redacted evidence attached to one task execution."""
+
+    tenant_id: str
+    deployment_environment: str
+    software_version: str
+    detail: dict[str, object]
+
+
+def _normalize_uns_path(path: str) -> str:
+    """Canonical dotted UNS form used only for deterministic hashing."""
+    normalized = ".".join(part.strip() for part in path.strip().replace("/", ".").split(".") if part.strip())
+    if not normalized:
+        raise ValueError("heartbeat_config_invalid")
+    return normalized.lower()
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def build_heartbeat_context(env: dict[str, str] | None = None) -> HeartbeatContext:
+    """Validate deployment identity and derive a redacted canonical fingerprint.
+
+    This is intentionally pure: it neither opens a DB connection nor retains
+    the connection URL. The resulting detail contains only booleans, counts,
+    and SHA-256 fingerprints, never configured paths or tag values.
+    """
+    values = os.environ if env is None else env
+    deployment_environment = (values.get("MIRA_DEPLOYMENT_ENVIRONMENT") or "").strip().lower()
+    software_version = (values.get("MIRA_GIT_SHA") or "").strip().lower()
+    if deployment_environment not in _DEPLOYMENT_ENVIRONMENTS or not _GIT_SHA_RE.fullmatch(software_version):
+        raise ValueError("heartbeat_identity_invalid")
+
+    tenant_id = (values.get("MIRA_TENANT_ID") or "").strip()
+    run_diff_enabled = (values.get("MIRA_RUN_DIFF_ENABLED") or "") == "1"
+    triggers = parse_run_triggers(values.get("MIRA_RUN_TRIGGERS"))
+    trigger_paths = sorted({_normalize_uns_path(path) for path in triggers})
+    machine_memory_paths = sorted(
+        {
+            _normalize_uns_path(path)
+            for path in (values.get("MIRA_MACHINE_MEMORY_UNS_PATHS") or "").split(",")
+            if path.strip()
+        }
+    )
+
+    raw_diff_config = (values.get("TAG_DIFF_CONFIG_JSON") or "").strip()
+    try:
+        diff_config = json.loads(raw_diff_config) if raw_diff_config else {}
+        fault_trigger_tags = diff_config.get("fault_trigger_tags", [])
+        if not isinstance(diff_config, dict) or not isinstance(fault_trigger_tags, list):
+            raise TypeError
+        normalized_fault_tags = sorted({str(tag).strip().lower() for tag in fault_trigger_tags if str(tag).strip()})
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("fault_trigger_tags_invalid") from exc
+    if _REQUIRED_FAULT_TRIGGER not in normalized_fault_tags:
+        raise ValueError("fault_trigger_tags_invalid")
+
+    # Include every task-effective knob in the canonical evidence, while only
+    # persisting its one-way digest. Defaults mirror historize_runs below.
+    effective_settings = {
+        "k_sigma": (values.get("MIRA_RUN_K_SIGMA", "3.0") or "").strip(),
+        "normal_run_count": (values.get("MIRA_BASELINE_NORMAL_RUN_COUNT", "5") or "").strip(),
+        "min_baseline_runs": (values.get("MIRA_BASELINE_MIN_RUNS", "2") or "").strip(),
+        "snapshot_pre_seconds": (values.get("MIRA_SNAPSHOT_PRE_SECONDS", "300") or "").strip(),
+        "snapshot_post_seconds": (values.get("MIRA_SNAPSHOT_POST_SECONDS", "300") or "").strip(),
+        "lookback_seconds": (values.get("MIRA_RUN_LOOKBACK_SECONDS", "3600") or "").strip(),
+        "anomaly_cooldown_seconds": (values.get("MIRA_ANOMALY_COOLDOWN_SECONDS", "1800") or "").strip(),
+    }
+    canonical_config = {
+        "effective_settings": effective_settings,
+        "fault_trigger_tags": normalized_fault_tags,
+        "machine_memory_uns_paths": machine_memory_paths,
+        "run_diff_enabled": run_diff_enabled,
+        "run_triggers": [
+            {
+                "threshold": trigger.threshold,
+                "tag_path": trigger.tag_path.strip(),
+                "uns_path": _normalize_uns_path(uns_path),
+            }
+            for uns_path, trigger in sorted(triggers.items())
+        ],
+    }
+    detail: dict[str, object] = {
+        "config_sha256": _sha256(json.dumps(canonical_config, sort_keys=True, separators=(",", ":"))),
+        "counts": {
+            "machine_memory_paths": len(machine_memory_paths),
+            "run_trigger_paths": len(trigger_paths),
+            "fault_trigger_tags": len(normalized_fault_tags),
+        },
+        "fault_trigger_tag_hashes": [_sha256(path) for path in normalized_fault_tags],
+        "machine_memory_path_hashes": [_sha256(path) for path in machine_memory_paths],
+        "run_diff_enabled": run_diff_enabled,
+        "run_trigger_path_hashes": [_sha256(path) for path in trigger_paths],
+    }
+    return HeartbeatContext(
+        tenant_id=tenant_id,
+        deployment_environment=deployment_environment,
+        software_version=software_version,
+        detail=detail,
+    )
+
+
+class HistorianHeartbeatStore:
+    """The deliberately narrow write seam for historian execution evidence."""
+
+    def __init__(self, *, engine, tenant_id: str) -> None:
+        self._engine = engine
+        self._tenant_id = tenant_id
+
+    def start(self, context: HeartbeatContext) -> None:
+        """Commit the running evidence before any historian work begins."""
+        from sqlalchemy import text
+
+        params = {
+            "tenant_id": self._tenant_id,
+            "deployment_environment": context.deployment_environment,
+            "task_name": "historize_runs",
+            "software_version": context.software_version,
+            "detail": json.dumps(context.detail, sort_keys=True, separators=(",", ":")),
+        }
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tenant_id"),
+                {"tenant_id": self._tenant_id},
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO historian_task_heartbeat
+                        (tenant_id, deployment_environment, task_name, started_at,
+                         finished_at, status, software_version, run_count, detail)
+                    VALUES
+                        (CAST(:tenant_id AS UUID), :deployment_environment, :task_name, NOW(),
+                         NULL, 'running', :software_version, 1, CAST(:detail AS JSONB))
+                    ON CONFLICT (tenant_id, deployment_environment, task_name)
+                    DO UPDATE SET
+                        started_at = NOW(),
+                        finished_at = NULL,
+                        status = 'running',
+                        software_version = EXCLUDED.software_version,
+                        run_count = historian_task_heartbeat.run_count + 1,
+                        detail = EXCLUDED.detail,
+                        updated_at = NOW()
+                    """
+                ),
+                params,
+            )
+
+    def finish(self, context: HeartbeatContext, *, status: str) -> None:
+        """Commit a terminal status without changing the start run count."""
+        from sqlalchemy import text
+
+        params = {
+            "tenant_id": self._tenant_id,
+            "deployment_environment": context.deployment_environment,
+            "task_name": "historize_runs",
+            "status": status,
+            "detail": json.dumps(context.detail, sort_keys=True, separators=(",", ":")),
+        }
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tenant_id"),
+                {"tenant_id": self._tenant_id},
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE historian_task_heartbeat
+                       SET finished_at = NOW(), status = :status,
+                           detail = CAST(:detail AS JSONB), updated_at = NOW()
+                     WHERE tenant_id = CAST(:tenant_id AS UUID)
+                       AND deployment_environment = :deployment_environment
+                       AND task_name = :task_name
+                    """
+                ),
+                params,
+            )
 
 
 def _enabled() -> bool:
@@ -146,16 +335,63 @@ def _read_recent_events(
     return out
 
 
+def _finish_heartbeat(
+    store: HistorianHeartbeatStore | None,
+    context: HeartbeatContext | None,
+    *,
+    status: str,
+    error_code: str | None = None,
+) -> None:
+    """Fail open: heartbeat trouble never suppresses historization."""
+    if store is None or context is None:
+        return
+    terminal_context = context
+    if error_code is not None:
+        terminal_context = HeartbeatContext(
+            tenant_id=context.tenant_id,
+            deployment_environment=context.deployment_environment,
+            software_version=context.software_version,
+            detail={**context.detail, "error_code": error_code},
+        )
+    try:
+        store.finish(terminal_context, status=status)
+    except Exception:  # noqa: BLE001 - explicitly fail-open evidence writer
+        logger.error("HISTORIAN_HEARTBEAT_FINISH_FAILED")
+
+
 @app.task(name="tasks.historize_runs.historize_runs")
 def historize_runs() -> dict:
     """Detect runs, baseline them, and diff each closed run for anomalies."""
-    if not _enabled():
-        return {"status": "disabled"}
-
     tenant_id = os.getenv("MIRA_TENANT_ID", "")
     neon_url = os.getenv("NEON_DATABASE_URL", "")
+    heartbeat_store: HistorianHeartbeatStore | None = None
+    heartbeat_context: HeartbeatContext | None = None
+    if tenant_id and neon_url:
+        try:
+            heartbeat_context = build_heartbeat_context()
+            heartbeat_store = HistorianHeartbeatStore(
+                engine=_engine(neon_url), tenant_id=tenant_id
+            )
+            heartbeat_store.start(heartbeat_context)
+        except ValueError:
+            # Invalid deployment identity/configuration cannot fabricate a row.
+            logger.error("HISTORIAN_HEARTBEAT_IDENTITY_INVALID")
+            heartbeat_context = None
+            heartbeat_store = None
+        except Exception:  # noqa: BLE001 - heartbeat is fail-open by contract
+            logger.error("HISTORIAN_HEARTBEAT_START_FAILED")
+            heartbeat_context = None
+            heartbeat_store = None
+
+    if not _enabled():
+        _finish_heartbeat(heartbeat_store, heartbeat_context, status="disabled")
+        return {"status": "disabled"}
+
     if not tenant_id or not neon_url:
-        logger.error("historize_runs: MIRA_TENANT_ID / NEON_DATABASE_URL not set")
+        logger.error("HISTORIAN_MISSING_DB_OR_TENANT")
+        return {"status": "error", "error": "missing_config"}
+
+    if heartbeat_context is None:
         return {"status": "error", "error": "missing_config"}
 
     triggers = parse_run_triggers(os.getenv("MIRA_RUN_TRIGGERS"))
@@ -170,14 +406,20 @@ def historize_runs() -> dict:
     ]
     uns_paths = list(dict.fromkeys(list(triggers.keys()) + extra_uns))
     if not uns_paths:
+        _finish_heartbeat(heartbeat_store, heartbeat_context, status="no_triggers")
         return {"status": "no_triggers"}
 
-    k_sigma = float(os.getenv("MIRA_RUN_K_SIGMA", "3.0"))
-    normal_run_count = int(os.getenv("MIRA_BASELINE_NORMAL_RUN_COUNT", "5"))
-    min_baseline_runs = int(os.getenv("MIRA_BASELINE_MIN_RUNS", "2"))
-    pre_seconds = float(os.getenv("MIRA_SNAPSHOT_PRE_SECONDS", "300"))
-    post_seconds = float(os.getenv("MIRA_SNAPSHOT_POST_SECONDS", "300"))
-    lookback = float(os.getenv("MIRA_RUN_LOOKBACK_SECONDS", "3600"))
+    try:
+        k_sigma = float(os.getenv("MIRA_RUN_K_SIGMA", "3.0"))
+        normal_run_count = int(os.getenv("MIRA_BASELINE_NORMAL_RUN_COUNT", "5"))
+        min_baseline_runs = int(os.getenv("MIRA_BASELINE_MIN_RUNS", "2"))
+        pre_seconds = float(os.getenv("MIRA_SNAPSHOT_PRE_SECONDS", "300"))
+        post_seconds = float(os.getenv("MIRA_SNAPSHOT_POST_SECONDS", "300"))
+        lookback = float(os.getenv("MIRA_RUN_LOOKBACK_SECONDS", "3600"))
+    except ValueError:
+        logger.error("HISTORIAN_MISSING_CONFIG")
+        _finish_heartbeat(heartbeat_store, heartbeat_context, status="missing_config")
+        return {"status": "error", "error": "missing_config"}
 
     try:
         readings = _read_recent_events(
@@ -242,7 +484,15 @@ def historize_runs() -> dict:
             }
         summary["machine_memory"] = machine_memory
     except Exception as exc:  # noqa: BLE001
-        logger.exception("historize_runs failed: %s", exc)
+        logger.error("HISTORIAN_PIPELINE_ERROR")
+        _finish_heartbeat(
+            heartbeat_store,
+            heartbeat_context,
+            status="error",
+            error_code="HISTORIAN_PIPELINE_ERROR",
+        )
+        # Existing callers receive their established error shape; evidence and
+        # logs remain redacted to the stable code above.
         return {"status": "error", "error": str(exc)}
 
     logger.info(
@@ -253,4 +503,5 @@ def historize_runs() -> dict:
         summary.get("diffs_written", 0),
         len(machine_memory),
     )
+    _finish_heartbeat(heartbeat_store, heartbeat_context, status="ok")
     return summary

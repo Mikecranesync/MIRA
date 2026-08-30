@@ -52,6 +52,7 @@ _MIGRATION_FILES = [
     "037_tag_event_diffs.sql",
     "038_machine_runs.sql",
     "057_historian_cursor.sql",
+    "086_historian_task_heartbeat.sql",
 ]
 
 
@@ -169,6 +170,81 @@ def _scalar_as_app(schema, tenant, sql, params=None):
             return conn.execute(text(sql), params or {}).scalar()
     finally:
         eng.dispose()
+
+
+# ---------------------------------------------------------------------------
+# #3485 — durable historian task heartbeat
+# ---------------------------------------------------------------------------
+
+
+def test_historian_heartbeat_upsert_rls_constraints_and_no_delete(pg_schema):
+    """Exercise migration 086 as the non-bypass app role in a disposable schema."""
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tasks"))
+    try:
+        from historize_runs import HeartbeatContext, HistorianHeartbeatStore
+    finally:
+        sys.path.pop(0)
+
+    schema = pg_schema["schema"]
+    tenant = str(uuid.uuid4())
+    other_tenant = str(uuid.uuid4())
+    detail = {
+        "config_sha256": "a" * 64,
+        "counts": {"fault_trigger_tags": 1, "machine_memory_paths": 1, "run_trigger_paths": 1},
+        "fault_trigger_tag_hashes": ["b" * 64],
+        "machine_memory_path_hashes": ["c" * 64],
+        "run_diff_enabled": True,
+        "run_trigger_path_hashes": ["d" * 64],
+    }
+    context = HeartbeatContext(
+        tenant_id=tenant,
+        deployment_environment="staging",
+        software_version="e" * 40,
+        detail=detail,
+    )
+    app_engine = create_engine(pg_schema["store_url"], future=True)
+    try:
+        store = HistorianHeartbeatStore(engine=app_engine, tenant_id=tenant)
+        store.start(context)
+
+        row = _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        )
+        assert row == "running:1:true"
+
+        # A second start is an upsert, increments exactly once, and deliberately
+        # leaves a new crash-shaped `running` record distinguishable.
+        store.start(context)
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT run_count FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == 2
+        store.finish(context, status="ok")
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT status || ':' || run_count::text || ':' || (finished_at IS NOT NULL)::text "
+            "FROM historian_task_heartbeat WHERE task_name = 'historize_runs'",
+        ) == "ok:2:true"
+
+        assert _scalar_as_app(
+            schema,
+            other_tenant,
+            "SELECT count(*) FROM historian_task_heartbeat",
+        ) == 0
+        assert _scalar_as_app(
+            schema,
+            tenant,
+            "SELECT has_table_privilege(current_user, 'historian_task_heartbeat', 'DELETE')",
+        ) is False
+    finally:
+        app_engine.dispose()
 
 
 # ---------------------------------------------------------------------------
