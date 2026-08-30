@@ -324,7 +324,13 @@ def url_has_userinfo(url: str) -> bool:
     the two forms are syntactically indistinguishable, no crawler route
     produces the latter, and the hop-0 gate admits only http/https/file.
     """
-    s = str(url).strip()
+    from unicodedata import normalize
+
+    # NFKC first (round AS on #3481, round-41 S2 F1): a FULLWIDTH COMMERCIAL AT
+    # (U+FF20) is the `@` delimiter and full-width `／？＃` are the stops;
+    # without it `user:pass＠host` parsed as a HOST and a direct store call
+    # would have persisted the credential bytes tenant-private.
+    s = normalize("NFKC", str(url)).strip()
     if s.startswith("//"):
         authority = s[2:]  # network-path reference: an authority with no scheme
     else:

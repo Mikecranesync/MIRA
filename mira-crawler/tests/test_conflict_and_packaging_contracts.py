@@ -1063,6 +1063,12 @@ class TestUserinfoRefusedAtTheBoundary:
         "//svc:hunter2@files.example.com/doc.pdf",
         "  //svc@files.example.com/x ",  # padded, username only
         "//svc:hunter2@[2001:db8::1]:2121/x",  # IPv6 authority
+        # Round AS (#3481, round-41 S2 F1): a FULLWIDTH COMMERCIAL AT (U+FF20) is
+        # the `@` delimiter after NFKC; without this the value parsed as a host
+        # named `svc:hunter2＠files…`, classified unclassified, and a direct store
+        # call would have persisted the credential bytes tenant-private.
+        "https://svc:hunter2＠files.example.com/doc.pdf",
+        "ftp://svc＠files.example.com/x",
     )
 
     def test_userinfo_is_detected_for_every_scheme_authority_form(self):
