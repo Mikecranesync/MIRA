@@ -1,0 +1,117 @@
+# Fleet Gateway MCP v1
+**Version:** 1.0
+**Last Updated:** 2026-08-31
+**Owner:** Mike Harper / FactoryLM
+**Issue:** [#3532](https://github.com/Mikecranesync/MIRA/issues/3532)
+
+## Purpose
+Authenticated public HTTPS control plane for FactoryLM fleet workers (Grok/Foreman → Fleet Gateway → private/loopback CAO). Exactly seven MCP tools. CAO, Tailscale, LAN, and worker internals stay off the public path.
+
+This is **not** `mira-mcp` (product diagnostics / CMMS) and **not** `factorylm/gateway` (Pi/PLC). It lives in `fleet-gateway/`.
+
+## Scope
+**IN scope**
+- Bearer-authenticated tool surface (`FLEET_GATEWAY_BEARER` from env, never git)
+- Seven locked tools (two read, five mutate)
+- Mutate audit log (JSONL)
+- Loopback-only CAO client (`127.0.0.1`) behind an interface; FakeCAO default/stub
+- Isolated-worktree launch for `bravo` | `charlie` on `claude` | `codex`
+- Durable HANDOFF artifacts; chat is never "done"
+
+**OUT of scope (this PR / v1)**
+- Merge, deploy, production mutation
+- Public exposure of CAO (tunnel/VPS is a later **Mike-approved** step)
+- Specialized / PLC / Ignition / COM3 nodes
+- Worktree or data deletion
+- Credential, network, or Tailscale changes
+- Raw push to main
+- Binding CAO to any public interface
+
+## Architecture
+
+```
+Grok / Foreman ──HTTPS + Bearer──▶ Fleet Gateway (this package)
+                                      │
+                                      │  loopback HTTP client only
+                                      │  (127.0.0.1, never bind)
+                                      ▼
+                                   CAO (private)
+                                      │
+                                      ▼
+                          isolated worktrees (bravo|charlie)
+```
+
+- **Layer:** Control plane (fleet), not product diagnostics
+- **Default bind:** `127.0.0.1:8765` (override with `FLEET_GATEWAY_HOST` / `FLEET_GATEWAY_PORT`)
+- **CAO:** unset `FLEET_GATEWAY_CAO_URL` → FakeCAO stub. If set, URL **must** be `http(s)://127.0.0.1…` with no credentials. This package never listens as CAO.
+- **Foreman never** connects to Tailscale, CAO, LAN, or worker ports.
+
+Public TLS termination and any CAO tunnel are **not** this PR.
+
+## API Contract
+
+### Auth
+`Authorization: Bearer ${FLEET_GATEWAY_BEARER}`. Missing configuration, missing header, or wrong token → refuse (HTTP 401 / `AuthenticationError`). Token is never committed, never logged, never returned.
+
+`GET /health` is the only unauthenticated route and returns `{status, service}` with no topology.
+
+### Tools — exactly seven
+
+| Tool | Mode | Contract |
+|---|---|---|
+| `fleet_status` | read | Separate fields: `node_health`, `cao_health`, `claude_readiness`, `claude_auth`, `codex_readiness`, `codex_auth`, `current_session`, `current_task`, `heartbeat`, `context_used`, `context_remaining`. Never LAN/Tailscale IPs, CAO ports, or secrets. |
+| `task_status` | read | `task_id`, `node`, `provider`, `branch`, `worktree`, `commit`, `handoff`, `tests`, `type_check`, `build`, `review_verdict`, `blockers`, `claimed_commit_matches_artifact` (bool). `done` is never inferred from chat. |
+| `launch_worker` | mutate | `role` = `bravo`\|`charlie` only (specialized/PLC refused). Required: `provider` `claude`\|`codex`, `task_id`, `github_ref`, `base_commit`, `acceptance_criteria`. Always isolated worktree (`isolated_worktree=true`). No shell/merge/deploy. |
+| `message_worker` | mutate | `text` to one `session_id`. |
+| `request_handoff` | mutate | Write durable HANDOFF artifact; stop claiming the task. |
+| `request_review` | mutate | Charlie only. Independent reviewer profile with tests / type-check / inspect-files. Reviews the exact Git ref, not a Bravo summary. |
+| `stop_worker` | mutate | One `session_id`. Not a node, not CAO, not worktree delete. |
+
+### Audit (every mutate)
+JSONL record: `timestamp`, `requester`, `tool`, `task ID`, `target node/session`, `parameters` (secrets stripped), `outcome`. Reads are not audited. Rejected mutates are audited as `rejected` / `denied`.
+
+### Hard deny (refuse by construction)
+These tools are **not registered** and `invoke()` raises `DeniedToolError`: merge, deploy, production mutation, worktree/data deletion, credentials/secrets changes, network/Tailscale changes, release signing, PLC/Ignition/COM3, CAO config/ports, unrestricted shell/root, raw push to main.
+
+## Configuration
+
+| Var | Required | Default | Purpose |
+|---|---|---|---|
+| `FLEET_GATEWAY_BEARER` | yes | — | Bearer token. Empty → all tool calls refused. |
+| `FLEET_GATEWAY_CAO_URL` | no | unset (FakeCAO) | Loopback CAO base URL. Non-`127.0.0.1` refused. |
+| `FLEET_GATEWAY_DATA_DIR` | no | `fleet-gateway/var` | Audit JSONL + HANDOFF/task artifacts |
+| `FLEET_GATEWAY_HOST` | no | `127.0.0.1` | HTTP bind. Public bind is not this PR. |
+| `FLEET_GATEWAY_PORT` | no | `8765` | HTTP bind port (not a CAO port) |
+
+Example env: `fleet-gateway/.env.example` (placeholders only).
+
+## Quality Standards
+| Metric | Target |
+|---|---|
+| Tools | Exactly 7; deny-list absent |
+| Auth tests | Unauthenticated and wrong token rejected |
+| Launch | specialized rejected; required fields + isolated worktree enforced |
+| Review | non-Charlie rejected; exact git ref |
+| Audit | written on mutate; secrets never logged |
+| CAO | loopback-only; tests use FakeCAO |
+
+## Acceptance Criteria
+1. Unauthenticated requests are rejected.
+2. Specialized / PLC launch is rejected.
+3. Deny-list tools are not on the surface.
+4. Every mutate writes an audit record (timestamp, requester, tool, task, target, redacted params, outcome).
+5. `request_review` rejects non-Charlie sessions.
+6. `launch_worker` requires provider + task_id + ref + base commit + acceptance criteria + isolated worktree.
+7. `fleet_status` returns the split fields (node vs CAO, Claude vs Codex, session/task, heartbeat, context).
+8. `task_status` includes `claimed_commit_matches_artifact`.
+9. Secrets never appear in the audit log.
+10. CAO adapter refuses non-loopback URLs and does not bind.
+
+**Done means** a durable Git ref with tests green — not an agent saying done. This PR is HELD (no merge, no deploy, no CAO exposure).
+
+## Known Issues
+- Live CAO HTTP shapes are adapter-internal; until a loopback CAO is wired under Mike approval, runtime defaults to FakeCAO.
+- FastMCP is optional at runtime (`fastmcp` extra). The locked tool names live in `fleet_gateway.contract` / `mcp_api` regardless.
+
+## Change Log
+- 2026-08-31 — v1 locked contract implemented on `feat/fleet-gateway-mcp-v1` (#3532).
