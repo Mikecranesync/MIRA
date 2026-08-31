@@ -139,6 +139,8 @@ export type StreamResult = {
   machineEvidence: MachineEvidenceEntry | null;
   /** Sensor LOOK (S5 D3): the server-verified photo the turn was asked with. */
   visualEvidence: VisualObservationEntry | null;
+  /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash refusal. */
+  safetyNotice: SafetyNoticeEntry | null;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -163,6 +165,7 @@ export async function readNotebookStream(
     followups: [],
     machineEvidence: null,
     visualEvidence: null,
+    safetyNotice: null,
   };
   try {
     while (true) {
@@ -183,6 +186,9 @@ export async function readNotebookStream(
           out.basis = frame.basis;
           out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
           out.visualEvidence = isVisualObservationEntry(frame.visualEvidence) ? frame.visualEvidence : null;
+        }
+        else if (frame.kind === "safety") {
+          out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
         }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
