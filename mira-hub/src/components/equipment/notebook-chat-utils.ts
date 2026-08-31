@@ -139,6 +139,9 @@ export type StreamResult = {
   machineEvidence: MachineEvidenceEntry | null;
   /** Sensor LOOK (S5 D3): the server-verified photo the turn was asked with. */
   visualEvidence: VisualObservationEntry | null;
+  /** A safety hard-stop occurred on this turn (FLEET-002 — the `safety` frame
+   *  is never a citation; it never enters `citations`/`sources.citations`). */
+  safetyNotice: SafetyNoticeEntry | null;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -163,6 +166,7 @@ export async function readNotebookStream(
     followups: [],
     machineEvidence: null,
     visualEvidence: null,
+    safetyNotice: null,
   };
   try {
     while (true) {
@@ -189,6 +193,10 @@ export async function readNotebookStream(
           out.content += frame.content;
           onContent(out.content, out.citations);
         } else if (frame.kind === "status") out.status = frame.status;
+        // Safety hard-stop (never a citation — same discriminated-union shape
+        // as evidence[]'s persisted SafetyNoticeEntry, so one render branch in
+        // NotebookChat.tsx serves both the live frame and reload hydration).
+        else if (frame.kind === "safety") out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
       }
     }
   } catch (err) {

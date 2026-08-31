@@ -294,3 +294,47 @@ describe("Bubble — Visual observation card", () => {
     expect(html).not.toContain("<img");
   });
 });
+
+// ── FLEET-002: the safety hard-stop badge — one render path, two producers ──
+describe("Bubble — safety notice badge (FLEET-002)", () => {
+  const base: ChatTurn = {
+    id: "s1",
+    role: "assistant",
+    content: "SAFETY STOP: isolate the machine immediately.",
+    status: "answered",
+  };
+
+  it("renders the STOP badge for a live-shaped turn (safetyNotice set directly on the turn)", () => {
+    const html = renderToStaticMarkup(
+      <Bubble turn={{ ...base, safetyNotice: { kind: "safety_notice", trigger: "smoke coming" } }} />,
+    );
+    expect(html).toContain('data-testid="safety-notice-badge"');
+    expect(html).toContain("Safety stop — smoke coming");
+    // Not evidence, not a citation: no supporting-passage chip, no basis claim.
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain('data-testid="basis-caption"');
+  });
+
+  it("renders the SAME badge for a hydrated-shaped turn (persistedTurns reload)", () => {
+    const turns = persistedTurns([
+      {
+        id: "t1",
+        question: "smoke is coming from the panel",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP: isolate the machine immediately.",
+        evidence: [{ kind: "safety_notice", trigger: "smoke coming" }],
+        basis: null,
+      },
+    ]);
+    const assistant = turns.find((t) => t.role === "assistant")!;
+    const html = renderToStaticMarkup(<Bubble turn={assistant as ChatTurn} />);
+    expect(html).toContain('data-testid="safety-notice-badge"');
+    expect(html).toContain("Safety stop — smoke coming");
+  });
+
+  it("no safetyNotice → no badge (byte-identical to before, no layout shift)", () => {
+    const html = renderToStaticMarkup(<Bubble turn={base} />);
+    expect(html).not.toContain("safety-notice-badge");
+    expect(html).not.toContain("Safety stop");
+  });
+});

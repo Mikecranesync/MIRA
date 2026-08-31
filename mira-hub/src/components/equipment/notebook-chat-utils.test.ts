@@ -411,6 +411,37 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
   });
 });
 
+describe("readNotebookStream — safety hard-stop frame (FLEET-002)", () => {
+  it("a `safety` frame produces StreamResult.safetyNotice, never a citation", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "content", content: "SAFETY STOP: isolate the machine immediately." }),
+        frame({ kind: "safety", trigger: "smoke coming" }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.safetyNotice).toEqual({ kind: "safety_notice", trigger: "smoke coming" });
+    expect(out.citations).toEqual([]);
+    expect(out.status).toBe("answered");
+  });
+
+  it("absent `safety` frame → safetyNotice stays null", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "A." }),
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.safetyNotice).toBeNull();
+  });
+});
+
 describe("buildChatBody — the web body carries no window selection", () => {
   // The web notebook renders machine evidence; it never selects a window (the
   // mobile lane owns REPLAY selection). The body stays exactly three keys.

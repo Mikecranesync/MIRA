@@ -1,96 +1,132 @@
-# FLEET-001 Handoff — Safety-frame persistence gap
+# FLEET-002 Handoff — render the persisted safety-stop marker
 
 ## Objective
-Persist the safety hard-stop marker server-side so a reloaded turn is
-distinguishable from a normal `answered` turn. A LOTO/arc-flash refusal was
-previously persisted with `evidence: []`; on reload the safety identity was
-lost and the warning rendered as a plain assistant answer.
+FLEET-001 (PR #3517, HELD) closed the server-side gap: a LOTO/arc-flash safety
+hard-stop persists as `evidence: [{kind:"safety_notice", trigger}]` and
+`persistedTurns()` already surfaces it as `HydratedTurn.safetyNotice`. Neither
+the LIVE stream path nor the client component rendered anything distinct for
+it. This slice adds the client-side render: one visually-distinct STOP badge,
+sourced from the same `SafetyNoticeEntry` shape on both the live SSE path and
+the reload/hydration path.
 
-## Commits (branch `fleet/chatui-slice-01`, do NOT push — Charlie reviews)
-| SHA | Contents |
-|-----|----------|
-| `995d3d5f0` | Code change: SafetyNoticeEntry type + persistence + hydration + tests |
-| `e0baa6e1e` | Adds `.fleet/TASK.md` + `.fleet/HANDOFF.md` |
+## Files changed
+- `mira-hub/src/components/equipment/notebook-chat-utils.ts`
+  - `StreamResult` gets `safetyNotice: SafetyNoticeEntry | null` (mirrors the
+    `machineEvidence`/`visualEvidence` null-default pattern exactly).
+  - `readNotebookStream()` initializes `safetyNotice: null` and adds
+    `else if (frame.kind === "safety") out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger }`.
+    Shaped as a `SafetyNoticeEntry` so it satisfies `isSafetyNoticeEntry` and
+    the same downstream consumer (`Bubble`) as the hydrated path.
+- `mira-hub/src/components/equipment/NotebookChat.tsx`
+  - Import `AlertTriangle` (lucide-react) and `SafetyNoticeEntry` (type-only).
+  - `ChatTurn` gets `safetyNotice?: SafetyNoticeEntry` (doc-comment style
+    matches `machineEvidence?`/`visualEvidence?`).
+  - `post()`'s `postNotebookChat(...)` destructure now includes `safetyNotice`;
+    the turn update sets `...(status === "answered" && safetyNotice ? { safetyNotice } : {})`,
+    same conditional-spread pattern as `machineEvidence`/`visualEvidence`.
+  - `Bubble()` gets a new render block for `turn.safetyNotice`, placed right
+    after the `insufficient_evidence` caption and before the machine/visual
+    evidence cards. Visually distinct from the muted evidence chips: red
+    border/text/background using `var(--status-red)` / `var(--status-red-bg)`
+    (FactoryLM UI-style fault/stop tokens — `.claude/rules/ui-style.md`), an
+    `AlertTriangle` icon, `data-testid="safety-notice-badge"`, content
+    `"Safety stop — {trigger}"`.
+  - `persistedTurns()`'s `HydratedTurn.safetyNotice` flows into `ChatTurn` via
+    the existing direct assignment in
+    `mira-hub/src/app/(hub)/equipment/[id]/page.tsx` (`setInitialTurns(persistedTurns(data.turns ?? []))`)
+    — that IS the "mapping" the task spec pointed at. No second field, no
+    edit needed there: `HydratedTurn` already had `safetyNotice` from
+    FLEET-001; `ChatTurn` just needed to declare the same field so the
+    structural assignment carries it through, and TypeScript now actually
+    types it instead of silently dropping it as an unknown excess property.
 
-**HEAD: `e0baa6e1e`**
+## Decisions made
+- **One producer per field, one render branch.** `readNotebookStream` and
+  `persistedTurns` both produce a bare `SafetyNoticeEntry | undefined/null` on
+  the turn; `Bubble` reads `turn.safetyNotice` once. No second component, no
+  parallel type.
+- **Gated on `status === "answered"`** in the live-path turn update, matching
+  the doc comment on `NotebookSafetyFrame` in `notebook-chat-types.ts`
+  ("The turn still reports `status: 'answered'`") and matching how
+  `machineEvidence`/`visualEvidence` are gated — consistent, not new
+  behavior.
+- **Badge placement**: after `insufficient_evidence`, before machine/visual
+  evidence — a safety escalation reads before "what grounded this answer".
+- **Never a citation**: `SafetyNoticeEntry` has no `docId`; the render block
+  is not inside the citations/`passages` rendering, and `splitEvidence`
+  (already shipped in FLEET-001) already excludes it from `citations`.
+- **No layout shift when absent**: `{turn.safetyNotice && (...)}` — same
+  pattern as every other conditional block in `Bubble`; no wrapper renders
+  when the field is unset.
 
-## Files Changed
-| File | Change |
-|------|--------|
-| `mira-hub/src/lib/notebook-chat-types.ts` | Added `SafetyNoticeEntry` type + `isSafetyNoticeEntry` guard (modelled after existing `isMachineEvidenceEntry`) |
-| `mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts` | Both safety-stop branches now persist `[{kind:"safety_notice",trigger}]` in `evidence[]` instead of `[]`; imported `SafetyNoticeEntry` |
-| `mira-hub/src/components/equipment/notebook-chat-utils.ts` | `splitEvidence` now extracts `safetyNotice`; `persistedTurns` surfaces it on the hydrated turn; `PersistedTurn.evidence` and `HydratedTurn` types updated |
-| `mira-hub/src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts` | Updated existing persistence assertion (now expects evidence with entry) + 1 new trigger-match test |
-| `mira-hub/src/components/equipment/notebook-chat-utils.test.ts` | 4 new round-trip tests + existing `splitEvidence` deep-equals updated for `safetyNotice: null` |
+## Failed approaches
+None — the shape was fully pinned by FLEET-001's types (`SafetyNoticeEntry`,
+`isSafetyNoticeEntry`, `HydratedTurn.safetyNotice`) and by the existing
+`machineEvidence`/`visualEvidence` precedent in the same file, so this was a
+straight mechanical extension of an established pattern. No dead ends.
 
-## Decisions Made
-1. **No migration.** `evidence` is an existing `jsonb` column with no per-entry constraint (migration 073 defines the column only). A new entry kind is additive.
-2. **`SafetyNoticeEntry` rides in `evidence[]`**, not a new column. Exact same pattern as `MachineEvidenceEntry` and `VisualObservationEntry` — discriminated by `kind`.
-3. **`enrichCitationsWithOrigin` requires no change** — it already skips entries with no `docId`.
-4. **`splitEvidence` returns `safetyNotice: SafetyNoticeEntry | null`** (at most one per turn). Existing callers that only destructure `citations`/`machineEvidence`/`visualEvidence` are unaffected.
-5. **`HydratedTurn.safetyNotice`** is optional so non-safety turns carry no field (not `null`).
+## What was NOT touched (per task scope)
+- `mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts` — untouched.
+- `mira-hub/src/app/labs/**`, `mira-mobile/` — untouched.
+- `SAFETY_STOP` prose text, `answer_status` semantics — untouched.
+- No migrations, no deploy, no merge, no push (local commit only, on
+  `fleet/chatui-slice-02`).
 
-## Failed Approaches
-- Appended new tests using `require()` — ESM environment rejects CJS require. Switched to top-level `import { splitEvidence }` (already in scope via the file's existing imports). Second vitest run (after stale transform cache cleared) showed all tests green.
+## Tests run + results (real output)
 
-## Test Results (verified 2026-08-31, vitest v3.2.4)
+### `bun run vitest run src/components/equipment/notebook-chat-utils.test.ts src/components/equipment/NotebookChat.test.tsx`
+
 ```
- ✓ src/components/equipment/notebook-chat-utils.test.ts (35 tests) 19ms
- ✓ src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts (8 tests) 7ms
+ RUN  v3.2.4 /Users/charlienode/MIRA-worktrees/fleet-001-review/.cao/worktrees/ae32acdb/mira-hub
+
+ ✓ src/components/equipment/notebook-chat-utils.test.ts (37 tests) 8ms
+ ✓ src/components/equipment/NotebookChat.test.tsx (24 tests) 33ms
 
  Test Files  2 passed (2)
-      Tests  43 passed (43)
-   Start at  08:06:52
-   Duration  319ms
+      Tests  61 passed (61)
+   Start at  09:13:55
+   Duration  430ms (transform 72ms, setup 0ms, collect 217ms, tests 41ms, environment 0ms, prepare 65ms)
 ```
 
-Key tests proving the round-trip:
-- `safety_notice round-trip (FLEET-001) > splitEvidence extracts a safety_notice entry without treating it as a citation` ✓
-- `safety_notice round-trip (FLEET-001) > persistedTurns restores safetyNotice on a reloaded safety turn` ✓
-- `safety_notice round-trip (FLEET-001) > persistedTurns does NOT surface safetyNotice as a citation` ✓
-- `safety_notice round-trip (FLEET-001) > a normal answered turn with no safety_notice has safetyNotice undefined` ✓
-- `notebook chat safety hard-stop > persists the stop with a safety_notice entry so hydration can restore it` ✓
-- `notebook chat safety hard-stop > safety_notice trigger matches the X-Safety-Stop header` ✓
+New tests added (all passing, part of the 61):
+- `notebook-chat-utils.test.ts` → `describe("readNotebookStream — safety hard-stop frame (FLEET-002)")`:
+  - a `safety` frame produces `StreamResult.safetyNotice`, never a citation
+  - absent `safety` frame → `safetyNotice` stays `null`
+- `NotebookChat.test.tsx` → `describe("Bubble — safety notice badge (FLEET-002)")`:
+  - renders the STOP badge for a live-shaped turn (`safetyNotice` set directly)
+  - renders the SAME badge for a hydrated-shaped turn (via `persistedTurns`)
+  - no `safetyNotice` → no badge (byte-identical, no layout shift)
 
-## Corrections Applied (2026-08-31)
+### `npx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "notebook-chat-utils.test|NotebookChat.test"`
 
-Charlie's independent review returned **PASS WITH KNOWN LIMITATION** on `e0baa6e1e`.
-Two findings were raised and are now fixed:
-
-### BLOCKING — 6 tsc errors in test files (no production code touched)
-All 6 errors were in test files only:
-1. Duplicate `splitEvidence` import at line ~453 — **deleted**; `PersistedTurn` added to the existing import block at line 266 instead.
-2. Two `rows` literals with `kind` widened to `string` — **annotated** `const rows: PersistedTurn[] = [...]` on lines 466 and 485.
-3. `domainMock.recordTurn.mock.calls[0]` possibly-undefined / out-of-range tuple — **cast** via `unknown` to `[string, string, Record<string, unknown>][]`.
-
-**tsc output (mira-hub, filtered to the two files):**
 ```
-$ cd mira-hub && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "notebook-chat-utils.test|chat-safety-stop.test" ; echo "exit-marker done"
-exit-marker done
-```
-No errors for either file.
-
-**vitest output:**
-```
- ✓ src/components/equipment/notebook-chat-utils.test.ts (35 tests) 22ms
- ✓ src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts (8 tests) 15ms
-
- Test Files  2 passed (2)
-      Tests  43 passed (43)
-   Start at  08:25:15
-   Duration  562ms
+(empty — grep exit code 1, no matches)
 ```
 
-### IMPORTANT — commit message scope clarification
-The original commit `e0baa6e1e` overstated the technician-visible effect.
-**Scope clarification: this entire slice (995d3d5f0 + e0baa6e1e) is data-layer only — no visible client change yet. `safetyNotice` is now persisted and hydrated on the server side, but NotebookChat.tsx has no `safetyNotice` renderer and mobile sse.ts has no reader. Rendering lands in a later slice.**
+Verified this is a real "no errors in my touched test files" result, not a
+suppressed-error illusion: ran full `tsc --noEmit -p tsconfig.json` (exit 2,
+58 lines of pre-existing errors in unrelated files — `route.test.ts` files
+under `api/assets`, `api/cmms/sso`, `api/equipment-notebooks/.../nameplate`,
+`api/hub/status`, `api/mira/ask`, `lib/__tests__/drive-pack-suggestion.test.ts`,
+`tests/e2e/upload-probe.spec.ts`). Confirmed these are baseline/pre-existing,
+not introduced by this slice, by stashing my 4 changed files (`git stash push -u`
+with a unique tag, applied by exact SHA, dropped by exact SHA after restoring
+— never a bare `git stash pop`), re-running `tsc --noEmit -p tsconfig.json`
+against the unmodified base branch, and diffing the two full outputs:
+byte-identical (58 lines both times, `diff` printed nothing). My 4 touched
+files (`notebook-chat-utils.ts`, `NotebookChat.tsx`, `notebook-chat-utils.test.ts`,
+`NotebookChat.test.tsx`) introduce zero new tsc errors anywhere in the project.
+
+## Current commit SHA
+See `git log -1 --format=%H` on `fleet/chatui-slice-02` after this handoff is
+committed — this file is committed together with the code change in the same
+commit, so the SHA reported back to the supervisor via `send_message` is the
+one to check out.
 
 ## Blockers
-None. The change is self-contained.
+None.
 
-## Next Action
-Charlie independently reviews the corrected branch. The client-side
-rendering of `safetyNotice` on reload (showing the safety warning UI badge on a
-reloaded turn) is NOT in this slice — that is the consumer work for the PR that
-owns mira-mobile / Hub chat UI, per ADR-0038 item 3. This slice closes the
-server-side persistence gap only.
+## Next action
+Charlie (independent reviewer) reviews this commit adversarially, same
+process as FLEET-001. No self-approval. No push performed or requested by
+this worker.
