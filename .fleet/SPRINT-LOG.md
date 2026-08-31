@@ -36,4 +36,32 @@ sent back to the LLM, so the `SAFETY_STOP` prose can re-enter context on a later
 additive, well-scoped, same file family, no ADR/lane dependency, "regression tests for a
 previously discovered defect" per the charter's own example category.
 
+## 13:2x — FLEET-003 dispatched
+
+Branch `fleet/chatui-slice-03` pushed (base: `fleet/chatui-safety-render-02` @ `6f4914629`,
+task commit `084c6b1b7`). Collision-checked fresh immediately before push (fetch + `gh pr list`
++ `git ls-remote` — clean). Assigned to a `developer`-profile Bravo worker via CAO `assign`
+(isolated worktree, terminal `3bb57f0c`). Awaiting completion — CAO delivers to this
+coordinator's inbox automatically on idle; no polling.
+
+## Documented candidates for the queue after FLEET-003 (not yet built — scoped only)
+
+Recorded here so the loop has a primed queue without re-deriving this each wake, and so
+progress is legible even if the window ends before reaching them.
+
+- **Candidate A — NodeChat/AssetChat safety-parity scoping (investigation slice, not a build).**
+  Both routes already detect safety phrases via a *different*, pre-existing system
+  (`@/lib/agents/safety-alert`, `matchSafetyStop`/`scanBoth`/`handleSafetyAlert`, the H4
+  gap-admission net #2542) — untyped `data: {content}` SSE, not the Notebook chat's typed
+  `NotebookSafetyFrame`/`SafetyNoticeEntry` contract. Before building anything: does either
+  route persist enough on the turn row to distinguish a safety-alert turn on reload today? If
+  not, is the additive-`evidence[]`-marker pattern from FLEET-001 portable to their persistence
+  model, or does it need a materially different approach? This needs a dedicated read-only
+  investigation pass before any code — do not build live without it.
+- **Candidate C — regression-test sweep for previously-discovered, still-undertested defects**
+  in the Notebook chat stack. Check `docs/known-issues.md` and closed-but-related issues
+  (#2542, #3453/#3454 streaming prerequisites, STRM-2 lineage #3450/#3452) for anything fixed
+  in code but never pinned by a test — the safest possible category per the charter's own
+  blocked-work fallback, usable as a filler task if a build slice stalls.
+
 <!-- Further entries appended below as the window progresses -->
