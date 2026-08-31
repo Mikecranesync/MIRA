@@ -277,6 +277,28 @@ describe("historyFromTurns (stopped turns never reach the model)", () => {
       history: historyFromTurns(turns),
     });
   });
+  it("excludes a safety hard-stop turn even when it has content and stopped is falsy (FLEET-003)", () => {
+    const withSafety = [
+      { role: "user" as const, content: "Is the panel live?" },
+      {
+        role: "assistant" as const,
+        content: "I can't help with that — this involves LOTO/arc-flash risk. Contact a qualified electrician.",
+        status: "answered" as const,
+        safetyNotice: { kind: "safety_notice" as const, trigger: "arc flash" },
+      },
+      { role: "user" as const, content: "Ok, what about F004 then?" },
+      { role: "assistant" as const, content: "F004 is undervoltage. [1]", status: "answered" as const },
+    ];
+    const h = historyFromTurns(withSafety);
+    expect(h).toEqual([
+      { role: "user", content: "Is the panel live?" },
+      { role: "user", content: "Ok, what about F004 then?" },
+      { role: "assistant", content: "F004 is undervoltage. [1]" },
+    ]);
+    // The SAFETY_STOP prose never reaches the model on a later turn.
+    expect(JSON.stringify(h)).not.toContain("LOTO");
+    expect(JSON.stringify(h)).not.toContain("arc-flash");
+  });
 });
 
 describe("CMPS-2 — failure keeps the question, Retry re-posts the identical body", () => {
