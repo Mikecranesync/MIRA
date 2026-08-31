@@ -170,4 +170,46 @@ Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — clean. Branch
 `fleet/chatui-slice-06` pushed (base `origin/main`, task commit `7af66a492`). Dispatched to a
 Bravo worker (terminal `98971dd0`).
 
+## 14:5x — FLEET-006 reviewed and closed out
+
+Bravo (terminal `98971dd0`) reported completion. Independent review in Bravo's own worktree: read
+every diff hunk (one-word export + new 141-line test file), re-ran targeted vitest (7/7, matches).
+**Verified the task-deviation claim independently rather than trusting it**: Bravo declined to
+port FLEET-005's `hasSafetyAlert` tests because that field doesn't exist on this branch's
+`origin/main` base (#3523 is still HELD) — grepped `hasSafetyAlert` myself (one unrelated hit) and
+re-read `AssetChat.test.tsx` on this branch (no such describe block) — correct call, well-evidenced.
+Also verified the test assertions weren't passing for the wrong reason: read `SourceChips`'s full
+body to confirm it has its own internal empty-array guard (not a bare truthy check that would have
+let an empty-array test pass for a bug, not a feature), and grepped the `isSafetyStop` style
+strings directly against the source.
+
+**Full-suite re-run produced a real discrepancy against my own FLEET-005 baseline** (245/2452 here
+vs. 244/2450 there — 2450+7 ≠ 2452). Rather than trust or dismiss it, isolated the TRUE baseline
+in a fresh ephemeral worktree at the exact fork SHA (`583cda81a`, confirmed unmoved on
+`origin/main`): 244 files / 2445 tests. That plus this slice's 7 new tests = 245/2452, an exact
+match — my earlier "2450" recollection was imprecise; the slice itself introduces zero regression,
+fully accounted for. Targeted + full tsc: clean, same 32-error/58-line baseline.
+
+Hit one process snag: my first `git commit -m "..."` for the review-evidence commit failed with a
+pathspec error from an unescaped quote in the message — nothing was committed (verified via
+`git status -s` before retrying), so no partial/corrupt state resulted. Retried via `git commit -F
+<file>`, succeeded cleanly.
+
+**Zero findings — clean PASS.** Pushed `.fleet/REVIEW-FINAL-006.md`, pushed the branch, opened
+**PR #3524** (`fleet/chatui-slice-06`), HELD. `delete_terminal(98971dd0)`.
+
+## 14:5x — FLEET-007 dispatched
+
+Selected from two prior reviews' own disclosed gap (not a fresh investigation): `AssetChat.tsx`/
+`NodeChat.tsx` hardcode raw hex + Tailwind palette classes for safety-state styling instead of
+using `mira-hub`'s established `--status-*` tokens (`globals.css`, confirmed real and widely used
+elsewhere in the Hub back in the FLEET-002 review). Visual-only, zero-logic-change slice, lower
+"highest-value" ranking than the functional fixes so far but real, well-evidenced, and safe — and
+keeps the queue moving without idling. Explicitly forbidden from inventing a token value that
+doesn't exist; must document any such gap rather than guess.
+
+Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — clean (only the already-resolved
+#3519 and unrelated old design-system PRs surfaced). Branch `fleet/chatui-slice-07` pushed (base
+`origin/main`, task commit `21cf6f2eb`). Dispatched to a Bravo worker (terminal `e5f8bd37`).
+
 <!-- Further entries appended below as the window progresses -->
