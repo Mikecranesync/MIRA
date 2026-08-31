@@ -212,4 +212,29 @@ Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — clean (only t
 #3519 and unrelated old design-system PRs surfaced). Branch `fleet/chatui-slice-07` pushed (base
 `origin/main`, task commit `21cf6f2eb`). Dispatched to a Bravo worker (terminal `e5f8bd37`).
 
+## 15:0x — FLEET-007: one real correction round (in progress)
+
+Bravo (terminal `e5f8bd37`) reported completion at `d75ff476e`. Independent review: read every diff
+hunk, then independently verified the token-evidence claims against `globals.css` myself rather
+than trusting the writeup — `--status-red-bg: #FEE2E2` (confirmed, differs slightly from the old
+`#FEF2F2`), `--status-red: #DC2626` (exact match to Tailwind red-600), and — the specific claim
+worth checking closely — confirmed `--status-green-ink` exists but **no `--status-red` ink/border
+counterpart does anywhere in the file** (grepped `-ink`/`-border`/`-tint`/`color-mix`), so the
+decision to leave `#991B1B`/`#FECACA` untouched rather than guess a value is real, not an excuse.
+
+**But an exhaustive grep across both full files (not just the diff) turned up a real miss**:
+`NodeChat.tsx:363` — the error-banner site, structurally identical to `AssetChat.tsx`'s (which
+*was* converted) — still has the un-converted `background: "#FEF2F2"`. Silent: no test in either
+file asserts on this string, so nothing caught it mechanically; only the exhaustive-grep step in
+the review process did. This is exactly why "grep don't trust the partial list" was in the task
+spec — the miss happened despite that instruction, in the worker's own search scope (repo-wide for
+other *files* referencing the string, not a second look within the two files themselves).
+
+Sent `CORRECTIONS-007` back to the worker via `send_message` (terminal `e5f8bd37`, still alive —
+NOT deleted this round) — one specific line, one specific fix, re-verification steps spelled out.
+Everything else in the report (token evidence, the `#991B1B` contrast-ratio reasoning, the
+"hasSafetyAlert doesn't exist on this branch" premise-check) held up independently and needs no
+rework. **Not dispatching a new slice this wake — FLEET-007 stays the one thing in flight until
+this correction round closes**, per the sequential-queue discipline.
+
 <!-- Further entries appended below as the window progresses -->
