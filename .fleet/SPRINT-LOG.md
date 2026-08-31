@@ -375,4 +375,20 @@ build + 2 docs), one correction round handled cleanly (FLEET-007), one real coll
 before it cost anything (FLEET-010→docs fix), zero unresolved findings anywhere. Next wake: fresh
 capacity, select the next candidate per the usual process.
 
+## 16:3x — FLEET-012 dispatched (another real bug found by direct code reading)
+
+Same discipline as FLEET-011: read the code directly instead of trusting a doc. Confirmed
+`AssetChat.tsx`/`NodeChat.tsx` clear the composer's `input` state immediately on send (both
+`handleSubmit` and `handleKeyDown` call sites), before the fetch even starts. On a real network
+failure (the non-`AbortError` catch branch), the technician's typed question is simply gone — not
+restored, no way to resubmit except retyping from scratch. Notebook chat already has the correct,
+tested fix: `restoreComposer(current, failedMessage)` (CMPS-2, `notebook-chat-utils.ts:240-243`) —
+`current.trim() ? current : failedMessage`, so an in-flight retype is never clobbered.
+AssetChat/NodeChat never got it.
+
+Fresh collision check — no direct hits on this specific surface/mechanism (search noise was
+Notebook's own Q1 work and unrelated mobile PRs). Branch `fleet/chatui-slice-12` pushed (base
+`origin/main`, task commit `d519c380f`). Dispatched to a Bravo worker (terminal `bba9ea89`), same
+"keep it local, don't import cross-surface" instruction as FLEET-011.
+
 <!-- Further entries appended below as the window progresses -->
