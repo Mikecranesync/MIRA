@@ -129,7 +129,7 @@ describe("notebook chat safety hard-stop", () => {
     expect(sources.citations).toEqual([]);
   });
 
-  it("persists the stop, so the warning survives switching devices mid-incident", async () => {
+  it("persists the stop with a safety_notice entry so hydration can restore it", async () => {
     await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),
@@ -137,10 +137,19 @@ describe("notebook chat safety hard-stop", () => {
       expect.objectContaining({
         answerStatus: "answered",
         answerText: SAFETY_STOP,
-        evidence: [],
+        evidence: [{ kind: "safety_notice", trigger: expect.any(String) }],
         model: null,
       }),
     );
+  });
+
+  it("safety_notice trigger matches the X-Safety-Stop header", async () => {
+    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
+    const call = domainMock.recordTurn.mock.calls[0][2];
+    const entry = call.evidence[0];
+    expect(entry.kind).toBe("safety_notice");
+    expect(typeof entry.trigger).toBe("string");
+    expect(entry.trigger.length).toBeGreaterThan(0);
   });
 
   it("stops even with no sources attached, instead of returning no_sources_selected", async () => {

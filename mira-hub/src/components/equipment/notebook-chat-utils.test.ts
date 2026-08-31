@@ -312,6 +312,7 @@ describe("persistedTurns tolerates non-document evidence entries (D5)", () => {
       citations: [cite],
       machineEvidence: [machine],
       visualEvidence: [],
+      safetyNotice: null,
     });
   });
 });
@@ -357,6 +358,7 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
       citations: [],
       machineEvidence: [],
       visualEvidence: [],
+      safetyNotice: null,
     });
   });
 
@@ -444,5 +446,71 @@ describe("machineReplayCaption", () => {
   it("a genuinely empty window says nothing was recorded, not a zero count", () => {
     expect(machineReplayCaption({ ...machine, rowCount: 0, freshness: "unknown" }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
     expect(machineReplayCaption({ ...machine, rowCount: 0, reason: null }, clock)).toBe(MACHINE_NO_CHANGES_CAPTION);
+  });
+});
+
+
+import { splitEvidence } from "./notebook-chat-utils";
+
+describe("safety_notice round-trip (FLEET-001)", () => {
+  it("splitEvidence extracts a safety_notice entry without treating it as a citation", () => {
+    const entry = { kind: "safety_notice", trigger: "smoke coming" };
+    const result = splitEvidence([entry]);
+    expect(result.safetyNotice).toEqual(entry);
+    expect(result.citations).toHaveLength(0);
+    expect(result.machineEvidence).toHaveLength(0);
+    expect(result.visualEvidence).toHaveLength(0);
+  });
+
+  it("persistedTurns restores safetyNotice on a reloaded safety turn", () => {
+    const rows = [
+      {
+        id: "t1",
+        question: "smoke is coming from the panel",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP: isolate the machine immediately.",
+        evidence: [{ kind: "safety_notice", trigger: "smoke coming" }],
+        basis: null,
+      },
+    ];
+    const turns = persistedTurns(rows);
+    const assistant = turns.find((t: { role: string }) => t.role === "assistant");
+    expect(assistant).toBeDefined();
+    expect(assistant!.safetyNotice).toEqual({ kind: "safety_notice", trigger: "smoke coming" });
+    expect(assistant!.citations).toHaveLength(0);
+    expect(assistant!.stopped).toBeUndefined();
+  });
+
+  it("persistedTurns does NOT surface safetyNotice as a citation", () => {
+    const rows = [
+      {
+        id: "t2",
+        question: "there is an exposed wire",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP: isolate immediately.",
+        evidence: [{ kind: "safety_notice", trigger: "exposed wire" }],
+        basis: null,
+      },
+    ];
+    const turns = persistedTurns(rows);
+    const assistant = turns.find((t: { role: string }) => t.role === "assistant");
+    expect(assistant!.citations).toHaveLength(0);
+  });
+
+  it("a normal answered turn with no safety_notice has safetyNotice undefined", () => {
+    const rows = [
+      {
+        id: "t3",
+        question: "what does P042 set",
+        answerStatus: "answered",
+        answerText: "P042 sets the deceleration ramp [1].",
+        evidence: [{ citationId: "1", docId: "doc-a", sourceTitle: "Manual", page: 14, fileId: null, quote: null }],
+        basis: "oem_documentation",
+      },
+    ];
+    const turns = persistedTurns(rows);
+    const assistant = turns.find((t: { role: string }) => t.role === "assistant");
+    expect(assistant!.safetyNotice).toBeUndefined();
+    expect(assistant!.citations).toHaveLength(1);
   });
 });
