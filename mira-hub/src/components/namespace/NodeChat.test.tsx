@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ComposerButton, MessageBubble } from "./NodeChat";
+import { ComposerButton, MessageBubble, NodeChat, isEnterToSend } from "./NodeChat";
 
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
@@ -206,5 +206,49 @@ describe("NodeChat ComposerButton — Stop vs Send (STRM-2)", () => {
 
     expect(html).toContain('type="submit"');
     expect(html).toMatch(/disabled(=""|)/);
+  });
+});
+
+
+// FLEET-011 — composer correctness: Enter fires send, but never mid-IME-composition
+// (Japanese/Chinese/Korean/Vietnamese candidate confirmation). Local guard, same
+// shape as equipment/notebook-chat-utils.ts's isEnterToSend but intentionally not
+// imported from there (Notebook-specific module; see NodeChat.tsx's comment).
+// Mirrors AssetChat.test.tsx — the two composers are structurally identical here.
+describe("isEnterToSend (composer IME guard)", () => {
+  it("sends on a bare Enter with no composition in progress", () => {
+    expect(isEnterToSend({ key: "Enter", shiftKey: false })).toBe(true);
+    expect(isEnterToSend({ key: "Enter", shiftKey: false, nativeEvent: { isComposing: false } })).toBe(true);
+  });
+
+  it("never sends while an IME composition is in progress", () => {
+    expect(
+      isEnterToSend({ key: "Enter", shiftKey: false, nativeEvent: { isComposing: true } }),
+    ).toBe(false);
+    // Some browsers/IMEs don't set nativeEvent.isComposing reliably; keyCode 229
+    // is the historical fallback signal for "this Enter confirmed an IME candidate".
+    expect(isEnterToSend({ key: "Enter", shiftKey: false, keyCode: 229 })).toBe(false);
+  });
+
+  it("never sends on Shift+Enter (newline), composing or not", () => {
+    expect(isEnterToSend({ key: "Enter", shiftKey: true })).toBe(false);
+    expect(
+      isEnterToSend({ key: "Enter", shiftKey: true, nativeEvent: { isComposing: true } }),
+    ).toBe(false);
+  });
+
+  it("ignores non-Enter keys", () => {
+    expect(isEnterToSend({ key: "a", shiftKey: false })).toBe(false);
+  });
+});
+
+describe("NodeChat composer accessibility", () => {
+  it("gives the textarea and the Send button an accessible name", () => {
+    const html = renderToStaticMarkup(
+      <NodeChat nodeId="n1" nodeName="Line 3" unsPath="enterprise.garage.line3" />,
+    );
+
+    expect(html).toContain('aria-label="Ask about this folder"');
+    expect(html).toContain('aria-label="Send"');
   });
 });

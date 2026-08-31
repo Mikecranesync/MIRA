@@ -56,6 +56,21 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/** Enter sends; Shift+Enter is a newline; an in-progress IME composition
+ *  (Japanese/Chinese/Korean keyboards, keyCode 229) never sends. Local copy —
+ *  intentionally not imported from notebook-chat-utils.ts (Notebook-specific;
+ *  see FLEET-011). Exported for NodeChat.test.tsx. */
+export function isEnterToSend(e: {
+  key: string;
+  shiftKey: boolean;
+  nativeEvent?: { isComposing?: boolean };
+  keyCode?: number;
+}): boolean {
+  if (e.key !== "Enter" || e.shiftKey) return false;
+  if (e.nativeEvent?.isComposing || e.keyCode === 229) return false;
+  return true;
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
@@ -179,6 +194,7 @@ export function ComposerButton({
       type="submit"
       size="sm"
       disabled={!canSend}
+      aria-label="Send"
       className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
       style={{
         background: canSend ? "var(--brand-blue)" : "var(--surface-1)",
@@ -382,7 +398,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isEnterToSend(e)) {
       e.preventDefault();
       const text = input;
       setInput("");
@@ -485,6 +501,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
           onKeyDown={handleKeyDown}
           disabled={streaming}
           placeholder={streaming ? "MIRA is thinking…" : "Ask about this folder…"}
+          aria-label="Ask about this folder"
           rows={1}
           className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 transition-all"
           style={{
