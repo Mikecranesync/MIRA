@@ -145,7 +145,7 @@ export function Bubble({
           Not found in the selected sources. Add a source or rephrase.
         </p>
       )}
-      {(turn.machineEvidence?.length ?? 0) > 0 && (
+      {!turn.safetyNotice && (turn.machineEvidence?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-col gap-1" data-testid="machine-replay-cards">
           {turn.machineEvidence!.map((e) => (
             <div
@@ -165,7 +165,7 @@ export function Bubble({
           ))}
         </div>
       )}
-      {(turn.visualEvidence?.length ?? 0) > 0 && (
+      {!turn.safetyNotice && (turn.visualEvidence?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-col gap-1" data-testid="visual-observation-cards">
           {turn.visualEvidence!.map((e) => (
             <div

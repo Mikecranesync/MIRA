@@ -331,6 +331,25 @@ describe("Bubble — safety hard-stop (FLEET-002)", () => {
     expect(html).not.toContain("safety-notice-banner");
     expect(html).not.toContain("Safety stop");
   });
+
+  it("suppresses machine-replay and visual-observation cards on a safety turn even if the arrays are non-empty", () => {
+    // Hypothetically non-empty arrays: the gate must fire regardless of content.
+    const withEvidence: ChatTurn = {
+      ...safetyTurn,
+      machineEvidence: [
+        { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 7, freshness: "live" },
+      ],
+      visualEvidence: [
+        { kind: "visual_observation", fileId: "f0000000-0000-4000-8000-000000000002", capturedAt: "2026-08-27T23:14:21.000Z", provenance: "phone_photo" },
+      ],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={withEvidence} />);
+    // Safety banner must appear
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    // Neither evidence card may appear
+    expect(html).not.toContain('data-testid="machine-replay-card"');
+    expect(html).not.toContain('data-testid="visual-observation-card"');
+  });
 });
 
 // ── S5 D3 (contract §4.5): the persisted Visual observation card ────────────
