@@ -52,11 +52,44 @@ Key tests proving the round-trip:
 - `notebook chat safety hard-stop > persists the stop with a safety_notice entry so hydration can restore it` ✓
 - `notebook chat safety hard-stop > safety_notice trigger matches the X-Safety-Stop header` ✓
 
+## Corrections Applied (2026-08-31)
+
+Charlie's independent review returned **PASS WITH KNOWN LIMITATION** on `e0baa6e1e`.
+Two findings were raised and are now fixed:
+
+### BLOCKING — 6 tsc errors in test files (no production code touched)
+All 6 errors were in test files only:
+1. Duplicate `splitEvidence` import at line ~453 — **deleted**; `PersistedTurn` added to the existing import block at line 266 instead.
+2. Two `rows` literals with `kind` widened to `string` — **annotated** `const rows: PersistedTurn[] = [...]` on lines 466 and 485.
+3. `domainMock.recordTurn.mock.calls[0]` possibly-undefined / out-of-range tuple — **cast** via `unknown` to `[string, string, Record<string, unknown>][]`.
+
+**tsc output (mira-hub, filtered to the two files):**
+```
+$ cd mira-hub && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "notebook-chat-utils.test|chat-safety-stop.test" ; echo "exit-marker done"
+exit-marker done
+```
+No errors for either file.
+
+**vitest output:**
+```
+ ✓ src/components/equipment/notebook-chat-utils.test.ts (35 tests) 22ms
+ ✓ src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts (8 tests) 15ms
+
+ Test Files  2 passed (2)
+      Tests  43 passed (43)
+   Start at  08:25:15
+   Duration  562ms
+```
+
+### IMPORTANT — commit message scope clarification
+The original commit `e0baa6e1e` overstated the technician-visible effect.
+**Scope clarification: this entire slice (995d3d5f0 + e0baa6e1e) is data-layer only — no visible client change yet. `safetyNotice` is now persisted and hydrated on the server side, but NotebookChat.tsx has no `safetyNotice` renderer and mobile sse.ts has no reader. Rendering lands in a later slice.**
+
 ## Blockers
 None. The change is self-contained.
 
 ## Next Action
-Charlie independently reviews commit `995d3d5f0`. The client-side
+Charlie independently reviews the corrected branch. The client-side
 rendering of `safetyNotice` on reload (showing the safety warning UI badge on a
 reloaded turn) is NOT in this slice — that is the consumer work for the PR that
 owns mira-mobile / Hub chat UI, per ADR-0038 item 3. This slice closes the
