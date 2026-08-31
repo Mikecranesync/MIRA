@@ -64,4 +64,41 @@ progress is legible even if the window ends before reaching them.
   in code but never pinned by a test — the safest possible category per the charter's own
   blocked-work fallback, usable as a filler task if a build slice stalls.
 
+## 14:1x — FLEET-003 reviewed and closed out
+
+Bravo (terminal `3bb57f0c`) reported completion at commit `4a5cd15f5`. Independent review in
+Bravo's own worktree: re-ran vitest (38/38, matches), targeted tsc grep (empty, matches), full
+tsc (32 errors / 58 lines, both metrics independently confirmed, no regression), broader sweep
+(333/333, 21/21 files, net +1 exactly). Adversarial hunt: `safetyNotice` null/undefined edge case
+safe, no collision with the unrelated server-side `ChatHistoryTurn`, traced `route.ts`'s
+`sanitizeHistory` to confirm no parallel server-side leak (client fix closes the loop at the
+single source of truth). **Zero findings — clean PASS.**
+
+Pushed `.fleet/REVIEW-FINAL-003.md`, pushed the branch, opened **PR #3521**
+(`fleet/chatui-slice-03`, stacked on #3518), HELD. `delete_terminal(3bb57f0c)`. (PR #3520 seen in
+the numbering gap was unrelated — `chore/promo-director` — no collision.)
+
+## 14:2x — FLEET-004 dispatched (investigation, not a build)
+
+Before committing to a build for the NodeChat/AssetChat candidate (documented above), did a
+bounded direct-grep investigation myself: confirmed both routes already share the SAME safety
+classifier as Notebook chat (`matchSafetyStop`/`SAFETY_STOP` from `@/lib/safety-classifier`) plus
+a separate existing H4 gap-admission net (`@/lib/agents/safety-alert`, #2542) — detection is
+unified, only wire format/persistence differ. But `AssetChat`'s route persists to
+`decision_traces` (a materialized-evidence/audit table, not obviously a reload store) and
+`NodeChat`'s route has **zero persistence writes found** — meaning it may not support
+reload/hydration at all today. This confirmed the gap is architecturally deeper than FLEET-001's
+shape, not safely buildable blind this window.
+
+Also did a quick targeted check on the CMPS-2 Retry path's interaction with a safety-stop turn
+(does Retry misfire on a safety-stop response?) — **clean, no gap**: a safety-stop is a normal
+non-throwing 200 SSE completion, never enters the failure/retry branch at all.
+
+Dispatched **FLEET-004** as a read-only investigation task (branch
+`fleet/chatui-slice-04-scoping`, base `origin/main`, standalone — not stacked on the FLEET-00{1,2,3}
+chain since it doesn't touch Notebook chat code) to a Bravo worker (terminal `2bd2a766`). Explicit
+no-code-edits constraint in the task. Deliverable: an evidence-backed scoping doc, not a fix —
+matches the charter's "document an evidence-backed implementation plan for the next slice"
+fallback category, and directly informs whatever FLEET-005 becomes.
+
 <!-- Further entries appended below as the window progresses -->
