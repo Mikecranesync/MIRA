@@ -101,4 +101,40 @@ no-code-edits constraint in the task. Deliverable: an evidence-backed scoping do
 matches the charter's "document an evidence-backed implementation plan for the next slice"
 fallback category, and directly informs whatever FLEET-005 becomes.
 
+## 14:3x — FLEET-004 reviewed and closed out (with a correction to my own earlier premise)
+
+Bravo (terminal `2bd2a766`) reported completion at `257c178c0`. **Important: the investigation
+overturned my own prior premise.** I had written FLEET-004's task spec asserting NodeChat's zero
+server-side DB writes meant it likely had no reload capability at all. That was wrong — I'd
+conflated "server doesn't persist" with "surface doesn't reload" and never checked for a
+client-side mechanism. Both AssetChat and NodeChat already reload past turns from browser
+`localStorage`, and a past safety hard-stop already renders distinctly there (the `isSafetyStop`
+flag round-trips through localStorage before the persist `useEffect` runs). I independently
+spot-checked every material claim in the document against the actual code (not just trusted it) —
+line-by-line: the localStorage mechanics, the `isSafetyStop` ordering, `decision_traces`' shape
+(confirmed as a single-record audit lookup, not a conversation store, by tracing its only
+consumer), and the H4 `safetyAlertSseChunk` discriminator gap. Every claim held up. **Clean PASS**,
+and I'm logging my own miss here rather than quietly absorbing the correction.
+
+Pushed `.fleet/REVIEW-FINAL-004.md`, pushed the branch, opened **PR #3522**
+(`fleet/chatui-slice-04-scoping`), docs-only, HELD. `delete_terminal(2bd2a766)`.
+
+**Real gap confirmed, correctly deferred:** true safety-persistence parity (server-durable,
+cross-device history for AssetChat/NodeChat) needs a schema/design decision — flagged for Mike,
+NOT attempted this window, per the charter's forbidden-actions list.
+
+**Real gap found, in scope, dispatched as FLEET-005:** the H4 gap-admission safety-alert SSE frame
+(`safetyAlertSseChunk`, #2542 — separate from the hard-stop mechanism) is emitted as an
+undiscriminated `content` chunk and silently swallowed into the ordinary assistant bubble in both
+`AssetChat.tsx` and `NodeChat.tsx` (literal asterisks show too, since neither renders markdown).
+Small, additive, no schema change.
+
+## 14:3x — FLEET-005 dispatched
+
+Fresh collision check before push (fetch + `gh pr list` + `git ls-remote`) surfaced PR #2550
+(merged 2026-07-07, "H4 parity" KB-gap admission wording) — read it, confirmed unrelated (touches
+`kb-gap.ts`/`route.ts` for a different H4 concern, never `safety-alert.ts` or the chat components)
+— no collision, proceeded. Branch `fleet/chatui-slice-05` pushed (base `origin/main`, task commit
+`466a4269f`). Dispatched to a Bravo worker (terminal `0f64354c`).
+
 <!-- Further entries appended below as the window progresses -->
