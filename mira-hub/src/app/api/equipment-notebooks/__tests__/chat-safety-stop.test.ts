@@ -145,8 +145,8 @@ describe("notebook chat safety hard-stop", () => {
 
   it("safety_notice trigger matches the X-Safety-Stop header", async () => {
     await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
-    const call = domainMock.recordTurn.mock.calls[0][2];
-    const entry = call.evidence[0];
+    const call = (domainMock.recordTurn.mock.calls as unknown as [string, string, Record<string, unknown>][])[0][2];
+    const entry = (call.evidence as { kind: string; trigger: string }[])[0];
     expect(entry.kind).toBe("safety_notice");
     expect(typeof entry.trigger).toBe("string");
     expect(entry.trigger.length).toBeGreaterThan(0);

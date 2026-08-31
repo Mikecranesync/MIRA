@@ -267,6 +267,7 @@ import {
   MACHINE_HISTORY_UNAVAILABLE_CAPTION,
   MACHINE_NO_CHANGES_CAPTION,
   machineReplayCaption,
+  PersistedTurn,
   recordedObservationsPhrase,
   splitEvidence,
 } from "./notebook-chat-utils";
@@ -450,8 +451,6 @@ describe("machineReplayCaption", () => {
 });
 
 
-import { splitEvidence } from "./notebook-chat-utils";
-
 describe("safety_notice round-trip (FLEET-001)", () => {
   it("splitEvidence extracts a safety_notice entry without treating it as a citation", () => {
     const entry = { kind: "safety_notice", trigger: "smoke coming" };
@@ -463,7 +462,7 @@ describe("safety_notice round-trip (FLEET-001)", () => {
   });
 
   it("persistedTurns restores safetyNotice on a reloaded safety turn", () => {
-    const rows = [
+    const rows: PersistedTurn[] = [
       {
         id: "t1",
         question: "smoke is coming from the panel",
@@ -482,7 +481,7 @@ describe("safety_notice round-trip (FLEET-001)", () => {
   });
 
   it("persistedTurns does NOT surface safetyNotice as a citation", () => {
-    const rows = [
+    const rows: PersistedTurn[] = [
       {
         id: "t2",
         question: "there is an exposed wire",
