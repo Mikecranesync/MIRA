@@ -66,6 +66,12 @@ export type FrameFold = {
   content: string;
   citations: EvidenceCitation[];
   status: "answered" | "insufficient_evidence" | "error";
+  /** Did a `status` frame actually arrive? `status` above is SEEDED to
+   *  "answered", so without this a truncated stream (Stop, dropped socket,
+   *  killed process) is indistinguishable from a completed answer and renders
+   *  as a fabricated completion — PRD §10.9, and §7.6 "the server is
+   *  authoritative". Reproduced on the Android emulator 2026-08-30. */
+  sawStatus: boolean;
   basis: string | null;
   basisLabel: string | null;
   followups: string[];
@@ -81,6 +87,7 @@ export function foldFrames(parsed: ParsedTranscript): FrameFold {
     content: "",
     citations: [],
     status: "answered",
+    sawStatus: false,
     basis: null,
     basisLabel: null,
     followups: [],
@@ -93,7 +100,10 @@ export function foldFrames(parsed: ParsedTranscript): FrameFold {
   for (const frame of parsed.frames) {
     if (frame.kind === "content") fold.content += frame.content;
     else if (frame.kind === "sources") fold.citations = frame.citations;
-    else if (frame.kind === "status") fold.status = frame.status;
+    else if (frame.kind === "status") {
+      fold.status = frame.status;
+      fold.sawStatus = true;
+    }
     else if (frame.kind === "safety") fold.safetyTrigger = frame.trigger;
     else if (frame.kind === "followups") fold.followups = frame.suggestions;
     else if (frame.kind === "usage") {
@@ -114,8 +124,15 @@ export function foldFrames(parsed: ParsedTranscript): FrameFold {
   return fold;
 }
 
-/** A COMPLETED live assistant turn (stream reached `status` + `[DONE]`). */
+/** A COMPLETED live assistant turn (stream reached `status` + `[DONE]`).
+ *
+ *  If the stream ended WITHOUT a `status` frame it was truncated, and this
+ *  returns the stopped shape instead: the partial text is kept, but the
+ *  citations / basis / usage / follow-ups that happened to arrive first are
+ *  dropped. Anything else would present a cut-off stream as a complete, cited
+ *  answer — the exact fabricated-completion the STRM-2 contract forbids. */
 export function liveAssistantMessage(id: string, fold: FrameFold): AdapterMessage {
+  if (!fold.sawStatus) return stoppedAssistantMessage(id, fold.content);
   const parts: MessagePart[] = [];
   if (fold.safetyTrigger !== null) {
     parts.push({ type: "safety_notice", trigger: fold.safetyTrigger });

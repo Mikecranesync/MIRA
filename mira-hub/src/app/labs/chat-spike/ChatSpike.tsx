@@ -76,9 +76,25 @@ const fixtureTransport: SpikeTransport = (message, signal, onRawChunk) =>
  * platform limit this probe exists to observe (#3453). `onHttpChunk` reports
  * the delivery granularity so the proof is readable on-screen.
  */
-function makeLiveTransport(onHttpChunk: (count: number) => void): SpikeTransport {
+function makeLiveTransport(
+  onHttpChunk: (count: number) => void,
+  crossOrigin: boolean,
+): SpikeTransport {
   return async (message, signal, onRawChunk) => {
-    const res = await fetch("/labs/chat-spike/stream", {
+    // Resolve relative to THIS page so the hub's basePath (`/hub`) is
+    // preserved, and so the same code works inside the Capacitor WebView
+    // where the origin differs. A root-relative "/labs/..." silently 404s.
+    const u = new URL("stream/", window.location.href);
+    // CONTROLLED VARIABLE for the #3453 question. The CapacitorHttp fetch
+    // patch only intercepts requests the WebView would treat as remote, so a
+    // SAME-origin probe measures the WebView's own fetch (incremental) while
+    // production (local bundle origin → https://app.factorylm.com) is
+    // CROSS-origin and goes through the patch (one buffered chunk, abort
+    // dropped). Swapping localhost→127.0.0.1 changes ONLY the origin, so the
+    // two runs isolate the patch as the cause instead of blaming "Android".
+    if (crossOrigin) u.hostname = u.hostname === "localhost" ? "127.0.0.1" : "localhost";
+    const url = u.toString();
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
@@ -97,6 +113,12 @@ function makeLiveTransport(onHttpChunk: (count: number) => void): SpikeTransport
       onHttpChunk(chunks);
       onRawChunk(raw);
     }
+    // An aborted fetch does NOT reliably reject `read()` — in the Android
+    // WebView the body stream is simply CLOSED, so the loop above exits with
+    // `done:true` exactly as a healthy stream does. Resolving here would tell
+    // the runtime the turn finished normally. Re-assert the abort so the
+    // stopped path runs. (Emulator finding, 2026-08-30.)
+    if (signal.aborted) throw new DOMException("aborted", "AbortError");
   };
 }
 
@@ -226,10 +248,11 @@ function AssistantMessage() {
 
 export function ChatSpike() {
   const [live, setLive] = useState(false);
+  const [xorigin, setXorigin] = useState(false);
   const [httpChunks, setHttpChunks] = useState(0);
   const transport = useMemo(
-    () => (live ? makeLiveTransport(setHttpChunks) : fixtureTransport),
-    [live],
+    () => (live ? makeLiveTransport(setHttpChunks, xorigin) : fixtureTransport),
+    [live, xorigin],
   );
   const { runtime } = useMiraChatRuntime({
     transport,
@@ -256,7 +279,21 @@ export function ChatSpike() {
             Live SSE probe (real HTTP stream — web: incremental; device: one buffered chunk)
           </label>
           {live ? (
-            <div data-testid="chunk-count">HTTP chunks this stream: {httpChunks}</div>
+            <>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  data-testid="xorigin-toggle"
+                  checked={xorigin}
+                  onChange={(e) => {
+                    setXorigin(e.target.checked);
+                    setHttpChunks(0);
+                  }}
+                />
+                Cross-origin (127.0.0.1) — isolates the CapacitorHttp fetch patch
+              </label>
+              <div data-testid="chunk-count">HTTP chunks this stream: {httpChunks}</div>
+            </>
           ) : null}
         </div>
         <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">

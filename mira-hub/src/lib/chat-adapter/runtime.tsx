@@ -92,6 +92,13 @@ export function useMiraChatRuntime(opts: {
         lastRaw = raw;
         render(raw, false);
       });
+      // Defence in depth: a transport that resolves after an abort (the
+      // Android WebView closes an aborted body instead of erroring it) must
+      // not be treated as a completed turn. `liveAssistantMessage` also
+      // refuses to claim completion without a `status` frame.
+      if (controller.signal.aborted) {
+        throw new DOMException("aborted", "AbortError");
+      }
       render(lastRaw, true);
     } catch (err) {
       if (controller.signal.aborted) {

@@ -170,3 +170,64 @@ describe("live/hydrated parity (criterion 6, translation half)", () => {
     expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
   });
 });
+
+/**
+ * TRUNCATION HONESTY (emulator finding, 2026-08-30).
+ *
+ * A stream that ENDS without a `status` frame is truncated — the client was
+ * cut off (Stop, dropped connection, killed process). `foldFrames` seeds
+ * `status:"answered"`, so before this guard a truncated stream rendered as a
+ * COMPLETE answered turn, keeping whatever `sources`/`evidence` frames had
+ * already arrived. Reproduced on the Android emulator by stopping after the
+ * `sources` frame: 4/5 sweep positions produced a "stopped" turn that still
+ * showed 2 citation chips + the basis badge and no stopped caption.
+ *
+ * That is a fabricated completion (PRD §10.9) and a client inferring terminal
+ * state the server never sent (PRD §7.6 "the server is authoritative").
+ */
+describe("truncated stream honesty (no status frame)", () => {
+  const truncated = ANSWERED_TRANSCRIPT.slice(
+    0,
+    ANSWERED_TRANSCRIPT.indexOf('{"kind":"status"'),
+  );
+
+  it("fold reports that no status frame was seen", () => {
+    expect(foldFrames(parseSseTranscript(truncated)).sawStatus).toBe(false);
+    expect(foldFrames(parseSseTranscript(ANSWERED_TRANSCRIPT)).sawStatus).toBe(true);
+  });
+
+  it("keeps the partial text but drops citations, basis, usage and followups", () => {
+    const msg = liveAssistantMessage("a1", foldFrames(parseSseTranscript(truncated)));
+    expect(textOf(msg)).toContain("output overcurrent");
+    expect(citationsOf(msg)).toEqual([]);
+    expect(msg.parts.some((p) => p.type === "basis")).toBe(false);
+    expect(msg.parts.some((p) => p.type === "usage")).toBe(false);
+    expect(msg.parts.some((p) => p.type === "followups")).toBe(false);
+  });
+
+  it("is marked stopped, not answered, and carries the stopped error part", () => {
+    const msg = liveAssistantMessage("a1", foldFrames(parseSseTranscript(truncated)));
+    expect(msg.lifecycle).toBe("stopped");
+    expect(msg.status).toBe("error");
+    expect(msg.parts).toContainEqual({ type: "error", reason: "stopped" });
+  });
+
+  it("matches stoppedAssistantMessage for the same partial (one stopped shape)", () => {
+    const fold = foldFrames(parseSseTranscript(truncated));
+    expect(comparableProjection(liveAssistantMessage("a1", fold))).toEqual(
+      comparableProjection(stoppedAssistantMessage("a1", fold.content)),
+    );
+  });
+
+  it("a complete answered stream is unaffected", () => {
+    const msg = liveAssistantMessage("a1", foldFrames(parseSseTranscript(ANSWERED_TRANSCRIPT)));
+    expect(msg.lifecycle).toBe("completed");
+    expect(citationsOf(msg)).toHaveLength(2);
+  });
+
+  it("a safety turn still ends with a status frame and stays answered", () => {
+    const msg = liveAssistantMessage("a1", foldFrames(parseSseTranscript(SAFETY_TRANSCRIPT)));
+    expect(msg.lifecycle).toBe("completed");
+    expect(msg.parts.some((p) => p.type === "safety_notice")).toBe(true);
+  });
+});
