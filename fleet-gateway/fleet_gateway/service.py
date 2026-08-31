@@ -28,6 +28,7 @@ from fleet_gateway.errors import (
 )
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.store import ArtifactStore
+from fleet_gateway.worktree import WorktreeProvisioner, worktrees_from_env
 
 
 def _nonempty(value: Any) -> bool:
@@ -49,12 +50,14 @@ class FleetGatewayService:
         audit: AuditLog,
         artifacts: ArtifactStore,
         default_requester: str = "unknown",
+        worktrees: WorktreeProvisioner | None = None,
     ) -> None:
         self.bearer_token = bearer_token
         self.cao = cao
         self.audit = audit
         self.artifacts = artifacts
         self.default_requester = default_requester
+        self.worktrees = worktrees if worktrees is not None else worktrees_from_env()
 
     def list_tools(self) -> list[str]:
         return list(ALLOWED_TOOLS)
@@ -238,6 +241,19 @@ class FleetGatewayService:
         }
         launched = self.cao.launch_worker(spec)
         session_id = str(launched.get("session_id") or "")
+        worktree_path = self.worktrees.create(
+            task_id=spec["task_id"],
+            session_id=session_id,
+            base_commit=spec["base_commit"],
+        )
+        self.worktrees.maybe_write_proof(
+            worktree_path,
+            task_id=spec["task_id"],
+            acceptance_criteria=spec["acceptance_criteria"],
+        )
+        worktree = str(worktree_path)
+        if hasattr(self.cao, "record_worktree"):
+            self.cao.record_worktree(session_id, worktree)
         record = {
             **spec,
             "session_id": session_id,
@@ -250,7 +266,7 @@ class FleetGatewayService:
             "build": "not_run",
             "review_verdict": None,
             "blockers": [],
-            "worktree": f"isolated:{spec['task_id']}",
+            "worktree": worktree,
         }
         artifact_path = self.artifacts.write_task(record)
         return sanitize_public_payload(
@@ -263,6 +279,7 @@ class FleetGatewayService:
                 "github_ref": spec["github_ref"],
                 "base_commit": spec["base_commit"],
                 "isolated_worktree": True,
+                "worktree": worktree,
                 "artifact": str(artifact_path.name),
             }
         )
@@ -406,6 +423,7 @@ def build_service(
     cao: CAOClient,
     data_dir: Path,
     requester: str = "unknown",
+    worktrees: WorktreeProvisioner | None = None,
 ) -> FleetGatewayService:
     data_dir = Path(data_dir)
     return FleetGatewayService(
@@ -414,4 +432,5 @@ def build_service(
         audit=AuditLog(data_dir / "audit.jsonl"),
         artifacts=ArtifactStore(data_dir),
         default_requester=requester,
+        worktrees=worktrees,
     )

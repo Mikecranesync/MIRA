@@ -13,6 +13,7 @@ from starlette.routing import Route
 
 from fleet_gateway.auth import configured_bearer
 from fleet_gateway.errors import FleetGatewayError
+from fleet_gateway.mcp_rpc import mcp_get, mcp_post
 from fleet_gateway.service import FleetGatewayService
 
 
@@ -74,6 +75,8 @@ def create_http_app(service: FleetGatewayService) -> Starlette:
     app = Starlette(
         routes=[
             Route("/health", health),
+            Route("/mcp", mcp_post, methods=["POST"]),
+            Route("/mcp", mcp_get, methods=["GET"]),
             Route("/tools", list_tools),
             Route("/tools/{name}", invoke_tool, methods=["GET", "POST"]),
         ]

@@ -9,11 +9,12 @@ from __future__ import annotations
 import os
 import sys
 
-from fleet_gateway.factory import service_from_env
+from fleet_gateway.factory import load_local_env, service_from_env
 from fleet_gateway.http_app import create_http_app, default_bind_host, default_bind_port
 
 
 def main() -> None:
+    load_local_env()
     if not (os.environ.get("FLEET_GATEWAY_BEARER") or "").strip():
         sys.stderr.write("ERROR: FLEET_GATEWAY_BEARER is not set — all tool calls will 401\n")
         sys.stderr.flush()

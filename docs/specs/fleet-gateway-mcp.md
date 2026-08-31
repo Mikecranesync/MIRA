@@ -55,6 +55,8 @@ Public TLS termination and any CAO tunnel are **not** this PR.
 
 `GET /health` is the only unauthenticated route and returns `{status, service}` with no topology.
 
+`POST /mcp` is MCP JSON-RPC 2.0 (initialize, notifications/initialized, tools/list, tools/call, ping) for Cursor remote MCP. Unauthenticated `/mcp` is 401. `tools/call` uses the request `Authorization` header (never a server-injected token). REST `/tools` and `/tools/{name}` remain.
+
 ### Tools — exactly seven
 
 | Tool | Mode | Contract |
@@ -111,7 +113,9 @@ Example env: `fleet-gateway/.env.example` (placeholders only).
 
 ## Known Issues
 - Live CAO HTTP shapes are adapter-internal; until a loopback CAO is wired under Mike approval, runtime defaults to FakeCAO.
-- FastMCP is optional at runtime (`fastmcp` extra). The locked tool names live in `fleet_gateway.contract` / `mcp_api` regardless.
+- FastMCP is optional at runtime (`fastmcp` extra). The locked tool names live in `fleet_gateway.contract` / `mcp_api` regardless. Native `POST /mcp` JSON-RPC does not require FastMCP.
+- `launch_worker` creates a real `git worktree add --detach` directory and never deletes it.
 
 ## Change Log
 - 2026-08-31 — v1 locked contract implemented on `feat/fleet-gateway-mcp-v1` (#3532).
+- 2026-08-31 — Native MCP JSON-RPC `POST /mcp` + real isolated git worktrees (still HELD).

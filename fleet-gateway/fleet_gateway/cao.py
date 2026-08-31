@@ -38,6 +38,8 @@ class CAOClient(Protocol):
 
     def get_session(self, session_id: str) -> dict[str, Any] | None: ...
 
+    def record_worktree(self, session_id: str, worktree: str) -> None: ...
+
 
 def assert_loopback_cao_url(url: str) -> str:
     """Refuse anything that is not http(s)://127.0.0.1[:port][/path]."""
@@ -177,6 +179,17 @@ class FakeCAO:
         session = self.sessions.get(session_id)
         return None if session is None else dict(session)
 
+    def record_worktree(self, session_id: str, worktree: str) -> None:
+        session = self.sessions.get(session_id)
+        if session is None:
+            return
+        session["worktree"] = worktree
+        task_id = session.get("task_id")
+        if task_id:
+            task = self.tasks.get(task_id) or dict(session)
+            task["worktree"] = worktree
+            self.tasks[task_id] = task
+
 
 class LoopbackCAOClient:
     """HTTP client that may only target 127.0.0.1. Never binds. Never logs secrets."""
@@ -247,3 +260,6 @@ class LoopbackCAOClient:
             return self._request("GET", f"/sessions/{session_id}")
         except Exception:
             return None
+
+    def record_worktree(self, session_id: str, worktree: str) -> None:
+        del session_id, worktree
