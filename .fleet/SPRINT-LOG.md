@@ -293,4 +293,47 @@ Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — only my own d
 matched, no real collision. Branch `fleet/chatui-slice-09` pushed (base `origin/main`, task commit
 `fac67cc98`). Dispatched to a Bravo worker (terminal `46ba4eb6`).
 
+## 15:2x — FLEET-009 reviewed and closed out
+
+Bravo (terminal `46ba4eb6`) reported completion at `d70d0bb22`. Independent review: read both
+component diffs line by line (confirmed structurally identical across both files), and went beyond
+the report in two ways: (1) traced the existing `finally { setStreaming(false) }` block myself to
+confirm the Stop button correctly reverts to Send after a stop settles — not explicitly claimed in
+the report, and exactly the kind of subtle gap a static render test can't catch; (2) verified the
+new `ComposerButton` extraction preserves the original Send-button disabled/color logic
+algebraically, not just visually. Confirmed `clearHistory` byte-unchanged, `Loader2` genuinely dead
+in both files (not just unused-but-left), no orphaned imports. Full suite (245/2456) checked
+against the established clean baseline (244/2445) — exact match, all 11 new tests accounted for.
+Targeted + full tsc clean, unchanged 32-error baseline. **Zero findings — clean PASS.**
+
+Pushed `.fleet/REVIEW-FINAL-009.md`, pushed the branch, opened **PR #3527**
+(`fleet/chatui-slice-09`), HELD. `delete_terminal(46ba4eb6)`.
+
+## 15:2x — FLEET-010 candidate found, investigated, correctly abandoned (not a slice, a collision-avoidance finding)
+
+Scanned `docs/known-issues.md` for a genuinely different (non-AssetChat/NodeChat) candidate per the
+charter's "prefer finishing existing partially implemented functionality" — found "Nameplate photo
+→ unknown drive has no internet manual-search fallback," which explicitly said the underlying
+`manual_search.py` module "was never connected to the main bot... it is drift, not a scope
+decision." Before dispatching a scoping task, ran the collision check the charter requires and
+found it would have been a real, near-miss collision: **PR #3042 (merged 2026-08-02) already
+ported `manual_search.py`** into `mira-bots/shared/manual_search/`, and **PRs #3401/#3411 (merged
+2026-08-25/26 — one 5 days old) actively extended it** with model-judged discovery and a download
+arbiter. The module's own docstring states Phase 3 (bot-adapter wiring) is "separate and not done
+here" — this is live, phased, actively-owned work with its own governing plan, not unowned drift.
+
+**Correctly did NOT dispatch a build or even an investigation task here** — the density of recent
+merges in this exact area makes it inappropriate for a blind autonomous slice per
+`.claude/rules/multi-session-protocol.md`. Instead: corrected the now-stale `known-issues.md` entry
+directly (small, safe, zero collision risk — a docs-only fix, not a Bravo dispatch), confirming the
+core gap (Telegram fast-path still has no fallback) remains real via a direct grep, while
+correcting the false "never connected"/"drift" framing. Pushed
+`fix/known-issues-manual-search-staleness`, opened **PR #3528** (docs-only, not HELD-labeled since
+it's not app code, but still unmerged per the charter's no-merge policy).
+
+**Queue impact:** no new FLEET-0NN slice this cycle. This is itself the safe, valuable outcome —
+preventing a future session (this one or another) from wasting a cycle on a stale premise, exactly
+the kind of thing the charter's "document an evidence-backed plan" / collision-avoidance discipline
+exists for. Will look for the next candidate on the following wake with a fresh read of the queue.
+
 <!-- Further entries appended below as the window progresses -->
