@@ -15,6 +15,7 @@ import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-f
 import { openNotebookTransition } from "../lib/scan-landing";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
+import { can } from "../nav";
 
 export type NotebookRoute =
   | { name: "home" }
@@ -45,6 +46,7 @@ export function NotebooksTab({
   backRef,
   route,
   setRoute,
+  capabilities,
 }: {
   backRef: MutableRefObject<(() => boolean) | null>;
   /** Lifted to the shell so a scan can land INSIDE a notebook: switching the
@@ -52,6 +54,7 @@ export function NotebooksTab({
    *  the notebook LIST instead of the machine they just scanned. */
   route: Route;
   setRoute: (r: Route) => void;
+  capabilities: string[];
 }) {
   const notebookBack = useRef<(() => boolean) | null>(null);
 
@@ -76,6 +79,7 @@ export function NotebooksTab({
     return (
       <NotebookScreen
         id={route.id}
+        chatV2Available={can(capabilities, "chat_v2")}
         openAddSources={route.openAddSources}
         backRef={notebookBack}
         onExit={() => setRoute({ name: "home" })}

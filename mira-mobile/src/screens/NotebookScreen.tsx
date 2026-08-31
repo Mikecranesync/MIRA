@@ -7,7 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick";
+import { canPickNatively, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -19,6 +19,7 @@ import {
   uploadSourceToNotebook,
   getSourcePassage,
   getFile,
+  lookAtPhoto,
   enabledDocIds,
   canBeChatSource,
   fileCapabilityLabel,
@@ -53,6 +54,9 @@ import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
+import { ChatV2 } from "./ChatV2";
+import { useChatV2Enabled } from "../lib/chat-ui-pref";
+import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -128,12 +132,14 @@ const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
 
 export function NotebookScreen({
   id,
+  chatV2Available = false,
   openAddSources,
   backRef,
   onExit,
   onOpenNotebook,
 }: {
   id: string;
+  chatV2Available?: boolean;
   openAddSources?: boolean;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
@@ -186,6 +192,8 @@ export function NotebookScreen({
   const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Which conversation surface (PRD §12.4). `null` = still loading.
+  const chatV2 = useChatV2Enabled(chatV2Available);
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
@@ -290,6 +298,72 @@ export function NotebookScreen({
     }
   };
   const stopGeneration = () => abortRef.current?.abort();
+  const canStopGeneration =
+    busy && abortRef.current !== null && canCancelChatTransport();
+
+  /**
+   * ChatV2 attachment: photograph → the EXISTING LOOK path (parked + linked
+   * server-side before vision, SHA-256 deduped by `clientKey`), then the same
+   * `visualEvidence` rider Sensor uses. No second attachment system: the
+   * bytes travel the one upload door, and the server re-derives the evidence
+   * entry it echoes back — the client never asserts an observation.
+   */
+  const attachPhotoAndAsk = async () => {
+    if (busy) return;
+    const file = await pickPhoto("photo.jpg");
+    if (!file) return; // backed out — draft untouched
+    const question = q.trim() || "What am I looking at, and what should I check?";
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
+    try {
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      refresh(); // the photo is now a linked file — refresh Photos
+      setBusy(false);
+      setPending(null);
+      if (!look.fileId) {
+        setChatError(new Error("The photo didn't upload — try again."));
+        return;
+      }
+      await sendQuestion(question, undefined, {
+        visualEvidence: {
+          fileId: look.fileId,
+          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      setBusy(false);
+      setPending(null);
+      setQ(question); // the draft survives a failed attachment
+      setChatError(e);
+    }
+  };
+
+  /**
+   * ChatV2 attachment: PDF → the EXISTING two-step source upload
+   * (`uploadSourceToNotebook`), so the document becomes a CITABLE source in
+   * this notebook's scope. Honest about the not-indexed case rather than
+   * pretending the manual is searchable.
+   */
+  const attachPdfSource = async () => {
+    if (busy) return;
+    const file = await pickPdf();
+    if (!file) return;
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: `Adding ${file.name}…`, a: EMPTY_TURN });
+    try {
+      const r = await uploadSourceToNotebook(notebook, file, { sourceRole: "manual" });
+      refresh();
+      if (!r.attached && r.warning) setChatError(new Error(r.warning));
+    } catch (e) {
+      setChatError(e);
+    } finally {
+      setBusy(false);
+      setPending(null);
+    }
+  };
+
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
@@ -551,7 +625,33 @@ export function NotebookScreen({
         </div>
       )}
 
-      {panel === "chat" && (
+      {/* ChatV2 (PRD 2026-08-30): the ChatGPT-class surface. Same send path,
+          same scope, same citation viewer, same evidence cards — only the
+          conversation shell changes. `null` while the preference loads, so
+          the technician never sees one surface flash into the other. */}
+      {panel === "chat" && chatV2 === true && (
+        <ChatV2
+          turns={turns}
+          liveTurns={liveTurns}
+          pending={pending}
+          busy={busy}
+          canStop={canStopGeneration}
+          draft={q}
+          onDraftChange={setQ}
+          scopeCount={scope.length}
+          chatError={chatError}
+          canRetry={Boolean(failedSend) && !busy}
+          handlers={{
+            onSend: (text) => void sendQuestion(text),
+            onStop: stopGeneration,
+            onCitation: setViewCitation,
+            onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachFile: () => void attachPdfSource(),
+            onRetry: () => failedSend && void sendQuestion("", failedSend),
+          }}
+        />
+      )}
+      {panel === "chat" && chatV2 === false && (
         <>
           <div className="content" style={{ paddingTop: 0 }} ref={scrollRef}>
             {turns.length === 0 && liveTurns.length === 0 && (
@@ -739,9 +839,13 @@ export function NotebookScreen({
             <span className="counter">
               {scope.length} source{scope.length === 1 ? "" : "s"}
             </span>
-            {busy ? (
+            {busy && canStopGeneration ? (
               <button className="btn-primary" aria-label="Stop generating" onClick={stopGeneration}>
                 Stop
+              </button>
+            ) : busy ? (
+              <button className="btn-primary" aria-label="Working" disabled>
+                Working…
               </button>
             ) : (
               <button

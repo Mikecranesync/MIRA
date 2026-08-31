@@ -143,7 +143,7 @@ export async function drainQueue(
 }
 
 /** All device-local data namespaces that must not outlive a session. */
-const PURGE_PREFIXES = [PREFIX, "flm.studio.v1."];
+const PURGE_PREFIXES = [PREFIX, "flm.studio.v1.", "flm.chatui.v1"];
 
 /** Sign-out hygiene: remove every offline queue AND cached Studio artifact on
  *  the device (all tenants). Returns how many keys were purged. */

@@ -18,7 +18,14 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
-    get: vi.fn(async () => ({ value: null })),
+    // These suites pin the CLASSIC chat surface, which still ships behind
+    // More → "Chat style". ChatV2 is the default, so the preference is
+    // returned explicitly here rather than relied upon — the ChatV2 contracts
+    // are pinned separately in src/screens/__tests__/chat-v2.test.tsx and
+    // src/chat-adapter/__tests__/.
+    get: vi.fn(async ({ key }: { key: string }) =>
+      key === "flm.chatui.v1" ? { value: "legacy" } : { value: null },
+    ),
     set: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
   },

@@ -19,6 +19,21 @@ function ctx(over: Partial<SessionContext>): SessionContext {
 }
 
 describe("getCapabilities", () => {
+  it("advertises chat_v2 only while the server rollout flag is exactly 1", () => {
+    const before = process.env.MIRA_CHAT_V2_ENABLED;
+    try {
+      process.env.MIRA_CHAT_V2_ENABLED = "0";
+      expect(getCapabilities(ctx({}))).not.toContain("chat_v2");
+      process.env.MIRA_CHAT_V2_ENABLED = "true";
+      expect(getCapabilities(ctx({}))).not.toContain("chat_v2");
+      process.env.MIRA_CHAT_V2_ENABLED = "1";
+      expect(getCapabilities(ctx({}))).toContain("chat_v2");
+    } finally {
+      if (before === undefined) delete process.env.MIRA_CHAT_V2_ENABLED;
+      else process.env.MIRA_CHAT_V2_ENABLED = before;
+    }
+  });
+
   it("plain owner/trial gets workspace caps but NO platform caps", () => {
     // This IS the QA user in #1932: shown as Owner, status trial, email not in
     // the platform allowlist. After the fix they must not have review access.

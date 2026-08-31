@@ -498,3 +498,64 @@ textarea {
   margin: 0; padding: 8px; overflow-x: auto; font-family: var(--flm-font-mono); font-size: 12.5px;
 }
 .code-block pre code { background: none; padding: 0; }
+
+/* --- ChatV2: the ChatGPT-class conversation surface (PRD 2026-08-30) -------
+   assistant-ui owns viewport/scroll/composer behavior; these rules only give
+   it the FactoryLM skin. Tokens only — never a hex (rules/ui-style.md). */
+.v2-thread { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.v2-viewport { flex: 1; overflow-y: auto; padding: var(--fl-space-2) var(--fl-space-4) var(--fl-space-3); scroll-behavior: smooth; }
+.v2-row { margin: 0 0 var(--fl-space-4); }
+.v2-row-user { margin-bottom: var(--fl-space-2); }
+/* The answer column is quiet: no card, no border — content first. */
+.v2-row [data-testid="v2-answer"] { font-size: var(--fl-fs-body); line-height: 1.55; }
+.v2-empty { text-align: center; padding: var(--fl-space-8) var(--fl-space-4) var(--fl-space-6); }
+.v2-empty-title { font-size: var(--fl-fs-title); font-weight: 600; margin-bottom: var(--fl-space-1); }
+.v2-empty-sub { font-size: var(--fl-fs); color: var(--fl-muted); line-height: 1.5; }
+/* Jump-to-latest: only while the user has scrolled away (the primitive
+   disables itself at the bottom), so it never fights the reader. */
+.v2-jump {
+  position: sticky; bottom: var(--fl-space-2); left: 50%; transform: translateX(-50%);
+  width: auto; min-height: 0; padding: var(--fl-space-1) var(--fl-space-3); font-size: var(--fl-fs-sm);
+  background: var(--fl-surface); color: var(--fl-ink);
+  border: 1px solid var(--fl-line); border-radius: var(--fl-radius-pill);
+  box-shadow: var(--fl-shadow);
+}
+.v2-jump[disabled] { display: none; }
+.v2-composer { align-items: flex-end; gap: var(--fl-space-1); }
+.v2-attach {
+  width: 36px; min-height: 36px; flex: none; align-self: flex-end;
+  border: 1px solid var(--fl-line); background: var(--fl-surface);
+  color: var(--fl-ink); border-radius: var(--fl-radius-pill);
+  font-size: 20px; line-height: 1; padding: 0;
+}
+.v2-attach-menu {
+  overflow: hidden;
+}
+.v2-attach-item {
+  width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--fl-line); padding: var(--fl-space-3) var(--fl-space-4);
+  font-size: var(--fl-fs); color: var(--fl-ink); min-height: 48px;
+}
+.v2-attach-item:last-child { border-bottom: none; }
+.v2-message-actions { margin-top: var(--fl-space-1); }
+.v2-message-actions .btn-link { width: auto; min-height: 0; padding: var(--fl-space-1) 0; }
+/* Safety stop: the one place strong color is correct (red = stop), per the
+   industrial palette. Distinct from every answer treatment, by design. */
+.safety-notice {
+  margin: 0 0 var(--fl-space-2); padding: var(--fl-space-2) var(--fl-space-3);
+  border-left: 3px solid var(--fl-fault); border-radius: var(--fl-radius);
+  background: var(--fl-fault-bg); color: var(--fl-ink);
+  font-size: var(--fl-fs); line-height: 1.45;
+}
+/* Citation chips inside ChatV2 flow as inline pills. The global
+   `button { width: 100% }` touch-target rule would otherwise stretch each one
+   to a full-width block — correct for a form button, wrong for a citation.
+   Scoped to .v2-row so the classic screen is untouched. */
+.v2-row .cite-chip {
+  width: auto;
+  min-height: 0;
+  display: inline-block;
+  padding: 3px 10px;
+}
+/* Follow-up chips likewise sit in a row, not a stack. */
+.v2-row + .chip-row .chip, .v2-viewport .chip-row .chip { width: auto; min-height: 0; }
