@@ -93,6 +93,7 @@ import type {
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
+  SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
@@ -491,12 +492,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // returns `notebook_not_found` otherwise), so the stop is safe to serve and
     // safe to persist here.
     if (safetyTrigger && validated.error === "no_sources_selected") {
+      const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
       await recordTurn(ctx.tenantId, notebookId, {
         question: message,
         answerStatus: "answered",
         answerText: SAFETY_STOP,
         enabledSourceDocIds: [],
-        evidence: [],
+        evidence: [safetyEntry],
         model: null,
       });
       return safetyStopResponse(safetyTrigger, []);
@@ -566,12 +568,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger) {
+    const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     await recordTurn(ctx.tenantId, notebookId, {
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [],
+      evidence: [safetyEntry],
       model: null,
       ...assetSnapshot,
     });

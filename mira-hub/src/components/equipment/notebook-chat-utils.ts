@@ -4,12 +4,14 @@
 
 import {
   isMachineEvidenceEntry,
+  isSafetyNoticeEntry,
   isVisualObservationEntry,
   parseFrame,
   type EvidenceBasis,
   type EvidenceCitation,
   type MachineEvidenceEntry,
   type NotebookChatFrame,
+  type SafetyNoticeEntry,
   type VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 
@@ -268,10 +270,10 @@ export type PersistedTurn = {
   question: string;
   answerStatus: string;
   answerText: string | null;
-  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries riding in
-   *  the same JSONB. Non-document entries are split out, never rendered as
-   *  citations. */
-  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry>;
+  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries and (safety)
+   *  any `{kind:"safety_notice"}` entries riding in the same JSONB.
+   *  Non-document entries are split out, never rendered as citations. */
+  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry>;
   basis?: string | null;
 };
 
@@ -284,27 +286,31 @@ type HydratedTurn = {
   basis?: string | null;
   machineEvidence?: MachineEvidenceEntry[];
   visualEvidence?: VisualObservationEntry[];
+  safetyNotice?: SafetyNoticeEntry;
   stopped?: boolean;
 };
 
-/** Split a persisted evidence[] into citations vs machine entries. Anything
- *  without a docId that is not machine evidence is dropped (never a dead chip). */
+/** Split a persisted evidence[] into citations vs non-citation entries. Anything
+ *  without a docId that is not a known typed entry is dropped (never a dead chip). */
 export function splitEvidence(evidence: unknown[]): {
   citations: EvidenceCitation[];
   machineEvidence: MachineEvidenceEntry[];
   visualEvidence: VisualObservationEntry[];
+  safetyNotice: SafetyNoticeEntry | null;
 } {
   const citations: EvidenceCitation[] = [];
   const machineEvidence: MachineEvidenceEntry[] = [];
   const visualEvidence: VisualObservationEntry[] = [];
+  let safetyNotice: SafetyNoticeEntry | null = null;
   for (const e of Array.isArray(evidence) ? evidence : []) {
     if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
     else if (isVisualObservationEntry(e)) visualEvidence.push(e);
+    else if (isSafetyNoticeEntry(e)) safetyNotice = e;
     else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
       citations.push(e as EvidenceCitation);
     }
   }
-  return { citations, machineEvidence, visualEvidence };
+  return { citations, machineEvidence, visualEvidence, safetyNotice };
 }
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
@@ -317,7 +323,7 @@ export function splitEvidence(evidence: unknown[]): {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
-    const { citations, machineEvidence, visualEvidence } = splitEvidence(t.evidence);
+    const { citations, machineEvidence, visualEvidence, safetyNotice } = splitEvidence(t.evidence);
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -332,6 +338,9 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
         // D3 (S5): the Visual observation card survives reload the same way.
         ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
+        // Safety marker — a reloaded safety turn is distinguishable from a
+        // normal `answered` turn: the `safetyNotice` field carries the trigger.
+        ...(!stopped && safetyNotice ? { safetyNotice } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

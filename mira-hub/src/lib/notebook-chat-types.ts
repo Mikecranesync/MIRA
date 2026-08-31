@@ -226,6 +226,38 @@ export function isVisualObservationEntry(e: unknown): e is VisualObservationEntr
   );
 }
 
+/**
+ * Safety hard-stop marker persisted INSIDE `evidence[]` so a reloaded turn is
+ * distinguishable from an ordinary `answered` turn on hydration.
+ *
+ * Rides INSIDE the turn's existing `evidence[]` JSONB, discriminated by `kind`.
+ * It is NOT a citation: no `docId`, never in `sources.citations` or
+ * `sourceSnapshot`. Every `evidence[]` reader that assumes `{docId}` already
+ * skips it — `enrichCitationsWithOrigin` checks `typeof c.docId === "string"`;
+ * `splitEvidence` checks `isMachineEvidenceEntry`, `isVisualObservationEntry`,
+ * and then `docId`. The marker is additive: existing clients that only know
+ * citations will silently drop it; clients that know the type can restore the
+ * safety warning on reload.
+ *
+ * No migration required — `evidence` is an existing `jsonb` column with no
+ * per-entry schema enforcement (migration 073 defines the COLUMN, not entries).
+ */
+export type SafetyNoticeEntry = {
+  kind: "safety_notice";
+  /** The matched phrase, for observability. Same value as `NotebookSafetyFrame.trigger`. */
+  trigger: string;
+};
+
+/** Type guard: an `evidence[]` entry that is a safety-stop marker. */
+export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "safety_notice" &&
+    typeof (e as { trigger?: unknown }).trigger === "string"
+  );
+}
+
 export type NotebookChatFrame =
   | NotebookSourcesFrame
   | NotebookContentFrame
