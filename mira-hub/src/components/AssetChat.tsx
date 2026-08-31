@@ -50,6 +50,14 @@ export function isEnterToSend(e: {
   return true;
 }
 
+/** After a failed send the technician's question goes back into the composer
+ *  — unless they already started typing something else. Local copy of
+ *  Notebook chat's CMPS-2 fix (notebook-chat-utils.ts); not imported to avoid
+ *  a cross-surface coupling for a 2-line pure function. */
+export function restoreComposer(current: string, failedMessage: string): string {
+  return current.trim() ? current : failedMessage;
+}
+
 // Exported for the static render test (AssetChat.test.tsx).
 export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
@@ -354,6 +362,9 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         next.pop(); // remove empty assistant bubble
         return next;
       });
+      // Restore the failed question to the composer (CMPS-2) unless the
+      // technician already started typing something new.
+      setInput((current) => restoreComposer(current, text));
     } finally {
       if (isSafety) {
         setMessages((prev) => {
