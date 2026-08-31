@@ -1,3 +1,36 @@
+# Hot Cache — 2026-08-31 — Mobile ChatV2 merged, capability-gated and default-off
+
+PR #3516 merged to `main` as `1ed59e988` after PR #3517 landed persisted safety-stop markers.
+The mobile equipment-notebook chat now has the quiet ChatGPT-style thread shell, open assistant
+answers, user bubbles, typed MIRA parts, citation chips/viewer, evidence cards, safety banners,
+message Copy, Retry, attachments through the shared Sheet, and one controlled composer draft.
+
+Release truths:
+- ChatV2 is **not active by default**. Hub advertises `chat_v2` only when
+  `MIRA_CHAT_V2_ENABLED=1`; removing the flag is the fleet rollback. The local More preference can
+  opt an allowed device back to classic chat but cannot grant access.
+- Android's current Capacitor transport buffers the response and cannot cancel server work, so it
+  honestly shows `Working…` instead of a cosmetic Stop. Browser streaming keeps real Stop.
+- Safety identity survives reload via `{kind:"safety_notice"}` in persisted `evidence[]`; the
+  classifier trigger remains observability-only and is never echoed as a technician-facing label.
+- Verified before merge: mobile 363/363, affected Hub 57/57, production mobile build, full GitHub
+  CI/security/staging/smoke green. **No deploy, flag enablement, or APK publication was performed.**
+
+Next sequence — consolidate existing work instead of opening another chat implementation:
+1. Review/close superseded held PRs (#3515 spike, #3518 duplicate mobile safety renderer) and
+   cherry-pick only genuinely complementary tests or Hub behavior.
+2. Prioritize #3521 (exclude persisted safety stops from future LLM history) after focused review.
+3. Resolve the native WebView auth/CORS design tracked by #3454, then add physical-device proof for
+   true streaming and server-confirmed Stop.
+4. Build the remaining app-level layer: default MIRA home/general-maintenance thread, history/search/
+   rename, and context switching outside an already-open notebook.
+
+Integration design and executable plan:
+`docs/superpowers/specs/2026-08-31-mira-mobile-chatv2-integration-design.md` and
+`docs/superpowers/plans/2026-08-31-mira-mobile-chatv2-integration.md`.
+
+---
+
 # Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
 
 `feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).
