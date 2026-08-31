@@ -1,7 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AssetChat, ComposerButton, MessageBubble, isEnterToSend, restoreComposer } from "./AssetChat";
+import {
+  AssetChat,
+  ComposerButton,
+  MessageBubble,
+  RetryChip,
+  composerAfterRetry,
+  failedAfterEdit,
+  isEnterToSend,
+  restoreComposer,
+  shouldShowRetry,
+} from "./AssetChat";
 
 // Static-markup coverage for the machine-memory "Next check" evidence line
 // (T2 Task 4) — same pattern as MachineMemoryCard.test.tsx.
@@ -228,5 +238,63 @@ describe("AssetChat restoreComposer", () => {
 
   it("treats whitespace-only composer content as empty and restores the failed message", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
+  });
+});
+
+// FLEET-013: a real Retry button that re-posts the exact failed text via the
+// existing sendMessage() — completes the CMPS-2 contract FLEET-012 started.
+describe("AssetChat shouldShowRetry", () => {
+  it("shows the Retry chip after a failure while idle", () => {
+    expect(shouldShowRetry("What does fault F005 mean?", false)).toBe(true);
+  });
+
+  it("hides the Retry chip when there is no failed send", () => {
+    expect(shouldShowRetry(null, false)).toBe(false);
+  });
+
+  it("hides the Retry chip while a new attempt is streaming", () => {
+    expect(shouldShowRetry("What does fault F005 mean?", true)).toBe(false);
+  });
+
+  it("hides the Retry chip when both there is no failure and it is streaming", () => {
+    expect(shouldShowRetry(null, true)).toBe(false);
+  });
+});
+
+describe("AssetChat composerAfterRetry", () => {
+  it("clears the composer when it still shows exactly the failed text", () => {
+    expect(composerAfterRetry("What does fault F005 mean?", "What does fault F005 mean?")).toBe("");
+  });
+
+  it("leaves a manually-started different draft untouched", () => {
+    expect(composerAfterRetry("actually, a different question", "What does fault F005 mean?")).toBe(
+      "actually, a different question",
+    );
+  });
+});
+
+describe("AssetChat failedAfterEdit", () => {
+  it("withdraws the Retry offer once the composer no longer matches the failed text", () => {
+    expect(failedAfterEdit("What does fault F005 mean?", "something else")).toBe(null);
+  });
+
+  it("keeps the Retry offer while the composer still matches the failed text", () => {
+    expect(failedAfterEdit("What does fault F005 mean?", "What does fault F005 mean?")).toBe(
+      "What does fault F005 mean?",
+    );
+  });
+
+  it("is a no-op when there is no failed send to withdraw", () => {
+    expect(failedAfterEdit(null, "anything")).toBe(null);
+  });
+});
+
+describe("AssetChat RetryChip", () => {
+  it("renders the Retry affordance with its testid, icon, and label", () => {
+    const html = renderToStaticMarkup(<RetryChip onClick={() => {}} />);
+
+    expect(html).toContain('data-testid="retry-button"');
+    expect(html).toContain("Retry");
+    expect(html).toContain("<svg"); // RotateCcw icon
   });
 });

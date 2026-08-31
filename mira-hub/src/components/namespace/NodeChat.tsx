@@ -79,6 +79,45 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
+/** CMPS-2 (FLEET-013): the Retry chip shows only after a real send failure,
+ *  and only while a new attempt isn't already streaming. Local copy of
+ *  Notebook chat's failed/busy visibility rule. */
+export function shouldShowRetry(failed: string | null, streaming: boolean): boolean {
+  return failed !== null && !streaming;
+}
+
+/** On Retry, clear the composer only if it still shows exactly the failed
+ *  text — if the technician started a different draft, leave it alone.
+ *  Mirrors Notebook's `cur === failed.message ? "" : cur`. */
+export function composerAfterRetry(current: string, failedText: string): string {
+  return current === failedText ? "" : current;
+}
+
+/** Editing the composer away from the failed text withdraws the Retry offer
+ *  — it no longer matches what's in the box. A manual edit is never clobbered:
+ *  this only ever clears `failed`, never rewrites the composer value. */
+export function failedAfterEdit(failed: string | null, nextValue: string): string | null {
+  return failed !== null && nextValue !== failed ? null : failed;
+}
+
+/** Same visual pattern as Notebook chat's retry-chip. Exported for the
+ *  static render test (NodeChat.test.tsx). */
+export function RetryChip({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors hover:opacity-80"
+        style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
+        data-testid="retry-button"
+      >
+        <RotateCcw size={12} aria-hidden /> Retry
+      </button>
+    </div>
+  );
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
@@ -234,6 +273,9 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // CMPS-2: the exact text of the last failed send. Retry re-posts it as-is
+  // through the same sendMessage() the Send button uses — no duplicated logic.
+  const [failed, setFailed] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -255,6 +297,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     abortRef.current?.abort();
     setMessages([]);
     setError(null);
+    setFailed(null);
     setStreaming(false);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
@@ -269,6 +312,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     if (!text.trim() || streaming) return;
 
     setError(null);
+    setFailed(null);
     const userMsg: ChatMessage = { id: uid(), role: "user", content: text.trim() };
     const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "" };
 
@@ -385,6 +429,10 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
       // Restore the failed question to the composer (CMPS-2) unless the
       // technician already started typing something new.
       setInput((current) => restoreComposer(current, text));
+      // Offer Retry with the identical text (CMPS-2/FLEET-013) — clicking it
+      // re-posts the exact same failed request without the technician having
+      // to notice the pre-filled composer or hit Send again.
+      setFailed(text);
     } finally {
       if (isSafety) {
         setMessages((prev) => {
@@ -400,6 +448,15 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
       abortRef.current = null;
     }
   }, [nodeId, docId, messages, streaming]);
+
+  // Re-posts the exact failed text through the same sendMessage() the Send
+  // button uses — never a duplicated send path.
+  const retry = useCallback(() => {
+    if (!failed || streaming) return;
+    const retryText = failed;
+    setInput((cur) => composerAfterRetry(cur, retryText));
+    void sendMessage(retryText);
+  }, [failed, streaming, sendMessage]);
 
   function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -496,6 +553,8 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
           </div>
         )}
 
+        {shouldShowRetry(failed, streaming) && <RetryChip onClick={retry} />}
+
         <div ref={bottomRef} />
       </div>
 
@@ -508,7 +567,11 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setInput(val);
+            setFailed((f) => failedAfterEdit(f, val));
+          }}
           onKeyDown={handleKeyDown}
           disabled={streaming}
           placeholder={streaming ? "MIRA is thinking…" : "Ask about this folder…"}
