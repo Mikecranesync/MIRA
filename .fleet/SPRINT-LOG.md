@@ -237,4 +237,33 @@ Everything else in the report (token evidence, the `#991B1B` contrast-ratio reas
 rework. **Not dispatching a new slice this wake — FLEET-007 stays the one thing in flight until
 this correction round closes**, per the sequential-queue discipline.
 
+## 15:0x — FLEET-007 correction fixed, re-verified, closed out
+
+Bravo (terminal `e5f8bd37`) applied `CORRECTIONS-007` at `b3ab94e92`. Re-review, round 2: read the
+fix in full (exactly the one requested line, `NodeChat.tsx:363`'s `background` only — `color`/
+`border` correctly left untouched). **Did not just spot-check the named line** — ran a fresh
+exhaustive grep across both full files from scratch: zero `#FEF2F2` remaining anywhere, and the
+only leftover hardcoded colors are exactly the documented `#FECACA`/`#991B1B` occurrences (4 lines
+each file), matching Bravo's claim precisely. Targeted + full-suite vitest and both tsc gates
+re-run clean; full suite matches the 244/2445 baseline established during FLEET-006's review with
+zero regression. **Zero remaining findings — PASS after one correction round.**
+
+Pushed `.fleet/REVIEW-FINAL-007.md`, pushed the branch, opened **PR #3525**
+(`fleet/chatui-slice-07`), HELD. `delete_terminal(e5f8bd37)`.
+
+## 15:0x — FLEET-008 dispatched
+
+New investigation, same pattern as FLEET-004: does `AssetChat.tsx`/`NodeChat.tsx` expose a visible
+Stop/cancel control during streaming? Both have an internal `abortRef`/`clearHistory` abort
+mechanism (noted in passing by FLEET-004), but whether a technician can actually *reach* it
+mid-stream (vs. only via clearing the whole thread) was never checked. Notebook chat has a full
+STRM-2 Stop contract (FLEET-001/002/003 lineage + the earlier-merged #3452); unknown whether
+Asset/Node chat have anything comparable.
+
+Collision check surfaced PR #3452 ("stop generation" in its title) — read its file list, confirmed
+it's entirely `NotebookChat.tsx`/`notebook-chat-utils.ts` (merged 2026-08-28, predates this
+window), no overlap with `AssetChat.tsx`/`NodeChat.tsx`. Branch `fleet/chatui-slice-08-scoping`
+pushed (base `origin/main`, task commit `5b7551ee6`). Dispatched to a Bravo worker (terminal
+`60dbe0d5`).
+
 <!-- Further entries appended below as the window progresses -->
