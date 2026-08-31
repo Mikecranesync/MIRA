@@ -2,13 +2,9 @@
 // mobile lane). Device-local, readable synchronously after first load, and
 // purged on sign-out with every other `flm.*` key.
 //
-// Default ON: the new surface is the product direction, and the legacy screen
-// stays reachable from More → "Chat style" so a single tap gets the old one
-// back if anything looks wrong on the floor. That is the rollback lever on the
-// device; the server-side capability gate (`chat_v2` on /api/me) remains the
-// lever for a fleet, and is deliberately NOT invented here — this build ships
-// to one phone under a device-test carve-out, and a fake capability check
-// would be a second, lying flag surface.
+// Default ON only INSIDE the server-authorized `chat_v2` capability. More →
+// "Chat style" is a device preference; it can opt an allowed user back to the
+// classic surface, but it can never grant ChatV2 or override a fleet rollback.
 import { preferencesStore } from "./offline-queue";
 import { useEffect, useState } from "react";
 
@@ -39,7 +35,7 @@ export async function writeChatUiChoice(choice: ChatUiChoice): Promise<void> {
 
 /** Null while the preference is still loading, so the screen renders one
  *  surface — never a flash of the other. */
-export function useChatV2Enabled(): boolean | null {
+export function useChatV2Enabled(available: boolean): boolean | null {
   const [choice, setChoice] = useState<ChatUiChoice | null>(null);
   useEffect(() => {
     let live = true;
@@ -50,5 +46,6 @@ export function useChatV2Enabled(): boolean | null {
       live = false;
     };
   }, []);
+  if (!available) return false;
   return choice === null ? null : choice === "v2";
 }

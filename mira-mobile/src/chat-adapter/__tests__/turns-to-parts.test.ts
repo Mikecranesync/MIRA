@@ -322,9 +322,7 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     });
   }
 
-  it("KNOWN GAP, asserted so it cannot regress silently: a safety stop does " +
-    "NOT survive reload as a safety notice (the server persists it as an " +
-    "ordinary answered turn — ADR-0038 item 3)", () => {
+  it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
     const live = liveTurnMessages(
       "q",
       parseChatSse(
@@ -336,11 +334,18 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       0,
     )[1];
     const hydrated = hydrateMessages([
-      { id: "t9", question: "q", answerStatus: "answered", answerText: "STOP.", evidence: [], basis: null },
+      {
+        id: "t9",
+        question: "q",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        basis: null,
+      },
     ])[1];
-    expect(live.parts.some((p) => p.type === "safety_notice")).toBe(true);
-    expect(hydrated.parts.some((p) => p.type === "safety_notice")).toBe(false);
-    // The BODY still round-trips — only the safety identity is lost server-side.
+    expect(live.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(hydrated.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(hydrated.parts.some((p) => p.type === "source")).toBe(false);
     expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
   });
 });

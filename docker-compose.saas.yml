@@ -773,6 +773,9 @@ services:
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
       - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # Server-authoritative rollout/rollback for the mobile ChatV2 surface.
+      # Default OFF: /api/me omits chat_v2 and every client stays on legacy.
+      - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
       # Per-turn output ceiling under the seam (cost guard).
       - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated

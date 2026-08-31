@@ -275,6 +275,14 @@ export interface StreamOpts {
   timeoutMs?: number;
 }
 
+/** Whether a visible Stop control can cancel the server-side chat request.
+ * Browser fetch streams propagate AbortSignal to the server. The Capacitor
+ * native fetch patch buffers the response and does not, so advertising Stop
+ * there would fabricate a stopped turn while the server keeps working. */
+export function canCancelChatTransport(): boolean {
+  return !Capacitor.isNativePlatform();
+}
+
 /** Streamed POST for the chat SSE endpoints (STRM-1).
  *
  *  Why not `request()`: CapacitorHttp.request has no body stream — it hands
@@ -294,10 +302,9 @@ export interface StreamOpts {
  *  (`CapacitorWebFetch`), which in turn needs the Hub to CORS-allow the app
  *  origin and the session cookie to live in the WebView store — the Hub-side
  *  CORS + cookie prerequisite tracked in #3453 (hub-streaming lane). Until
- *  that lands, Stop on device is client-side only: the read loop cancels
- *  delivery, but the abort never reaches the server, so the server persists a
- *  full answered turn rather than a stopped one. NOT retried — a chat turn is
- *  not idempotent. */
+ *  that lands, the UI must not advertise Stop on device: aborting the local
+ *  read cannot cancel server work or truthfully persist a stopped turn. NOT
+ *  retried — a chat turn is not idempotent. */
 export async function requestStream(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
   const native = Capacitor.isNativePlatform();

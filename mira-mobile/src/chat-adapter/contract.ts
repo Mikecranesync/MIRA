@@ -43,10 +43,8 @@ export type ObservationPart = {
   entry: VisualObservationEntry;
 };
 
-/** Safety hard-stop notice (live `safety` frame). Persisted turns cannot
- *  carry it yet — the server stores a safety stop as an ordinary answered
- *  turn (known gap, ADR-0038 item 3); hydration therefore never produces
- *  this part until the server does. */
+/** Safety hard-stop notice from a live `safety` frame or persisted
+ *  `{kind:"safety_notice"}` evidence marker (ADR-0038 item 3). */
 export type SafetyNoticePart = {
   type: "safety_notice";
   /** Matched trigger phrase — observability only, never rendered. */

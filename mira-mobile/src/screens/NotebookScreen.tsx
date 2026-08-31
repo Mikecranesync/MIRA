@@ -56,6 +56,7 @@ import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { ChatV2 } from "./ChatV2";
 import { useChatV2Enabled } from "../lib/chat-ui-pref";
+import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -131,12 +132,14 @@ const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
 
 export function NotebookScreen({
   id,
+  chatV2Available = false,
   openAddSources,
   backRef,
   onExit,
   onOpenNotebook,
 }: {
   id: string;
+  chatV2Available?: boolean;
   openAddSources?: boolean;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
@@ -190,7 +193,7 @@ export function NotebookScreen({
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
-  const chatV2 = useChatV2Enabled();
+  const chatV2 = useChatV2Enabled(chatV2Available);
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
@@ -295,6 +298,8 @@ export function NotebookScreen({
     }
   };
   const stopGeneration = () => abortRef.current?.abort();
+  const canStopGeneration =
+    busy && abortRef.current !== null && canCancelChatTransport();
 
   /**
    * ChatV2 attachment: photograph → the EXISTING LOOK path (parked + linked
@@ -630,6 +635,9 @@ export function NotebookScreen({
           liveTurns={liveTurns}
           pending={pending}
           busy={busy}
+          canStop={canStopGeneration}
+          draft={q}
+          onDraftChange={setQ}
           scopeCount={scope.length}
           chatError={chatError}
           canRetry={Boolean(failedSend) && !busy}
@@ -831,9 +839,13 @@ export function NotebookScreen({
             <span className="counter">
               {scope.length} source{scope.length === 1 ? "" : "s"}
             </span>
-            {busy ? (
+            {busy && canStopGeneration ? (
               <button className="btn-primary" aria-label="Stop generating" onClick={stopGeneration}>
                 Stop
+              </button>
+            ) : busy ? (
+              <button className="btn-primary" aria-label="Working" disabled>
+                Working…
               </button>
             ) : (
               <button

@@ -10,10 +10,9 @@
  *
  * INVARIANT (PRD §10.8 / spike criterion 6): a live turn and its rehydrated
  * persisted row must project to the same semantic parts. `comparableProjection`
- * is that projection; the parity tests pin it. Known, deliberate asymmetry:
- * a SAFETY turn is live-only — the server persists a safety stop as an
- * ordinary answered turn (ADR-0038 item 3, server-side gap), so hydration
- * cannot produce a `safety_notice` part until the server carries it.
+ * is that projection; the parity tests pin it. Safety identity rides in the
+ * persisted `evidence[]` as `{kind:"safety_notice"}` (ADR-0038 item 3), so a
+ * reload cannot turn a hard stop into ordinary answer chrome.
  */
 import {
   normalizeCitations,
@@ -34,8 +33,27 @@ export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown
     if (typeof e !== "object" || e === null) return false;
     const r = e as Record<string, unknown>;
     if ("citationId" in r) return false;
-    return r.kind !== "machine_evidence" && r.kind !== "visual_observation";
+    return (
+      r.kind !== "machine_evidence" &&
+      r.kind !== "visual_observation" &&
+      r.kind !== "safety_notice"
+    );
   });
+}
+
+/** First valid persisted safety marker, or null for legacy/invalid evidence. */
+export function safetyNoticeEntry(
+  evidence: unknown[] | undefined,
+): { kind: "safety_notice"; trigger: string } | null {
+  if (!Array.isArray(evidence)) return null;
+  for (const value of evidence) {
+    if (typeof value !== "object" || value === null) continue;
+    const row = value as Record<string, unknown>;
+    if (row.kind === "safety_notice" && typeof row.trigger === "string") {
+      return { kind: "safety_notice", trigger: row.trigger };
+    }
+  }
+  return null;
 }
 
 function userMessage(id: string, text: string): AdapterMessage {
@@ -104,6 +122,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
       ];
     }
     const failed = t.answerStatus === "error";
+    const safetyNotice = safetyNoticeEntry(t.evidence);
     return [
       user,
       {
@@ -115,6 +134,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
           machine: machineEvidenceEntries(t.evidence ?? []),
           visual: visualObservationEntries(t.evidence ?? []),
           basis: t.basis,
+          safetyTrigger: safetyNotice?.trigger,
           unknown: unknownEvidenceEntries(t.evidence),
           ...(failed ? { error: "provider_failure" as const } : {}),
         }),
@@ -230,9 +250,7 @@ export function threadMessages(
  * the same turn rehydrated. Raw `status` is normalized ("stopped" is a
  * client-side token; the server persists `error`) so the comparison is
  * semantic, not cosmetic. Live-only ephemera (followups, basis label,
- * safety trigger, unknown frames) are excluded because the server does not
- * persist them — those gaps are ADR-0038's to close, not this projection's
- * to hide.
+ * unknown live frames are excluded because the server does not persist them.
  */
 export function comparableProjection(msg: AdapterMessage): {
   role: string;

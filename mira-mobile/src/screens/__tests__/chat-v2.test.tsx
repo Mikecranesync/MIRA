@@ -25,8 +25,16 @@ if (!("scrollTo" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
 }
 
+const { nativePlatform, askNotebook, getNotebookDetail, lookAtPhoto, pickPhoto } = vi.hoisted(() => ({
+  nativePlatform: { value: false },
+  askNotebook: vi.fn(),
+  getNotebookDetail: vi.fn(),
+  lookAtPhoto: vi.fn(),
+  pickPhoto: vi.fn(),
+}));
+
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false, convertFileSrc: (p: string) => p },
+  Capacitor: { isNativePlatform: () => nativePlatform.value, convertFileSrc: (p: string) => p },
   CapacitorHttp: { request: vi.fn() },
   registerPlugin: () => ({}),
 }));
@@ -39,14 +47,14 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
-const { askNotebook, getNotebookDetail } = vi.hoisted(() => ({
-  askNotebook: vi.fn(),
-  getNotebookDetail: vi.fn(),
-}));
-
 vi.mock("../../api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/resources")>();
-  return { ...real, askNotebook, getNotebookDetail };
+  return { ...real, askNotebook, getNotebookDetail, lookAtPhoto };
+});
+
+vi.mock("../../lib/native-pick", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/native-pick")>();
+  return { ...real, pickPhoto };
 });
 
 import { NotebookScreen } from "../NotebookScreen";
@@ -68,9 +76,16 @@ const detail = (turns: unknown[] = []) => ({
   turns,
 });
 
-function mount() {
+function mount(chatV2Available = true) {
   const backRef = { current: null as (() => boolean) | null };
-  return render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} />);
+  return render(
+    <NotebookScreen
+      id="nb1"
+      backRef={backRef}
+      onExit={() => {}}
+      chatV2Available={chatV2Available}
+    />,
+  );
 }
 
 const composer = async () =>
@@ -83,14 +98,25 @@ async function type(text: string) {
 }
 
 beforeEach(() => {
+  nativePlatform.value = false;
   askNotebook.mockReset();
   getNotebookDetail.mockReset();
+  lookAtPhoto.mockReset();
+  pickPhoto.mockReset();
   getNotebookDetail.mockResolvedValue(detail());
   Element.prototype.scrollTo = vi.fn();
 });
 afterEach(cleanup);
 
 describe("ChatV2 (default surface)", () => {
+  it("fails closed to legacy chat when the server omits chat_v2", async () => {
+    mount(false);
+    expect(
+      await screen.findByText(/Ask anything now — answers are general until this notebook/i),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("v2-empty")).toBeNull();
+  });
+
   it("renders the conversation, not the classic panel", async () => {
     mount();
     expect(await screen.findByTestId("v2-empty")).toBeTruthy();
@@ -173,6 +199,18 @@ describe("ChatV2 (default surface)", () => {
     await waitFor(() => expect(screen.getByTestId("v2-send")).toBeTruthy());
   });
 
+  it("native buffered chat is honest: it shows Working and never offers cosmetic Stop", async () => {
+    nativePlatform.value = true;
+    askNotebook.mockImplementation(() => new Promise(() => {}));
+    mount();
+    const el = await type("q");
+    await act(async () => {
+      fireEvent.keyDown(el, { key: "Enter" });
+    });
+    expect(await screen.findByTestId("v2-working")).toBeTruthy();
+    expect(screen.queryByTestId("v2-stop")).toBeNull();
+  });
+
   it("hydration: a persisted stopped turn reloads as Stopped with no chips", async () => {
     getNotebookDetail.mockResolvedValue(
       detail([
@@ -222,6 +260,40 @@ describe("ChatV2 (default surface)", () => {
     expect(menu.textContent).toMatch(/Document/);
   });
 
+  it("sends the visible composer draft as the photo question", async () => {
+    const file = new File(["photo"], "motor.jpg", { type: "image/jpeg" });
+    pickPhoto.mockResolvedValue(file);
+    lookAtPhoto.mockResolvedValue({
+      fileId: "photo-1",
+      observation: { capturedAt: "2026-08-31T12:00:00.000Z" },
+    });
+    askNotebook.mockResolvedValue({ answer: "Bearing housing.", citations: [], status: "answered" });
+    mount();
+    await type("Is this bearing housing damaged?");
+    fireEvent.click(await screen.findByTestId("v2-attach"));
+    fireEvent.click(await screen.findByRole("button", { name: /Photo/ }));
+    await waitFor(() => expect(lookAtPhoto).toHaveBeenCalledTimes(1));
+    expect(lookAtPhoto.mock.calls[0][3]).toBe("Is this bearing housing damaged?");
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][1]).toBe("Is this bearing housing damaged?");
+  });
+
+  it("offers a message-level Copy action for a completed answer", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    askNotebook.mockResolvedValue({ answer: "Inspect the overload relay.", citations: [], status: "answered" });
+    mount();
+    const el = await type("what should I inspect");
+    await act(async () => {
+      fireEvent.keyDown(el, { key: "Enter" });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Copy answer" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Inspect the overload relay."));
+  });
+
   it("a failed send surfaces Retry and keeps the question", async () => {
     askNotebook.mockRejectedValue(new Error("network"));
     mount();
@@ -230,6 +302,7 @@ describe("ChatV2 (default surface)", () => {
       fireEvent.keyDown(el, { key: "Enter" });
     });
     const retry = await screen.findByText("Retry");
+    expect((await composer()).value).toBe("what trips the overload");
     askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" } as ChatTurn);
     await act(async () => {
       fireEvent.click(retry);

@@ -15,10 +15,12 @@ import {
 
 export function MoreTab({
   me,
+  chatV2Available,
   onSignOut,
   backRef,
 }: {
   me: Me;
+  chatV2Available: boolean;
   onSignOut: () => Promise<void>;
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
@@ -122,7 +124,7 @@ export function MoreTab({
           surface is the default; this is the one-tap way back to the classic
           screen if anything misbehaves on the floor — the rollback lever that
           does not need a release. */}
-      <div className="card" style={{ marginTop: 10 }}>
+      {chatV2Available && <div className="card" style={{ marginTop: 10 }}>
         <div className="title">Chat style</div>
         <div className="meta" style={{ marginBottom: 8 }}>
           {chatUi === "v2"
@@ -139,7 +141,7 @@ export function MoreTab({
         >
           {chatUi === "v2" ? "Use classic chat" : "Use new conversation"}
         </button>
-      </div>
+      </div>}
 
       <button style={{ marginTop: 10 }} onClick={() => setShowAbout(true)}>
         About &amp; updates

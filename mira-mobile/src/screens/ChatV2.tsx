@@ -12,7 +12,7 @@
 // citations, evidence cards, safety semantics, and the citation viewer chain.
 // MIRA parts render through REGISTERED data-part components — never a fork of
 // the library core, and never a second SSE parser.
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   MessagePrimitive,
   ThreadPrimitive,
@@ -29,8 +29,9 @@ import type { MachineEvidenceEntry } from "../lib/replay";
 import type { VisualObservationEntry } from "../lib/sensor";
 import { basisCaption, replayCardTitle } from "../lib/replay";
 import { visualCardTitle } from "../lib/sensor";
-import { AnswerMarkdown } from "./AnswerMarkdown";
+import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { SourceThumb } from "./FilePreview";
+import { Sheet } from "./Sheet";
 
 /** Callbacks the screen owns; ChatV2 never fetches, uploads, or persists. */
 export interface ChatV2Handlers {
@@ -59,6 +60,7 @@ let citationSink: ((c: ChatCitation) => void) | null = null;
  *  tap chain into the source viewer is byte-for-byte unchanged. */
 const AnswerPart: DataMessagePartComponent = ({ data }) => {
   const d = data as unknown as { text: string; citations: ChatCitation[] };
+  const [copied, setCopied] = useState(false);
   if (!d.text?.trim() && d.citations.length === 0) return null;
   return (
     <div data-testid="v2-answer">
@@ -82,6 +84,21 @@ const AnswerPart: DataMessagePartComponent = ({ data }) => {
           ))}
         </div>
       )}
+      <div className="v2-message-actions">
+        <button
+          type="button"
+          className="btn-link"
+          aria-label="Copy answer"
+          onClick={() => {
+            void copyText(d.text).then((ok) => {
+              setCopied(ok);
+              if (ok) setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
     </div>
   );
 };
@@ -230,6 +247,9 @@ export function ChatV2({
   liveTurns,
   pending,
   busy,
+  canStop,
+  draft,
+  onDraftChange,
   scopeCount,
   chatError,
   canRetry,
@@ -239,6 +259,9 @@ export function ChatV2({
   liveTurns: { q: string; a: ChatTurn }[];
   pending: { q: string; a: ChatTurn } | null;
   busy: boolean;
+  canStop: boolean;
+  draft: string;
+  onDraftChange: (text: string) => void;
   scopeCount: number;
   chatError: unknown;
   canRetry: boolean;
@@ -259,13 +282,11 @@ export function ChatV2({
   });
 
   const [attachOpen, setAttachOpen] = useState(false);
-  const [draft, setDraft] = useState("");
   const empty = turns.length === 0 && liveTurns.length === 0 && !pending;
 
   const submit = () => {
     const text = draft.trim();
     if (!text || busy) return;
-    setDraft("");
     handlers.onSend(text);
   };
 
@@ -275,7 +296,7 @@ export function ChatV2({
         <ThreadPrimitive.Viewport className="v2-viewport" autoScroll>
           {empty && (
             <div className="v2-empty" data-testid="v2-empty">
-              <div className="v2-empty-title">Ask MIRA anything</div>
+              <div className="v2-empty-title">Ask about this machine</div>
               <div className="v2-empty-sub">
                 {scopeCount === 0
                   ? "Answers are general until this machine has documents — then they're grounded and cited."
@@ -332,7 +353,7 @@ export function ChatV2({
             }
             value={draft}
             onChange={(e) => {
-              setDraft(e.target.value);
+              onDraftChange(e.target.value);
               autoGrow(e.target, 20);
             }}
             onKeyDown={(e) => {
@@ -349,7 +370,7 @@ export function ChatV2({
               }
             }}
           />
-          {busy ? (
+          {busy && canStop ? (
             <button
               className="btn-primary"
               data-testid="v2-stop"
@@ -357,6 +378,15 @@ export function ChatV2({
               onClick={handlers.onStop}
             >
               Stop
+            </button>
+          ) : busy ? (
+            <button
+              className="btn-primary"
+              data-testid="v2-working"
+              aria-label="Working"
+              disabled
+            >
+              Working…
             </button>
           ) : (
             <button
@@ -372,38 +402,31 @@ export function ChatV2({
         </div>
 
         {attachOpen && (
-          <div className="v2-attach-menu" data-testid="v2-attach-menu">
-            <button
-              className="v2-attach-item"
-              onClick={() => {
-                setAttachOpen(false);
-                handlers.onAttachPhoto();
-              }}
-            >
-              📷 Photo — ask about what you&apos;re looking at
-            </button>
-            <button
-              className="v2-attach-item"
-              onClick={() => {
-                setAttachOpen(false);
-                handlers.onAttachFile();
-              }}
-            >
-              📄 Document — add a manual MIRA can cite
-            </button>
-          </div>
+          <Sheet label="Add to conversation" onClose={() => setAttachOpen(false)}>
+            <div className="v2-attach-menu" data-testid="v2-attach-menu">
+              <h3>Add to conversation</h3>
+              <button
+                className="v2-attach-item"
+                onClick={() => {
+                  setAttachOpen(false);
+                  handlers.onAttachPhoto();
+                }}
+              >
+                📷 Photo — ask about what you&apos;re looking at
+              </button>
+              <button
+                className="v2-attach-item"
+                onClick={() => {
+                  setAttachOpen(false);
+                  handlers.onAttachFile();
+                }}
+              >
+                📄 Document — add a manual MIRA can cite
+              </button>
+            </div>
+          </Sheet>
         )}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
-}
-
-/** Scroll-to-latest on mount for a rehydrated thread (the viewport's own
- *  autoScroll handles the live case). */
-export function useScrollToLatest(dep: unknown) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [dep]);
-  return ref;
 }
