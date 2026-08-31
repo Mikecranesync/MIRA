@@ -336,4 +336,21 @@ preventing a future session (this one or another) from wasting a cycle on a stal
 the kind of thing the charter's "document an evidence-backed plan" / collision-avoidance discipline
 exists for. Will look for the next candidate on the following wake with a fresh read of the queue.
 
+## 15:5x — FLEET-011 dispatched (a real bug found by direct code reading, not a doc claim)
+
+After FLEET-010's near-miss, went straight to source instead of trusting another doc entry.
+Confirmed directly: `AssetChat.tsx`/`NodeChat.tsx`'s `handleKeyDown` fires send on ANY bare Enter
+keypress with no IME-composition guard — a real bug for any technician typing via IME (Japanese/
+Chinese/Korean/Vietnamese/etc.), where pressing Enter to confirm a composition candidate would
+incorrectly submit the message. Notebook chat already has the correct fix, tested and exported:
+`isEnterToSend()` (`notebook-chat-utils.ts:99-108`, checks `nativeEvent.isComposing`/`keyCode ===
+229`) — AssetChat/NodeChat never got it. Also confirmed missing `aria-label` on the textarea and
+Send button (Notebook chat has both, these two files have neither).
+
+Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — clean, no related work found.
+Branch `fleet/chatui-slice-11` pushed (base `origin/main`, task commit `d570dc29f`). Explicitly
+instructed the worker NOT to import `isEnterToSend` from `notebook-chat-utils.ts` directly (avoids
+an unwanted cross-surface coupling) — replicate the small guard locally instead. Dispatched to a
+Bravo worker (terminal `64ff05fc`).
+
 <!-- Further entries appended below as the window progresses -->
