@@ -266,4 +266,31 @@ window), no overlap with `AssetChat.tsx`/`NodeChat.tsx`. Branch `fleet/chatui-sl
 pushed (base `origin/main`, task commit `5b7551ee6`). Dispatched to a Bravo worker (terminal
 `60dbe0d5`).
 
+## 15:1x — FLEET-008 reviewed and closed out
+
+Bravo (terminal `60dbe0d5`) reported completion at `4b1f9d1af`. Extensive independent spot-check
+against real code rather than trusting the (very thorough) document: re-verified the 30s-timeout/
+3-provider-cascade claim directly in both `route.ts` files; re-verified Notebook chat's shipped
+Stop contract byte-for-byte — the doc's cited "cloned from AssetChat/NodeChat" comment
+(`NotebookChat.tsx:274`) and `stop` callback (`:396`) are exactly real, matching what the doc
+proposes for the two target files almost verbatim; pulled FLEET-005's actual diff to confirm the
+sizing precedent cited isn't fabricated. Every claim checked held up exactly. **Zero findings —
+clean PASS.**
+
+Pushed `.fleet/REVIEW-FINAL-008.md`, pushed the branch, opened **PR #3526**
+(`fleet/chatui-slice-08-scoping`), docs-only, HELD. `delete_terminal(60dbe0d5)`.
+
+## 15:1x — FLEET-009 dispatched (the actual Stop-control build)
+
+Wrote TASK.md largely by adapting FLEET-008's own §4 scope directly (already fully evidenced —
+no fresh archaeology needed). Give AssetChat.tsx/NodeChat.tsx a `stopGeneration` callback, a
+`stopped` flag, a "Stopped" caption, a visible Stop button mirroring Notebook chat's proven
+pattern, and a history-exclusion filter. Client-only, no server/schema touch (confirmed
+unnecessary by FLEET-008). Explicitly told the worker to expect the same exhaustive-grep review
+standard FLEET-007 set (which caught a real miss that way).
+
+Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — only my own docs PR (#3526)
+matched, no real collision. Branch `fleet/chatui-slice-09` pushed (base `origin/main`, task commit
+`fac67cc98`). Dispatched to a Bravo worker (terminal `46ba4eb6`).
+
 <!-- Further entries appended below as the window progresses -->
