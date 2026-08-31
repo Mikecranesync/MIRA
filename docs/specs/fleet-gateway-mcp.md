@@ -43,7 +43,9 @@ Grok / Foreman ──HTTPS + Bearer──▶ Fleet Gateway (this package)
 
 - **Layer:** Control plane (fleet), not product diagnostics
 - **Default bind:** `127.0.0.1:8765` (override with `FLEET_GATEWAY_HOST` / `FLEET_GATEWAY_PORT`)
-- **CAO:** unset `FLEET_GATEWAY_CAO_URL` → FakeCAO stub. If set, URL **must** be `http(s)://127.0.0.1…` with no credentials. This package never listens as CAO.
+- **CAO:** unset `FLEET_GATEWAY_CAO_URL` → FakeCAO stub. If set, URL **must** be `http(s)://127.0.0.1…` with no credentials — connects to an existing **colocated loopback cao-server**. This package never listens as CAO.
+- **Agent profile mapping:** local CAO has no `bravo`/`charlie` profiles → `bravo` maps to `developer`, `charlie` maps to `reviewer` (CAO built-ins). Provider: `claude` → `claude_code`, `codex` → `codex`.
+- **Worktrees:** Gateway creates the git worktree before calling CAO and passes the real path as `working_directory`. CAO `use_worktree` is never set; Gateway worktrees are never deleted by CAO.
 - **Foreman never** connects to Tailscale, CAO, LAN, or worker ports.
 
 Public TLS termination and any CAO tunnel are **not** this PR.
@@ -112,9 +114,9 @@ Example env: `fleet-gateway/.env.example` (placeholders only).
 **Done means** a durable Git ref with tests green — not an agent saying done. This PR is HELD (no merge, no deploy, no CAO exposure).
 
 ## Known Issues
-- Live CAO HTTP shapes are adapter-internal; until a loopback CAO is wired under Mike approval, runtime defaults to FakeCAO.
 - FastMCP is optional at runtime (`fastmcp` extra). The locked tool names live in `fleet_gateway.contract` / `mcp_api` regardless. Native `POST /mcp` JSON-RPC does not require FastMCP.
 - `launch_worker` creates a real `git worktree add --detach` directory and never deletes it.
+- `LoopbackCAOClient` requires `FLEET_GATEWAY_CAO_URL=http://127.0.0.1:<port>` pointing to a running colocated cao-server. Non-`127.0.0.1` URLs are refused by construction.
 
 ## Change Log
 - 2026-08-31 — v1 locked contract implemented on `feat/fleet-gateway-mcp-v1` (#3532).

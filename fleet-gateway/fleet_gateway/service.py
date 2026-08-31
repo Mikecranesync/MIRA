@@ -171,14 +171,29 @@ class FleetGatewayService:
             raise ContractViolation("task_id is required")
         artifact = self.artifacts.read_task(task_id) or {}
         snapshot = self.cao.task_snapshot(task_id) or {}
-        merged = {**snapshot, **artifact}
+        if not artifact and not snapshot:
+            raise NotFoundError(f"task not found: {task_id}")
+        # Start from artifact; overlay live-session fields where snapshot is authoritative.
+        # Snapshot wins for current-state fields; artifact wins for durable fields (handoff).
+        merged = dict(artifact)
+        _SNAPSHOT_WINS = (
+            "status",
+            "session_id",
+            "worktree",
+            "claimed_commit",
+            "branch",
+            "blockers",
+            "chat_claimed_done",
+            "review_verdict",
+            "review_git_ref",
+        )
+        for f in _SNAPSHOT_WINS:
+            if f in snapshot:
+                merged[f] = snapshot[f]
+        # Artifact handoff is always durable truth.
         if artifact.get("handoff"):
             merged["handoff"] = artifact["handoff"]
-        if snapshot.get("blockers") or snapshot.get("chat_claimed_done"):
-            merged["blockers"] = snapshot.get("blockers") or merged.get("blockers")
-            merged["chat_claimed_done"] = snapshot.get("chat_claimed_done")
-        if not merged:
-            raise NotFoundError(f"task not found: {task_id}")
+        # claimed_commit: snapshot (live CAO) wins over stale artifact
         claimed = _as_str(snapshot.get("claimed_commit") or merged.get("claimed_commit"))
         recorded = _as_str(artifact.get("claimed_commit") or artifact.get("base_commit"))
         matches = bool(claimed) and bool(recorded) and claimed == recorded
@@ -208,6 +223,7 @@ class FleetGatewayService:
             "claimed_commit_matches_artifact": matches,
             "status": status,
             "done": done,
+            "session_id": merged.get("session_id"),
         }
         return sanitize_public_payload(payload)
 
@@ -229,6 +245,8 @@ class FleetGatewayService:
             raise ContractViolation("launch_worker requires isolated_worktree=true")
         self._reject_denied_actions(params)
 
+        import uuid  # noqa: PLC0415 — local import avoids unused-import lint when rare
+
         spec = {
             "role": role,
             "provider": provider,
@@ -239,11 +257,12 @@ class FleetGatewayService:
             "isolated_worktree": True,
             "branch": str(params.get("branch") or params["github_ref"]).strip(),
         }
-        launched = self.cao.launch_worker(spec)
-        session_id = str(launched.get("session_id") or "")
+        # Create the Gateway worktree FIRST so CAO receives the real path.
+        # Use a temporary placeholder session id (real one comes back from CAO).
+        temp_session = uuid.uuid4().hex[:12]
         worktree_path = self.worktrees.create(
             task_id=spec["task_id"],
-            session_id=session_id,
+            session_id=temp_session,
             base_commit=spec["base_commit"],
         )
         self.worktrees.maybe_write_proof(
@@ -252,11 +271,17 @@ class FleetGatewayService:
             acceptance_criteria=spec["acceptance_criteria"],
         )
         worktree = str(worktree_path)
+        spec["working_directory"] = worktree
+        launched = self.cao.launch_worker(spec)
+        session_id = str(launched.get("session_id") or "")
+        terminal_id = str(launched.get("terminal_id") or "")
         if hasattr(self.cao, "record_worktree"):
             self.cao.record_worktree(session_id, worktree)
         record = {
             **spec,
             "session_id": session_id,
+            "cao_session_name": session_id,
+            "terminal_id": terminal_id,
             "claimed_commit": spec["base_commit"],
             "status": launched.get("status") or "running",
             "claimed": True,
@@ -385,6 +410,9 @@ class FleetGatewayService:
             raise ContractViolation("session_id is required")
         result = self.cao.stop_worker(session_id)
         task_id = _as_str(params.get("task_id"))
+        # Resolve task_id from artifact store when only session_id was provided.
+        if not task_id:
+            task_id = self.artifacts.find_task_id_for_session(session_id)
         if task_id:
             existing = self.artifacts.read_task(task_id) or {"task_id": task_id}
             existing["status"] = "stopped"

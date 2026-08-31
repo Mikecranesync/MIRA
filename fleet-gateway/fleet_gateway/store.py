@@ -28,6 +28,19 @@ class ArtifactStore:
         path = self._task_path(str(record["task_id"]))
         payload = dict(record)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        existing = self.read_task(str(record["task_id"]))
+        if existing:
+            existing_session = existing.get("session_id")
+            new_session = record.get("session_id")
+            if existing_session and new_session and existing_session != new_session:
+                # New attempt with a different session: push prior top-level into attempts[]
+                history = list(existing.get("attempts") or [])
+                prior = {k: v for k, v in existing.items() if k != "attempts"}
+                history.append(prior)
+                payload["attempts"] = history
+            elif existing.get("attempts") and "attempts" not in payload:
+                # Preserve existing attempts when this isn't a new-session write
+                payload.setdefault("attempts", existing["attempts"])
         path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return path
 
@@ -36,6 +49,23 @@ class ArtifactStore:
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def find_task_id_for_session(self, session_id: str) -> str | None:
+        """Scan artifact store for a task artifact whose session_id matches."""
+        if not self.tasks_dir.exists():
+            return None
+        for path in self.tasks_dir.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("session_id") == session_id:
+                    return str(data.get("task_id") or "").strip() or None
+                # Also check attempts[]
+                for attempt in data.get("attempts") or []:
+                    if attempt.get("session_id") == session_id:
+                        return str(data.get("task_id") or "").strip() or None
+            except Exception:
+                continue
+        return None
 
     def write_handoff(self, *, task_id: str, session_id: str, record: dict[str, Any]) -> Path:
         path = self._handoff_path(task_id)
