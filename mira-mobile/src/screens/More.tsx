@@ -1,12 +1,17 @@
 // More tab — identity, Files (the workspace file manager), capability-filtered
 // sections (team, usage), sign out. The "sheet of remaining sections" grows in
 // later phases; account deletion lands here in Phase 5 (store requirement).
-import { useState, type MutableRefObject } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { listTeam, getUsage, type Me, type TeamMember } from "../api/resources";
 import { Loading, ErrorState, load, type Loadable } from "./common";
 import { FilesScreen, type FilesRoute } from "./FilesScreen";
 import { AboutUpdates } from "./AboutUpdates";
 import { pendingCount, preferencesStore } from "../lib/offline-queue";
+import {
+  readChatUiChoice,
+  writeChatUiChoice,
+  type ChatUiChoice,
+} from "../lib/chat-ui-pref";
 
 export function MoreTab({
   me,
@@ -18,6 +23,10 @@ export function MoreTab({
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
   const [team, setTeam] = useState<Loadable<TeamMember[]> | null>(null);
+  const [chatUi, setChatUi] = useState<ChatUiChoice>("v2");
+  useEffect(() => {
+    void readChatUiChoice().then(setChatUi);
+  }, []);
   const [usage, setUsage] = useState<Loadable<Record<string, unknown> | null> | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [files, setFiles] = useState<FilesRoute | null>(null);
@@ -107,6 +116,29 @@ export function MoreTab({
               .join(" · ") || "no usage data"}
           </div>
         )}
+      </div>
+
+      {/* Chat style (PRD §12.4 device-local flag). The new conversation
+          surface is the default; this is the one-tap way back to the classic
+          screen if anything misbehaves on the floor — the rollback lever that
+          does not need a release. */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div className="title">Chat style</div>
+        <div className="meta" style={{ marginBottom: 8 }}>
+          {chatUi === "v2"
+            ? "New conversation (streaming, attachments, cited answers)."
+            : "Classic chat screen."}
+        </div>
+        <button
+          data-testid="chat-style-toggle"
+          onClick={() => {
+            const next: ChatUiChoice = chatUi === "v2" ? "legacy" : "v2";
+            setChatUi(next);
+            void writeChatUiChoice(next);
+          }}
+        >
+          {chatUi === "v2" ? "Use classic chat" : "Use new conversation"}
+        </button>
       </div>
 
       <button style={{ marginTop: 10 }} onClick={() => setShowAbout(true)}>

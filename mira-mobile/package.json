@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.17",
     "@capacitor/android": "^8.0.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/core": "^8.0.0",
