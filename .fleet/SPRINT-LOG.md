@@ -137,4 +137,37 @@ Fresh collision check before push (fetch + `gh pr list` + `git ls-remote`) surfa
 — no collision, proceeded. Branch `fleet/chatui-slice-05` pushed (base `origin/main`, task commit
 `466a4269f`). Dispatched to a Bravo worker (terminal `0f64354c`).
 
+## 14:4x — FLEET-005 reviewed and closed out
+
+Bravo (terminal `0f64354c`) reported completion at `7100636ca`. Independent review in Bravo's own
+worktree: read every diff hunk (5 source/test files), re-ran targeted vitest (32/32, matches),
+**re-ran the full suite myself rather than trusting the reported 2450/2450** (matches — 244/244
+files), targeted tsc grep (empty, matches), full tsc (32 errors/58 lines, same 7-file baseline).
+One baseline-error file (`assets/[id]/chat/__tests__/route.test.ts`) is in the same feature
+directory as this slice, which warranted a closer look rather than pattern-matching on the file
+list alone — confirmed byte-identical to `origin/main` by direct diff, genuinely pre-existing.
+Adversarial hunt: hard-stop path independence (test-proven), no second consumer of the removed
+`**bold**` markdown broken (repo-wide grep — only `formatAlertSlackBlocks` uses similar text and
+it's untouched/separate), no race in the SSE parse loop, `NodeChat.tsx`'s zero test coverage
+confirmed as a genuine pre-existing gap (not a regression) and honestly disclosed by Bravo rather
+than papered over with an invented test structure. **Zero findings — clean PASS.**
+
+Pushed `.fleet/REVIEW-FINAL-005.md`, pushed the branch, opened **PR #3523**
+(`fleet/chatui-slice-05`), HELD. `delete_terminal(0f64354c)`.
+
+## 14:4x — FLEET-006 dispatched
+
+Root-caused the `NodeChat.tsx` test-coverage gap FLEET-005 disclosed rather than leaving it as a
+vague TODO: its `MessageBubble` is declared `function MessageBubble(...)` without `export`
+(confirmed by grep), unlike `AssetChat.tsx`'s `export function MessageBubble(...)` — it's
+structurally untestable from outside the module today, which is almost certainly *why* no test
+file exists, not an oversight. Small, safe, well-scoped fix: export it, add
+`NodeChat.test.tsx` mirroring `AssetChat.test.tsx`'s existing structure (adapted for NodeChat's
+real `sources`-based `ChatMessage` shape, not `AssetChat`'s `nextCheck`/`traceId`). Test-only
+except for one exported keyword — about as low-risk as a slice gets.
+
+Fresh collision check (fetch + `gh pr list` + `git ls-remote`) — clean. Branch
+`fleet/chatui-slice-06` pushed (base `origin/main`, task commit `7af66a492`). Dispatched to a
+Bravo worker (terminal `98971dd0`).
+
 <!-- Further entries appended below as the window progresses -->
