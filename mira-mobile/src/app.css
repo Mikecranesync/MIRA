@@ -548,3 +548,15 @@ textarea {
   background: var(--fl-surface); color: var(--fl-ink);
   font-size: 13px; line-height: 1.45;
 }
+/* Citation chips inside ChatV2 flow as inline pills. The global
+   `button { width: 100% }` touch-target rule would otherwise stretch each one
+   to a full-width block — correct for a form button, wrong for a citation.
+   Scoped to .v2-row so the classic screen is untouched. */
+.v2-row .cite-chip {
+  width: auto;
+  min-height: 0;
+  display: inline-block;
+  padding: 3px 10px;
+}
+/* Follow-up chips likewise sit in a row, not a stack. */
+.v2-row + .chip-row .chip, .v2-viewport .chip-row .chip { width: auto; min-height: 0; }
