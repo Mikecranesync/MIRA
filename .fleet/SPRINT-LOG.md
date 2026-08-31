@@ -353,4 +353,26 @@ instructed the worker NOT to import `isEnterToSend` from `notebook-chat-utils.ts
 an unwanted cross-surface coupling) — replicate the small guard locally instead. Dispatched to a
 Bravo worker (terminal `64ff05fc`).
 
+## 16:0x — FLEET-011 reviewed and closed out
+
+Bravo (terminal `64ff05fc`) reported completion at `9c1494b73`. Independent review specifically
+targeted the concern flagged going in — whether the IME-composition test was genuinely meaningful
+or trivially true. It's genuine: the tests call the exported `isEnterToSend` directly with real
+argument shapes covering every real branch (bare Enter, `isComposing: true`, `keyCode: 229`,
+Shift+Enter, non-Enter key). The accessibility test goes further than asked — it renders the
+**full** `AssetChat`/`NodeChat` component (not an isolated sub-piece) to confirm the `aria-label`s
+reach the actual DOM tree. Fresh exhaustive grep across both full files (not just the diff):
+exactly one "Enter" check per file (inside the guard itself — no un-guarded second site), exactly
+2 `aria-label`s per file, no duplicate exports. Targeted (13/13) + full suite (245/2455, exact
+match against the 244/2445 baseline + 10 new tests) + both tsc gates all re-run clean. **Zero
+findings — clean PASS**, and a genuinely well-executed slice.
+
+Pushed `.fleet/REVIEW-FINAL-011.md`, pushed the branch, opened **PR #3529**
+(`fleet/chatui-slice-11`), HELD. `delete_terminal(64ff05fc)`.
+
+**Cumulative so far (~2h45m into the 5h window):** 11 slices worked, 9 HELD PRs shipped (7 code/
+build + 2 docs), one correction round handled cleanly (FLEET-007), one real collision avoided
+before it cost anything (FLEET-010→docs fix), zero unresolved findings anywhere. Next wake: fresh
+capacity, select the next candidate per the usual process.
+
 <!-- Further entries appended below as the window progresses -->
