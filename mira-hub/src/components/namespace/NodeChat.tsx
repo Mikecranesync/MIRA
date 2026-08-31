@@ -384,7 +384,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         {error && (
           <div
             className="text-xs px-3 py-2 rounded-lg"
-            style={{ background: "#FEF2F2", color: "#991B1B", border: "1px solid #FECACA" }}
+            style={{ background: "var(--status-red-bg)", color: "#991B1B", border: "1px solid #FECACA" }}
           >
             {error}
           </div>
