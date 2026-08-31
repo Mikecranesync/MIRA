@@ -491,3 +491,55 @@ shipped (9 code/build + 2 docs), one correction round (FLEET-007), one collision
 (FLEET-010→docs fix), zero unresolved findings anywhere. Given time remaining, next wake will
 assess whether one more small slice can realistically finish + review + PR in time, or whether
 to shift into drafting the end-of-window consolidated report.
+
+## WINDOW CLOSED (~17:26Z, ~54m under the 5h budget) — final consolidated report
+
+Full report published as an artifact: https://claude.ai/code/artifact/5b9cf82e-7cb0-44ba-b351-67967bccd62e
+Also delivered as a message to the user in the terminal.
+
+### Completed
+
+13 slices worked this lineage (FLEET-001/002 carried in already-closed at window open;
+FLEET-003 through FLEET-013 built and closed within this window). 12 HELD PRs shipped
+(#3517, #3518, #3521, #3522, #3523, #3524, #3525, #3526, #3527, #3529, #3530, #3531) +
+1 non-HELD docs-only correction (#3528). Zero unresolved findings across every independent
+review. One correction round (FLEET-007, exhaustive re-grep caught a second un-converted
+color the diff review missed). One collision correctly avoided before it cost anything
+(FLEET-010 — abandoned a build into three-weeks-live territory, shipped a safe docs fix
+instead). One self-caught duplicate build (FLEET-002 parallel-build episode, closed
+transparently).
+
+### Why the window closed early (~54m remaining, not 0m)
+
+At 17:21Z, FLEET-013 (this window's 11th own slice) closed clean. With ~59m left, judged
+that starting a 14th slice risked leaving a Bravo worker in flight at the 18:20Z hard
+close — against the charter's explicit "never silently abandon a dispatched worker" and
+"prefer not starting something that can't finish in time" guidance. Chose to close the
+window cleanly on a strong, fully-reviewed deliverable rather than gamble the last hour on
+one more slice.
+
+### Human decisions waiting (see report for full detail)
+
+1. Merge review for the 12 HELD PRs — all independently verified, zero unresolved findings.
+2. Server-durable safety-persistence parity for AssetChat/NodeChat (FLEET-004's finding) —
+   needs a schema decision before it can be built.
+3. Whether to continue the AssetChat/NodeChat-vs-NotebookChat parity program — every gap
+   found this window is now closed; the next one (if any) hasn't been scoped.
+
+### Recommended next task
+
+One more direct-code-reading sweep of AssetChat.tsx/NodeChat.tsx against NotebookChat.tsx's
+full contract (STRM-2 and CMPS-2 both now closed) to find the next real gap, if one exists —
+same process this whole window used. If that sweep turns up nothing, fall back to the
+charter's own Priority 2 selection process (fresh PRD/ADR/main read).
+
+### Fleet health
+
+One self-inflicted process near-miss during FLEET-013's dispatch (a self-cleaning worktree
+reused across separate calls, causing a stray branch pointer) — fully diagnosed and
+recovered with no data loss or force-push; folded into this window's own operating
+instructions before it could recur. No CI failures, no infra issues, no blocked gates. Every
+full-suite run this window reconciled exactly against the 244-file/2445-test baseline and the
+32-error/7-file tsc baseline, both established early in the window and unchanged throughout.
+
+Loop stopped here — this is the closing entry.
