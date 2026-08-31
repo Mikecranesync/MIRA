@@ -417,3 +417,45 @@ next candidate, mindful of the window closing (per the charter, don't start some
 realistically finish + review + PR before ~18:20Z).
 
 <!-- Further entries appended below as the window progresses -->
+
+## FLEET-013 dispatched (~17:09Z, ~1h11m remaining)
+
+Selected via the same direct-code-reading process as prior slices: compared AssetChat.tsx/NodeChat.tsx
+against NotebookChat.tsx's actual CMPS-2 contract again, found it's bigger than what FLEET-012 (HELD,
+unreviewed-yet-in-this-branch — actually already merged into the review queue as PR #3530) built:
+Notebook chat has a full byte-identical one-click **Retry** mechanism (`failed: ChatBody | null` state
++ `retry` callback + a `data-testid="retry-chip"` button), not just the composer-text restore FLEET-012
+shipped. AssetChat/NodeChat still require "notice the pre-filled composer, then manually hit Send again."
+
+Collision check before dispatch: `gh pr list --search "retry-chip OR retry button AssetChat OR NodeChat
+retry"` surfaced PR #3185 ("doc-scoped NodeChat... [HELD]") as the only hit that touches NodeChat.tsx
+directly. Verified via `gh pr view 3185`: **merged 2026-08-12**, three weeks before this window opened and
+well before the constant `origin/main` fork point (`583cda81a`) used all session — its NodeChat.tsx
+changes are already fully baked into every checkout this window has built against. Not a live collision,
+just old settled history. Cleared to proceed.
+
+**Self-inflicted mishap during push (recorded for transparency, fully recovered, nothing lost):**
+the ephemeral-worktree script used for pushing `.fleet/TASK.md` used `trap cleanup EXIT`, which removes
+the worktree on ANY exit including success — the next command's `cd "$WT"` then silently fell back to
+this session's own long-lived `review/fleet-001` worktree (persisted cwd), and a `git push -u origin
+HEAD:fleet/chatui-slice-13` from there created a stray branch pointing at an unrelated pre-existing
+commit (084181962, no TASK.md content — verified via `git show --stat` before touching anything further).
+Deleted that stray ref immediately (`git push origin --delete fleet/chatui-slice-13`). Retried atomically
+in one script; hit a second-order effect of the same root cause (a local branch ref named
+`fleet/chatui-slice-13` left over from the first failed attempt, `set -e` correctly aborted the
+`checkout -b` step which then continued detached, so the intended commit `a15ad10d1` was created but on
+a detached HEAD and never reached a branch); the worktree-removal step at the end of that script had
+already run (it's outside the failed step, so `set -e` didn't stop it), leaving the correct commit as a
+dangling object. Recovered cleanly: deleted the stray local branch ref, pushed the exact dangling commit
+directly by SHA (`git push origin a15ad10d10fcabeb5be510dc0fd046e1b952c075:refs/heads/fleet/chatui-slice-13`),
+verified via `git fetch` + `git show --stat` that the remote branch now holds exactly the intended
+`.fleet/TASK.md` content on top of `583cda81a`. No branch was force-pushed, no existing content was
+overwritten, no work was lost — every corrective step was additive/deletive on refs I created myself
+this turn.
+
+Branch: `fleet/chatui-slice-13` (pushed, TASK.md only, correct content confirmed).
+Dispatched to Bravo worker `f6d2be52` (developer profile, isolated worktree). Awaiting completion.
+
+Cumulative so far: 12 slices closed (10 HELD PRs — 8 code/build + 2 docs), FLEET-013 in flight,
+one correction round (FLEET-007), one collision avoided (FLEET-010→docs fix), zero unresolved
+findings anywhere.
