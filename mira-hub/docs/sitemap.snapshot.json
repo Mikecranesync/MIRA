@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 180
+    "apiRoutes": 181
   },
   "pages": [
     "/admin",
@@ -256,6 +256,7 @@
     "/api/work-orders",
     "/api/work-orders/[id]",
     "/api/work-orders/export.csv",
-    "/api/workflows"
+    "/api/workflows",
+    "/labs/chat-spike/stream"
   ]
 }
