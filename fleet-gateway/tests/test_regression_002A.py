@@ -12,10 +12,20 @@ Tests 4-5: LoopbackCAOClient HTTP mapping via mocked urllib.urlopen.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from fleet_gateway.cao import LoopbackCAOClient
 from helpers import LAUNCH_OK
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "Fleet Gateway Test",
+    "GIT_AUTHOR_EMAIL": "fleet-gateway-test@localhost",
+    "GIT_COMMITTER_NAME": "Fleet Gateway Test",
+    "GIT_COMMITTER_EMAIL": "fleet-gateway-test@localhost",
+    "GIT_TERMINAL_PROMPT": "0",
+}
 
 
 # ── Test 1: Multiple launch_worker with same task_id ──────────────────────────
@@ -48,15 +58,38 @@ def test_multiple_launches_same_task_id_latest_session(service, auth, data_dir):
     )
 
 
-# ── Test 2: Stopped first attempt, successful second ─────────────────────────
+# ── Test 2: Stopped first attempt (commit A), second attempt uses new commit B ─
 
 
-def test_failed_first_attempt_second_session_wins(service, auth):
-    """First attempt stopped, second succeeds:
-    task_status.session_id is second session; status is running (not stopped from first).
-    claimed_commit_matches_artifact reflects current attempt only."""
-    # First attempt → stop it
+def test_failed_first_attempt_second_session_wins(service, auth, origin_repo, data_dir):
+    """First attempt (commit A) stopped; second attempt uses a NEW commit B created in origin_repo.
+
+    Asserts:
+    - status.commit == commit_b
+    - claimed_commit_matches_artifact is True
+    - artifact.claimed_commit == commit_b
+    - attempts[] contains an entry whose base_commit == commit_a
+    - launched1.base_commit != launched2.base_commit (first/second base_commits differ)
+    """
+    repo, commit_a = origin_repo
+
+    # Create commit B in the origin repo (write SECOND.txt and commit it).
+    (repo / "SECOND.txt").write_text("second commit\n")
+    subprocess.run(["git", "add", "SECOND.txt"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "second"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={**os.environ, **_GIT_ENV},
+    )
+    commit_b = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+    assert commit_a != commit_b, "commit B must differ from commit A"
+
+    # First attempt with commit_a → stop it
     params1 = dict(LAUNCH_OK)
+    params1["base_commit"] = commit_a
     launched1 = service.invoke("launch_worker", params1, authorization=auth)
     service.invoke(
         "stop_worker",
@@ -64,18 +97,30 @@ def test_failed_first_attempt_second_session_wins(service, auth):
         authorization=auth,
     )
 
-    # Second attempt (same valid base_commit from test fixture)
+    # Second attempt with commit_b
     params2 = dict(LAUNCH_OK)
+    params2["base_commit"] = commit_b
     launched2 = service.invoke("launch_worker", params2, authorization=auth)
 
     assert launched1["session_id"] != launched2["session_id"]
+    assert launched1["base_commit"] != launched2["base_commit"], (
+        "first/second base_commits must differ"
+    )
 
     status = service.invoke("task_status", {"task_id": LAUNCH_OK["task_id"]}, authorization=auth)
-    # Second attempt is current
     assert status["session_id"] == launched2["session_id"]
     assert status["status"] == "running", "second attempt must not inherit stopped status"
-    # Artifact and snapshot have same base_commit → matches
+    assert status["commit"] == commit_b, "task_status.commit must be commit_b"
     assert status["claimed_commit_matches_artifact"] is True
+
+    # Verify the artifact file directly
+    artifact_path = data_dir / "tasks" / f"{LAUNCH_OK['task_id']}.json"
+    artifact = json.loads(artifact_path.read_text())
+    assert artifact["claimed_commit"] == commit_b, "artifact.claimed_commit must be commit_b"
+    attempts = artifact.get("attempts", [])
+    assert any(a.get("base_commit") == commit_a for a in attempts), (
+        "attempts[] must contain an entry with base_commit == commit_a"
+    )
 
 
 # ── Test 3: stop_worker(session_id only) → task_status is not running ────────
