@@ -391,4 +391,29 @@ Notebook's own Q1 work and unrelated mobile PRs). Branch `fleet/chatui-slice-12`
 `origin/main`, task commit `d519c380f`). Dispatched to a Bravo worker (terminal `bba9ea89`), same
 "keep it local, don't import cross-surface" instruction as FLEET-011.
 
+## 16:3x — FLEET-012 reviewed and closed out
+
+Bravo (terminal `bba9ea89`) reported completion at `2ed8e4ffd`. Independent review: read both
+component diffs in full, then went beyond the diff hunks — read the *surrounding* catch block in
+both files to independently confirm `restoreComposer` only runs past the `AbortError` early-return
+(never on a technician-initiated stop), and confirmed `text` is genuinely `sendMessage`'s own
+parameter (no plumbing needed, matching the claim). Verified the tests exercise real branches, not
+trivial assertions — the whitespace-only-composer case specifically proves the `.trim()` call is
+doing real work, not a bare truthy check. Fresh exhaustive check across both full files:
+`restoreComposer` defined+called exactly once per file, and both composer-clearing call sites
+(`handleSubmit`, `handleKeyDown`) converge into the one `sendMessage`/catch block already fixed —
+no second, un-covered send path. Targeted (9/9) + full suite (245/2451, exact match against the
+244/2445 baseline + 6 new tests) + both tsc gates all re-run clean. **Zero findings — clean PASS.**
+Worker also independently diagnosed and worked around the same gitleaks-stale-cwd hook quirk this
+coordinator hit earlier in the window — a good sign, not a code issue.
+
+Pushed `.fleet/REVIEW-FINAL-012.md`, pushed the branch, opened **PR #3530**
+(`fleet/chatui-slice-12`), HELD. `delete_terminal(bba9ea89)`.
+
+**Cumulative (~3h20m into the 5h window, ~1h43m remaining):** 12 slices worked, 10 HELD PRs
+shipped (8 code/build + 2 docs), one correction round (FLEET-007), one collision avoided
+(FLEET-010→docs fix), zero unresolved findings anywhere. Nothing in flight; next wake selects the
+next candidate, mindful of the window closing (per the charter, don't start something that can't
+realistically finish + review + PR before ~18:20Z).
+
 <!-- Further entries appended below as the window progresses -->
