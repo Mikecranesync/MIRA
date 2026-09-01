@@ -347,14 +347,27 @@ class LoopbackCAOClient:
 
     def task_snapshot(self, task_id: str) -> dict[str, Any] | None:
         # CAO has no task index; use in-process session map, returning latest for this task.
-        latest = None
+        latest_name: str | None = None
         for sid in reversed(self._session_order):
             sess = self._sessions.get(sid)
             if sess and sess.get("task_id") == task_id:
-                latest = dict(sess)
-                latest["session_id"] = sid
+                latest_name = sid
                 break
-        return latest
+        if latest_name is None:
+            return None
+        # Refresh live terminal status so dead/completed sessions don't stay "running".
+        live = self.get_session(latest_name)
+        if live:
+            t_status = live.get("terminal_status")
+            if t_status in ("completed", "error"):
+                # Terminal is dead; mark stopped in both the live dict and the in-process map.
+                live["status"] = "stopped"
+                stored = self._sessions.get(latest_name)
+                if stored:
+                    stored["status"] = "stopped"
+        result = live if live else dict(self._sessions.get(latest_name) or {})
+        result["session_id"] = latest_name
+        return result
 
     def launch_worker(self, spec: dict[str, Any]) -> dict[str, Any]:
         task_id = str(spec.get("task_id") or "").strip()
@@ -488,8 +501,22 @@ class LoopbackCAOClient:
             return None
         try:
             resp = self._request("GET", f"/sessions/{session_id}", timeout=2.0)
-            # Merge CAO response with in-process data (role etc. that CAO doesn't know)
-            merged = dict(resp)
+            # Real CAO returns {"session": {...}, "terminals": [...]}
+            # Extract session-level fields and first terminal's id/status.
+            merged: dict[str, Any] = {}
+            session_obj = resp.get("session")
+            if isinstance(session_obj, dict):
+                # Skip 'status' — CAO session.status is a tmux concept ("detached"/"attached"),
+                # not the task/terminal status; let the in-process stored status win.
+                for k, v in session_obj.items():
+                    if k != "status":
+                        merged[k] = v
+            terminals = resp.get("terminals") or []
+            if terminals and isinstance(terminals[0], dict):
+                t = terminals[0]
+                merged["terminal_id"] = t.get("id") or stored.get("terminal_id", "")
+                merged["terminal_status"] = t.get("status")
+            # In-process data fills any gaps CAO doesn't know (role, task_id, etc.)
             for k, v in stored.items():
                 merged.setdefault(k, v)
             merged["session_id"] = session_id
