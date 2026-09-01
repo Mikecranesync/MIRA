@@ -71,6 +71,20 @@ export function isEnterToSend(e: {
   return true;
 }
 
+/** A failed send rolls back the WHOLE optimistic exchange — the empty assistant
+ *  bubble AND the user turn that provoked it — so the question survives only in
+ *  the composer (restoreComposer) and a Retry cannot append a second copy of it.
+ *  Mirrors NotebookChat's `prev.filter(x => x.id !== aId && x.id !== userTurn.id)`;
+ *  a bare `pop()` removed only the assistant bubble and orphaned the user turn.
+ *  Exported for the unit test. */
+export function rollbackFailedExchange<T extends { id: string }>(
+  messages: T[],
+  userId: string,
+  assistantId: string,
+): T[] {
+  return messages.filter((m) => m.id !== userId && m.id !== assistantId);
+}
+
 /** After a failed send the technician's question goes back into the composer
  *  — unless they already started typing something else. Local copy of
  *  Notebook chat's CMPS-2 fix (notebook-chat-utils.ts); not imported to avoid
@@ -421,11 +435,10 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         return;
       }
       setError("Connection lost. Check your network and try again.");
-      setMessages((prev) => {
-        const next = [...prev];
-        next.pop(); // remove empty assistant bubble
-        return next;
-      });
+      // Roll back the whole optimistic exchange (assistant bubble AND the user
+      // turn). Leaving the user turn behind orphaned it in the transcript and
+      // let Retry append a duplicate of the same question.
+      setMessages((prev) => rollbackFailedExchange(prev, userMsg.id, assistantMsg.id));
       // Restore the failed question to the composer (CMPS-2) unless the
       // technician already started typing something new.
       setInput((current) => restoreComposer(current, text));

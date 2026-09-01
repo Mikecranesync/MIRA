@@ -9,6 +9,7 @@ import {
   failedAfterEdit,
   isEnterToSend,
   restoreComposer,
+  rollbackFailedExchange,
   shouldShowRetry,
 } from "./NodeChat";
 
@@ -337,5 +338,48 @@ describe("NodeChat RetryChip", () => {
     expect(html).toContain('data-testid="retry-button"');
     expect(html).toContain("Retry");
     expect(html).toContain("<svg"); // RotateCcw icon
+  });
+});
+
+// FLEET-013 defect (found during the overnight prep of #3531): a failed send
+// used to pop only the empty assistant bubble, orphaning the user turn in the
+// transcript. Retry then appended a SECOND copy of the same question — a
+// duplicate user turn, and the same question twice in the API payload.
+// NotebookChat (the reference) rolls back the whole optimistic exchange.
+describe("NodeChat rollbackFailedExchange — a failed send leaves no orphan turn", () => {
+  const exchange = () => [
+    { id: "u0", role: "user", content: "earlier question" },
+    { id: "a0", role: "assistant", content: "earlier answer" },
+    { id: "u1", role: "user", content: "What does fault F005 mean?" },
+    { id: "a1", role: "assistant", content: "" },
+  ];
+
+  it("removes BOTH the user turn and the empty assistant bubble", () => {
+    expect(rollbackFailedExchange(exchange(), "u1", "a1")).toEqual([
+      { id: "u0", role: "user", content: "earlier question" },
+      { id: "a0", role: "assistant", content: "earlier answer" },
+    ]);
+  });
+
+  it("leaves earlier history untouched", () => {
+    const out = rollbackFailedExchange(exchange(), "u1", "a1");
+    expect(out.map((m) => m.id)).toEqual(["u0", "a0"]);
+  });
+
+  it("a Retry after rollback cannot produce a duplicate user turn", () => {
+    // failure rolls the exchange back...
+    const afterFailure = rollbackFailedExchange(exchange(), "u1", "a1");
+    // ...then Retry re-sends, appending the question exactly once.
+    const afterRetry = [
+      ...afterFailure,
+      { id: "u2", role: "user", content: "What does fault F005 mean?" },
+      { id: "a2", role: "assistant", content: "" },
+    ];
+    const asked = afterRetry.filter((m) => m.content === "What does fault F005 mean?");
+    expect(asked).toHaveLength(1);
+  });
+
+  it("is a no-op when the ids are not present", () => {
+    expect(rollbackFailedExchange(exchange(), "nope", "alsonope")).toHaveLength(4);
   });
 });
