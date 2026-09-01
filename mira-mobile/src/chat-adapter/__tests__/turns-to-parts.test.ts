@@ -500,6 +500,87 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(mid.parts.some((p) => p.type === "safety_notice")).toBe(false);
   });
 
+  // --- FLEET-003a: a malformed marker must fail SAFE, not open ----------------
+  // The LIVE parser is permissive: `String(frame.trigger ?? "")` means a safety
+  // frame with a missing/null/non-string trigger STILL yields a banner. The
+  // persisted reader required `typeof trigger === "string"` and returned null
+  // otherwise — so the same turn reloaded as an ORDINARY ANSWER. `trigger` is
+  // observability-only and never rendered; `kind` is the identity. Discarding a
+  // known safety stop over a cosmetic field is a fail-OPEN on a safety path.
+  const MALFORMED: [string, unknown][] = [
+    ["missing trigger", { kind: "safety_notice" }],
+    ["null trigger", { kind: "safety_notice", trigger: null }],
+    ["number trigger", { kind: "safety_notice", trigger: 42 }],
+    ["object trigger", { kind: "safety_notice", trigger: { phrase: "loto" } }],
+  ];
+  for (const [name, marker] of MALFORMED) {
+    it(`FLEET-003a: persisted marker with ${name} still renders as a safety stop`, () => {
+      const a = hydrateMessages([
+        {
+          id: "t-malformed",
+          question: "can I open it live?",
+          answerStatus: "answered",
+          answerText: "Do not work on this equipment while energized.",
+          evidence: [marker, { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" }],
+          basis: "general_reasoning",
+        } as never,
+      ])[1];
+      expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
+      // ...and the suppression must engage too, or it is a banner on top of
+      // full answer chrome — a half-fix that still reads as a graded answer.
+      expect(a.parts.some((p) => p.type === "source")).toBe(false);
+      expect(a.parts.some((p) => p.type === "basis")).toBe(false);
+    });
+  }
+
+  it("FLEET-003a: live and persisted AGREE on a malformed trigger", () => {
+    // The asymmetry itself is the bug: whatever the two paths do, they must do
+    // the same thing, or a reload changes the meaning of the turn.
+    const live = liveTurnMessages(
+      "q",
+      parseChatSse(
+        frame({ kind: "content", content: "STOP." }) +
+          frame({ kind: "safety" }) + // no trigger on the wire
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    const hydrated = hydrateMessages([
+      {
+        id: "t",
+        question: "q",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [{ kind: "safety_notice" }],
+        basis: null,
+      } as never,
+    ])[1];
+    expect(comparableProjection(live).safetyNotice).toBe(true);
+    expect(comparableProjection(hydrated).safetyNotice).toBe(true);
+    expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
+  });
+
+  it("FLEET-003a: a non-safety evidence row is still NOT a safety stop", () => {
+    // Guard the guard: loosening the trigger check must not make everything a
+    // safety turn. `kind` remains the discriminator.
+    const a = hydrateMessages([
+      {
+        id: "t",
+        question: "q",
+        answerStatus: "answered",
+        answerText: "A [1].",
+        evidence: [
+          { kind: "machine_evidence", assetId: "cv-101", anchorAt: "2026-08-31T00:00:00Z", pre: 30, post: 30, freshness: "fresh" },
+          { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" },
+        ],
+        basis: null,
+      } as never,
+    ])[1];
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(false);
+    expect(a.parts.some((p) => p.type === "source")).toBe(true);
+  });
+
   it("FLEET-003: comparableProjection can SEE safety identity", () => {
     // Regression guard for the guard: before this field, a hard stop and an
     // ordinary answer with the same text projected identically, so the
