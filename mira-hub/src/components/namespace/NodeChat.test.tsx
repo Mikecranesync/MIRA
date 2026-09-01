@@ -84,10 +84,10 @@ describe("NodeChat MessageBubble — isSafetyStop rendering", () => {
     );
 
     // Bubble + icon-circle background/border/text hard-coded on the safety path.
-    expect(html).toContain("#FEF2F2");
+    expect(html).toContain("var(--status-red-bg)");
     expect(html).toContain("#FECACA");
     expect(html).toContain("#991B1B");
-    expect(html).toContain("text-red-600");
+    expect(html).toContain("var(--status-red)");
   });
 
   it("does not apply the safety-stop treatment to an ordinary assistant message", () => {
@@ -101,10 +101,10 @@ describe("NodeChat MessageBubble — isSafetyStop rendering", () => {
       />,
     );
 
-    expect(html).not.toContain("#FEF2F2");
+    expect(html).not.toContain("var(--status-red-bg)");
     expect(html).not.toContain("#FECACA");
     expect(html).not.toContain("#991B1B");
-    expect(html).not.toContain("text-red-600");
+    expect(html).not.toContain("var(--status-red)");
   });
 
   it("never applies the safety-stop treatment to a user message, even if isSafetyStop were set", () => {
@@ -121,7 +121,7 @@ describe("NodeChat MessageBubble — isSafetyStop rendering", () => {
       />,
     );
 
-    expect(html).not.toContain("#FEF2F2");
+    expect(html).not.toContain("var(--status-red-bg)");
     expect(html).toContain("var(--brand-blue)");
   });
 });
