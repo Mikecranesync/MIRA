@@ -149,7 +149,10 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
           {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
         </div>
         {msg.hasSafetyAlert && (
-          <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+          <div
+            className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium"
+            style={{ color: "var(--status-yellow-ink)" }}
+          >
             <AlertTriangle className="w-3.5 h-3.5" />
             Safety alert included above
           </div>

@@ -11,6 +11,7 @@
   --status-green: #16A34A;
   --status-green-ink: #15803D; /* readable ok TEXT on light surfaces (green-700, ~5:1 on white) */
   --status-yellow: #EAB308;
+  --status-yellow-ink: #B45309; /* readable warning TEXT on light surfaces (amber-700, ~5:1 on white) */
   --status-red: #DC2626;
   --status-gray: #64748B;
   --status-orange: #EA580C;
@@ -127,6 +128,7 @@
   --border-strong: #3D4451;
   --status-orange-bg: #431407;
   --status-green-ink: #4ADE80; /* green-400 — LIGHTER green is the readable ink on dark surfaces */
+  --status-yellow-ink: #FBBF24; /* amber-400 — LIGHTER amber is the readable ink on dark surfaces */
 
   --card: var(--surface-0);
   --card-foreground: var(--foreground);
@@ -157,6 +159,7 @@
   /* Status colors exposed as Tailwind utilities */
   --color-status-green: var(--status-green);
   --color-status-green-ink: var(--status-green-ink);
+  --color-status-yellow-ink: var(--status-yellow-ink);
   --color-status-yellow: var(--status-yellow);
   --color-status-red: var(--status-red);
   --color-status-gray: var(--status-gray);

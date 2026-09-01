@@ -230,3 +230,27 @@ describe("AssetChat restoreComposer", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
   });
 });
+
+// The H4 gap-admission marker is a safety-adjacent label, so its colour is a
+// token (--status-yellow-ink), not a hardcoded Tailwind palette class. The base
+// --status-yellow (#EAB308) is a badge/dot colour at 1.92:1 on white and is NOT
+// a legible text ink; --status-yellow-ink is amber-700 at ~5:1, matching the
+// --status-green-ink precedent, and flips lighter in dark mode.
+describe("AssetChat safety-alert marker uses the status ink token", () => {
+  it("renders the marker with var(--status-yellow-ink)", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "amber1", role: "assistant", content: "Isolate power first.", hasSafetyAlert: true }} />,
+    );
+    expect(html).toContain("Safety alert included above");
+    expect(html).toContain("var(--status-yellow-ink)");
+  });
+
+  it("does not hardcode an amber palette class or hex", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "amber1", role: "assistant", content: "Isolate power first.", hasSafetyAlert: true }} />,
+    );
+    expect(html).not.toContain("text-amber-600");
+    expect(html).not.toContain("#D97706");
+    expect(html).not.toContain("#EAB308");
+  });
+});
