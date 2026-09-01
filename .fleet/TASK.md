@@ -1,58 +1,63 @@
-# FLEET-001 — ChatGPT-class UI: close the safety-frame persistence gap
+# FLEET-002 — Render persisted `safetyNotice` in every applicable client
 
-## Your identity
-You are the Bravo implementation worker in the FactoryLM CAO fleet.
-Worktree: ~/Mira-worktrees/fleet-run-01   Branch: fleet/chatui-slice-01
-Base: origin/main @ 583cda81a. Work ONLY in this worktree.
+## Identity
+Bravo implementation worker. Worktree ~/Mira-worktrees/fleet-run-02,
+branch `fleet/chatui-safety-render-02`, based on `fleet/chatui-slice-01` (FLEET-001,
+already independently verified PASS and now HELD PR #3517).
 
-## Background (already established — do NOT redo this analysis)
-The ChatGPT-class conversational UI program has three HELD PRs (fetched locally as
-branches pr-3514 / pr-3515 / pr-3516). #3514 = PRD + ADR-0038/0039. #3515 = hub spike
-(owned by ANOTHER lane — do not touch labs/chat-spike). #3516 = mira-mobile ChatV2.
+## The defect to eliminate
+A safety hard-stop now PERSISTS correctly (FLEET-001 put
+`{kind:"safety_notice", trigger}` into the turn's `evidence[]`, and `splitEvidence` /
+`persistedTurns` surface it as `HydratedTurn.safetyNotice`). **But no client reads it.**
+So a LOTO / arc-flash refusal still RELOADS looking like an ordinary assistant answer.
 
-A verified defect was found and is NOT yet fixed on main:
+Product requirement:
+> A LOTO, arc-flash, or other industrial-safety refusal must remain UNMISTAKABLY a safety
+> hard-stop after persistence, hydration, reload and navigation — recognisable without
+> reading the prose.
 
-  A SAFETY HARD-STOP DOES NOT SURVIVE RELOAD.
+## Investigate FIRST (do not assume one surface)
+Find EVERY client surface that renders persisted assistant turns, then decide scope:
+- mira-hub `src/components/equipment/NotebookChat.tsx` (web notebook chat) — consumes
+  `persistedTurns`; does its local `ChatTurn` type carry safetyNotice? (FLEET-001 review
+  said no.)
+- mira-hub `readNotebookStream` in `notebook-chat-utils.ts` — the LIVE path currently has
+  no `else if (frame.kind === "safety")` branch, so live safety identity is dropped too.
+- mira-mobile `src/screens/NotebookScreen.tsx` + `src/lib/sse.ts` — legacy mobile chat on
+  main; check whether it has any safety reader on either the live or persisted path.
+- Any other surface that renders persisted turns (NodeChat / AssetChat use a DIFFERENT
+  untyped dialect and may not receive safety frames at all — verify before touching them).
 
-The hub emits a typed `{kind:"safety", trigger}` SSE frame (see
-mira-hub/src/lib/notebook-chat-types.ts, type NotebookSafetyFrame) when a turn is refused
-for safety reasons. But the turn is PERSISTED as an ordinary `answer_status='answered'`
-row with no safety marker. So on reload/hydration the safety identity is lost and a
-LOTO/arc-flash refusal renders as a normal assistant answer. That is the exact failure
-mode `mira-industrial-safety` exists to prevent.
+NOTE: the mira-mobile ChatV2 surface lives in HELD PR #3516 and is NOT on this branch.
+Do not try to modify it here. If mobile work belongs to that PR, say so in the handoff.
 
-## Your slice (small, bounded, high value)
-Persist the safety marker server-side so hydration can restore it.
+## Acceptance requirements
+- Persistence: unchanged from FLEET-001 (do not regress it).
+- Hydration: reload restores the safety identity.
+- Rendering: a persisted safety turn renders as a DISTINCT safety notice, not a normal answer.
+- Visual distinction: recognisable without interpreting prose.
+- No ordinary-answer affordances: do not show citation chips / grounded-answer badges /
+  follow-up chips / "answered" affordances on a safety turn unless genuinely valid.
+- Live + reloaded consistency: same semantic meaning both ways.
+- Backward compatibility: OLD persisted turns with no marker must still load safely.
+- Streaming truth: do NOT regress STRM-2 terminal-status / truncation rules.
+- Evidence: do not break citation persistence or Notebook grounding.
+- Reuse existing safety styling/components if any exist; do not clean-room a new one.
 
-Approach (already decided in ADR-0038 item 3 — do not redesign):
-- Persist a `{kind:"safety_notice", trigger}` entry INSIDE the turn's existing `evidence[]`
-  JSONB, exactly the way `machine_evidence` and `visual_observation` already ride there.
-- NO database migration. NO change to the `answer_status` CHECK constraint.
-- Add a type + type guard next to `isMachineEvidenceEntry` / `isVisualObservationEntry`.
-- Make sure every existing `evidence[]` reader SKIPS it (it is NOT a citation: no docId,
-  never in sources.citations or sourceSnapshot).
-- Ensure the hydration/read path surfaces it so a reloaded safety turn is distinguishable.
+## Tests required (run them, paste REAL output)
+- targeted safety persistence + rendering + hydration tests
+- broader UI/adapter sweep:
+  cd mira-hub && npx vitest run src/app/api/equipment-notebooks src/components/equipment
+- TYPE CHECK (mandatory — FLEET-001's blocking defect was found here, not by vitest):
+  cd mira-hub && npx tsc --noEmit -p tsconfig.json
+  Separate NEW touched-file errors from the 32 PRE-EXISTING baseline errors.
+- If you change mira-mobile: cd mira-mobile && npx vitest run <files> and npx tsc --noEmit.
+  Do NOT claim device proof — no Pixel is attached to this run.
 
-## Hard constraints
-- Do NOT weaken evidence, citation, persistence, streaming-truth or safety behaviour.
-- Do NOT mark a truncated stream complete. Do NOT alter terminal-status semantics.
-- Do NOT touch mira-hub/src/app/labs/** (another lane owns it).
-- Do NOT run migrations, deploy, merge, or push to main.
-- Keep the diff minimal and reviewable.
-
-## Required outputs
-1. Code change in this worktree only.
-2. Tests: add/extend unit tests proving a safety turn round-trips (live -> persisted ->
-   hydrated) and is NOT mistaken for an ordinary answer. Run the relevant test file(s)
-   and record actual output.
-3. `git add` + `git commit` on branch fleet/chatui-slice-01 (do NOT push).
-4. Write `.fleet/HANDOFF.md` containing: objective, files changed, decisions made,
-   failed approaches, tests run + results, current commit SHA, blockers, next action.
-5. Do NOT self-approve. Charlie reviews independently.
-
-## Test commands
-cd mira-hub && bun install --frozen-lockfile   (if node_modules missing)
-cd mira-hub && bun run vitest run <the test files you touched>
-
-Start by reading mira-hub/src/lib/notebook-chat-types.ts and the notebook chat route's
-persistence path. Keep archaeology tight — the diagnosis above is already verified.
+## Deliverables
+1. Code in THIS worktree only. NOTE: this machine has NO bun — use `npx`.
+2. Commit on `fleet/chatui-safety-render-02` (do NOT push).
+3. `.fleet/HANDOFF.md`: task ID, branch, worktree, commit, files changed, behaviour
+   implemented, tests run + REAL results, type-check results (new vs pre-existing),
+   known limitations, decisions, failed approaches, next action.
+4. Do NOT self-approve. Charlie reviews independently.

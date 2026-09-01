@@ -256,6 +256,102 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
   });
 });
 
+// ── FLEET-002: safety hard-stop rendering ───────────────────────────────────
+describe("Bubble — safety hard-stop (FLEET-002)", () => {
+  const safetyTurn: ChatTurn = {
+    id: "s1",
+    role: "assistant",
+    content: "SAFETY STOP: isolate the machine immediately and call your supervisor.",
+    status: "answered",
+    safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    citations: [],
+    followups: ["What next?"],
+    basis: null,
+  };
+
+  it("renders the safety notice banner with role=alert and AlertTriangle", () => {
+    const html = renderToStaticMarkup(<Bubble turn={safetyTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Safety stop");
+    // Red background (same swatch as AssetChat isSafetyStop)
+    expect(html).toContain("#FEF2F2");
+    expect(html).toContain("#991B1B");
+  });
+
+  it("suppresses follow-up chips on a safety turn", () => {
+    const html = renderToStaticMarkup(<Bubble turn={safetyTurn} onFollowup={() => {}} />);
+    expect(html).not.toContain("What next?");
+    expect(html).not.toContain("Ask follow-up");
+  });
+
+  it("suppresses basis caption on a safety turn", () => {
+    const withBasis: ChatTurn = { ...safetyTurn, basis: "general_reasoning" };
+    const html = renderToStaticMarkup(<Bubble turn={withBasis} />);
+    expect(html).not.toContain('data-testid="basis-caption"');
+    expect(html).not.toContain("General guidance");
+  });
+
+  it("suppresses citation chips on a safety turn even if citations were somehow set", () => {
+    const withCite: ChatTurn = {
+      ...safetyTurn,
+      citations: [{ citationId: "1", docId: "d1", sourceTitle: "Manual", page: 1, fileId: null, quote: null }],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={withCite} />);
+    // passages chip must NOT appear; the safety banner MUST appear
+    expect(html).not.toContain("supporting passage");
+    expect(html).toContain('data-testid="safety-notice-banner"');
+  });
+
+  it("a reloaded safety turn (from persistedTurns) renders the banner", () => {
+    const [, a] = persistedTurns([
+      {
+        id: "t1",
+        question: "smoke is coming from the drive",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP: isolate immediately.",
+        evidence: [{ kind: "safety_notice", trigger: "smoke coming" }],
+        basis: null,
+      },
+    ]);
+    const html = renderToStaticMarkup(<Bubble turn={a as ChatTurn} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Ask follow-up");
+  });
+
+  it("a normal answered turn has NO safety banner", () => {
+    const normal: ChatTurn = {
+      id: "n1",
+      role: "assistant",
+      content: "P042 sets the deceleration ramp.",
+      status: "answered",
+    };
+    const html = renderToStaticMarkup(<Bubble turn={normal} />);
+    expect(html).not.toContain("safety-notice-banner");
+    expect(html).not.toContain("Safety stop");
+  });
+
+  it("suppresses machine-replay and visual-observation cards on a safety turn even if the arrays are non-empty", () => {
+    // Hypothetically non-empty arrays: the gate must fire regardless of content.
+    const withEvidence: ChatTurn = {
+      ...safetyTurn,
+      machineEvidence: [
+        { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 7, freshness: "live" },
+      ],
+      visualEvidence: [
+        { kind: "visual_observation", fileId: "f0000000-0000-4000-8000-000000000002", capturedAt: "2026-08-27T23:14:21.000Z", provenance: "phone_photo" },
+      ],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={withEvidence} />);
+    // Safety banner must appear
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    // Neither evidence card may appear
+    expect(html).not.toContain('data-testid="machine-replay-card"');
+    expect(html).not.toContain('data-testid="visual-observation-card"');
+  });
+});
+
 // ── S5 D3 (contract §4.5): the persisted Visual observation card ────────────
 describe("Bubble — Visual observation card", () => {
   const base: ChatTurn = { id: "v", role: "assistant", content: "The green LED is the run indicator.", status: "answered" };

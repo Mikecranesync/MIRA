@@ -411,6 +411,38 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
   });
 });
 
+describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", () => {
+  it("picks up the safety frame and exposes it as safetyNotice on the result", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "content", content: "SAFETY STOP: isolate the machine immediately." }),
+        frame({ kind: "safety", trigger: "smoke coming" }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.safetyNotice).toEqual({ kind: "safety_notice", trigger: "smoke coming" });
+    expect(out.citations).toHaveLength(0);
+    expect(out.status).toBe("answered");
+  });
+
+  it("safetyNotice is null when no safety frame is emitted", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "P042 sets decel time." }),
+        frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+        frame({ kind: "evidence", basis: "oem_documentation" }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.safetyNotice).toBeNull();
+  });
+});
+
 describe("buildChatBody — the web body carries no window selection", () => {
   // The web notebook renders machine evidence; it never selects a window (the
   // mobile lane owns REPLAY selection). The body stays exactly three keys.

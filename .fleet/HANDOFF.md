@@ -1,96 +1,76 @@
-# FLEET-001 Handoff — Safety-frame persistence gap
+# FLEET-002 Handoff — Safety notice rendering in NotebookChat
 
-## Objective
-Persist the safety hard-stop marker server-side so a reloaded turn is
-distinguishable from a normal `answered` turn. A LOTO/arc-flash refusal was
-previously persisted with `evidence: []`; on reload the safety identity was
-lost and the warning rendered as a plain assistant answer.
+**Task ID:** FLEET-002
+**Branch:** fleet/chatui-safety-render-02
+**Worktree:** ~/Mira-worktrees/fleet-run-02
+**Commit:** e08ad8593
+**Base (FLEET-001):** d4abb7a0b
 
-## Commits (branch `fleet/chatui-slice-01`, do NOT push — Charlie reviews)
-| SHA | Contents |
-|-----|----------|
-| `995d3d5f0` | Code change: SafetyNoticeEntry type + persistence + hydration + tests |
-| `e0baa6e1e` | Adds `.fleet/TASK.md` + `.fleet/HANDOFF.md` |
+---
 
-**HEAD: `e0baa6e1e`**
+## Behaviour implemented
 
-## Files Changed
-| File | Change |
-|------|--------|
-| `mira-hub/src/lib/notebook-chat-types.ts` | Added `SafetyNoticeEntry` type + `isSafetyNoticeEntry` guard (modelled after existing `isMachineEvidenceEntry`) |
-| `mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts` | Both safety-stop branches now persist `[{kind:"safety_notice",trigger}]` in `evidence[]` instead of `[]`; imported `SafetyNoticeEntry` |
-| `mira-hub/src/components/equipment/notebook-chat-utils.ts` | `splitEvidence` now extracts `safetyNotice`; `persistedTurns` surfaces it on the hydrated turn; `PersistedTurn.evidence` and `HydratedTurn` types updated |
-| `mira-hub/src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts` | Updated existing persistence assertion (now expects evidence with entry) + 1 new trigger-match test |
-| `mira-hub/src/components/equipment/notebook-chat-utils.test.ts` | 4 new round-trip tests + existing `splitEvidence` deep-equals updated for `safetyNotice: null` |
+A safety hard-stop turn (LOTO, arc-flash, etc.) now renders as a distinct red banner in the web notebook chat on both the live and reloaded paths:
 
-## Decisions Made
-1. **No migration.** `evidence` is an existing `jsonb` column with no per-entry constraint (migration 073 defines the column only). A new entry kind is additive.
-2. **`SafetyNoticeEntry` rides in `evidence[]`**, not a new column. Exact same pattern as `MachineEvidenceEntry` and `VisualObservationEntry` — discriminated by `kind`.
-3. **`enrichCitationsWithOrigin` requires no change** — it already skips entries with no `docId`.
-4. **`splitEvidence` returns `safetyNotice: SafetyNoticeEntry | null`** (at most one per turn). Existing callers that only destructure `citations`/`machineEvidence`/`visualEvidence` are unaffected.
-5. **`HydratedTurn.safetyNotice`** is optional so non-safety turns carry no field (not `null`).
+- Red #FEF2F2 background, #991B1B text, AlertTriangle icon, role="alert", data-testid="safety-notice-banner"
+- Ordinary-answer affordances suppressed: no citation chips, no basis caption, no follow-up chips
+- Live path: readNotebookStream now handles the `safety` SSE frame and sets StreamResult.safetyNotice; the post() callback spreads it onto the turn
+- Reloaded path: persistedTurns already set HydratedTurn.safetyNotice (FLEET-001); ChatTurn now carries the field and Bubble reads it on hydration
+- Backward compat: old turns with no safetyNotice are unaffected — the field is optional
 
-## Failed Approaches
-- Appended new tests using `require()` — ESM environment rejects CJS require. Switched to top-level `import { splitEvidence }` (already in scope via the file's existing imports). Second vitest run (after stale transform cache cleared) showed all tests green.
+## Files changed
 
-## Test Results (verified 2026-08-31, vitest v3.2.4)
+- mira-hub/src/components/equipment/notebook-chat-utils.ts: StreamResult + safetyNotice field; readNotebookStream handles safety frame
+- mira-hub/src/components/equipment/NotebookChat.tsx: ChatTurn.safetyNotice; AlertTriangle import; safety banner in Bubble; gates on followups/basis/passages
+- mira-hub/src/components/equipment/notebook-chat-utils.test.ts: 2 new tests (stream picks up safety frame; absent yields null)
+- mira-hub/src/components/equipment/NotebookChat.test.tsx: 6 new tests (banner renders; followups suppressed; basis suppressed; citations suppressed; reloaded turn renders banner; normal turn has no banner)
+
+## Test results (REAL output)
+
+  Test Files  21 passed (21)
+       Tests  331 passed (331)
+    Duration  ~1.0s
+
+All 331 pass. 8 new tests added. No regressions.
+
+## Type-check results
+
+  npx tsc --noEmit -p tsconfig.json  =>  32 errors
+
+32 errors = the pre-existing baseline. Zero new errors from this branch.
+Pre-existing errors: src/app/api/mira/ask/__tests__/route.test.ts (6x PoolClient mock),
+src/lib/__tests__/drive-pack-suggestion.test.ts (1x NormalizedProcedure),
+tests/e2e/upload-probe.spec.ts (3x cookies/any). None in touched files.
+
+## Surfaces investigated
+
+- NotebookChat.tsx + notebook-chat-utils.ts (web): IN SCOPE — implemented
+- AssetChat.tsx: uses a different dialect (isSafetyStop boolean set by server, not SSE frames); already renders safety with AlertTriangle; no change needed
+- NodeChat: different untyped dialect; does not receive safety frames from the notebook route; out of scope
+- mira-mobile NotebookScreen.tsx + sse.ts (legacy): no safety frame handler on either live or persisted path — OUT OF SCOPE for this branch; mobile safety rendering belongs in HELD PR #3516 (ChatV2)
+
+## Known limitations / next action
+
+- **Mobile safety rendering: OPEN GAP — deferred to PR #3516 (HELD).** mira-mobile ChatV2 has no safety frame handler and no `safetyNotice` rendering on either the live or reloaded path. This is a confirmed scope boundary from the Charlie independent review (CORRECTIONS-002.md §IMPORTANT #2). PR #3516 is currently HELD and may sit unresolved indefinitely — Mike's attention is needed as an epic-level item.
+- historyFromTurns: safety turns are status="answered" so they ARE included in model history. The server guardrail fires again if the tech re-triggers, but this may warrant a deliberate historyFromTurns exclusion. Not changed here — note for reviewer.
+- No device proof performed (no Pixel attached to this run).
+
+## Corrections applied (CORRECTIONS-002.md — Charlie independent review)
+
+**IMPORTANT #1 applied (commit after e08ad8593):**
+
+Charlie found that the machine-replay card and visual-observation card were rendered unconditionally — without `!turn.safetyNotice` — unlike the citation chips, basis caption, and follow-up chips which were already gated. Unreachable in production today (a safety stop short-circuits retrieval, so those arrays are empty), but a cheap, high-value hardening given the `Bubble` component is likely to be copied to other surfaces.
+
+Fix: added `!turn.safetyNotice &&` guard to both card rendering conditions in `NotebookChat.tsx`. Added one test (`Bubble — safety hard-stop`) asserting that a safety turn with hypothetically non-empty `machineEvidence` and `visualEvidence` renders neither card.
+
+Test results after correction:
 ```
- ✓ src/components/equipment/notebook-chat-utils.test.ts (35 tests) 19ms
- ✓ src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts (8 tests) 7ms
-
- Test Files  2 passed (2)
-      Tests  43 passed (43)
-   Start at  08:06:52
-   Duration  319ms
+Test Files  21 passed (21)
+     Tests  332 passed (332)   ← +1 from the new test
+  Duration  ~1.8s
 ```
+tsc --noEmit: 32 errors (unchanged baseline); zero new; grep for NotebookChat|notebook-chat-utils is empty.
 
-Key tests proving the round-trip:
-- `safety_notice round-trip (FLEET-001) > splitEvidence extracts a safety_notice entry without treating it as a citation` ✓
-- `safety_notice round-trip (FLEET-001) > persistedTurns restores safetyNotice on a reloaded safety turn` ✓
-- `safety_notice round-trip (FLEET-001) > persistedTurns does NOT surface safetyNotice as a citation` ✓
-- `safety_notice round-trip (FLEET-001) > a normal answered turn with no safety_notice has safetyNotice undefined` ✓
-- `notebook chat safety hard-stop > persists the stop with a safety_notice entry so hydration can restore it` ✓
-- `notebook chat safety hard-stop > safety_notice trigger matches the X-Safety-Stop header` ✓
+**IMPORTANT #2: NOT touched in code.** Mobile safety rendering remains an OPEN GAP, deferred to PR #3516 (HELD). See "Known limitations" above.
 
-## Corrections Applied (2026-08-31)
-
-Charlie's independent review returned **PASS WITH KNOWN LIMITATION** on `e0baa6e1e`.
-Two findings were raised and are now fixed:
-
-### BLOCKING — 6 tsc errors in test files (no production code touched)
-All 6 errors were in test files only:
-1. Duplicate `splitEvidence` import at line ~453 — **deleted**; `PersistedTurn` added to the existing import block at line 266 instead.
-2. Two `rows` literals with `kind` widened to `string` — **annotated** `const rows: PersistedTurn[] = [...]` on lines 466 and 485.
-3. `domainMock.recordTurn.mock.calls[0]` possibly-undefined / out-of-range tuple — **cast** via `unknown` to `[string, string, Record<string, unknown>][]`.
-
-**tsc output (mira-hub, filtered to the two files):**
-```
-$ cd mira-hub && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "notebook-chat-utils.test|chat-safety-stop.test" ; echo "exit-marker done"
-exit-marker done
-```
-No errors for either file.
-
-**vitest output:**
-```
- ✓ src/components/equipment/notebook-chat-utils.test.ts (35 tests) 22ms
- ✓ src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts (8 tests) 15ms
-
- Test Files  2 passed (2)
-      Tests  43 passed (43)
-   Start at  08:25:15
-   Duration  562ms
-```
-
-### IMPORTANT — commit message scope clarification
-The original commit `e0baa6e1e` overstated the technician-visible effect.
-**Scope clarification: this entire slice (995d3d5f0 + e0baa6e1e) is data-layer only — no visible client change yet. `safetyNotice` is now persisted and hydrated on the server side, but NotebookChat.tsx has no `safetyNotice` renderer and mobile sse.ts has no reader. Rendering lands in a later slice.**
-
-## Blockers
-None. The change is self-contained.
-
-## Next Action
-Charlie independently reviews the corrected branch. The client-side
-rendering of `safetyNotice` on reload (showing the safety warning UI badge on a
-reloaded turn) is NOT in this slice — that is the consumer work for the PR that
-owns mira-mobile / Hub chat UI, per ADR-0038 item 3. This slice closes the
-server-side persistence gap only.
+## Do NOT self-approve. Charlie reviews independently.
