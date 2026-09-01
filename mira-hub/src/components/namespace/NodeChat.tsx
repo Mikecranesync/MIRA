@@ -79,6 +79,18 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
+/** ADR-0040 §4: citation chips are an assertion that the turn completed. The
+ *  `sources` SSE event arrives BEFORE the answer finishes, so a turn stopped
+ *  mid-stream is otherwise left holding real citations and renders as a
+ *  complete, cited answer — the same failure ADR-0038 rule 6 fixes for the
+ *  notebook reader. Chips render only for a turn that actually finished.
+ *  Exported for the unit test. */
+export function citationsVisible(
+  msg: { sources?: Source[]; stopped?: boolean },
+): boolean {
+  return !msg.stopped && !!msg.sources && msg.sources.length > 0;
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
@@ -163,7 +175,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
             Stopped
           </p>
         )}
-        {msg.sources && <SourceChips sources={msg.sources} />}
+        {citationsVisible(msg) && <SourceChips sources={msg.sources!} />}
       </div>
     </div>
   );

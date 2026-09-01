@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ComposerButton, MessageBubble, NodeChat, isEnterToSend, restoreComposer } from "./NodeChat";
+import { ComposerButton, MessageBubble, citationsVisible, NodeChat, isEnterToSend, restoreComposer } from "./NodeChat";
 
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
@@ -269,5 +269,47 @@ describe("NodeChat restoreComposer", () => {
 
   it("treats whitespace-only composer content as empty and restores the failed message", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
+  });
+});
+
+// ADR-0040 §4 — a stopped turn must never render citation chips. The `sources`
+// SSE event lands before the answer completes, so without this gate a turn
+// stopped mid-stream shows source chips and reads as a complete, cited answer.
+// #3527 shipped the Stop control, which made that state reachable.
+describe("NodeChat citationsVisible (ADR-0040 §4)", () => {
+  const src = [{ index: 1, title: "GS10 manual", url: null, page: 12 }];
+
+  it("shows chips on a completed turn that has sources", () => {
+    expect(citationsVisible({ sources: src })).toBe(true);
+  });
+
+  it("HIDES chips on a stopped turn even though sources arrived", () => {
+    expect(citationsVisible({ sources: src, stopped: true })).toBe(false);
+  });
+
+  it("shows nothing when there are no sources", () => {
+    expect(citationsVisible({})).toBe(false);
+    expect(citationsVisible({ sources: [] })).toBe(false);
+  });
+
+  it("a stopped turn with no sources is still hidden", () => {
+    expect(citationsVisible({ stopped: true })).toBe(false);
+  });
+
+  it("renders no chip markup for a stopped turn carrying sources", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{ id: "s1", role: "assistant", content: "partial", stopped: true, sources: src }}
+      />,
+    );
+    expect(html).toContain("Stopped");
+    expect(html).not.toContain("GS10 manual");
+  });
+
+  it("still renders chips for a completed turn", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "c1", role: "assistant", content: "done", sources: src }} />,
+    );
+    expect(html).toContain("GS10 manual");
   });
 });
