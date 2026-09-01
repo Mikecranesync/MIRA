@@ -332,7 +332,17 @@ export function ChatV2({
             send on a phone is not a tradeoff worth taking for shell purity.
             assistant-ui still owns the thread, scroll and run state — the
             parts of the shell where it earns its keep. */}
+        {/* CAPSULE COMPOSER (chrome pass 2/3). Was: a "+" floating outside a
+            pill, then the input, then a wide grey button with the word "Send"
+            in it — three separate objects reading as a form. Now one rounded
+            capsule holds all three, the way every modern chat composer does,
+            so the eye reads a single input affordance.
+
+            Every data-testid and aria-label below is unchanged: the shipping
+            ChatV2 suites drive Send/Stop/attach through them, and this is a
+            presentation change, not a behaviour change. */}
         <div className="composer v2-composer">
+          <div className="v2-capsule">
           <button
             className="v2-attach"
             aria-label="Add a photo or document"
@@ -368,35 +378,41 @@ export function ChatV2({
               }
             }}
           />
+          {/* One round action button that changes meaning in place — send,
+              stop, working — instead of three differently-shaped buttons.
+              `Working…` stays a distinct state rather than a cosmetic Stop:
+              on a natively-buffered turn there is nothing to abort, and
+              offering Stop there would be a lie about what the tap does. */}
           {busy && canStop ? (
             <button
-              className="btn-primary"
+              className="v2-action v2-action-stop"
               data-testid="v2-stop"
               aria-label="Stop generating"
               onClick={handlers.onStop}
             >
-              Stop
+              ■
             </button>
           ) : busy ? (
             <button
-              className="btn-primary"
+              className="v2-action"
               data-testid="v2-working"
               aria-label="Working"
               disabled
             >
-              Working…
+              <span className="v2-working-dot" />
             </button>
           ) : (
             <button
-              className="btn-primary"
+              className="v2-action"
               data-testid="v2-send"
               aria-label="Send"
               disabled={!draft.trim()}
               onClick={submit}
             >
-              Send
+              ↑
             </button>
           )}
+          </div>
         </div>
 
         {attachOpen && (

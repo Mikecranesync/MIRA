@@ -593,3 +593,43 @@ textarea {
   border: none; background: none;
   color: var(--fl-accent); font-size: 14px; text-align: left;
 }
+
+/* ── Capsule composer (chrome pass 2/3) ────────────────────────────────────
+   One rounded container holding attach + input + action, instead of three
+   separate objects sitting in a row. Tokens only. */
+.v2-composer { padding: var(--fl-space-2) var(--fl-space-2) calc(var(--fl-space-2) + env(safe-area-inset-bottom)); }
+.v2-capsule {
+  flex: 1; display: flex; align-items: flex-end; gap: var(--fl-space-1);
+  padding: 4px 4px 4px 6px;
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-radius-pill);
+  background: var(--fl-bg);
+}
+.v2-capsule textarea {
+  flex: 1; border: none; background: none; box-shadow: none;
+  padding: 8px 2px; margin: 0; min-height: 24px; line-height: 24px;
+}
+.v2-capsule textarea:focus { outline: none; }
+/* The attach affordance now lives INSIDE the capsule. */
+.v2-capsule .v2-attach {
+  width: 32px; min-width: 32px; min-height: 32px; align-self: flex-end;
+  margin: 0 0 2px; padding: 0; border: none; background: none;
+  font-size: 20px; line-height: 1; color: var(--fl-ink-muted);
+  border-radius: var(--fl-radius-pill);
+}
+/* One round action button whose meaning changes in place. */
+.v2-action {
+  width: 32px; min-width: 32px; min-height: 32px; align-self: flex-end;
+  margin: 0 0 2px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--fl-radius-pill);
+  background: var(--flm-btn-primary-bg); color: var(--flm-btn-primary-fg);
+  font-size: 16px; line-height: 1;
+}
+.v2-action:disabled { background: var(--fl-line); color: var(--fl-ink-muted); }
+.v2-action-stop { background: var(--fl-ink); }
+.v2-working-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: currentColor; animation: v2pulse 1s ease-in-out infinite;
+}
+@keyframes v2pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
