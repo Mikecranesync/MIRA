@@ -77,7 +77,7 @@ function SourceChips({ sources }: { sources: Source[] }) {
   );
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
   const isSafety = msg.isSafetyStop;
 
