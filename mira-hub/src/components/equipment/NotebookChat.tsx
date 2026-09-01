@@ -55,9 +55,15 @@ export type ChatTurn = {
   visualEvidence?: VisualObservationEntry[];
   /** Deterministic follow-up questions from the server (answered turns only). */
   followups?: string[];
-  /** The technician pressed Stop mid-stream (STRM-2): `content` is what had
+  /** The technician pressed Stop mid-stream (STRM-2), OR the stream ended
+   *  without a terminal `status` frame (ADR-0038 rule 6): `content` is what had
    *  streamed; status is `error`, never `answered`. */
   stopped?: boolean;
+  /** Narrows `stopped`: the stream ended on its own, nobody pressed Stop
+   *  (ADR-0038 rule 6). Rendered with different copy — a transport failure is
+   *  not the technician's action, and the answer may be missing content the
+   *  server did produce. */
+  truncated?: boolean;
   /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash
    *  refusal — suppresses all ordinary-answer affordances. */
   safetyNotice?: SafetyNoticeEntry;
@@ -135,9 +141,14 @@ export function Bubble({
       <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
         <AnswerMarkdown content={turn.content} citations={cites} onCite={onCite} />
       </div>
-      {turn.stopped && (
+      {turn.stopped && !turn.truncated && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="stopped-caption">
           Stopped
+        </p>
+      )}
+      {turn.truncated && (
+        <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="truncated-caption">
+          Incomplete — the connection ended before the answer finished. Ask again to retry.
         </p>
       )}
       {turn.status === "insufficient_evidence" && (
@@ -328,7 +339,7 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, basis, followups, machineEvidence, visualEvidence, safetyNotice } = await postNotebookChat(
+      const { content, citations, status, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
@@ -336,6 +347,30 @@ export function NotebookChat({
           setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
         },
       );
+      // ADR-0038 rule 6: no terminal `status` frame arrived, so the stream was
+      // truncated — a server-side close, a dropped connection, a proxy cut. It
+      // does NOT throw (the read loop ends with done:true exactly as a healthy
+      // stream does), so this is the only place it can be caught. Keep the
+      // partial text; drop citations, basis, machine/visual evidence and
+      // follow-ups, all of which would present a cut-off stream as a complete,
+      // cited answer.
+      if (!sawStatus) {
+        setTurns((prev) =>
+          prev.map((x) =>
+            x.id === aId
+              ? {
+                  ...stoppedTurn(x, content, "truncated"),
+                  // A `safety` frame that DID arrive is a determination the
+                  // server actually made and sent. Suppressing a LOTO/arc-flash
+                  // warning because the tail was lost is the unsafe direction,
+                  // so it is the one marker that survives a truncation.
+                  ...(safetyNotice ? { safetyNotice } : {}),
+                }
+              : x,
+          ),
+        );
+        return;
+      }
       setTurns((prev) =>
         prev.map((x) =>
           x.id === aId

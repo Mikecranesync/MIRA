@@ -6,7 +6,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Bubble, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
-import { persistedTurns } from "./notebook-chat-utils";
+import { persistedTurns, stoppedTurn } from "./notebook-chat-utils";
 
 const citation = {
   citationId: "1",
@@ -164,6 +164,51 @@ describe("Bubble — rehydrated stopped turn (STRM-2 on reload)", () => {
     expect(html).not.toContain("supporting passage");
     expect(html).not.toContain("Ask follow-up");
     expect(html).not.toContain("General guidance");
+  });
+});
+
+describe("Bubble — truncated turn (ADR-0038 rule 6)", () => {
+  // The rule's UI half: a stream that ended without a `status` frame is not an
+  // answer, so the leaf renderer must not dress it as one. `stoppedTurn(…,
+  // "truncated")` is what the send handler produces for that case.
+  const truncated = stoppedTurn(
+    { id: "a1", role: "assistant" as const, content: "", citations: [citation], basis: "oem_documentation" },
+    "F004 is an undervoltage fault on the DC bus. [1]",
+    "truncated",
+  ) as unknown as ChatTurn;
+
+  it("renders the partial text with NO citation chips, basis, or follow-ups", () => {
+    const html = renderToStaticMarkup(<Bubble turn={truncated} onFollowup={() => {}} />);
+    expect(html).toContain("F004 is an undervoltage fault on the DC bus.");
+    expect(html).not.toContain("Open citation");
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Ask follow-up");
+    expect(html).not.toContain("General guidance");
+  });
+
+  it("says the connection ended — it does NOT blame the technician with \"Stopped\"", () => {
+    const html = renderToStaticMarkup(<Bubble turn={truncated} />);
+    expect(html).toContain('data-testid="truncated-caption"');
+    expect(html).not.toContain('data-testid="stopped-caption"');
+  });
+
+  it("a technician Stop still reads as Stopped, not as a truncation", () => {
+    const stopped = stoppedTurn(
+      { id: "a2", role: "assistant" as const, content: "" },
+      "partial",
+    ) as unknown as ChatTurn;
+    const html = renderToStaticMarkup(<Bubble turn={stopped} />);
+    expect(html).toContain('data-testid="stopped-caption"');
+    expect(html).not.toContain('data-testid="truncated-caption"');
+  });
+
+  it("a safety hard-stop that arrived before the truncation is still shown", () => {
+    // Safety is sticky: suppressing a LOTO warning because the tail was lost is
+    // the unsafe direction. Matches the ChatV2 adapter's rule (FLEET-003).
+    const withSafety = { ...truncated, safetyNotice: { kind: "safety_notice", trigger: "loto" } } as ChatTurn;
+    const html = renderToStaticMarkup(<Bubble turn={withSafety} />);
+    expect(html).toContain("Safety stop");
+    expect(html).toContain('data-testid="truncated-caption"');
   });
 });
 
