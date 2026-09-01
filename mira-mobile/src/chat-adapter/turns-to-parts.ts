@@ -79,19 +79,32 @@ function assistantParts(opts: {
   error?: "stopped" | "provider_failure";
 }): MessagePart[] {
   const parts: MessagePart[] = [];
-  if (opts.safetyTrigger !== undefined) {
+  // SAFETY SUPPRESSION (FLEET-003, mirroring the hub's five guards in
+  // NotebookChat.tsx). A hard stop is NOT a graded answer, so it must never
+  // wear an answered turn's success chrome: no citation chips, no evidence
+  // cards, no basis badge, no follow-ups. Gating HERE rather than in each
+  // renderer means ChatV2 and the classic screen cannot drift apart, and the
+  // live turn and its rehydrated row suppress identically — which is what
+  // `comparableProjection` then pins.
+  const safety = opts.safetyTrigger !== undefined;
+  const citations = safety ? [] : opts.citations;
+  if (safety) {
     parts.push({ type: "safety_notice", trigger: opts.safetyTrigger || null });
   }
   parts.push({
     type: "text",
     text: opts.text,
-    knownCitationIds: opts.citations.map((c) => c.citationId),
+    knownCitationIds: citations.map((c) => c.citationId),
   });
-  for (const citation of opts.citations) parts.push({ type: "source", citation });
-  for (const entry of opts.visual) parts.push({ type: "observation", entry });
-  for (const entry of opts.machine) parts.push({ type: "machine_evidence", entry });
-  if (opts.basis) parts.push({ type: "basis", basis: opts.basis, label: opts.basisLabel ?? null });
-  if (opts.followups?.length) parts.push({ type: "followups", suggestions: opts.followups });
+  for (const citation of citations) parts.push({ type: "source", citation });
+  if (!safety) {
+    for (const entry of opts.visual) parts.push({ type: "observation", entry });
+    for (const entry of opts.machine) parts.push({ type: "machine_evidence", entry });
+    if (opts.basis) parts.push({ type: "basis", basis: opts.basis, label: opts.basisLabel ?? null });
+    if (opts.followups?.length) parts.push({ type: "followups", suggestions: opts.followups });
+  }
+  // The terminal-error part is NOT suppressed: "Stopped" / "Incomplete" is
+  // honest about what happened and never reads as a completed answer.
   if (opts.error) parts.push({ type: "error", reason: opts.error });
   for (const raw of opts.unknown ?? []) parts.push({ type: "unknown", raw });
   return parts;
@@ -166,6 +179,12 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           citations: [],
           machine: [],
           visual: [],
+          // SAFETY IS STICKY (FLEET-003). If the `safety` frame was already on
+          // the wire, the turn IS a hard stop — a later truncation cannot undo
+          // that. Dropping the marker here would let a dropped connection
+          // downgrade a LOTO refusal to a plain "Incomplete" answer, which is
+          // exactly the misread this slice exists to prevent.
+          safetyTrigger: a.safetyTrigger,
           error: "provider_failure",
         }),
         lifecycle: "failed",
@@ -184,6 +203,9 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           citations: [],
           machine: [],
           visual: [],
+          // Same stickiness: stopping the stream after a safety frame keeps
+          // the safety identity (partial text + "Stopped" + the banner).
+          safetyTrigger: a.safetyTrigger,
           error: "stopped",
         }),
         lifecycle: "stopped",
@@ -261,10 +283,17 @@ export function comparableProjection(msg: AdapterMessage): {
   machineEvidence: unknown[];
   visualEvidence: unknown[];
   basis: string | null;
+  /** Safety identity is part of the parity contract, not decoration
+   *  (FLEET-003). Without it the criterion-6 guard was blind to the exact
+   *  regression it exists to catch: a hard stop that reloads as an ordinary
+   *  answer projects identically on every OTHER field. Presence only — the
+   *  trigger phrase is observability, never rendered. */
+  safetyNotice: boolean;
 } {
   const status = msg.lifecycle === "stopped" ? "error" : msg.status;
   return {
     role: msg.role,
+    safetyNotice: msg.parts.some((p) => p.type === "safety_notice"),
     text: msg.parts
       .filter((p) => p.type === "text")
       .map((p) => (p as { text: string }).text)

@@ -55,6 +55,10 @@ import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { ChatV2 } from "./ChatV2";
+import { SafetyNotice } from "./SafetyNotice";
+// The persisted-marker reader is the adapter's, not a second copy: one
+// definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
+import { safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
 import { useChatV2Enabled } from "../lib/chat-ui-pref";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
@@ -674,8 +678,14 @@ export function NotebookScreen({
                 )}
               </>
             )}
-            {turns.map((t) =>
-              isStoppedTurn(t) ? (
+            {turns.map((t) => {
+              // FLEET-003: the persisted safety marker is READ from the row
+              // (`{kind:"safety_notice"}` in evidence[], written by FLEET-001),
+              // exactly as `basis` is. Before this, the classic screen dropped
+              // it on the floor and a LOTO refusal reloaded here wearing full
+              // answer chrome — citations, basis, evidence cards.
+              const safety = safetyNoticeEntry(t.evidence);
+              return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the
                 // live "stopped" branch below — partial text, "Stopped"
@@ -688,40 +698,52 @@ export function NotebookScreen({
               ) : (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
+                {safety && <SafetyNotice />}
                 <AnswerMarkdown
                   text={answerBody(t.answerText, t.answerStatus)}
-                  citations={citationsFromEvidence(t.evidence)}
+                  citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
-                {t.basis === "general_reasoning" && (
+                {!safety && t.basis === "general_reasoning" && (
                   <div className="evidence-basis-general">
                     General guidance — not grounded in this machine's documents.
                   </div>
                 )}
-                <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
-                <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
-                <div>
-                  {citationsFromEvidence(t.evidence).map((c) => (
-                    <button
-                      key={c.citationId}
-                      className="cite-chip"
-                      style={{ border: "none", cursor: "pointer" }}
-                      onClick={() => setViewCitation(c)}
-                    >
-                      {c.citationId} · {c.sourceTitle}
-                      {c.page ? ` p.${c.page}` : ""}
-                    </button>
-                  ))}
-                </div>
+                {!safety && (
+                  <>
+                    <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
+                    <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
+                    <div>
+                      {citationsFromEvidence(t.evidence).map((c) => (
+                        <button
+                          key={c.citationId}
+                          className="cite-chip"
+                          style={{ border: "none", cursor: "pointer" }}
+                          onClick={() => setViewCitation(c)}
+                        >
+                          {c.citationId} · {c.sourceTitle}
+                          {c.page ? ` p.${c.page}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-              ),
-            )}
-            {liveTurns.map((t, i) => (
+              );
+            })}
+            {liveTurns.map((t, i) => {
+              // FLEET-003: `safetyTrigger` is parsed by the one SSE parser
+              // (lib/sse.ts) and was already on the turn — the classic screen
+              // simply never read it. Sticky by design: it survives a stop or a
+              // truncation, matching the adapter's rule for ChatV2.
+              const safety = t.a.safetyTrigger !== undefined;
+              return (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
+                {safety && <SafetyNotice />}
                 {t.a.status === "stopped" ? (
                   <>
                     {t.a.answer.trim() && (
@@ -732,13 +754,15 @@ export function NotebookScreen({
                 ) : (
                   <AnswerMarkdown
                     text={answerBody(t.a.answer, t.a.status)}
-                    citations={t.a.citations}
+                    citations={safety ? [] : t.a.citations}
                     onCitation={setViewCitation}
                   />
                 )}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
-                    last turn only — tapping one sends it as the next turn. */}
-                {!busy &&
+                    last turn only — tapping one sends it as the next turn.
+                    Never on a safety turn: "ask me more" is success chrome. */}
+                {!safety &&
+                  !busy &&
                   i === liveTurns.length - 1 &&
                   t.a.status === "answered" &&
                   (t.a.followups?.length ?? 0) > 0 && (
@@ -754,32 +778,35 @@ export function NotebookScreen({
                     a grounded one already shows its citation chips, and a second
                     badge saying "grounded" would be noise. Silence here never
                     means "trust it" — an unlabelled answer shows its chips. */}
-                {t.a.evidenceBasis === "general_reasoning" && (
+                {!safety && t.a.evidenceBasis === "general_reasoning" && (
                   <div className="evidence-basis-general">
                     {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
                   </div>
                 )}
-                {t.a.status !== "stopped" && (
+                {!safety && t.a.status !== "stopped" && (
                   <>
                     <VisualEvidenceCards entries={t.a.visualEvidence ?? []} />
                     <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
                   </>
                 )}
-                <div>
-                  {t.a.citations.map((c) => (
-                    <button
-                      key={c.citationId}
-                      className="cite-chip"
-                      style={{ border: "none", cursor: "pointer" }}
-                      onClick={() => setViewCitation(c)}
-                    >
-                      {c.citationId} · {c.sourceTitle}
-                      {c.page ? ` p.${c.page}` : ""}
-                    </button>
-                  ))}
-                </div>
+                {!safety && (
+                  <div>
+                    {t.a.citations.map((c) => (
+                      <button
+                        key={c.citationId}
+                        className="cite-chip"
+                        style={{ border: "none", cursor: "pointer" }}
+                        onClick={() => setViewCitation(c)}
+                      >
+                        {c.citationId} · {c.sourceTitle}
+                        {c.page ? ` p.${c.page}` : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
             {/* In-flight turn (STRM-1): the question posts immediately; the
                 answer paints per content frame. No chips until the turn is
                 final — citations arrive AFTER the content on the wire. */}

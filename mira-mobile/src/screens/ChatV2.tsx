@@ -31,6 +31,7 @@ import { basisCaption, replayCardTitle } from "../lib/replay";
 import { visualCardTitle } from "../lib/sensor";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { SourceThumb } from "./FilePreview";
+import { SafetyNotice } from "./SafetyNotice";
 import { Sheet } from "./Sheet";
 
 /** Callbacks the screen owns; ChatV2 never fetches, uploads, or persists. */
@@ -157,13 +158,10 @@ const BasisPart: DataMessagePartComponent = ({ data }) => {
 };
 
 /** Safety hard-stop. The turn is a safety notice, not a troubleshooting
- *  answer, and must never be presentable as an ordinary reply. */
-const SafetyNoticePart: DataMessagePartComponent = () => (
-  <div className="safety-notice" data-testid="safety-notice" role="alert">
-    <strong>Safety stop.</strong> This reply is a safety instruction, not a
-    troubleshooting answer. Isolate and verify before working on this equipment.
-  </div>
-);
+ *  answer, and must never be presentable as an ordinary reply. The banner
+ *  itself is shared with the classic screen (screens/SafetyNotice.tsx) so the
+ *  two surfaces cannot drift apart — see FLEET-003. */
+const SafetyNoticePart: DataMessagePartComponent = () => <SafetyNotice />;
 
 /** STRM-2 terminal semantics, rendered from the typed part — never inferred
  *  by scraping the answer text. */
