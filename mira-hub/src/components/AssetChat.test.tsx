@@ -98,7 +98,7 @@ describe("AssetChat MessageBubble — hasSafetyAlert marker", () => {
       />,
     );
     expect(bothHtml).toContain("Safety alert included above");
-    expect(bothHtml).toContain("#FEF2F2"); // isSafetyStop's whole-bubble recolor still applies
+    expect(bothHtml).toContain("var(--status-red-bg)"); // isSafetyStop's whole-bubble recolor still applies
 
     const alertOnlyHtml = renderToStaticMarkup(
       <MessageBubble
@@ -107,6 +107,6 @@ describe("AssetChat MessageBubble — hasSafetyAlert marker", () => {
     );
     expect(alertOnlyHtml).toContain("Safety alert included above");
     // hasSafetyAlert alone must NOT trigger the hard-stop whole-bubble recolor.
-    expect(alertOnlyHtml).not.toContain("#FEF2F2");
+    expect(alertOnlyHtml).not.toContain("var(--status-red-bg)");
   });
 });

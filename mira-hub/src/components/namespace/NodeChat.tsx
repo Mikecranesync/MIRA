@@ -99,12 +99,12 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       <div
         className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{
-          background: isSafety ? "#FEF2F2" : "var(--surface-1)",
+          background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
           border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
         }}
       >
         {isSafety ? (
-          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+          <AlertTriangle className="w-3.5 h-3.5" style={{ color: "var(--status-red)" }} />
         ) : (
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--brand-blue)" }} />
         )}
@@ -113,7 +113,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
         <div
           className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
           style={{
-            background: isSafety ? "#FEF2F2" : "var(--surface-1)",
+            background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
@@ -384,7 +384,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         {error && (
           <div
             className="text-xs px-3 py-2 rounded-lg"
-            style={{ background: "#FEF2F2", color: "#991B1B", border: "1px solid #FECACA" }}
+            style={{ background: "var(--status-red-bg)", color: "#991B1B", border: "1px solid #FECACA" }}
           >
             {error}
           </div>
