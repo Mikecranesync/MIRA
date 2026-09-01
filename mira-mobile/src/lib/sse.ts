@@ -75,6 +75,24 @@ export interface ChatTurn {
   sawStatus?: false;
 }
 
+/**
+ * ADR-0038 rule 6, as ONE predicate both render paths share.
+ *
+ * A turn is TRUNCATED when the authoritative `status` frame never arrived and
+ * the technician did not press Stop. Both are non-answers, but they are
+ * different events: a Stop is the technician's own action, a truncation is a
+ * transport failure that may have cut content the server did produce. Only the
+ * truncation case is in doubt about what the server decided.
+ *
+ * This lives here, next to `ChatTurn`, because the ChatV2 adapter
+ * (`chat-adapter/turns-to-parts.ts`) and the classic `NotebookScreen` render
+ * must not be allowed to drift apart on it — the classic screen shipping
+ * without this check is the defect this predicate exists to close.
+ */
+export function isTruncatedTurn(a: Pick<ChatTurn, "sawStatus" | "status">): boolean {
+  return a.sawStatus === false && a.status !== "stopped";
+}
+
 /** Explicit field-by-field mapping so a new server field is a deliberate
  *  addition here, not an accident of casting — and so `fileId` (the
  *  open-the-original door) can never be silently dropped. */
