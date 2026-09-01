@@ -1,0 +1,75 @@
+name: Stream Soak (nightly adversarial)
+
+# The full adversarial SSE soak tier. Fuzzes readNotebookStream — the ADR-0038
+# rule-6 / ADR-0040 turn-state path — with randomized frame sequences and
+# randomized chunk boundaries, asserting the conversation-state invariants.
+#
+# The FAST tier (8 seeds x 250 streams) runs on every PR inside the normal
+# mira-hub vitest suite. This workflow runs the FULL tier, which is excluded
+# from the PR path by vitest.config.ts so it never slows a PR down.
+#
+# Deterministic: every violation reports the seed it came from and reproduces
+# exactly with `SOAK_SEEDS=<n> SOAK_RUNS=<n> bun run vitest run --config vitest.soak.config.ts`.
+
+on:
+  schedule:
+    # 03:20 UTC daily — after the nightly deploy settles, before working hours.
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Number of distinct seeds (default 64)"
+        required: false
+        default: "64"
+      runs:
+        description: "Randomized streams per seed (default 2000)"
+        required: false
+        default: "2000"
+  pull_request:
+    # Also gate PRs that touch the stream reader or the soak itself, so a change
+    # to the parser cannot land on the strength of the fast tier alone.
+    paths:
+      - "mira-hub/src/components/equipment/notebook-chat-utils.ts"
+      - "mira-hub/src/components/equipment/__tests__/stream-soak*"
+      - "mira-hub/vitest.soak.config.ts"
+      - ".github/workflows/stream-soak-nightly.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stream-soak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    name: Adversarial SSE soak (full tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub dependencies
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Run the full adversarial soak
+        working-directory: mira-hub
+        env:
+          # workflow_dispatch inputs win; schedule/pull_request use the defaults
+          # baked into the test file (64 x 2000 = 128,000 streams).
+          SOAK_SEEDS: ${{ github.event.inputs.seeds }}
+          SOAK_RUNS: ${{ github.event.inputs.runs }}
+        run: bun run vitest run --config vitest.soak.config.ts
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error::Adversarial SSE soak found a conversation-state invariant violation."
+          echo "Each violation names its seed. Reproduce deterministically with:"
+          echo "  cd mira-hub && SOAK_SEEDS=<n> SOAK_RUNS=<n> bun run vitest run --config vitest.soak.config.ts"
+          echo "Invariants are defined in stream-soak-harness.ts (checkOneStream) and documented in docs/adr/0040-conversation-turn-state-model.md."
