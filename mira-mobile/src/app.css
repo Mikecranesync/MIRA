@@ -537,8 +537,15 @@ textarea {
   font-size: var(--fl-fs); color: var(--fl-ink); min-height: 48px;
 }
 .v2-attach-item:last-child { border-bottom: none; }
-.v2-message-actions { margin-top: var(--fl-space-1); }
-.v2-message-actions .btn-link { width: auto; min-height: 0; padding: var(--fl-space-1) 0; }
+.v2-message-actions { margin-top: var(--fl-space-1); display: flex; gap: var(--fl-space-1); }
+/* Muted icon action, not a blue text link competing with the citation chips. */
+.v2-msg-action {
+  width: 30px; min-width: 30px; min-height: 30px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none; border-radius: var(--fl-radius);
+  color: var(--fl-ink-muted); font-size: 15px; line-height: 1;
+}
+.v2-msg-action:active { background: var(--fl-surface); }
 /* Safety stop: the one place strong color is correct (red = stop), per the
    industrial palette. Distinct from every answer treatment, by design. */
 .safety-notice {

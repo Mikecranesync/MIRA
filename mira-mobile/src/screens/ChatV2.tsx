@@ -85,11 +85,22 @@ const AnswerPart: DataMessagePartComponent = ({ data }) => {
           ))}
         </div>
       )}
+      {/* MESSAGE ACTIONS (chrome pass 3/3). Was a blue "Copy" TEXT LINK, which
+          reads as a hyperlink in the answer body. Now a muted icon in an
+          action row — the shape every modern assistant uses, and it stops
+          competing with the citation chips directly above it.
+
+          Deliberately ONLY copy. ChatGPT's row also carries 👍/👎 and a
+          regenerate; neither exists here yet — there is no feedback sink to
+          write a rating to, and regenerate needs a real re-send of the
+          original question. Rendering dead buttons to look more like ChatGPT
+          would be decoration that lies about what the app can do. */}
       <div className="v2-message-actions">
         <button
           type="button"
-          className="btn-link"
+          className="v2-msg-action"
           aria-label="Copy answer"
+          title={copied ? "Copied" : "Copy"}
           onClick={() => {
             void copyText(d.text).then((ok) => {
               setCopied(ok);
@@ -97,7 +108,7 @@ const AnswerPart: DataMessagePartComponent = ({ data }) => {
             });
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? "✓" : "⧉"}
         </button>
       </div>
     </div>
