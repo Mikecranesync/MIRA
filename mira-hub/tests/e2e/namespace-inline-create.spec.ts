@@ -28,6 +28,7 @@
  *   npx playwright test tests/e2e/namespace-inline-create.spec.ts
  */
 
+import crypto from "node:crypto";
 import { test, expect } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -55,6 +56,58 @@ const CREDS = {
 
 // Unique suffix per run keeps reruns idempotent (each run picks a fresh
 // tier of names so we don't trip any name collisions from a prior run).
+/** CRC-32 over a PNG chunk (type + data), per the PNG spec. */
+/** sha256 of the old hardcoded 1x1 PNG this spec used to stage on every run.
+ *  Pinned so the guard below can prove we are not back to a constant fixture. */
+const LEGACY_CONSTANT_FIXTURE_SHA256 =
+  "84549424e0e59a80b5752b6b4c8d7808aec2455ff1cd3d852ecc6a8960527080";
+
+function pngCrc(buf: Buffer): number {
+  let c = ~0;
+  for (const byte of buf) {
+    c ^= byte;
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(pngCrc(body));
+  return Buffer.concat([len, body, crc]);
+}
+
+/**
+ * A valid 1x1 PNG whose BYTES are unique per run.
+ *
+ * #3398: the workspace dedupes uploads on content hash. A byte-identical
+ * fixture is therefore filed against the first copy ever uploaded and listed
+ * under that copy's filename, so asserting on the name just uploaded can never
+ * pass. Varying only the filename (as this spec used to) is not enough — the
+ * CONTENT has to differ. The run id goes into a tEXt chunk, which keeps the
+ * file a spec-valid PNG that image pipelines still accept.
+ */
+function uniquePng(runId: string): Buffer {
+  const SIG = Buffer.from("89504e470d0a1a0a", "hex");
+  const IHDR = pngChunk(
+    "IHDR",
+    Buffer.from("000000010000000108060000001f15c489".slice(0, 26), "hex"),
+  );
+  const IDAT = pngChunk(
+    "IDAT",
+    Buffer.from("789c6360000002000100ffff030000060005", "hex"),
+  );
+  const tEXt = pngChunk(
+    "tEXt",
+    Buffer.concat([Buffer.from("mira-run", "latin1"), Buffer.from([0]), Buffer.from(runId, "latin1")]),
+  );
+  const IEND = pngChunk("IEND", Buffer.alloc(0));
+  return Buffer.concat([SIG, IHDR, tEXt, IDAT, IEND]);
+}
+
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const PLANT_NAME = `Plant ${RUN_SUFFIX.toUpperCase()}`;
 const AREA_NAME = `Compressor Room ${RUN_SUFFIX.toUpperCase()}`;
@@ -374,15 +427,22 @@ test.describe("Namespace create + doc attach", () => {
       fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
     }
     if (!fs.existsSync(fixturePath)) {
-      // Minimal valid 1×1 PNG.
-      const png = Buffer.from(
-        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489" +
-          "0000000d49444154789c6360000002000100ffff03000006000557bfabd4" +
-          "0000000049454e44ae426082",
-        "hex",
-      );
-      fs.writeFileSync(fixturePath, png);
+      // #3398: the bytes MUST differ per run, not just the filename. The
+      // workspace dedupes on content hash, so a byte-identical fixture is
+      // filed as the FIRST-seen upload and listed under that older filename —
+      // this scenario's assertion on the just-uploaded name then never matches.
+      // That is why it failed on every post-deploy run from 2026-08-17.
+      // Uniqueness is carried in a tEXt chunk so the file stays a valid PNG.
+      fs.writeFileSync(fixturePath, uniquePng(RUN_SUFFIX));
     }
+
+    // Guard the fix itself: if a future edit reverts to a constant fixture the
+    // dedup collision returns and this scenario silently rots red again.
+    const fixtureSha = crypto.createHash("sha256").update(fs.readFileSync(fixturePath)).digest("hex");
+    expect(
+      fixtureSha,
+      "fixture bytes must be unique per run (#3398) — a constant fixture dedupes to the first-seen upload",
+    ).not.toBe(LEGACY_CONSTANT_FIXTURE_SHA256);
 
     // The hidden file input's onChange uploads to the selected node.
     await page.locator('[data-testid="namespace-file-input"]').setInputFiles(fixturePath);
