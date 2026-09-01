@@ -42,6 +42,44 @@ cmd_preflight() {
   [ -n "$ver" ] || die "$PKG is not installed on this device."
   echo "$ver" | sed 's/^ */  /'
 
+  # BUILD IDENTITY. versionCode is NOT one: on 2026-09-01 the Pixel, the staged
+  # fleet003 artifact and the staged chatv2 artifact were ALL vc9, and the phone
+  # was silently running a build older than both — it had no safety banner at
+  # all. Vite content-hashes the web bundle filename, so that IS an identity.
+  echo "== build identity (bundle hash — NOT versionCode) =="
+  local apkpath
+  apkpath=$(adb_ shell pm path "$PKG" 2>/dev/null | tr -d '\r' | sed 's/^package://' | head -1)
+  if [ -n "$apkpath" ]; then
+    # Pull into CWD: bash maps /tmp to %TEMP% but Windows python cannot
+    # resolve a literal "/tmp/..." path, so the read always failed.
+    adb_ pull "$apkpath" ./_pf.apk >/dev/null 2>&1
+    python - <<'PY'
+import zipfile, re
+try:
+    with zipfile.ZipFile("_pf.apk") as z:
+        js = [n for n in z.namelist() if re.search(r"assets/public/assets/index-.*\.js$", n)]
+        print("  installed bundle:", js[0].split("/")[-1] if js else "NOT FOUND")
+        missing = []
+        if js:
+            src = z.read(js[0]).decode("utf-8", "replace")
+            for label, needle in (("FLEET-003 safety banner", "Safety stop"),
+                                  ("ADR-0038 rule-6 truncation", "Incomplete — the connection ended")):
+                ok = needle in src
+                print(f"    {'PRESENT' if ok else '*** ABSENT ***'}  {label}")
+                if not ok: missing.append(label)
+        raise SystemExit(3 if (missing or not js) else 0)
+except SystemExit:
+    raise
+except Exception as e:
+    print("  bundle read failed:", e); raise SystemExit(3)
+PY
+    rc=$?
+    rm -f ./_pf.apk
+    if [ "$rc" != "0" ]; then
+      die "phone is on an OLD build (marker ABSENT above). Reflash first — versionCode will NOT tell you this; every build is vc9."
+    fi
+  fi
+
   echo "== is it debuggable? (affects whether chrome://inspect works) =="
   if adb_ shell dumpsys package "$PKG" 2>/dev/null | grep -q "flags=.*DEBUGGABLE"; then
     echo "  DEBUGGABLE — chrome://inspect available (this is NOT the release shell)"
