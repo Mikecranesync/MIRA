@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-01
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-01
+
+### Most actionable change for playbook
+MaintainX's $3.6B Autodesk acquisition reshapes the competitive map: the peer CMMS startup is now an Autodesk product. MIRA's counter-narrative sharpens — "purpose-built for factory-floor maintenance, not bolted on from a CAD/BIM empire." The Stripe Sessions 2026 "infrastructure for machines" framing also directly validates the FactoryLM context-layer wedge.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX → Autodesk** — acquired May 28, 2026 for $3.6B all-cash: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — largest Autodesk acquisition ever; $135M+ ARR, 50%+ growth; MaintainX is no longer an independent CMMS
+
+**Automation / SCADA**
+- **Inductive Automation** — ICC 2026 (Sep 22–24, Sacramento) preview content: "Building agentic AI agents on the factory floor" is the headline session theme; Technology Keynote will preview Ignition 2027 + AI roadmap: https://inductiveautomation.com/blog/unleashing-innovation-what-youll-see-at-icc-2026 — AI-on-the-floor is now ICC's central topic, not a sidebar
+
+**Predictive maintenance**
+- **Tractian** — August 2026: $21M BNDES funding to build AI inspection robots; category expansion from IoT-sensors+Copilot → inspection robotics hardware-software stack; project to 2028; 421 new hires, 150 in R&D: https://360mozambique.com/innovation/brazilian-startup-tractian-develops-ai-robots-for-industrial-maintenance/ [no launch video confirmed; press coverage only]
+
+**B2B SaaS / dev-tools**
+- **Figma** — Config 2026 keynote (Jun 24): https://www.youtube.com/watch?v=2ZCc4k_IV5w — opening hook: "Code is not the opposite of design. Code is material for design." (Dylan Field); launches Code Layers, Figma Motion, Shaders, Weave AI tools; the design+code convergence pattern adapts for MIRA as "data is not the opposite of intelligence — data is material for intelligence"
+- **Stripe** — Sessions 2026 (Apr 29): https://youtube.com/live/e13-s0p1tfE (summary: https://www.youtube.com/watch?v=8F4XyWYqZi8) — 288 products, "agentic commerce" theme; hook pivot: payment infrastructure shifts from "for humans" to "for machines"; Machine Payments Protocol lets agents pay agents in stablecoins/fiat; 9,000 attendees; validates MIRA's infrastructure-layer positioning
+- **Cursor** — Cloud Agents launch (Feb–Aug 2026): https://www.youtube.com/watch?v=uttsFFpQOAc — new proof template: "35%+ of our own PRs are now created by autonomous agents" (dogfooding at scale as the lead claim); agents deliver video demos of their own output, not just code diffs
 
 ---
 
@@ -88,6 +111,10 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**⚠️ Acquisition (May 28, 2026):** Autodesk announced agreement to acquire MaintainX for $3.6B all-cash — largest acquisition in Autodesk's history. MaintainX had $135M+ ARR (50%+ YoY growth) at time of deal. Acquisition completed. MaintainX is now "MaintainX (An Autodesk Company)" with a new YouTube channel identity. Strategic implication: Autodesk now connects CAD/BIM/manufacturing design data to maintenance operations — a broader platform than any standalone CMMS. No video launch for the acquisition itself; Autodesk CEO appeared on Bloomberg Open Interest: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+
+**Competitive note for MIRA:** MaintainX was a peer startup; it is now an Autodesk subsidiary. Counter-narrative sharpens: MIRA is purpose-built for factory-floor maintenance technicians; MaintainX is now a feature of a $70B+ design-and-engineering platform. The "stranger uploads their own manual and gets a cited answer" beta gate is still something Autodesk/MaintainX has not demonstrated.
+
 ---
 
 ### Fiix
@@ -119,6 +146,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - $120M Series C (Dec 2024, Sapphire + General Catalyst)
 - Oracle Cloud Infrastructure partnership (Mar 2025): adopted OCI to support Copilot scale
 - Competitive note: hardware-first (IoT sensors + software); MIRA's counterplay is sensor-agnostic + OEM-manual-native
+
+**AI inspection robotics expansion (August 2026)**
+- Source: https://360mozambique.com/innovation/brazilian-startup-tractian-develops-ai-robots-for-industrial-maintenance/ [no launch video confirmed; press coverage only]
+- $21M BNDES grant to build AI-powered inspection and predictive maintenance robots
+- Category expansion: moving from IoT sensor nodes + AI software → autonomous inspection robot hardware
+- 421 new hires (150 in R&D); 20 patents planned; project horizon June 2028
+- **Style drift:** Tractian was positioned as "the Industrial Copilot" (sensors + AI software); now expanding into physical inspection robots. Raises the floor for what "predictive maintenance" means in the market. MIRA's counterplay is still relevant: sensor-agnostic, citation-grounded, OEM-manual-native — robots detect anomalies, MIRA diagnoses and cites the fix.
 
 ---
 
@@ -186,7 +220,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 **Ignition 8.3 release (fall 2025)**
 - Called "biggest LinkedIn post of all time" for the brand
 - Video format: release announcement, likely screen capture + narration
-- ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
+- ICC 2026 session recordings free from Jan 2, 2026 — extended content tail
+
+**ICC 2026 preview (Sep 22–24, Sacramento — upcoming as of this refresh)**
+- Preview source: https://inductiveautomation.com/blog/unleashing-innovation-what-youll-see-at-icc-2026
+- Technology Keynote will preview Ignition 2027 + AI roadmap
+- Headline session: "Building agentic AI agents on the factory floor" — AI-on-the-floor is now ICC's central topic
+- **Signal:** Inductive Automation is pivoting ICC from "SCADA education" to "AI factory agents" as the marquee narrative. Directly competes with MIRA's positioning; Ignition has native plant context that MIRA currently lacks. Conference video content will land post-September.
 
 ---
 
@@ -254,9 +294,17 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 keynote (April 29, 2026)**
+- URL: https://youtube.com/live/e13-s0p1tfE (12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8)
+- Full recap: https://stripe.com/blog/everything-we-announced-at-sessions-2026
+- Presenters: Patrick and John Collison; 9,000+ attendees; 288 products launched — Stripe's largest event
+- Opening thesis: "Payments are evolving from transaction infrastructure for humans into programmable, continuous infrastructure for machines."
+- Key launches: Machine Payments Protocol (agents pay agents in stablecoins/fiat); Agentic Commerce Suite (merchants sell through agents); Stripe Projects (deploy AI-generated apps); Stripe Managed Payments (GA); Link wallet for consumer agents with guardrails (one-time use tokens)
+- Live enterprise deployments with Meta, Google, Shopify as proof
+- Footage style: on-stage keynote, polished production
+- VO register: founder, peer-to-peer
+- CTA: none explicit; ecosystem framing
+- **Pattern note:** The framing pivot — "for machines, not humans" — directly validates the FactoryLM context-layer positioning. When the most sophisticated B2B infrastructure company frames its product as "machines pay machines," it normalizes the idea of AI infrastructure layers. MIRA's version: "factories emit data; FactoryLM makes it trustworthy enough for machines to reason on."
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -308,7 +356,7 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
@@ -316,6 +364,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Cloud Agents launch (Feb 24, 2026; expanded through Aug 2026)**
+- URL: https://www.youtube.com/watch?v=uttsFFpQOAc ("What are Cursor Cloud Agents?")
+- Agents run in isolated Linux VMs; describe task → agent runs → review video demo → merge PR
+- **New proof template:** "35%+ of all PRs merged by Cursor's own engineering team are created by autonomous agents" — dogfooding at scale as the lead proof, not a customer case study
+- Key differentiator: agents deliver video demos of their own output (the agent records itself running the software it built) — not just code diffs
+- Ultra/Teams/Enterprise: agents run 25–52+ hours autonomously; Cloud Agents are 20–30% more token-efficient as of Aug 2026
+- **Pattern note for MIRA:** The "dogfooding at scale" proof (we use it ourselves, here's the number) is more credible than a customer case study. MIRA equivalent: "X% of fault diagnoses in our garage conveyor come from MIRA-cited answers, not Google."
 
 ---
 
@@ -355,6 +411,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Presenter: CEO Dylan Field; Moscone Center, San Francisco
+- Opening 5-sec hook: "Code is not the opposite of design. Code is material for design." — frames entire keynote; settles a perceived design-vs-engineering war by declaring code a creative medium
+- Launches: Code Layers (live code on canvas, early access July), Figma Motion (timeline + CSS/React/MP4/WebM export, live), Shaders (mesh gradients, lens distortion, particle effects via agent prompt), Weave AI tools (generative plugins), updated Figma Agent
+- Footage style: on-stage keynote, polished
+- VO register: founder
+- CTA: none explicit; awareness
+- **Pattern note:** "X is not the opposite of Y. X is material for Y" is a reframing hook structure now proven at conference scale. MIRA transfer: "Data is not the opposite of intelligence. Data is material for intelligence." — or "Factory noise is not the opposite of insight. Factory noise is the raw material for grounded diagnosis."
+
 ---
 
 ### Replit
@@ -385,6 +452,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "X is not the opposite of Y — X is material for Y" (reframing) | Figma Config 2026: "Code is not the opposite of design. Code is material for design." | "Factory noise is not the opposite of insight. Factory noise is material for grounded diagnosis." |
+| Dogfooding-at-scale as lead proof (no customer case study needed) | Cursor: "35%+ of our own PRs are created by autonomous agents" | "X% of bench conveyor diagnoses come from MIRA-cited answers, not Google" |
+| Infrastructure for machines, not humans | Stripe Sessions 2026: "payments evolving from infrastructure for humans to infrastructure for machines" | "FactoryLM makes factory data trustworthy enough for machines to reason on" |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +465,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
+- **MaintainX → Autodesk**: was a peer CMMS startup; now a $3.6B Autodesk subsidiary (May 2026). Messaging will shift from scrappy-to-enterprise toward "unified operations platform across design, manufacturing, and maintenance." Independent peer no longer.
+- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025; pivoting ICC 2026 toward "AI factory agents" as the central conference narrative — no longer a sidebar.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Tractian**: was IoT-sensors + AI Copilot software; now expanding into AI inspection robotics hardware (Aug 2026 BNDES grant). Category is widening from "software that monitors your machines" to "robots that inspect your machines."
+- **Cursor**: was text-editor + LLM autocomplete; now running autonomous cloud agents that produce video demos of their own output. Proof mode shifted from "here's what it generates" to "here's the video of the agent doing the work."
