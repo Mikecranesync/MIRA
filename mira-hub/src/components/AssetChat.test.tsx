@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ComposerButton, MessageBubble } from "./AssetChat";
+import { AssetChat, ComposerButton, MessageBubble, isEnterToSend } from "./AssetChat";
 
 // Static-markup coverage for the machine-memory "Next check" evidence line
 // (T2 Task 4) — same pattern as MachineMemoryCard.test.tsx.
@@ -168,5 +168,47 @@ describe("AssetChat ComposerButton — Stop vs Send (STRM-2)", () => {
 
     expect(html).toContain('type="submit"');
     expect(html).toMatch(/disabled(=""|)/);
+  });
+});
+
+// FLEET-011 — composer correctness: Enter fires send, but never mid-IME-composition
+// (Japanese/Chinese/Korean/Vietnamese candidate confirmation). Local guard, same
+// shape as equipment/notebook-chat-utils.ts's isEnterToSend but intentionally not
+// imported from there (Notebook-specific module; see AssetChat.tsx's comment).
+describe("isEnterToSend (composer IME guard)", () => {
+  it("sends on a bare Enter with no composition in progress", () => {
+    expect(isEnterToSend({ key: "Enter", shiftKey: false })).toBe(true);
+    expect(isEnterToSend({ key: "Enter", shiftKey: false, nativeEvent: { isComposing: false } })).toBe(true);
+  });
+
+  it("never sends while an IME composition is in progress", () => {
+    expect(
+      isEnterToSend({ key: "Enter", shiftKey: false, nativeEvent: { isComposing: true } }),
+    ).toBe(false);
+    // Some browsers/IMEs don't set nativeEvent.isComposing reliably; keyCode 229
+    // is the historical fallback signal for "this Enter confirmed an IME candidate".
+    expect(isEnterToSend({ key: "Enter", shiftKey: false, keyCode: 229 })).toBe(false);
+  });
+
+  it("never sends on Shift+Enter (newline), composing or not", () => {
+    expect(isEnterToSend({ key: "Enter", shiftKey: true })).toBe(false);
+    expect(
+      isEnterToSend({ key: "Enter", shiftKey: true, nativeEvent: { isComposing: true } }),
+    ).toBe(false);
+  });
+
+  it("ignores non-Enter keys", () => {
+    expect(isEnterToSend({ key: "a", shiftKey: false })).toBe(false);
+  });
+});
+
+describe("AssetChat composer accessibility", () => {
+  it("gives the textarea and the Send button an accessible name", () => {
+    const html = renderToStaticMarkup(
+      <AssetChat assetId="a1" assetName="Conveyor CV-101" assetTag="CV-101" />,
+    );
+
+    expect(html).toContain('aria-label="Ask about this asset"');
+    expect(html).toContain('aria-label="Send"');
   });
 });
