@@ -348,6 +348,186 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(hydrated.parts.some((p) => p.type === "source")).toBe(false);
     expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
   });
+
+  // --- FLEET-003 -----------------------------------------------------------
+
+  it("FLEET-003: a safety turn drops citations, basis, cards and follow-ups", () => {
+    // The wire deliberately carries everything an ANSWERED turn would: a
+    // sources frame, a basis and follow-ups. A hard stop must wear none of it —
+    // a source chip on a refusal reads as a researched, completed answer.
+    const a = liveTurnMessages(
+      "can I open it live?",
+      parseChatSse(
+        frame({ kind: "content", content: "STOP. Lock out first." }) +
+          frame({ kind: "safety", trigger: "loto" }) +
+          frame({
+            kind: "sources",
+            citations: [
+              { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" },
+            ],
+          }) +
+          // NOTE: the basis rides on the `evidence` frame kind, NOT a "basis"
+          // frame — a "basis" frame is silently ignored by the parser, which
+          // would make this assertion vacuous. Same frame carries the cards.
+          frame({
+            kind: "evidence",
+            basis: "general_reasoning",
+            label: "General guidance",
+            machineEvidence: {
+              kind: "machine_evidence",
+              assetId: "cv-101",
+              anchorAt: "2026-08-31T00:00:00Z",
+              pre: 30,
+              post: 30,
+              freshness: "fresh",
+            },
+          }) +
+          frame({ kind: "followups", suggestions: ["What is LOTO?"] }) +
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(a.parts.some((p) => p.type === "source")).toBe(false);
+    expect(a.parts.some((p) => p.type === "basis")).toBe(false);
+    expect(a.parts.some((p) => p.type === "followups")).toBe(false);
+    expect(a.parts.some((p) => p.type === "machine_evidence")).toBe(false);
+    expect(textOf(a)).toMatch(/^STOP\./);
+  });
+
+  it("FLEET-003 control: the SAME turn without the safety frame keeps it all", () => {
+    // Proves the assertions above are not vacuous — identical wire, minus the
+    // safety frame, and every affordance is present.
+    const a = liveTurnMessages(
+      "can I open it live?",
+      parseChatSse(
+        frame({ kind: "content", content: "Lock out first." }) +
+          frame({
+            kind: "sources",
+            citations: [
+              { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" },
+            ],
+          }) +
+          frame({
+            kind: "evidence",
+            basis: "general_reasoning",
+            label: "General guidance",
+            machineEvidence: {
+              kind: "machine_evidence",
+              assetId: "cv-101",
+              anchorAt: "2026-08-31T00:00:00Z",
+              pre: 30,
+              post: 30,
+              freshness: "fresh",
+            },
+          }) +
+          frame({ kind: "followups", suggestions: ["What is LOTO?"] }) +
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(false);
+    expect(a.parts.some((p) => p.type === "source")).toBe(true);
+    expect(a.parts.some((p) => p.type === "basis")).toBe(true);
+    expect(a.parts.some((p) => p.type === "followups")).toBe(true);
+    expect(a.parts.some((p) => p.type === "machine_evidence")).toBe(true);
+  });
+
+  it("FLEET-003: safety is STICKY across a truncated stream", () => {
+    // The safety frame landed; then the connection died before `status`. The
+    // turn is still a hard stop. Losing the marker here would let a dropped
+    // socket silently downgrade a LOTO refusal to a plain "Incomplete".
+    const a = liveTurnMessages(
+      "q",
+      parseChatSse(
+        frame({ kind: "content", content: "STOP." }) + frame({ kind: "safety", trigger: "loto" }),
+      ),
+      0,
+    )[1];
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
+    // ...and the terminal-truth rule still holds: no manufactured completion.
+    expect(a.lifecycle).toBe("failed");
+    expect(a.parts).toContainEqual({ type: "error", reason: "provider_failure" });
+  });
+
+  it("FLEET-003: safety is STICKY when the technician stops the stream", () => {
+    const a = liveTurnMessages(
+      "q",
+      { answer: "STOP.", citations: [], status: "stopped", safetyTrigger: "arc flash" },
+      0,
+    )[1];
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
+    expect(a.lifecycle).toBe("stopped");
+  });
+
+  it("FLEET-003: a STOPPED persisted turn carrying the marker keeps the banner", () => {
+    // Hardening, not a live bug: today a stopped turn persists evidence=[], so
+    // this row shape is not reachable. It is pinned because `isStoppedTurn`
+    // short-circuits BEFORE the marker is read — the moment the server
+    // contract allows evidence on a stopped turn, this is a safety regression.
+    const a = hydrateMessages([
+      {
+        id: "t-stopped-safety",
+        question: "q",
+        answerStatus: "error",
+        answerText: "STOP. Lock out fir",
+        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        basis: null,
+      },
+    ])[1];
+    expect(a.lifecycle).toBe("stopped");
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
+    expect(a.parts).toContainEqual({ type: "error", reason: "stopped" });
+  });
+
+  it("FLEET-003: the IN-FLIGHT turn shows safety before the terminal frame", () => {
+    // The wire order is content* → safety → status, so there is a real window
+    // where the refusal is painted and the turn has not completed.
+    const mid = pendingMessages("q", {
+      answer: "Do not work on this while energized.",
+      citations: [],
+      status: "",
+      safetyTrigger: "arc flash",
+    })[1];
+    expect(mid.lifecycle).toBe("running");
+    expect(mid.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash" });
+  });
+
+  it("FLEET-003: an ordinary in-flight turn gets NO banner", () => {
+    const mid = pendingMessages("q", { answer: "The overload", citations: [], status: "" })[1];
+    expect(mid.parts.some((p) => p.type === "safety_notice")).toBe(false);
+  });
+
+  it("FLEET-003: comparableProjection can SEE safety identity", () => {
+    // Regression guard for the guard: before this field, a hard stop and an
+    // ordinary answer with the same text projected identically, so the
+    // criterion-6 parity test was structurally blind to the one divergence it
+    // exists to catch.
+    const safety = liveTurnMessages(
+      "q",
+      parseChatSse(
+        frame({ kind: "content", content: "STOP." }) +
+          frame({ kind: "safety", trigger: "loto" }) +
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    const ordinary = liveTurnMessages(
+      "q",
+      parseChatSse(
+        frame({ kind: "content", content: "STOP." }) +
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    expect(comparableProjection(safety).safetyNotice).toBe(true);
+    expect(comparableProjection(ordinary).safetyNotice).toBe(false);
+    expect(comparableProjection(safety)).not.toEqual(comparableProjection(ordinary));
+  });
 });
 
 describe("thread assembly + library conversion", () => {
