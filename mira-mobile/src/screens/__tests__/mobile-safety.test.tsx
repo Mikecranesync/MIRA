@@ -171,6 +171,30 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
     expect(screen.queryByTestId("safety-notice")).toBeNull();
   });
 
+  it("a STOPPED persisted turn carrying the marker still shows the banner", async () => {
+    // Hardening: not reachable under today's server contract (a stopped turn
+    // persists evidence=[]). Pinned because both surfaces branch on
+    // isStoppedTurn BEFORE reading the marker.
+    getNotebookDetail.mockResolvedValue(
+      detail([
+        {
+          id: "t-stopped-safety",
+          question: "can I open it live?",
+          answerStatus: "error",
+          answerText: "Do not work on this equipment while ener",
+          evidence: [{ kind: "safety_notice", trigger: "loto" }],
+          basis: null,
+        },
+      ]),
+    );
+    mount(available);
+
+    expect(await screen.findByTestId("safety-notice")).toBeTruthy();
+    // ...and the honest terminal caption is still there. Safety identity is
+    // added to the stopped turn, it does not replace what actually happened.
+    expect(await screen.findByText(/^Stopped$/)).toBeTruthy();
+  });
+
   it("RELOAD/RELAUNCH: the same turn re-fetched is still a safety notice", async () => {
     getNotebookDetail.mockResolvedValue(detail([PERSISTED_SAFETY]));
     const first = mount(available);

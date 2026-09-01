@@ -462,6 +462,44 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(a.lifecycle).toBe("stopped");
   });
 
+  it("FLEET-003: a STOPPED persisted turn carrying the marker keeps the banner", () => {
+    // Hardening, not a live bug: today a stopped turn persists evidence=[], so
+    // this row shape is not reachable. It is pinned because `isStoppedTurn`
+    // short-circuits BEFORE the marker is read — the moment the server
+    // contract allows evidence on a stopped turn, this is a safety regression.
+    const a = hydrateMessages([
+      {
+        id: "t-stopped-safety",
+        question: "q",
+        answerStatus: "error",
+        answerText: "STOP. Lock out fir",
+        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        basis: null,
+      },
+    ])[1];
+    expect(a.lifecycle).toBe("stopped");
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
+    expect(a.parts).toContainEqual({ type: "error", reason: "stopped" });
+  });
+
+  it("FLEET-003: the IN-FLIGHT turn shows safety before the terminal frame", () => {
+    // The wire order is content* → safety → status, so there is a real window
+    // where the refusal is painted and the turn has not completed.
+    const mid = pendingMessages("q", {
+      answer: "Do not work on this while energized.",
+      citations: [],
+      status: "",
+      safetyTrigger: "arc flash",
+    })[1];
+    expect(mid.lifecycle).toBe("running");
+    expect(mid.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash" });
+  });
+
+  it("FLEET-003: an ordinary in-flight turn gets NO banner", () => {
+    const mid = pendingMessages("q", { answer: "The overload", citations: [], status: "" })[1];
+    expect(mid.parts.some((p) => p.type === "safety_notice")).toBe(false);
+  });
+
   it("FLEET-003: comparableProjection can SEE safety identity", () => {
     // Regression guard for the guard: before this field, a hard stop and an
     // ordinary answer with the same text projected identically, so the

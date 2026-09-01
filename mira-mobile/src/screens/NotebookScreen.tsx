@@ -692,6 +692,11 @@ export function NotebookScreen({
                 // caption, no citations, no basis, no follow-ups.
                 <div key={t.id}>
                   <div className="msg-user">{t.question}</div>
+                  {/* Same hardening as the adapter's stopped branch: not
+                      reachable under today's server contract (a stopped turn
+                      persists evidence=[]), kept so the two paths cannot
+                      diverge if that contract ever changes. */}
+                  {safety && <SafetyNotice />}
                   <AnswerMarkdown text={t.answerText!} citations={[]} />
                   <div className="meta answer-stopped">Stopped</div>
                 </div>
@@ -813,6 +818,10 @@ export function NotebookScreen({
             {pending && (
               <div aria-live="polite" aria-busy="true">
                 <div className="msg-user">{pending.q}</div>
+                {/* The safety frame can land BEFORE the terminal status frame
+                    (wire order: content* → safety → status), so the in-flight
+                    turn must be able to show the banner too. */}
+                {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
                 {pending.a.answer ? (
                   <AnswerMarkdown text={pending.a.answer} citations={[]} />
                 ) : (

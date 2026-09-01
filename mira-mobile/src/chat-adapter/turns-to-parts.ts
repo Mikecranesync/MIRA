@@ -116,6 +116,7 @@ function assistantParts(opts: {
 export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
   return rows.flatMap((t): AdapterMessage[] => {
     const user = userMessage(`${t.id}-q`, t.question);
+    const safetyNotice = safetyNoticeEntry(t.evidence);
     if (isStoppedTurn(t)) {
       return [
         user,
@@ -127,6 +128,16 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
             citations: [],
             machine: [],
             visual: [],
+            // HARDENING (FLEET-003). `isStoppedTurn` short-circuits BEFORE the
+            // safety marker is read, so a stopped-and-persisted safety turn
+            // would reload with no banner. NOT reachable under today's server
+            // contract — a client-stopped turn persists `evidence=[]`, and a
+            // provider failure persists `answerText=null` — so neither can
+            // carry the marker here. Kept anyway: this is a safety invariant,
+            // the cost is one field, and the live stopped path is already
+            // sticky. Leaving the two inconsistent is how a contract change
+            // later becomes a silent safety regression.
+            safetyTrigger: safetyNotice?.trigger,
             error: "stopped",
           }),
           lifecycle: "stopped",
@@ -135,7 +146,6 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
       ];
     }
     const failed = t.answerStatus === "error";
-    const safetyNotice = safetyNoticeEntry(t.evidence);
     return [
       user,
       {
@@ -246,7 +256,18 @@ export function pendingMessages(q: string, a: ChatTurn): AdapterMessage[] {
     {
       id: "pending-a",
       role: "assistant",
-      parts: [{ type: "text", text: a.answer, knownCitationIds: [] }],
+      parts: [
+        // "DURING the live response" is part of the invariant, not just after
+        // it. The parser surfaces `safetyTrigger` the moment the frame lands
+        // (lib/sse.ts `turn()`), and the wire order is content* → safety →
+        // status — so there IS a window, however brief, where the refusal text
+        // is on screen and the turn has not completed. It must not read as an
+        // ordinary answer in that window either.
+        ...(a.safetyTrigger !== undefined
+          ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null }]
+          : []),
+        { type: "text" as const, text: a.answer, knownCitationIds: [] },
+      ],
       lifecycle: "running",
       status: null,
     },
