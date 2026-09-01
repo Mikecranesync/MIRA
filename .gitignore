@@ -336,3 +336,6 @@ tests/beta/fixtures/t2108/*.pdf
 
 # Adversarial-review runner artifacts (prompts, envelopes, logs) — never committed
 .adversarial-review/
+
+# Pixel acceptance evidence (device screenshots/recordings/logcat) — never committed
+pixel-evidence/
