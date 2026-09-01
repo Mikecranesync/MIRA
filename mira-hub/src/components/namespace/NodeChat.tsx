@@ -10,7 +10,7 @@
 // node AND every node beneath it. Node selection IS the UNS gate (UNS-020).
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Send, AlertTriangle, RotateCcw, Loader2, FileText } from "lucide-react";
+import { Bot, Send, AlertTriangle, RotateCcw, FileText, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 
@@ -30,6 +30,9 @@ interface ChatMessage {
    *  it's a distinct flag from `isSafetyStop` (the hard-stop that replaces an
    *  answer entirely). Never conflate the two or their styling. */
   hasSafetyAlert?: boolean;
+  /** The technician pressed Stop mid-stream (STRM-2): `content` is whatever had
+   *  streamed so far; the turn is not sent back as history on the next ask. */
+  stopped?: boolean;
   sources?: Source[];
 }
 
@@ -77,6 +80,8 @@ function SourceChips({ sources }: { sources: Source[] }) {
   );
 }
 
+// Exported for the static render test (NodeChat.test.tsx) — same pattern as
+// AssetChat.tsx's MessageBubble.
 export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
   const isSafety = msg.isSafetyStop;
@@ -126,9 +131,62 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
             Safety alert included above
           </div>
         )}
+        {msg.stopped && (
+          <p
+            className="mt-1.5 text-xs"
+            style={{ color: "var(--foreground-subtle)" }}
+            data-testid="stopped-caption"
+          >
+            Stopped
+          </p>
+        )}
         {msg.sources && <SourceChips sources={msg.sources} />}
       </div>
     </div>
+  );
+}
+
+// The submit-button slot: an enabled Stop control while streaming (STRM-2),
+// same pattern as NotebookChat's busy ? <Stop> : <Send> branch — the existing
+// Send button otherwise. Exported for the static render test.
+export function ComposerButton({
+  streaming,
+  canSend,
+  onStop,
+}: {
+  streaming: boolean;
+  canSend: boolean;
+  onStop: () => void;
+}) {
+  if (streaming) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        onClick={onStop}
+        className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
+        style={{ background: "var(--surface-1)", color: "var(--foreground)" }}
+        aria-label="Stop generating"
+        data-testid="stop-button"
+      >
+        <Square className="w-4 h-4" />
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      type="submit"
+      size="sm"
+      disabled={!canSend}
+      className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
+      style={{
+        background: canSend ? "var(--brand-blue)" : "var(--surface-1)",
+        color: canSend ? "#fff" : "var(--foreground-subtle)",
+      }}
+    >
+      <Send className="w-4 h-4" />
+    </Button>
   );
 }
 
@@ -177,6 +235,12 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
 
+  // Stop generation (STRM-2) — same pattern as NotebookChat's `stop`. Aborts
+  // the in-flight request WITHOUT wiping the message array (unlike clearHistory).
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || streaming) return;
 
@@ -190,7 +254,9 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // A stopped turn is not an answer (STRM-2) — it must not enter what the
+    // model sees on the next turn, mirroring notebook-chat-utils' historyFromTurns.
+    const apiMessages = [...messages, userMsg].filter((m) => !m.stopped).map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -272,7 +338,20 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         }
       }
     } catch (err) {
-      if ((err as Error).name === "AbortError") return;
+      if ((err as Error).name === "AbortError") {
+        // Stopped by the technician: keep whatever partial content had already
+        // streamed in and mark the turn as not an answer (STRM-2). No wipe —
+        // only clearHistory wipes the thread.
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, stopped: true };
+          }
+          return next;
+        });
+        return;
+      }
       setError("Connection lost. Check your network and try again.");
       setMessages((prev) => {
         const next = [...prev];
@@ -417,22 +496,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
             fieldSizing: "content" as React.CSSProperties["fieldSizing"],
           }}
         />
-        <Button
-          type="submit"
-          size="sm"
-          disabled={!input.trim() || streaming}
-          className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
-          style={{
-            background: input.trim() && !streaming ? "var(--brand-blue)" : "var(--surface-1)",
-            color: input.trim() && !streaming ? "#fff" : "var(--foreground-subtle)",
-          }}
-        >
-          {streaming ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
+        <ComposerButton streaming={streaming} canSend={!!input.trim()} onStop={stopGeneration} />
       </form>
     </div>
   );

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { MessageBubble } from "./NodeChat";
+import { ComposerButton, MessageBubble } from "./NodeChat";
 
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
@@ -138,3 +138,73 @@ describe("NodeChat MessageBubble — isSafetyStop rendering", () => {
 // hasSafetyAlert tests are added here. Once FLEET-005 lands on main and
 // AssetChat gains the field for real, port it here the same way this file
 // already ported the sources/isSafetyStop cases.
+
+// STRM-2 client-only Stop control — NodeChat is a structural clone of
+// AssetChat on this point (see NodeChat.tsx's own header comment), so this
+// file mirrors AssetChat.test.tsx's coverage.
+
+describe("NodeChat MessageBubble — Stopped caption (STRM-2)", () => {
+  it("renders the Stopped caption when the message was aborted mid-stream", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{ id: "m1", role: "assistant", content: "Grounded in this folder's docs, the fault", stopped: true }}
+      />,
+    );
+
+    expect(html).toContain('data-testid="stopped-caption"');
+    expect(html).toContain("Stopped");
+    // The partial content that had already streamed in stays visible.
+    expect(html).toContain("Grounded in this folder");
+  });
+
+  it("omits the Stopped caption on an ordinary (non-stopped) message", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "m2", role: "assistant", content: "General answer." }} />,
+    );
+
+    expect(html).not.toContain('data-testid="stopped-caption"');
+    expect(html).not.toContain("Stopped");
+  });
+
+  it("omits the Stopped caption on a safety-stop message", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "m3", role: "assistant", content: "SAFETY STOP", isSafetyStop: true }} />,
+    );
+
+    expect(html).not.toContain('data-testid="stopped-caption"');
+  });
+});
+
+// STRM-2: the composer's submit-button slot swaps to an enabled Stop control
+// while streaming — same pattern as NotebookChat's busy ? <Stop> : <Send>.
+describe("NodeChat ComposerButton — Stop vs Send (STRM-2)", () => {
+  it("renders an enabled Stop control while streaming", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={true} canSend={false} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('data-testid="stop-button"');
+    expect(html).toContain('aria-label="Stop generating"');
+    // A Stop button must never render disabled — it must always be clickable.
+    expect(html).not.toContain("disabled=\"\"");
+    expect(html).not.toContain('type="submit"');
+  });
+
+  it("renders the Send submit button when not streaming", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={false} canSend={true} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('type="submit"');
+    expect(html).not.toContain('data-testid="stop-button"');
+  });
+
+  it("disables the Send button when there's nothing to send", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={false} canSend={false} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('type="submit"');
+    expect(html).toMatch(/disabled(=""|)/);
+  });
+});

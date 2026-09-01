@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { MessageBubble } from "./AssetChat";
+import { ComposerButton, MessageBubble } from "./AssetChat";
 
 // Static-markup coverage for the machine-memory "Next check" evidence line
 // (T2 Task 4) — same pattern as MachineMemoryCard.test.tsx.
@@ -108,5 +108,65 @@ describe("AssetChat MessageBubble — hasSafetyAlert marker", () => {
     expect(alertOnlyHtml).toContain("Safety alert included above");
     // hasSafetyAlert alone must NOT trigger the hard-stop whole-bubble recolor.
     expect(alertOnlyHtml).not.toContain("var(--status-red-bg)");
+  });
+});
+
+// STRM-2 client-only Stop control — same contract as NotebookChat's Bubble
+// "Stopped" caption test.
+describe("AssetChat MessageBubble — Stopped caption (STRM-2)", () => {
+  it("renders the Stopped caption when the message was aborted mid-stream", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{ id: "m4", role: "assistant", content: "The VFD comm link went", stopped: true }}
+      />,
+    );
+
+    expect(html).toContain('data-testid="stopped-caption"');
+    expect(html).toContain("Stopped");
+    // The partial content that had already streamed in stays visible.
+    expect(html).toContain("The VFD comm link went");
+  });
+
+  it("omits the Stopped caption on an ordinary (non-stopped) message", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "m5", role: "assistant", content: "General answer." }} />,
+    );
+
+    expect(html).not.toContain('data-testid="stopped-caption"');
+    expect(html).not.toContain("Stopped");
+  });
+});
+
+// STRM-2: the composer's submit-button slot swaps to an enabled Stop control
+// while streaming — same pattern as NotebookChat's busy ? <Stop> : <Send>.
+describe("AssetChat ComposerButton — Stop vs Send (STRM-2)", () => {
+  it("renders an enabled Stop control while streaming", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={true} canSend={false} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('data-testid="stop-button"');
+    expect(html).toContain('aria-label="Stop generating"');
+    // A Stop button must never render disabled — it must always be clickable.
+    expect(html).not.toContain("disabled=\"\"");
+    expect(html).not.toContain('type="submit"');
+  });
+
+  it("renders the Send submit button when not streaming", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={false} canSend={true} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('type="submit"');
+    expect(html).not.toContain('data-testid="stop-button"');
+  });
+
+  it("disables the Send button when there's nothing to send", () => {
+    const html = renderToStaticMarkup(
+      <ComposerButton streaming={false} canSend={false} onStop={() => {}} />,
+    );
+
+    expect(html).toContain('type="submit"');
+    expect(html).toMatch(/disabled(=""|)/);
   });
 });
