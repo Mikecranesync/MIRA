@@ -11,6 +11,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 
@@ -424,5 +426,236 @@ describe("STRM-2 — Stop vs normal completion (race) and stopped-turn spend", (
     expect(usage.inputTokens).toBeNull();
     expect(usage.outputTokens).toBeNull();
     expect(usage.costUsdEstimate).toBeNull();
+  });
+});
+
+/**
+ * ADR-0038 rule 7 — the server's terminal classification COMMITS before the
+ * `status` frame reaches the wire, and a later client disconnect must not
+ * reclassify it.
+ *
+ * WHY THIS EXISTS. The compatibility spike observed the client holding a
+ * complete, cited answer while the server still classified the connection as
+ * cancelled (`framesSent 7/9, cancelled:true` — only `followups` and `[DONE]`
+ * were lost). Rendering the answer is correct there; the client fabricated
+ * nothing. But if the server ALSO treated that disconnect as a stop, the same
+ * turn would persist as `answer_status='error'` and the technician would watch
+ * a cited answer turn into "Stopped" on reload.
+ *
+ * WHAT ACTUALLY MAKES IT SAFE. There is exactly ONE client-abort check between
+ * the provider cascade and the answered tail (route.ts, where `onClientGone` is
+ * detached). Everything after it — evidence assembly, the `usage`/`status`/
+ * `followups` frames, `[DONE]`, `controller.close()` and the `recordTurn` call
+ * — runs with NO intervening `await`. That synchronous window is the commit:
+ * once it is entered, no disconnect can interleave ahead of the write.
+ *
+ * SCOPE HONESTLY STATED. These tests pin the OUTCOME (a post-cascade disconnect
+ * still persists what the server computed) and the wire/row AGREEMENT. Because
+ * the tail is synchronous, they cannot force a disconnect to land *inside* it,
+ * so they do not by themselves prove a future `if (aborted) return` added just
+ * before `recordTurn` would be caught in every interleaving. What they do catch
+ * is that refactor's observable consequences: a missing write, a second
+ * contradicting write, or a row that disagrees with the `status` frame already
+ * delivered. Keep the tail await-free and this rule holds structurally.
+ */
+describe("ADR-0038 rule 7 — a disconnect after the commit point cannot reclassify the turn", () => {
+  /** Read the SSE body until `pred` is satisfied, then hand back the reader. */
+  async function readUntil(res: Response, pred: (seen: string) => boolean) {
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let seen = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      seen += dec.decode(value, { stream: true });
+      if (pred(seen)) break;
+    }
+    return { reader, seen };
+  }
+
+  it("the client disconnects right after `status` — the answered turn is persisted UNCHANGED", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("DC bus undervoltage [1]")));
+
+    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const { reader, seen } = await readUntil(res, (s) => s.includes('"kind":"status"'));
+    expect(seen).toContain('"status":"answered"');
+
+    // The technician's phone drops the connection here: after the authoritative
+    // frame, before the tail. Cancelling the response stream is what the route
+    // sees as the client going away (its `cancel()` aborts `clientAbort`).
+    await reader.cancel();
+    // Let any illegal compensating write land before asserting there wasn't one.
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [
+      string,
+      string,
+      Record<string, unknown>,
+    ];
+    // The whole point: `answered`, NOT the stopped-turn contract's `error`.
+    expect(turn.answerStatus).toBe("answered");
+    expect(String(turn.answerText)).toContain("DC bus undervoltage");
+    // A stopped turn strips these. An answered turn that merely lost its reader
+    // must keep them, or the reload silently downgrades a grounded answer.
+    expect(turn.basis).not.toBeNull();
+    expect(Array.isArray(turn.evidence) && (turn.evidence as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("the row the technician reloads AGREES with the `status` frame they were sent", async () => {
+    // Wire and database are two views of one decision. If a disconnect could
+    // reclassify, these two would disagree and the answer would change on
+    // reload — the exact §9.3/§10.8 reconciliation failure rule 7 forbids.
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("DC bus undervoltage [1]")));
+
+    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const { reader, seen } = await readUntil(res, (s) => s.includes('"kind":"status"'));
+    await reader.cancel();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const wireStatus = parseFrames(seen).find((f) => f.kind === "status")?.status;
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [
+      string,
+      string,
+      Record<string, unknown>,
+    ];
+    expect(wireStatus).toBe("answered");
+    expect(turn.answerStatus).toBe(wireStatus);
+  });
+
+  it("a disconnect DURING persistence produces no second, contradicting write", async () => {
+    // `recordTurn` is awaited last. Holding it open puts the disconnect inside
+    // the persistence window — the narrowest place a compensating "actually it
+    // was stopped" write could be introduced by a later refactor.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    domainMock.recordTurn.mockImplementationOnce(async () => {
+      await held;
+      return undefined;
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("DC bus undervoltage [1]")));
+
+    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const { reader } = await readUntil(res, (s) => s.includes('"kind":"status"'));
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+
+    await reader.cancel(); // client gone while the write is still in flight
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [
+      string,
+      string,
+      Record<string, unknown>,
+    ];
+    expect(turn.answerStatus).toBe("answered");
+  });
+
+  it("CONTRAST: a disconnect BEFORE the commit point still yields the stopped-turn contract", async () => {
+    // The other side of the boundary — proves the rule is a boundary and not a
+    // blanket "never classify a disconnect as a stop". Without this, the tests
+    // above would still pass if the stop path were broken outright.
+    const provider = hangingProvider(["DC bus ", "undervoltage "]);
+    vi.stubGlobal("fetch", vi.fn(async () => provider.res));
+
+    const ac = new AbortController();
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }, { signal: ac.signal }),
+      params,
+    );
+    await readUntil(res, (s) => s.includes("undervoltage"));
+    ac.abort(); // the cascade is still reading — this is BEFORE the commit point
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [
+      string,
+      string,
+      Record<string, unknown>,
+    ];
+    expect(turn.answerStatus).toBe("error");
+    expect(turn.evidence).toEqual([]);
+    expect(turn.basis).toBeNull();
+    expect(provider.state.cancelled).toBe(true);
+  });
+});
+
+/**
+ * ADR-0038 rule 7, STRUCTURAL guard — and the reason it has to be structural.
+ *
+ * The behavioural tests above pin the OUTCOME, but they cannot catch the
+ * refactor the rule actually forbids, and it is worth saying exactly why:
+ * between the commit point and the write there is no `await`, so the write is
+ * already in flight before any disconnect a black-box test can trigger has a
+ * chance to land. Adding `answerStatus: clientAbort.signal.aborted ? "error"
+ * : answerStatus` to the `recordTurn` call leaves every behavioural assertion
+ * above GREEN (verified by mutation, 2026-09-01) while silently reintroducing
+ * the bug: a technician's cited answer becomes "Stopped" on reload whenever
+ * their connection happens to drop in the tail.
+ *
+ * So the guard is on the SHAPE of the tail, not on its timing. Two properties
+ * make rule 7 true, and both are asserted here:
+ *
+ *   1. The tail never re-reads the abort signal. One check decides
+ *      stopped-vs-answered, and it is the commit point.
+ *   2. The tail contains no `await` before the write. That is what makes the
+ *      commit atomic — with an await, a disconnect COULD interleave, and
+ *      property 1 would stop being sufficient.
+ *
+ * If this test fails, do not delete it and do not "fix" it by re-reading the
+ * signal. Either the tail grew an await (rule 7 now needs a real mechanism,
+ * not a structural accident — reopen ADR-0038) or someone reintroduced late
+ * reclassification (that is the bug).
+ *
+ * VERIFIED BY MUTATION (2026-09-01). Three separate reintroductions of the bug
+ * were applied to route.ts and each was caught by exactly one assertion here,
+ * while every behavioural test in this file stayed green for all three:
+ *   A. `answerStatus: clientAbort.signal.aborted ? "error" : answerStatus`
+ *      inside the write   → "does not reclassify INSIDE the write call either"
+ *   B. `if (clientAbort.signal.aborted) return;` before the write
+ *                         → "never re-reads the client-abort signal…"
+ *   C. an `await` inserted into the tail
+ *                         → "contains no await between the commit point…"
+ */
+describe("ADR-0038 rule 7 — the commit-to-write tail stays atomic (source invariant)", () => {
+  const ROUTE = fileURLToPath(new URL("../[id]/chat/route.ts", import.meta.url));
+  const src = readFileSync(ROUTE, "utf8");
+
+  /** Commit point → the answered write. `rfind` semantics: the LAST detach is
+   *  the one on the answered path (the earlier one is inside the stop block),
+   *  and the LAST `recordTurn` is the answered write. */
+  const commit = src.lastIndexOf('req.signal?.removeEventListener("abort", onClientGone);');
+  const write = src.lastIndexOf("await recordTurn(");
+  /** Commit point up to (not including) the write: the atomic window. */
+  const tail = src.slice(commit, write);
+  /** The write's own argument list. The abort signal must not appear HERE
+   *  either — reclassifying inside the call is the subtle form of the bug, and
+   *  it sits just past the end of `tail`. */
+  const writeCall = src.slice(write, src.indexOf("recordTurn failed:", write));
+
+  it("finds both anchors (guards the guard — a rename must fail loudly, not silently pass)", () => {
+    expect(commit).toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(commit);
+    // Sanity: the slices really are the terminal block + the write, not empty.
+    expect(tail).toContain('kind: "status"');
+    expect(tail).toContain("[DONE]");
+    expect(writeCall.length).toBeGreaterThan(0);
+  });
+
+  it("never re-reads the client-abort signal after the commit point", () => {
+    expect(tail).not.toContain("clientAbort.signal.aborted");
+    expect(tail).not.toContain("req.signal?.aborted");
+  });
+
+  it("does not reclassify INSIDE the write call either", () => {
+    // The mutation that survives every behavioural test:
+    //   answerStatus: clientAbort.signal.aborted ? "error" : answerStatus
+    expect(writeCall).toContain("answerStatus");
+    expect(writeCall).not.toContain("aborted");
+  });
+
+  it("contains no await between the commit point and the write", () => {
+    const awaits = tail.split("\n").filter((l) => /\bawait\b/.test(l));
+    expect(awaits).toEqual([]);
   });
 });
