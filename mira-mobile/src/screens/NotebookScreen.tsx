@@ -216,9 +216,17 @@ export function NotebookScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // `detail` belongs in these deps. Without it, opening a machine that already
+  // has history landed on the OLDEST turn: on mount the component is still in
+  // its `loading` branch so `scrollRef.current` is null and this is a no-op,
+  // and on the render where the thread finally appears none of the other deps
+  // changed, so it never ran again. Measured at 412x915: scrollTop 0 of 4635.
+  // ChatV2 sticks to the bottom, so this was also a surface-parity gap — and a
+  // safety hard-stop is normally the LAST turn, i.e. exactly the thing that was
+  // being hidden below the fold.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [liveTurns, busy, panel, pending]);
+  }, [detail, liveTurns, busy, panel, pending]);
 
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
