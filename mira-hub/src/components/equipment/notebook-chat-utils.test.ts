@@ -84,6 +84,84 @@ describe("readNotebookStream", () => {
   });
 });
 
+/**
+ * ADR-0038 rule 6 — `status` is the only terminal marker a client may trust.
+ * `[DONE]` is not one, and stream closure is not one. A reader that assumes
+ * "answered" turns every truncation into a fabricated, cited completion.
+ *
+ * These five cases are the rule's contract. Cases 3-5 all FAILED before the
+ * fix: the reader seeded `status: "answered"` and returned it on EOF.
+ */
+describe("readNotebookStream — terminal status (ADR-0038 rule 6)", () => {
+  const answered = [
+    frame({ kind: "content", content: "F004 is undervoltage. [1]" }),
+    frame({
+      kind: "sources",
+      citations: [{ citationId: "1", docId: "d", sourceTitle: "M", page: 1, fileId: null, quote: null }],
+      sourceSnapshot: ["d"],
+    }),
+    frame({ kind: "evidence", basis: "oem_documentation" }),
+  ];
+
+  it("1. a normal answered stream reports sawStatus and keeps its citations", async () => {
+    const out = await readNotebookStream(
+      streamOf([...answered, frame({ kind: "status", status: "answered" }), "data: [DONE]\n\n"]),
+      () => {},
+    );
+    expect(out.sawStatus).toBe(true);
+    expect(out.status).toBe("answered");
+    expect(out.citations).toHaveLength(1);
+  });
+
+  it("2. an explicit non-answered terminal status is reported as sent, not overwritten", async () => {
+    for (const status of ["insufficient_evidence", "error"] as const) {
+      const out = await readNotebookStream(
+        streamOf([frame({ kind: "status", status }), "data: [DONE]\n\n"]),
+        () => {},
+      );
+      expect(out.sawStatus).toBe(true);
+      expect(out.status).toBe(status);
+    }
+  });
+
+  it("3. [DONE] without a status frame is NOT a completion", async () => {
+    const out = await readNotebookStream(streamOf([...answered, "data: [DONE]\n\n"]), () => {});
+    expect(out.sawStatus).toBe(false);
+    expect(out.status).not.toBe("answered");
+    // The partial text survives — it streamed, the technician saw it.
+    expect(out.content).toBe("F004 is undervoltage. [1]");
+  });
+
+  it("4. EOF/disconnect without a status frame is NOT a completion", async () => {
+    // No [DONE] either: the body just closes, which is exactly what an aborted
+    // fetch looks like in the Android WebView and what a proxy cut looks like
+    // everywhere. The read loop ends with done:true and does NOT throw.
+    const out = await readNotebookStream(streamOf(answered), () => {});
+    expect(out.sawStatus).toBe(false);
+    expect(out.status).not.toBe("answered");
+  });
+
+  it("5. citations received before a truncation never make the turn look completed", async () => {
+    // The exact fabricated-citation case: `sources` and `evidence` both landed,
+    // so the reader holds a citation and a basis, and then the stream dies.
+    const out = await readNotebookStream(streamOf(answered), () => {});
+    expect(out.sawStatus).toBe(false);
+    // The reader still REPORTS what it received (it is a parser, not a policy
+    // layer) — but it must not claim the turn completed. The consumer drops
+    // them; `sawStatus:false` is the signal that it must.
+    expect(out.status).not.toBe("answered");
+  });
+
+  it("a safety frame before a truncation is still reported (safety is not suppressed)", async () => {
+    const out = await readNotebookStream(
+      streamOf([frame({ kind: "content", content: "Do not" }), frame({ kind: "safety", trigger: "loto" })]),
+      () => {},
+    );
+    expect(out.sawStatus).toBe(false);
+    expect(out.safetyNotice).toMatchObject({ kind: "safety_notice", trigger: "loto" });
+  });
+});
+
 describe("stoppedTurn", () => {
   it("keeps the partial text and is NOT an answered turn — no citations, basis, or follow-ups", () => {
     const t = stoppedTurn(
@@ -106,6 +184,37 @@ describe("stoppedTurn", () => {
       basis: null,
       followups: [],
     });
+  });
+});
+
+describe("stoppedTurn — stopped vs truncated (ADR-0038 rule 6)", () => {
+  const base = { id: "a1", role: "assistant" as const, content: "" };
+
+  it("defaults to a technician Stop, which is not a truncation", () => {
+    const t = stoppedTurn(base, "partial");
+    expect(t.stopped).toBe(true);
+    expect(t.truncated).toBe(false);
+  });
+
+  it("a truncation is marked distinctly so it is not blamed on the technician", () => {
+    const t = stoppedTurn(base, "partial", "truncated");
+    expect(t.stopped).toBe(true);
+    expect(t.truncated).toBe(true);
+    // Still a non-answer: same evidence-stripping as a Stop.
+    expect(t).toMatchObject({ status: "error", citations: [], basis: null, followups: [] });
+  });
+
+  it("both are excluded from the history the model sees", () => {
+    const turns = [
+      { role: "user" as const, content: "q1" },
+      { ...stoppedTurn(base, "cut off", "truncated"), role: "assistant" as const },
+      { ...stoppedTurn(base, "stopped short"), role: "assistant" as const },
+      { role: "user" as const, content: "q2" },
+    ];
+    expect(historyFromTurns(turns)).toEqual([
+      { role: "user", content: "q1" },
+      { role: "user", content: "q2" },
+    ]);
   });
 });
 
