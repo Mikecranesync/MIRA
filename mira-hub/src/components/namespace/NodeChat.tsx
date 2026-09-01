@@ -26,6 +26,10 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   isSafetyStop?: boolean;
+  /** H4 gap-admission safety alert (#2542) — appended AFTER a real answer, so
+   *  it's a distinct flag from `isSafetyStop` (the hard-stop that replaces an
+   *  answer entirely). Never conflate the two or their styling. */
+  hasSafetyAlert?: boolean;
   sources?: Source[];
 }
 
@@ -116,6 +120,12 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         >
           {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
         </div>
+        {msg.hasSafetyAlert && (
+          <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Safety alert included above
+          </div>
+        )}
         {msg.sources && <SourceChips sources={msg.sources} />}
       </div>
     </div>
@@ -221,7 +231,11 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") break;
           try {
-            const parsed = JSON.parse(data) as { content?: string; sources?: Source[] };
+            const parsed = JSON.parse(data) as {
+              content?: string;
+              sources?: Source[];
+              safetyAlert?: boolean;
+            };
             if (parsed.sources) {
               setMessages((prev) => {
                 const next = [...prev];
@@ -238,6 +252,16 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, content: last.content + parsed.content };
+                }
+                return next;
+              });
+            }
+            if (parsed.safetyAlert) {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, hasSafetyAlert: true };
                 }
                 return next;
               });
