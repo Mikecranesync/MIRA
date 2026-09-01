@@ -4,6 +4,7 @@
 **Date:** 2026-08-30
 **Resolves:** PRD §12.3; Open Decisions 1 and 2 (§22)
 **Depends on:** Current-state inventory (Phase 0 deliverable 2)
+**Evidence:** Compatibility spike sessions 1–2 — source of the revised Context item 1 and of conformance rules 6 and 7. The write-ups (`docs/plans/2026-08-30-chatgpt-class-ui-spike-results.md` and `…-session2.md`) live on branch `spike/chat-ui-compat` / **PR #3515**, not on this branch; both PRs are HELD, and whichever merges second inherits the cross-reference.
 
 ## Context
 
@@ -11,7 +12,7 @@ MIRA has exactly one typed, persisted, stop-capable wire contract: the notebook 
 
 Hard facts the decision must respect:
 
-1. **Capacitor buffered transport.** On device, the chat POST arrives as one buffered chunk and abort never reaches the server (#3453; verified `client.ts` honesty note). *No protocol choice changes this* — the wire format is irrelevant to a transport that delivers everything at once. Genuine incremental streaming/cancel on device is gated on Hub CORS + WebView-cookie work that requires a separate Mike-approved ADR (recovery PRD §10.2). **Open decision 2 answer: the current Capacitor transport cannot provide genuine incremental streaming or server-reaching cancel; a native transport bridge (or the #3453 CORS/cookie path) is required, and either is an APK-release/ADR-gated change outside this ADR's scope. Until then, device UX must be honest-buffered.**
+1. **Capacitor buffered transport — and its actual cause.** On device the chat POST arrives as one buffered chunk and abort never reaches the server (#3453). The compatibility spike isolated *why*, and the previously recorded cause was too broad: this is **not** an Android WebView limitation. Holding device, WebView, page, server and client code fixed and varying **only the request origin**, a same-origin request delivered 9 incremental chunks and its `AbortSignal` reached the server (`cancelled:true`, `framesSent:4/9`), while a cross-origin request delivered 1 buffered chunk and the abort never arrived. The WebView's own `fetch` streams and cancels correctly; the **CapacitorHttp fetch patch** buffers responses it treats as remote and drops `AbortSignal`. Production is cross-origin (local bundle origin → `https://app.factorylm.com`), which is why it buffers there. *This still leaves the protocol choice irrelevant to today's device behaviour* — a wire format cannot unbuffer a transport that delivers everything at once — but it changes what the fix is and what it buys. **Open decision 2 answer (revised): a native transport bridge is _not_ required. The Hub CORS + WebView-cookie work already scoped in #3453 is the correct and sufficient fix, and it should deliver genuine token streaming AND a server-reaching Stop on device, not merely a nicer buffered path — a stronger claim than #3453 currently makes. It remains an APK-release/ADR-gated change outside this ADR's scope (Decision item 5); until it lands, device UX must be honest-buffered.** *Caveat to carry wherever this is cited:* the isolating runs were `http`→`http` against a dev server in a side-by-side debug shell, not `https`→`https` against production. They isolate the variable cleanly; they are not a production-path measurement, and a prod-shaped confirmation is still owed.
 2. **Persisted semantics are encoded in the current contract.** The STOPPED-TURN contract (error + partial text vs error + null text), late-arriving `sources`, the safety frame-not-status workaround for the 3-value CHECK, and the additive unknown-frame convention are all load-bearing, tested behavior.
 3. **Governance:** the recovery PRD forbids a second chat route/conversation store; the copilot PRD lists the typed SSE contract as "preserve byte-for-byte"; provider-side the canonical seam (`MIRA_CANONICAL_SEAM`) already forks this route's internals — adding a protocol fork multiplies the test matrix.
 4. **Five client parsers exist for two dialects** — the real duplication problem is client-side parsing and the untyped clone dialect, not the notebook frame format itself.
@@ -52,9 +53,85 @@ Keep the route; add `?protocol=v2` (or an `Accept` variant) emitting a superset 
 4. **Dialect consolidation (server cleanup, separate lane):** migrate `/api/assets/[id]/chat` and `/api/namespace/node/[id]/chat` to emit the typed dialect (and retire the `X-Safety-Stop` header, the inline Groq→Cerebras→**Gemini** cascade — a standing Hard-Constraint-#2 violation — via the canonical seam). Their clients are hub-only and deploy atomically with the server, so this is low-risk relative to mobile.
 5. **Explicitly out of scope:** any change to device streaming granularity or cross-boundary cookies (#3453/#3454 — separate Mike-approved ADR); mira-pipeline; quickstart (stays plain JSON).
 
+### Normative conformance rules (from the compatibility spike)
+
+Items 1–5 above evolve the wire. These two rules govern how the wire is *read* and *committed*.
+They are normative for every client and for the route itself, and each was found by a controlled
+experiment rather than by inspection — see §4 and §5 of the session-2 spike write-up (`docs/plans/2026-08-30-chatgpt-class-ui-spike-results-session2.md`, on
+`spike/chat-ui-compat` / PR #3515). The rules stand on their own here; the write-up is
+the evidence, not a dependency.
+
+6. **`status` is the only terminal marker a client may trust. `[DONE]` is not one.**
+   A stream that ends without a `status` frame is **truncated**, and a client MUST render it as a
+   stopped/partial turn — partial text kept, citations, basis, usage and follow-ups all dropped. It
+   MUST NOT be rendered as a completed or cited answer.
+   - *Why this needs stating.* `[DONE]` is a transport sentinel, not a state: it carries no status
+     value, and it is the frame most likely to be lost to a truncation. Worse, an aborted `fetch`
+     does **not** reliably reject `reader.read()` — in the Android WebView the body stream is simply
+     closed, so the read loop exits with `done:true` exactly as a healthy stream does. A client that
+     defaults its folded state to `answered` therefore cannot distinguish "finished" from "cut off",
+     and will emit a **fabricated completion**: the spike reproduced a truncated stream rendering
+     with 2 citation chips and a basis badge and no stopped caption, at 4 of 5 stop positions.
+   - *Conformance requirement.* A frame-folding client MUST track "did a `status` frame actually
+     arrive" as explicit state and MUST NOT infer terminal state from stream closure, from `[DONE]`,
+     or from the arrival of any other frame. This is the client-side half of §7.6's "the server is
+     authoritative" and is what PRD §10.9 forbids fabricating.
+   - *Scope.* This binds every client that folds these frames — the mobile `createChatSseParser`,
+     the web `postNotebookChat` path, and the assistant-ui adapter (ADR-0039) alike. It is a rule
+     about the protocol, not about one client, which is why it lives here.
+   - *Conformance status of the existing clients (audited 2026-09-01, this ADR's own review).*
+     Both non-adapter clients violate rule 6 today, by different mechanisms:
+     - **Web hub — violates it outright.** `readNotebookStream`
+       (`mira-hub/src/components/equipment/notebook-chat-utils.ts`) seeds its fold with
+       `status: "answered"` and `break`s the read loop on `done`. A stream ending without a `status`
+       frame therefore returns `{status:"answered", citations:[…]}` — the same fabricated cited
+       completion the spike found in the adapter, in the shipped hub. It also never re-asserts the
+       abort inside the read loop, so it has no defence against a close-as-`done` cancellation.
+     - **Mobile — narrower, but still non-conformant.** `createChatSseParser`
+       (`mira-mobile/src/lib/sse.ts`) seeds `status` as the empty string, so it does not *invent*
+       `answered`; and `requestStream` (`mira-mobile/src/api/client.ts`) already re-asserts the abort
+       after every `reader.read()` — with a comment naming the buffered-Response cause — so a
+       technician-initiated **Stop** is handled correctly. The gap is that `NotebookScreen` derives
+       the stopped render from the client's own `ctl.signal.aborted` flag rather than from the absence
+       of `status`. A truncation the client did not cause (server-side close, dropped connection,
+       proxy cut) resolves the promise normally with `status === ""`, and the turn renders through the
+       ordinary `AnswerMarkdown` branch **with its citation chips and no "Stopped" caption**.
+     Neither is a wire change to fix; both are client changes, tracked as Phase 1 prerequisites.
+     **Sequencing note:** the mobile case is rare on production today only because the buffered
+     cross-origin transport delivers the body in one chunk. Landing the #3453 fix (revised Context
+     item 1) makes real streaming — and therefore real mid-stream truncation — the normal case, so
+     rule 6 should be satisfied in both clients **before or with** that work, not after it.
+
+7. **The server's terminal classification commits before `status` reaches the wire; a later client
+   disconnect MUST NOT reclassify it.**
+   The client can hold a terminal state the server's connection bookkeeping disagrees with: the
+   spike observed the server still classifying a connection as cancelled while the client had
+   correctly received `status` and rendered a complete cited answer (only `followups` and `[DONE]`
+   were lost). Rendering the answer is correct there — the client fabricated nothing. But without a
+   stated rule, the same window on the real notebook route is *the answer changing on reload*.
+   - *The rule.* The single client-abort check that separates the stopped-turn path from the
+     answered path (`route.ts`, immediately after the provider cascade, where `onClientGone` is
+     detached) is the **commit point**. A disconnect observed **before** it persists the stopped-turn
+     contract (`answer_status='error'` + partial text, no citations, no basis). A disconnect
+     **after** it — including one during the `evidence`/`usage`/`status`/`followups` tail — persists
+     the turn the server actually computed, unchanged. Because the commit point precedes the `status`
+     enqueue, **`status` on the wire implies the server has already committed to that state**, so a
+     client holding `status` and a server logging a cancelled connection are not in conflict: the
+     persisted row matches what the client rendered.
+   - *Status: this codifies existing behaviour, it does not change it.* The route already commits
+     this way. The rule exists so a future refactor cannot quietly add an abort check between the
+     commit point and `recordTurn` and turn a delivered, cited answer into a stopped turn on reload.
+   - *Test gap (owed).* `chat-stop-persist.test.ts` pins the stop paths and the same-tick stop/
+     completion race, but **not** the post-commit disconnect. A test asserting that a disconnect
+     after the commit point still persists the answered turn is required before this ADR moves
+     Proposed → Accepted.
+
 ## Consequences
 
 - The adapter (see companion ADR) owns frame→part translation; `createChatSseParser` semantics are reused, not re-implemented, and the five parsers collapse toward one per app.
 - Turn-ID work is the only schema-touching item; until it lands, the adapter synthesizes message identity (persisted row id / client-generated live id) and cannot do true optimistic reconciliation — acceptable for the spike, listed as a Phase 1 prerequisite.
-- Revisit trigger: if a future native transport bridge lands real device streaming AND assistant-ui deprecates custom runtimes (no sign of either), re-evaluate Option B. Record that in the flag-removal review.
+- Revisit trigger: if the #3453 CORS/cookie work lands real device streaming AND assistant-ui deprecates custom runtimes (no sign of the latter), re-evaluate Option B. Record that in the flag-removal review. Note the first half is now *expected* rather than speculative — per the revised Context item 1 the fix is scoped and does not need a native bridge — so this trigger is gated on the assistant-ui half.
 - PRD §12.3's "no control state from scraping Markdown" remains violated by `[n]` citation linking regardless of protocol; the mitigation (structured `sources` gate + `selector` span-anchoring later) is tracked in the adapter ADR, not here.
+- Rule 6 makes truncation a **first-class client state**, not an edge case: every folding client carries a "saw `status`" flag, and the terminal render is guarded by it. The spike's adapter fix took this shape (6 unit tests pin the truncation contract; the post-fix stop sweep showed 0 violations at every stop position). The audit recorded under rule 6 found the **shipped web hub reader has the same defect** and the mobile client a narrower form of it — so this rule has two live call sites to fix, not just a spike lesson to remember. Both are client-side changes; neither touches the wire.
+- Rule 7 costs nothing to honour today (it describes what the route already does) but constrains future edits: the commit point is load-bearing, and the abort check that defines it must not be duplicated later in the terminal block. The owed test is the enforcement mechanism.
+- Neither rule is a wire change, so neither affects OTA-deployed clients in the field: old bundles keep parsing the same frames. Rule 6 is the one place where an old bundle is *behaviourally* wrong (it can still fabricate a completion on truncation) — fixing that in mobile is an OTA-shippable client change, tracked as a Phase 1 prerequisite, not a protocol migration.
