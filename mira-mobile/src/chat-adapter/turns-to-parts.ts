@@ -15,6 +15,7 @@
  * reload cannot turn a hard stop into ordinary answer chrome.
  */
 import {
+  isTruncatedTurn,
   normalizeCitations,
   type ChatCitation,
   type ChatTurn,
@@ -178,7 +179,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
   // `sources` arrives BEFORE `status`, it would ship citation chips on a turn
   // that never finished. Treated exactly like a stopped turn: partial text,
   // no citations, no basis, no follow-ups (PRD §10.9 / §7.6).
-  if (a.sawStatus === false && a.status !== "stopped") {
+  if (isTruncatedTurn(a)) {
     return [
       user,
       {

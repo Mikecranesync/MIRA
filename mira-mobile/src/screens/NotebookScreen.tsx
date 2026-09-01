@@ -35,7 +35,7 @@ import { answerBody } from "../lib/chat-copy";
 import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
-import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import { isTruncatedTurn, normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import {
   photoCapturedLabel,
   visualCardTitle,
@@ -745,16 +745,34 @@ export function NotebookScreen({
               // simply never read it. Sticky by design: it survives a stop or a
               // truncation, matching the adapter's rule for ChatV2.
               const safety = t.a.safetyTrigger !== undefined;
+              // ADR-0038 rule 6. The stream ended without the authoritative
+              // `status` frame and the technician did NOT press Stop — a
+              // server-side close, a dropped connection, a proxy cut. The read
+              // loop ends with done:true exactly as a healthy stream does, so
+              // nothing throws and `status` is simply "". Before this, such a
+              // turn fell through to the ordinary branch and rendered WITH its
+              // citation chips: a cut-off stream presented as a complete, cited
+              // answer (PRD §10.9). ChatV2's adapter already refused to do that;
+              // the classic screen is what still could.
+              const truncated = isTruncatedTurn(t.a);
+              const incomplete = truncated || t.a.status === "stopped";
               return (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 {safety && <SafetyNotice />}
-                {t.a.status === "stopped" ? (
+                {incomplete ? (
                   <>
                     {t.a.answer.trim() && (
                       <AnswerMarkdown text={t.a.answer} citations={[]} />
                     )}
-                    <div className="meta answer-stopped">Stopped</div>
+                    {/* A truncation is NOT the technician's action. Labelling
+                        it "Stopped" blames them for a transport failure and
+                        hides that content may be missing. */}
+                    <div className="meta answer-stopped">
+                      {truncated
+                        ? "Incomplete — the connection ended before the answer finished. Ask again to retry."
+                        : "Stopped"}
+                    </div>
                   </>
                 ) : (
                   <AnswerMarkdown
@@ -783,18 +801,18 @@ export function NotebookScreen({
                     a grounded one already shows its citation chips, and a second
                     badge saying "grounded" would be noise. Silence here never
                     means "trust it" — an unlabelled answer shows its chips. */}
-                {!safety && t.a.evidenceBasis === "general_reasoning" && (
+                {!safety && !incomplete && t.a.evidenceBasis === "general_reasoning" && (
                   <div className="evidence-basis-general">
                     {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
                   </div>
                 )}
-                {!safety && t.a.status !== "stopped" && (
+                {!safety && !incomplete && (
                   <>
                     <VisualEvidenceCards entries={t.a.visualEvidence ?? []} />
                     <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
                   </>
                 )}
-                {!safety && (
+                {!safety && !incomplete && (
                   <div>
                     {t.a.citations.map((c) => (
                       <button
