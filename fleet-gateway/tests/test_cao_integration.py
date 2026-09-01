@@ -200,15 +200,19 @@ def _make_client_for_task(session_name: str, task_id: str) -> LoopbackCAOClient:
     return client
 
 
-def test_task_snapshot_marks_stopped_when_terminal_completed() -> None:
-    """task_snapshot must return status='stopped' when CAO terminal is completed."""
+def test_task_snapshot_stays_running_when_terminal_completed() -> None:
+    """task_snapshot must NOT mark stopped when CAO terminal is 'completed'.
+
+    'completed' means the AI turn finished — CAO still accepts /terminals/{id}/input.
+    Treating turn-complete as a dead session is a false death that kills the worker.
+    """
     client = _make_client_for_task("dead-sess", "task-dead")
     with patch.object(client, "_request", return_value=_COMPLETED_TERMINAL_RESPONSE):
         snap = client.task_snapshot("task-dead")
     assert snap is not None
-    assert snap["status"] == "stopped", snap
-    # In-process map must also be updated so subsequent calls don't flip back
-    assert client._sessions["dead-sess"]["status"] == "stopped"
+    assert snap["status"] == "running", snap
+    # In-process map must NOT be flipped to stopped
+    assert client._sessions["dead-sess"]["status"] == "running"
 
 
 def test_task_snapshot_marks_stopped_when_terminal_error() -> None:

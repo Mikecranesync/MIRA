@@ -11,6 +11,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -355,16 +356,30 @@ class LoopbackCAOClient:
                 break
         if latest_name is None:
             return None
-        # Refresh live terminal status so dead/completed sessions don't stay "running".
+        # Refresh live terminal status to detect truly-dead sessions.
+        # "completed" means the AI turn finished — CAO still accepts /input — session is ALIVE.
+        # Only mark stopped when confirmed dead: GET 404, terminal error, or empty terminals.
         live = self.get_session(latest_name)
-        if live:
-            t_status = live.get("terminal_status")
-            if t_status in ("completed", "error"):
-                # Terminal is dead; mark stopped in both the live dict and the in-process map.
-                live["status"] = "stopped"
-                stored = self._sessions.get(latest_name)
-                if stored:
-                    stored["status"] = "stopped"
+        if live is None:
+            # GET /sessions returned 404 — session confirmed gone.
+            stored = self._sessions.get(latest_name)
+            if stored:
+                stored["status"] = "stopped"
+            result = dict(stored or {})
+            result["status"] = "stopped"
+            result["session_id"] = latest_name
+            return result
+        t_status = live.get("terminal_status")
+        confirmed = live.get("_session_confirmed", False)
+        terminals_in_resp = live.get("_terminals_in_response", False)
+        # Dead when: terminal crashed ("error") OR GET confirmed no terminals at all.
+        # "completed" = turn done, alive → do NOT mark stopped.
+        dead = t_status == "error" or (confirmed and terminals_in_resp and t_status is None)
+        if dead:
+            live["status"] = "stopped"
+            stored = self._sessions.get(latest_name)
+            if stored:
+                stored["status"] = "stopped"
         result = live if live else dict(self._sessions.get(latest_name) or {})
         result["session_id"] = latest_name
         return result
@@ -453,19 +468,37 @@ class LoopbackCAOClient:
             stored["claimed"] = False
         return {"session_id": session_id, "task_id": task_id, "claimed": False}
 
+    @staticmethod
+    def _build_review_prompt(spec: dict[str, Any]) -> str:
+        """Compose an independent-review prompt for Charlie. Never a raw SHA."""
+        git_ref = spec["git_ref"]
+        task_id = spec.get("task_id") or ""
+        profile = spec.get("reviewer_profile") or {}
+        caps = profile.get("capabilities") or ["tests", "type-check", "inspect-files"]
+        task_clause = f" (task: {task_id})" if task_id else ""
+        return (
+            f"[CAO Handoff] Independent review requested{task_clause}. "
+            f"You are Charlie — an independent reviewer. "
+            f"Review the EXACT git ref: {git_ref}. "
+            f"Run: {', '.join(caps)}. "
+            f"Do NOT accept Bravo's summary — verify independently from the code and tests. "
+            f"Report your verdict with evidence."
+        )
+
     def request_review(self, spec: dict[str, Any]) -> dict[str, Any]:
-        # CAO has no /review; send the exact git_ref to the Charlie terminal as a message.
-        # Sending the message is required — not silently swallowed.
+        # CAO has no /review; send a full independent-review prompt to the Charlie terminal.
+        # Sending the prompt (not just a raw SHA) is required — not silently swallowed.
         session_id = spec["session_id"]
         git_ref = spec["git_ref"]
         stored = self._sessions.get(session_id)
         if stored is None:
             raise NotFoundError(f"session not found: {session_id}")
         terminal_id = stored["terminal_id"]
+        prompt = self._build_review_prompt(spec)
         self._request(
             "POST",
             f"/terminals/{terminal_id}/input",
-            params={"message": git_ref},
+            params={"message": prompt},
             timeout=5.0,
         )
         stored["status"] = "review_requested"
@@ -504,6 +537,7 @@ class LoopbackCAOClient:
             # Real CAO returns {"session": {...}, "terminals": [...]}
             # Extract session-level fields and first terminal's id/status.
             merged: dict[str, Any] = {}
+            merged["_session_confirmed"] = True  # GET succeeded; used by task_snapshot
             session_obj = resp.get("session")
             if isinstance(session_obj, dict):
                 # Skip 'status' — CAO session.status is a tmux concept ("detached"/"attached"),
@@ -511,16 +545,24 @@ class LoopbackCAOClient:
                 for k, v in session_obj.items():
                     if k != "status":
                         merged[k] = v
-            terminals = resp.get("terminals") or []
-            if terminals and isinstance(terminals[0], dict):
-                t = terminals[0]
-                merged["terminal_id"] = t.get("id") or stored.get("terminal_id", "")
-                merged["terminal_status"] = t.get("status")
+            raw_terminals = resp.get("terminals")
+            if raw_terminals is not None:
+                terminals = raw_terminals if isinstance(raw_terminals, list) else []
+                merged["_terminals_in_response"] = True
+                if terminals and isinstance(terminals[0], dict):
+                    t = terminals[0]
+                    merged["terminal_id"] = t.get("id") or stored.get("terminal_id", "")
+                    merged["terminal_status"] = t.get("status")
+                # else: terminals key present but empty → _terminals_in_response=True, no terminal_status
             # In-process data fills any gaps CAO doesn't know (role, task_id, etc.)
             for k, v in stored.items():
                 merged.setdefault(k, v)
             merged["session_id"] = session_id
             return merged
+        except HTTPError as exc:
+            if exc.code == 404:
+                return None  # session confirmed gone
+            return dict(stored)
         except Exception:
             return dict(stored)
 
