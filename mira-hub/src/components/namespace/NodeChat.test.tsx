@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
-import { ComposerButton, MessageBubble, NodeChat, isEnterToSend } from "./NodeChat";
+import { ComposerButton, MessageBubble, NodeChat, isEnterToSend, restoreComposer } from "./NodeChat";
 
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
@@ -250,5 +249,25 @@ describe("NodeChat composer accessibility", () => {
 
     expect(html).toContain('aria-label="Ask about this folder"');
     expect(html).toContain('aria-label="Send"');
+  });
+});
+
+
+// FLEET-012: on a real send failure the technician's question goes back into
+// the composer (mirrors Notebook chat's CMPS-2 restoreComposer). Pure-function
+// coverage only — no rendering needed for this part.
+describe("NodeChat restoreComposer", () => {
+  it("restores the failed message when the composer is empty", () => {
+    expect(restoreComposer("", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
+  });
+
+  it("does not clobber a new draft the technician already started typing", () => {
+    expect(restoreComposer("something else entirely", "What does fault F005 mean?")).toBe(
+      "something else entirely",
+    );
+  });
+
+  it("treats whitespace-only composer content as empty and restores the failed message", () => {
+    expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
   });
 });
