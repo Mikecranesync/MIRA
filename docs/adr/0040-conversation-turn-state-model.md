@@ -79,6 +79,16 @@ Citations arriving **before** truncation must not be rendered as though the turn
 the wire delivers sources before status, so a cut-off turn is otherwise holding real citations
 and would present as a complete, cited answer. That exact defect is what ADR-0038 rule 6 fixes.
 
+> ⚠️ **Not enforced on NodeChat today.** `NodeChat.tsx` renders citation chips as
+> `{msg.sources && <SourceChips …/>}` — ungated by outcome — while its stream sets `sources`
+> as soon as the `sources` SSE event arrives, i.e. before completion. Since `#3527` shipped a
+> Stop control (merged 2026-09-01), that path is now **reachable**: stopping mid-stream after
+> sources have arrived leaves a `stopped` turn displaying citation chips. Verified by reading
+> `NodeChat.tsx` on `5307e922d`. Fix prepared separately and HELD on
+> `fix/nodechat-gate-citations-on-outcome`. `AssetChat.tsx` has no citation chrome at all
+> (confirmed: zero matches), so it is unaffected. `NotebookChat` gates correctly — it drops
+> citations when `!sawStatus`.
+
 ### 5. Retry semantics
 
 - Retry is offered only for `failed`.
@@ -138,9 +148,16 @@ implemented on `#3521` (HELD) and is **not yet on main**.
 | §1 server owns outcome | held on the wire (ADR-0038); outcome vocabulary here is **proposed** |
 | §2 `safety_stop` self-sufficient | held for the sticky-safety half; **the enum is not yet implemented** |
 | §3 no marker ⇒ not success | **held**, soak-verified |
-| §4 citation eligibility | held in Notebook chat; AssetChat/NodeChat have no citation chrome to gate |
+| §4 citation eligibility | held in Notebook chat (drops citations on `!sawStatus`); AssetChat has no citation chrome; **NodeChat has chrome and does NOT gate it — live gap, fix HELD** |
 | §5 retry semantics | held in Notebook chat; fix pending on `#3531` (HELD) |
 | §6 persistence | held for safety markers; presentation-derivation held after tonight |
 | §7 non-answers out of history | `stopped` held; `safety_stop` pending on `#3521` (HELD) |
+
+Every row above was audited against the code on `5307e922d` rather than asserted:
+`sawStatus` present (§3); `safetyNotice` set once and never cleared (§2 sticky half); the
+outcome enum absent, so §1/§2's vocabulary is genuinely only proposed; `!m.stopped` filtering
+present on all three surfaces (§7 stopped half); only `messages` persisted, carrying semantic
+flags rather than colours or markup (§6). The §4 audit is what surfaced the NodeChat gap above —
+the claim originally read "no citation chrome to gate", which was false.
 
 This ADR is **documentation of proven behaviour plus named gaps**. It authorises no refactor.
