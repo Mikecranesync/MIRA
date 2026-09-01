@@ -96,7 +96,10 @@ the evidence, not a dependency.
        of `status`. A truncation the client did not cause (server-side close, dropped connection,
        proxy cut) resolves the promise normally with `status === ""`, and the turn renders through the
        ordinary `AnswerMarkdown` branch **with its citation chips and no "Stopped" caption**.
-     Neither is a wire change to fix; both are client changes, tracked as Phase 1 prerequisites.
+     Both are fixed: web in PR #3539, mobile in PR #3540 (neither is a wire change). The mobile
+     fix also collapses the rule into ONE shared predicate, `isTruncatedTurn` in `lib/sse.ts`, so
+     the two mobile surfaces cannot drift apart on it again — which is how the classic screen came
+     to ship without the check the adapter already had.
      **Sequencing note:** the mobile case is rare on production today only because the buffered
      cross-origin transport delivers the body in one chunk. Landing the #3453 fix (revised Context
      item 1) makes real streaming — and therefore real mid-stream truncation — the normal case, so
@@ -121,10 +124,16 @@ the evidence, not a dependency.
    - *Status: this codifies existing behaviour, it does not change it.* The route already commits
      this way. The rule exists so a future refactor cannot quietly add an abort check between the
      commit point and `recordTurn` and turn a delivered, cited answer into a stopped turn on reload.
-   - *Test gap (owed).* `chat-stop-persist.test.ts` pins the stop paths and the same-tick stop/
-     completion race, but **not** the post-commit disconnect. A test asserting that a disconnect
-     after the commit point still persists the answered turn is required before this ADR moves
-     Proposed → Accepted.
+   - *Test gap — CLOSED (PR #3541).* `chat-stop-persist.test.ts` now pins the post-commit
+     disconnect. Note what that took: a purely behavioural test **cannot** guard this rule, because
+     the tail is synchronous — the write is already in flight before any disconnect a black-box
+     test can trigger lands. Three reintroductions of the bug were applied to `route.ts` and all
+     three left every behavioural assertion green. The guard is therefore on the SHAPE of the tail
+     (no re-read of the abort signal, no reclassification inside the write call, no `await` before
+     the write), with the behavioural tests pinning the outcome and one before-the-commit-point
+     contrast so they cannot pass vacuously. **If the tail ever grows an `await`, rule 7 stops
+     being structurally true and needs a real mechanism — reopen this ADR rather than deleting
+     the test.**
 
 ## Consequences
 
