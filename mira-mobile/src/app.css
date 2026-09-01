@@ -559,3 +559,37 @@ textarea {
 }
 /* Follow-up chips likewise sit in a row, not a stack. */
 .v2-row + .chip-row .chip, .v2-viewport .chip-row .chip { width: auto; min-height: 0; }
+
+/* ── One-row notebook app bar (ChatGPT-class chrome pass) ──────────────────
+   Replaces four stacked header rows (~240 px of a 915 px screen) with a
+   single ~52 px row: back · title · Sensor · overflow. The goal is the same
+   one ChatGPT's header serves — get out of the way of the conversation. All
+   values are tokens; nothing here hardcodes a colour. */
+.nb-appbar {
+  display: flex; align-items: center; gap: var(--fl-space-1);
+  padding: var(--fl-space-1) var(--fl-space-2);
+  border-bottom: 1px solid var(--fl-line);
+  flex: none;
+}
+.nb-appbar-title {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 17px; font-weight: 600; color: var(--fl-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Square touch targets, not the global full-width button rule. */
+.nb-appbar-icon {
+  width: 40px; min-width: 40px; min-height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none; padding: 0;
+  font-size: 20px; line-height: 1; color: var(--fl-ink-muted);
+  border-radius: var(--fl-radius-pill);
+}
+.nb-appbar-icon:active { background: var(--fl-surface); }
+/* Only shown off the Chat panel, so leaving chat is reversible in one tap. */
+.nb-panel-back {
+  width: auto; min-height: 0;
+  margin: var(--fl-space-1) var(--fl-space-2) 0;
+  padding: var(--fl-space-1) 0;
+  border: none; background: none;
+  color: var(--fl-accent); font-size: 14px; text-align: left;
+}

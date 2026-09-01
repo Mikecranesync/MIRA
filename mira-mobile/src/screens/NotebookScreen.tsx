@@ -195,6 +195,8 @@ export function NotebookScreen({
   // React commits `deleting` and disables the button.
   const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
+  // Overflow sheet: everything the one-row app bar no longer shows inline.
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
   const chatV2 = useChatV2Enabled(chatV2Available);
@@ -394,51 +396,91 @@ export function NotebookScreen({
 
   return (
     <>
-      <div className="content" style={{ paddingBottom: 8, flex: "none" }}>
-        <button className="btn-link" onClick={onExit}>
-          ← Notebooks
+      {/* ONE-ROW HEADER (chrome pass). This used to be four stacked rows —
+          back link, title + two text buttons, a metadata line, and a 3-tab
+          segmented control — about 240 px of a 915 px screen before the first
+          message. A quarter of the viewport spent saying "you are in an app"
+          rather than showing the conversation.
+
+          Now: back · title · Sensor · overflow. Everything that was a tab
+          (Sources, Studio) or a rare action (Delete) moved into the overflow
+          sheet; the machine metadata moved to where it is actually useful —
+          the empty state, before any turns exist. Sensor keeps its place
+          because LOOK/READ/REPLAY is a working instrument for a technician,
+          not chrome, and it keeps its `aria-label` so the existing sensor
+          suites still find it. */}
+      <div className="nb-appbar">
+        <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
+          ‹
         </button>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
-          {/* Compact Sensor door in the existing header row — no new chrome.
-              The same instrument is reachable from the Add-sources sheet. */}
-          <button
-            className="btn-link"
-            aria-label="Open Sensor"
-            onClick={() => setSensorOpen(true)}
-            style={{ flex: "none" }}
-          >
-            Sensor
-          </button>
-          <button
-            className="btn-link"
-            aria-label="Delete notebook"
-            onClick={() => {
-              setDeleteError(null);
-              setConfirmDelete(true);
-            }}
-            style={{ color: "var(--fl-danger, #dc2626)", flex: "none" }}
-          >
-            Delete
-          </button>
-        </div>
-        <div className="meta">
-          {sources.length} source{sources.length === 1 ? "" : "s"}
-          {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
-          {notebook.model ? ` ${notebook.model}` : ""}
-        </div>
-        <div className="panel-tabs">
-          {(["sources", "chat", "studio"] as const).map((p) => (
-            <button
-              key={p}
-              className={`panel-tab ${p === panel ? "panel-tab-active" : ""}`}
-              onClick={() => setPanel(p)}
-            >
-              {p === "sources" ? `Sources (${sources.length})` : p === "chat" ? "Chat" : "Studio"}
-            </button>
-          ))}
-        </div>
+        <h3 className="nb-appbar-title">{notebook.displayName}</h3>
+        <button
+          className="nb-appbar-icon"
+          aria-label="Open Sensor"
+          onClick={() => setSensorOpen(true)}
+        >
+          ⌕
+        </button>
+        <button
+          className="nb-appbar-icon"
+          aria-label="More options"
+          data-testid="nb-overflow"
+          onClick={() => setOverflowOpen(true)}
+        >
+          ⋯
+        </button>
       </div>
+
+      {/* Leaving Chat is now a deliberate trip, so the way back is explicit.
+          Chat is the default and the 95% case, and it stays at one row. */}
+      {panel !== "chat" && (
+        <button className="nb-panel-back" onClick={() => setPanel("chat")}>
+          ‹ Back to chat
+        </button>
+      )}
+
+      {overflowOpen && (
+        <Sheet label="Notebook options" onClose={() => setOverflowOpen(false)}>
+          <div className="v2-attach-menu" data-testid="nb-overflow-menu">
+            <h3>{notebook.displayName}</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {sources.length} source{sources.length === 1 ? "" : "s"}
+              {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
+              {notebook.model ? ` ${notebook.model}` : ""}
+            </div>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("sources");
+              }}
+            >
+              📄 Sources ({sources.length})
+            </button>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("studio");
+              }}
+            >
+              ✨ Studio
+            </button>
+            <button
+              className="v2-attach-item"
+              aria-label="Delete notebook"
+              style={{ color: "var(--fl-danger, #dc2626)" }}
+              onClick={() => {
+                setOverflowOpen(false);
+                setDeleteError(null);
+                setConfirmDelete(true);
+              }}
+            >
+              🗑 Delete notebook
+            </button>
+          </div>
+        </Sheet>
+      )}
 
       {confirmDelete && (
         <>
