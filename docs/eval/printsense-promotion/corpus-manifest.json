@@ -1,0 +1,74 @@
+{
+  "recorded_utc": "2026-07-15T03:06:00Z",
+  "note": "Images live in printsense/benchmarks/_eval_inputs/ (gitignored; checksums below are the identity). Truth sets freeze only after independent human review.",
+  "strata": [
+    {
+      "id": 1,
+      "name": "canonical dense IEC sheet",
+      "image": "01_sheet20_upright.jpg",
+      "bytes": 1866158,
+      "sha256_16": "1f5ced99ba4a60d5",
+      "truth_set": "printsense/benchmarks/scu2_sheet20/rubric.json (FROZEN; type_text convention 2026-07-14, operator-authorized)",
+      "status": "benchmarked (2 x n=5 studies)"
+    },
+    {
+      "id": 2,
+      "name": "partially legible",
+      "image": "03_sheet20_lowres.jpg",
+      "bytes": 85949,
+      "sha256_16": "817ffd5a67a841ba",
+      "truth_set": "same frozen sheet-20 rubric (same drawing, degraded capture)",
+      "status": "ready to run"
+    },
+    {
+      "id": 3,
+      "name": "legitimate repeated identifiers (same-section dups must still FAIL)",
+      "image": "atv340 2-page PDF (printsense/benchmarks/atv340_vfd/; source PDFs preserved in session archive)",
+      "truth_set": "printsense/benchmarks/atv340_vfd/rubric.json (FROZEN, PR3 #2686 primary-source review)",
+      "status": "ready to run (PDF path exercises F5 client-render once derived from the iterate branch)"
+    },
+    {
+      "id": 4,
+      "name": "unrelated-print honesty (equipment photo, no schematic content)",
+      "image": "05_unrelated_print.jpg",
+      "bytes": 2170805,
+      "sha256_16": "953a17cf5b995f57",
+      "content_description": "photo of the bench Allen-Bradley Micro820 (2080-LC20-20QBB) mounted in a cabinet - real equipment, zero print/schematic content",
+      "truth_set": "truth-sets/unrelated_print.draft.json - DRAFT, PENDING MIKE REVIEW (a model must not approve its own truth set)",
+      "status": "image ready; truth set drafted, not frozen"
+    },
+    {
+      "id": 5,
+      "name": "simple motor starter",
+      "image": "_phone_kit/kit-04-motor-starter-b509.png (render of Rockwell GI-WD005 p.12, Bulletin 509 3-phase starters incl. Sizes 0-4 START-STOP w/ M seal-in + OL)",
+      "bytes": 409797,
+      "sha256_16": "1c352185558f675a",
+      "provenance": "official Rockwell literature server (public): literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf; campaign corpus entry #5 with prior run results (print-translator-campaign/results/05*.json); visually inspected 2026-07-15",
+      "truth_set": "to be drafted from the page + prior campaign results; freeze after Mike review",
+      "status": "SOURCED (public OEM print - the authentic-industrial-print requirement; Mike's own book has no starter page)"
+    },
+    {
+      "id": 6,
+      "name": "multi-page cross-reference",
+      "image": "_phone_kit/kit-02-sheet5-plc-overview.jpg + kit-03-sheet6-plc-io.jpg (AP31971 Blatt 5 + Blatt 6, same book as stratum 1)",
+      "bytes": [2101925, 2402531],
+      "sha256_16": ["6fbba76da26c8a02", "083946f3d8fb6646"],
+      "provenance": "Mike's 2026-07-12 photos (Downloads/PXL_20260712_150435196.jpg; Downloads/sheet6_cw.jpg, deliberately 180-degree as-photographed); visually inspected 2026-07-15: sheet 5 = EK1100 rack -5/A100..A107 + ETH +SCU1/+SCU3 + X24V.3/X0V.3; sheet 6 = channel wiring of -5/A101..A104 with xrefs /8.x-/11.x, -13/A1-X3/X4/X5 terminals, -20/A10..A12 DIG OUT -> Position Bits",
+      "truth_set": "to be built from the two pages' visible continuity; freeze after Mike review",
+      "status": "SOURCED from Mike's authentic drawing book (customer material - images local-only, never in git)"
+    }
+  ],
+  "optional_stratum_7": {
+    "name": "noisy/skewed field photo",
+    "image": "02_sheet20_rotated_asdelivered.jpg",
+    "bytes": 1868023,
+    "sha256_16": "57ffdfa6493b8ba5",
+    "note": "robustness supplement; must not replace any required stratum"
+  },
+  "additional_available": {
+    "image": "04_scu2_sheet5.jpg",
+    "bytes": 2377139,
+    "sha256_16": "ce91455bcb5f0711",
+    "note": "generalization case (Beckhoff EK1100+EL lineup); no rubric yet - candidate future stratum"
+  }
+}
