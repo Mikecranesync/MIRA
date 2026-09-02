@@ -6,9 +6,19 @@ import os
 from pathlib import Path
 
 from fleet_gateway.auth import configured_bearer
-from fleet_gateway.cao import FakeCAO, LoopbackCAOClient
+from fleet_gateway.cao import CAOClient, FakeCAO, LoopbackCAOClient
+from fleet_gateway.router import NodeRouter, NodeTarget
 from fleet_gateway.service import FleetGatewayService, build_service
-from fleet_gateway.worktree import worktrees_from_env
+from fleet_gateway.worktree import (
+    bravo_worktrees_from_env,
+    charlie_worktrees_from_env,
+)
+
+# Per-node CAO defaults. Charlie's CAO is reached at 127.0.0.1:19889 — the
+# loopback END of the SSH tunnel to Charlie's real 127.0.0.1:9889 — so it still
+# satisfies the loopback-only invariant (assert_loopback_cao_url).
+DEFAULT_BRAVO_CAO_URL = "http://127.0.0.1:9889"
+DEFAULT_CHARLIE_CAO_URL = "http://127.0.0.1:19889"
 
 
 def data_dir_from_env() -> Path:
@@ -23,6 +33,35 @@ def cao_from_env():
     if not url:
         return FakeCAO()
     return LoopbackCAOClient(url)
+
+
+def _cao_for_node(url_env: str) -> CAOClient:
+    """Build a node's CAO. Per the #3533 HOLD, runtime defaults to FakeCAO;
+    a real loopback CAO is used only when its URL env var is explicitly set."""
+    url = (os.environ.get(url_env) or "").strip()
+    if not url:
+        return FakeCAO()
+    return LoopbackCAOClient(url)
+
+
+def router_from_env() -> NodeRouter:
+    """Two physical nodes, each with its own CAO + node-local worktrees.
+
+    Node is a computer name, separate from provider/profile. Bravo runs the
+    Gateway (local worktrees); Charlie is reached over the loopback tunnel and
+    its worktrees are created ON Charlie via SSH.
+    """
+    bravo = NodeTarget(
+        "bravo",
+        _cao_for_node("FLEET_GATEWAY_CAO_URL_BRAVO"),
+        bravo_worktrees_from_env(),
+    )
+    charlie = NodeTarget(
+        "charlie",
+        _cao_for_node("FLEET_GATEWAY_CAO_URL_CHARLIE"),
+        charlie_worktrees_from_env(),
+    )
+    return NodeRouter({"bravo": bravo, "charlie": charlie}, default_node="bravo")
 
 
 def load_local_env() -> None:
@@ -47,8 +86,7 @@ def load_local_env() -> None:
 def service_from_env(*, requester: str = "unknown") -> FleetGatewayService:
     return build_service(
         bearer_token=configured_bearer(),
-        cao=cao_from_env(),
+        router=router_from_env(),
         data_dir=data_dir_from_env(),
         requester=requester,
-        worktrees=worktrees_from_env(),
     )

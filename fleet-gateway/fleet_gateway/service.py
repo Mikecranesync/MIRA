@@ -27,6 +27,7 @@ from fleet_gateway.errors import (
     NotFoundError,
 )
 from fleet_gateway.redact import sanitize_public_payload
+from fleet_gateway.router import NodeRouter
 from fleet_gateway.store import ArtifactStore
 from fleet_gateway.worktree import WorktreeProvisioner, worktrees_from_env
 
@@ -40,24 +41,43 @@ def _nonempty(value: Any) -> bool:
 
 
 class FleetGatewayService:
-    """Bounded control plane. Callers must pass a bearer on every invoke."""
+    """Bounded control plane. Callers must pass a bearer on every invoke.
+
+    Physical routing: every CAO/worktree operation goes through ``self.router``,
+    which maps a computer name (bravo / charlie) to that node's CAO instance and
+    node-local worktree provisioner. A ``launch_worker`` for ``charlie`` reaches
+    the Charlie CAO and provisions a Charlie-local worktree; a ``bravo`` launch
+    stays on Bravo. Session-addressed tools re-resolve the owning node from the
+    stored artifact and fail closed if it cannot be resolved — never defaulting
+    to Bravo (defaulting to Bravo was #3552).
+    """
 
     def __init__(
         self,
         *,
         bearer_token: str,
-        cao: CAOClient,
         audit: AuditLog,
         artifacts: ArtifactStore,
         default_requester: str = "unknown",
+        router: NodeRouter | None = None,
+        cao: CAOClient | None = None,
         worktrees: WorktreeProvisioner | None = None,
     ) -> None:
+        # Router is the routing authority. Legacy callers pass a single ``cao``
+        # (+ optional ``worktrees``); we wrap it so both nodes resolve to it —
+        # correct only when there is genuinely one node.
+        if router is None:
+            if cao is None:
+                raise ValueError("FleetGatewayService requires either router or cao")
+            wt = worktrees if worktrees is not None else worktrees_from_env()
+            router = NodeRouter.single(cao, wt)
         self.bearer_token = bearer_token
-        self.cao = cao
+        self.router = router
         self.audit = audit
         self.artifacts = artifacts
         self.default_requester = default_requester
-        self.worktrees = worktrees if worktrees is not None else worktrees_from_env()
+        # session_id → physical node, recorded at launch for later routing.
+        self._session_nodes: dict[str, str] = {}
 
     def list_tools(self) -> list[str]:
         return list(ALLOWED_TOOLS)
@@ -155,9 +175,43 @@ class FleetGatewayService:
         )
         return result
 
+    # ── physical-node resolution ─────────────────────────────────────────────
+    def _resolve_node(self, session_id: str | None, task_id: str | None = None) -> str:
+        """Which physical node owns this session/task. Fail closed if unknown."""
+        node: str | None = None
+        if session_id:
+            node = self._session_nodes.get(session_id)
+        if not node and task_id:
+            art = self.artifacts.read_task(task_id) or {}
+            node = _as_str(art.get("role") or art.get("node"))
+        if not node and session_id:
+            tid = self.artifacts.find_task_id_for_session(session_id)
+            if tid:
+                art = self.artifacts.read_task(tid) or {}
+                node = _as_str(art.get("role") or art.get("node"))
+        if not node:
+            raise NotFoundError(
+                f"cannot resolve physical node for session {session_id!r} / task {task_id!r}"
+            )
+        return node
+
+    def _cao_for_session(self, session_id: str, task_id: str | None = None) -> CAOClient:
+        if self.router.is_single():
+            return self.router.default_target().cao
+        return self.router.target(self._resolve_node(session_id, task_id)).cao
+
+    def _cao_for_task(self, task_id: str) -> CAOClient | None:
+        """CAO that owns a task's session, if resolvable; else None (no snapshot)."""
+        if self.router.is_single():
+            return self.router.default_target().cao
+        art = self.artifacts.read_task(task_id) or {}
+        node = _as_str(art.get("role") or art.get("node"))
+        return self.router.target(node).cao if node else None
+
     def _fleet_status(self, params: dict[str, Any], requester: str) -> dict[str, Any]:
         del params, requester
-        raw = self.cao.fleet_snapshot()
+        # Node-less op → the node the Gateway physically runs on (default/bravo).
+        raw = self.router.default_target().cao.fleet_snapshot()
         sanitized = sanitize_public_payload(raw if isinstance(raw, dict) else {})
         out: dict[str, Any] = {}
         for field in FLEET_STATUS_FIELDS:
@@ -170,7 +224,8 @@ class FleetGatewayService:
         if not task_id:
             raise ContractViolation("task_id is required")
         artifact = self.artifacts.read_task(task_id) or {}
-        snapshot = self.cao.task_snapshot(task_id) or {}
+        task_cao = self._cao_for_task(task_id)
+        snapshot = (task_cao.task_snapshot(task_id) if task_cao else None) or {}
         if not artifact and not snapshot:
             raise NotFoundError(f"task not found: {task_id}")
         # Start from artifact; overlay live-session fields where snapshot is authoritative.
@@ -257,26 +312,36 @@ class FleetGatewayService:
             "isolated_worktree": True,
             "branch": str(params.get("branch") or params["github_ref"]).strip(),
         }
-        # Create the Gateway worktree FIRST so CAO receives the real path.
+        # Resolve the physical node FIRST and fail closed before any side effect
+        # (worktree or CAO session). role IS the computer name here; the contract
+        # layer already restricts it to bravo/charlie, and the router is the
+        # defense-in-depth backstop that maps it to that node's CAO + worktrees.
+        target = self.router.target(role)
+        # Create the node-local worktree FIRST so CAO receives the real path.
+        # For charlie this runs ON Charlie over SSH; for bravo it is local.
         # Use a temporary placeholder session id (real one comes back from CAO).
         temp_session = uuid.uuid4().hex[:12]
-        worktree_path = self.worktrees.create(
+        worktree_path = target.worktrees.create(
             task_id=spec["task_id"],
             session_id=temp_session,
             base_commit=spec["base_commit"],
         )
-        self.worktrees.maybe_write_proof(
+        target.worktrees.maybe_write_proof(
             worktree_path,
             task_id=spec["task_id"],
             acceptance_criteria=spec["acceptance_criteria"],
         )
         worktree = str(worktree_path)
         spec["working_directory"] = worktree
-        launched = self.cao.launch_worker(spec)
+        launched = target.cao.launch_worker(spec)
         session_id = str(launched.get("session_id") or "")
         terminal_id = str(launched.get("terminal_id") or "")
-        if hasattr(self.cao, "record_worktree"):
-            self.cao.record_worktree(session_id, worktree)
+        # Record node ownership so every later session-scoped op routes back to
+        # the SAME node's CAO — never inferred from the session id, never Bravo.
+        if session_id:
+            self._session_nodes[session_id] = role
+        if hasattr(target.cao, "record_worktree"):
+            target.cao.record_worktree(session_id, worktree)
         record = {
             **spec,
             "session_id": session_id,
@@ -317,7 +382,8 @@ class FleetGatewayService:
             raise ContractViolation("session_id is required")
         if not isinstance(text, str) or not text.strip():
             raise ContractViolation("text is required")
-        result = self.cao.message_worker(session_id, text)
+        cao = self._cao_for_session(session_id, _as_str(params.get("task_id")))
+        result = cao.message_worker(session_id, text)
         result.setdefault("chat_is_not_done", True)
         result.setdefault("session_id", session_id)
         return sanitize_public_payload(result)
@@ -332,7 +398,8 @@ class FleetGatewayService:
             # Recover task_id from artifact scan via CAO snapshot when omitted.
             raise ContractViolation("task_id is required")
         existing = self.artifacts.read_task(task_id) or {}
-        self.cao.request_handoff(session_id, task_id)
+        cao = self._cao_for_session(session_id, task_id)
+        cao.request_handoff(session_id, task_id)
         handoff_path = self.artifacts.write_handoff(
             task_id=task_id, session_id=session_id, record=existing
         )
@@ -369,7 +436,8 @@ class FleetGatewayService:
         # Role is taken from the stored session/artifact, never from the caller.
         task_id = _as_str(params.get("task_id"))
         artifact = self.artifacts.read_task(task_id) if task_id else None
-        stored = self.cao.get_session(session_id) or {}
+        cao = self._cao_for_session(session_id, task_id)
+        stored = cao.get_session(session_id) or {}
         session_role = str(stored.get("role") or (artifact or {}).get("role") or "").strip().lower()
         if session_role != "charlie":
             raise ContractViolation("request_review is Charlie only")
@@ -379,7 +447,7 @@ class FleetGatewayService:
             "task_id": task_id,
             "reviewer_profile": dict(INDEPENDENT_REVIEWER_PROFILE),
         }
-        result = self.cao.request_review(spec)
+        result = cao.request_review(spec)
         if artifact:
             artifact = {
                 **artifact,
@@ -408,7 +476,8 @@ class FleetGatewayService:
         session_id = _as_str(params.get("session_id"))
         if not session_id:
             raise ContractViolation("session_id is required")
-        result = self.cao.stop_worker(session_id)
+        cao = self._cao_for_session(session_id, _as_str(params.get("task_id")))
+        result = cao.stop_worker(session_id)
         task_id = _as_str(params.get("task_id"))
         # Resolve task_id from artifact store when only session_id was provided.
         if not task_id:
@@ -448,17 +517,21 @@ def _as_str(value: Any) -> str | None:
 def build_service(
     *,
     bearer_token: str,
-    cao: CAOClient,
     data_dir: Path,
     requester: str = "unknown",
+    router: NodeRouter | None = None,
+    cao: CAOClient | None = None,
     worktrees: WorktreeProvisioner | None = None,
 ) -> FleetGatewayService:
+    """Build the service. Prefer ``router`` (multi-node); ``cao``/``worktrees``
+    remain accepted for legacy single-node callers (wrapped into a router)."""
     data_dir = Path(data_dir)
     return FleetGatewayService(
         bearer_token=bearer_token,
-        cao=cao,
         audit=AuditLog(data_dir / "audit.jsonl"),
         artifacts=ArtifactStore(data_dir),
         default_requester=requester,
+        router=router,
+        cao=cao,
         worktrees=worktrees,
     )
