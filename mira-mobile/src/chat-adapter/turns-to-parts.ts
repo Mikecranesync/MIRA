@@ -42,7 +42,22 @@ export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown
   });
 }
 
-/** First valid persisted safety marker, or null for legacy/invalid evidence. */
+/**
+ * First persisted safety marker, or null when there is none.
+ *
+ * FAIL SAFE, NOT OPEN (FLEET-003a). `kind` is the identity; `trigger` is
+ * observability only and is never rendered (see contract.ts). This previously
+ * also required `typeof trigger === "string"` and returned null otherwise — so a
+ * row that explicitly said `kind:"safety_notice"` was discarded over a cosmetic
+ * field, and the turn reloaded as an ORDINARY ANSWER. That is the exact
+ * invariant FLEET-003 exists to protect, failing in the wrong direction.
+ *
+ * It also made the two paths DISAGREE: the live parser is permissive
+ * (`String(frame.trigger ?? "")` in lib/sse.ts), so the same malformed safety
+ * frame showed the banner live and lost it on reload. A malformed trigger now
+ * degrades to `""` on both paths — the same value the live parser produces —
+ * so live and hydrated project identically and `comparableProjection` can pin it.
+ */
 export function safetyNoticeEntry(
   evidence: unknown[] | undefined,
 ): { kind: "safety_notice"; trigger: string } | null {
@@ -50,8 +65,11 @@ export function safetyNoticeEntry(
   for (const value of evidence) {
     if (typeof value !== "object" || value === null) continue;
     const row = value as Record<string, unknown>;
-    if (row.kind === "safety_notice" && typeof row.trigger === "string") {
-      return { kind: "safety_notice", trigger: row.trigger };
+    if (row.kind === "safety_notice") {
+      return {
+        kind: "safety_notice",
+        trigger: typeof row.trigger === "string" ? row.trigger : "",
+      };
     }
   }
   return null;
