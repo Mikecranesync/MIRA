@@ -52,6 +52,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Gate 7 runtime deps
+        # gate7_review.py calls the cascade via httpx, and its canonical PII
+        # redactor imports mira-bots/shared/inference/router.py (httpx + yaml at
+        # module scope). Without these the sanitizer import fails and the tool
+        # refuses to send unredacted content (fails LOUD → exit 2). Minimal set,
+        # not the whole repo — this lane only needs to redact + call the cascade.
+        run: python -m pip install --quiet httpx pyyaml
+
       - name: Run Gate 7 review
         id: review
         env:
