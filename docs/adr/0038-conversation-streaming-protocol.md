@@ -79,19 +79,27 @@ the evidence, not a dependency.
    - *Scope.* This binds every client that folds these frames — the mobile `createChatSseParser`,
      the web `postNotebookChat` path, and the assistant-ui adapter (ADR-0039) alike. It is a rule
      about the protocol, not about one client, which is why it lives here.
-   - *Conformance status of the existing clients (audited 2026-09-01, this ADR's own review).*
-     Both non-adapter clients violate rule 6 today, by different mechanisms:
-     - **Web hub — violates it outright.** `readNotebookStream`
-       (`mira-hub/src/components/equipment/notebook-chat-utils.ts`) seeds its fold with
-       `status: "answered"` and `break`s the read loop on `done`. A stream ending without a `status`
-       frame therefore returns `{status:"answered", citations:[…]}` — the same fabricated cited
-       completion the spike found in the adapter, in the shipped hub. It also never re-asserts the
-       abort inside the read loop, so it has no defence against a close-as-`done` cancellation.
-     - **Mobile — narrower, but still non-conformant.** `createChatSseParser`
+   - *Conformance status of the existing clients (audited 2026-09-01, this ADR's own review;
+     both violations have since been fixed — see the disposition at the end of this bullet).*
+     Both non-adapter clients violated rule 6 at the time of the audit, by different mechanisms:
+     - **Web hub — violated it outright.** `readNotebookStream`
+       (`mira-hub/src/components/equipment/notebook-chat-utils.ts`) seeded its fold with
+       `status: "answered"` and broke the read loop on `done`. A stream ending without a `status`
+       frame therefore returned `{status:"answered", citations:[…]}` — the same fabricated cited
+       completion the spike found in the adapter, in the shipped hub. It also never re-asserted the
+       abort inside the read loop, so it had no defence against a close-as-`done` cancellation.
+     - **Mobile — narrower, but also violated it.** `createChatSseParser`
        (`mira-mobile/src/lib/sse.ts`) seeds `status` as the empty string, so it does not *invent*
        `answered`; and `requestStream` (`mira-mobile/src/api/client.ts`) already re-asserts the abort
        after every `reader.read()` — with a comment naming the buffered-Response cause — so a
-       technician-initiated **Stop** is handled correctly. The gap is that `NotebookScreen` derives
+       **client-side abort** is folded correctly *where one can occur*. On device it cannot: the
+       composer gates the Stop control on `canCancelChatTransport()`
+       (`!Capacitor.isNativePlatform()`), so a native build renders a disabled "Working…" and the
+       technician has no way to initiate a Stop at all. That gating is deliberate — the CapacitorHttp
+       fetch patch drops `AbortSignal` (revised Context item 1), so a Stop offered there would
+       fabricate a stopped turn while the server kept generating and kept billing. Read this bullet
+       as being about the abort *path*, not about a control a technician can reach on the phone
+       today. The gap is that `NotebookScreen` derived
        the stopped render from the client's own `ctl.signal.aborted` flag rather than from the absence
        of `status`. A truncation the client did not cause (server-side close, dropped connection,
        proxy cut) resolves the promise normally with `status === ""`, and the turn renders through the
@@ -103,7 +111,9 @@ the evidence, not a dependency.
      **Sequencing note:** the mobile case is rare on production today only because the buffered
      cross-origin transport delivers the body in one chunk. Landing the #3453 fix (revised Context
      item 1) makes real streaming — and therefore real mid-stream truncation — the normal case, so
-     rule 6 should be satisfied in both clients **before or with** that work, not after it.
+     rule 6 should be satisfied in both clients **before or with** that work, not after it. That
+     sequencing condition is now **met**: both client fixes (#3539, #3540) landed on `main` ahead of
+     the #3453 work, so real streaming can arrive without opening a truncation window.
 
 7. **The server's terminal classification commits before `status` reaches the wire; a later client
    disconnect MUST NOT reclassify it.**
@@ -141,6 +151,6 @@ the evidence, not a dependency.
 - Turn-ID work is the only schema-touching item; until it lands, the adapter synthesizes message identity (persisted row id / client-generated live id) and cannot do true optimistic reconciliation — acceptable for the spike, listed as a Phase 1 prerequisite.
 - Revisit trigger: if the #3453 CORS/cookie work lands real device streaming AND assistant-ui deprecates custom runtimes (no sign of the latter), re-evaluate Option B. Record that in the flag-removal review. Note the first half is now *expected* rather than speculative — per the revised Context item 1 the fix is scoped and does not need a native bridge — so this trigger is gated on the assistant-ui half.
 - PRD §12.3's "no control state from scraping Markdown" remains violated by `[n]` citation linking regardless of protocol; the mitigation (structured `sources` gate + `selector` span-anchoring later) is tracked in the adapter ADR, not here.
-- Rule 6 makes truncation a **first-class client state**, not an edge case: every folding client carries a "saw `status`" flag, and the terminal render is guarded by it. The spike's adapter fix took this shape (6 unit tests pin the truncation contract; the post-fix stop sweep showed 0 violations at every stop position). The audit recorded under rule 6 found the **shipped web hub reader has the same defect** and the mobile client a narrower form of it — so this rule has two live call sites to fix, not just a spike lesson to remember. Both are client-side changes; neither touches the wire.
-- Rule 7 costs nothing to honour today (it describes what the route already does) but constrains future edits: the commit point is load-bearing, and the abort check that defines it must not be duplicated later in the terminal block. The owed test is the enforcement mechanism.
+- Rule 6 makes truncation a **first-class client state**, not an edge case: every folding client carries a "saw `status`" flag, and the terminal render is guarded by it. The spike's adapter fix took this shape (6 unit tests pin the truncation contract; the post-fix stop sweep showed 0 violations at every stop position). The audit recorded under rule 6 found the **shipped web hub reader had the same defect** and the mobile client a narrower form of it — so this rule had two live call sites to fix, not just a spike lesson to remember. Both have since been fixed (#3539 web, #3540 mobile) and both were client-side changes; neither touched the wire.
+- Rule 7 costs nothing to honour today (it describes what the route already does) but constrains future edits: the commit point is load-bearing, and the abort check that defines it must not be duplicated later in the terminal block. That test is no longer owed — it landed in #3541, and it is the enforcement mechanism.
 - Neither rule is a wire change, so neither affects OTA-deployed clients in the field: old bundles keep parsing the same frames. Rule 6 is the one place where an old bundle is *behaviourally* wrong (it can still fabricate a completion on truncation) — fixing that in mobile is an OTA-shippable client change, tracked as a Phase 1 prerequisite, not a protocol migration.
