@@ -76,7 +76,11 @@ jobs:
           # rc: 0 = review produced (PASS or BLOCK — read the verdict);
           #     2 = whole cascade failed (no review); 1 = usage/fetch error.
           if [ "$rc" -eq 0 ] && [ -f gate7.md ]; then
-            verdict="$(grep -m1 -oE '\*\*Verdict:\*\* [A-Z]+' gate7.md | awk '{print $2}')"
+            # Case-insensitive + normalize to upper: render() emits "**Verdict:** BLOCK"
+            # today, but the stage-2 blocking promotion compares == 'BLOCK', so a silent
+            # format drift must not read a real BLOCK as UNKNOWN and un-gate it.
+            verdict="$(grep -m1 -oiE '\*\*Verdict:\*\* [A-Za-z]+' gate7.md \
+              | awk '{print $2}' | tr '[:lower:]' '[:upper:]')"
             echo "verdict=${verdict:-UNKNOWN}" >> "$GITHUB_OUTPUT"
           elif [ "$rc" -eq 2 ]; then
             echo "verdict=CASCADE_UNAVAILABLE" >> "$GITHUB_OUTPUT"
