@@ -1,0 +1,158 @@
+name: Gate 7 Adversarial Review
+
+# Independent adversarial review lane (convergence doctrine §Gate 7). Runs a
+# SEPARATE model, on a fresh context, briefed to *disprove* the PR — the CI-side
+# twin of the developer-side Codex loop (scripts/adversarial-review.sh).
+#
+# Provider — owner decision 2026-08-16: NO OpenAI in CI. This runs on the free
+# Groq -> Cerebras -> Together cascade already used by code-review.yml. No new
+# credential is introduced.
+#
+# ADVISORY (rollout stage 1): this workflow NEVER fails the build. It posts (and
+# refreshes in place) a single sticky verdict comment per PR. Promote to a
+# blocking required check only after watching a few runs — see the "Promotion"
+# note at the bottom of this file.
+
+concurrency:
+  # One in-flight review per PR; a newer push cancels the stale run so rapid
+  # commits don't stack cascade calls.
+  group: gate7-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+    # Gate 7 reviews code diffs; skip pure docs/wiki/rules PRs (same scope as
+    # code-review.yml). The escalation heuristics still see the full file list.
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate7:
+    name: Gate 7 (advisory)
+    runs-on: ubuntu-latest
+    # Draft PRs skip the lane until marked ready (avoids reviewing WIP). Remove
+    # this guard to review drafts too.
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run Gate 7 review
+        id: review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          TOGETHERAI_API_KEY: ${{ secrets.TOGETHERAI_API_KEY }}
+        run: |
+          set +e
+          python tools/gate7_review.py "${{ github.event.pull_request.number }}" -o gate7.md
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # rc: 0 = review produced (PASS or BLOCK — read the verdict);
+          #     2 = whole cascade failed (no review); 1 = usage/fetch error.
+          if [ "$rc" -eq 0 ] && [ -f gate7.md ]; then
+            verdict="$(grep -m1 -oE '\*\*Verdict:\*\* [A-Z]+' gate7.md | awk '{print $2}')"
+            echo "verdict=${verdict:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 2 ]; then
+            echo "verdict=CASCADE_UNAVAILABLE" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=ERROR" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post / refresh sticky verdict comment
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          RC: ${{ steps.review.outputs.rc }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- GATE7-REVIEW -->';
+            const rc = process.env.RC;
+            const verdict = process.env.VERDICT || 'UNKNOWN';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let body;
+            if (rc === '0' && fs.existsSync('gate7.md')) {
+              body = fs.readFileSync('gate7.md', 'utf8');
+            } else if (verdict === 'CASCADE_UNAVAILABLE') {
+              body = `# Gate 7 adversarial review — PR #${context.issue.number}\n\n` +
+                `**Verdict:** CASCADE_UNAVAILABLE — the whole Groq → Cerebras → Together ` +
+                `cascade failed, so no review was produced. This is advisory: fall back to a ` +
+                `substitute reviewer and record the deviation. [Run log](${runUrl}).`;
+            } else {
+              body = `# Gate 7 adversarial review — PR #${context.issue.number}\n\n` +
+                `**Verdict:** ERROR — Gate 7 could not run (exit ${rc}). See the ` +
+                `[run log](${runUrl}). Advisory: this does not block the PR.`;
+            }
+            // Advisory banner + marker so the comment is found & refreshed in place.
+            body = `${marker}\n> _Gate 7 is advisory and does not block this PR. One check of many; ` +
+              `a PASS is evidence, not proof._\n\n${body}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const mine = comments.find(c => c.body && c.body.includes(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: mine.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Gate 7 — ${{ steps.review.outputs.verdict }}"
+            echo ""
+            echo "Advisory lane (does not block). Exit code: \`${{ steps.review.outputs.rc }}\`."
+            if [ -f gate7.md ]; then
+              echo ""
+              echo "<details><summary>Full review</summary>"
+              echo ""
+              cat gate7.md
+              echo ""
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# ── Promotion to a blocking required check (rollout stage 2) ──────────────────
+# After a few advisory runs prove the lane is signal-not-noise:
+#   1. Add a gate step that fails on a real BLOCK, e.g.:
+#        - name: Enforce verdict
+#          if: steps.review.outputs.verdict == 'BLOCK'
+#          run: 'echo "Gate 7 BLOCK — see the PR comment"; exit 1'
+#      (Keep CASCADE_UNAVAILABLE/ERROR non-blocking — a dead cascade is not the
+#      PR's fault; that is the substitute-panel-and-record-deviation path.)
+#   2. Mark "Gate 7 (advisory)" a required status check in branch protection.
