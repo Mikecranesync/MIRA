@@ -25,7 +25,26 @@ coverage used direct declarations plus TypeScript/tests; initialize before relyi
 
 ---
 
+# Hot Cache — 2026-09-02 — Alpha joined the CAO fleet (Bravo→TS-SSH→Alpha loopback CAO LIVE)
+
+CAO = `cli-agent-orchestrator` **v2.5.0** (AWS Labs, uv tool; data/logs in
+`~/.aws/cli-agent-orchestrator/`). Installed on Alpha (`uv tool install cli-agent-orchestrator==2.5.0`),
+LaunchAgent `com.factorylm.cao-server` (clone of Bravo's): `cao-server --host 127.0.0.1 --port 9889`,
+KeepAlive. Verified loopback-ONLY (refused on TS + LAN IPs); `/sessions` = `[]`. Bravo-side persistent
+tunnel LIVE: `com.factorylm.alpha-cao-tunnel` → `~/.factorylm/alpha-cao-tunnel.sh` →
+`ssh -N -L 127.0.0.1:29889:127.0.0.1:9889 factorylm@100.107.140.12` (Tailscale ONLY — no LAN branch,
+Alpha is 192.168.4.0/22, unroutable to 192.168.1.x; host key pinned; verified end-to-end from Bravo).
+**Bravo-local CAO port map: 9889 = Bravo self, 19889 = Charlie, 29889 = Alpha.** Orchestrator
+(grokbot) connects from Bravo at `http://127.0.0.1:29889` — no auth token (loopback+SSH is the auth).
+Bravo→Alpha SSH key-auth already worked pre-existing (shared id_ed25519, Alpha authorized_keys).
+Flag: retired OpenClaw gateway still KeepAlive on Alpha 127.0.0.1:18789 w/ plaintext GROQ key in its
+plist — untouched, cleanup decision pending.
+
+---
+
 # Hot Cache — 2026-09-02 — Alpha connectivity survey (observe-only, no changes made)
+---
+
 
 Alpha (Michaels-Mac-mini-2, user `factorylm`) LAN is **192.168.4.30/22** on en0 Ethernet (gw
 192.168.4.1) + Wi-Fi 192.168.4.32 — the old `192.168.4.28` record is STALE. The /22 (192.168.4.0–
