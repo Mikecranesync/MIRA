@@ -262,3 +262,7 @@ Mike Harper (CEO) approved architecture document merge.
 ## 2026-07-03T14:08:08Z — session auto-commit
 
 Changed: `wiki/hot.md`
+
+## 2026-09-02T23:19:21Z — session auto-commit
+
+Changed: `wiki/hot.md`
