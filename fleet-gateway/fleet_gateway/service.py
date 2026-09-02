@@ -25,6 +25,7 @@ from fleet_gateway.errors import (
     DeniedToolError,
     FleetGatewayError,
     NotFoundError,
+    OwnershipError,
 )
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.store import ArtifactStore
@@ -285,6 +286,7 @@ class FleetGatewayService:
             "claimed_commit": spec["base_commit"],
             "status": launched.get("status") or "running",
             "claimed": True,
+            "fleet_owned": True,
             "handoff": None,
             "tests": "not_run",
             "type_check": "not_run",
@@ -309,6 +311,19 @@ class FleetGatewayService:
             }
         )
 
+    def _require_fleet_ownership(self, session_id: str) -> None:
+        """Raise OwnershipError if the fleet cannot prove it launched session_id.
+
+        The artifact store is the durable source of truth.  If no artifact
+        records this session, the fleet does not own it and must not act on it.
+        No CAO call is made when ownership cannot be proven (fail-closed).
+        """
+        if not self.artifacts.is_fleet_owned(session_id):
+            raise OwnershipError(
+                f"refuse: cannot prove fleet owns session '{session_id}' — "
+                "no matching fleet artifact; no action taken"
+            )
+
     def _message_worker(self, params: dict[str, Any], requester: str) -> dict[str, Any]:
         del requester
         session_id = _as_str(params.get("session_id"))
@@ -317,6 +332,7 @@ class FleetGatewayService:
             raise ContractViolation("session_id is required")
         if not isinstance(text, str) or not text.strip():
             raise ContractViolation("text is required")
+        self._require_fleet_ownership(session_id)
         result = self.cao.message_worker(session_id, text)
         result.setdefault("chat_is_not_done", True)
         result.setdefault("session_id", session_id)
@@ -331,6 +347,7 @@ class FleetGatewayService:
         if not task_id:
             # Recover task_id from artifact scan via CAO snapshot when omitted.
             raise ContractViolation("task_id is required")
+        self._require_fleet_ownership(session_id)
         existing = self.artifacts.read_task(task_id) or {}
         self.cao.request_handoff(session_id, task_id)
         handoff_path = self.artifacts.write_handoff(
@@ -408,6 +425,7 @@ class FleetGatewayService:
         session_id = _as_str(params.get("session_id"))
         if not session_id:
             raise ContractViolation("session_id is required")
+        self._require_fleet_ownership(session_id)
         result = self.cao.stop_worker(session_id)
         task_id = _as_str(params.get("task_id"))
         # Resolve task_id from artifact store when only session_id was provided.

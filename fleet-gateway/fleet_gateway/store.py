@@ -67,6 +67,14 @@ class ArtifactStore:
                 continue
         return None
 
+    def is_fleet_owned(self, session_id: str) -> bool:
+        """Return True iff the artifact store holds a fleet-launched record for session_id.
+
+        Wraps find_task_id_for_session — artifact presence is the ownership proof.
+        A stopped or handed-off session is still owned; ownership is never revoked.
+        """
+        return self.find_task_id_for_session(session_id) is not None
+
     def write_handoff(self, *, task_id: str, session_id: str, record: dict[str, Any]) -> Path:
         path = self._handoff_path(task_id)
         lines = [
