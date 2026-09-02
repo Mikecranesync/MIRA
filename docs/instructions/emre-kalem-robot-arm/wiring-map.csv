@@ -1,0 +1,11 @@
+physical_servo,joint,servo_type,recommended_signal_pin,external_5v,common_ground,notes
+base,Base rotation,MG995 or MG996R 180-degree,D3,Servo red to switched 5V bus,Servo brown/black to ground bus,"Matches Emre original sketch. Base may draw high current when starting."
+arm_a_left,Shoulder / Arm A primary,MG995 or MG996R 180-degree,D4,Servo red to switched 5V bus,Servo brown/black to ground bus,"Moves from the logical Arm A angle."
+arm_a_right,Shoulder / Arm A mirrored,MG995 or MG996R 180-degree,D5,Servo red to switched 5V bus,Servo brown/black to ground bus,"Mirrored in code as 180 - Arm A. Reverse this flag if your linkage moves the wrong way."
+arm_b,Elbow / Arm B,MG995 or MG996R 180-degree,D6,Servo red to switched 5V bus,Servo brown/black to ground bus,"Use conservative limits until the printed elbow is calibrated."
+wrist_a,Wrist pitch,MG90S 180-degree,D9,Servo red to switched 5V bus,Servo brown/black to ground bus,"Micro servo. Watch for binding at wrist extremes."
+wrist_b,Wrist roll,MG90S 180-degree,D10,Servo red to switched 5V bus,Servo brown/black to ground bus,"Micro servo. Keep wire slack through wrist rotation."
+gripper,Gripper open/close,MG90S 180-degree,D11,Servo red to switched 5V bus,Servo brown/black to ground bus,"Calibrate open/closed angles with no object first."
+arduino_uno,Controller logic,Arduino Uno,USB serial,Do not power servos from Uno 5V,Arduino GND to servo ground bus,"Uno sends signal only. The external supply powers the servo red wires."
+kcd1_rocker_switch,Servo power enable,KCD1 rocker switch,not applicable,Inline on 5V positive feed before servo bus,not applicable,"Use as servo-power enable, not as an emergency stop for hazardous equipment."
+external_supply,Servo rail power,5V 10A regulated supply,not applicable,+5V to switch/fuse then servo red bus,0V to ground bus,"Adjust to about 5.0V before connecting servos. Keep mains terminals covered."
