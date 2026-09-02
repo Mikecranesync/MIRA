@@ -85,11 +85,22 @@ const AnswerPart: DataMessagePartComponent = ({ data }) => {
           ))}
         </div>
       )}
+      {/* MESSAGE ACTIONS (chrome pass 3/3). Was a blue "Copy" TEXT LINK, which
+          reads as a hyperlink in the answer body. Now a muted icon in an
+          action row — the shape every modern assistant uses, and it stops
+          competing with the citation chips directly above it.
+
+          Deliberately ONLY copy. ChatGPT's row also carries 👍/👎 and a
+          regenerate; neither exists here yet — there is no feedback sink to
+          write a rating to, and regenerate needs a real re-send of the
+          original question. Rendering dead buttons to look more like ChatGPT
+          would be decoration that lies about what the app can do. */}
       <div className="v2-message-actions">
         <button
           type="button"
-          className="btn-link"
+          className="v2-msg-action"
           aria-label="Copy answer"
+          title={copied ? "Copied" : "Copy"}
           onClick={() => {
             void copyText(d.text).then((ok) => {
               setCopied(ok);
@@ -97,7 +108,7 @@ const AnswerPart: DataMessagePartComponent = ({ data }) => {
             });
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? "✓" : "⧉"}
         </button>
       </div>
     </div>
@@ -332,7 +343,17 @@ export function ChatV2({
             send on a phone is not a tradeoff worth taking for shell purity.
             assistant-ui still owns the thread, scroll and run state — the
             parts of the shell where it earns its keep. */}
+        {/* CAPSULE COMPOSER (chrome pass 2/3). Was: a "+" floating outside a
+            pill, then the input, then a wide grey button with the word "Send"
+            in it — three separate objects reading as a form. Now one rounded
+            capsule holds all three, the way every modern chat composer does,
+            so the eye reads a single input affordance.
+
+            Every data-testid and aria-label below is unchanged: the shipping
+            ChatV2 suites drive Send/Stop/attach through them, and this is a
+            presentation change, not a behaviour change. */}
         <div className="composer v2-composer">
+          <div className="v2-capsule">
           <button
             className="v2-attach"
             aria-label="Add a photo or document"
@@ -368,35 +389,41 @@ export function ChatV2({
               }
             }}
           />
+          {/* One round action button that changes meaning in place — send,
+              stop, working — instead of three differently-shaped buttons.
+              `Working…` stays a distinct state rather than a cosmetic Stop:
+              on a natively-buffered turn there is nothing to abort, and
+              offering Stop there would be a lie about what the tap does. */}
           {busy && canStop ? (
             <button
-              className="btn-primary"
+              className="v2-action v2-action-stop"
               data-testid="v2-stop"
               aria-label="Stop generating"
               onClick={handlers.onStop}
             >
-              Stop
+              ■
             </button>
           ) : busy ? (
             <button
-              className="btn-primary"
+              className="v2-action"
               data-testid="v2-working"
               aria-label="Working"
               disabled
             >
-              Working…
+              <span className="v2-working-dot" />
             </button>
           ) : (
             <button
-              className="btn-primary"
+              className="v2-action"
               data-testid="v2-send"
               aria-label="Send"
               disabled={!draft.trim()}
               onClick={submit}
             >
-              Send
+              ↑
             </button>
           )}
+          </div>
         </div>
 
         {attachOpen && (
