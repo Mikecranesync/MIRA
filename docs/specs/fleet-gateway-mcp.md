@@ -1,6 +1,6 @@
 # Fleet Gateway MCP v1
 **Version:** 1.0
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-02
 **Owner:** Mike Harper / FactoryLM
 **Issue:** [#3532](https://github.com/Mikecranesync/MIRA/issues/3532)
 
@@ -15,7 +15,9 @@ This is **not** `mira-mcp` (product diagnostics / CMMS) and **not** `factorylm/g
 - Seven locked tools (two read, five mutate)
 - Mutate audit log (JSONL)
 - Loopback-only CAO client (`127.0.0.1`) behind an interface; FakeCAO default/stub
-- Isolated-worktree launch for `bravo` | `charlie` on `claude` | `codex`
+- Per-role physical node config for `bravo` | `charlie`: CAO URL, repo root,
+  worktree parent, and expected hostname
+- Isolated-worktree launch on the requested target node only
 - Durable HANDOFF artifacts; chat is never "done"
 
 **OUT of scope (this PR / v1)**
@@ -43,9 +45,21 @@ Grok / Foreman ──HTTPS + Bearer──▶ Fleet Gateway (this package)
 
 - **Layer:** Control plane (fleet), not product diagnostics
 - **Default bind:** `127.0.0.1:8765` (override with `FLEET_GATEWAY_HOST` / `FLEET_GATEWAY_PORT`)
-- **CAO:** unset `FLEET_GATEWAY_CAO_URL` → FakeCAO stub. If set, URL **must** be `http(s)://127.0.0.1…` with no credentials — connects to an existing **colocated loopback cao-server**. This package never listens as CAO.
+- **CAO:** Bravo uses `FLEET_GATEWAY_BRAVO_CAO_URL`, or the legacy Bravo-only
+  `FLEET_GATEWAY_CAO_URL`, or FakeCAO when unset. Charlie is configured only by
+  `FLEET_GATEWAY_CHARLIE_CAO_URL`; missing Charlie config is a hard refusal and
+  never reuses Bravo CAO. If any CAO URL is set, it **must** be
+  `http(s)://127.0.0.1…` with no credentials — connects to an existing
+  **colocated loopback cao-server**. This package never listens as CAO.
 - **Agent profile mapping:** local CAO has no `bravo`/`charlie` profiles → `bravo` maps to `developer`, `charlie` maps to `reviewer` (CAO built-ins). Provider: `claude` → `claude_code`, `codex` → `codex`.
-- **Worktrees:** Gateway creates the git worktree before calling CAO and passes the real path as `working_directory`. CAO `use_worktree` is never set; Gateway worktrees are never deleted by CAO.
+- **Worktrees:** Gateway creates the git worktree from the target node's
+  configured repo root into the target node's configured worktree parent before
+  calling that target node's CAO. CAO `use_worktree` is never set; Gateway
+  worktrees are never deleted by CAO.
+- **Charlie fail-closed:** a Charlie launch requires Charlie config, Charlie CAO
+  health `ok`, actual hostname matching `CharlieNodes-Mac-mini.local` (normalizing
+  optional `.local`), and repo/worktree paths under `/Users/charlienode/...`.
+  Any mismatch raises `NodeRoutingError` / `ContractViolation` before launch.
 - **Foreman never** connects to Tailscale, CAO, LAN, or worker ports.
 
 Public TLS termination and any CAO tunnel are **not** this PR.
@@ -65,7 +79,7 @@ Public TLS termination and any CAO tunnel are **not** this PR.
 |---|---|---|
 | `fleet_status` | read | Separate fields: `node_health`, `cao_health`, `claude_readiness`, `claude_auth`, `codex_readiness`, `codex_auth`, `current_session`, `current_task`, `heartbeat`, `context_used`, `context_remaining`. Never LAN/Tailscale IPs, CAO ports, or secrets. |
 | `task_status` | read | `task_id`, `node`, `provider`, `branch`, `worktree`, `commit`, `handoff`, `tests`, `type_check`, `build`, `review_verdict`, `blockers`, `claimed_commit_matches_artifact` (bool). `done` is never inferred from chat. |
-| `launch_worker` | mutate | `role` = `bravo`\|`charlie` only (specialized/PLC refused). Required: `provider` `claude`\|`codex`, `task_id`, `github_ref`, `base_commit`, `acceptance_criteria`. Always isolated worktree (`isolated_worktree=true`). No shell/merge/deploy. |
+| `launch_worker` | mutate | `role` = `bravo`\|`charlie` only (specialized/PLC refused). Required: `provider` `claude`\|`codex`, `task_id`, `github_ref`, `base_commit`, `acceptance_criteria`. Always isolated worktree (`isolated_worktree=true`). The requested role selects its own CAO/repo/worktree config; Charlie missing/unhealthy/mismatched config fails closed with no Bravo fallback. No shell/merge/deploy. |
 | `message_worker` | mutate | `text` to one `session_id`. |
 | `request_handoff` | mutate | Write durable HANDOFF artifact; stop claiming the task. |
 | `request_review` | mutate | Charlie only. Independent reviewer profile with tests / type-check / inspect-files. Reviews the exact Git ref, not a Bravo summary. |
@@ -82,7 +96,15 @@ These tools are **not registered** and `invoke()` raises `DeniedToolError`: merg
 | Var | Required | Default | Purpose |
 |---|---|---|---|
 | `FLEET_GATEWAY_BEARER` | yes | — | Bearer token. Empty → all tool calls refused. |
-| `FLEET_GATEWAY_CAO_URL` | no | unset (FakeCAO) | Loopback CAO base URL. Non-`127.0.0.1` refused. |
+| `FLEET_GATEWAY_BRAVO_CAO_URL` | no | unset (FakeCAO) | Bravo loopback CAO base URL. Non-`127.0.0.1` refused. |
+| `FLEET_GATEWAY_CHARLIE_CAO_URL` | Charlie launches | — | Charlie loopback CAO base URL. Required for Charlie; never falls back to Bravo. Non-`127.0.0.1` refused. |
+| `FLEET_GATEWAY_CAO_URL` | no | unset (FakeCAO) | Legacy Bravo-only loopback CAO base URL. Ignored for Charlie. |
+| `FLEET_GATEWAY_BRAVO_REPO` | no | `/Users/bravonode/Mira` | Bravo source repo for worktree creation. Legacy `FLEET_GATEWAY_REPO` remains a Bravo fallback. |
+| `FLEET_GATEWAY_BRAVO_WORKTREE_PARENT` | no | `/Users/bravonode/Mira-worktrees` | Bravo worktree parent. Legacy `FLEET_GATEWAY_WORKTREE_PARENT` remains a Bravo fallback. |
+| `FLEET_GATEWAY_BRAVO_EXPECTED_HOSTNAME` | no | `FactoryLM-Bravo.local` | Bravo physical hostname expectation. |
+| `FLEET_GATEWAY_CHARLIE_REPO` | Charlie launches | `/Users/charlienode/Mira` | Charlie source repo for worktree creation. Must stay under `/Users/charlienode`. |
+| `FLEET_GATEWAY_CHARLIE_WORKTREE_PARENT` | Charlie launches | `/Users/charlienode/Mira-worktrees` | Charlie worktree parent. Must stay under `/Users/charlienode`. |
+| `FLEET_GATEWAY_CHARLIE_EXPECTED_HOSTNAME` | Charlie launches | `CharlieNodes-Mac-mini.local` | Charlie physical hostname expectation. |
 | `FLEET_GATEWAY_DATA_DIR` | no | `fleet-gateway/var` | Audit JSONL + HANDOFF/task artifacts |
 | `FLEET_GATEWAY_HOST` | no | `127.0.0.1` | HTTP bind. Public bind is not this PR. |
 | `FLEET_GATEWAY_PORT` | no | `8765` | HTTP bind port (not a CAO port) |
@@ -95,6 +117,7 @@ Example env: `fleet-gateway/.env.example` (placeholders only).
 | Tools | Exactly 7; deny-list absent |
 | Auth tests | Unauthenticated and wrong token rejected |
 | Launch | specialized rejected; required fields + isolated worktree enforced |
+| Node routing | Charlie missing config, unhealthy CAO, wrong host, or wrong paths refuse before CAO launch |
 | Review | non-Charlie rejected; exact git ref |
 | Audit | written on mutate; secrets never logged |
 | CAO | loopback-only; tests use FakeCAO |
@@ -110,14 +133,23 @@ Example env: `fleet-gateway/.env.example` (placeholders only).
 8. `task_status` includes `claimed_commit_matches_artifact`.
 9. Secrets never appear in the audit log.
 10. CAO adapter refuses non-loopback URLs and does not bind.
+11. Charlie launch never silently maps to Bravo: missing Charlie URL, Charlie CAO
+    health failure, wrong hostname, or Bravo-style paths refuse before CAO launch.
 
 **Done means** a durable Git ref with tests green — not an agent saying done. This PR is HELD (no merge, no deploy, no CAO exposure).
 
 ## Known Issues
 - FastMCP is optional at runtime (`fastmcp` extra). The locked tool names live in `fleet_gateway.contract` / `mcp_api` regardless. Native `POST /mcp` JSON-RPC does not require FastMCP.
 - `launch_worker` creates a real `git worktree add --detach` directory and never deletes it.
-- `LoopbackCAOClient` requires `FLEET_GATEWAY_CAO_URL=http://127.0.0.1:<port>` pointing to a running colocated cao-server. Non-`127.0.0.1` URLs are refused by construction.
+- `LoopbackCAOClient` requires a role CAO URL such as
+  `FLEET_GATEWAY_BRAVO_CAO_URL=http://127.0.0.1:<port>` or
+  `FLEET_GATEWAY_CHARLIE_CAO_URL=http://127.0.0.1:<port>` pointing to a running
+  colocated cao-server. Non-`127.0.0.1` URLs are refused by construction.
+- This spec update does not install anything on Charlie, create tunnels, modify
+  credentials, merge, or deploy. Physical Charlie wiring remains undone.
 
 ## Change Log
 - 2026-08-31 — v1 locked contract implemented on `feat/fleet-gateway-mcp-v1` (#3532).
 - 2026-08-31 — Native MCP JSON-RPC `POST /mcp` + real isolated git worktrees (still HELD).
+- 2026-09-02 — Multi-node code routing: per-role NodeConfig and Charlie fail-closed
+  checks; physical Charlie wiring/tunnels still not done.

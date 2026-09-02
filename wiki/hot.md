@@ -1,3 +1,18 @@
+# Hot Cache — 2026-09-02 — Fleet Gateway multi-node routing code proof
+
+Branch `fleet/FLEET-PRD-P1-MULTI-NODE-ROUTING-001` implements code-only
+per-role Fleet Gateway `NodeConfig`: Bravo has its own CAO/repo/worktree config
+and legacy `FLEET_GATEWAY_CAO_URL` remains Bravo-only; Charlie requires
+`FLEET_GATEWAY_CHARLIE_CAO_URL`, Charlie hostname, Charlie `/Users/charlienode`
+paths, and Charlie CAO health `ok` before launch. `role=charlie` now raises
+`NodeRoutingError` with no Bravo fallback when config/health/host/path is wrong.
+Tests: `python3 -m pytest fleet-gateway/tests` → 87 passed; compileall and
+`git diff --check` passed; `ruff` unavailable locally. Physical Charlie
+wiring/tunnels/credentials were NOT done; no merge/deploy; #3533 remains HELD.
+Durable proof: `.fleet/FLEET-PRD-P1-MULTI-NODE-ROUTING-001.md`.
+
+---
+
 # Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
 
 `feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).

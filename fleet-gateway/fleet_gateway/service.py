@@ -24,7 +24,16 @@ from fleet_gateway.errors import (
     ContractViolation,
     DeniedToolError,
     FleetGatewayError,
+    NodeRoutingError,
     NotFoundError,
+)
+from fleet_gateway.node_config import (
+    HostnameProvider,
+    NodeConfig,
+    current_hostname,
+    make_bravo_config,
+    validate_launch_target,
+    verify_worktree_path,
 )
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.store import ArtifactStore
@@ -51,13 +60,27 @@ class FleetGatewayService:
         artifacts: ArtifactStore,
         default_requester: str = "unknown",
         worktrees: WorktreeProvisioner | None = None,
+        node_configs: dict[str, NodeConfig] | None = None,
+        hostname_provider: HostnameProvider = current_hostname,
     ) -> None:
         self.bearer_token = bearer_token
-        self.cao = cao
         self.audit = audit
         self.artifacts = artifacts
         self.default_requester = default_requester
-        self.worktrees = worktrees if worktrees is not None else worktrees_from_env()
+        self.hostname_provider = hostname_provider
+        legacy_worktrees = worktrees if worktrees is not None else worktrees_from_env()
+        if node_configs is None:
+            node_configs = {
+                "bravo": make_bravo_config(
+                    cao=cao,
+                    repo=legacy_worktrees.repo,
+                    worktree_parent=legacy_worktrees.parent,
+                )
+            }
+        self.node_configs = {role.lower(): config for role, config in node_configs.items()}
+        bravo_config = self.node_configs.get("bravo")
+        self.cao = bravo_config.cao if bravo_config is not None else cao
+        self._session_roles: dict[str, str] = {}
 
     def list_tools(self) -> list[str]:
         return list(ALLOWED_TOOLS)
@@ -170,7 +193,7 @@ class FleetGatewayService:
         if not task_id:
             raise ContractViolation("task_id is required")
         artifact = self.artifacts.read_task(task_id) or {}
-        snapshot = self.cao.task_snapshot(task_id) or {}
+        snapshot = self._cao_for_task(task_id, artifact).task_snapshot(task_id) or {}
         if not artifact and not snapshot:
             raise NotFoundError(f"task not found: {task_id}")
         # Start from artifact; overlay live-session fields where snapshot is authoritative.
@@ -257,26 +280,32 @@ class FleetGatewayService:
             "isolated_worktree": True,
             "branch": str(params.get("branch") or params["github_ref"]).strip(),
         }
+        config = self._node_config_for_launch(role)
+        validate_launch_target(config, hostname_provider=self.hostname_provider)
+
         # Create the Gateway worktree FIRST so CAO receives the real path.
         # Use a temporary placeholder session id (real one comes back from CAO).
         temp_session = uuid.uuid4().hex[:12]
-        worktree_path = self.worktrees.create(
+        provisioner = config.worktrees()
+        worktree_path = provisioner.create(
             task_id=spec["task_id"],
             session_id=temp_session,
             base_commit=spec["base_commit"],
         )
-        self.worktrees.maybe_write_proof(
+        verify_worktree_path(config, worktree_path)
+        provisioner.maybe_write_proof(
             worktree_path,
             task_id=spec["task_id"],
             acceptance_criteria=spec["acceptance_criteria"],
         )
         worktree = str(worktree_path)
         spec["working_directory"] = worktree
-        launched = self.cao.launch_worker(spec)
+        launched = config.cao.launch_worker(spec)
         session_id = str(launched.get("session_id") or "")
         terminal_id = str(launched.get("terminal_id") or "")
-        if hasattr(self.cao, "record_worktree"):
-            self.cao.record_worktree(session_id, worktree)
+        self._session_roles[session_id] = role
+        if hasattr(config.cao, "record_worktree"):
+            config.cao.record_worktree(session_id, worktree)
         record = {
             **spec,
             "session_id": session_id,
@@ -317,7 +346,7 @@ class FleetGatewayService:
             raise ContractViolation("session_id is required")
         if not isinstance(text, str) or not text.strip():
             raise ContractViolation("text is required")
-        result = self.cao.message_worker(session_id, text)
+        result = self._cao_for_session(session_id).message_worker(session_id, text)
         result.setdefault("chat_is_not_done", True)
         result.setdefault("session_id", session_id)
         return sanitize_public_payload(result)
@@ -332,7 +361,9 @@ class FleetGatewayService:
             # Recover task_id from artifact scan via CAO snapshot when omitted.
             raise ContractViolation("task_id is required")
         existing = self.artifacts.read_task(task_id) or {}
-        self.cao.request_handoff(session_id, task_id)
+        self._cao_for_session(session_id, task_id=task_id, artifact=existing).request_handoff(
+            session_id, task_id
+        )
         handoff_path = self.artifacts.write_handoff(
             task_id=task_id, session_id=session_id, record=existing
         )
@@ -369,7 +400,8 @@ class FleetGatewayService:
         # Role is taken from the stored session/artifact, never from the caller.
         task_id = _as_str(params.get("task_id"))
         artifact = self.artifacts.read_task(task_id) if task_id else None
-        stored = self.cao.get_session(session_id) or {}
+        cao = self._cao_for_session(session_id, task_id=task_id, artifact=artifact)
+        stored = cao.get_session(session_id) or {}
         session_role = str(stored.get("role") or (artifact or {}).get("role") or "").strip().lower()
         if session_role != "charlie":
             raise ContractViolation("request_review is Charlie only")
@@ -379,7 +411,7 @@ class FleetGatewayService:
             "task_id": task_id,
             "reviewer_profile": dict(INDEPENDENT_REVIEWER_PROFILE),
         }
-        result = self.cao.request_review(spec)
+        result = cao.request_review(spec)
         if artifact:
             artifact = {
                 **artifact,
@@ -408,8 +440,9 @@ class FleetGatewayService:
         session_id = _as_str(params.get("session_id"))
         if not session_id:
             raise ContractViolation("session_id is required")
-        result = self.cao.stop_worker(session_id)
         task_id = _as_str(params.get("task_id"))
+        cao = self._cao_for_session(session_id, task_id=task_id)
+        result = cao.stop_worker(session_id)
         # Resolve task_id from artifact store when only session_id was provided.
         if not task_id:
             task_id = self.artifacts.find_task_id_for_session(session_id)
@@ -421,6 +454,54 @@ class FleetGatewayService:
         result.setdefault("session_id", session_id)
         result.setdefault("status", "stopped")
         return sanitize_public_payload(result)
+
+    def _node_config_for_launch(self, role: str) -> NodeConfig:
+        config = self.node_configs.get(role)
+        if config is not None:
+            return config
+        if role == "charlie":
+            raise NodeRoutingError(
+                "Charlie node config missing: FLEET_GATEWAY_CHARLIE_CAO_URL is required; "
+                "refusing Bravo fallback"
+            )
+        raise NodeRoutingError(f"{role} node config missing")
+
+    def _cao_for_task(self, task_id: str, artifact: dict[str, Any] | None = None) -> CAOClient:
+        role = str((artifact or {}).get("role") or "").strip().lower()
+        if role:
+            return self._cao_for_role(role)
+        del task_id
+        return self.cao
+
+    def _cao_for_session(
+        self,
+        session_id: str,
+        *,
+        task_id: str | None = None,
+        artifact: dict[str, Any] | None = None,
+    ) -> CAOClient:
+        role = self._session_roles.get(session_id)
+        if not role and artifact:
+            role = str(artifact.get("role") or "").strip().lower()
+        if not role and task_id:
+            stored = self.artifacts.read_task(task_id) or {}
+            role = str(stored.get("role") or "").strip().lower()
+        if not role:
+            found_task = self.artifacts.find_task_id_for_session(session_id)
+            if found_task:
+                stored = self.artifacts.read_task(found_task) or {}
+                role = str(stored.get("role") or "").strip().lower()
+        return self._cao_for_role(role or "bravo")
+
+    def _cao_for_role(self, role: str) -> CAOClient:
+        config = self.node_configs.get(role)
+        if config is not None:
+            return config.cao
+        if role == "charlie":
+            raise NodeRoutingError(
+                "Charlie session has no Charlie node config; refusing Bravo fallback"
+            )
+        return self.cao
 
     def _reject_denied_actions(self, params: dict[str, Any]) -> None:
         forbidden_flags = (
@@ -448,12 +529,21 @@ def _as_str(value: Any) -> str | None:
 def build_service(
     *,
     bearer_token: str,
-    cao: CAOClient,
+    cao: CAOClient | None = None,
     data_dir: Path,
     requester: str = "unknown",
     worktrees: WorktreeProvisioner | None = None,
+    node_configs: dict[str, NodeConfig] | None = None,
+    hostname_provider: HostnameProvider = current_hostname,
 ) -> FleetGatewayService:
     data_dir = Path(data_dir)
+    if cao is None:
+        if node_configs and "bravo" in node_configs:
+            cao = node_configs["bravo"].cao
+        else:
+            from fleet_gateway.cao import FakeCAO  # noqa: PLC0415
+
+            cao = FakeCAO()
     return FleetGatewayService(
         bearer_token=bearer_token,
         cao=cao,
@@ -461,4 +551,6 @@ def build_service(
         artifacts=ArtifactStore(data_dir),
         default_requester=requester,
         worktrees=worktrees,
+        node_configs=node_configs,
+        hostname_provider=hostname_provider,
     )

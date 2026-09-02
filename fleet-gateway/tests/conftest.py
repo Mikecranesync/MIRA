@@ -12,6 +12,7 @@ sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(ROOT))
 
 from fleet_gateway.cao import FakeCAO
+from fleet_gateway.node_config import make_bravo_config, make_charlie_config
 from fleet_gateway.service import build_service
 from fleet_gateway.worktree import WorktreeProvisioner
 from helpers import AUTH_HEADER, LAUNCH_OK, TEST_BEARER
@@ -78,12 +79,46 @@ def worktree_parent(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def charlie_repo(tmp_path: Path, origin_repo: tuple[Path, str]) -> Path:
+    origin, _sha = origin_repo
+    repo = tmp_path / "charlie-origin"
+    subprocess.run(["git", "clone", str(origin), str(repo)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True, capture_output=True
+    )
+    return repo
+
+
+@pytest.fixture
+def charlie_worktree_parent(tmp_path: Path) -> Path:
+    path = tmp_path / "charlie-worktrees"
+    path.mkdir()
+    return path
+
+
+@pytest.fixture
 def cao() -> FakeCAO:
     return FakeCAO()
 
 
 @pytest.fixture
-def service(data_dir: Path, cao: FakeCAO, origin_repo: tuple[Path, str], worktree_parent: Path):
+def charlie_cao() -> FakeCAO:
+    client = FakeCAO()
+    client.cao_health = "ok"
+    return client
+
+
+@pytest.fixture
+def service(
+    data_dir: Path,
+    cao: FakeCAO,
+    charlie_cao: FakeCAO,
+    origin_repo: tuple[Path, str],
+    charlie_repo: Path,
+    worktree_parent: Path,
+    charlie_worktree_parent: Path,
+    tmp_path: Path,
+):
     repo, _sha = origin_repo
     return build_service(
         bearer_token=TEST_BEARER,
@@ -91,6 +126,17 @@ def service(data_dir: Path, cao: FakeCAO, origin_repo: tuple[Path, str], worktre
         data_dir=data_dir,
         requester="foreman-test",
         worktrees=WorktreeProvisioner(repo=repo, parent=worktree_parent),
+        node_configs={
+            "bravo": make_bravo_config(cao=cao, repo=repo, worktree_parent=worktree_parent),
+            "charlie": make_charlie_config(
+                cao=charlie_cao,
+                repo=charlie_repo,
+                worktree_parent=charlie_worktree_parent,
+                expected_path_prefix=tmp_path,
+                require_cao_health=True,
+            ),
+        },
+        hostname_provider=lambda: "CharlieNodes-Mac-mini.local",
     )
 
 

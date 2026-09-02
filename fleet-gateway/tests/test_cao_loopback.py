@@ -5,7 +5,7 @@ import inspect
 import pytest
 from fleet_gateway.cao import FakeCAO, LoopbackCAOClient, assert_loopback_cao_url
 from fleet_gateway.errors import CaoConfigError
-from fleet_gateway.factory import cao_from_env
+from fleet_gateway.factory import cao_from_env, node_configs_from_env
 
 
 def test_loopback_url_allows_127():
@@ -51,3 +51,25 @@ def test_env_non_loopback_refused(monkeypatch):
     monkeypatch.setenv("FLEET_GATEWAY_CAO_URL", "http://192.168.0.2:1")
     with pytest.raises(CaoConfigError):
         cao_from_env()
+
+
+def test_legacy_cao_url_configures_only_bravo(monkeypatch):
+    monkeypatch.setenv("FLEET_GATEWAY_CAO_URL", "http://127.0.0.1:18765")
+    monkeypatch.delenv("FLEET_GATEWAY_BRAVO_CAO_URL", raising=False)
+    monkeypatch.delenv("FLEET_GATEWAY_CHARLIE_CAO_URL", raising=False)
+
+    configs = node_configs_from_env()
+
+    assert set(configs) == {"bravo"}
+    assert isinstance(configs["bravo"].cao, LoopbackCAOClient)
+
+
+def test_charlie_uses_only_charlie_specific_cao_url(monkeypatch):
+    monkeypatch.setenv("FLEET_GATEWAY_CAO_URL", "http://127.0.0.1:18765")
+    monkeypatch.setenv("FLEET_GATEWAY_CHARLIE_CAO_URL", "http://127.0.0.1:18766")
+
+    configs = node_configs_from_env()
+
+    assert set(configs) == {"bravo", "charlie"}
+    assert configs["charlie"].repo.as_posix().startswith("/Users/charlienode/")
+    assert configs["charlie"].worktree_parent.as_posix().startswith("/Users/charlienode/")

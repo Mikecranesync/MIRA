@@ -25,6 +25,12 @@ class ContractViolation(FleetGatewayError):
     http_status = 400
 
 
+class NodeRoutingError(ContractViolation):
+    """A requested physical node is missing, unhealthy, or identity-mismatched."""
+
+    http_status = 400
+
+
 class NotFoundError(FleetGatewayError):
     http_status = 404
 
