@@ -1,0 +1,19 @@
+TURN 1 [200 4181ms]
+USER: The Allen-Bradley PowerFlex 755 on VFD-07 keeps tripping on overcurrent. What should I check?
+MIRA: What does the motor nameplate indicate for current rating?
+
+I don't have specific documentation indexed for this — consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base — consult the asset nameplate or vendor manual.]
+
+TURN 2 [200 3535ms]
+USER: Yes — VFD-07, the PowerFlex 755. That's the asset.
+MIRA: Based on general industrial knowledge (not from documentation specific to this equipment): The overcurrent trip on a VFD like the PowerFlex 755 could be due to a variety of factors including motor overload, improper VFD setup, or issues with the motor itself. What is the current setting for the overcurrent protection on VFD-07?
+
+1. Check motor nameplate
+2. Review VFD configuration
+3. Inspect motor and cabling
+4. Check for ground faults
+
+I don't have specific documentation indexed for this — consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base — consult the asset nameplate or vendor manual.]
+
+cited_[WO]: False
+NOTE: staging WO content is synthetic (SW-/dogfood test rows). Block IS injected (G1); LLM citing junk WOs is data-dependent.

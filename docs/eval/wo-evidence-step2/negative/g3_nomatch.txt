@@ -1,0 +1,3 @@
+asset=ACME-0SQDHDME tenant=00000000-0000-0000-0000-000000000099
+recall_count=0
+block=''
