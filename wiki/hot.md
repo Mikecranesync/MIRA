@@ -25,6 +25,21 @@ coverage used direct declarations plus TypeScript/tests; initialize before relyi
 
 ---
 
+# Hot Cache — 2026-09-02 — Alpha connectivity survey (observe-only, no changes made)
+
+Alpha (Michaels-Mac-mini-2, user `factorylm`) LAN is **192.168.4.30/22** on en0 Ethernet (gw
+192.168.4.1) + Wi-Fi 192.168.4.32 — the old `192.168.4.28` record is STALE. The /22 (192.168.4.0–
+192.168.7.255) does NOT contain Bravo/Charlie's 192.168.1.x; ping + TCP/22 to 192.168.1.11/.12 both
+FAIL — Alpha↔Bravo/Charlie LAN path does not exist (separate physical networks, matches node-map
+"Tailscale only"). Tailscale healthy: alphanode 100.107.140.12; Bravo/Charlie ping + :22 PASS over
+TS. SSH IS listening on Alpha (*.22). No process/dir named "CAO"; closest match = retired OpenClaw
+gateway `ai.openclaw.gateway` PID-alive on loopback 127.0.0.1:18789/18791/18792 (node). Ansible-
+managed `~/.ssh/config` already has `bravo`/`charlie` TS aliases with shared id_ed25519. Verdict:
+Tailscale = primary transport for Alpha (LAN-primary is impossible); next action = key-auth check
+Bravo→Alpha over TS.
+
+---
+
 # Hot Cache — 2026-08-31 — Mobile ChatV2 merged, capability-gated and default-off
 
 PR #3516 merged to `main` as `1ed59e988` after PR #3517 landed persisted safety-stop markers.
@@ -505,6 +520,8 @@ operational again after the Groq vision deprecation.
   reply, conversation_eval meta, flood-guarded ntfy P0 alerts; fold in open PR #2714). Awaiting
   build go. Also awaiting Mike: OpenAI dashboard cap, credits → paid Lane-A, Phase 5 thresholds.
 - **OCR regime keep-alive + runbook (v3.168.0, branch `feat/ocr-keepalive`):** deterministic Tesseract floor is provenance-tagged (`ocr_source`) end-to-end, autoeval P0 `ocr_floor_dead` pages on a dead floor, `ocr-lane-health` scheduled probe watches staging — lane map + failure-mode first moves at `docs/runbooks/ocr-regime.md`.
+---
+
 ---
 
 # Hot Cache — 2026-07-03 — CV-101 electrical print recovery: E-007 shipped as FIELD VERIFICATION DRAFT
