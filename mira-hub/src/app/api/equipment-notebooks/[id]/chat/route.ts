@@ -91,6 +91,7 @@ import type {
   NotebookContentFrame,
   NotebookEvidenceFrame,
   NotebookFollowupsFrame,
+  NotebookPhotoReadFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
@@ -104,6 +105,11 @@ import {
   photoSourcesInScope,
   photoTurnObservation,
 } from "@/lib/photo-source-honesty";
+import {
+  maybeRereadPhoto,
+  photoRereadEnabled,
+  type PhotoRereadOutcome,
+} from "@/lib/notebook-photo-reread";
 
 export const dynamic = "force-dynamic";
 
@@ -202,6 +208,11 @@ async function buildCitations(
   notebookId: string,
   chunks: ManualChunk[],
   question: string,
+  /** Sentinel `photo-reread://<fileId>` urls whose text was TRANSCRIBED off a
+   *  photograph during this turn rather than retrieved from an indexed
+   *  document. `undefined` (every existing caller) ⇒ no citation carries
+   *  `provenance`, so the serialized frame is unchanged. */
+  liveReadUrls?: Set<string>,
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
   for (const c of chunks) {
@@ -213,6 +224,10 @@ async function buildCitations(
       sourceTitle: c.title || "Attached document",
       page: c.sourcePage,
       fileId: null,
+      // Constraint: a vision-derived claim must be attributable AND
+      // distinguishable from a manual-derived one. The field is set only here,
+      // and only for a sentinel url this turn actually produced.
+      ...(liveReadUrls?.has(c.sourceUrl) ? { provenance: "live_photo_read" as const } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     });
@@ -432,6 +447,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
      *  ignored. `capturedAt` is still accepted for client compatibility and is
      *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
+    /** Photo RE-READ (NOTEBOOK_PHOTO_REREAD_ENABLED): the technician pointed at
+     *  ONE attached photograph. Only the doc id is read, and it is honoured only
+     *  if it is already one of THIS turn's server-revalidated photo sources —
+     *  it can never widen the doc scope, only choose within it. */
+    photoRead?: { docId?: unknown };
   };
   try {
     body = await req.json();
@@ -463,6 +483,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const fileId = typeof raw === "string" ? raw.trim() : "";
     if (fileId) visualClaimFileId = fileId;
   }
+  // Photo RE-READ selection. Same discipline as the visual claim: never a 4xx,
+  // never trusted on its own — it is intersected with the revalidated photo
+  // sources below, so a foreign or stale id simply selects nothing.
+  const photoReadDocId =
+    body.photoRead && typeof body.photoRead === "object" && typeof body.photoRead.docId === "string"
+      ? body.photoRead.docId.trim() || null
+      : null;
   // Spec §1.1 — a technician with nothing configured must still get help, and
   // §1.4 — that must be an EXPLICIT state, never a silent relaxation of
   // grounding. So general mode is opt-in per turn: the client asks for it, the
@@ -735,6 +762,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }),
   );
 
+  // ── PHOTO RE-READ (NOTEBOOK_PHOTO_REREAD_ENABLED, default OFF) ────────────
+  //
+  // PLACEMENT IS THE WHOLE DESIGN. This sits AFTER retrieval and BEFORE Gate G,
+  // so a transcription pushed onto `chunks` makes `chunks.length === 0` false —
+  // which means GATE G NEEDS NO EDIT AT ALL. It passes naturally when a photo
+  // was read, and abstains exactly as before when nothing was. The refusal path
+  // for every other turn is untouched, byte for byte.
+  //
+  // `photoRereadEnabled()` is evaluated FIRST in the `&&` chain, so with the
+  // flag unset NOTHING here runs: no extra `listSources` query, no regex, no
+  // provider call, no frame, no log line. `!general` because a general turn has
+  // no source scope to authorize against; `validated.ok` because that is what
+  // proves this notebook belongs to this tenant (readLinkedPhotoBytes proves
+  // the FILE's tenancy and its link to this notebook, but never the notebook's
+  // ownership — see that module's "the one leg this module cannot prove").
+  //
+  // `listSources` is called HERE rather than reusing the Promise.all further
+  // down, deliberately: reusing it would mean hoisting an await above Gate G on
+  // EVERY turn, including flag-off ones. The duplicate query runs only after
+  // the flag AND the trigger have both passed. `chunks` is `const` but it is an
+  // array — `.push` needs no declaration change.
+  let reread: PhotoRereadOutcome | null = null;
+  if (photoRereadEnabled() && !general && validated.ok) {
+    try {
+      reread = await maybeRereadPhoto({
+        tenantId: ctx.tenantId,
+        notebookId,
+        message,
+        chunks,
+        docIds,
+        explicitDocId: photoReadDocId,
+        sources: await listSources(ctx.tenantId, notebookId).catch(() => [] as NotebookSource[]),
+      });
+    } catch (err) {
+      // Belt and braces: maybeRereadPhoto already swallows provider failures.
+      // Anything that escapes it must still leave the turn answering exactly as
+      // it would with the flag off — never a 500, never a claim of sight.
+      console.error("[notebook-chat] photo re-read failed (continuing without it):", err);
+      reread = null;
+    }
+    if (reread) chunks.push(...reread.chunks);
+  }
+
   const enc = new TextEncoder();
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
@@ -777,8 +847,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const status: NotebookStatusFrame = {
           kind: "status",
           status: "insufficient_evidence",
-          message: "I couldn't find that in the selected sources.",
+          // Reachable ONLY under NOTEBOOK_PHOTO_REREAD_ENABLED, and strictly
+          // more honest than the generic line: a vision reader did look at the
+          // photograph for this question and could not read the detail. Saying
+          // "I couldn't find that in the selected sources" would understate
+          // what the server actually did on the technician's behalf.
+          message: reread?.readButNotFound
+            ? "I re-read the attached photograph and that detail isn't legible in it."
+            : "I couldn't find that in the selected sources.",
         };
+        if (reread) {
+          console.log(JSON.stringify(reread.observation));
+          controller.enqueue(enc.encode(sse(reread.frame)));
+        }
         controller.enqueue(enc.encode(sse(sources)));
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -794,7 +875,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
+  const citations = await buildCitations(
+    ctx.tenantId,
+    notebookId,
+    chunks,
+    message,
+    reread?.liveReadUrls,
+  );
 
   // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
   // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
@@ -904,6 +991,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // moved from the loadedDocs literal to the head of the coverage literal to
     // keep that true.
     photoSourceDirective(photosInScope, photosAttached.length) +
+    // `photo-source-honesty.ts` is NOT modified and NOT called differently: the
+    // honesty directive stays in force on EVERY turn, including one where a
+    // photograph was successfully re-read. That is deliberate — the image is
+    // still never in the chat model's context, so its floor bullet ("never
+    // describe or infer what a picture looks like, never state a wire number
+    // you did not read in an excerpt") must remain armed exactly then. This
+    // adds one line, for the `found:false` case only; "" otherwise.
+    (reread?.directive ?? "") +
     `\n- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
   // Coverage planning (answer completeness): the answer SHAPE determines how
@@ -1279,6 +1374,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }),
           ),
         );
+      }
+
+      // Photo re-read observability + frame. Both exist ONLY under the flag —
+      // `reread` is null on every flag-off turn, so nothing here executes and
+      // the wire is byte-identical. The log line is the FIRST place in the hub
+      // where a vision call's `usage` and wall time are captured, which is how
+      // this feature's cost and latency estimates become measurements.
+      if (reread) {
+        console.log(JSON.stringify(reread.observation));
+        const photoReadFrame: NotebookPhotoReadFrame = reread.frame;
+        controller.enqueue(enc.encode(sse(photoReadFrame)));
       }
 
       const sourcesFrame: NotebookSourcesFrame = {

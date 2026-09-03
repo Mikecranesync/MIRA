@@ -570,6 +570,12 @@ export type VisionCall = (args: {
   images: VisionImage[];
   temperature: number;
   maxTokens: number;
+  /** Optional wall-clock ceiling for ONE call. Omitted (the existing callers)
+   *  ⇒ the `fetch` init is unchanged, byte for byte — `undefined` `signal` is
+   *  the same request `fetch` made before this field existed. Unlike
+   *  `openAiCompatVision` (which has NAMEPLATE_VISION_TIMEOUT_MS), this call
+   *  was an unbounded `fetch`; a chat turn cannot afford that. */
+  timeoutMs?: number;
 }) => Promise<{ text: string; model: string }>;
 
 /**
@@ -577,7 +583,13 @@ export type VisionCall = (args: {
  * (same base URL, same JSON mode, model id from `togetherVisionModel()`), but
  * takes prompt/temperature/max_tokens per pass instead of hardcoding one shape.
  */
-export const togetherVisionCall: VisionCall = async ({ prompt, images, temperature, maxTokens }) => {
+export const togetherVisionCall: VisionCall = async ({
+  prompt,
+  images,
+  temperature,
+  maxTokens,
+  timeoutMs,
+}) => {
   const key = process.env.TOGETHERAI_API_KEY;
   if (!key) throw new Error("recognizer_not_configured");
   const model = togetherVisionModel();
@@ -598,6 +610,8 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
       response_format: { type: "json_object" },
       messages: [{ role: "user", content }],
     }),
+    // `undefined` when the caller passed no ceiling ⇒ identical init to before.
+    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
   });
   if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
   const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
