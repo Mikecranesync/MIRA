@@ -868,6 +868,19 @@ services:
       # Models tried in order when the configured one answers model_not_available
       # (2026-08-25: gemma-3n went dedicated-only and 502'd every nameplate read).
       - NAMEPLATE_VISION_FALLBACK_MODELS=${NAMEPLATE_VISION_FALLBACK_MODELS:-}
+      # Notebook photo RE-READ: when a technician asks to read something off an
+      # attached photograph and the stored extraction does not cover it, the
+      # chat turn re-reads that photograph with a vision model and cites the
+      # transcription. Left EMPTY on purpose — an undeclared flag never reaches
+      # the container, and this one is enabled deliberately, STAGING FIRST, on a
+      # day `tools/provider_health_check.py` passes its vision canary (the
+      # serverless model list has churned three times in two months). Unset =>
+      # the turn is byte-identical to the honesty-directive behaviour.
+      - NOTEBOOK_PHOTO_REREAD_ENABLED=${NOTEBOOK_PHOTO_REREAD_ENABLED:-}
+      # Hard wall-clock ceiling on the one vision call (a chat turn cannot hang).
+      - PHOTO_REREAD_TIMEOUT_MS=${PHOTO_REREAD_TIMEOUT_MS:-12000}
+      # Bytes ceiling per photograph, rejected in SQL before they reach the heap.
+      - PHOTO_REREAD_MAX_BYTES=${PHOTO_REREAD_MAX_BYTES:-4194304}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed

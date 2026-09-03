@@ -5,7 +5,8 @@
  *
  * Wire format: `data: <json>\n\n` frames on text/event-stream, terminated by
  * the literal `data: [DONE]`. Real order on an answered turn:
- * `content`* → `sources` → `evidence` → [`usage`] → `status` → [`followups`].
+ * `content`* → [`photo_read`] → `sources` → `evidence` → [`usage`] → `status`
+ * → [`followups`]. `photo_read` rides only under NOTEBOOK_PHOTO_REREAD_ENABLED.
  * `sources` arrives AFTER the content deltas (citations are filtered to the
  * [n] the answer actually used), so a client must buffer content and attach
  * citations when `sources` lands. Abstain: `sources` (empty) → `status`.
@@ -44,6 +45,21 @@ export type EvidenceCitation = {
    *  doc's own file IS the original) and on pre-085 persisted turns (the
    *  read path enriches those server-side). */
   originFileId?: string | null;
+  /**
+   * Set to `"live_photo_read"` ONLY when this citation's text was transcribed
+   * off the attached PHOTOGRAPH by a vision reader during THIS turn
+   * (`notebook-photo-reread.ts`, behind NOTEBOOK_PHOTO_REREAD_ENABLED) — as
+   * opposed to retrieved from an indexed document.
+   *
+   * WHY A FIELD AND NOT A PATTERN OVER `sourceTitle`. Constraint: a
+   * vision-derived claim must be distinguishable from a manual-derived one, and
+   * that discriminator has to be durable. Making a client regex human-facing
+   * copy ("Photo: … (read on request)") breaks the first time the copy is
+   * reworded, and the failure mode is a transcription silently rendering as an
+   * OEM citation. ABSENT on every other citation, so a flag-off turn serializes
+   * byte-identically.
+   */
+  provenance?: "live_photo_read";
   quote: string | null;
   /** Room for richer selectors later without changing the API shape (PRD §14). */
   selector?: { type: "page" | "text" | "bbox" | "section"; value: unknown };
@@ -258,6 +274,31 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
   );
 }
 
+/**
+ * A photograph attached to this notebook was RE-READ by a vision model during
+ * this turn (NOTEBOOK_PHOTO_REREAD_ENABLED; `notebook-photo-reread.ts`).
+ *
+ * Emitted immediately before `sources`, and ONLY under the flag — a flag-off
+ * turn never carries it, which is what keeps the wire byte-identical. Additive,
+ * same precedent as `usage` and `safety`: older clients ignore unknown kinds.
+ *
+ *   state "read"        — a vision reader looked at the picture. `found:false`
+ *                         means it looked and the detail was not legible; that
+ *                         is a stronger, more honest statement than "I have no
+ *                         photo", and the UI may say so.
+ *   state "unavailable" — a read was wanted but did not happen (not configured,
+ *                         timed out, provider error, or the file was not
+ *                         authorized for this notebook). The turn answers as it
+ *                         would have with the flag off. NEVER a sight claim.
+ */
+export type NotebookPhotoReadFrame = {
+  kind: "photo_read";
+  state: "read" | "unavailable";
+  found?: boolean;
+  filename?: string;
+  reason?: string;
+};
+
 export type NotebookChatFrame =
   | NotebookSourcesFrame
   | NotebookContentFrame
@@ -265,6 +306,7 @@ export type NotebookChatFrame =
   | NotebookSafetyFrame
   | NotebookUsageFrame
   | NotebookEvidenceFrame
+  | NotebookPhotoReadFrame
   | NotebookFollowupsFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
@@ -280,6 +322,7 @@ const FRAME_KINDS = new Set([
   "safety",
   "usage",
   "evidence",
+  "photo_read",
   "followups",
 ]);
 
