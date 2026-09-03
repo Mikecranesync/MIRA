@@ -10,6 +10,7 @@ from fleet_gateway.cao import CAOClient, FakeCAO, LoopbackCAOClient
 from fleet_gateway.router import NodeRouter, NodeTarget
 from fleet_gateway.service import FleetGatewayService, build_service
 from fleet_gateway.worktree import (
+    alpha_worktrees_from_env,
     bravo_worktrees_from_env,
     charlie_worktrees_from_env,
 )
@@ -19,6 +20,7 @@ from fleet_gateway.worktree import (
 # satisfies the loopback-only invariant (assert_loopback_cao_url).
 DEFAULT_BRAVO_CAO_URL = "http://127.0.0.1:9889"
 DEFAULT_CHARLIE_CAO_URL = "http://127.0.0.1:19889"
+DEFAULT_ALPHA_CAO_URL = "http://127.0.0.1:29889"
 
 
 def data_dir_from_env() -> Path:
@@ -45,11 +47,12 @@ def _cao_for_node(url_env: str) -> CAOClient:
 
 
 def router_from_env() -> NodeRouter:
-    """Two physical nodes, each with its own CAO + node-local worktrees.
+    """Three physical nodes, each with its own CAO + node-local worktrees.
 
     Node is a computer name, separate from provider/profile. Bravo runs the
-    Gateway (local worktrees); Charlie is reached over the loopback tunnel and
-    its worktrees are created ON Charlie via SSH.
+    Gateway (local worktrees); Charlie (127.0.0.1:19889) and Alpha
+    (127.0.0.1:29889) are each reached over their own loopback SSH tunnel and
+    their worktrees are created ON that node via SSH.
     """
     bravo = NodeTarget(
         "bravo",
@@ -61,7 +64,15 @@ def router_from_env() -> NodeRouter:
         _cao_for_node("FLEET_GATEWAY_CAO_URL_CHARLIE"),
         charlie_worktrees_from_env(),
     )
-    return NodeRouter({"bravo": bravo, "charlie": charlie}, default_node="bravo")
+    alpha = NodeTarget(
+        "alpha",
+        _cao_for_node("FLEET_GATEWAY_CAO_URL_ALPHA"),
+        alpha_worktrees_from_env(),
+    )
+    return NodeRouter(
+        {"bravo": bravo, "charlie": charlie, "alpha": alpha},
+        default_node="bravo",
+    )
 
 
 def load_local_env() -> None:

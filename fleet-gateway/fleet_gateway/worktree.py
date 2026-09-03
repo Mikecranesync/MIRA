@@ -31,6 +31,13 @@ CHARLIE_REPO = Path("/Users/charlienode/MIRA")
 CHARLIE_PARENT = Path("/Users/charlienode/MIRA-worktrees")
 CHARLIE_SSH_HOST = "charlie"
 
+# Alpha — the orchestrator Mac mini (user factorylm). Reached over SSH via the
+# `alpha` config alias (Tailscale 100.107.140.12); its worktrees live under
+# Alpha's own home, never a Bravo/Charlie path.
+ALPHA_REPO = Path("/Users/factorylm/MIRA")
+ALPHA_PARENT = Path("/Users/factorylm/MIRA-worktrees")
+ALPHA_SSH_HOST = "alpha"
+
 PROOF_TASK_ID = "foreman-gateway-proof"
 PROOF_MARKER = "FOREMAN-GATEWAY-PROOF"
 PROOF_FILENAME = "FOREMAN-GATEWAY-PROOF.txt"
@@ -178,5 +185,17 @@ def charlie_worktrees_from_env() -> WorktreeProvisioner:
         parent_env="FLEET_GATEWAY_CHARLIE_WORKTREE_PARENT",
         default_repo=CHARLIE_REPO,
         default_parent=CHARLIE_PARENT,
+        ssh_host=ssh_host,
+    )
+
+
+def alpha_worktrees_from_env() -> WorktreeProvisioner:
+    """Alpha node provisioner — creates worktrees ON Alpha over SSH."""
+    ssh_host = (os.environ.get("FLEET_GATEWAY_ALPHA_SSH_HOST") or "").strip() or ALPHA_SSH_HOST
+    return _provisioner(
+        repo_env="FLEET_GATEWAY_ALPHA_REPO",
+        parent_env="FLEET_GATEWAY_ALPHA_WORKTREE_PARENT",
+        default_repo=ALPHA_REPO,
+        default_parent=ALPHA_PARENT,
         ssh_host=ssh_host,
     )
