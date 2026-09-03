@@ -38,7 +38,7 @@ export type FileCapability = "indexable" | "viewable" | "stored";
 const INDEXABLE_MIME_PREFIXES = ["application/pdf", "text/"];
 const INDEXABLE_EXTENSIONS = [".pdf", ".txt", ".md", ".csv", ".log"];
 // Explicit raster safelist — SVG is deliberately absent (scriptable → stored).
-const VIEWABLE_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+export const VIEWABLE_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 export function normalizeMime(mime: string | null | undefined): string {
   const m = (mime ?? "").trim().toLowerCase().split(";")[0];
