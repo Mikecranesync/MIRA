@@ -1,13 +1,15 @@
 /**
- * NOTEBOOK PHOTO RE-READ — the trigger, the miss probe, the selection, and the
- * shape of the evidence a transcription becomes.
+ * NOTEBOOK PHOTO RE-READ — the trigger, the selection, and the shape of the
+ * evidence a transcription becomes.
  *
  * Run: npx vitest run notebook-photo-reread
  *
- * The single most important test in this file is the NEGATIVE one: "what's the
- * torque spec for the coupling?" must not fire in a notebook full of
- * photographs. A feature that reads a picture on every turn is not a feature,
- * it is a bill. Everything else here defends that boundary from both sides.
+ * THE TRIGGER IS THE CLIENT'S POINTER, and the single most important tests in
+ * this file are the negative ones: with no `photoRead.docId`, NOTHING is read —
+ * not for "what's the torque spec for the coupling?", and not for the verbatim
+ * production question either. A feature that reads a picture because a sentence
+ * sounded like it might be about one is not a feature, it is a bill and a
+ * wrong-picture hazard. §2 and §7 defend that boundary from both sides.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
@@ -25,12 +27,10 @@ const bytesMock = vi.hoisted(() => ({ readLinkedPhotoBytes: vi.fn() }));
 vi.mock("@/lib/notebook-photo-bytes", () => bytesMock);
 
 import {
-  extractionCoversIntent,
   maybeRereadPhoto,
-  photoReadIntent,
+  photoReadTarget,
   photoRereadEnabled,
   photoRereadMaxBytes,
-  photoRereadMaxImages,
   photoRereadTimeoutMs,
   rereadChunk,
   rereadDirective,
@@ -83,6 +83,45 @@ const PHOTO_ROW_B = src({
 
 const ALL_DOCS = [DOC_PDF, DOC_PHOTO, DOC_PHOTO_2];
 
+/**
+ * THE ELEVEN NATURAL DOCUMENT QUESTIONS. 1–5 are the round-A over-triggers
+ * (bare "look at" / "the attached"); 6–9 are the four that STILL fired after
+ * round B narrowed the referent to picture nouns — a picture inside a document
+ * is described with exactly the same nouns as a picture attached to a notebook.
+ * 10–11 are ordinary manual questions kept as controls.
+ *
+ * Every one of them must cost ZERO vision calls, and now does so for a reason
+ * no rewording can erode: nobody pointed at a photograph.
+ */
+const DOCUMENT_QUESTIONS = [
+  "Can you look at the manual and see what the recommended oil is?",
+  "Look at the wiring diagram and tell me what it says about grounding.",
+  "What is the part number in the attached datasheet?",
+  "What is the torque spec for the coupling?",
+  "How do I reset the fault on the drive?",
+  "In the datasheet image, what is the part number?",
+  "What does the image on page 12 of the manual say about the terminals?",
+  "Is there a picture of the terminal layout in the manual?",
+  "Can you find an image in the PDF that shows the nameplate?",
+  "Look at the drawing and tell me what it says.",
+  "What terminal does the brake resistor land on?",
+];
+
+/**
+ * The questions the heuristic USED to fire on — including "Read the wire
+ * numbers off the attached.", which round B silently lost. Under the pointer
+ * every one of them behaves identically: 0 reads without a docId, 1 read with
+ * one. Phrasing stopped being a variable.
+ */
+const TRUE_POSITIVES = [
+  "Can you read the wire numbers from the photo that's attached?",
+  "Read the wire numbers off the attached.",
+  "what does the nameplate in the picture say",
+  "read the label in the attached image",
+  "what part number is on this snapshot",
+  "can you read the thumbnail",
+];
+
 const PHOTO_BYTES = {
   fileId: PHOTO_FILE,
   buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
@@ -100,7 +139,6 @@ beforeEach(() => {
   delete process.env.NOTEBOOK_PHOTO_REREAD_ENABLED;
   delete process.env.PHOTO_REREAD_TIMEOUT_MS;
   delete process.env.PHOTO_REREAD_MAX_BYTES;
-  delete process.env.PHOTO_REREAD_MAX_IMAGES;
   bytesMock.readLinkedPhotoBytes.mockResolvedValue(PHOTO_BYTES);
 });
 afterEach(() => {
@@ -122,7 +160,10 @@ describe("1. the flag is off unless it is exactly '1'", () => {
     expect(photoRereadEnabled()).toBe(true);
   });
 
-  it("maybeRereadPhoto does NOTHING with the flag off — no bytes read, no fetch", async () => {
+  it("maybeRereadPhoto does NOTHING with the flag off — WITH a valid pointer, so the flag is what is under test", async () => {
+    // The pointer is deliberately present and valid. Without it this test would
+    // pass for the wrong reason (no trigger, not "no flag") and would keep
+    // passing if the flag check were deleted outright.
     // `fetch` is deliberately NOT stubbed: if anything tried to reach a
     // provider from here, this test would fail loudly rather than silently
     // pass against a stub.
@@ -130,8 +171,8 @@ describe("1. the flag is off unless it is exactly '1'", () => {
       tenantId: TENANT,
       notebookId: NB,
       message: "can you read the wire numbers from the photo that's attached?",
-      chunks: [],
       docIds: ALL_DOCS,
+      explicitDocId: DOC_PHOTO,
       sources: [PDF_ROW, PHOTO_ROW_A],
     });
     expect(out).toBeNull();
@@ -155,124 +196,75 @@ describe("1b. the bounds are clamped, and the defaults are the design's", () => 
     process.env.PHOTO_REREAD_MAX_BYTES = "999999999";
     expect(photoRereadMaxBytes()).toBe(8_388_608);
   });
-
-  it("images: 1 default, 2 ceiling — a chat turn is not a batch job", () => {
-    expect(photoRereadMaxImages()).toBe(1);
-    process.env.PHOTO_REREAD_MAX_IMAGES = "9";
-    expect(photoRereadMaxImages()).toBe(2);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. THE TRIGGER. Both halves required.
+// 2. THE TRIGGER — the pointer, and nothing but the pointer.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("2. the trigger fires on a real read-this-picture question", () => {
-  it.each([
-    "Can you read the wire numbers from the photo that's attached?",
-    "what does the label in the picture say",
-    "which terminal is the blue wire on in that image",
-    "read the nameplate in the photo",
-    "what colour of the indicator lamp is lit in the picture?",
-    "look at the attached photo — what part number is on it",
-  ])("fires: %s", (q) => {
-    expect(photoReadIntent(q).hit).toBe(true);
+describe("2. no docId ⇒ nothing is read, whatever the phrasing", () => {
+  it.each(DOCUMENT_QUESTIONS)("a document question never fires: %s", (q) => {
+    expect(photoReadTarget(q)).toBeNull();
+  });
+
+  it.each(TRUE_POSITIVES)(
+    "and neither does a picture-shaped one — this is the deliberate behaviour change: %s",
+    (q) => {
+      expect(photoReadTarget(q)).toBeNull();
+    },
+  );
+
+  it("THE regression fence: an empty / whitespace / null docId is not a pointer", () => {
+    expect(photoReadTarget("read the wire numbers in the photo", "")).toBeNull();
+    expect(photoReadTarget("read the wire numbers in the photo", "   ")).toBeNull();
+    expect(photoReadTarget("read the wire numbers in the photo", null)).toBeNull();
+    expect(photoReadTarget("read the wire numbers in the photo", undefined)).toBeNull();
   });
 });
 
-describe("2b. the trigger does NOT fire", () => {
-  it("THE case that matters: an ordinary spec question in a notebook full of photos", () => {
-    // No picture referent at all. If this ever fires, every nameplate notebook
-    // starts paying for a vision call on questions the manual answers.
-    expect(photoReadIntent("what's the torque spec for the coupling?").hit).toBe(false);
+describe("2b. a docId fires, whatever the phrasing", () => {
+  it.each([...TRUE_POSITIVES, ...DOCUMENT_QUESTIONS])("fires with a pointer: %s", (q) => {
+    // Including the eleven document questions ON PURPOSE. Pointing at an
+    // attached photograph is an instruction, not a hint to be second-guessed:
+    // if the technician taps a picture while asking about a datasheet, the
+    // picture is what they want read.
+    expect(photoReadTarget(q, DOC_PHOTO)).toBe(DOC_PHOTO);
   });
 
-  it.each([
-    "what is the decel ramp parameter",
-    "how do I reset fault F0004",
-    "what terminal does the brake resistor land on", // target noun, NO referent
-  ])("no picture referent: %s", (q) => {
-    expect(photoReadIntent(q).hit).toBe(false);
+  it("the id is trimmed, so a padded client value still resolves", () => {
+    expect(photoReadTarget("what is on this?", `  ${DOC_PHOTO}  `)).toBe(DOC_PHOTO);
   });
+});
 
+describe("2c. NOT_A_READ survives the pointer — a question ABOUT the file is not a read", () => {
   it.each([
     "did my photo upload ok?",
     "how do I attach a photo to this notebook",
     "delete that picture please",
     "send me the photo",
-  ])("about the FILE, not what is printed on it: %s", (q) => {
-    expect(photoReadIntent(q).hit).toBe(false);
-  });
-
-  it("a referent with no read intent does not fire", () => {
-    expect(photoReadIntent("nice photo").hit).toBe(false);
-  });
-
-  it("a very long message is a paste, not a request to read a picture", () => {
-    const long = `read the wire numbers in the photo ${"x".repeat(600)}`;
-    expect(photoReadIntent(long).hit).toBe(false);
-  });
-
-  it("an empty message never fires", () => {
-    expect(photoReadIntent("   ").hit).toBe(false);
-  });
-});
-
-describe("2c. the EXPLICIT door wins outright — no regex consulted", () => {
-  it("an explicit docId fires even on a question the heuristic would refuse", () => {
-    const i = photoReadIntent("what's the torque spec for the coupling?", DOC_PHOTO);
-    expect(i.hit).toBe(true);
-    expect(i.docId).toBe(DOC_PHOTO);
-  });
-});
-
-describe("2d. the matched target tokens ride along for the miss probe", () => {
-  it("collects the visual-target nouns, not the verbs", () => {
-    const i = photoReadIntent("can you read the wire numbers and terminal labels in the photo?");
-    expect(i.targets).toEqual(expect.arrayContaining(["wire number", "terminal", "label"]));
-    expect(i.targets).not.toContain("read");
+  ])("%s ⇒ no read even with a docId", (q) => {
+    // Pointing says WHICH picture. It does not say the question is about what
+    // is printed on it — and a client that always sets photoRead.docId must not
+    // buy a vision call for "did my photo upload ok?".
+    expect(photoReadTarget(q, DOC_PHOTO)).toBeNull();
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. THE MISS PROBE — what keeps the common case free.
+// 3. SELECTION — authorization leg 1, and the id sent to the provider must be
+//    the PHOTOGRAPH.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("3. the coverage probe suppresses when the extraction already answers", () => {
-  const photoChunk = { docId: DOC_PHOTO, content: "RAW NAMEPLATE OBSERVATION: nameplate reads GS10-20P5" };
-  const manualChunk = { docId: DOC_PDF, content: "Wire numbers are listed in section 4." };
-
-  it("a hit inside a PHOTO-derived chunk suppresses the vision call", () => {
-    expect(extractionCoversIntent([photoChunk], [DOC_PHOTO], ["nameplate"])).toBe(true);
-  });
-
-  it("a hit inside a MANUAL chunk does NOT suppress — the picture was never read for it", () => {
-    expect(extractionCoversIntent([manualChunk], [DOC_PHOTO], ["wire number"])).toBe(false);
-  });
-
-  it("no hit ⇒ no suppression: this is the genuine miss the feature exists for", () => {
-    expect(extractionCoversIntent([photoChunk], [DOC_PHOTO], ["wire number"])).toBe(false);
-  });
-
-  it("no probe-able targets ⇒ no suppression (it cannot prove coverage)", () => {
-    expect(extractionCoversIntent([photoChunk], [DOC_PHOTO], [])).toBe(false);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 4. SELECTION — the id sent to the provider must be the PHOTOGRAPH.
-// ─────────────────────────────────────────────────────────────────────────────
-describe("4. selectPhotoToRead resolves originFileId ?? fileId", () => {
+describe("3. selectPhotoToRead resolves originFileId ?? fileId, inside the turn's scope", () => {
   const sources = [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B];
   const inScope = photoSourcesInScope(sources, ALL_DOCS);
 
   it("shape A (nameplate-confirm): the ORIGIN file is the picture, not the .txt", () => {
-    const got = selectPhotoToRead([inScope[0]], sources, { hit: true, targets: [] }, "read it", 1);
-    expect(got[0].imageFileId).toBe(PHOTO_FILE);
-    expect(got[0].docId).toBe(DOC_PHOTO);
+    const got = selectPhotoToRead(inScope, sources, DOC_PHOTO);
+    expect(got!.imageFileId).toBe(PHOTO_FILE);
+    expect(got!.docId).toBe(DOC_PHOTO);
   });
 
   it("shape B (photo attached directly): the row's OWN file is the picture", () => {
-    const got = selectPhotoToRead([inScope[1]], sources, { hit: true, targets: [] }, "read it", 1);
-    expect(got[0].imageFileId).toBe(PHOTO_FILE_2);
+    expect(selectPhotoToRead(inScope, sources, DOC_PHOTO_2)!.imageFileId).toBe(PHOTO_FILE_2);
   });
 
   it("a row with neither id is skipped rather than sent as a null", () => {
@@ -280,35 +272,27 @@ describe("4. selectPhotoToRead resolves originFileId ?? fileId", () => {
     const scope = photoSourcesInScope([orphan], [DOC_PHOTO]);
     // isPhotoSource is satisfied by sourceRole alone, so this row DOES reach
     // selection — and must be dropped there.
-    expect(selectPhotoToRead(scope, [orphan], { hit: true, targets: [] }, "read it", 1)).toEqual([]);
+    expect(selectPhotoToRead(scope, [orphan], DOC_PHOTO)).toBeNull();
   });
 
-  it("filename overlap with the question wins, then recency, then docId", () => {
-    const got = selectPhotoToRead(inScope, sources, { hit: true, targets: [] }, "read the terminals", 1);
-    // "terminals" overlaps panel-TERMINALS.jpg and nothing in the nameplate row.
-    expect(got).toHaveLength(1);
-    expect(got[0].imageFileId).toBe(PHOTO_FILE_2);
+  it("a docId that is NOT an in-scope photo selects NOTHING — never a fallback", () => {
+    // The heart of authorization leg 1: a pointer is honoured only inside this
+    // turn's revalidated photo sources, and is never widened to "read whatever
+    // else is attached".
+    expect(selectPhotoToRead(inScope, sources, DOC_PDF)).toBeNull();
+    expect(selectPhotoToRead(inScope, sources, "deadbeef-dead-4ead-8ead-deadbeefdead")).toBeNull();
   });
 
-  it("with no overlap the MOST RECENTLY ADDED wins (listSources is created_at ASC)", () => {
-    const got = selectPhotoToRead(inScope, sources, { hit: true, targets: [] }, "read it", 1);
-    expect(got[0].docId).toBe(DOC_PHOTO_2);
-  });
-
-  it("the cap is honoured", () => {
-    expect(selectPhotoToRead(inScope, sources, { hit: true, targets: [] }, "read it", 2)).toHaveLength(2);
-  });
-
-  it("an explicit docId that is NOT an in-scope photo selects NOTHING — never a fallback", () => {
-    const got = selectPhotoToRead(inScope, sources, { hit: true, targets: [], docId: DOC_PDF }, "x", 1);
-    expect(got).toEqual([]);
+  it("a photo that exists but is OUT of this turn's doc scope selects nothing", () => {
+    const narrowed = photoSourcesInScope(sources, [DOC_PDF, DOC_PHOTO]);
+    expect(selectPhotoToRead(narrowed, sources, DOC_PHOTO_2)).toBeNull();
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. THE EVIDENCE SHAPE.
+// 4. THE EVIDENCE SHAPE.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("5. rereadChunk — a transcription can never masquerade as a manual", () => {
+describe("4. rereadChunk — a transcription can never masquerade as a manual", () => {
   const result: PhotoRereadResult = {
     docId: DOC_PHOTO,
     fileId: PHOTO_FILE,
@@ -361,13 +345,14 @@ describe("5. rereadChunk — a transcription can never masquerade as a manual", 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. END TO END through maybeRereadPhoto (provider mocked — never a paid call).
+// 5. END TO END through maybeRereadPhoto (provider mocked — never a paid call).
 // ─────────────────────────────────────────────────────────────────────────────
-describe("6. maybeRereadPhoto", () => {
+describe("5. maybeRereadPhoto", () => {
   const base = {
     tenantId: TENANT,
     notebookId: NB,
     docIds: ALL_DOCS,
+    explicitDocId: DOC_PHOTO,
     sources: [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B],
   };
   const READ_Q = "can you read the wire numbers from the photo that's attached?";
@@ -376,9 +361,9 @@ describe("6. maybeRereadPhoto", () => {
     process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
   });
 
-  it("a genuine miss produces ONE transcription chunk and a live-read url", async () => {
+  it("a pointed-at photograph produces ONE transcription chunk and a live-read url", async () => {
     const call = visionCall({ observation: 'Wire numbers "14", "15", "16".', found: true });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(call).toHaveBeenCalledTimes(1);
     expect(out!.chunks).toHaveLength(1);
     expect(out!.chunks[0].content).toContain('Wire numbers "14"');
@@ -389,7 +374,7 @@ describe("6. maybeRereadPhoto", () => {
 
   it("the vision call carries a timeout and the ORIGINAL uncropped bytes", async () => {
     const call = visionCall({ observation: "x", found: true });
-    await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    await maybeRereadPhoto({ ...base, message: READ_Q, call });
     const args = vi.mocked(call).mock.calls[0][0];
     expect(args.timeoutMs).toBe(12_000);
     expect(args.images).toHaveLength(1);
@@ -400,7 +385,7 @@ describe("6. maybeRereadPhoto", () => {
 
   it("the prompt forbids diagnosis and guessing, and names the technician's question", async () => {
     const call = visionCall({ observation: "x", found: true });
-    await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    await maybeRereadPhoto({ ...base, message: READ_Q, call });
     const p = vi.mocked(call).mock.calls[0][0].prompt;
     expect(p).toContain("NEVER diagnose");
     expect(p).toContain("NEVER guess a digit");
@@ -409,19 +394,19 @@ describe("6. maybeRereadPhoto", () => {
 
   it("found:false ⇒ NO chunk, a directive, and a frame that says so", async () => {
     const call = visionCall({ observation: "The terminal strip is out of focus.", found: false });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toHaveLength(0);
     expect(out!.readButNotFound).toBe(true);
     expect(out!.directive).toContain("not legible");
     expect(out!.frame).toMatchObject({ state: "read", found: false });
   });
 
-  it("an ordinary spec question never reaches the provider", async () => {
+  it("NO POINTER ⇒ the provider is never reached, on the verbatim defect question", async () => {
     const call = visionCall({ observation: "x", found: true });
     const out = await maybeRereadPhoto({
       ...base,
-      message: "what's the torque spec for the coupling?",
-      chunks: [],
+      explicitDocId: null,
+      message: READ_Q,
       call,
     });
     expect(out).toBeNull();
@@ -429,36 +414,35 @@ describe("6. maybeRereadPhoto", () => {
     expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
   });
 
-  it("no photo in scope ⇒ never reaches the provider", async () => {
+  it("no photo in scope ⇒ never reaches the provider, pointer or not", async () => {
     const call = visionCall({ observation: "x", found: true });
     const out = await maybeRereadPhoto({
       ...base,
       docIds: [DOC_PDF],
       message: READ_Q,
-      chunks: [],
       call,
     });
     expect(out).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });
 
-  it("the extraction already covering it ⇒ SKIPPED, free, no provider call", async () => {
+  it("a hostile docId reads NOTHING — no bytes, no provider, no frame", async () => {
     const call = visionCall({ observation: "x", found: true });
     const out = await maybeRereadPhoto({
       ...base,
+      explicitDocId: "deadbeef-dead-4ead-8ead-deadbeefdead",
       message: READ_Q,
-      chunks: [{ docId: DOC_PHOTO, content: "Wire numbers 14, 15, 16 are marked on the strip." }],
       call,
     });
+    expect(out).toBeNull();
     expect(call).not.toHaveBeenCalled();
-    expect(out!.chunks).toHaveLength(0);
-    expect(out!.frame).toMatchObject({ state: "skipped", reason: "extraction_covers" });
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
   });
 
   it("an unauthorized file ⇒ no provider call and an 'unavailable' frame", async () => {
     bytesMock.readLinkedPhotoBytes.mockResolvedValue(null);
     const call = visionCall({ observation: "x", found: true });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(call).not.toHaveBeenCalled();
     expect(out!.chunks).toHaveLength(0);
     // Distinct from a provider outage. On the first day the flag is on, an
@@ -473,7 +457,7 @@ describe("6. maybeRereadPhoto", () => {
       throw new Error("recognizer_provider_error_503");
     }) as unknown as VisionCall;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toHaveLength(0);
     expect(out!.directive).toBe("");
     expect(out!.frame).toMatchObject({ state: "unavailable", reason: "provider_error" });
@@ -487,7 +471,7 @@ describe("6. maybeRereadPhoto", () => {
       throw new DOMException("The operation was aborted due to timeout.", "TimeoutError");
     }) as unknown as VisionCall;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.frame).toMatchObject({ state: "unavailable" });
     // Free-text provider messages never reach the log.
     expect(String(warn.mock.calls[0][0])).toContain("recognizer_provider_error_unknown");
@@ -496,7 +480,7 @@ describe("6. maybeRereadPhoto", () => {
 
   it("an empty transcription is treated as a failure, not as an answer", async () => {
     const call = visionCall({ observation: "   ", found: true });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toHaveLength(0);
     expect(out!.frame).toMatchObject({ state: "unavailable", reason: "empty_response" });
   });
@@ -507,7 +491,7 @@ describe("6. maybeRereadPhoto", () => {
       model: "MiniMaxAI/MiniMax-M3",
       usage: { prompt_tokens: 2411, completion_tokens: 512 },
     })) as unknown as VisionCall;
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.observation).toMatchObject({
       event: "photo.reread",
       triggered: true,
@@ -522,68 +506,56 @@ describe("6. maybeRereadPhoto", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. DEFECT 4 — the referent must be a PICTURE.
-//
-// "look at" and "the attached" point at a DOCUMENT as readily as a picture, and
-// READ_INTENT admits see / says / part number, so both halves of the
-// requires-both rule were satisfied by ordinary manual questions. Measured with
-// the flag on and one photo in scope, the first three below each bought a
-// vision call. The coverage probe cannot save them: with no TARGET_TOKEN in the
-// message, `intent.targets` is empty and `extractionCoversIntent` returns false
-// at its first line, so nothing is ever suppressed for a target-less
-// over-trigger — and an over-triggered read that comes back found:true pushes
-// an irrelevant transcription as the turn's ONLY evidence.
+// 6. THE TRIGGER, MEASURED END TO END — the regression fence for the deleted
+//    heuristic. Same lists as §2, but driven through maybeRereadPhoto so a
+//    reintroduced regex would have to survive an actual counted call, not just
+//    a predicate assertion.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("7. a DOCUMENT referent is not a picture referent", () => {
-  it.each([
-    "Can you look at the manual and see what the recommended oil is?",
-    "Look at the wiring diagram and tell me what it says about grounding.",
-    "What is the part number in the attached datasheet?",
-    "What is the torque spec for the coupling?",
-    "How do I reset the fault on the drive?",
-  ])("does NOT fire: %s", (q) => {
-    expect(photoReadIntent(q).hit).toBe(false);
+describe("6. counted vision calls: phrasing is not a variable any more", () => {
+  const base = {
+    tenantId: TENANT,
+    notebookId: NB,
+    docIds: ALL_DOCS,
+    sources: [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B],
+  };
+
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
   });
 
-  it.each([
-    "Can you read the wire numbers from the photo that is attached?",
-    "Can you read the wire numbers from the photo that's attached?",
-    "what does the nameplate in the picture say",
-    "read the label in the attached image",
-    "what part number is on this snapshot",
-    "can you read the thumbnail",
-  ])("still fires: %s", (q) => {
-    expect(photoReadIntent(q).hit).toBe(true);
+  it.each(DOCUMENT_QUESTIONS)("0 calls without a pointer: %s", async (q) => {
+    const call = visionCall({ observation: "x", found: true });
+    expect(await maybeRereadPhoto({ ...base, message: q, call })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
   });
 
-  it("a bare 'look at' with no picture noun is not a referent", () => {
-    expect(photoReadIntent("look at the drawing and tell me what it says").hit).toBe(false);
+  it.each(TRUE_POSITIVES)("0 calls without a pointer: %s", async (q) => {
+    const call = visionCall({ observation: "x", found: true });
+    expect(await maybeRereadPhoto({ ...base, message: q, call })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
   });
 
-  it("an explicit docId still buys the read for a question with no picture noun", () => {
-    // The technician pointed at a specific picture; no regex may overrule that.
-    expect(photoReadIntent("what's the torque spec for the coupling?", DOC_PHOTO).hit).toBe(true);
-  });
-
-  it("but the EXPLICIT door still respects NOT_A_READ — a client that always sends a docId does not pay for file questions", () => {
-    for (const q of ["did my photo upload ok?", "delete that picture please", "how do I attach a photo to this notebook"]) {
-      expect(photoReadIntent(q, DOC_PHOTO).hit).toBe(false);
-    }
+  it.each(TRUE_POSITIVES)("exactly 1 call WITH a pointer: %s", async (q) => {
+    const call = visionCall({ observation: "X1-14", found: true });
+    const out = await maybeRereadPhoto({ ...base, message: q, explicitDocId: DOC_PHOTO, call });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(out!.chunks).toHaveLength(1);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. DEFECT 2 — a REFUSAL, or a missing/non-boolean `found`, is NOT a
+// 7. DEFECT 2 (kept) — a REFUSAL, or a missing/non-boolean `found`, is NOT a
 //    transcription. The never-fabricates contract enumerated error / timeout /
 //    empty / corrupt but not these, so refusal prose was wrapped in the
 //    server-authored "Values are transcriptions of what is printed in the
 //    photograph" header, pushed as a chunk and cited.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("8. a provider refusal is not a transcription", () => {
+describe("7. a provider refusal is not a transcription", () => {
   const base = {
     tenantId: TENANT,
     notebookId: NB,
     docIds: ALL_DOCS,
+    explicitDocId: DOC_PHOTO,
     sources: [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B],
   };
   const READ_Q = "can you read the wire numbers from the photo that's attached?";
@@ -596,7 +568,7 @@ describe("8. a provider refusal is not a transcription", () => {
     const call = visionCall({
       observation: "I'm sorry, I can't assist with identifying people or details in images.",
     });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toEqual([]);
     expect([...out!.liveReadUrls]).toEqual([]);
     expect(out!.directive).toBe("");
@@ -609,7 +581,7 @@ describe("8. a provider refusal is not a transcription", () => {
       observation: "As an AI, I cannot assist with this image.",
       found: true,
     });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toEqual([]);
     expect(out!.frame).toMatchObject({ state: "unavailable", reason: "refused" });
   });
@@ -618,7 +590,7 @@ describe("8. a provider refusal is not a transcription", () => {
     "a missing / non-boolean `found` (%s) is NOT FOUND, never a default-true",
     async (found) => {
       const call = visionCall({ observation: 'Terminal block reads "X1-14".', found });
-      const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+      const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
       expect(out!.chunks).toEqual([]);
       expect(out!.frame).toMatchObject({ state: "unavailable", reason: "refused" });
     },
@@ -626,7 +598,7 @@ describe("8. a provider refusal is not a transcription", () => {
 
   it("an explicit found:false is UNCHANGED — it is a look, not a refusal", async () => {
     const call = visionCall({ observation: "The terminal strip is out of focus.", found: false });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toEqual([]);
     expect(out!.directive).toContain("could NOT read the requested detail");
     expect(out!.frame).toMatchObject({ state: "read", found: false });
@@ -637,15 +609,17 @@ describe("8. a provider refusal is not a transcription", () => {
       observation: 'Wire "X1-1?" — I can\'t read the last character; it is a 4 or a 1.',
       found: true,
     });
-    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, call });
     expect(out!.chunks).toHaveLength(1);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. DEFECT 1 + DEFECT 3 — what the technician is told, and what they can check.
+// 8. DEFECT 1 (kept) — what the technician is told, and what they can check.
+//    The naming rule outlived the guess that produced it: the surface may
+//    assert only the file the server actually fetched.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("9. the not-found outcome names the file that was actually read", () => {
+describe("8. the not-found outcome names the file that was actually read", () => {
   const base = {
     tenantId: TENANT,
     notebookId: NB,
@@ -657,32 +631,42 @@ describe("9. the not-found outcome names the file that was actually read", () =>
     process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
   });
 
-  it("carries the filename of the picture the server fetched, so the surface can name it", async () => {
+  it("carries the filename of the picture the POINTER named, so the surface can name it", async () => {
     const call = visionCall({ observation: "Out of focus.", found: false });
-    // No filename overlap ⇒ recency wins ⇒ PHOTO_ROW_B ("panel-terminals.jpg").
     const out = await maybeRereadPhoto({
       ...base,
+      explicitDocId: DOC_PHOTO_2,
       message: "can you read the wire numbers in the photo",
-      chunks: [],
       call,
     });
     expect(out!.readButNotFound).toBe(true);
     expect(out!.notFoundFilename).toBe("panel-terminals.jpg");
   });
 
+  it("a different pointer names a different file — the server cannot read the wrong picture", async () => {
+    const call = visionCall({ observation: "Out of focus.", found: false });
+    const out = await maybeRereadPhoto({
+      ...base,
+      explicitDocId: DOC_PHOTO,
+      message: "can you read the wire numbers in the photo",
+      call,
+    });
+    expect(out!.notFoundFilename).toBe("nameplate-1118ca97.txt");
+  });
+
   it("is null when nothing was read", async () => {
     const call = visionCall({ observation: 'Wire numbers "14", "15".', found: true });
     const out = await maybeRereadPhoto({
       ...base,
+      explicitDocId: DOC_PHOTO,
       message: "can you read the wire numbers in the photo",
-      chunks: [],
       call,
     });
     expect(out!.notFoundFilename).toBeNull();
   });
 });
 
-describe("10. transcriptionOf strips the provenance header the citation must not show", () => {
+describe("9. transcriptionOf strips the provenance header the citation must not show", () => {
   const result: PhotoRereadResult = {
     docId: DOC_PHOTO,
     fileId: PHOTO_FILE,

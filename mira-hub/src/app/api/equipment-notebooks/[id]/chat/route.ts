@@ -461,7 +461,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     /** Photo RE-READ (NOTEBOOK_PHOTO_REREAD_ENABLED): the technician pointed at
      *  ONE attached photograph. Only the doc id is read, and it is honoured only
      *  if it is already one of THIS turn's server-revalidated photo sources —
-     *  it can never widen the doc scope, only choose within it. */
+     *  it can never widen the doc scope, only choose within it.
+     *
+     *  THIS FIELD IS THE ENTIRE TRIGGER. Its absence means no photograph is
+     *  read, whatever the message says — the phrasing heuristic that used to
+     *  stand beside it was deleted after two rounds of measurement (see
+     *  `notebook-photo-reread.ts` property 2). */
     photoRead?: { docId?: unknown };
   };
   try {
@@ -782,26 +787,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // for every other turn is untouched, byte for byte.
   //
   // `photoRereadEnabled()` is evaluated FIRST in the `&&` chain, so with the
-  // flag unset NOTHING here runs: no extra `listSources` query, no regex, no
-  // provider call, no frame, no log line. `!general` because a general turn has
-  // no source scope to authorize against; `validated.ok` because that is what
+  // flag unset NOTHING here runs: no extra `listSources` query, no provider
+  // call, no frame, no log line. `!general` because a general turn has no
+  // source scope to authorize against; `validated.ok` because that is what
   // proves this notebook belongs to this tenant (readLinkedPhotoBytes proves
   // the FILE's tenancy and its link to this notebook, but never the notebook's
   // ownership — see that module's "the one leg this module cannot prove").
   //
+  // `photoReadDocId` is in the chain too, and that is the ENTIRE trigger: the
+  // client pointed at one attached photograph. There is no phrasing heuristic
+  // to consult, so a turn with no pointer costs nothing — not even the
+  // `listSources` query, which the old heuristic had to pay for on any turn
+  // that merely mentioned a picture.
+  //
   // `listSources` is called HERE rather than reusing the Promise.all further
   // down, deliberately: reusing it would mean hoisting an await above Gate G on
   // EVERY turn, including flag-off ones. The duplicate query runs only after
-  // the flag AND the trigger have both passed. `chunks` is `const` but it is an
+  // the flag AND the pointer have both passed. `chunks` is `const` but it is an
   // array — `.push` needs no declaration change.
   let reread: PhotoRereadOutcome | null = null;
-  if (photoRereadEnabled() && !general && validated.ok) {
+  if (photoRereadEnabled() && !general && validated.ok && photoReadDocId) {
     try {
       reread = await maybeRereadPhoto({
         tenantId: ctx.tenantId,
         notebookId,
         message,
-        chunks,
         docIds,
         explicitDocId: photoReadDocId,
         sources: await listSources(ctx.tenantId, notebookId).catch(() => [] as NotebookSource[]),
@@ -864,16 +874,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // "I couldn't find that in the selected sources" would understate
           // what the server actually did on the technician's behalf.
           //
-          // IT NAMES THE FILE, for the same reason `rereadDirective` does. With
-          // more than one photograph in scope, selectPhotoToRead picks by
-          // filename overlap and then by recency — so with camera-default names
-          // the picture read is not necessarily the one the technician meant,
-          // and no client consumes the `photo_read` frame's `filename`, which
-          // makes this sentence all they get. The definite "the attached
-          // photograph" asserted both that their referent was read and that it
-          // is illegible, when it may never have been fetched at all. The
-          // sentence must be true given only what the server can prove: which
-          // file it actually read.
+          // IT NAMES THE FILE, for the same reason `rereadDirective` does, and
+          // that requirement OUTLIVED the reason it was found. It was found
+          // because selection guessed (filename overlap, then recency), so the
+          // definite "the attached photograph" could assert that a picture was
+          // read which had never been fetched. Selection no longer guesses — the
+          // client points — but the sentence must still be true given only what
+          // the server can prove: which file it actually read. No client
+          // consumes the `photo_read` frame's `filename`, so this sentence is
+          // all the technician gets, and it is what lets them see whether the
+          // photograph they tapped is the one that came back illegible. Do not
+          // weaken it back to the definite article.
           message: reread?.notFoundFilename
             ? `I re-read the attached photograph "${reread.notFoundFilename}" and that detail isn't legible in it.`
             : "I couldn't find that in the selected sources.",

@@ -11,16 +11,23 @@
  * photograph at answer time with the technician's ACTUAL question, instead of
  * relying on a nameplate-shaped extraction taken months earlier.
  *
+ * THE TRIGGER IS `body.photoRead.docId` AND NOTHING ELSE. The client points at
+ * one attached photograph; the server reads that one. There is no phrasing
+ * heuristic to be over- or under-triggered, which is why §11 can assert exact
+ * call counts for eleven natural document questions and six picture-shaped ones
+ * without a single string in either list mattering.
+ *
  * THE FIVE PROPERTIES THIS FILE PROVES, in order of how much they matter:
  *
  *   §1 MERGE SAFETY  With the flag off, the turn is byte-identical to the
  *      #3557 baseline: no vision call, no frame, no extra field, and — proved
  *      by string equality against the flag-on failure path — the same system
- *      prompt and the same user content, character for character.
+ *      prompt and the same user content, character for character. Every §1 turn
+ *      carries a VALID pointer, so the flag is what is under test.
  *   §2 TENANT SAFETY A photo that is not authorized for THIS notebook in THIS
  *      tenant is never fetched and never sent. Driven with a hostile id.
- *   §3 THE TRIGGER   An ordinary question in a notebook that happens to have a
- *      photograph attached does NOT buy a vision call.
+ *   §3 THE TRIGGER   No pointer, no read — and a pointer is honoured only
+ *      inside this turn's revalidated photo sources.
  *   §4 FAILURE       Provider error / timeout degrades to the honest decline.
  *      Never a fabrication, never a claim of sight.
  *   §5 CITATION      A vision-derived claim is attributable AND distinguishable
@@ -49,8 +56,10 @@ const PHOTO_NAME = "nameplate-1118ca97.txt";
 
 /** The verbatim production question that produced the original defect. */
 const QUESTION = "Can you read the wire numbers from the photo that's attached?";
-/** An ordinary question the manual answers. Must never buy a vision call. */
+/** An ordinary question the manual answers. */
 const ORDINARY = "What is the torque spec for the coupling?";
+/** The client pointing at the attached photograph — the whole trigger. */
+const POINT = { docId: DOC_PHOTO };
 
 vi.mock("@/lib/session", () => ({
   sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
@@ -277,11 +286,17 @@ beforeEach(() => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §1 MERGE SAFETY — the property that lets this land without touching prod.
+//
+// Every turn here carries a VALID pointer. That is deliberate: without it these
+// tests would pass because nothing was pointed at, and would keep passing if
+// the flag check itself were deleted.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("1. FLAG OFF is byte-identical to the #3557 baseline", () => {
-  it("no vision call, no bytes read, no photo_read frame — on the exact defect question", async () => {
+  it("no vision call, no bytes read, no photo_read frame — even with the pointer set", async () => {
     photoInScope();
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
     expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
     expect(photoReadFrames(fs)).toHaveLength(0);
@@ -289,7 +304,7 @@ describe("1. FLAG OFF is byte-identical to the #3557 baseline", () => {
 
   it("the #3557 honesty directive is STILL there — this feature does not replace it", async () => {
     photoInScope();
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     const p = sentSystemPrompt();
     expect(p).toContain("ATTACHED PICTURES:");
     expect(p).toContain("NEVER say that no photo was provided");
@@ -299,7 +314,9 @@ describe("1. FLAG OFF is byte-identical to the #3557 baseline", () => {
   it("no citation carries a `provenance` field", async () => {
     photoInScope();
     stubProvider("Terminal 4 is the ground lug [1].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     const cites = citationsOf(fs);
     expect(cites.length).toBeGreaterThan(0);
     for (const c of cites) expect(c).not.toHaveProperty("provenance");
@@ -308,9 +325,23 @@ describe("1. FLAG OFF is byte-identical to the #3557 baseline", () => {
   it("an ordinary grounded answer streams and cites exactly as before", async () => {
     photoInScope();
     stubProvider("Terminal 4 is the ground lug [1].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({ status: "answered" });
     expect(citationsOf(fs)).toHaveLength(1);
+  });
+
+  it("an unknown / malformed photoRead is never a 4xx, with the flag off or on", async () => {
+    photoInScope();
+    for (const bad of [{}, { docId: 5 }, { docId: "   " }, null]) {
+      const res = await POST(
+        req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: bad }),
+        params,
+      );
+      expect(res.status).toBe(200);
+    }
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
   });
 });
 
@@ -336,7 +367,9 @@ describe("2. a failed vision call degrades EXACTLY to the flag-off turn", () => 
     else delete process.env.NOTEBOOK_PHOTO_REREAD_ENABLED;
     photoInScope();
     stubProvider("Answer.");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     return { system: sentSystemPrompt(), user: sentUserContent(), frames: fs };
   }
 
@@ -377,10 +410,20 @@ describe("3. tenant safety — an unauthorized photo is never fetched or sent", 
     );
     // The explicit id is intersected with THIS turn's revalidated photo
     // sources, so it selects nothing — and is never widened to "read whatever
-    // else is attached".
+    // else is attached". With the heuristic gone this is also the ONLY door,
+    // so a rejected pointer is a rejected turn: zero byte reads, zero calls.
     expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
     expect(photoReadFrames(fs)).toHaveLength(0);
+  });
+
+  it("pointing at the MANUAL source (not a photo) reads nothing either", async () => {
+    photoInScope();
+    await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: { docId: DOC_PDF } }), params),
+    );
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
   });
 
   it("when the authorization door refuses, no bytes reach the provider and no citation appears", async () => {
@@ -389,7 +432,9 @@ describe("3. tenant safety — an unauthorized photo is never fetched or sent", 
     bytesMock.readLinkedPhotoBytes.mockResolvedValue(null);
     photoInScope();
     stubProvider("Terminal 4 is the ground lug [1].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
     for (const c of citationsOf(fs)) expect(c).not.toHaveProperty("provenance");
     expect(photoReadFrames(fs)[0]).toMatchObject({ state: "unavailable" });
@@ -397,7 +442,7 @@ describe("3. tenant safety — an unauthorized photo is never fetched or sent", 
 
   it("the door is asked for the PHOTOGRAPH (originFileId), scoped to THIS notebook", async () => {
     photoInScope();
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     expect(bytesMock.readLinkedPhotoBytes).toHaveBeenCalledWith(
       TENANT,
       PHOTO_FILE_ID, // the picture, not the extracted .txt's own file id
@@ -411,12 +456,12 @@ describe("3. tenant safety — an unauthorized photo is never fetched or sent", 
 // ─────────────────────────────────────────────────────────────────────────────
 // §3 THE TRIGGER.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("4. the trigger — a photo attached is not a licence to read it", () => {
+describe("4. the trigger — no pointer, no read", () => {
   beforeEach(() => {
     process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
   });
 
-  it("an ORDINARY question in a notebook WITH a photo attached costs nothing", async () => {
+  it("an ordinary question with NO pointer costs nothing", async () => {
     photoInScope();
     const fs = await frames(await POST(req({ message: ORDINARY, sourceDocIds: ALL_DOCS }), params));
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
@@ -424,37 +469,67 @@ describe("4. the trigger — a photo attached is not a licence to read it", () =
     expect(photoReadFrames(fs)).toHaveLength(0);
   });
 
-  it("a photo-shaped question with NO photo in scope costs nothing", async () => {
+  it("the verbatim defect question with NO pointer also costs nothing — the deliberate change", async () => {
+    photoInScope();
+    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+    expect(photoReadFrames(fs)).toHaveLength(0);
+  });
+
+  it("a pointer with NO photo in scope costs nothing", async () => {
     noPhoto();
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: [DOC_PDF] }), params));
+    await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: [DOC_PDF], photoRead: POINT }), params),
+    );
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
   });
 
   it("general mode never re-reads (no source scope to authorize against)", async () => {
     photoInScope();
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, mode: "general" }), params));
+    await frames(
+      await POST(
+        req({ message: QUESTION, sourceDocIds: ALL_DOCS, mode: "general", photoRead: POINT }),
+        params,
+      ),
+    );
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
   });
 
-  it("the stored extraction already covering it ⇒ SKIPPED, free", async () => {
+  it("a question ABOUT the file (NOT_A_READ) buys nothing even with a pointer", async () => {
     photoInScope();
+    for (const q of ["did my photo upload ok?", "delete that picture please"]) {
+      await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
+    }
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+  });
+
+  it("a stored extraction that already mentions the target does NOT veto the tap", async () => {
+    photoInScope();
+    // The deleted coverage probe suppressed exactly this shape: a photo-derived
+    // chunk containing "wire numbers"/"terminal" cancelled the vision call and
+    // returned the same non-answer that made the technician tap the picture.
+    // The tap is the instruction; a substring match does not get to overrule it.
     ragMock.retrieveNodeChunks.mockResolvedValue([
       CHUNK,
       {
         ...CHUNK,
         docId: DOC_PHOTO,
         sourceUrl: "u2",
-        content: "RAW NAMEPLATE OBSERVATION: wire numbers 14, 15, 16 on the strip.",
+        content: "RAW NAMEPLATE OBSERVATION: wire numbers 14, 15, 16 on the terminal strip.",
       },
     ]);
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
-    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
-    expect(photoReadFrames(fs)[0]).toMatchObject({ state: "skipped", reason: "extraction_covers" });
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
+    expect(visionMock.togetherVisionCall).toHaveBeenCalledTimes(1);
+    expect(photoReadFrames(fs)[0]).toMatchObject({ state: "read", found: true });
   });
 
-  it("a genuine miss calls the provider EXACTLY ONCE, with the original bytes and a timeout", async () => {
+  it("a pointed-at photograph calls the provider EXACTLY ONCE, with the original bytes and a timeout", async () => {
     photoInScope();
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     expect(visionMock.togetherVisionCall).toHaveBeenCalledTimes(1);
     const args = visionMock.togetherVisionCall.mock.calls[0][0];
     // Uncropped: resolveRecognitionImage crops to the NAMEPLATE region, which
@@ -474,7 +549,7 @@ describe("5. a transcription is served as attributable, distinguishable evidence
   });
 
   it("the transcription reaches the model as its own numbered excerpt", async () => {
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     const user = sentUserContent();
     expect(user).toContain("photo-reread://");
     expect(user).toContain("read directly from the attached photograph");
@@ -483,7 +558,9 @@ describe("5. a transcription is served as attributable, distinguishable evidence
 
   it("its citation carries provenance:'live_photo_read' AND the PHOTOGRAPH's originFileId", async () => {
     stubProvider("The wire numbers are X1-14, X1-15 and X1-16 [2].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     const cite = citationsOf(fs).find((c) => c.provenance === "live_photo_read");
     expect(cite).toBeDefined();
     // Distinguishable from a manual citation by a durable FIELD, not by a
@@ -495,14 +572,16 @@ describe("5. a transcription is served as attributable, distinguishable evidence
 
   it("a manual citation on the same turn does NOT carry the marker", async () => {
     stubProvider("Section 4 covers terminals [1]; the photo shows X1-14 [2].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     const manual = citationsOf(fs).find((c) => c.docId === DOC_PDF);
     expect(manual).toBeDefined();
     expect(manual).not.toHaveProperty("provenance");
   });
 
   it("the honesty directive REMAINS armed on a successful read", async () => {
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     // The image is still never in the chat model's context, so the floor
     // bullet must still forbid inventing what a picture looks like.
     expect(sentSystemPrompt()).toContain("ATTACHED PICTURES:");
@@ -513,7 +592,7 @@ describe("5. a transcription is served as attributable, distinguishable evidence
 
   it("emits one photo.reread observation line carrying usage and latency", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     const lines = spy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('"event":"photo.reread"'));
     expect(lines).toHaveLength(1);
     const o = JSON.parse(lines[0]);
@@ -533,7 +612,7 @@ describe("6. found:false — a better refusal, never a guess", () => {
   });
 
   it("no transcription chunk is created, and the prompt says the picture WAS re-read", async () => {
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     expect(sentUserContent()).not.toContain("photo-reread://");
     const p = sentSystemPrompt();
     expect(p).toContain("PHOTO RE-READ");
@@ -543,11 +622,14 @@ describe("6. found:false — a better refusal, never a guess", () => {
 
   it("with NOTHING retrieved, Gate G says the picture was re-read, not 'not in the sources'", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({
       status: "insufficient_evidence",
-      // NAMES the file it read (see §8): with more than one photograph in
-      // scope the picture read is not necessarily the one the technician meant.
+      // NAMES the file it read (see §8). The pointer means it is now always the
+      // file the client named — and the sentence must still say WHICH, so the
+      // technician can see whether it is the picture they meant.
       message: `I re-read the attached photograph "${PHOTO_NAME}" and that detail isn't legible in it.`,
     });
   });
@@ -562,7 +644,9 @@ describe("7. THE RESCUE — a zero-retrieval turn that DID read the photo answer
     // without ever looking at the picture sitting right there.
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     stubProvider("The wire numbers read X1-14, X1-15 and X1-16 [1].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({ status: "answered" });
     expect(citationsOf(fs)[0]).toMatchObject({ provenance: "live_photo_read" });
   });
@@ -571,7 +655,9 @@ describe("7. THE RESCUE — a zero-retrieval turn that DID read the photo answer
     delete process.env.NOTEBOOK_PHOTO_REREAD_ENABLED;
     photoInScope();
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({
       status: "insufficient_evidence",
       message: "I couldn't find that in the selected sources.",
@@ -582,15 +668,16 @@ describe("7. THE RESCUE — a zero-retrieval turn that DID read the photo answer
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. DEFECT 1 — the Gate-G sentence must be true about the picture the SERVER
-//    actually read, not about "the attached photograph" in the abstract.
+//    actually read.
 //
-//    Executed repro (third adversarial lens): two camera-default photographs in
-//    scope. IMG_20260901_101122.jpg is the wired panel the technician means;
-//    IMG_20260901_143355.jpg is a rating plate. Neither filename overlaps the
-//    question, so the recency tie-break in selectPhotoToRead reads the RATING
-//    PLATE. The panel is never fetched, never transmitted, never read — and the
-//    old sentence still asserted "the attached photograph" was re-read and is
-//    illegible. Both halves were false about the picture that was asked about.
+//    The original repro was a GUESS: two camera-default photographs in scope,
+//    neither filename overlapping the question, so the recency tie-break read
+//    the rating plate while the sentence claimed "the attached photograph" —
+//    false about which picture was read and about the one asked for. Selection
+//    no longer guesses, so the repro is retargeted at what replaced it: the
+//    server reads the pointed-at file, and the sentence names THAT file. The
+//    wrong-picture failure is now unreachable by construction, and these two
+//    tests are what prove it: two pointers, two different files read.
 // ─────────────────────────────────────────────────────────────────────────────
 const PANEL_DOC = "55555555-5555-4555-8555-555555555555";
 const PLATE_DOC = "66666666-6666-4666-8666-666666666666";
@@ -599,7 +686,8 @@ const PLATE_FILE = "f0000000-0000-4000-8000-0000000000bb";
 /** Camera defaults: nothing in either name overlaps a wire-number question. */
 const PANEL_NAME = "IMG_20260901_101122.jpg";
 const PLATE_NAME = "IMG_20260901_143355.jpg";
-/** listSources is created_at ASC, so the plate is the MOST RECENT row. */
+/** listSources is created_at ASC, so the plate is the MOST RECENT row — which
+ *  used to decide the read, and now decides nothing. */
 const PANEL_ROW: SrcRow = {
   docId: PANEL_DOC,
   filename: PANEL_NAME,
@@ -619,7 +707,7 @@ const PLATE_ROW: SrcRow = {
   pages: null,
 };
 
-describe("8. two photos attached — the refusal names the picture that was READ", () => {
+describe("8. two photos attached — the pointer decides, and the refusal names it", () => {
   beforeEach(() => {
     process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
     nbMock.listSources.mockResolvedValue([PANEL_ROW, PLATE_ROW]);
@@ -629,31 +717,61 @@ describe("8. two photos attached — the refusal names the picture that was READ
       nodeId: "n1",
     });
     nbMock.originFileIdsByDoc.mockResolvedValue(new Map());
-    bytesMock.readLinkedPhotoBytes.mockResolvedValue({ ...AUTHORIZED_BYTES, fileId: PLATE_FILE });
-    // The rating plate genuinely has no wire numbers on it.
-    visionReads("This is a motor rating plate; no wire numbers are visible.", false);
+    visionReads("No wire numbers are legible in this photograph.", false);
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
   });
 
-  it("reads the RATING PLATE (recency tie-break), not the panel the technician meant", async () => {
-    await frames(
-      await POST(req({ message: QUESTION, sourceDocIds: [PANEL_DOC, PLATE_DOC] }), params),
+  it("pointing at the PANEL reads the panel — the recency tie-break is gone", async () => {
+    bytesMock.readLinkedPhotoBytes.mockResolvedValue({ ...AUTHORIZED_BYTES, fileId: PANEL_FILE });
+    const fs = await frames(
+      await POST(
+        req({
+          message: QUESTION,
+          sourceDocIds: [PANEL_DOC, PLATE_DOC],
+          photoRead: { docId: PANEL_DOC },
+        }),
+        params,
+      ),
     );
     expect(bytesMock.readLinkedPhotoBytes).toHaveBeenCalledTimes(1);
-    expect(bytesMock.readLinkedPhotoBytes.mock.calls[0][1]).toBe(PLATE_FILE);
+    expect(bytesMock.readLinkedPhotoBytes.mock.calls[0][1]).toBe(PANEL_FILE);
+    expect(statusOf(fs)).toMatchObject({
+      status: "insufficient_evidence",
+      message: `I re-read the attached photograph "${PANEL_NAME}" and that detail isn't legible in it.`,
+    });
+    // The plate was never fetched, so nothing may be asserted about it.
+    expect(String(statusOf(fs)!.message)).not.toContain(PLATE_NAME);
   });
 
-  it("the technician-facing sentence NAMES that file — it never claims their referent was read", async () => {
+  it("pointing at the PLATE reads the plate, and the sentence names that file instead", async () => {
+    bytesMock.readLinkedPhotoBytes.mockResolvedValue({ ...AUTHORIZED_BYTES, fileId: PLATE_FILE });
+    const fs = await frames(
+      await POST(
+        req({
+          message: QUESTION,
+          sourceDocIds: [PANEL_DOC, PLATE_DOC],
+          photoRead: { docId: PLATE_DOC },
+        }),
+        params,
+      ),
+    );
+    expect(bytesMock.readLinkedPhotoBytes.mock.calls[0][1]).toBe(PLATE_FILE);
+    expect(statusOf(fs)).toMatchObject({
+      message: `I re-read the attached photograph "${PLATE_NAME}" and that detail isn't legible in it.`,
+    });
+    expect(String(statusOf(fs)!.message)).not.toContain(PANEL_NAME);
+  });
+
+  it("with no pointer, NEITHER is read — the server no longer picks for the technician", async () => {
     const fs = await frames(
       await POST(req({ message: QUESTION, sourceDocIds: [PANEL_DOC, PLATE_DOC] }), params),
     );
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
     expect(statusOf(fs)).toMatchObject({
       status: "insufficient_evidence",
-      message:
-        'I re-read the attached photograph "IMG_20260901_143355.jpg" and that detail isn\'t legible in it.',
+      message: "I couldn't find that in the selected sources.",
     });
-    // The panel was never fetched, so nothing may be asserted about it.
-    expect(String(statusOf(fs)!.message)).not.toContain(PANEL_NAME);
   });
 });
 
@@ -682,7 +800,9 @@ describe("9. a provider refusal degrades to the honest decline", () => {
   });
 
   it("no chunk, no citation, and Gate G still abstains with the flag-off sentence", async () => {
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({
       status: "insufficient_evidence",
       message: "I couldn't find that in the selected sources.",
@@ -694,7 +814,7 @@ describe("9. a provider refusal degrades to the honest decline", () => {
   it("the refusal prose never reaches the model wrapped in a transcription header", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     stubProvider("Answer.");
-    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     const user = sentUserContent();
     expect(user).not.toContain("photo-reread://");
     expect(user).not.toContain("assist with identifying");
@@ -707,7 +827,9 @@ describe("9. a provider refusal degrades to the honest decline", () => {
       text: JSON.stringify({ observation: 'Terminal block reads "X1-14".' }),
       model: "MiniMaxAI/MiniMax-M3",
     });
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     expect(statusOf(fs)).toMatchObject({ status: "insufficient_evidence" });
     expect(citationsOf(fs)).toHaveLength(0);
   });
@@ -727,7 +849,9 @@ describe("10. the citation quote is the transcribed text, not the provenance hea
       'The terminal block at the top-left reads "X1-14", "X1-15" and "X1-16", left to right.',
     );
     stubProvider("The wire numbers are X1-14, X1-15 and X1-16 [2].");
-    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS, photoRead: POINT }), params),
+    );
     const cite = citationsOf(fs).find((c) => c.provenance === "live_photo_read");
     expect(cite).toBeDefined();
     expect(String(cite!.quote)).toContain("X1-14");
@@ -737,35 +861,82 @@ describe("10. the citation quote is the transcribed text, not the provenance hea
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 11. DEFECT 4 — a bare "look at" / "the attached" points at a DOCUMENT as
-//     readily as a picture. Measured with the flag on and one photo in scope,
-//     each of the first three bought a vision call. The coverage probe cannot
-//     suppress them: with no TARGET_TOKEN present, intent.targets is empty and
-//     extractionCoversIntent returns false at its first line.
+// 11. THE MEASUREMENT — counted vision calls through the REAL POST handler.
+//
+//     The phrasing heuristic was deleted because it could not be tuned. Round A
+//     (bare "look at" / "the attached") over-fired on five ordinary manual
+//     questions. Round B narrowed the referent to picture nouns, closed those
+//     five, and STILL fired on four natural document questions (6–9 below) —
+//     because a figure inside a manual is described with exactly the same nouns
+//     as a photograph attached to a notebook — while LOSING true positives it
+//     had caught before ("Read the wire numbers off the attached.").
+//
+//     Under the pointer both lists behave identically and the wording is inert:
+//     0 calls with no docId, 1 call with one.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("11. over-trigger — an ordinary manual question buys no vision call", () => {
+const DOCUMENT_QUESTIONS = [
+  "Can you look at the manual and see what the recommended oil is?",
+  "Look at the wiring diagram and tell me what it says about grounding.",
+  "What is the part number in the attached datasheet?",
+  "What is the torque spec for the coupling?",
+  "How do I reset the fault on the drive?",
+  "In the datasheet image, what is the part number?",
+  "What does the image on page 12 of the manual say about the terminals?",
+  "Is there a picture of the terminal layout in the manual?",
+  "Can you find an image in the PDF that shows the nameplate?",
+  "Look at the drawing and tell me what it says.",
+  "What terminal does the brake resistor land on?",
+];
+
+const TRUE_POSITIVES = [
+  "Can you read the wire numbers from the photo that's attached?",
+  "Read the wire numbers off the attached.",
+  "what does the nameplate in the picture say",
+  "read the label in the attached image",
+  "what part number is on this snapshot",
+  "can you read the thumbnail",
+];
+
+describe("11. counted vision calls: the wording is inert, the pointer is everything", () => {
   beforeEach(() => {
     process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
     photoInScope();
   });
 
-  it.each([
-    "Can you look at the manual and see what the recommended oil is?",
-    "Look at the wiring diagram and tell me what it says about grounding.",
-    "What is the part number in the attached datasheet?",
-    "What is the torque spec for the coupling?",
-    "How do I reset the fault on the drive?",
-  ])("0 vision calls: %s", async (q) => {
+  it.each(DOCUMENT_QUESTIONS)("0 calls, no pointer — document question: %s", async (q) => {
     await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS }), params));
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
     expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "Can you read the wire numbers from the photo that is attached?",
-    "what does the nameplate in the picture say",
-  ])("still 1 vision call: %s", async (q) => {
+  it.each(TRUE_POSITIVES)("0 calls, no pointer — picture-shaped question: %s", async (q) => {
     await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS }), params));
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+  });
+
+  it.each(TRUE_POSITIVES)("exactly 1 call WITH a pointer: %s", async (q) => {
+    await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
     expect(visionMock.togetherVisionCall).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(DOCUMENT_QUESTIONS)("exactly 1 call WITH a pointer: %s", async (q) => {
+    // Deliberate: pointing at a photograph while asking about a datasheet is
+    // still an instruction to read the photograph. The server does not
+    // second-guess the tap — that guessing is what was just deleted.
+    await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
+    expect(visionMock.togetherVisionCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("the NOT_A_READ list is the one thing a pointer does not override", async () => {
+    for (const q of [
+      "did my photo upload ok?",
+      "how do I attach a photo to this notebook",
+      "delete that picture please",
+      "send me the photo",
+    ]) {
+      await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS, photoRead: POINT }), params));
+    }
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
   });
 });

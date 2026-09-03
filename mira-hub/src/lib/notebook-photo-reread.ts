@@ -24,37 +24,48 @@
  * answer time, ASKING THE TECHNICIAN'S ACTUAL QUESTION.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * THE FIVE PROPERTIES THAT MAKE IT SHIPPABLE
+ * THE FOUR PROPERTIES THAT MAKE IT SHIPPABLE
  *
  * 1. DEFAULT OFF. `photoRereadEnabled()` is read FIRST, before any other work.
  *    With `NOTEBOOK_PHOTO_REREAD_ENABLED` unset the module does nothing at all
  *    and the turn is byte-identical to the honesty-directive baseline. That is
  *    what lets this merge without changing production.
  *
- * 2. THE TRIGGER IS DETERMINISTIC, NOT A MODEL CALL. A classifier call costs the
- *    same order as the thing it would gate, so gating with one buys nothing. Two
- *    doors: an EXPLICIT `photoRead.docId` naming an in-scope photo source, or a
- *    HEURISTIC needing BOTH a PICTURE NOUN and a read verb / visual-target noun.
- *    Requiring both halves is the whole point — "what's the torque spec for the
- *    coupling?" must not fire in a notebook full of photographs, and neither
- *    must "look at the manual and see what the recommended oil is" (a bare
- *    "look at" / "the attached" points at a DOCUMENT just as readily). Both
- *    doors respect the NOT_A_READ negative list.
+ * 2. THE TRIGGER IS THE POINTER — nothing is inferred from phrasing. The turn
+ *    reads a photograph if, and only if, the client named one
+ *    (`photoRead.docId`) that is already one of THIS turn's revalidated
+ *    in-scope photo sources. NO docId, NO read, whatever the wording.
  *
- * 3. THE COVERAGE PROBE MAKES THE COMMON CASE FREE. If the stored extraction
- *    already contains a lexical hit for what was asked, the honesty directive
- *    answers correctly at ZERO marginal cost and no vision call is made.
- *    Deliberately conservative: ANY hit suppresses. Nameplate questions — the
- *    overwhelming majority of photo turns — keep costing nothing.
+ *    A phrasing heuristic was tried twice and measured twice, and it cannot
+ *    work. Round A (bare "look at" / "the attached") fired on ordinary manual
+ *    questions. Round B narrowed the referent to picture nouns only and still
+ *    fired on 4 of 11 natural document questions ("In the datasheet image, what
+ *    is the part number?", "What does the image on page 12 of the manual say
+ *    about the terminals?", "Is there a picture of the terminal layout in the
+ *    manual?", "Can you find an image in the PDF that shows the nameplate?")
+ *    while LOSING true positives it used to catch ("Read the wire numbers off
+ *    the attached."). The distinguishing feature is whether the picture is AN
+ *    ATTACHED PHOTOGRAPH or A FIGURE INSIDE A DOCUMENT — a semantic distinction
+ *    a regex keeps trading in both directions. Worse than the bill: an
+ *    over-triggered read that returns `found:true` pushes an irrelevant
+ *    transcription as the turn's ONLY evidence, converting an honest abstain
+ *    into an answered turn grounded on the wrong picture.
  *
- * 4. THE VISION MODEL TRANSCRIBES; IT NEVER DIAGNOSES. `PHOTO_REREAD_PROMPT` is
+ *    The pointer has zero false positives and zero false negatives BY
+ *    CONSTRUCTION, and it is already authorization-bounded on two independent
+ *    legs (`selectPhotoToRead` intersects it with this turn's revalidated
+ *    in-scope photo sources; `readLinkedPhotoBytes` re-proves tenant + notebook
+ *    linkage). It still respects the NOT_A_READ negative list: pointing says
+ *    WHICH picture, not that the question is about what is printed on it.
+ *
+ * 3. THE VISION MODEL TRANSCRIBES; IT NEVER DIAGNOSES. `PHOTO_REREAD_PROMPT` is
  *    modelled on the LOOK route's INSPECTION_PROMPT: copy what is printed, never
  *    name a root cause, never guess a digit, and say `found:false` rather than
  *    invent. This preserves `nameplate/evidence.ts`'s law that vision produces
  *    CANDIDATES, never truth — the grounded text model still does the reasoning,
  *    over a transcription that is labelled as one.
  *
- * 5. FAILURE DEGRADES TO THE HONEST DECLINE, NEVER TO A FABRICATION. Timeout,
+ * 4. FAILURE DEGRADES TO THE HONEST DECLINE, NEVER TO A FABRICATION. Timeout,
  *    provider error, missing key, unauthorized file, oversized bytes, an empty
  *    observation, a POLICY REFUSAL, or a reply whose `found` is missing or not a
  *    boolean: every one returns `null`, the turn proceeds exactly as it would
@@ -115,131 +126,37 @@ export function photoRereadMaxBytes(): number {
   return clampInt(process.env.PHOTO_REREAD_MAX_BYTES, 4_194_304, 1, 8_388_608);
 }
 
-/** How many attached photographs one turn may re-read. Default ONE — cost and
- *  latency are per-image and this is a chat turn, not a batch job. */
-export function photoRereadMaxImages(): number {
-  return clampInt(process.env.PHOTO_REREAD_MAX_IMAGES, 1, 1, 2);
-}
-
 // ── Trigger ──────────────────────────────────────────────────────────────────
 
-/** Something in the question POINTS AT A PICTURE. Without this half, a notebook
- *  that happens to contain photographs would pay a vision call for every
- *  question that mentions a terminal. */
-// A PICTURE NOUN, and nothing weaker. The earlier alternation also admitted the
-// bare phrases "look at", "the attached", "this shot" and "in the frame" — every
-// one of which points at a DOCUMENT as readily as a photograph. Measured with
-// the flag on and one photo in scope, each of these bought a vision call:
-//   "Can you look at the manual and see what the recommended oil is?"
-//   "Look at the wiring diagram and tell me what it says about grounding."
-//   "What is the part number in the attached datasheet?"
-// and the coverage probe cannot suppress them — with no TARGET_TOKEN in the
-// message `intent.targets` is empty and `extractionCoversIntent` returns false
-// at its first line, so nothing is ever suppressed for a target-less
-// over-trigger. Worse than the bill: an over-triggered read that returns
-// `found:true` pushes an irrelevant transcription as the turn's ONLY evidence,
-// converting an honest abstain into an answer grounded on the wrong picture.
-const PICTURE_REFERENT =
-  /\b(photos?|photographs?|pictures?|images?|pics?|snapshots?|thumbnails?)\b/i;
-
-/** Something in the question ASKS FOR SOMETHING TO BE READ OFF IT. The verbs and
- *  the visual-target nouns are one alternation because either alone is a
- *  sufficient second half ("read the photo" / "wire numbers in the picture"). */
-const READ_INTENT =
-  /\b(read|reads|see|says?|show|shows|transcribe|zoom)\b|what does it say|\bwire numbers?\b|\bterminals?\b|\blabels?\b|\btag numbers?\b|\blegends?\b|\bgauges?\b|\bdisplays?\b|\bleds?\b|\bindicators?\b|\blamps?\b|\bnameplates?\b|\bpart numbers?\b|\bserials?\b|\bmarkings?\b|\bcolou?r of\b|\bposition of\b|\bconnected to\b/i;
-
 /** Questions ABOUT the picture-as-a-file, not about what is printed on it.
- *  These carry a referent and often a verb, and must never buy a vision call. */
+ *  Pointing at a picture says WHICH picture; it does NOT say the question is
+ *  about what is printed on it, so a client that always sets `photoRead.docId`
+ *  must not pay for "did my photo upload ok?" or "delete that picture". */
 const NOT_A_READ =
   /\bdid (my|the) (photo|photograph|picture|image|pic) upload\b|\bhow do i attach\b|\bhow do i upload\b|\bdelete (that|the|this) (photo|photograph|picture|image|pic)\b|\bsend me the (photo|photograph|picture|image)\b|\b(photo|picture|image) upload (ok|okay|fine|work)\b/i;
 
-/** The visual-target vocabulary, kept separate from the verbs because ONLY
- *  these are probe-able: the coverage probe looks for them in the stored
- *  extraction. A verb ("read") appearing in a manual excerpt proves nothing. */
-const TARGET_TOKENS: readonly string[] = [
-  "wire number",
-  "terminal",
-  "label",
-  "tag number",
-  "legend",
-  "gauge",
-  "display",
-  "led",
-  "indicator",
-  "lamp",
-  "nameplate",
-  "part number",
-  "serial",
-  "marking",
-];
-
-/** Above this the message is a paste or a narrative, not "read this photo". */
-const MAX_TRIGGER_CHARS = 500;
-
-export type PhotoReadIntent = { hit: boolean; targets: string[]; docId?: string };
-
 /**
- * Deterministic trigger. NO model call — a classifier would cost the same order
- * as the vision call it gates.
+ * WHICH photograph this turn may read — the doc id the client pointed at, or
+ * `null`.
  *
- * EXPLICIT door: `body.photoRead.docId` naming an in-scope photo source wins
- * over PICTURE_REFERENT and READ_INTENT; the technician pointed at a specific
- * picture, which is a stronger referent than any regex, and requiring a read
- * verb as well would defeat the point of the door ("what's on this?").
+ * THE POINTER IS THE WHOLE TRIGGER. There is no phrasing heuristic and no
+ * classifier: no docId, no read, whatever the wording. See property 2 in the
+ * header for the two rounds of measurement that killed the heuristic, and why a
+ * regex cannot separate "the attached photograph" from "the figure inside the
+ * manual" without trading errors in both directions.
  *
- * IT DOES, HOWEVER, STILL RESPECT `NOT_A_READ`. The door used to return
- * `hit:true` UNCONDITIONALLY, so a client that always sets `photoRead.docId`
- * bought a vision call on every turn — including "did my photo upload ok?" and
- * "delete that picture", which are questions about the picture-as-a-file and can
- * never be answered by looking at it. Pointing at a picture says WHICH picture;
- * it does not say that the question is about what is printed on it.
- *
- * HEURISTIC door: short message AND a picture referent AND a read intent AND
- * not in the negative list.
+ * The id returned here is a REQUEST, not an authorization. It is authorized
+ * downstream in two independent legs, neither of which this function may
+ * shortcut: `selectPhotoToRead` intersects it with THIS turn's revalidated
+ * in-scope photo sources (returning nothing on a miss — never widened to "read
+ * whatever else is attached"), and `readLinkedPhotoBytes` re-proves tenant
+ * ownership and the file→notebook link before a single byte is read.
  */
-export function photoReadIntent(message: string, explicitDocId?: string | null): PhotoReadIntent {
-  const targetsIn = (text: string) => {
-    const lower = text.toLowerCase();
-    return TARGET_TOKENS.filter((t) => lower.includes(t));
-  };
-  const m = (message || "").trim();
-  if (explicitDocId) {
-    if (NOT_A_READ.test(m)) return { hit: false, targets: [] };
-    return { hit: true, targets: targetsIn(message), docId: explicitDocId };
-  }
-
-  if (m.length === 0 || m.length > MAX_TRIGGER_CHARS) return { hit: false, targets: [] };
-  if (NOT_A_READ.test(m)) return { hit: false, targets: [] };
-  if (!PICTURE_REFERENT.test(m)) return { hit: false, targets: [] };
-  if (!READ_INTENT.test(m)) return { hit: false, targets: [] };
-  return { hit: true, targets: targetsIn(m) };
-}
-
-/**
- * THE MISS PROBE — the thing that keeps this feature nearly free.
- *
- * If a retrieved chunk that came from a PHOTO-DERIVED document already mentions
- * what was asked about, the stored extraction covers the question and the
- * honesty directive answers it from text at zero marginal cost. Only a question
- * whose answer is genuinely ABSENT from the extraction pays for a vision call.
- *
- * Deliberately conservative in the cheap direction: ANY lexical hit suppresses.
- * A false suppression costs an honest "the extraction doesn't contain that";
- * a false trigger costs money on every nameplate question in the product.
- */
-export function extractionCoversIntent(
-  chunks: Pick<ManualChunk, "content" | "docId">[],
-  photoDocIds: string[],
-  targets: string[],
-): boolean {
-  if (targets.length === 0) return false;
-  const photo = new Set(photoDocIds);
-  for (const c of chunks) {
-    if (!c.docId || !photo.has(c.docId)) continue;
-    const lower = (c.content || "").toLowerCase();
-    if (targets.some((t) => lower.includes(t))) return true;
-  }
-  return false;
+export function photoReadTarget(message: string, explicitDocId?: string | null): string | null {
+  const docId = (explicitDocId || "").trim();
+  if (!docId) return null;
+  if (NOT_A_READ.test((message || "").trim())) return null;
+  return docId;
 }
 
 // ── Selection ────────────────────────────────────────────────────────────────
@@ -252,21 +169,16 @@ export type PhotoCandidate = {
   filename: string;
 };
 
-const STOPWORDS = new Set([
-  "the", "a", "an", "of", "in", "on", "at", "to", "for", "from", "with", "and",
-  "or", "is", "are", "was", "were", "be", "can", "you", "i", "my", "that",
-  "this", "it", "what", "which", "read", "photo", "picture", "image", "attached",
-]);
-
-function contentWords(s: string): string[] {
-  return (s || "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
-}
-
 /**
- * Which attached photograph to read, deterministically.
+ * Resolve the pointed-at doc id to the ONE photograph that may be read, or
+ * `null`.
+ *
+ * AUTHORIZATION LEG 1. `inScope` is `photoSourcesInScope(sources, docIds)` —
+ * this turn's server-revalidated photo sources. An id that is not in it selects
+ * NOTHING; it is never widened to "read whatever else is attached". A pointer
+ * therefore cannot reach outside the turn's own doc scope, which is what makes
+ * a hostile or stale id a no-op rather than a leak. (Leg 2 is
+ * `readLinkedPhotoBytes`, which re-proves tenant + notebook linkage.)
  *
  * THE IMAGE ID IS `originFileId ?? fileId`. Two source shapes produce a photo
  * row and they resolve differently:
@@ -276,50 +188,26 @@ function contentWords(s: string): string[] {
  *     `fileId` IS the photograph. Use that.
  * Getting this backwards sends a text file to a vision model.
  *
- * Order: explicit docId > most content-word overlap with the question >
- * most recently added (listSources returns created_at ASC) > docId ascending.
- * Every tie is broken, so the same turn always reads the same picture.
+ * There is no ranking here any more, and there must not be one again: ranking
+ * existed only to GUESS which picture an un-pointed question meant, and the
+ * guess is what made the "I re-read the attached photograph" sentence a lie
+ * about a file that was never fetched. With a pointer the server cannot read
+ * the wrong picture.
  */
 export function selectPhotoToRead(
   inScope: PhotoSourceRef[],
   sources: NotebookSource[],
-  intent: PhotoReadIntent,
-  message: string,
-  maxImages: number,
-): PhotoCandidate[] {
-  const byDoc = new Map<string, { src: NotebookSource; order: number }>();
-  sources.forEach((s, order) => byDoc.set(s.docId, { src: s, order }));
-
-  const candidates: (PhotoCandidate & { order: number; overlap: number })[] = [];
-  for (const ref of inScope) {
-    const entry = byDoc.get(ref.docId);
-    if (!entry) continue;
-    // Shape A (nameplate-confirm): originFileId is the photograph.
-    // Shape B (photo attached directly): originFileId is NULL, fileId is it.
-    const imageFileId = entry.src.originFileId ?? entry.src.fileId;
-    if (!imageFileId) continue;
-    const filename = ref.filename || entry.src.filename || "attached photo";
-    const qWords = new Set(contentWords(message));
-    const overlap = contentWords(filename).filter((w) => qWords.has(w)).length;
-    candidates.push({ docId: ref.docId, imageFileId, filename, order: entry.order, overlap });
-  }
-
-  if (intent.docId) {
-    const explicit = candidates.filter((c) => c.docId === intent.docId);
-    // An explicit id that is NOT an in-scope photo is not silently widened to
-    // "read whatever else is attached" — the technician pointed somewhere.
-    if (explicit.length === 0) return [];
-    return explicit.slice(0, Math.max(1, maxImages)).map(strip);
-  }
-
-  candidates.sort(
-    (a, b) => b.overlap - a.overlap || b.order - a.order || (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0),
-  );
-  return candidates.slice(0, Math.max(1, maxImages)).map(strip);
-}
-
-function strip(c: PhotoCandidate & { order: number; overlap: number }): PhotoCandidate {
-  return { docId: c.docId, imageFileId: c.imageFileId, filename: c.filename };
+  docId: string,
+): PhotoCandidate | null {
+  const ref = inScope.find((r) => r.docId === docId);
+  if (!ref) return null;
+  const src = sources.find((s) => s.docId === docId);
+  if (!src) return null;
+  // Shape A (nameplate-confirm): originFileId is the photograph.
+  // Shape B (photo attached directly): originFileId is NULL, fileId is it.
+  const imageFileId = src.originFileId ?? src.fileId;
+  if (!imageFileId) return null;
+  return { docId, imageFileId, filename: ref.filename || src.filename || "attached photo" };
 }
 
 // ── The vision pass ──────────────────────────────────────────────────────────
@@ -645,7 +533,8 @@ export function photoRereadObservation(input: {
 // ── The one function the route calls ─────────────────────────────────────────
 
 export type PhotoRereadOutcome = {
-  /** 0..maxImages transcription chunks to append to the turn's evidence. */
+  /** 0 or 1 transcription chunks to append to the turn's evidence (one pointer,
+   *  one photograph, one call). */
   chunks: ManualChunk[];
   /** Extra prompt line for the `found:false` case; "" otherwise. */
   directive: string;
@@ -661,22 +550,24 @@ export type PhotoRereadOutcome = {
    * The filename of the photograph that was ACTUALLY fetched and read on the
    * not-found path; `null` otherwise.
    *
-   * Exists so the technician-facing sentence can NAME it. With more than one
-   * photograph attached, `selectPhotoToRead` picks by filename overlap and then
-   * by recency — so with camera-default names (IMG_20260901_101122.jpg,
-   * IMG_20260901_143355.jpg) the picture read is NOT necessarily the one the
-   * technician meant. Saying "the attached photograph" was re-read and is
-   * illegible is then false twice over: about which picture was read, and about
-   * the one they asked about, which was never fetched at all. The surface must
-   * only assert what the server can prove — which file it read.
+   * Exists so the technician-facing sentence can NAME it. The naming rule
+   * survives the move to an explicit pointer, and its justification is now
+   * simpler rather than weaker: the surface asserts only what the server can
+   * prove — which file it read. With camera-default names
+   * (IMG_20260901_101122.jpg, IMG_20260901_143355.jpg) a bare "the attached
+   * photograph was re-read and is illegible" leaves the technician unable to
+   * tell whether the pointer they tapped is the picture they meant; naming the
+   * file is what makes that checkable. Do not weaken this to the definite
+   * article.
    */
   notFoundFilename: string | null;
 };
 
 /**
- * Returns `null` when NOTHING happened — flag off, no picture in scope, or the
- * question was not about a picture. `null` means the turn is byte-identical to
- * the honesty-directive baseline: no frame, no log line, no provider call.
+ * Returns `null` when NOTHING happened — flag off, no picture in scope, no
+ * pointer, or a pointer that resolves to nothing readable. `null` means the turn
+ * is byte-identical to the honesty-directive baseline: no frame, no log line, no
+ * provider call.
  *
  * CALLER CONTRACT: only call this once notebook ownership is established
  * (`validated.ok` on the chat route) — see `notebook-photo-bytes.ts`'s "the one
@@ -686,7 +577,6 @@ export async function maybeRereadPhoto(input: {
   tenantId: string;
   notebookId: string;
   message: string;
-  chunks: Pick<ManualChunk, "content" | "docId">[];
   docIds: string[];
   explicitDocId?: string | null;
   sources: NotebookSource[];
@@ -698,18 +588,13 @@ export async function maybeRereadPhoto(input: {
   const inScope = photoSourcesInScope(input.sources, input.docIds);
   if (inScope.length === 0) return null;
 
-  // 2. Deterministic trigger — no model call.
-  const intent = photoReadIntent(input.message, input.explicitDocId ?? null);
-  if (!intent.hit) return null;
+  // 2. The trigger: the client pointed at a photograph, and the question is not
+  //    about the picture-as-a-file. Nothing is inferred from phrasing.
+  const target = photoReadTarget(input.message, input.explicitDocId ?? null);
+  if (!target) return null;
 
-  const candidates = selectPhotoToRead(
-    inScope,
-    input.sources,
-    intent,
-    input.message,
-    photoRereadMaxImages(),
-  );
-  if (candidates.length === 0) return null;
+  const candidate = selectPhotoToRead(inScope, input.sources, target);
+  if (!candidate) return null;
 
   const base = { tenantId: input.tenantId, notebookId: input.notebookId };
   const empty = (frame: NotebookPhotoReadFrame, suppressedBy: string | null): PhotoRereadOutcome => ({
@@ -733,71 +618,65 @@ export async function maybeRereadPhoto(input: {
     notFoundFilename: null,
   });
 
-  // 3. The miss probe — the stored extraction may already answer this, for free.
-  if (extractionCoversIntent(input.chunks, inScope.map((s) => s.docId), intent.targets)) {
-    return empty(
-      { kind: "photo_read", state: "skipped", reason: "extraction_covers" },
-      "extraction_covers",
-    );
-  }
+  // 3. The read. ONE photograph, ONE call — the technician pointed at one.
+  //
+  //    There is no coverage probe in front of this any more. It suppressed the
+  //    call whenever a photo-derived chunk merely CONTAINED one of fourteen
+  //    lexical tokens, which is the same kind of inference this module just
+  //    removed from the trigger, one layer down — and it misfired in the exact
+  //    motivating case: a nameplate `.txt` extraction routinely contains the
+  //    literal word "terminal", and one such hit suppressed a wire-number
+  //    re-read, returning the same non-answer that made the technician tap the
+  //    picture. It was also unobservable: nothing renders the `skipped` frame,
+  //    so the answer read as though the picture had been consulted. The tap IS
+  //    the instruction; String.includes does not get to overrule it. If spend
+  //    needs a brake it belongs in a per-turn/per-notebook rate limit, which
+  //    bounds cost without overruling intent.
+  const attempt = await rereadPhotoForQuestion({
+    tenantId: input.tenantId,
+    notebookId: input.notebookId,
+    candidate,
+    question: input.message,
+    call: input.call,
+  });
 
-  // 4. The read. One call per selected photograph (default: exactly one).
-  const results: PhotoRereadResult[] = [];
-  let failure: PhotoRereadFailure | null = null;
-  for (const candidate of candidates) {
-    const attempt = await rereadPhotoForQuestion({
-      tenantId: input.tenantId,
-      notebookId: input.notebookId,
-      candidate,
-      question: input.message,
-      call: input.call,
-    });
-    if (attempt.ok) results.push(attempt.result);
-    else failure = failure ?? attempt.reason;
-  }
-
-  if (results.length === 0) {
+  if (!attempt.ok) {
     // Unauthorized, unreadable, oversized, unconfigured, timed out, or errored.
     // Identical in EFFECT to the flag being off — the honesty directive still
     // stands and the turn answers as before — but the reason is recorded, so a
     // provider outage is not mistaken for an authorization refusal.
-    const reason = failure ?? "bytes_unavailable";
-    return empty({ kind: "photo_read", state: "unavailable", reason }, reason);
+    return empty(
+      { kind: "photo_read", state: "unavailable", reason: attempt.reason },
+      attempt.reason,
+    );
   }
 
-  const read = results.filter((r) => r.found);
-  const missed = results.find((r) => !r.found) ?? null;
-  const first = results[0];
-
+  const result = attempt.result;
   return {
-    chunks: read.map(rereadChunk),
-    directive: rereadDirective(missed),
-    liveReadUrls: new Set(read.map((r) => photoRereadSourceUrl(r.fileId))),
+    chunks: result.found ? [rereadChunk(result)] : [],
+    // Empty unless the reader looked and could not read (`rereadDirective`
+    // returns "" for a found result), so the composed prompt is unchanged.
+    directive: rereadDirective(result),
+    liveReadUrls: new Set(result.found ? [photoRereadSourceUrl(result.fileId)] : []),
     frame: {
       kind: "photo_read",
       state: "read",
-      found: read.length > 0,
-      filename: first.filename,
+      found: result.found,
+      filename: result.filename,
     },
     observation: photoRereadObservation({
       ...base,
       triggered: true,
       suppressedBy: null,
-      model: first.model,
-      latencyMs: results.reduce((a, r) => a + r.latencyMs, 0),
-      promptTokens: results.reduce<number | null>(
-        (a, r) => (r.promptTokens == null ? a : (a ?? 0) + r.promptTokens),
-        null,
-      ),
-      completionTokens: results.reduce<number | null>(
-        (a, r) => (r.completionTokens == null ? a : (a ?? 0) + r.completionTokens),
-        null,
-      ),
-      imageBytes: results.reduce((a, r) => a + r.imageBytes, 0),
-      found: read.length > 0,
-      refused: read.length === 0,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      promptTokens: result.promptTokens,
+      completionTokens: result.completionTokens,
+      imageBytes: result.imageBytes,
+      found: result.found,
+      refused: !result.found,
     }),
-    readButNotFound: read.length === 0 && missed !== null,
-    notFoundFilename: read.length === 0 && missed ? missed.filename : null,
+    readButNotFound: !result.found,
+    notFoundFilename: result.found ? null : result.filename,
   };
 }

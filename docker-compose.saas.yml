@@ -881,8 +881,6 @@ services:
       - PHOTO_REREAD_TIMEOUT_MS=${PHOTO_REREAD_TIMEOUT_MS:-12000}
       # Bytes ceiling per photograph, rejected in SQL before they reach the heap.
       - PHOTO_REREAD_MAX_BYTES=${PHOTO_REREAD_MAX_BYTES:-4194304}
-      # Photographs one turn may read. Cost and latency are per-image.
-      - PHOTO_REREAD_MAX_IMAGES=${PHOTO_REREAD_MAX_IMAGES:-1}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
