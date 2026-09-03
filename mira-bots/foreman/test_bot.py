@@ -133,7 +133,7 @@ async def test_reconnect_after_agent_death(mock_config):
 
 @pytest.mark.asyncio
 async def test_bot_filter_prevents_agent_launch():
-    """bot_id / own user / subtype / wrong channel / empty text → no Agent.create."""
+    """bot_id / own user / bot subtypes → handle_message drops, no Agent.create, no say."""
     config = ForemanConfig()
     config.slack_bot_token = "xoxb-test"
     config.slack_app_token = "xapp-test"
@@ -146,6 +146,7 @@ async def test_bot_filter_prevents_agent_launch():
          patch("bot.AsyncApp"):
         
         bot = ForemanBot(config)
+        mock_say = AsyncMock()
         
         # Test 1: bot_id present
         event_bot_id = {
@@ -154,7 +155,7 @@ async def test_bot_filter_prevents_agent_launch():
             "channel": "C_ALLOWED",
             "text": "message from other bot",
         }
-        assert bot._is_bot_message(event_bot_id) is True
+        await bot.handle_message(event_bot_id, mock_say)
         
         # Test 2: user is Foreman's own bot_user_id
         event_own_user = {
@@ -163,7 +164,7 @@ async def test_bot_filter_prevents_agent_launch():
             "channel": "C_ALLOWED",
             "text": "foreman's own message",
         }
-        assert bot._is_bot_message(event_own_user) is True
+        await bot.handle_message(event_own_user, mock_say)
         
         # Test 3: bot_message subtype
         event_bot_subtype = {
@@ -172,7 +173,7 @@ async def test_bot_filter_prevents_agent_launch():
             "channel": "C_ALLOWED",
             "text": "message with bot subtype",
         }
-        assert bot._is_bot_message(event_bot_subtype) is True
+        await bot.handle_message(event_bot_subtype, mock_say)
         
         # Test 4: message_changed subtype
         event_changed_subtype = {
@@ -181,7 +182,7 @@ async def test_bot_filter_prevents_agent_launch():
             "channel": "C_ALLOWED",
             "text": "changed message",
         }
-        assert bot._is_bot_message(event_changed_subtype) is True
+        await bot.handle_message(event_changed_subtype, mock_say)
         
         # Test 5: message_deleted subtype
         event_deleted_subtype = {
@@ -189,24 +190,18 @@ async def test_bot_filter_prevents_agent_launch():
             "subtype": "message_deleted",
             "channel": "C_ALLOWED",
         }
-        assert bot._is_bot_message(event_deleted_subtype) is True
+        await bot.handle_message(event_deleted_subtype, mock_say)
         
-        # Test 6: Human message in allowed channel — NOT filtered
-        event_human = {
-            "ts": "1234.5683",
-            "user": "U_HUMAN_USER",
-            "channel": "C_ALLOWED",
-            "text": "human message",
-        }
-        assert bot._is_bot_message(event_human) is False
-        
-        # Verify: No Agent.create calls (all events filtered or would be rejected)
+        # Verify: No Agent.create calls (all bot events dropped before agent access)
         assert MockAgent.create.call_count == 0
+        
+        # Verify: say never called (no responses posted)
+        assert mock_say.call_count == 0
 
 
 @pytest.mark.asyncio
 async def test_channel_filter():
-    """Wrong channel → message ignored, no agent launch."""
+    """Wrong channel → handle_message drops, no Agent.create, no say."""
     config = ForemanConfig()
     config.slack_bot_token = "xoxb-test"
     config.slack_app_token = "xapp-test"
@@ -219,11 +214,9 @@ async def test_channel_filter():
          patch("bot.AsyncApp"):
         
         bot = ForemanBot(config)
+        mock_say = AsyncMock()
         
-        # Simulate handle_message with wrong channel
-        # (In real code, channel filter is in handle_message before _invoke_grok)
-        # Here we verify the bot rejects it
-        
+        # Human message in WRONG channel
         event_wrong_channel = {
             "ts": "1234.5690",
             "user": "U_HUMAN",
@@ -231,18 +224,18 @@ async def test_channel_filter():
             "text": "message in wrong channel",
         }
         
-        # Bot's handle_message would check channel BEFORE calling _invoke_grok
-        # Since we're testing the filter, we verify it's not the allowed channel
-        assert event_wrong_channel["channel"] != config.allowed_channel
+        await bot.handle_message(event_wrong_channel, mock_say)
         
-        # In real flow, this would be filtered out and _invoke_grok never called
-        # So Agent.create should never be called
+        # Verify: No Agent.create (channel filter drops before agent access)
         assert MockAgent.create.call_count == 0
+        
+        # Verify: say never called (no response posted)
+        assert mock_say.call_count == 0
 
 
 @pytest.mark.asyncio
 async def test_empty_text_ignored():
-    """Empty text → no agent launch."""
+    """Empty text → handle_message drops, no Agent.create, no say."""
     config = ForemanConfig()
     config.slack_bot_token = "xoxb-test"
     config.slack_app_token = "xapp-test"
@@ -255,8 +248,9 @@ async def test_empty_text_ignored():
          patch("bot.AsyncApp"):
         
         bot = ForemanBot(config)
+        mock_say = AsyncMock()
         
-        # Empty text events are filtered in handle_message before _invoke_grok
+        # Human message with empty text
         event_empty = {
             "ts": "1234.5691",
             "user": "U_HUMAN",
@@ -264,12 +258,13 @@ async def test_empty_text_ignored():
             "text": "",  # Empty
         }
         
-        # Verify empty text
-        assert not event_empty["text"].strip()
+        await bot.handle_message(event_empty, mock_say)
         
-        # In real flow, handle_message filters this out
-        # Agent.create should never be called
+        # Verify: No Agent.create (empty text filter drops before agent access)
         assert MockAgent.create.call_count == 0
+        
+        # Verify: say never called (no response posted)
+        assert mock_say.call_count == 0
 
 
 @pytest.mark.asyncio
