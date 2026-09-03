@@ -601,6 +601,29 @@ textarea {
   color: var(--fl-accent); font-size: 14px; text-align: left;
 }
 
+/* ── "Ask about this photo" pin ───────────────────────────────────────────
+   Sits directly above the composer on BOTH surfaces so a pointed question is
+   never a hidden action. Citation colours, deliberately: this is a selection /
+   reference indicator, not equipment state — state colours stay reserved for
+   ok / warn / fault. Tokens only. */
+.photo-pin {
+  display: flex; align-items: center; gap: var(--fl-space-2);
+  padding: var(--fl-space-2) var(--fl-space-4);
+  background: var(--flm-citation-bg); color: var(--flm-citation-fg);
+  border-top: 1px solid var(--fl-line);
+  font-size: var(--fl-fs-sm);
+}
+.photo-pin .photo-pin-label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.photo-pin .photo-pin-clear {
+  width: auto; min-width: 32px; min-height: 32px;
+  padding: 0 var(--fl-space-2); margin: 0;
+  border: none; background: none; color: var(--flm-citation-fg);
+  font-size: 18px; line-height: 1;
+}
+
 /* ── Capsule composer (chrome pass 2/3) ────────────────────────────────────
    One rounded container holding attach + input + action, instead of three
    separate objects sitting in a row. Tokens only. */

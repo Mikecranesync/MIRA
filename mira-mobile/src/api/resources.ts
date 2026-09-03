@@ -429,6 +429,59 @@ export function canBeChatSource(
   return ms === "user_confirmed" || ms === "verified";
 }
 
+// --- Pointing at a photograph (notebook photo re-read) ---------------------
+// The server's photo re-read fires if and only if the client NAMES one
+// attached photograph (`body.photoRead.docId`) that is already one of this
+// turn's in-scope photo sources. There is no phrasing heuristic any more, so
+// this pointer is the ONLY door — which makes the client's eligibility test
+// part of the contract rather than a cosmetic filter.
+
+/** A photograph the NEXT question is explicitly about. `fileId` is only for
+ *  the thumbnail (`originFileId ?? fileId`); the DOC id is what travels. */
+export interface PhotoPin {
+  docId: string;
+  filename: string | null;
+  fileId: string | null;
+}
+
+/** Mirrors the server's `isPhotoSource` (mira-hub photo-source-honesty.ts):
+ *  a UNION, not an either/or. The Sources row renders a thumbnail when
+ *  `originFileId` is set and a "· photo" label when `sourceRole === "photo"`;
+ *  the server accepts a pointer at EITHER. Testing only one of them would put
+ *  the button on a different set of rows than the server will honour. */
+export function isPhotoSource(
+  s: { sourceRole?: string | null; originFileId?: string | null },
+): boolean {
+  return s.sourceRole === "photo" || s.originFileId != null;
+}
+
+/** TRUE only for a row the server will actually read: a photo source that is
+ *  in THIS turn's scope. `scope` is what gets sent as `sourceDocIds`, and the
+ *  server intersects the pointer with exactly that — so an unchecked or
+ *  unconfirmed photo is a silent no-op there, and must not look tappable here. */
+export function canPinPhoto(
+  s: { docId: string; sourceRole?: string | null; originFileId?: string | null },
+  scope: string[],
+): boolean {
+  return isPhotoSource(s) && scope.includes(s.docId);
+}
+
+/** The pin as it stands RIGHT NOW, re-derived from the current sources and
+ *  scope on every render rather than trusted from when it was set. Unchecking,
+ *  detaching, or rejecting the pinned source drops it — a chip that promises a
+ *  question is "about" a photo the server would ignore is a lie, and a stale
+ *  pointer is exactly the case the hub has no frame for. */
+export function resolvePhotoPin(
+  pin: PhotoPin | null,
+  sources: NotebookSource[],
+  scope: string[],
+): PhotoPin | null {
+  if (!pin) return null;
+  const row = sources.find((s) => s.docId === pin.docId);
+  if (!row || !canPinPhoto(row, scope)) return null;
+  return pin;
+}
+
 export interface NotebookServerTurn {
   id: string;
   question: string;
@@ -1272,6 +1325,13 @@ export async function askNotebook(
      *  ignores it otherwise) and re-derives the evidence entry — the client
      *  never sends evidence rows. Absent = unchanged path. */
     visualEvidence?: VisualEvidence;
+    /** Notebook photo re-read: WHICH attached photograph this question is
+     *  about. Identifier only — the server re-validates it against this
+     *  turn's in-scope photo sources and silently ignores anything else. The
+     *  client never asserts that the photo will be re-read: whether it is
+     *  depends on a server flag, and the honest client-side claim is only
+     *  that the question was pointed at this photograph. */
+    photoRead?: { docId: string };
   } = {},
 ): Promise<ChatTurn> {
   const parser = createChatSseParser();
@@ -1285,6 +1345,7 @@ export async function askNotebook(
         ...(opts.history?.length ? { history: opts.history } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
+        ...(opts.photoRead ? { photoRead: opts.photoRead } : {}),
       },
       onChunk: (chunk) => {
         const before = parser.turn().answer;
