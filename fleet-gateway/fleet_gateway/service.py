@@ -286,9 +286,10 @@ class FleetGatewayService:
         del requester
         role = str(params.get("role") or "").strip().lower()
         if role in REJECTED_ROLES or role == "specialized":
-            raise ContractViolation("specialized/PLC/non-bravo-charlie roles are refused")
+            raise ContractViolation("specialized/PLC/non-fleet roles are refused")
         if role not in ALLOWED_ROLES:
-            raise ContractViolation("role must be bravo or charlie")
+            allowed = ", ".join(sorted(ALLOWED_ROLES))
+            raise ContractViolation(f"role must be one of: {allowed}")
         provider = str(params.get("provider") or "").strip().lower()
         if provider not in ALLOWED_PROVIDERS:
             raise ContractViolation("provider must be claude or codex")

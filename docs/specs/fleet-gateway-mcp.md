@@ -15,7 +15,7 @@ This is **not** `mira-mcp` (product diagnostics / CMMS) and **not** `factorylm/g
 - Seven locked tools (two read, five mutate)
 - Mutate audit log (JSONL)
 - Loopback-only CAO client (`127.0.0.1`) behind an interface; FakeCAO default/stub
-- Isolated-worktree launch for `bravo` | `charlie` on `claude` | `codex`
+- Isolated-worktree launch for `bravo` | `charlie` | `alpha` on `claude` | `codex`
 - Durable HANDOFF artifacts; chat is never "done"
 
 **OUT of scope (this PR / v1)**
@@ -65,7 +65,7 @@ Public TLS termination and any CAO tunnel are **not** this PR.
 |---|---|---|
 | `fleet_status` | read | Separate fields: `node_health`, `cao_health`, `claude_readiness`, `claude_auth`, `codex_readiness`, `codex_auth`, `current_session`, `current_task`, `heartbeat`, `context_used`, `context_remaining`. Never LAN/Tailscale IPs, CAO ports, or secrets. |
 | `task_status` | read | `task_id`, `node`, `provider`, `branch`, `worktree`, `commit`, `handoff`, `tests`, `type_check`, `build`, `review_verdict`, `blockers`, `claimed_commit_matches_artifact` (bool). `done` is never inferred from chat. |
-| `launch_worker` | mutate | `role` = `bravo`\|`charlie` only (specialized/PLC refused). Required: `provider` `claude`\|`codex`, `task_id`, `github_ref`, `base_commit`, `acceptance_criteria`. Always isolated worktree (`isolated_worktree=true`). No shell/merge/deploy. |
+| `launch_worker` | mutate | `role` = `bravo`\|`charlie`\|`alpha` only (specialized/PLC refused). Each is a physical node with its own loopback CAO + node-local (SSH) worktree; unknown nodes fail closed, never default to Bravo (#3552). Required: `provider` `claude`\|`codex`, `task_id`, `github_ref`, `base_commit`, `acceptance_criteria`. Always isolated worktree (`isolated_worktree=true`). No shell/merge/deploy. |
 | `message_worker` | mutate | `text` to one `session_id`. |
 | `request_handoff` | mutate | Write durable HANDOFF artifact; stop claiming the task. |
 | `request_review` | mutate | Charlie only. Independent reviewer profile with tests / type-check / inspect-files. Reviews the exact Git ref, not a Bravo summary. |
@@ -121,3 +121,4 @@ Example env: `fleet-gateway/.env.example` (placeholders only).
 ## Change Log
 - 2026-08-31 — v1 locked contract implemented on `feat/fleet-gateway-mcp-v1` (#3532).
 - 2026-08-31 — Native MCP JSON-RPC `POST /mcp` + real isolated git worktrees (still HELD).
+- 2026-09-02 — Physical-node router (#3533): `bravo` | `charlie` | `alpha`, each with its own loopback CAO (9889 / 19889-tunnel / 29889-tunnel) and node-local SSH worktrees. Fail-closed on unknown nodes (closes the #3552 class). Alpha added as a third fleet node. Still HELD.

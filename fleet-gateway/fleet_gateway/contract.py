@@ -24,7 +24,11 @@ MUTATE_TOOLS: frozenset[str] = frozenset(
 
 READ_TOOLS: frozenset[str] = frozenset({"fleet_status", "task_status"})
 
-ALLOWED_ROLES: frozenset[str] = frozenset({"bravo", "charlie"})
+# Physical fleet nodes (COMPUTER NAMES, not providers/profiles). Each one must
+# have a real CAO reachable on loopback and a node-local worktree provisioner —
+# see fleet_gateway.router / fleet_gateway.factory. Alpha joined 2026-09-01 when
+# a real cao-server was installed on it (tunnelled to Bravo 127.0.0.1:29889).
+ALLOWED_ROLES: frozenset[str] = frozenset({"bravo", "charlie", "alpha"})
 ALLOWED_PROVIDERS: frozenset[str] = frozenset({"claude", "codex"})
 
 # Specialized / PLC / Ignition nodes are out of scope for v1 and must be refused.
@@ -34,7 +38,6 @@ REJECTED_ROLES: frozenset[str] = frozenset(
         "plc",
         "ignition",
         "delta",
-        "alpha",
         "foreman",
         "root",
         "admin",

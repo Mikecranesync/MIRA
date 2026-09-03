@@ -34,6 +34,7 @@ from fleet_gateway.router import NodeRouter, NodeTarget
 from fleet_gateway.service import build_service
 from fleet_gateway.worktree import (
     WorktreeProvisioner,
+    alpha_worktrees_from_env,
     bravo_worktrees_from_env,
     charlie_worktrees_from_env,
 )
@@ -41,6 +42,8 @@ from helpers import AUTH_HEADER, TEST_BEARER
 
 CHARLIE_REPO = "/Users/charlienode/MIRA"
 CHARLIE_PARENT = "/Users/charlienode/MIRA-worktrees"
+ALPHA_REPO = "/Users/factorylm/MIRA"
+ALPHA_PARENT = "/Users/factorylm/MIRA-worktrees"
 
 
 # ── hermetic remote FS: a stateful fake subprocess.run for the Charlie path ──
@@ -116,6 +119,43 @@ def _two_node_service(tmp_path: Path):
         requester="routing-test",
     )
     return service, bravo_cao, charlie_cao, sha
+
+
+def _three_node_service(tmp_path: Path):
+    """Bravo (local) + Charlie (SSH) + Alpha (SSH), each with its own FakeCAO."""
+    bravo_repo = tmp_path / "bravo-origin"
+    sha = _init_git_repo(bravo_repo)
+    bravo_cao, charlie_cao, alpha_cao = FakeCAO(), FakeCAO(), FakeCAO()
+    router = NodeRouter(
+        {
+            "bravo": NodeTarget(
+                "bravo",
+                bravo_cao,
+                WorktreeProvisioner(repo=bravo_repo, parent=tmp_path / "bravo-wt"),
+            ),
+            "charlie": NodeTarget(
+                "charlie",
+                charlie_cao,
+                WorktreeProvisioner(
+                    repo=Path(CHARLIE_REPO), parent=Path(CHARLIE_PARENT), ssh_host="charlie"
+                ),
+            ),
+            "alpha": NodeTarget(
+                "alpha",
+                alpha_cao,
+                WorktreeProvisioner(
+                    repo=Path(ALPHA_REPO), parent=Path(ALPHA_PARENT), ssh_host="alpha"
+                ),
+            ),
+        }
+    )
+    service = build_service(
+        bearer_token=TEST_BEARER,
+        router=router,
+        data_dir=tmp_path / "gw",
+        requester="routing-test",
+    )
+    return service, bravo_cao, charlie_cao, alpha_cao, sha
 
 
 def _launch(service, *, role: str, sha: str, provider: str = "claude", task: str = "t-1") -> dict:
@@ -291,3 +331,54 @@ def test_3552_charlie_never_lands_on_bravo(tmp_path: Path) -> None:
     assert "/Users/bravonode/" not in spec["working_directory"]
     # (c) The advertised worktree in the result is Charlie-local too.
     assert out["worktree"].startswith("/Users/charlienode/")
+
+
+# ── 8. Alpha is a real third node (same guarantees as Charlie, its own machine) ─
+def test_alpha_launch_selects_alpha_cao(tmp_path: Path) -> None:
+    service, bravo_cao, charlie_cao, alpha_cao, sha = _three_node_service(tmp_path)
+    existing = {ALPHA_REPO}
+    with patch("fleet_gateway.worktree.subprocess.run", _make_fake_run(existing, [])):
+        _launch(service, role="alpha", sha=sha, task="t-alpha")
+    assert "launch_worker" in _tools_called(alpha_cao)
+    # Neither of the OTHER nodes' CAOs saw it — no silent default to Bravo.
+    assert bravo_cao.calls == []
+    assert charlie_cao.calls == []
+
+
+def test_alpha_worktree_is_alpha_local_over_ssh(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FLEET_GATEWAY_ALPHA_REPO", raising=False)
+    monkeypatch.delenv("FLEET_GATEWAY_ALPHA_WORKTREE_PARENT", raising=False)
+    monkeypatch.delenv("FLEET_GATEWAY_ALPHA_SSH_HOST", raising=False)
+    alpha = alpha_worktrees_from_env()
+    assert alpha.repo == Path("/Users/factorylm/MIRA")
+    assert alpha.parent == Path("/Users/factorylm/MIRA-worktrees")
+    assert alpha.ssh_host == "alpha"
+
+    existing = {ALPHA_REPO}
+    seen: list[list[str]] = []
+    with patch("fleet_gateway.worktree.subprocess.run", _make_fake_run(existing, seen)):
+        path = alpha.create(task_id="t", session_id="sess", base_commit="deadbeef")
+    assert str(path).startswith("/Users/factorylm/MIRA-worktrees/")
+    git_cmds = [c for c in seen if c and c[0] == "ssh" and "worktree add" in c[-1]]
+    assert git_cmds, f"no ssh git worktree command seen: {seen}"
+    remote = git_cmds[0]
+    assert "alpha" in remote[:5]
+    assert "git -C /Users/factorylm/MIRA worktree add --detach" in remote[-1]
+    # Every op went over SSH — nothing touched a local /Users/factorylm path.
+    assert all(c[0] == "ssh" for c in seen), f"a non-ssh op touched an Alpha path: {seen}"
+
+
+def test_alpha_followup_routes_to_alpha(tmp_path: Path) -> None:
+    service, bravo_cao, charlie_cao, alpha_cao, sha = _three_node_service(tmp_path)
+    existing = {ALPHA_REPO}
+    with patch("fleet_gateway.worktree.subprocess.run", _make_fake_run(existing, [])):
+        launched = _launch(service, role="alpha", sha=sha, task="t-alpha")
+    session_id = launched["session_id"]
+    service.invoke(
+        "message_worker",
+        {"session_id": session_id, "text": "status?"},
+        authorization=AUTH_HEADER,
+    )
+    assert session_id in alpha_cao.messages
+    assert bravo_cao.messages == {}
+    assert charlie_cao.messages == {}
