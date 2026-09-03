@@ -39,7 +39,7 @@ def register_fastmcp(mcp: Any, service: FleetGatewayService) -> None:
         acceptance_criteria: str,
         isolated_worktree: bool = True,
     ) -> dict:
-        """Launch bravo|charlie on claude|codex in an isolated worktree. No merge/deploy."""
+        """Launch bravo|charlie|alpha on claude|codex in an isolated worktree. No merge/deploy."""
         return service.invoke(
             "launch_worker",
             {

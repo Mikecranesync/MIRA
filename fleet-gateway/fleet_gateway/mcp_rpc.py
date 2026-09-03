@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from fleet_gateway import FLEET_GATEWAY_VERSION
-from fleet_gateway.contract import ALLOWED_TOOLS
+from fleet_gateway.contract import ALLOWED_ROLES, ALLOWED_TOOLS
 from fleet_gateway.errors import FleetGatewayError
 from fleet_gateway.service import FleetGatewayService
 
@@ -38,11 +38,11 @@ TOOL_DEFINITIONS: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "launch_worker",
-        "description": "Launch bravo|charlie on claude|codex in an isolated worktree. No merge/deploy.",
+        "description": "Launch bravo|charlie|alpha on claude|codex in an isolated worktree. No merge/deploy.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "role": {"type": "string", "enum": ["bravo", "charlie"]},
+                "role": {"type": "string", "enum": sorted(ALLOWED_ROLES)},
                 "provider": {"type": "string", "enum": ["claude", "codex"]},
                 "task_id": {"type": "string"},
                 "github_ref": {"type": "string"},

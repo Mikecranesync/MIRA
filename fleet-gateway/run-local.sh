@@ -10,5 +10,6 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
-export PYTHONPATH="$(pwd)"
+PYTHONPATH="$(pwd)"
+export PYTHONPATH
 exec python3 -m fleet_gateway

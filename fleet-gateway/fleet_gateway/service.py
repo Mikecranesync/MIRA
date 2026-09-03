@@ -315,7 +315,7 @@ class FleetGatewayService:
         }
         # Resolve the physical node FIRST and fail closed before any side effect
         # (worktree or CAO session). role IS the computer name here; the contract
-        # layer already restricts it to bravo/charlie, and the router is the
+        # layer already restricts it to bravo/charlie/alpha, and the router is the
         # defense-in-depth backstop that maps it to that node's CAO + worktrees.
         target = self.router.target(role)
         # Create the node-local worktree FIRST so CAO receives the real path.
