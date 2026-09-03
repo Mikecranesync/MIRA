@@ -108,6 +108,7 @@ import {
 import {
   maybeRereadPhoto,
   photoRereadEnabled,
+  transcriptionOf,
   type PhotoRereadOutcome,
 } from "@/lib/notebook-photo-reread";
 
@@ -218,6 +219,7 @@ async function buildCitations(
   for (const c of chunks) {
     const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
     if (seen.has(key)) continue;
+    const liveRead = liveReadUrls?.has(c.sourceUrl) ?? false;
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
@@ -227,9 +229,18 @@ async function buildCitations(
       // Constraint: a vision-derived claim must be attributable AND
       // distinguishable from a manual-derived one. The field is set only here,
       // and only for a sentinel url this turn actually produced.
-      ...(liveReadUrls?.has(c.sourceUrl) ? { provenance: "live_photo_read" as const } : {}),
+      ...(liveRead ? { provenance: "live_photo_read" as const } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
-      quote: relevantQuoteWindow(c.content, question),
+      //
+      // A live-read chunk is quoted from its TRANSCRIPTION only. Its content
+      // opens with a server-authored provenance header written for the chat
+      // model, and for the very question that triggers a re-read ("read … from
+      // … the attached photo…") that header outscores the transcription in the
+      // relevance window — so the chip a technician taps to CHECK a
+      // vision-derived claim rendered "Text read directly from the attached
+      // photograph …" instead of the characters that were actually read. The
+      // header stays in the model's context; it just isn't the evidence.
+      quote: relevantQuoteWindow(liveRead ? transcriptionOf(c.content) : c.content, question),
     });
   }
   const citations = [...seen.values()];
@@ -852,8 +863,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // photograph for this question and could not read the detail. Saying
           // "I couldn't find that in the selected sources" would understate
           // what the server actually did on the technician's behalf.
-          message: reread?.readButNotFound
-            ? "I re-read the attached photograph and that detail isn't legible in it."
+          //
+          // IT NAMES THE FILE, for the same reason `rereadDirective` does. With
+          // more than one photograph in scope, selectPhotoToRead picks by
+          // filename overlap and then by recency — so with camera-default names
+          // the picture read is not necessarily the one the technician meant,
+          // and no client consumes the `photo_read` frame's `filename`, which
+          // makes this sentence all they get. The definite "the attached
+          // photograph" asserted both that their referent was read and that it
+          // is illegible, when it may never have been fetched at all. The
+          // sentence must be true given only what the server can prove: which
+          // file it actually read.
+          message: reread?.notFoundFilename
+            ? `I re-read the attached photograph "${reread.notFoundFilename}" and that detail isn't legible in it.`
             : "I couldn't find that in the selected sources.",
         };
         if (reread) {

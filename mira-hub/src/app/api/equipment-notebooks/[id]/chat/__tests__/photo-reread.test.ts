@@ -546,7 +546,9 @@ describe("6. found:false — a better refusal, never a guess", () => {
     const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
     expect(statusOf(fs)).toMatchObject({
       status: "insufficient_evidence",
-      message: "I re-read the attached photograph and that detail isn't legible in it.",
+      // NAMES the file it read (see §8): with more than one photograph in
+      // scope the picture read is not necessarily the one the technician meant.
+      message: `I re-read the attached photograph "${PHOTO_NAME}" and that detail isn't legible in it.`,
     });
   });
 });
@@ -575,5 +577,195 @@ describe("7. THE RESCUE — a zero-retrieval turn that DID read the photo answer
       message: "I couldn't find that in the selected sources.",
     });
     expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. DEFECT 1 — the Gate-G sentence must be true about the picture the SERVER
+//    actually read, not about "the attached photograph" in the abstract.
+//
+//    Executed repro (third adversarial lens): two camera-default photographs in
+//    scope. IMG_20260901_101122.jpg is the wired panel the technician means;
+//    IMG_20260901_143355.jpg is a rating plate. Neither filename overlaps the
+//    question, so the recency tie-break in selectPhotoToRead reads the RATING
+//    PLATE. The panel is never fetched, never transmitted, never read — and the
+//    old sentence still asserted "the attached photograph" was re-read and is
+//    illegible. Both halves were false about the picture that was asked about.
+// ─────────────────────────────────────────────────────────────────────────────
+const PANEL_DOC = "55555555-5555-4555-8555-555555555555";
+const PLATE_DOC = "66666666-6666-4666-8666-666666666666";
+const PANEL_FILE = "f0000000-0000-4000-8000-0000000000aa";
+const PLATE_FILE = "f0000000-0000-4000-8000-0000000000bb";
+/** Camera defaults: nothing in either name overlaps a wire-number question. */
+const PANEL_NAME = "IMG_20260901_101122.jpg";
+const PLATE_NAME = "IMG_20260901_143355.jpg";
+/** listSources is created_at ASC, so the plate is the MOST RECENT row. */
+const PANEL_ROW: SrcRow = {
+  docId: PANEL_DOC,
+  filename: PANEL_NAME,
+  status: "ready",
+  sourceRole: "photo",
+  originFileId: null,
+  fileId: PANEL_FILE,
+  pages: null,
+};
+const PLATE_ROW: SrcRow = {
+  docId: PLATE_DOC,
+  filename: PLATE_NAME,
+  status: "ready",
+  sourceRole: "photo",
+  originFileId: null,
+  fileId: PLATE_FILE,
+  pages: null,
+};
+
+describe("8. two photos attached — the refusal names the picture that was READ", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+    nbMock.listSources.mockResolvedValue([PANEL_ROW, PLATE_ROW]);
+    nbMock.validateChatSources.mockResolvedValue({
+      ok: true,
+      docIds: [PANEL_DOC, PLATE_DOC],
+      nodeId: "n1",
+    });
+    nbMock.originFileIdsByDoc.mockResolvedValue(new Map());
+    bytesMock.readLinkedPhotoBytes.mockResolvedValue({ ...AUTHORIZED_BYTES, fileId: PLATE_FILE });
+    // The rating plate genuinely has no wire numbers on it.
+    visionReads("This is a motor rating plate; no wire numbers are visible.", false);
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+  });
+
+  it("reads the RATING PLATE (recency tie-break), not the panel the technician meant", async () => {
+    await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: [PANEL_DOC, PLATE_DOC] }), params),
+    );
+    expect(bytesMock.readLinkedPhotoBytes).toHaveBeenCalledTimes(1);
+    expect(bytesMock.readLinkedPhotoBytes.mock.calls[0][1]).toBe(PLATE_FILE);
+  });
+
+  it("the technician-facing sentence NAMES that file — it never claims their referent was read", async () => {
+    const fs = await frames(
+      await POST(req({ message: QUESTION, sourceDocIds: [PANEL_DOC, PLATE_DOC] }), params),
+    );
+    expect(statusOf(fs)).toMatchObject({
+      status: "insufficient_evidence",
+      message:
+        'I re-read the attached photograph "IMG_20260901_143355.jpg" and that detail isn\'t legible in it.',
+    });
+    // The panel was never fetched, so nothing may be asserted about it.
+    expect(String(statusOf(fs)!.message)).not.toContain(PANEL_NAME);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. DEFECT 2 — a provider REFUSAL is not a transcription.
+//
+//    Executed repro: a factory photograph containing a person makes the vision
+//    model decline on policy and return prose with NO `found` key. That prose
+//    used to be wrapped in the server-authored header "Values are
+//    transcriptions of what is printed in the photograph", pushed as a chunk,
+//    cited with provenance live_photo_read, and it flipped Gate G from an
+//    honest abstain to "answered".
+// ─────────────────────────────────────────────────────────────────────────────
+/** The verbatim refusal payload from the repro — note: NO `found` key. */
+const REFUSAL = "I'm sorry, I can't assist with identifying people or details in images.";
+
+describe("9. a provider refusal degrades to the honest decline", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+    photoInScope();
+    ragMock.retrieveNodeChunks.mockResolvedValue([]);
+    visionMock.togetherVisionCall.mockResolvedValue({
+      text: JSON.stringify({ observation: REFUSAL }),
+      model: "MiniMaxAI/MiniMax-M3",
+    });
+  });
+
+  it("no chunk, no citation, and Gate G still abstains with the flag-off sentence", async () => {
+    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    expect(statusOf(fs)).toMatchObject({
+      status: "insufficient_evidence",
+      message: "I couldn't find that in the selected sources.",
+    });
+    expect(citationsOf(fs)).toHaveLength(0);
+    expect(photoReadFrames(fs)[0]).toMatchObject({ state: "unavailable", reason: "refused" });
+  });
+
+  it("the refusal prose never reaches the model wrapped in a transcription header", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Answer.");
+    await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const user = sentUserContent();
+    expect(user).not.toContain("photo-reread://");
+    expect(user).not.toContain("assist with identifying");
+    expect(user).not.toContain("Values are transcriptions");
+    expect(sentSystemPrompt()).not.toContain("PHOTO RE-READ");
+  });
+
+  it("a missing `found` key on ordinary prose is also NOT FOUND — never a default-true", async () => {
+    visionMock.togetherVisionCall.mockResolvedValue({
+      text: JSON.stringify({ observation: 'Terminal block reads "X1-14".' }),
+      model: "MiniMaxAI/MiniMax-M3",
+    });
+    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    expect(statusOf(fs)).toMatchObject({ status: "insufficient_evidence" });
+    expect(citationsOf(fs)).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. DEFECT 3 — the citation quote must surface the TRANSCRIPTION.
+//     The provenance header is server-authored boilerplate; a technician who
+//     taps the chip to check a vision-derived claim must see the transcribed
+//     characters, not a sentence about who read them.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("10. the citation quote is the transcribed text, not the provenance header", () => {
+  it("quote carries the wire numbers and not the header boilerplate", async () => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+    photoInScope();
+    visionReads(
+      'The terminal block at the top-left reads "X1-14", "X1-15" and "X1-16", left to right.',
+    );
+    stubProvider("The wire numbers are X1-14, X1-15 and X1-16 [2].");
+    const fs = await frames(await POST(req({ message: QUESTION, sourceDocIds: ALL_DOCS }), params));
+    const cite = citationsOf(fs).find((c) => c.provenance === "live_photo_read");
+    expect(cite).toBeDefined();
+    expect(String(cite!.quote)).toContain("X1-14");
+    expect(String(cite!.quote)).not.toContain("Values are transcriptions");
+    expect(String(cite!.quote)).not.toContain("by a vision reader");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. DEFECT 4 — a bare "look at" / "the attached" points at a DOCUMENT as
+//     readily as a picture. Measured with the flag on and one photo in scope,
+//     each of the first three bought a vision call. The coverage probe cannot
+//     suppress them: with no TARGET_TOKEN present, intent.targets is empty and
+//     extractionCoversIntent returns false at its first line.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("11. over-trigger — an ordinary manual question buys no vision call", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+    photoInScope();
+  });
+
+  it.each([
+    "Can you look at the manual and see what the recommended oil is?",
+    "Look at the wiring diagram and tell me what it says about grounding.",
+    "What is the part number in the attached datasheet?",
+    "What is the torque spec for the coupling?",
+    "How do I reset the fault on the drive?",
+  ])("0 vision calls: %s", async (q) => {
+    await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS }), params));
+    expect(visionMock.togetherVisionCall).not.toHaveBeenCalled();
+    expect(bytesMock.readLinkedPhotoBytes).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "Can you read the wire numbers from the photo that is attached?",
+    "what does the nameplate in the picture say",
+  ])("still 1 vision call: %s", async (q) => {
+    await frames(await POST(req({ message: q, sourceDocIds: ALL_DOCS }), params));
+    expect(visionMock.togetherVisionCall).toHaveBeenCalledTimes(1);
   });
 });

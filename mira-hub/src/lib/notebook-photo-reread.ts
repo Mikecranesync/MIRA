@@ -34,9 +34,12 @@
  * 2. THE TRIGGER IS DETERMINISTIC, NOT A MODEL CALL. A classifier call costs the
  *    same order as the thing it would gate, so gating with one buys nothing. Two
  *    doors: an EXPLICIT `photoRead.docId` naming an in-scope photo source, or a
- *    HEURISTIC needing BOTH a picture referent AND a read verb / visual-target
- *    noun. Requiring both halves is the whole point — "what's the torque spec
- *    for the coupling?" must not fire in a notebook full of photographs.
+ *    HEURISTIC needing BOTH a PICTURE NOUN and a read verb / visual-target noun.
+ *    Requiring both halves is the whole point — "what's the torque spec for the
+ *    coupling?" must not fire in a notebook full of photographs, and neither
+ *    must "look at the manual and see what the recommended oil is" (a bare
+ *    "look at" / "the attached" points at a DOCUMENT just as readily). Both
+ *    doors respect the NOT_A_READ negative list.
  *
  * 3. THE COVERAGE PROBE MAKES THE COMMON CASE FREE. If the stored extraction
  *    already contains a lexical hit for what was asked, the honesty directive
@@ -52,10 +55,13 @@
  *    over a transcription that is labelled as one.
  *
  * 5. FAILURE DEGRADES TO THE HONEST DECLINE, NEVER TO A FABRICATION. Timeout,
- *    provider error, missing key, unauthorized file, oversized bytes: every one
- *    returns `null`, the turn proceeds exactly as it would have with the flag
- *    off, and the honesty directive is STILL in the prompt. There is no path in
- *    which MIRA claims to have seen an image it did not receive.
+ *    provider error, missing key, unauthorized file, oversized bytes, an empty
+ *    observation, a POLICY REFUSAL, or a reply whose `found` is missing or not a
+ *    boolean: every one returns `null`, the turn proceeds exactly as it would
+ *    have with the flag off, and the honesty directive is STILL in the prompt.
+ *    There is no path in which MIRA claims to have seen an image it did not
+ *    receive, and none in which prose that is not a transcription is served
+ *    under the transcription header.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * PROVIDER (Hard Constraint #2 — Groq → Cerebras → Together, NEVER Anthropic)
@@ -120,8 +126,21 @@ export function photoRereadMaxImages(): number {
 /** Something in the question POINTS AT A PICTURE. Without this half, a notebook
  *  that happens to contain photographs would pay a vision call for every
  *  question that mentions a terminal. */
+// A PICTURE NOUN, and nothing weaker. The earlier alternation also admitted the
+// bare phrases "look at", "the attached", "this shot" and "in the frame" — every
+// one of which points at a DOCUMENT as readily as a photograph. Measured with
+// the flag on and one photo in scope, each of these bought a vision call:
+//   "Can you look at the manual and see what the recommended oil is?"
+//   "Look at the wiring diagram and tell me what it says about grounding."
+//   "What is the part number in the attached datasheet?"
+// and the coverage probe cannot suppress them — with no TARGET_TOKEN in the
+// message `intent.targets` is empty and `extractionCoversIntent` returns false
+// at its first line, so nothing is ever suppressed for a target-less
+// over-trigger. Worse than the bill: an over-triggered read that returns
+// `found:true` pushes an irrelevant transcription as the turn's ONLY evidence,
+// converting an honest abstain into an answer grounded on the wrong picture.
 const PICTURE_REFERENT =
-  /\b(photos?|photographs?|pictures?|images?|pics?|snapshots?)\b|\bthe attached\b|\bthis shot\b|\bin the frame\b|\blook at\b/i;
+  /\b(photos?|photographs?|pictures?|images?|pics?|snapshots?|thumbnails?)\b/i;
 
 /** Something in the question ASKS FOR SOMETHING TO BE READ OFF IT. The verbs and
  *  the visual-target nouns are one alternation because either alone is a
@@ -164,8 +183,16 @@ export type PhotoReadIntent = { hit: boolean; targets: string[]; docId?: string 
  * as the vision call it gates.
  *
  * EXPLICIT door: `body.photoRead.docId` naming an in-scope photo source wins
- * outright; the technician pointed at a specific picture, and no regex should
- * be allowed to overrule that.
+ * over PICTURE_REFERENT and READ_INTENT; the technician pointed at a specific
+ * picture, which is a stronger referent than any regex, and requiring a read
+ * verb as well would defeat the point of the door ("what's on this?").
+ *
+ * IT DOES, HOWEVER, STILL RESPECT `NOT_A_READ`. The door used to return
+ * `hit:true` UNCONDITIONALLY, so a client that always sets `photoRead.docId`
+ * bought a vision call on every turn — including "did my photo upload ok?" and
+ * "delete that picture", which are questions about the picture-as-a-file and can
+ * never be answered by looking at it. Pointing at a picture says WHICH picture;
+ * it does not say that the question is about what is printed on it.
  *
  * HEURISTIC door: short message AND a picture referent AND a read intent AND
  * not in the negative list.
@@ -175,9 +202,12 @@ export function photoReadIntent(message: string, explicitDocId?: string | null):
     const lower = text.toLowerCase();
     return TARGET_TOKENS.filter((t) => lower.includes(t));
   };
-  if (explicitDocId) return { hit: true, targets: targetsIn(message), docId: explicitDocId };
-
   const m = (message || "").trim();
+  if (explicitDocId) {
+    if (NOT_A_READ.test(m)) return { hit: false, targets: [] };
+    return { hit: true, targets: targetsIn(message), docId: explicitDocId };
+  }
+
   if (m.length === 0 || m.length > MAX_TRIGGER_CHARS) return { hit: false, targets: [] };
   if (NOT_A_READ.test(m)) return { hit: false, targets: [] };
   if (!PICTURE_REFERENT.test(m)) return { hit: false, targets: [] };
@@ -318,6 +348,20 @@ Rules — these outrank being helpful:
 
 Respond ONLY with JSON: {"observation": string, "found": boolean}`;
 
+/**
+ * PROVIDER REFUSALS — prose that declines the task rather than transcribing it.
+ *
+ * Deliberately narrow: it matches a decline-to-ASSIST shape (the verb list is
+ * assist / help / comply / identify / provide / answer / describe / analyse),
+ * an "as an AI" preamble, an apology that continues into the first person, or
+ * an explicit policy sentence. It must NOT match an honest transcription that
+ * happens to admit an unreadable character ("I can't read the last character;
+ * it is a 4 or a 1") — that is exactly the behaviour the prompt asks for, and
+ * `found:false` is the channel for it.
+ */
+const VISION_REFUSAL =
+  /\b(?:can(?:'|’)?t|cannot|can not|won(?:'|’)?t|will not|unable to|not able to|refuse to)\s+(?:assist|help|comply|identify|provide|answer|describe|analy[sz]e)\b|\bas an ai\b|\bi(?:'|’)?m (?:sorry|afraid),?\s+(?:but\s+)?i\b|\bagainst (?:my|our) (?:policy|guidelines)\b|\bi (?:can(?:'|’)?t|cannot) (?:assist|help) with (?:that|this)\b/i;
+
 export type PhotoRereadResult = {
   docId: string;
   fileId: string;
@@ -354,7 +398,27 @@ function tokenCount(v: unknown): number | null {
  * technician's side but demand opposite responses from the operator. Collapsing
  * them into one "it didn't work" would make the rollout unreadable.
  */
-export type PhotoRereadFailure = "bytes_unavailable" | "provider_error" | "empty_response";
+export type PhotoRereadFailure =
+  | "bytes_unavailable"
+  | "provider_error"
+  | "empty_response"
+  /**
+   * The model returned prose that is NOT a transcription: a policy refusal
+   * ("I'm sorry, I can't assist with identifying people or details in images."
+   * — realistic the moment a factory photograph contains a person), or a reply
+   * whose `found` is missing or not a boolean. Both used to slip through the
+   * never-fabricates contract, which enumerated error / timeout / empty /
+   * corrupt but not these: the prose was wrapped in the server-authored
+   * "Values are transcriptions of what is printed in the photograph" header,
+   * pushed as a chunk, cited with provenance `live_photo_read`, and it flipped
+   * Gate G from an honest abstain to "answered".
+   *
+   * Downstream this takes the IDENTICAL path to `empty_response` — no chunk,
+   * no citation, no directive, no Gate-G flip, degrading to the flag-off
+   * decline. It is a distinct LABEL only, because "the model refused" and "the
+   * model returned nothing" demand different operator responses.
+   */
+  | "refused";
 
 export type PhotoRereadAttempt =
   | { ok: true; result: PhotoRereadResult }
@@ -413,10 +477,15 @@ export async function rereadPhotoForQuestion(input: {
     const observation =
       parsed && typeof parsed.observation === "string" ? parsed.observation.trim() : "";
     if (!observation) return { ok: false, reason: "empty_response" };
-    // `found` defaults TRUE only when the model actually returned a
-    // transcription and did not say otherwise; an absent flag with real text is
-    // a transcription. An explicit `false` is always honoured.
-    const found = parsed && typeof parsed.found === "boolean" ? parsed.found : true;
+    // A REFUSAL is not a transcription. Checked before `found`, because a
+    // refusal that also claims `found:true` is still a refusal.
+    if (VISION_REFUSAL.test(observation)) return { ok: false, reason: "refused" };
+    // `found` MUST be an explicit boolean. It used to default TRUE when the key
+    // was absent, which is exactly how refusal prose (which carries no `found`)
+    // became a citable "transcription". A reply that will not say whether it
+    // found the detail has not told us it did.
+    if (!parsed || typeof parsed.found !== "boolean") return { ok: false, reason: "refused" };
+    const found = parsed.found;
     const usage = (parsed as { usage?: VisionUsage } | null)?.usage;
     const raw = (reply as unknown as { usage?: VisionUsage }).usage ?? usage;
     return {
@@ -457,6 +526,31 @@ export function photoRereadSourceUrl(fileId: string): string {
   return `${PHOTO_REREAD_URL_PREFIX}${fileId}`;
 }
 
+/** The blank line between the provenance header and the transcription. */
+const TRANSCRIPTION_SEPARATOR = "\n\n";
+
+/**
+ * The INVERSE of `rereadChunk`'s header composition: the transcription alone.
+ *
+ * The header is server-authored provenance boilerplate for the CHAT MODEL. A
+ * technician who taps the citation chip to check a vision-derived claim needs
+ * the transcribed characters, and the claim-centered quote window scored the
+ * header higher than the transcription for the very question that produced it
+ * ("read … from … the attached photo…" is nearly the header's own wording), so
+ * the surface rendered "Text read directly from the attached photograph …"
+ * where "X1-14" belonged — a vision-derived claim traceable to nothing that was
+ * actually transcribed.
+ *
+ * Lives here, next to the composer, so the two can never drift apart. Returns
+ * the input unchanged when there is no header, so it can never empty a chunk.
+ */
+export function transcriptionOf(content: string): string {
+  const i = content.indexOf(TRANSCRIPTION_SEPARATOR);
+  if (i === -1) return content;
+  const body = content.slice(i + TRANSCRIPTION_SEPARATOR.length).trim();
+  return body || content;
+}
+
 /**
  * The transcription, shaped as a `ManualChunk` so it rides the EXISTING
  * grounding path — same `[n]` numbering, same citation chip, same 1200-char
@@ -479,7 +573,7 @@ export function rereadChunk(result: PhotoRereadResult): ManualChunk {
     `just now, in answer to this question (reader: ${result.model}, ${new Date().toISOString()}). ` +
     `Values are transcriptions of what is printed in the photograph, not manual specifications.`;
   return {
-    content: `${header}\n\n${result.observation}`,
+    content: `${header}${TRANSCRIPTION_SEPARATOR}${result.observation}`,
     docId: result.docId,
     manufacturer: "",
     modelNumber: "",
@@ -563,6 +657,20 @@ export type PhotoRereadOutcome = {
   observation: Record<string, unknown>;
   /** True when a re-read happened and the detail was NOT legible. */
   readButNotFound: boolean;
+  /**
+   * The filename of the photograph that was ACTUALLY fetched and read on the
+   * not-found path; `null` otherwise.
+   *
+   * Exists so the technician-facing sentence can NAME it. With more than one
+   * photograph attached, `selectPhotoToRead` picks by filename overlap and then
+   * by recency — so with camera-default names (IMG_20260901_101122.jpg,
+   * IMG_20260901_143355.jpg) the picture read is NOT necessarily the one the
+   * technician meant. Saying "the attached photograph" was re-read and is
+   * illegible is then false twice over: about which picture was read, and about
+   * the one they asked about, which was never fetched at all. The surface must
+   * only assert what the server can prove — which file it read.
+   */
+  notFoundFilename: string | null;
 };
 
 /**
@@ -622,6 +730,7 @@ export async function maybeRereadPhoto(input: {
       refused: false,
     }),
     readButNotFound: false,
+    notFoundFilename: null,
   });
 
   // 3. The miss probe — the stored extraction may already answer this, for free.
@@ -689,5 +798,6 @@ export async function maybeRereadPhoto(input: {
       refused: read.length === 0,
     }),
     readButNotFound: read.length === 0 && missed !== null,
+    notFoundFilename: read.length === 0 && missed ? missed.filename : null,
   };
 }
