@@ -10,15 +10,22 @@
 Mike
   ↓ (Slack message in #factorylm-foreman)
 FactoryLM Foreman (this bot)
-  ↓ (launches cloud agent)
+  ↓ (reuses warm Grok session)
 Grok (Cursor cloud agent, cursor-grok-4.6-medium model)
-  ↓ (calls MCP tools)
+  ↓ (calls MCP tools, retains conversation context)
 Fleet Gateway MCP Server
   ↓ (dispatches to physical nodes)
 Alpha | Bravo | Charlie
   ↓ (node-local CAO)
 Claude | Codex
 ```
+
+### Warm Session Management
+
+- **One agent, many messages:** Foreman creates a single Cursor cloud agent on the first accepted message, then reuses it for subsequent messages
+- **Conversation context:** Grok retains conversation history across messages (per Cursor SDK design)
+- **Recovery:** If the agent dies (network error, timeout, etc.), the next message automatically creates a new agent
+- **Clean shutdown:** On exit, Foreman tears down the warm agent gracefully (no leaks)
 
 ## Safety Guarantees
 

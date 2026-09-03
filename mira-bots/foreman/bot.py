@@ -90,6 +90,10 @@ class ForemanBot:
         self.app = AsyncApp(token=config.slack_bot_token)
         self.seen_events: set[str] = set()
 
+        # Warm/persistent Grok session
+        self._grok_agent: Optional[Any] = None
+        self._agent_lock = asyncio.Lock()
+
         # Register event handlers
         self.app.event("message")(self.handle_message)
 
@@ -219,8 +223,76 @@ class ForemanBot:
         await say(text=response_text, thread_ts=thread_ts)
         logger.info("← Foreman posted response: %d chars", len(response_text))
 
+    async def _ensure_agent(self) -> Any:
+        """Ensure warm Grok agent exists, creating or recovering as needed.
+
+        Returns the live agent. Thread-safe via _agent_lock.
+        """
+        async with self._agent_lock:
+            if self._grok_agent is not None:
+                # Warm agent exists; verify it's still alive
+                try:
+                    # Quick health check: agents have agent_id
+                    _ = self._grok_agent.agent_id
+                    logger.debug("Reusing warm agent: %s", self._grok_agent.agent_id)
+                    return self._grok_agent
+                except Exception as exc:
+                    logger.warning(
+                        "Warm agent unhealthy (id=%s): %s — will recover",
+                        getattr(self._grok_agent, "agent_id", "unknown"),
+                        exc,
+                    )
+                    self._grok_agent = None
+
+            # Create new agent
+            logger.info("Creating Grok cloud agent: model=%s", self.config.grok_model)
+
+            # Prepare MCP server config for fleet-gateway
+            mcp_servers: list[dict[str, Any]] = []
+            if self.config.fleet_gateway_url and self.config.fleet_gateway_token:
+                mcp_servers.append(
+                    {
+                        "name": "fleet-gateway",
+                        "type": "http",
+                        "url": self.config.fleet_gateway_url,
+                        "headers": [
+                            {
+                                "name": "Authorization",
+                                "value": f"Bearer {self.config.fleet_gateway_token}",
+                            }
+                        ],
+                    }
+                )
+                logger.debug("Fleet Gateway MCP configured: url=%s", self.config.fleet_gateway_url)
+            else:
+                logger.warning("Fleet Gateway MCP not configured (missing URL or token)")
+
+            # Launch cloud agent
+            cloud_options = CloudAgentOptions(
+                repos=[
+                    {
+                        "url": self.config.repo_url,
+                        "startingRef": self.config.repo_branch,
+                    }
+                ],
+                mcpServers=mcp_servers if mcp_servers else None,
+            )
+
+            agent = Agent.create(
+                api_key=self.config.cursor_api_key,
+                model=self.config.grok_model,
+                cloud=cloud_options,
+            )
+
+            logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)
+            self._grok_agent = agent
+            return agent
+
     async def _invoke_grok(self, prompt: str, user_id: str) -> str:
-        """Launch a Cursor cloud agent with Grok model and fleet-gateway MCP.
+        """Send prompt to warm Grok agent and return response.
+
+        Reuses the persistent agent across messages. Agent retains conversation
+        context. If agent dies, _ensure_agent recovers.
 
         Args:
             prompt: User's message
@@ -229,63 +301,49 @@ class ForemanBot:
         Returns:
             Agent's final response text
         """
-        logger.info("Launching Grok cloud agent: model=%s", self.config.grok_model)
-
-        # Prepare MCP server config for fleet-gateway
-        mcp_servers: list[dict[str, Any]] = []
-        if self.config.fleet_gateway_url and self.config.fleet_gateway_token:
-            mcp_servers.append(
-                {
-                    "name": "fleet-gateway",
-                    "type": "http",
-                    "url": self.config.fleet_gateway_url,
-                    "headers": [
-                        {"name": "Authorization", "value": f"Bearer {self.config.fleet_gateway_token}"}
-                    ],
-                }
-            )
-            logger.debug("Fleet Gateway MCP configured: url=%s", self.config.fleet_gateway_url)
-        else:
-            logger.warning("Fleet Gateway MCP not configured (missing URL or token)")
-
-        # Launch cloud agent
-        cloud_options = CloudAgentOptions(
-            repos=[
-                {
-                    "url": self.config.repo_url,
-                    "startingRef": self.config.repo_branch,
-                }
-            ],
-            mcpServers=mcp_servers if mcp_servers else None,
-        )
+        agent = await self._ensure_agent()
 
         try:
-            async with Agent.create(
-                api_key=self.config.cursor_api_key,
-                model=self.config.grok_model,
-                cloud=cloud_options,
-            ) as agent:
-                logger.info("Cloud agent created: agent_id=%s", agent.agent_id)
+            # Send prompt to warm agent (retains conversation context)
+            run = agent.send(prompt)
+            logger.info("Run started: run_id=%s agent=%s", run.run_id, agent.agent_id)
 
-                # Send prompt and wait for response
-                run = agent.send(prompt)
-                logger.info("Run started: run_id=%s", run.run_id)
+            # Wait for completion
+            result = run.wait()
+            response_text = result.result or "(no response)"
 
-                # Wait for completion
-                result = run.wait()
-                response_text = result.result or "(no response)"
+            logger.info(
+                "Run completed: run_id=%s status=%s",
+                run.run_id,
+                result.status,
+            )
 
-                logger.info(
-                    "Run completed: run_id=%s status=%s",
-                    run.run_id,
-                    result.status,
-                )
-
-                return response_text
+            return response_text
 
         except Exception as exc:
             logger.error("Agent execution failed: %s", exc, exc_info=True)
+            # Mark agent unhealthy so next message recovers
+            async with self._agent_lock:
+                if self._grok_agent is agent:
+                    self._grok_agent = None
             raise
+
+    async def shutdown(self) -> None:
+        """Clean shutdown: tear down warm agent without leaking."""
+        async with self._agent_lock:
+            if self._grok_agent is not None:
+                try:
+                    logger.info("Shutting down warm agent: %s", self._grok_agent.agent_id)
+                    # Cursor SDK agents are context managers; explicit close
+                    if hasattr(self._grok_agent, "__aexit__"):
+                        await self._grok_agent.__aexit__(None, None, None)
+                    elif hasattr(self._grok_agent, "close"):
+                        await self._grok_agent.close()
+                    logger.info("✓ Warm agent shut down cleanly")
+                except Exception as exc:
+                    logger.warning("Agent shutdown error: %s", exc)
+                finally:
+                    self._grok_agent = None
 
 
 async def main() -> None:
@@ -309,7 +367,7 @@ async def main() -> None:
 
     # Log startup
     logger.info("=" * 70)
-    logger.info("FactoryLM Foreman started")
+    logger.info("FactoryLM Foreman started (warm session mode)")
     logger.info("  Model: %s", config.grok_model)
     logger.info("  Channel: %s", config.allowed_channel)
     logger.info("  Repo: %s@%s", config.repo_url, config.repo_branch)
@@ -319,7 +377,14 @@ async def main() -> None:
 
     # Start Socket Mode handler
     handler = AsyncSocketModeHandler(bot.app, config.slack_app_token)
-    await handler.start_async()
+    
+    try:
+        await handler.start_async()
+    finally:
+        # Clean shutdown: tear down warm agent
+        logger.info("Shutting down...")
+        await bot.shutdown()
+        logger.info("✓ Shutdown complete")
 
 
 if __name__ == "__main__":

@@ -255,7 +255,7 @@ docker compose -f docker-compose.saas.yml rm -f factorylm-foreman
 
 3. **Slack Socket Mode:** Requires persistent WebSocket connection. If connection drops, container restarts automatically.
 
-4. **No session persistence:** Each message spawns a new cloud agent. No conversation history between messages.
+4. **Warm session state:** Foreman maintains one warm Grok agent that retains conversation context across messages. If the bot restarts, conversation history is lost (new agent created).
 
 ## Support
 
