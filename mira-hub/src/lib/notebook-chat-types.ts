@@ -286,8 +286,6 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
  *                         means it looked and the detail was not legible; that
  *                         is a stronger, more honest statement than "I have no
  *                         photo", and the UI may say so.
- *   state "skipped"     — the stored extraction already covered the question,
- *                         so no vision call was made (`reason` says which).
  *   state "unavailable" — a read was wanted but did not happen (not configured,
  *                         timed out, provider error, or the file was not
  *                         authorized for this notebook). The turn answers as it
@@ -295,7 +293,7 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
  */
 export type NotebookPhotoReadFrame = {
   kind: "photo_read";
-  state: "read" | "skipped" | "unavailable";
+  state: "read" | "unavailable";
   found?: boolean;
   filename?: string;
   reason?: string;
