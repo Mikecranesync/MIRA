@@ -35,6 +35,7 @@ import {
   rereadChunk,
   rereadDirective,
   selectPhotoToRead,
+  transcriptionOf,
   type PhotoRereadResult,
 } from "@/lib/notebook-photo-reread";
 import { photoSourcesInScope } from "@/lib/photo-source-honesty";
@@ -517,5 +518,197 @@ describe("6. maybeRereadPhoto", () => {
       found: true,
     });
     expect(typeof out!.observation.latencyMs).toBe("number");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. DEFECT 4 — the referent must be a PICTURE.
+//
+// "look at" and "the attached" point at a DOCUMENT as readily as a picture, and
+// READ_INTENT admits see / says / part number, so both halves of the
+// requires-both rule were satisfied by ordinary manual questions. Measured with
+// the flag on and one photo in scope, the first three below each bought a
+// vision call. The coverage probe cannot save them: with no TARGET_TOKEN in the
+// message, `intent.targets` is empty and `extractionCoversIntent` returns false
+// at its first line, so nothing is ever suppressed for a target-less
+// over-trigger — and an over-triggered read that comes back found:true pushes
+// an irrelevant transcription as the turn's ONLY evidence.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("7. a DOCUMENT referent is not a picture referent", () => {
+  it.each([
+    "Can you look at the manual and see what the recommended oil is?",
+    "Look at the wiring diagram and tell me what it says about grounding.",
+    "What is the part number in the attached datasheet?",
+    "What is the torque spec for the coupling?",
+    "How do I reset the fault on the drive?",
+  ])("does NOT fire: %s", (q) => {
+    expect(photoReadIntent(q).hit).toBe(false);
+  });
+
+  it.each([
+    "Can you read the wire numbers from the photo that is attached?",
+    "Can you read the wire numbers from the photo that's attached?",
+    "what does the nameplate in the picture say",
+    "read the label in the attached image",
+    "what part number is on this snapshot",
+    "can you read the thumbnail",
+  ])("still fires: %s", (q) => {
+    expect(photoReadIntent(q).hit).toBe(true);
+  });
+
+  it("a bare 'look at' with no picture noun is not a referent", () => {
+    expect(photoReadIntent("look at the drawing and tell me what it says").hit).toBe(false);
+  });
+
+  it("an explicit docId still buys the read for a question with no picture noun", () => {
+    // The technician pointed at a specific picture; no regex may overrule that.
+    expect(photoReadIntent("what's the torque spec for the coupling?", DOC_PHOTO).hit).toBe(true);
+  });
+
+  it("but the EXPLICIT door still respects NOT_A_READ — a client that always sends a docId does not pay for file questions", () => {
+    for (const q of ["did my photo upload ok?", "delete that picture please", "how do I attach a photo to this notebook"]) {
+      expect(photoReadIntent(q, DOC_PHOTO).hit).toBe(false);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. DEFECT 2 — a REFUSAL, or a missing/non-boolean `found`, is NOT a
+//    transcription. The never-fabricates contract enumerated error / timeout /
+//    empty / corrupt but not these, so refusal prose was wrapped in the
+//    server-authored "Values are transcriptions of what is printed in the
+//    photograph" header, pushed as a chunk and cited.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("8. a provider refusal is not a transcription", () => {
+  const base = {
+    tenantId: TENANT,
+    notebookId: NB,
+    docIds: ALL_DOCS,
+    sources: [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B],
+  };
+  const READ_Q = "can you read the wire numbers from the photo that's attached?";
+
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+  });
+
+  it("the verbatim policy refusal (no `found` key) ⇒ no chunk, no live-read url, 'refused'", async () => {
+    const call = visionCall({
+      observation: "I'm sorry, I can't assist with identifying people or details in images.",
+    });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    expect(out!.chunks).toEqual([]);
+    expect([...out!.liveReadUrls]).toEqual([]);
+    expect(out!.directive).toBe("");
+    expect(out!.readButNotFound).toBe(false);
+    expect(out!.frame).toMatchObject({ state: "unavailable", reason: "refused" });
+  });
+
+  it("a refusal that DOES claim found:true is still refused", async () => {
+    const call = visionCall({
+      observation: "As an AI, I cannot assist with this image.",
+      found: true,
+    });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    expect(out!.chunks).toEqual([]);
+    expect(out!.frame).toMatchObject({ state: "unavailable", reason: "refused" });
+  });
+
+  it.each([undefined, "true", 1, null])(
+    "a missing / non-boolean `found` (%s) is NOT FOUND, never a default-true",
+    async (found) => {
+      const call = visionCall({ observation: 'Terminal block reads "X1-14".', found });
+      const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+      expect(out!.chunks).toEqual([]);
+      expect(out!.frame).toMatchObject({ state: "unavailable", reason: "refused" });
+    },
+  );
+
+  it("an explicit found:false is UNCHANGED — it is a look, not a refusal", async () => {
+    const call = visionCall({ observation: "The terminal strip is out of focus.", found: false });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    expect(out!.chunks).toEqual([]);
+    expect(out!.directive).toContain("could NOT read the requested detail");
+    expect(out!.frame).toMatchObject({ state: "read", found: false });
+  });
+
+  it("an honest transcription that merely mentions an unreadable character still reads", async () => {
+    const call = visionCall({
+      observation: 'Wire "X1-1?" — I can\'t read the last character; it is a 4 or a 1.',
+      found: true,
+    });
+    const out = await maybeRereadPhoto({ ...base, message: READ_Q, chunks: [], call });
+    expect(out!.chunks).toHaveLength(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. DEFECT 1 + DEFECT 3 — what the technician is told, and what they can check.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("9. the not-found outcome names the file that was actually read", () => {
+  const base = {
+    tenantId: TENANT,
+    notebookId: NB,
+    docIds: ALL_DOCS,
+    sources: [PDF_ROW, PHOTO_ROW_A, PHOTO_ROW_B],
+  };
+
+  beforeEach(() => {
+    process.env.NOTEBOOK_PHOTO_REREAD_ENABLED = "1";
+  });
+
+  it("carries the filename of the picture the server fetched, so the surface can name it", async () => {
+    const call = visionCall({ observation: "Out of focus.", found: false });
+    // No filename overlap ⇒ recency wins ⇒ PHOTO_ROW_B ("panel-terminals.jpg").
+    const out = await maybeRereadPhoto({
+      ...base,
+      message: "can you read the wire numbers in the photo",
+      chunks: [],
+      call,
+    });
+    expect(out!.readButNotFound).toBe(true);
+    expect(out!.notFoundFilename).toBe("panel-terminals.jpg");
+  });
+
+  it("is null when nothing was read", async () => {
+    const call = visionCall({ observation: 'Wire numbers "14", "15".', found: true });
+    const out = await maybeRereadPhoto({
+      ...base,
+      message: "can you read the wire numbers in the photo",
+      chunks: [],
+      call,
+    });
+    expect(out!.notFoundFilename).toBeNull();
+  });
+});
+
+describe("10. transcriptionOf strips the provenance header the citation must not show", () => {
+  const result: PhotoRereadResult = {
+    docId: DOC_PHOTO,
+    fileId: PHOTO_FILE,
+    filename: "panel.jpg",
+    observation: 'Terminal block reads "X1-14", "X1-15", "X1-16".',
+    found: true,
+    model: "MiniMaxAI/MiniMax-M3",
+    latencyMs: 900,
+    imageBytes: 4,
+    promptTokens: 10,
+    completionTokens: 5,
+  };
+
+  it("returns the transcription, not the header", () => {
+    const body = transcriptionOf(rereadChunk(result).content);
+    expect(body).toBe(result.observation);
+    expect(body).not.toContain("Values are transcriptions");
+    expect(body).not.toContain("by a vision reader");
+  });
+
+  it("a multi-paragraph transcription survives whole", () => {
+    const multi = { ...result, observation: "Top block:\n\nX1-14\n\nX1-15" };
+    expect(transcriptionOf(rereadChunk(multi).content)).toBe(multi.observation);
+  });
+
+  it("text with no header is returned unchanged (never empties a real chunk)", () => {
+    expect(transcriptionOf("Terminal 4.")).toBe("Terminal 4.");
   });
 });
