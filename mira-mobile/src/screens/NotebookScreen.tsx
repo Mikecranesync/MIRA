@@ -22,10 +22,14 @@ import {
   lookAtPhoto,
   enabledDocIds,
   canBeChatSource,
+  canPinPhoto,
+  isPhotoSource,
+  resolvePhotoPin,
   fileCapabilityLabel,
   type NotebookDetail,
   type NotebookPhoto,
   type NotebookSource,
+  type PhotoPin,
   type SourcePassage,
   type WorkspaceFile,
   deleteNotebook,
@@ -51,6 +55,7 @@ import {
 import { AttachFileSheet } from "./AttachFileSheet";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
 import { FilePreview, SourceThumb } from "./FilePreview";
+import { PhotoPinChip } from "./PhotoPinChip";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
@@ -165,6 +170,11 @@ export function NotebookScreen({
   // The photograph itself IS persisted — it is parked and linked server-side,
   // and shows in Photos below whatever happens to this state.
   const [lastLook, setLastLook] = useState<RememberedLook | null>(null);
+  // The photograph the NEXT question is pointed at (notebook photo re-read).
+  // A pointing gesture at ONE question, not a mode: it is consumed by the send
+  // and it is re-derived against live sources/scope on every render
+  // (`resolvePhotoPin`), so it can never outlive the row it names.
+  const [photoPin, setPhotoPin] = useState<PhotoPin | null>(null);
   // A linked photo opened for viewing (same FilePreview door as a source).
   const [openPhoto, setOpenPhoto] = useState<NotebookPhoto | null>(null);
   const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
@@ -275,10 +285,18 @@ export function NotebookScreen({
       // parked photo ride on the body so a Retry re-sends them byte-identically.
       ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
       ...(sensor?.visualEvidence ? { visualEvidence: sensor.visualEvidence } : {}),
+      // The pinned photograph, if one is live. Conditional spread, like every
+      // other rider: a turn with no pin sends a byte-identical body.
+      ...(pin ? { photoRead: { docId: pin.docId } } : {}),
     };
     const ctl = new AbortController();
     abortRef.current = ctl;
     setQ("");
+    // Consumed by this send, exactly like the draft. A sticky pin would
+    // re-point every follow-up at the same photograph — and, with the server
+    // flag on, buy a fresh vision call per turn that nobody asked for. Retry
+    // is unaffected: it replays `failedSend`, which carries the docId.
+    setPhotoPin(null);
     setFailedSend(null);
     setBusy(true);
     setChatError(null);
@@ -289,6 +307,7 @@ export function NotebookScreen({
         history: body.history,
         machineEvidence: body.machineEvidence,
         visualEvidence: body.visualEvidence,
+        photoRead: body.photoRead,
         signal: ctl.signal,
         onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
@@ -381,6 +400,12 @@ export function NotebookScreen({
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
+  // Re-derived every render rather than trusted from when it was set: if the
+  // pinned source was unchecked, detached, or superseded by a refresh, its
+  // docId is no longer in `scope` and the server would silently ignore the
+  // pointer. Showing the chip anyway would promise something that cannot
+  // happen — so the pin simply stops existing.
+  const pin = resolvePhotoPin(photoPin, sources, scope);
   // One object, two doors (084): when the cited doc DERIVES from a canonical
   // file (the nameplate photograph behind the materialized text), the viewer
   // leads with that file. The derived text demotes to "Source details".
@@ -580,6 +605,12 @@ export function NotebookScreen({
           )}
           {sources.map((s) => {
             const chattable = canBeChatSource(s);
+            // The server honours a pointer only at a photo source that is in
+            // THIS turn's scope, so the row shows the action for every photo
+            // and disables it otherwise — rather than hiding it, which would
+            // leave the technician with no way to learn why their photograph
+            // is not askable.
+            const pinnable = canPinPhoto(s, scope);
             return (
               <div key={s.docId || s.fileId || s.filename} className="source-row">
                 {chattable ? (
@@ -647,6 +678,29 @@ export function NotebookScreen({
                 >
                   Open
                 </button>
+                {isPhotoSource(s) && (
+                  <button
+                    className="detach row-action"
+                    title={
+                      pinnable
+                        ? "Your next question will be about this photo"
+                        : "Include this source in chat first — a question can only be about a source that's in scope"
+                    }
+                    disabled={!pinnable}
+                    onClick={() => {
+                      if (!pinnable) return;
+                      setPhotoPin({
+                        docId: s.docId,
+                        filename: s.filename,
+                        // The photograph itself, not the derived text doc.
+                        fileId: s.originFileId ?? s.fileId,
+                      });
+                      setPanel("chat");
+                    }}
+                  >
+                    Ask about this photo
+                  </button>
+                )}
                 <button
                   className="detach row-action"
                   title="Attach this file somewhere else too"
@@ -695,10 +749,12 @@ export function NotebookScreen({
           scopeCount={scope.length}
           chatError={chatError}
           canRetry={Boolean(failedSend) && !busy}
+          photoPin={pin}
           handlers={{
             onSend: (text) => void sendQuestion(text),
             onStop: stopGeneration,
             onCitation: setViewCitation,
+            onClearPhotoPin: () => setPhotoPin(null),
             onAttachPhoto: () => void attachPhotoAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
@@ -913,6 +969,7 @@ export function NotebookScreen({
               </>
             )}
           </div>
+          {pin && <PhotoPinChip pin={pin} onClear={() => setPhotoPin(null)} />}
           <div className="composer">
             <textarea
               rows={1}

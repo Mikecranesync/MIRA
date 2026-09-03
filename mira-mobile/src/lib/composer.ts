@@ -47,4 +47,8 @@ export interface PendingSend {
   /** Sensor LOOK photo (S5 D3) — same rule: a Retry re-sends the identical
    *  {fileId, capturedAt}, never a recomputed one. */
   visualEvidence?: { fileId: string; capturedAt: string };
+  /** The photograph this question was pointed at (notebook photo re-read) —
+   *  same rule again: a Retry re-sends the identical docId, never one
+   *  recomputed from a pin the technician has since cleared or changed. */
+  photoRead?: { docId: string };
 }
