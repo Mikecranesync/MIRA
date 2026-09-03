@@ -185,6 +185,30 @@ services:
       timeout: 10s
       retries: 3
 
+  foreman-bot:
+    mem_limit: 256m
+    memswap_limit: 256m
+    profiles: ["foreman"]
+    build:
+      context: .
+      dockerfile: foreman/Dockerfile
+    container_name: mira-bot-foreman
+    environment:
+      FOREMAN_SLACK_BOT_TOKEN: ${FOREMAN_SLACK_BOT_TOKEN}
+      FOREMAN_SLACK_APP_TOKEN: ${FOREMAN_SLACK_APP_TOKEN}
+      FOREMAN_SLACK_BOT_USER_ID: ${FOREMAN_SLACK_BOT_USER_ID:-}
+      FOREMAN_SLACK_CHANNEL: ${FOREMAN_SLACK_CHANNEL:-factorylm-foreman}
+      FOREMAN_EXCLUDED_CHANNELS: ${FOREMAN_EXCLUDED_CHANNELS:-cursor-enterprise}
+      FOREMAN_DRY_RUN: ${FOREMAN_DRY_RUN:-0}
+    networks:
+      - bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   telegram-test-runner:
     mem_limit: 512m
     memswap_limit: 512m
