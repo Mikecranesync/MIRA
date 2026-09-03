@@ -528,3 +528,144 @@ class LoopbackCAOClient:
         stored = self._sessions.get(session_id)
         if stored is not None:
             stored["worktree"] = worktree
+
+
+class RoutingCAOClient:
+    """Per-node CAO router: one backend client per role, selected by ``role``.
+
+    Fixes the v1 defect where the gateway resolved exactly ONE CAO client, so
+    ``role`` was only an agent-profile label and ``role=charlie`` still landed on
+    Bravo's CAO (#3552).
+
+    Routing rules:
+
+    * ``launch_worker`` routes on ``spec["role"]`` and remembers which backend owns
+      the returned ``session_id``.
+    * Session-keyed calls route to the recorded owner. If the owner is unknown (for
+      example after a gateway restart) the backends are probed with ``get_session``
+      and the first match becomes the owner.
+    * ``fleet_snapshot`` has no role in its signature and ``FLEET_STATUS_FIELDS`` is a
+      flat single-node shape, so it reads the DEFAULT backend. Aggregating would
+      change the public contract; that is out of scope here.
+    * ``task_snapshot`` returns the first non-empty answer across backends.
+
+    Fail-closed: a role with no mapped backend and no default raises
+    ``CaoConfigError`` rather than silently falling back to another node's CAO.
+    Silently defaulting is exactly the bug this class exists to remove.
+    """
+
+    def __init__(
+        self,
+        clients: dict[str, Any],
+        default: Any | None = None,
+    ) -> None:
+        # role → backend client. Roles are normalized lowercase.
+        self._clients: dict[str, Any] = {str(k).strip().lower(): v for k, v in clients.items()}
+        self._default = default
+        # session_id → role, so session-keyed calls reach the node that owns them.
+        self._owner: dict[str, str] = {}
+
+    # -- routing helpers -------------------------------------------------
+
+    @property
+    def roles(self) -> list[str]:
+        return sorted(self._clients)
+
+    def client_for_role(self, role: str) -> Any:
+        """Backend for ``role``. Falls back to the default, else fails closed."""
+        key = str(role or "").strip().lower()
+        client = self._clients.get(key)
+        if client is not None:
+            return client
+        if self._default is not None:
+            return self._default
+        raise CaoConfigError(
+            f"no CAO configured for role '{key}'; "
+            f"set FLEET_GATEWAY_CAO_URL_{key.upper()} (or FLEET_GATEWAY_CAO_URL)"
+        )
+
+    def _client_for_session(self, session_id: str) -> Any:
+        role = self._owner.get(session_id)
+        if role is not None:
+            return self.client_for_role(role)
+        # Unknown session: probe backends, then remember the winner.
+        for role_key, client in self._clients.items():
+            try:
+                if client.get_session(session_id):
+                    self._owner[session_id] = role_key
+                    return client
+            except Exception:  # a down node must not mask a healthy one
+                continue
+        if self._default is not None:
+            return self._default
+        raise NotFoundError(f"session not found on any configured node: {session_id}")
+
+    # -- CAOClient protocol ----------------------------------------------
+
+    def fleet_snapshot(self) -> dict[str, Any]:
+        target = self._default if self._default is not None else self._first_client()
+        return target.fleet_snapshot()
+
+    def task_snapshot(self, task_id: str) -> dict[str, Any] | None:
+        for client in self._ordered_clients():
+            try:
+                found = client.task_snapshot(task_id)
+            except Exception:
+                continue
+            if found:
+                return found
+        return None
+
+    def launch_worker(self, spec: dict[str, Any]) -> dict[str, Any]:
+        role = str(spec.get("role") or "").strip().lower()
+        client = self.client_for_role(role)
+        result = client.launch_worker(spec)
+        session_id = str(result.get("session_id") or "")
+        if session_id:
+            self._owner[session_id] = role if role in self._clients else "__default__"
+        return result
+
+    def message_worker(self, session_id: str, text: str) -> dict[str, Any]:
+        return self._client_for_session(session_id).message_worker(session_id, text)
+
+    def request_handoff(self, session_id: str, task_id: str) -> dict[str, Any]:
+        return self._client_for_session(session_id).request_handoff(session_id, task_id)
+
+    def request_review(self, spec: dict[str, Any]) -> dict[str, Any]:
+        # Reviews are Charlie-only by contract; honor the spec's role.
+        role = str(spec.get("role") or "charlie").strip().lower()
+        result = self.client_for_role(role).request_review(spec)
+        session_id = str(result.get("session_id") or "")
+        if session_id:
+            self._owner[session_id] = role if role in self._clients else "__default__"
+        return result
+
+    def stop_worker(self, session_id: str) -> dict[str, Any]:
+        return self._client_for_session(session_id).stop_worker(session_id)
+
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        try:
+            return self._client_for_session(session_id).get_session(session_id)
+        except NotFoundError:
+            return None
+
+    def record_worktree(self, session_id: str, worktree: str) -> None:
+        client = self._client_for_session(session_id)
+        if hasattr(client, "record_worktree"):
+            client.record_worktree(session_id, worktree)
+
+    # -- internals -------------------------------------------------------
+
+    def _ordered_clients(self) -> list[Any]:
+        seen: list[Any] = []
+        if self._default is not None:
+            seen.append(self._default)
+        for _role, client in sorted(self._clients.items()):
+            if client not in seen:
+                seen.append(client)
+        return seen
+
+    def _first_client(self) -> Any:
+        if not self._clients:
+            raise CaoConfigError("RoutingCAOClient constructed with no backends")
+        return self._clients[sorted(self._clients)[0]]

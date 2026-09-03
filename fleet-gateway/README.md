@@ -18,6 +18,32 @@ When `FLEET_GATEWAY_CAO_URL` is set, the gateway uses `LoopbackCAOClient` to con
 
 **When unset (default):** `FakeCAO` in-process stub is used. This is the default for tests and local development without a running cao-server.
 
+### Per-node routing (#3552)
+
+`FLEET_GATEWAY_CAO_URL` alone resolves **one** CAO for every role — `role` is only an
+agent-profile label, so `role=charlie` still lands on whichever CAO that URL names. Set a
+per-role URL to make `role` select a *node*:
+
+| Env var | Points at |
+|---|---|
+| `FLEET_GATEWAY_CAO_URL_BRAVO` | Bravo's own local CAO, e.g. `http://127.0.0.1:9889` |
+| `FLEET_GATEWAY_CAO_URL_CHARLIE` | Charlie's CAO via an SSH `-L` forward, e.g. `http://127.0.0.1:19889` |
+| `FLEET_GATEWAY_CAO_URL` | optional fallback for roles with no per-role URL |
+
+When any per-role URL is set the gateway uses `RoutingCAOClient`: `launch_worker` routes on
+`spec["role"]` and remembers which node owns the resulting session, so later session-keyed
+calls (`message_worker`, `stop_worker`, …) follow it. A role that is neither mapped nor
+covered by the fallback **fails closed** with `CaoConfigError` — it never silently reaches
+another node's CAO.
+
+Remote nodes stay loopback-only: a remote CAO is reached by forwarding it to a **local**
+127.0.0.1 port, never by binding it to a LAN or Tailscale address. `assert_loopback_cao_url`
+still refuses anything that is not literal `127.0.0.1`.
+
+Adding a node is a contract + env change, not a code change: add the role to
+`contract.ALLOWED_ROLES` and set `FLEET_GATEWAY_CAO_URL_<ROLE>`. Roles in
+`contract.REJECTED_ROLES` (PLC / Ignition / specialized) remain refused.
+
 ### Agent profile mapping
 
 Local CAO has no `bravo` or `charlie` profiles. The Gateway maps to CAO built-in profiles:
