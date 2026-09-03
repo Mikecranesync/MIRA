@@ -173,11 +173,28 @@ def _classify_http_error(status_code: int) -> str:
         return "rate_limit"
     if status_code in (401, 403):
         return "auth"
-    if status_code == 400:
+    # 402 is literally "Payment Required" and is what Cerebras returns when the
+    # account is out of quota ({"type":"payment_required_error"}). It was falling
+    # through to "unknown", so a billing outage was logged and counted as an
+    # unclassified blip — indistinguishable from a transient one, and therefore
+    # never actionable. 400 stays here because a provider in this cascade has
+    # used it for quota too; both mean "a human must do something".
+    if status_code in (400, 402):
         return "billing"
     if status_code in (500, 502, 503, 529):
         return "service"
     return "unknown"
+
+
+# How long to stop attempting a provider that failed for a reason no retry can
+# fix. Short enough that restoring billing or rotating a key self-heals without a
+# redeploy; long enough that a provider dead for days stops taxing every cascade
+# fall-through with a doomed round-trip.
+_DEAD_PROVIDER_COOLDOWN_S = 300.0
+# Reasons that will NOT resolve on their own. `rate_limit` and `service` are
+# deliberately excluded — those DO self-heal, and skipping them would turn a
+# transient blip into a self-inflicted outage.
+_UNRECOVERABLE_REASONS = frozenset({"auth", "billing"})
 
 
 def _parse_retry_after(response: httpx.Response) -> float:
@@ -350,6 +367,11 @@ class InferenceRouter:
         self.enabled = self.backend == "cloud" and len(self.providers) > 0
         # {provider_name: [monotonic_timestamps_of_calls]}
         self._provider_call_windows: dict[str, list[float]] = {}
+        # {provider_name: monotonic deadline until which to skip it}. Set only on
+        # an unrecoverable failure (auth/billing) so a provider that cannot
+        # succeed stops costing a round-trip on every request. Process-local and
+        # self-expiring: no config, no redeploy to clear.
+        self._provider_cooldown: dict[str, float] = {}
         # {session_id: "provider/model"} — last model that answered each session.
         # Keyed by session_id (NOT a shared scalar) so concurrent tenants don't
         # clobber each other's attribution (#1704). Bounded to the most recent
@@ -487,6 +509,17 @@ class InferenceRouter:
             if has_image and not provider.vision_model:
                 continue
 
+            # A provider that failed for a reason no retry can fix is skipped
+            # until its cooldown expires. Without this, a provider that has been
+            # dead for days is still dialled on every fall-through: the caller
+            # pays a full round-trip (up to provider.timeout) to be told again
+            # that the bill is unpaid.
+            deadline = self._provider_cooldown.get(provider.name)
+            if deadline is not None:
+                if time.monotonic() < deadline:
+                    continue
+                del self._provider_cooldown[provider.name]
+
             try:
                 content, usage = await self._call_openai_compat(
                     provider,
@@ -517,7 +550,18 @@ class InferenceRouter:
                     provider.name,
                 )
                 last_error = usage
-            except _ProviderSkip:
+            except _ProviderSkip as skip:
+                if skip.reason in _UNRECOVERABLE_REASONS:
+                    self._provider_cooldown[provider.name] = (
+                        time.monotonic() + _DEAD_PROVIDER_COOLDOWN_S
+                    )
+                    logger.warning(
+                        "PROVIDER_COOLDOWN provider=%s reason=%s — skipping for %.0fs; "
+                        "this will not self-heal, a human must fix the account or key",
+                        provider.name,
+                        skip.reason,
+                        _DEAD_PROVIDER_COOLDOWN_S,
+                    )
                 continue
 
         logger.warning(
