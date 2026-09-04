@@ -1,0 +1,10 @@
+{
+  "name": "MIRA — SimLab dev",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "simlab",
+      "command": "python3 -m simlab --host 127.0.0.1 --port 8099"
+    }
+  ]
+}
