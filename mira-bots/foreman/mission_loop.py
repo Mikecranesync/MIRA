@@ -66,6 +66,10 @@ FORBIDDEN_ACTIONS: frozenset[str] = frozenset(
 class WorkerRole(str, Enum):
     IMPLEMENTER = "implementer"
     REVIEWER = "reviewer"
+    # Acceptance verification is a DIFFERENT question from adversarial review
+    # ("is it correct?" vs "did it actually run?"), so it gets its own slot.
+    # One shared slot silently overwrote the first verdict with the second.
+    VERIFIER = "verifier"
 
 
 class WorkerState(str, Enum):
@@ -96,6 +100,8 @@ class MissionState:
     implementer: Optional[Worker] = None
     reviewer: Optional[Worker] = None
     reviewer_verdict: str = ""  # "PASS" | "FAIL" | ""
+    verifier: Optional[Worker] = None
+    verifier_verdict: str = ""  # "PASS" | "FAIL" | ""
     go_no_go: str = ""  # "GO" | "NO-GO" | ""
     remaining_human_gates: list[str] = field(default_factory=list)
 
@@ -105,28 +111,25 @@ class MissionState:
     @classmethod
     def from_dict(cls, data: dict) -> MissionState:
         d = dict(data)
-        implementer_data: Optional[dict] = d.pop("implementer", None)
-        reviewer_data: Optional[dict] = d.pop("reviewer", None)
+        # Every worker slot must be popped before cls(**d); a slot left in the
+        # dict reaches the constructor as a raw dict instead of a Worker.
+        slots = {name: d.pop(name, None) for name in ("implementer", "reviewer", "verifier")}
         obj = cls(**d)
-        if implementer_data:
-            obj.implementer = Worker(
-                role=WorkerRole(implementer_data["role"]),
-                state=WorkerState(implementer_data["state"]),
-                session_id=implementer_data.get("session_id", ""),
-                node=implementer_data.get("node", ""),
-                provider=implementer_data.get("provider", ""),
-                git_ref=implementer_data.get("git_ref", ""),
-            )
-        if reviewer_data:
-            obj.reviewer = Worker(
-                role=WorkerRole(reviewer_data["role"]),
-                state=WorkerState(reviewer_data["state"]),
-                session_id=reviewer_data.get("session_id", ""),
-                node=reviewer_data.get("node", ""),
-                provider=reviewer_data.get("provider", ""),
-                git_ref=reviewer_data.get("git_ref", ""),
-            )
+        for name, raw in slots.items():
+            if raw:
+                setattr(obj, name, cls._worker_from_dict(raw))
         return obj
+
+    @staticmethod
+    def _worker_from_dict(raw: dict) -> Worker:
+        return Worker(
+            role=WorkerRole(raw["role"]),
+            state=WorkerState(raw["state"]),
+            session_id=raw.get("session_id", ""),
+            node=raw.get("node", ""),
+            provider=raw.get("provider", ""),
+            git_ref=raw.get("git_ref", ""),
+        )
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
@@ -160,6 +163,8 @@ class GoNoGo:
     head_sha: str
     reviewer_verdict: str
     human_gates: list[str]
+    # Defaulted: AC H predates the verifier slot, so existing callers still work.
+    verifier_verdict: str = ""
 
     def __post_init__(self) -> None:
         if self.verdict not in ("GO", "NO-GO"):
@@ -294,6 +299,86 @@ class ForemanPolicy:
         return PolicyResult(allowed=True, reason=f"verdict recorded: {verdict}")
 
     # ------------------------------------------------------------------
+    # Verifier — acceptance verification, separate from adversarial review
+    # ------------------------------------------------------------------
+
+    def can_dispatch_verifier(self, git_ref: str) -> PolicyResult:
+        """Verification runs on an exact SHA, and only after review has PASSed.
+
+        Verifying before the reviewer has ruled wastes a worker on a SHA that may
+        be about to be rejected, and produces two verdicts of unclear precedence.
+        """
+        if not SHA_RE.match(git_ref):
+            return PolicyResult(
+                allowed=False,
+                reason=(
+                    f"git_ref {git_ref!r} is not a 40-character hex commit SHA. "
+                    "Verification requires an exact SHA."
+                ),
+            )
+        if self._state.reviewer_verdict != "PASS":
+            got = self._state.reviewer_verdict or "no verdict yet"
+            return PolicyResult(
+                allowed=False,
+                reason=(
+                    f"Verifier runs only after adversarial review PASSes (reviewer: {got})."
+                ),
+            )
+        verifier = self._state.verifier
+        if verifier is not None and verifier.state == WorkerState.RUNNING:
+            return PolicyResult(
+                allowed=False,
+                reason="A verifier is already running. Wait for it to stop.",
+            )
+        return PolicyResult(allowed=True, reason="valid exact SHA, review passed")
+
+    def dispatch_verifier(
+        self,
+        git_ref: str,
+        session_id: str,
+        node: str = "charlie",
+        provider: str = "codex",
+    ) -> PolicyResult:
+        """Register a verifier worker against an exact SHA.
+
+        Must not reuse the reviewer's session: the two ask different questions and
+        a shared session id makes their verdicts indistinguishable in the audit.
+        """
+        check = self.can_dispatch_verifier(git_ref)
+        if not check.allowed:
+            return check
+        reviewer = self._state.reviewer
+        if reviewer is not None and session_id and session_id == reviewer.session_id:
+            return PolicyResult(
+                allowed=False,
+                reason=(
+                    "Verifier must use a different session than the adversarial "
+                    f"reviewer (both are {session_id!r})."
+                ),
+            )
+        self._state.verifier = Worker(
+            role=WorkerRole.VERIFIER,
+            state=WorkerState.RUNNING,
+            session_id=session_id,
+            node=node,
+            provider=provider,
+            git_ref=git_ref,
+        )
+        return PolicyResult(allowed=True, reason="verifier dispatched")
+
+    def record_verifier_verdict(self, verdict: str) -> PolicyResult:
+        """Record PASS or FAIL from the verifier. Separate from the reviewer's."""
+        if verdict not in ("PASS", "FAIL"):
+            return PolicyResult(
+                allowed=False,
+                reason=f"verdict must be 'PASS' or 'FAIL', got {verdict!r}",
+            )
+        self._state.verifier_verdict = verdict
+        if self._state.verifier is not None:
+            self._state.verifier.state = WorkerState.STOPPED
+        return PolicyResult(allowed=True, reason=f"verifier verdict recorded: {verdict}")
+
+    # ------------------------------------------------------------------
     # AC D — no merge / no deploy
     # ------------------------------------------------------------------
 
@@ -391,10 +476,16 @@ class ForemanPolicy:
         verdict: str
         if (
             self._state.reviewer_verdict == "PASS"
+            and self._state.verifier_verdict != "FAIL"
             and SHA_RE.match(self._state.head_sha or "")
             and self._state.pr_url
         ):
             verdict = "GO"
+            if not self._state.verifier_verdict:
+                # Not a NO-GO: AC H defines GO without a verifier, and silently
+                # redefining an accepted AC is not this change's job. Surfaced as
+                # a gate so Mike sees acceptance was never independently checked.
+                gates.insert(0, "Verifier has not run — acceptance not independently verified.")
         else:
             verdict = "NO-GO"
             if not self._state.reviewer_verdict:
@@ -404,6 +495,8 @@ class ForemanPolicy:
                     0,
                     f"Reviewer verdict is {self._state.reviewer_verdict!r} — must be PASS.",
                 )
+            if self._state.verifier_verdict == "FAIL":
+                gates.insert(0, "Verifier verdict is 'FAIL' — acceptance checks did not pass.")
             if not SHA_RE.match(self._state.head_sha or ""):
                 gates.insert(0, "head_sha is not a valid 40-char SHA.")
             if not self._state.pr_url:
@@ -417,4 +510,5 @@ class ForemanPolicy:
             head_sha=self._state.head_sha,
             reviewer_verdict=self._state.reviewer_verdict,
             human_gates=gates,
+            verifier_verdict=self._state.verifier_verdict,
         )
