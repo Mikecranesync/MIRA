@@ -43,6 +43,9 @@ except ImportError:
 # `cursor-grok-4.6-medium` slug is rejected by Agent.create.
 DEFAULT_GROK_MODEL = "grok-4.6"
 
+# Briefing is best-effort and must never hold _agent_lock indefinitely.
+BRIEFING_TIMEOUT_S: float = 60.0
+
 
 class ForemanConfig:
     """Configuration for FactoryLM Foreman bot."""
@@ -323,8 +326,27 @@ class ForemanBot:
             logger.warning("Routing card enabled but no specialist definitions found")
             return
         try:
-            await asyncio.to_thread(self._send_and_wait, agent, card)
+            # Bounded: a hung run.wait() would otherwise hold _agent_lock forever and
+            # block this Slack message and every later one. Briefing is best-effort,
+            # so a timeout drops the card rather than the user's message.
+            await asyncio.wait_for(
+                asyncio.to_thread(self._send_and_wait, agent, card),
+                timeout=BRIEFING_TIMEOUT_S,
+            )
             logger.info("✓ Routing card sent to agent_id=%s", agent.agent_id)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Routing card timed out after %ss on agent_id=%s — continuing unbriefed",
+                BRIEFING_TIMEOUT_S,
+                agent.agent_id,
+            )
+        except asyncio.CancelledError:
+            # Not an Exception subclass. The agent is cached and may still be mid-run,
+            # so drop it rather than let the next send race an active briefing.
+            logger.warning("Routing card cancelled — dropping agent %s", agent.agent_id)
+            if self._grok_agent is agent:
+                self._grok_agent = None
+            raise
         except Exception as exc:
             logger.error("Routing card send failed: %s", exc, exc_info=True)
 

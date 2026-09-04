@@ -33,7 +33,7 @@ def roles() -> dict[str, Specialist]:
     return load_specialists()
 
 
-def _valid(name="r", plane="fleet", extra=""):
+def _valid(name="r", plane="grok", extra=""):
     body = "\n".join(
         f"{s}\ncontent that is long enough to be a real boundary\n" for s in REQUIRED_SECTIONS
     )
@@ -126,12 +126,12 @@ def test_no_role_is_named_after_a_physical_computer(roles):
         assert spec.title.strip().lower() not in machines
 
 
-def test_roster_states_the_hierarchy_and_the_enforcement():
+def test_roster_states_the_hierarchy_and_the_rules():
     roster = render_roster()
     assert "only one who talks to Mike" in roster
     assert "physical COMPUTERS, never roles" in roster
-    assert "mission_loop.ForemanPolicy" in roster
-    assert "do not work around it" in roster
+    assert "Do not merge, deploy" in roster
+    assert "never work around it" in roster
     for name in EXPECTED:
         assert name in roster
 
@@ -180,7 +180,7 @@ def test_bad_plane_rejected(tmp_path):
 
 def test_bad_worker_role_rejected(tmp_path):
     p = tmp_path / "b.md"
-    p.write_text(_valid(extra="worker_role: JANITOR\n"), encoding="utf-8")
+    p.write_text(_valid(plane="fleet", extra="worker_role: JANITOR\n"), encoding="utf-8")
     with pytest.raises(SpecialistError, match="worker_role"):
         load_specialist(p)
 
@@ -226,3 +226,88 @@ def test_bot_briefing_is_guarded_by_the_flag():
     assert "if not routing_card_enabled():" in bot
     # sent once at creation, not prepended to every turn
     assert bot.count("await self._brief_agent(") == 1
+
+
+# --- regressions from the independent review (Codex, 2026-09-04) ------------
+
+
+def test_dockerfile_ships_the_module_it_imports():
+    """bot.py imports `specialists` at module scope. The image copied only bot.py,
+    so the container died with ModuleNotFoundError BEFORE the flag was read —
+    the 'inert by default' claim was false in the one place it mattered."""
+    docker = (SPECIALISTS_DIR.parent / "Dockerfile").read_text(encoding="utf-8")
+    assert "specialists.py" in docker
+    assert "COPY specialists/" in docker
+
+
+def test_fleet_card_must_declare_a_worker_role(tmp_path):
+    """A fleet card without one loaded fine and rendered a bare 'WorkerRole.'."""
+    p = tmp_path / "b.md"
+    p.write_text(_valid(plane="fleet"), encoding="utf-8")
+    with pytest.raises(SpecialistError, match="must declare"):
+        load_specialist(p)
+
+
+def test_unterminated_frontmatter_does_not_eat_a_body_rule(tmp_path):
+    """Splitting on the substring '---' let the first horizontal rule in the body
+    act as the closing delimiter."""
+    p = tmp_path / "b.md"
+    body = "\n".join(f"{s}\nx\n" for s in REQUIRED_SECTIONS)
+    p.write_text(f"---\nname: x\nmaps_to: y\nplane: grok\n\n{body}\n---\n", encoding="utf-8")
+    with pytest.raises(SpecialistError):
+        load_specialist(p)
+
+
+def test_duplicate_frontmatter_key_rejected(tmp_path):
+    p = tmp_path / "b.md"
+    p.write_text(_valid(extra="worker_role: REVIEWER\nplane: grok\n"), encoding="utf-8")
+    with pytest.raises(SpecialistError, match="duplicate frontmatter key"):
+        load_specialist(p)
+
+
+def test_malformed_frontmatter_line_rejected(tmp_path):
+    p = tmp_path / "b.md"
+    p.write_text(_valid(extra="this line has no colon\n"), encoding="utf-8")
+    with pytest.raises(SpecialistError, match="malformed"):
+        load_specialist(p)
+
+
+def test_headings_inside_a_code_fence_do_not_satisfy_validation(tmp_path):
+    """All five headings in a fenced example used to pass while the card had none."""
+    fenced = "```markdown\n" + "\n".join(REQUIRED_SECTIONS) + "\n```\n"
+    p = tmp_path / "b.md"
+    p.write_text(f"---\nname: x\nmaps_to: y\nplane: grok\n---\n\n{fenced}", encoding="utf-8")
+    with pytest.raises(SpecialistError, match="missing section"):
+        load_specialist(p)
+
+
+def test_duplicate_section_rejected(tmp_path):
+    """The first duplicate heading became the summary — forgeable."""
+    body = "\n".join(f"{s}\nx\n" for s in REQUIRED_SECTIONS) + "\n## Should NOT\nevil\n"
+    p = tmp_path / "b.md"
+    p.write_text(f"---\nname: x\nmaps_to: y\nplane: grok\n---\n\n{body}", encoding="utf-8")
+    with pytest.raises(SpecialistError, match="duplicate section"):
+        load_specialist(p)
+
+
+def test_roster_carries_the_boundary_not_just_the_summary():
+    """Only 'Responsible for' was shipped, so the industrial no-PLC-write rule
+    never reached the prompt."""
+    roster = render_roster()
+    assert "MUST NOT:" in roster
+    assert "PLC" in roster
+
+
+def test_roster_does_not_claim_enforcement_that_does_not_run():
+    """bot.py never calls ForemanPolicy; asserting it guards this path told the
+    model a check exists that does not."""
+    roster = render_roster()
+    assert "enforced in mission_loop" not in roster
+    assert "this card is instruction, not" in roster
+
+
+def test_briefing_is_bounded_and_handles_cancellation():
+    bot = (SPECIALISTS_DIR.parent / "bot.py").read_text(encoding="utf-8")
+    assert "BRIEFING_TIMEOUT_S" in bot
+    assert "asyncio.wait_for(" in bot
+    assert "except asyncio.CancelledError:" in bot

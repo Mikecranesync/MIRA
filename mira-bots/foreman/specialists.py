@@ -54,6 +54,23 @@ VALID_WORKER_ROLES: frozenset[str] = frozenset({"IMPLEMENTER", "REVIEWER", "VERI
 ROUTING_CARD_ENV = "FOREMAN_ROUTING_CARD"
 
 
+def _real_headings(body: str) -> list[str]:
+    """Level-2 headings OUTSIDE fenced code blocks.
+
+    Substring matching let a fenced example containing all five headings pass
+    validation while the real card had none.
+    """
+    found: list[str] = []
+    fenced = False
+    for line in body.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and line.startswith("## "):
+            found.append(line.rstrip())
+    return found
+
+
 class SpecialistError(ValueError):
     """A definition file is missing or malformed."""
 
@@ -69,9 +86,23 @@ class Specialist:
     path: Path
 
     def section(self, heading: str) -> str:
-        if heading not in self.body:
-            return ""
-        return self.body.split(heading, 1)[1].split("\n## ", 1)[0].strip()
+        """Text under one real ``## heading``. Fenced code is not a heading."""
+        out: list[str] = []
+        fenced = collecting = False
+        for line in self.body.splitlines():
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                if collecting:
+                    out.append(line)
+                continue
+            if not fenced and line.startswith("## "):
+                if collecting:
+                    break
+                collecting = line.rstrip() == heading
+                continue
+            if collecting:
+                out.append(line)
+        return "\n".join(out).strip()
 
     @property
     def summary(self) -> str:
@@ -85,17 +116,27 @@ class Specialist:
 def _split_frontmatter(raw: str, path: Path) -> tuple[dict[str, str], str]:
     if not raw.startswith("---"):
         raise SpecialistError(f"{path.name}: missing '---' frontmatter")
-    parts = raw.split("---", 2)
-    if len(parts) < 3:
+    # Split on a LINE that is exactly '---', so a horizontal rule in the body is
+    # never mistaken for the closing delimiter of an unterminated frontmatter.
+    lines = raw.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise SpecialistError(f"{path.name}: missing '---' frontmatter")
+    close = next((i for i, ln in enumerate(lines[1:], 1) if ln.strip() == "---"), None)
+    if close is None:
         raise SpecialistError(f"{path.name}: unterminated frontmatter")
     meta: dict[str, str] = {}
-    for line in parts[1].strip().splitlines():
+    for line in lines[1:close]:
         line = line.strip()
-        if not line or line.startswith("#") or ":" not in line:
+        if not line or line.startswith("#"):
             continue
+        if ":" not in line:
+            raise SpecialistError(f"{path.name}: malformed frontmatter line: {line!r}")
         key, _, value = line.partition(":")
-        meta[key.strip()] = value.strip()
-    return meta, parts[2].strip()
+        key = key.strip()
+        if key in meta:
+            raise SpecialistError(f"{path.name}: duplicate frontmatter key: {key!r}")
+        meta[key] = value.strip()
+    return meta, "\n".join(lines[close + 1 :]).strip()
 
 
 def load_specialist(path: Path) -> Specialist:
@@ -104,9 +145,13 @@ def load_specialist(path: Path) -> Specialist:
     name = meta.get("name", "").strip()
     if not name:
         raise SpecialistError(f"{path.name}: frontmatter needs a 'name'")
-    missing = [s for s in REQUIRED_SECTIONS if s not in body]
+    headings = _real_headings(body)
+    missing = [s for s in REQUIRED_SECTIONS if s not in headings]
     if missing:
         raise SpecialistError(f"{path.name}: missing section(s): {', '.join(missing)}")
+    dupes = sorted({s for s in REQUIRED_SECTIONS if headings.count(s) > 1})
+    if dupes:
+        raise SpecialistError(f"{path.name}: duplicate section(s): {', '.join(dupes)}")
     if not meta.get("maps_to", "").strip():
         raise SpecialistError(
             f"{path.name}: needs 'maps_to' — name the existing agent it aliases, "
@@ -118,6 +163,11 @@ def load_specialist(path: Path) -> Specialist:
             f"{path.name}: plane must be one of {sorted(VALID_PLANES)}, got {plane!r}"
         )
     worker_role = meta.get("worker_role", "").strip().upper()
+    if plane == "fleet" and not worker_role:
+        raise SpecialistError(
+            f"{path.name}: a fleet-plane role launches a worker, so it must declare "
+            f"worker_role (one of {sorted(VALID_WORKER_ROLES)})"
+        )
     if worker_role and worker_role not in VALID_WORKER_ROLES:
         raise SpecialistError(
             f"{path.name}: worker_role must be one of {sorted(VALID_WORKER_ROLES)}, "
@@ -174,23 +224,38 @@ def render_roster(specialists: dict[str, Specialist] | None = None) -> str:
     )
     lines += ["", "Fleet roles (a worker is launched on a computer):"]
     lines.extend(
-        f"  - {s.title} ({s.name}) -> WorkerRole.{s.worker_role}: {s.summary}"
+        _render_card(s, suffix=f" -> WorkerRole.{s.worker_role}")
         for s in loaded.values()
         if s.plane == "fleet"
     )
     advisory = [s for s in loaded.values() if s.plane == "advisory"]
     if advisory:
         lines += ["", "Opt-in only (Mike must name this scope explicitly):"]
-        lines.extend(f"  - {s.title} ({s.name}): {s.summary}" for s in advisory)
+        lines.extend(_render_card(s) for s in advisory)
     lines += [
         "",
-        "Hard rules are enforced in mission_loop.ForemanPolicy, not by your judgement:",
-        "one implementer at a time; review requires a 40-hex SHA; the reviewer runs Codex",
-        "on Charlie; verification runs only after review PASSes and on its own session;",
-        "merge, deploy, Gateway/tunnel/credential changes and stopping unowned sessions",
-        "are hard-denied. If policy refuses, report the refusal — do not work around it.",
+        "These rules bind you. Treat them as absolute, and note that NOTHING in this",
+        "path mechanically stops you from breaking them — this card is instruction, not",
+        "a guard. Do not merge, deploy, undraft a HELD PR, change Gateway/tunnel/",
+        "credential configuration, or stop a session you were not told to touch.",
+        "Run one implementer at a time. Review and verification need a 40-hex SHA.",
+        "The reviewer is a different worker than the builder.",
+        "If a Fleet Gateway tool refuses a call, report the refusal — never work around it.",
     ]
     return "\n".join(lines)
+
+
+def _render_card(spec: Specialist, *, suffix: str = "") -> str:
+    """One roster entry carrying the role's BOUNDARY, not just its summary.
+
+    Shipping only 'Responsible for' meant the industrial card's no-PLC-write rule
+    never reached the prompt.
+    """
+    must_not = " ".join(spec.section("## Should NOT").split())
+    entry = f"  - {spec.title} ({spec.name}){suffix}: {spec.summary}"
+    if must_not:
+        entry += f"\n      MUST NOT: {must_not}"
+    return entry
 
 
 def routing_card_enabled() -> bool:
