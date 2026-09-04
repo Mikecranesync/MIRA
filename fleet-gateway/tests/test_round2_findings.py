@@ -235,3 +235,106 @@ class TestM2AdoptableFlag:
 
             # Verify adoptable is False
             assert session.adoptable is False
+
+
+# ── Round-5 regressions (Codex review of ca31c01f9) ──────────────────────────
+
+
+def _two_node_service_with_nodeless_attempt(tmp_path):
+    """Task T: live s2 on charlie; superseded attempt s1 with NO recorded node.
+    Both nodes also hold an unrelated session named s1."""
+    from fleet_gateway.store import ArtifactStore
+
+    bravo, charlie = FakeCAO(), FakeCAO()
+    bravo.sessions["s1"] = {"session_id": "s1", "status": "running", "owner": "bravo-worker"}
+    charlie.sessions["s1"] = {"session_id": "s1", "status": "running", "owner": "unrelated"}
+    charlie.sessions["s2"] = {"session_id": "s2", "status": "running", "owner": "current"}
+    store = ArtifactStore(tmp_path)
+    store.write_task(
+        {
+            "task_id": "T",
+            "session_id": "s2",
+            "role": "charlie",
+            "fleet_owned": True,
+            "status": "running",
+            "claimed": True,
+            "attempts": [{"session_id": "s1", "fleet_owned": True, "status": "running"}],
+        }
+    )
+    svc = object.__new__(FleetGatewayService)
+    svc.artifacts = store
+    svc.router = NodeRouter(
+        {
+            "bravo": NodeTarget("bravo", bravo, object()),
+            "charlie": NodeTarget("charlie", charlie, object()),
+        }
+    )
+    svc._session_nodes = {}
+    return svc, bravo, charlie, store
+
+
+class TestB1NodelessAttemptFailsClosed:
+    """A superseded attempt with no recorded node must never be routed by guess."""
+
+    def test_stop_worker_refuses_and_touches_nothing(self, tmp_path):
+        svc, bravo, charlie, store = _two_node_service_with_nodeless_attempt(tmp_path)
+        with pytest.raises(ContractViolation, match="no recorded node"):
+            svc._stop_worker({"session_id": "s1"}, "test")
+        assert bravo.sessions["s1"]["status"] == "running"
+        assert charlie.sessions["s1"]["status"] == "running"
+        assert not [c for c in bravo.calls if c[0] == "stop_worker"]
+        assert not [c for c in charlie.calls if c[0] == "stop_worker"]
+        persisted = store.read_task("T")
+        assert persisted["session_id"] == "s2" and persisted["status"] == "running"
+        assert persisted["attempts"][0]["status"] == "running"
+
+    def test_message_worker_refuses_the_same_way(self, tmp_path):
+        svc, bravo, charlie, _ = _two_node_service_with_nodeless_attempt(tmp_path)
+        with pytest.raises(ContractViolation, match="no recorded node"):
+            svc._message_worker({"session_id": "s1", "text": "hello"}, "test")
+        assert not bravo.messages and not charlie.messages
+
+    def test_single_node_router_still_routes(self, tmp_path):
+        """With exactly one node there is nothing to guess; a node-less attempt
+        must still be stoppable so the Gateway keeps its cleanup path."""
+        from fleet_gateway.store import ArtifactStore
+
+        cao = FakeCAO()
+        cao.sessions["s1"] = {"session_id": "s1", "status": "running"}
+        cao.sessions["s2"] = {"session_id": "s2", "status": "running"}
+        store = ArtifactStore(tmp_path)
+        store.write_task(
+            {
+                "task_id": "T",
+                "session_id": "s2",
+                "role": "bravo",
+                "fleet_owned": True,
+                "status": "running",
+                "claimed": True,
+                "attempts": [{"session_id": "s1", "fleet_owned": True, "status": "running"}],
+            }
+        )
+        svc = object.__new__(FleetGatewayService)
+        svc.artifacts = store
+        svc.router = NodeRouter.single(cao, object())
+        svc._session_nodes = {}
+        svc._stop_worker({"session_id": "s1"}, "test")
+        assert cao.sessions["s1"]["status"] == "stopped"
+        assert cao.sessions["s2"]["status"] == "running"
+
+
+class TestBridgeOnlyMetadataNotAdoptable:
+    """Round-5 major 1: bridge-id-only metadata was listed adoptable=True but
+    adoption refuses anything without a local session id."""
+
+    def test_bridge_only_metadata_is_listed_but_not_adoptable(self, tmp_path):
+        (tmp_path / "4242.json").write_text(
+            json.dumps({"bridgeSessionId": "bridge-1"}), encoding="utf-8"
+        )
+        probe = FilesystemClaudeProbe(
+            node="bravo", sessions_dir=tmp_path, pid_alive=lambda _pid: True
+        )
+        (session,) = probe.list_sessions("bravo")
+        assert session.local_session_id is None
+        assert session.bridge_session_id == "bridge-1"
+        assert session.adoptable is False

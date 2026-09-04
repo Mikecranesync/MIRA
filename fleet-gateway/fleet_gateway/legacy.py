@@ -166,8 +166,9 @@ class FilesystemClaudeProbe:
             bridge_id = str(bridge).strip() if bridge else None
             running = self.pid_alive(pid)
             classification, adoptable = classify_name(tmux_name or path.stem, running=running)
-            # A session with no local_session_id cannot be adopted (no addressable identity)
-            local_session_id_present = bool(session_id or bridge_id)
+            # Adoption addresses a session by its local session id ONLY; a bridge id
+            # or a name is listable but not adoptable (round-5 review of #3578).
+            local_session_id_present = bool(session_id)
             if adoptable and not local_session_id_present:
                 adoptable = False
             provider = "claude"
