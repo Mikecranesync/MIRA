@@ -190,6 +190,7 @@ class FleetGatewayService:
         that attempt's own node, not the task's current top-level node.
         """
         node: str | None = None
+        found_attempt_without_node = False
         if session_id:
             node = self._session_nodes.get(session_id)
         if not node and task_id:
@@ -199,11 +200,12 @@ class FleetGatewayService:
                 if attempt.get("session_id") == session_id:
                     # Return the attempt's own node, not the live session's node
                     node = _as_str(attempt.get("role") or attempt.get("node"))
-                    if node:
-                        break
-            if not node:
+                    if not node:
+                        found_attempt_without_node = True
+                    break
+            if not node and not found_attempt_without_node:
                 node = _as_str(art.get("role") or art.get("node"))
-        if not node and session_id:
+        if not node and session_id and not found_attempt_without_node:
             tid = self.artifacts.find_task_id_for_session(session_id)
             if tid:
                 art = self.artifacts.read_task(tid) or {}
@@ -211,10 +213,15 @@ class FleetGatewayService:
                 for attempt in art.get("attempts", []):
                     if attempt.get("session_id") == session_id:
                         node = _as_str(attempt.get("role") or attempt.get("node"))
-                        if node:
-                            break
-                if not node:
+                        if not node:
+                            found_attempt_without_node = True
+                        break
+                if not node and not found_attempt_without_node:
                     node = _as_str(art.get("role") or art.get("node"))
+        if found_attempt_without_node:
+            raise ContractViolation(
+                f"superseded attempt {session_id!r} has no recorded node; refusing to route"
+            )
         if not node:
             raise NotFoundError(
                 f"cannot resolve physical node for session {session_id!r} / task {task_id!r}"

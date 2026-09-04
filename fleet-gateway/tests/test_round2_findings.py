@@ -106,9 +106,16 @@ class TestM1AttemptRecordUpdate:
         bravo.sessions["s1"] = {"session_id": "s1", "status": "running"}
         charlie.sessions["s2"] = {"session_id": "s2", "status": "running"}
 
-        class MockArtifacts:
-            def __init__(self):
-                self.data = {
+        # Use a real ArtifactStore to test persistence (not just shallow-copy aliasing)
+        import tempfile
+        from pathlib import Path
+        from fleet_gateway.store import ArtifactStore
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            artifacts = ArtifactStore(Path(tmp_path))
+            # Write initial task state
+            artifacts.write_task(
+                {
                     "task_id": "T",
                     "session_id": "s2",
                     "role": "charlie",
@@ -116,38 +123,30 @@ class TestM1AttemptRecordUpdate:
                     "claimed": True,
                     "attempts": [{"session_id": "s1", "role": "bravo", "status": "running"}],
                 }
+            )
 
-            def is_fleet_owned(self, sid):
-                return sid in {"s1", "s2"}
+            v = object.__new__(FleetGatewayService)
+            v.artifacts = artifacts
+            v.router = NodeRouter(
+                {
+                    "bravo": NodeTarget("bravo", bravo, object()),
+                    "charlie": NodeTarget("charlie", charlie, object()),
+                }
+            )
+            v._session_nodes = {}
 
-            def find_task_id_for_session(self, sid):
-                return "T"
+            v._stop_worker({"session_id": "s1"}, "test")
 
-            def read_task(self, tid):
-                return dict(self.data)
-
-            def write_task(self, record):
-                self.data = dict(record)
-
-        v = object.__new__(FleetGatewayService)
-        v.artifacts = MockArtifacts()
-        v.router = NodeRouter(
-            {
-                "bravo": NodeTarget("bravo", bravo, object()),
-                "charlie": NodeTarget("charlie", charlie, object()),
-            }
-        )
-        v._session_nodes = {}
-
-        v._stop_worker({"session_id": "s1"}, "test")
-
-        # Verify:
-        # - top-level s2 remains running and claimed
-        # - attempts[0] (s1) is marked stopped
-        assert v.artifacts.data["session_id"] == "s2"
-        assert v.artifacts.data["status"] == "running"
-        assert v.artifacts.data["claimed"] is True
-        assert v.artifacts.data["attempts"][0]["status"] == "stopped"
+            # Re-read the artifact to verify persistence
+            persisted = v.artifacts.read_task("T")
+            assert persisted is not None
+            # Verify:
+            # - top-level s2 remains running and claimed
+            # - attempts[0] (s1) is marked stopped
+            assert persisted["session_id"] == "s2"
+            assert persisted["status"] == "running"
+            assert persisted["claimed"] is True
+            assert persisted["attempts"][0]["status"] == "stopped"
 
 
 class TestM2UnaddressableAdoption:
@@ -175,7 +174,7 @@ class TestM2UnaddressableAdoption:
             v._session_nodes = {}
 
             # Adoption should fail, not create a task with None
-            with pytest.raises(ContractViolation, match="no addressable session"):
+            with pytest.raises(ContractViolation, match="is not adoptable"):
                 v._adopt_legacy_session({"role": "bravo", "external_id": "operator-tmux"}, "test")
 
             # Verify no CAO session was registered
