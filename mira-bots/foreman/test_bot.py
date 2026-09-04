@@ -7,6 +7,7 @@ All tests use mocked Slack and Cursor SDK — no real tokens, no live Gateway.
 
 # Mock cursor_sdk before importing bot
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -413,6 +414,13 @@ async def test_missing_gateway_omits_mcp_servers(mock_config, mock_agent):
 
         opts = AgentOptions.call_args.kwargs
         assert opts["mcp_servers"] is None
+
+
+def test_bot_source_never_passes_mcpservers_kwarg():
+    """MagicMock cannot catch TypeError; source must not regress to 3fa02be."""
+    src = Path(__file__).resolve().parent.joinpath("bot.py").read_text()
+    assert "mcpServers=" not in src
+    assert "build_agent_options(" in src
 
 
 if __name__ == "__main__":
