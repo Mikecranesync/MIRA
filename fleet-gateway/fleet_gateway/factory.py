@@ -96,7 +96,14 @@ def load_local_env() -> None:
 
 
 def _pid_alive(pid: int) -> bool:
-    """POSIX liveness only (signal 0). Never sends a killing signal."""
+    """POSIX liveness only (signal 0). Never sends a killing signal.
+
+    Non-positive pids are refused before the syscall: ``os.kill(0, 0)`` signals
+    the caller's whole process GROUP and succeeds, and a negative pid targets a
+    group too — neither is evidence that a specific session is alive.
+    """
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
     except OSError:

@@ -7,6 +7,7 @@ Does not launch, restart, attach, or send keys. Ownership is conferred only by
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,22 @@ from typing import Protocol
 
 PROTECTED_NAMES = frozenset({"fleet-gateway"})
 PROTECTED_PREFIXES = ("cao-server",)
+
+# Unicode dashes that render like ASCII "-" but are not it. Without folding
+# these, `cao‐server` (U+2010) reads as an ordinary adoptable session.
+_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uff0d"
+
+
+def normalize_session_name(name: str | None) -> str:
+    """Fold a session name to the form protected-name matching is done against.
+
+    NFKC + casefold + dash unification. Protection must not be defeatable by
+    typing `Fleet-Gateway` or by swapping in a look-alike hyphen.
+    """
+    text = unicodedata.normalize("NFKC", (name or "").strip())
+    for dash in _DASHES:
+        text = text.replace(dash, "-")
+    return text.casefold()
 
 
 @dataclass(frozen=True)
@@ -95,7 +112,7 @@ def classify_name(tmux_name: str | None, *, running: bool) -> tuple[str, bool]:
     """Return (classification, adoptable). Ordinary Claude/Codex CLIs are legacy."""
     if not running:
         return "stale", False
-    name = (tmux_name or "").strip()
+    name = normalize_session_name(tmux_name)
     if name in PROTECTED_NAMES or name.startswith(PROTECTED_PREFIXES):
         return "protected", False
     return "legacy", True
@@ -131,6 +148,10 @@ class FilesystemClaudeProbe:
             if not path.stem.isdigit():
                 continue
             pid = int(path.stem)
+            if pid <= 0:
+                # 0 = "my process group", negative = a group. Neither identifies
+                # a session, and both make os.kill(pid, 0) succeed spuriously.
+                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):

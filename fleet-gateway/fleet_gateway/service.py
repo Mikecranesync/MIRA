@@ -28,7 +28,7 @@ from fleet_gateway.errors import (
     NotFoundError,
     OwnershipError,
 )
-from fleet_gateway.legacy import EmptyProbe, LegacySession, LegacySessionProbe
+from fleet_gateway.legacy import EmptyProbe, LegacySession, LegacySessionProbe, classify_name
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.router import NodeRouter
 from fleet_gateway.store import ArtifactStore
@@ -409,6 +409,7 @@ class FleetGatewayService:
             raise ContractViolation("task_id is required")
         existing = self.artifacts.read_task(task_id) or {}
         self._require_fleet_ownership(session_id)
+        self._require_task_owns_session(task_id, session_id)
         cao = self._cao_for_session(session_id, task_id)
         cao.request_handoff(session_id, task_id)
         handoff_path = self.artifacts.write_handoff(
@@ -515,6 +516,19 @@ class FleetGatewayService:
                 "no matching fleet artifact; no action taken"
             )
 
+    def _require_task_owns_session(self, task_id: str, session_id: str) -> None:
+        """Raise unless the artifact store binds THIS session to THIS task.
+
+        Fleet-ownership alone only proves the session belongs to *some* task; a
+        mismatched pair could hand off session A while rewriting task B.
+        """
+        owner = self.artifacts.find_task_id_for_session(session_id)
+        if owner != task_id:
+            raise OwnershipError(
+                f"refuse: task '{task_id}' does not own session '{session_id}' "
+                f"(owner: {owner or 'none'}); no action taken"
+            )
+
     def _require_role(self, params: dict[str, Any]) -> str:
         role = str(params.get("role") or params.get("node") or "").strip().lower()
         if role in REJECTED_ROLES or role == "specialized":
@@ -575,13 +589,17 @@ class FleetGatewayService:
             "blockers": [],
             "worktree": chosen.cwd,
         }
-        artifact_path = self.artifacts.write_task(record)
-        self._session_nodes[local_id] = role
         target = (
             self.router.target(role)
             if not self.router.is_single()
             else self.router.default_target()
         )
+        # CAO-side ownership: a session another task already claims must never be
+        # silently rewritten, even when no local artifact exists.
+        self._reject_foreign_cao_owner(target.cao, local_id, task_id)
+        # Prove the binding FIRST. Ownership is conferred by the artifact, so it
+        # is written only after CAO has accepted the session — a failed bind must
+        # leave no ownership behind.
         target.cao.register_adopted_session(
             local_id,
             {
@@ -591,6 +609,8 @@ class FleetGatewayService:
                 "cwd": chosen.cwd,
             },
         )
+        artifact_path = self.artifacts.write_task(record)
+        self._session_nodes[local_id] = role
         return sanitize_public_payload(
             {
                 "ok": True,
@@ -607,6 +627,28 @@ class FleetGatewayService:
                 "artifact": str(artifact_path.name),
             }
         )
+
+    def _reject_foreign_cao_owner(self, cao: Any, session_id: str, task_id: str) -> None:
+        """Refuse when CAO already reports the session claimed by another task.
+
+        Best-effort by design: a CAO that cannot answer must not block adoption,
+        but an answer naming a DIFFERENT owner is decisive and fails closed.
+        """
+        getter = getattr(cao, "get_session", None)
+        if getter is None:
+            return
+        try:
+            existing = getter(session_id)
+        except Exception:
+            return
+        if not isinstance(existing, dict):
+            return
+        owner = str(existing.get("task_id") or "").strip()
+        if owner and owner != task_id and existing.get("claimed"):
+            raise ContractViolation(
+                f"already-owned: CAO reports session '{session_id}' claimed by "
+                f"task '{owner}'; no mutation"
+            )
 
     def _resolve_legacy_match(self, role: str, external_id: str) -> LegacySession:
         on_node = [item for item in self.probe.list_sessions(role) if item.matches(external_id)]
@@ -629,12 +671,29 @@ class FleetGatewayService:
             raise ContractViolation(
                 f"ambiguous: identifier {external_id!r} matches multiple sessions on {role}: {ids}"
             )
+        if elsewhere:
+            # An identifier that also resolves on another node is ambiguous, not
+            # "found here". Previously `elsewhere` was ignored whenever the
+            # requested node matched, so the local candidate won silently.
+            nodes = ", ".join(sorted({item.node for item in elsewhere} | {role}))
+            raise ContractViolation(
+                f"ambiguous: identifier {external_id!r} matches sessions on multiple nodes: {nodes}"
+            )
         chosen = on_node[0]
         if chosen.classification == "stale":
             raise ContractViolation(
                 f"stale: identifier {external_id!r} maps to dead session '{chosen.local_session_id}'"
             )
-        if chosen.classification == "protected" or not chosen.adoptable:
+        # Re-derive protection from the name instead of trusting the inventory's
+        # own label — a probe that mislabels a protected session must not be able
+        # to make it adoptable.
+        derived, derived_adoptable = classify_name(chosen.tmux_name, running=True)
+        if (
+            chosen.classification == "protected"
+            or not chosen.adoptable
+            or derived == "protected"
+            or not derived_adoptable
+        ):
             raise ContractViolation(
                 f"protected: session '{chosen.local_session_id}' is not adoptable"
             )

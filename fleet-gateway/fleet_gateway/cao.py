@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from fleet_gateway.errors import CaoConfigError, NotFoundError
+from fleet_gateway.errors import CaoConfigError, NotFoundError, OwnershipError
 
 # Only literal loopback IPv4. localhost / ::1 / 0.0.0.0 / LAN / Tailscale refused.
 LOOPBACK_HOST = "127.0.0.1"
@@ -608,9 +608,20 @@ class LoopbackCAOClient:
             "terminal_id": "",
             "worktree": meta.get("cwd") or "",
         }
+        # Prove CAO actually knows this session BEFORE recording the binding. A
+        # 404 here previously passed silently and left terminal_id empty, which
+        # later produced requests to `/terminals//input`.
+        live = self.get_session(session_id)
+        if not live:
+            raise OwnershipError(
+                f"refuse: CAO cannot confirm session '{session_id}'; binding unproven"
+            )
+        terminal_id = str(live.get("terminal_id") or "").strip()
+        if not terminal_id:
+            raise OwnershipError(
+                f"refuse: CAO session '{session_id}' has no terminal; binding unproven"
+            )
+        stored["terminal_id"] = terminal_id
         self._sessions[session_id] = stored
         if session_id not in self._session_order:
             self._session_order.append(session_id)
-        live = self.get_session(session_id)
-        if live and live.get("terminal_id"):
-            stored["terminal_id"] = live["terminal_id"]
