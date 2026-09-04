@@ -38,11 +38,17 @@ class ForemanConfig:
 
     def __init__(self) -> None:
         # Slack credentials
-        self.slack_bot_token = os.environ.get("FOREMAN_SLACK_BOT_TOKEN", "")
+        # Prefer FOREMAN_BOT_SLACK_TOKEN (Doppler name), fall back to FOREMAN_SLACK_BOT_TOKEN
+        self.slack_bot_token = os.environ.get(
+            "FOREMAN_BOT_SLACK_TOKEN", os.environ.get("FOREMAN_SLACK_BOT_TOKEN", "")
+        )
         self.slack_app_token = os.environ.get("FOREMAN_SLACK_APP_TOKEN", "")
 
         # Cursor API key for launching cloud agents
-        self.cursor_api_key = os.environ.get("CURSOR_API_KEY", "")
+        # Prefer CURSOR_API_KEY, fall back to CURSOR_API (current Doppler name)
+        self.cursor_api_key = os.environ.get(
+            "CURSOR_API_KEY", os.environ.get("CURSOR_API", "")
+        )
 
         # Target repository for cloud agents
         self.repo_url = os.environ.get(
@@ -63,7 +69,10 @@ class ForemanConfig:
         )
 
         # Fleet Gateway bearer token
-        self.fleet_gateway_token = os.environ.get("FLEET_GATEWAY_TOKEN", "")
+        # Prefer FLEET_GATEWAY_TOKEN, fall back to FLEET_GATEWAY_BEARER (live Gateway worktree)
+        self.fleet_gateway_token = os.environ.get(
+            "FLEET_GATEWAY_TOKEN", os.environ.get("FLEET_GATEWAY_BEARER", "")
+        )
 
         # Bot's own user ID (filled at runtime after auth_test)
         self.bot_user_id: str = ""
@@ -72,13 +81,13 @@ class ForemanConfig:
         """Validate required configuration. Returns list of errors."""
         errors = []
         if not self.slack_bot_token:
-            errors.append("FOREMAN_SLACK_BOT_TOKEN is required")
+            errors.append("FOREMAN_BOT_SLACK_TOKEN or FOREMAN_SLACK_BOT_TOKEN is required")
         if not self.slack_app_token:
             errors.append("FOREMAN_SLACK_APP_TOKEN is required")
         if not self.cursor_api_key:
-            errors.append("CURSOR_API_KEY is required")
+            errors.append("CURSOR_API_KEY or CURSOR_API is required")
         if not self.fleet_gateway_token:
-            errors.append("FLEET_GATEWAY_TOKEN is required")
+            errors.append("FLEET_GATEWAY_TOKEN or FLEET_GATEWAY_BEARER is required")
         return errors
 
 

@@ -103,14 +103,17 @@ Add these secrets to Doppler `factorylm/prd` or create `.env`:
 
 ```bash
 # Slack tokens (from steps 2-3 above)
-FOREMAN_SLACK_BOT_TOKEN=xoxb-...
+# Bot token: prefers FOREMAN_BOT_SLACK_TOKEN, falls back to FOREMAN_SLACK_BOT_TOKEN
+FOREMAN_BOT_SLACK_TOKEN=xoxb-...
 FOREMAN_SLACK_APP_TOKEN=xapp-...
 
 # Cursor API key (from step 5)
+# Prefers CURSOR_API_KEY, falls back to CURSOR_API
 CURSOR_API_KEY=crsr_...
 
 # Fleet Gateway MCP
 FLEET_GATEWAY_MCP_URL=https://ultra-manufacturers-goat-enquiries.trycloudflare.com/mcp
+# Gateway token: prefers FLEET_GATEWAY_TOKEN, falls back to FLEET_GATEWAY_BEARER
 FLEET_GATEWAY_TOKEN=<from Bravo .env>
 
 # Optional: Override defaults
@@ -120,6 +123,11 @@ FOREMAN_REPO_URL=https://github.com/Mikecranesync/MIRA
 FOREMAN_REPO_BRANCH=main
 ```
 
+**Environment Variable Aliases:**
+- **Slack bot token:** `FOREMAN_BOT_SLACK_TOKEN` (preferred) or `FOREMAN_SLACK_BOT_TOKEN` (fallback)
+- **Cursor API key:** `CURSOR_API_KEY` (preferred) or `CURSOR_API` (fallback, current Doppler name)
+- **Fleet Gateway token:** `FLEET_GATEWAY_TOKEN` (preferred) or `FLEET_GATEWAY_BEARER` (fallback, live Gateway worktree)
+
 ## Running
 
 ### Local (development)
@@ -128,8 +136,8 @@ FOREMAN_REPO_BRANCH=main
 cd mira-bots/foreman
 pip install -r requirements.txt
 
-# Export secrets
-export FOREMAN_SLACK_BOT_TOKEN="xoxb-..."
+# Export secrets (using preferred Doppler names)
+export FOREMAN_BOT_SLACK_TOKEN="xoxb-..."
 export FOREMAN_SLACK_APP_TOKEN="xapp-..."
 export CURSOR_API_KEY="crsr_..."
 export FLEET_GATEWAY_MCP_URL="https://..."
@@ -147,7 +155,7 @@ docker build -t factorylm-foreman .
 docker run -d \
   --name foreman \
   --restart unless-stopped \
-  -e FOREMAN_SLACK_BOT_TOKEN="xoxb-..." \
+  -e FOREMAN_BOT_SLACK_TOKEN="xoxb-..." \
   -e FOREMAN_SLACK_APP_TOKEN="xapp-..." \
   -e CURSOR_API_KEY="crsr_..." \
   -e FLEET_GATEWAY_MCP_URL="https://..." \
@@ -167,7 +175,7 @@ Add to `docker-compose.saas.yml`:
     container_name: factorylm-foreman
     restart: unless-stopped
     environment:
-      - FOREMAN_SLACK_BOT_TOKEN=${FOREMAN_SLACK_BOT_TOKEN}
+      - FOREMAN_BOT_SLACK_TOKEN=${FOREMAN_BOT_SLACK_TOKEN}
       - FOREMAN_SLACK_APP_TOKEN=${FOREMAN_SLACK_APP_TOKEN}
       - CURSOR_API_KEY=${CURSOR_API_KEY}
       - FLEET_GATEWAY_MCP_URL=${FLEET_GATEWAY_MCP_URL}
@@ -238,8 +246,8 @@ Bot logs show:
 
 - [ ] Slack app "FactoryLM Foreman" created
 - [ ] Bot added to #factorylm-foreman
-- [ ] `FOREMAN_SLACK_BOT_TOKEN` and `FOREMAN_SLACK_APP_TOKEN` in Doppler
-- [ ] `CURSOR_API_KEY` in Doppler
+- [ ] `FOREMAN_BOT_SLACK_TOKEN` and `FOREMAN_SLACK_APP_TOKEN` in Doppler
+- [ ] `CURSOR_API_KEY` (or `CURSOR_API`) in Doppler
 - [ ] `FLEET_GATEWAY_TOKEN` from Bravo `.env` added to Doppler
 - [ ] Container running: `docker ps | grep foreman`
 - [ ] Logs healthy: `docker logs -f factorylm-foreman`

@@ -112,18 +112,26 @@ Add these to Doppler `factorylm/prd`:
 
 ```bash
 # From step 3 above
-FOREMAN_SLACK_BOT_TOKEN=xoxb-...
+# Bot token: use FOREMAN_BOT_SLACK_TOKEN (preferred) or FOREMAN_SLACK_BOT_TOKEN (fallback)
+FOREMAN_BOT_SLACK_TOKEN=xoxb-...
 FOREMAN_SLACK_APP_TOKEN=xapp-...
 
 # From step 5
+# Cursor key: use CURSOR_API_KEY (preferred) or CURSOR_API (fallback, current Doppler name)
 CURSOR_API_KEY=crsr_...
 
 # From step 6
+# Gateway token: use FLEET_GATEWAY_TOKEN (preferred) or FLEET_GATEWAY_BEARER (fallback)
 FLEET_GATEWAY_TOKEN=<value from Bravo>
 
 # Current Fleet Gateway URL (update if tunnel changes)
 FLEET_GATEWAY_MCP_URL=https://ultra-manufacturers-goat-enquiries.trycloudflare.com/mcp
 ```
+
+**Environment Variable Aliases:**
+- **Slack bot token:** `FOREMAN_BOT_SLACK_TOKEN` (preferred) or `FOREMAN_SLACK_BOT_TOKEN` (fallback)
+- **Cursor API key:** `CURSOR_API_KEY` (preferred) or `CURSOR_API` (fallback, current Doppler name)
+- **Fleet Gateway token:** `FLEET_GATEWAY_TOKEN` (preferred) or `FLEET_GATEWAY_BEARER` (fallback, live Gateway worktree)
 
 Optional overrides (defaults shown):
 ```bash

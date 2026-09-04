@@ -480,7 +480,7 @@ services:
       dockerfile: Dockerfile
     container_name: factorylm-foreman
     environment:
-      - FOREMAN_SLACK_BOT_TOKEN=${FOREMAN_SLACK_BOT_TOKEN}
+      - FOREMAN_BOT_SLACK_TOKEN=${FOREMAN_BOT_SLACK_TOKEN}
       - FOREMAN_SLACK_APP_TOKEN=${FOREMAN_SLACK_APP_TOKEN}
       - CURSOR_API_KEY=${CURSOR_API_KEY}
       - FLEET_GATEWAY_MCP_URL=${FLEET_GATEWAY_MCP_URL}
