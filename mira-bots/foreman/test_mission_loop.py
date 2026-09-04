@@ -434,7 +434,7 @@ class TestACGoNoGoShape:
         policy._state.pr_url = PR_URL
         policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-verifier-absent")
         policy.record_reviewer_verdict("PASS")
-        # No verifier dispatched — verifier_verdict is None
+        # No verifier dispatched — verifier_verdict is the empty string
         result = policy.evaluate_go_no_go()
         assert result.verdict == "NO-GO"
         assert any("Verifier" in g and "NO-GO" in g for g in result.human_gates)
@@ -511,3 +511,48 @@ class TestACGoNoGoShape:
         assert result.verdict == "GO"
         # Human merge gate must still be in the list.
         assert any("merge" in g.lower() or "human" in g.lower() for g in result.human_gates)
+
+
+class TestVerifierRecordBinding:
+    """A PASS verdict with no Verifier dispatch record is NO-GO (AC H, 2026-09-04).
+
+    Round-5 Codex blocker on #3572: ``sha_bound`` tolerated a missing verifier
+    ref, so a persisted state carrying ``verifier_verdict="PASS"`` but
+    ``verifier=None`` returned GO. Both the verdict AND the dispatch record
+    bound to the head SHA are required.
+    """
+
+    def test_verdict_without_dispatch_record_is_no_go(self):
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(WorkerRole.REVIEWER, WorkerState.STOPPED, git_ref=head),
+            reviewer_verdict="PASS",
+            verifier=None,
+            verifier_verdict="PASS",
+        )
+        policy = ForemanPolicy.load_state(state.to_json())
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("Verifier" in g for g in result.human_gates)
+
+    def test_verifier_ref_must_match_head(self):
+        head = HEAD_SHA
+        other = "b" * 40
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(WorkerRole.REVIEWER, WorkerState.STOPPED, git_ref=head),
+            reviewer_verdict="PASS",
+            verifier=Worker(WorkerRole.VERIFIER, WorkerState.STOPPED, git_ref=other),
+            verifier_verdict="PASS",
+        )
+        policy = ForemanPolicy.load_state(state.to_json())
+        assert policy.evaluate_go_no_go().verdict == "NO-GO"
