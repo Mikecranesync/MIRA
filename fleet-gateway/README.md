@@ -2,7 +2,7 @@
 
 Bounded HTTPS control plane: **Grok/Foreman → Fleet Gateway → private/loopback CAO**.
 
-v1.1 adds read-only `list_legacy_sessions` and fail-closed `adopt_legacy_session` (no launch/restart). Ownership on `message_worker` / `stop_worker` / `request_handoff` is unchanged and fail-closed.
+v1.1 adds read-only `list_legacy_sessions` and fail-closed `adopt_legacy_session` (no launch/restart). Ownership gates: `message_worker` and `stop_worker` allow any fleet-created session (including superseded attempts), while `request_handoff` requires the LIVE session; all fail-closed. PID is display-only (not an identity token).
 
 - Issue: [#3532](https://github.com/Mikecranesync/MIRA/issues/3532)
 - Spec: [`docs/specs/fleet-gateway-mcp.md`](../docs/specs/fleet-gateway-mcp.md)

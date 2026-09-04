@@ -245,3 +245,197 @@ def test_blocker3_attempts_makes_historical_sessions_read_as_owned(
             authorization=AUTH_HEADER,
             requester="test",
         )
+
+
+def test_blocker1_pid_not_identity_with_empty_metadata(tmp_path):
+    """Blocker 1: Empty metadata should NOT synthesize identity from PID.
+
+    REPRODUCTION: A session file with empty/missing metadata.
+    - File: 4242.json with content '{}'
+    - Expected: local_session_id and tmux_name should NOT be set to '4242'
+    - Expected: matches('4242') should return False (PID is not an identity token)
+    """
+    from fleet_gateway.legacy import FilesystemClaudeProbe
+
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+
+    # Create a session file with empty metadata
+    session_file = sessions_dir / "4242.json"
+    session_file.write_text("{}")
+
+    # Create a mock probe and list sessions
+    probe = FilesystemClaudeProbe(node="bravo", sessions_dir=sessions_dir)
+    # Mock pid_alive to return True
+    probe.pid_alive = lambda p: True
+
+    sessions = probe.list_sessions("bravo")
+    assert len(sessions) == 1
+
+    session = sessions[0]
+    assert session.pid == 4242
+
+    # The critical assertions: PID should NOT be an identity token
+    assert session.local_session_id is None or session.local_session_id == "", (
+        f"local_session_id should be None or empty, got {session.local_session_id!r}"
+    )
+    assert session.tmux_name is None or session.tmux_name == "", (
+        f"tmux_name should be None or empty, got {session.tmux_name!r}"
+    )
+
+    # Most importantly: matches() must return False for the PID
+    assert not session.matches("4242"), "PID should NOT be in identity_tokens()"
+
+
+def test_m1_probe_without_known_nodes_on_multinode_fails_open(
+    data_dir, cao, origin_repo, worktree_parent
+):
+    """M1: Probe without known_nodes() method bypasses guard on multi-node.
+
+    When a multi-node router is configured but the probe lacks known_nodes(),
+    the guard should fail closed, not silently skip verification.
+    """
+    from fleet_gateway.cao import FakeCAO
+    from fleet_gateway.router import NodeRouter, NodeTarget
+
+    repo, _sha = origin_repo
+    wt_prov = WorktreeProvisioner(repo=repo, parent=worktree_parent)
+
+    # Three-node router
+    cao_bravo = FakeCAO()
+    cao_charlie = FakeCAO()
+    cao_alpha = FakeCAO()
+
+    router = NodeRouter(
+        {
+            "bravo": NodeTarget("bravo", cao_bravo, wt_prov),
+            "charlie": NodeTarget("charlie", cao_charlie, wt_prov),
+            "alpha": NodeTarget("alpha", cao_alpha, wt_prov),
+        }
+    )
+
+    # Probe WITHOUT known_nodes method (like a broken production probe)
+    class ProbeWithoutKnownNodes:
+        def list_sessions(self, node: str):
+            if node == "bravo":
+                return [_sess(local_id="bravo-session", bridge="bridge-test")]
+            return []
+
+    probe = ProbeWithoutKnownNodes()
+
+    service = build_service(
+        bearer_token=TEST_BEARER,
+        router=router,
+        data_dir=data_dir,
+        requester="foreman-test",
+        probe=probe,
+    )
+
+    # Should fail closed because probe can't verify cross-node coverage
+    with pytest.raises(ContractViolation, match="cross_node_probe_unavailable"):
+        service.invoke(
+            "adopt_legacy_session",
+            {"role": "bravo", "external_id": "bridge-test"},
+            authorization=AUTH_HEADER,
+            requester="test",
+        )
+
+
+def test_m2_stop_worker_allowed_on_superseded_fleet_sessions(
+    data_dir, cao, origin_repo, worktree_parent
+):
+    """M2: stop_worker must still operate on superseded (attempts[]) sessions.
+
+    When a task has multiple sessions (S1 superseded, S2 live), stop_worker on
+    S1 should succeed (S1 is fleet-owned and can be cleaned up), but
+    request_handoff on S1 should fail (not the live session).
+    """
+    from fleet_gateway.cao import FakeCAO
+    from fleet_gateway.errors import OwnershipError
+
+    repo, _sha = origin_repo
+    wt = WorktreeProvisioner(repo=repo, parent=worktree_parent)
+
+    cao_obj = FakeCAO()
+    cao_obj.sessions = {
+        "session-s1": {"session_id": "session-s1", "status": "running"},
+        "session-s2": {"session_id": "session-s2", "status": "running"},
+    }
+
+    service = build_service(
+        bearer_token=TEST_BEARER,
+        cao=cao_obj,
+        data_dir=data_dir,
+        requester="foreman-test",
+        worktrees=wt,
+    )
+
+    # Adopt S1
+    probe = FakeLegacySessionProbe(
+        {
+            "bravo": [
+                _sess(local_id="session-s1", bridge="bridge-s1"),
+                _sess(local_id="session-s2", bridge="bridge-s2"),
+            ]
+        }
+    )
+    service.probe = probe
+
+    result = service.invoke(
+        "adopt_legacy_session",
+        {"role": "bravo", "external_id": "bridge-s1"},
+        authorization=AUTH_HEADER,
+        requester="test",
+    )
+    task_id = result["task_id"]
+
+    # Update task to have S2 as the live session, moving S1 to attempts[]
+    record = {
+        "task_id": task_id,
+        "session_id": "session-s2",  # NEW session
+        "role": "bravo",
+        "node": "bravo",
+        "provider": "claude",
+        "cwd": "/Users/bravonode/MIRA",
+        "status": "running",
+        "claimed": True,
+        "fleet_owned": True,
+    }
+    service.artifacts.write_task(record)
+
+    # Verify S1 is now in attempts[]
+    task_record = service.artifacts.read_task(task_id)
+    assert task_record["session_id"] == "session-s2"
+    assert len(task_record.get("attempts", [])) == 1
+    assert task_record["attempts"][0]["session_id"] == "session-s1"
+
+    # stop_worker on S1 should SUCCEED (it's still fleet-owned)
+    result = service.invoke(
+        "stop_worker",
+        {"session_id": "session-s1"},
+        authorization=AUTH_HEADER,
+        requester="test",
+    )
+    assert result["session_id"] == "session-s1"
+    assert result["status"] == "stopped"
+    # Verify CAO.stop_worker was actually called
+    assert any(call[0] == "stop_worker" for call in cao_obj.calls)
+
+    # request_handoff on S1 should FAIL (not the live session)
+    with pytest.raises(OwnershipError, match="does not own live session"):
+        service.invoke(
+            "request_handoff",
+            {
+                "session_id": "session-s1",  # HISTORICAL session
+                "task_id": task_id,
+                "role": "bravo",
+                "provider": "claude",
+                "github_ref": "main",
+                "base_commit": "abc123",
+                "claimed_commit": "def456",
+                "branch": "feat/test",
+                "worktree": "/Users/bravonode/MIRA/.claude/worktrees/test",
+            },
+            authorization=AUTH_HEADER,
+            requester="test",
+        )

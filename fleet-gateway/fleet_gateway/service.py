@@ -517,16 +517,19 @@ class FleetGatewayService:
             )
 
     def _require_task_owns_session(self, task_id: str, session_id: str) -> None:
-        """Raise unless the artifact store binds THIS session to THIS task.
+        """Raise unless the artifact store binds THIS LIVE session to THIS task.
 
         Fleet-ownership alone only proves the session belongs to *some* task; a
-        mismatched pair could hand off session A while rewriting task B.
+        mismatched pair could hand off session A while rewriting task B. The session
+        must be the LIVE one (not in attempts[]), not a superseded historical attempt.
         """
-        owner = self.artifacts.find_task_id_for_session(session_id)
-        if owner != task_id:
+        task = self.artifacts.read_task(task_id)
+        if not task:
+            raise OwnershipError(f"refuse: task '{task_id}' not found; no action taken")
+        if task.get("session_id") != session_id:
             raise OwnershipError(
-                f"refuse: task '{task_id}' does not own session '{session_id}' "
-                f"(owner: {owner or 'none'}); no action taken"
+                f"refuse: task '{task_id}' does not own live session '{session_id}' "
+                f"(owns: {task.get('session_id') or 'none'}); no action taken"
             )
 
     def _require_role(self, params: dict[str, Any]) -> str:
@@ -657,18 +660,26 @@ class FleetGatewayService:
         # closed to prevent silently ignoring cross-node conflicts in TRUE multi-node
         # setups. Exempt single-node routers (legacy tests / single-CAO deployments).
         is_multinode = not self.router.is_single()
-        probe_known = set(self.probe.known_nodes()) if hasattr(self.probe, "known_nodes") else set()
-        for other in ALLOWED_ROLES:
+        has_known_nodes = hasattr(self.probe, "known_nodes")
+        if is_multinode:
+            if not has_known_nodes:
+                raise ContractViolation(
+                    "cross_node_probe_unavailable: multi-node router requires probe with "
+                    "known_nodes() method"
+                )
+            probe_known = set(self.probe.known_nodes())
+            configured_nodes = self.router.nodes  # nodes is a property, not a method
+            uncovered = configured_nodes - probe_known
+            if uncovered:
+                raise ContractViolation(
+                    f"cross_node_probe_unavailable: probe doesn't cover configured nodes "
+                    f"{sorted(uncovered)}; probe knows {sorted(probe_known)}"
+                )
+        else:
+            probe_known = set(self.probe.known_nodes()) if has_known_nodes else set()
+        for other in self.router.nodes:
             if other == role:
                 continue
-            # Only fail closed if: (1) this is a TRUE multi-node setup, AND
-            # (2) the probe doesn't know about this node. This prevents silently
-            # ignoring cross-node conflicts when we can't verify them.
-            if is_multinode and probe_known and other not in probe_known:
-                raise ContractViolation(
-                    f"cross_node_probe_unavailable: cannot verify node '{other}' for "
-                    f"cross-node ambiguity; probe only knows {sorted(probe_known)}"
-                )
             elsewhere.extend(
                 item for item in self.probe.list_sessions(other) if item.matches(external_id)
             )

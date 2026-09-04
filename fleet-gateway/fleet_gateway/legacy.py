@@ -37,7 +37,7 @@ def normalize_session_name(name: str | None) -> str:
 class LegacySession:
     node: str
     provider: str
-    local_session_id: str
+    local_session_id: str | None
     cwd: str | None
     pid: int | None
     tmux_name: str | None
@@ -158,12 +158,14 @@ class FilesystemClaudeProbe:
             if not isinstance(data, dict):
                 continue
             session_id = str(data.get("sessionId") or data.get("session_id") or "").strip()
-            tmux_name = str(data.get("name") or session_id or path.stem).strip() or path.stem
+            # Don't synthesize identity from PID: only use name if present in metadata
+            name_from_metadata = str(data.get("name") or "").strip()
+            tmux_name = name_from_metadata or session_id or None
             cwd = str(data.get("cwd") or "").strip() or None
             bridge = data.get("bridgeSessionId")
             bridge_id = str(bridge).strip() if bridge else None
             running = self.pid_alive(pid)
-            classification, adoptable = classify_name(tmux_name, running=running)
+            classification, adoptable = classify_name(tmux_name or path.stem, running=running)
             provider = "claude"
             entry = str(data.get("entrypoint") or data.get("kind") or "").lower()
             if "codex" in entry:
@@ -172,7 +174,7 @@ class FilesystemClaudeProbe:
                 LegacySession(
                     node=self.node,
                     provider=provider,
-                    local_session_id=session_id or tmux_name,
+                    local_session_id=session_id or None,
                     cwd=cwd,
                     pid=pid,
                     tmux_name=tmux_name,
