@@ -7,7 +7,7 @@
 ✅ **FactoryLM Foreman bot** (`mira-bots/foreman/`)
 - Python Slack bot using Slack Bolt + Socket Mode
 - Launches Cursor cloud agents via Cursor Python SDK
-- Uses cursor-grok-4.6-medium model
+- Uses grok-4.6 model (live-proven Cursor id; not cursor-grok-4.6-medium)
 - Agents have fleet-gateway MCP access
 - Pre-Grok bot filter prevents infinite loops
 - Only responds in #factorylm-foreman channel
@@ -31,7 +31,7 @@ Mike posts in #factorylm-foreman
 FactoryLM Foreman (Slack bot, this implementation)
   ↓ [filters bot messages BEFORE next step]
   ↓ [launches via Cursor Python SDK]
-Grok (Cursor cloud agent, cursor-grok-4.6-medium)
+Grok (Cursor cloud agent, grok-4.6)
   ↓ [has fleet-gateway MCP configured]
 Fleet Gateway MCP Server
   ↓ [tools: launch_worker, fleet_status, etc.]
@@ -135,7 +135,7 @@ FLEET_GATEWAY_MCP_URL=https://ultra-manufacturers-goat-enquiries.trycloudflare.c
 
 Optional overrides (defaults shown):
 ```bash
-FOREMAN_GROK_MODEL=cursor-grok-4.6-medium
+FOREMAN_GROK_MODEL=grok-4.6
 FOREMAN_ALLOWED_CHANNEL=C0BTXHXBKML  # #factorylm-foreman
 FOREMAN_REPO_URL=https://github.com/Mikecranesync/MIRA
 FOREMAN_REPO_BRANCH=main
@@ -166,7 +166,7 @@ Expected startup logs:
 [INFO] foreman: ✓ FactoryLM Foreman authenticated: user_id=U... bot_id=B... team=...
 [INFO] foreman: ====================================================================
 [INFO] foreman: FactoryLM Foreman started
-[INFO] foreman:   Model: cursor-grok-4.6-medium
+[INFO] foreman:   Model: grok-4.6
 [INFO] foreman:   Channel: C0BTXHXBKML
 [INFO] foreman:   Repo: https://github.com/Mikecranesync/MIRA@main
 [INFO] foreman:   Fleet Gateway: https://ultra-manufacturers-goat-enquiries...
@@ -195,7 +195,7 @@ docker logs factorylm-foreman | grep -A 5 "fleet_status"
 Should show:
 ```
 → Foreman received: channel=C0BTXHXBKML user=U0AKME57B9A text='fleet_status'
-Launching Grok cloud agent: model=cursor-grok-4.6-medium
+Launching Grok cloud agent: model=grok-4.6
 Fleet Gateway MCP configured: url=https://...
 Cloud agent created: agent_id=bc-...
 Run started: run_id=...

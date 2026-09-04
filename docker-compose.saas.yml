@@ -471,7 +471,7 @@ services:
       start_period: 15s
 
   # ─── FactoryLM Foreman — Fleet orchestration bot (Grok + Fleet Gateway MCP) ───
-  # Listens in #factorylm-foreman, launches Cursor cloud agents with cursor-grok model,
+  # Listens in #factorylm-foreman, launches Cursor cloud agents with grok-4.6,
   # agents call Fleet Gateway MCP tools (launch_worker, fleet_status, etc.).
   # Rejects bot messages (including its own) BEFORE agent launch to prevent loops.
   factorylm-foreman:
@@ -485,7 +485,7 @@ services:
       - CURSOR_API_KEY=${CURSOR_API_KEY}
       - FLEET_GATEWAY_MCP_URL=${FLEET_GATEWAY_MCP_URL}
       - FLEET_GATEWAY_TOKEN=${FLEET_GATEWAY_TOKEN}
-      - FOREMAN_GROK_MODEL=${FOREMAN_GROK_MODEL:-cursor-grok-4.6-medium}
+      - FOREMAN_GROK_MODEL=${FOREMAN_GROK_MODEL:-grok-4.6}
       - FOREMAN_ALLOWED_CHANNEL=${FOREMAN_ALLOWED_CHANNEL:-C0BTXHXBKML}
       - FOREMAN_REPO_URL=${FOREMAN_REPO_URL:-https://github.com/Mikecranesync/MIRA}
       - FOREMAN_REPO_BRANCH=${FOREMAN_REPO_BRANCH:-main}

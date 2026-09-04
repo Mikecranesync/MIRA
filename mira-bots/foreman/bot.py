@@ -3,7 +3,7 @@
 
 Architecture:
   Mike → Slack (#factorylm-foreman) → FactoryLM Foreman (this bot)
-  → Grok (Cursor cloud agent with cursor-grok-4.6 model)
+  → Grok (Cursor cloud agent with grok-4.6 model)
   → Fleet Gateway MCP (launch_worker, fleet_status, etc.)
   → Response posted back to Slack as FactoryLM Foreman
 
@@ -21,7 +21,13 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 try:
-    from cursor_sdk import Agent, CloudAgentOptions
+    from cursor_sdk import (
+        Agent,
+        AgentOptions,
+        CloudAgentOptions,
+        CloudRepository,
+        HttpMcpServerConfig,
+    )
 except ImportError:
     print("ERROR: cursor-sdk not installed. Run: pip install cursor-sdk", file=sys.stderr)
     sys.exit(1)
@@ -31,6 +37,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("foreman")
+
+# Live-proven Cursor model id (FLEET-SLACK-IDENTITY, 2026-09-04). The
+# `cursor-grok-4.6-medium` slug is rejected by Agent.create.
+DEFAULT_GROK_MODEL = "grok-4.6"
 
 
 class ForemanConfig:
@@ -56,8 +66,9 @@ class ForemanConfig:
         )
         self.repo_branch = os.environ.get("FOREMAN_REPO_BRANCH", "main")
 
-        # Grok model to use
-        self.grok_model = os.environ.get("FOREMAN_GROK_MODEL", "cursor-grok-4.6-medium")
+        # Grok model to use. Override with FOREMAN_GROK_MODEL; default is the
+        # live-proven Cursor id, not the `cursor-grok-4.6-*` slug.
+        self.grok_model = os.environ.get("FOREMAN_GROK_MODEL", DEFAULT_GROK_MODEL)
 
         # Allowed channel (only respond in this channel)
         self.allowed_channel = os.environ.get("FOREMAN_ALLOWED_CHANNEL", "C0BTXHXBKML")
@@ -256,41 +267,37 @@ class ForemanBot:
             # Create new agent
             logger.info("Creating Grok cloud agent: model=%s", self.config.grok_model)
 
-            # Prepare MCP server config for fleet-gateway
-            mcp_servers: list[dict[str, Any]] = []
+            # mcp_servers belongs on AgentOptions (not CloudAgentOptions, not
+            # bare Agent.create kwargs). Live proof 2026-09-04: putting them
+            # on CloudAgentOptions / Agent.create left fleet-gateway unbound.
+            mcp_servers: dict[str, Any] | None = None
             if self.config.fleet_gateway_url and self.config.fleet_gateway_token:
-                mcp_servers.append(
-                    {
-                        "name": "fleet-gateway",
-                        "type": "http",
-                        "url": self.config.fleet_gateway_url,
-                        "headers": [
-                            {
-                                "name": "Authorization",
-                                "value": f"Bearer {self.config.fleet_gateway_token}",
-                            }
-                        ],
-                    }
-                )
+                mcp_servers = {
+                    "fleet-gateway": HttpMcpServerConfig(
+                        url=self.config.fleet_gateway_url,
+                        headers={
+                            "Authorization": f"Bearer {self.config.fleet_gateway_token}",
+                        },
+                    )
+                }
                 logger.debug("Fleet Gateway MCP configured: url=%s", self.config.fleet_gateway_url)
             else:
                 logger.warning("Fleet Gateway MCP not configured (missing URL or token)")
 
-            # Launch cloud agent
-            cloud_options = CloudAgentOptions(
-                repos=[
-                    {
-                        "url": self.config.repo_url,
-                        "startingRef": self.config.repo_branch,
-                    }
-                ],
-                mcpServers=mcp_servers if mcp_servers else None,
-            )
-
             agent = Agent.create(
-                api_key=self.config.cursor_api_key,
-                model=self.config.grok_model,
-                cloud=cloud_options,
+                AgentOptions(
+                    api_key=self.config.cursor_api_key,
+                    model=self.config.grok_model,
+                    cloud=CloudAgentOptions(
+                        repos=[
+                            CloudRepository(
+                                url=self.config.repo_url,
+                                starting_ref=self.config.repo_branch,
+                            )
+                        ],
+                    ),
+                    mcp_servers=mcp_servers,
+                )
             )
 
             logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)

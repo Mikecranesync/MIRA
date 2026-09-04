@@ -11,7 +11,7 @@ Mike
   ↓ (Slack message in #factorylm-foreman)
 FactoryLM Foreman (this bot)
   ↓ (reuses warm Grok session)
-Grok (Cursor cloud agent, cursor-grok-4.6-medium model)
+Grok (Cursor cloud agent, grok-4.6 model)
   ↓ (calls MCP tools, retains conversation context)
 Fleet Gateway MCP Server
   ↓ (dispatches to physical nodes)
@@ -117,7 +117,7 @@ FLEET_GATEWAY_MCP_URL=https://ultra-manufacturers-goat-enquiries.trycloudflare.c
 FLEET_GATEWAY_TOKEN=<from Bravo .env>
 
 # Optional: Override defaults
-FOREMAN_GROK_MODEL=cursor-grok-4.6-medium  # or cursor-grok-4.6-high
+FOREMAN_GROK_MODEL=grok-4.6  # live-proven Cursor id; not cursor-grok-4.6-medium
 FOREMAN_ALLOWED_CHANNEL=C0BTXHXBKML        # #factorylm-foreman
 FOREMAN_REPO_URL=https://github.com/Mikecranesync/MIRA
 FOREMAN_REPO_BRANCH=main
@@ -180,7 +180,7 @@ Add to `docker-compose.saas.yml`:
       - CURSOR_API_KEY=${CURSOR_API_KEY}
       - FLEET_GATEWAY_MCP_URL=${FLEET_GATEWAY_MCP_URL}
       - FLEET_GATEWAY_TOKEN=${FLEET_GATEWAY_TOKEN}
-      - FOREMAN_GROK_MODEL=${FOREMAN_GROK_MODEL:-cursor-grok-4.6-medium}
+      - FOREMAN_GROK_MODEL=${FOREMAN_GROK_MODEL:-grok-4.6}
       - FOREMAN_ALLOWED_CHANNEL=${FOREMAN_ALLOWED_CHANNEL:-C0BTXHXBKML}
       - FOREMAN_REPO_URL=${FOREMAN_REPO_URL:-https://github.com/Mikecranesync/MIRA}
       - FOREMAN_REPO_BRANCH=${FOREMAN_REPO_BRANCH:-main}
@@ -209,7 +209,7 @@ fleet_status
 Bot logs show:
 ```
 → Foreman received: channel=C0BTXHXBKML user=U0AKME57B9A text='fleet_status'
-Launching Grok cloud agent: model=cursor-grok-4.6-medium
+Launching Grok cloud agent: model=grok-4.6
 Cloud agent created: agent_id=bc-...
 ```
 
@@ -281,7 +281,7 @@ Check `bot_user_id` in logs. If it's empty or wrong:
 
 ### Agent launches but MCP tools not available
 
-Verify `mcpServers` in agent launch:
+Verify `mcp_servers` on `AgentOptions` (not `CloudAgentOptions`) in agent launch:
 - Check bot logs for "Fleet Gateway MCP configured"
 - If missing, check `FLEET_GATEWAY_MCP_URL` and `FLEET_GATEWAY_TOKEN` are set
 - Test agent manually via Cursor SDK to verify MCP config
@@ -324,7 +324,7 @@ if self._is_bot_message(event):
 
 ```
 2026-09-03 05:25:12 [INFO] foreman: → Foreman received: channel=C0BTXHXBKML user=U0AKME57B9A text='fleet_status'
-2026-09-03 05:25:13 [INFO] foreman: Launching Grok cloud agent: model=cursor-grok-4.6-medium
+2026-09-03 05:25:13 [INFO] foreman: Launching Grok cloud agent: model=grok-4.6
 2026-09-03 05:25:20 [INFO] foreman: ← Foreman posted response: 142 chars
 2026-09-03 05:25:20 [INFO] foreman: ✓ Pre-Grok safety gate: rejected bot message ts=1725345920.123456 channel=C0BTXHXBKML
 ```

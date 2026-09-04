@@ -13,7 +13,14 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import sys
 sys.modules["cursor_sdk"] = MagicMock()
 
-from bot import ForemanBot, ForemanConfig  # noqa: E402
+from bot import (  # noqa: E402
+    AgentOptions,
+    CloudAgentOptions,
+    DEFAULT_GROK_MODEL,
+    ForemanBot,
+    ForemanConfig,
+    HttpMcpServerConfig,
+)
 
 
 @pytest.fixture
@@ -27,6 +34,7 @@ def mock_config():
     config.fleet_gateway_url = "https://test.example.com/mcp"
     config.allowed_channel = "C_TEST_CHANNEL"
     config.bot_user_id = "U_FOREMAN_BOT"
+    config.grok_model = "grok-4.6"
     return config
 
 
@@ -329,6 +337,82 @@ async def test_agent_failure_marks_unhealthy(mock_config):
         
         # Verify: Agent.create called TWICE (recovery after failure)
         assert MockAgent.create.call_count == 2
+
+
+def test_default_grok_model_is_grok_46(monkeypatch):
+    """FOREMAN_GROK_MODEL defaults to the live-proven Cursor id grok-4.6."""
+    monkeypatch.delenv("FOREMAN_GROK_MODEL", raising=False)
+    config = ForemanConfig()
+    assert DEFAULT_GROK_MODEL == "grok-4.6"
+    assert config.grok_model == "grok-4.6"
+
+
+def test_foreman_grok_model_env_override(monkeypatch):
+    """FOREMAN_GROK_MODEL env wins over the default."""
+    monkeypatch.setenv("FOREMAN_GROK_MODEL", "grok-4.6")
+    config = ForemanConfig()
+    assert config.grok_model == "grok-4.6"
+    monkeypatch.setenv("FOREMAN_GROK_MODEL", "composer-2.5")
+    config = ForemanConfig()
+    assert config.grok_model == "composer-2.5"
+
+
+@pytest.mark.asyncio
+async def test_create_puts_mcp_servers_on_agent_options(mock_config, mock_agent):
+    """Agent.create(AgentOptions(mcp_servers=...)) — not CloudAgentOptions / bare kwargs.
+
+    Live proof 2026-09-04: fleet-gateway only bound when mcp_servers sat on
+    AgentOptions. CloudAgentOptions.mcpServers and Agent.create(..., mcp_servers=)
+    left the tools unbound.
+    """
+    AgentOptions.reset_mock()
+    CloudAgentOptions.reset_mock()
+    HttpMcpServerConfig.reset_mock()
+
+    with patch("bot.Agent") as MockAgent:
+        MockAgent.create.return_value = mock_agent
+
+        bot = ForemanBot(mock_config)
+        await bot._ensure_agent()
+
+        AgentOptions.assert_called_once()
+        opts = AgentOptions.call_args.kwargs
+        assert opts["api_key"] == mock_config.cursor_api_key
+        assert opts["model"] == mock_config.grok_model
+        assert opts["mcp_servers"] is not None
+        assert "fleet-gateway" in opts["mcp_servers"]
+
+        HttpMcpServerConfig.assert_called_once()
+        http_kwargs = HttpMcpServerConfig.call_args.kwargs
+        assert http_kwargs["url"] == mock_config.fleet_gateway_url
+        assert http_kwargs["headers"]["Authorization"] == (
+            f"Bearer {mock_config.fleet_gateway_token}"
+        )
+
+        CloudAgentOptions.assert_called_once()
+        cloud_kwargs = CloudAgentOptions.call_args.kwargs
+        assert "mcp_servers" not in cloud_kwargs
+        assert "mcpServers" not in cloud_kwargs
+        assert "repos" in cloud_kwargs
+
+        # First positional arg is the AgentOptions instance, not bare kwargs.
+        MockAgent.create.assert_called_once_with(AgentOptions.return_value)
+        assert MockAgent.create.call_args.kwargs == {}
+
+
+@pytest.mark.asyncio
+async def test_missing_gateway_omits_mcp_servers(mock_config, mock_agent):
+    """No gateway URL/token → AgentOptions.mcp_servers is None."""
+    AgentOptions.reset_mock()
+    mock_config.fleet_gateway_token = ""
+
+    with patch("bot.Agent") as MockAgent:
+        MockAgent.create.return_value = mock_agent
+        bot = ForemanBot(mock_config)
+        await bot._ensure_agent()
+
+        opts = AgentOptions.call_args.kwargs
+        assert opts["mcp_servers"] is None
 
 
 if __name__ == "__main__":
