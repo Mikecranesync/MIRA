@@ -6,7 +6,9 @@ All tests use mocked Slack and Cursor SDK — no real tokens, no live Gateway.
 """
 
 # Mock cursor_sdk before importing bot
+import asyncio
 import sys
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -416,7 +418,91 @@ async def test_missing_gateway_omits_mcp_servers(mock_config, mock_agent):
         assert opts["mcp_servers"] is None
 
 
+@pytest.mark.asyncio
+async def test_concurrent_accepted_messages_serialize_one_warm_agent(mock_config, mock_agent):
+    """Two concurrent accepted Slack turns: one agent, ordered sends, no agent_busy.
+
+    Live race 2026-09-04: overlapping handle_message calls both reached
+    agent.send() before run.wait() finished → failed_precondition [agent_busy].
+    Also proves sync SDK wait() cannot freeze the Slack asyncio loop.
+    """
+    send_order: list[str] = []
+    in_flight = 0
+    max_in_flight = 0
+    busy: list[str] = []
+
+    def send(prompt: str) -> Mock:
+        nonlocal in_flight, max_in_flight
+        if in_flight:
+            busy.append(prompt)
+            raise RuntimeError("failed_precondition: [agent_busy] Agent already has an active run")
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        send_order.append(prompt)
+        run = Mock()
+        run.run_id = f"run-{len(send_order)}"
+        result = Mock()
+        result.status = "completed"
+        result.result = f"FOREMAN_{prompt}"
+
+        def wait() -> Mock:
+            nonlocal in_flight
+            time.sleep(0.06)
+            in_flight -= 1
+            return result
+
+        run.wait = wait
+        return run
+
+    mock_agent.send.side_effect = send
+
+    progressed_during_sdk = False
+
+    async def watcher() -> None:
+        nonlocal progressed_during_sdk
+        for _ in range(40):
+            await asyncio.sleep(0.005)
+            if in_flight:
+                progressed_during_sdk = True
+                return
+
+    with patch("bot.Agent") as MockAgent, patch("bot.AsyncApp"):
+        MockAgent.create.return_value = mock_agent
+        bot = ForemanBot(mock_config)
+        say = AsyncMock()
+        ev1 = {
+            "ts": "100.1",
+            "user": "U_HUMAN",
+            "channel": mock_config.allowed_channel,
+            "text": "ALIVE",
+            "thread_ts": "100.0",
+        }
+        ev2 = {
+            "ts": "100.2",
+            "user": "U_HUMAN",
+            "channel": mock_config.allowed_channel,
+            "text": "REUSE",
+            "thread_ts": "100.0",
+        }
+
+        first = asyncio.create_task(bot.handle_message(ev1, say))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(bot.handle_message(ev2, say))
+        await asyncio.gather(watcher(), first, second)
+
+    assert MockAgent.create.call_count == 1
+    assert send_order == ["ALIVE", "REUSE"]
+    assert busy == []
+    assert max_in_flight == 1
+    assert {c.kwargs["text"] for c in say.await_args_list} == {
+        "FOREMAN_ALIVE",
+        "FOREMAN_REUSE",
+    }
+    assert progressed_during_sdk is True
+
+
 def test_bot_source_never_passes_mcpservers_kwarg():
+
     """MagicMock cannot catch TypeError; source must not regress to 3fa02be."""
     src = Path(__file__).resolve().parent.joinpath("bot.py").read_text()
     assert "mcpServers=" not in src
