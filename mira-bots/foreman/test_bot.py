@@ -5,18 +5,18 @@ Tests warm session reuse, bot filter safety gates, reconnection, and clean shutd
 All tests use mocked Slack and Cursor SDK — no real tokens, no live Gateway.
 """
 
-import asyncio
-import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-
 # Mock cursor_sdk before importing bot
 import sys
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+
 sys.modules["cursor_sdk"] = MagicMock()
 
 from bot import (  # noqa: E402
+    DEFAULT_GROK_MODEL,
     AgentOptions,
     CloudAgentOptions,
-    DEFAULT_GROK_MODEL,
     ForemanBot,
     ForemanConfig,
     HttpMcpServerConfig,
@@ -43,19 +43,19 @@ def mock_agent():
     """Mock Cursor Agent with send/wait/result."""
     agent = Mock()
     agent.agent_id = "bc-test-agent-123"
-    
+
     # Mock run returned by agent.send()
     run = Mock()
     run.run_id = "run-test-456"
-    
+
     # Mock result returned by run.wait()
     result = Mock()
     result.status = "completed"
     result.result = "Test response from Grok"
-    
+
     run.wait.return_value = result
     agent.send.return_value = run
-    
+
     return agent
 
 
@@ -64,20 +64,20 @@ async def test_warm_session_reuse(mock_config, mock_agent):
     """Two accepted human messages → one agent create, two sends on same agent."""
     with patch("bot.Agent") as MockAgent:
         MockAgent.create.return_value = mock_agent
-        
+
         bot = ForemanBot(mock_config)
-        
+
         # First message
         resp1 = await bot._invoke_grok("first message", "U_USER_1")
         assert resp1 == "Test response from Grok"
-        
+
         # Second message — should reuse same agent
         resp2 = await bot._invoke_grok("second message", "U_USER_1")
         assert resp2 == "Test response from Grok"
-        
+
         # Verify: Agent.create called ONCE
         assert MockAgent.create.call_count == 1
-        
+
         # Verify: agent.send called TWICE (on same agent)
         assert mock_agent.send.call_count == 2
         assert mock_agent.send.call_args_list[0][0][0] == "first message"
@@ -98,7 +98,7 @@ async def test_reconnect_after_agent_death(mock_config):
         dead_result.result = "First response"
         dead_run.wait.return_value = dead_result
         dead_agent.send.return_value = dead_run
-        
+
         # Second agent (recovery)
         recovery_agent = Mock()
         recovery_agent.agent_id = "bc-recovery-agent"
@@ -109,30 +109,30 @@ async def test_reconnect_after_agent_death(mock_config):
         recovery_result.result = "Recovery response"
         recovery_run.wait.return_value = recovery_result
         recovery_agent.send.return_value = recovery_run
-        
+
         MockAgent.create.side_effect = [dead_agent, recovery_agent]
-        
+
         bot = ForemanBot(mock_config)
-        
+
         # First message succeeds
         resp1 = await bot._invoke_grok("first message", "U_USER_1")
         assert resp1 == "First response"
         assert MockAgent.create.call_count == 1
-        
+
         # Simulate agent death: make agent.send() fail next time
         dead_agent.send.side_effect = RuntimeError("agent dead")
-        
+
         # Second message fails (agent dies), marks agent unhealthy
         with pytest.raises(RuntimeError, match="agent dead"):
             await bot._invoke_grok("second message", "U_USER_1")
-        
+
         # Verify agent was marked unhealthy
         assert bot._grok_agent is None
-        
+
         # Third message recovers (creates new agent)
         resp3 = await bot._invoke_grok("third message", "U_USER_1")
         assert resp3 == "Recovery response"
-        
+
         # Verify: Agent.create called TWICE (original + recovery)
         assert MockAgent.create.call_count == 2
         # Verify: recovery agent was used
@@ -149,13 +149,13 @@ async def test_bot_filter_prevents_agent_launch():
     config.fleet_gateway_token = "gw_test"
     config.allowed_channel = "C_ALLOWED"
     config.bot_user_id = "U_FOREMAN_BOT"
-    
+
     with patch("bot.Agent") as MockAgent, \
          patch("bot.AsyncApp"):
-        
+
         bot = ForemanBot(config)
         mock_say = AsyncMock()
-        
+
         # Test 1: bot_id present
         event_bot_id = {
             "ts": "1234.5678",
@@ -164,7 +164,7 @@ async def test_bot_filter_prevents_agent_launch():
             "text": "message from other bot",
         }
         await bot.handle_message(event_bot_id, mock_say)
-        
+
         # Test 2: user is Foreman's own bot_user_id
         event_own_user = {
             "ts": "1234.5679",
@@ -173,7 +173,7 @@ async def test_bot_filter_prevents_agent_launch():
             "text": "foreman's own message",
         }
         await bot.handle_message(event_own_user, mock_say)
-        
+
         # Test 3: bot_message subtype
         event_bot_subtype = {
             "ts": "1234.5680",
@@ -182,7 +182,7 @@ async def test_bot_filter_prevents_agent_launch():
             "text": "message with bot subtype",
         }
         await bot.handle_message(event_bot_subtype, mock_say)
-        
+
         # Test 4: message_changed subtype
         event_changed_subtype = {
             "ts": "1234.5681",
@@ -191,7 +191,7 @@ async def test_bot_filter_prevents_agent_launch():
             "text": "changed message",
         }
         await bot.handle_message(event_changed_subtype, mock_say)
-        
+
         # Test 5: message_deleted subtype
         event_deleted_subtype = {
             "ts": "1234.5682",
@@ -199,10 +199,10 @@ async def test_bot_filter_prevents_agent_launch():
             "channel": "C_ALLOWED",
         }
         await bot.handle_message(event_deleted_subtype, mock_say)
-        
+
         # Verify: No Agent.create calls (all bot events dropped before agent access)
         assert MockAgent.create.call_count == 0
-        
+
         # Verify: say never called (no responses posted)
         assert mock_say.call_count == 0
 
@@ -217,13 +217,13 @@ async def test_channel_filter():
     config.fleet_gateway_token = "gw_test"
     config.allowed_channel = "C_ALLOWED_CHANNEL"
     config.bot_user_id = "U_FOREMAN_BOT"
-    
+
     with patch("bot.Agent") as MockAgent, \
          patch("bot.AsyncApp"):
-        
+
         bot = ForemanBot(config)
         mock_say = AsyncMock()
-        
+
         # Human message in WRONG channel
         event_wrong_channel = {
             "ts": "1234.5690",
@@ -231,12 +231,12 @@ async def test_channel_filter():
             "channel": "C_WRONG_CHANNEL",  # Not the allowed channel
             "text": "message in wrong channel",
         }
-        
+
         await bot.handle_message(event_wrong_channel, mock_say)
-        
+
         # Verify: No Agent.create (channel filter drops before agent access)
         assert MockAgent.create.call_count == 0
-        
+
         # Verify: say never called (no response posted)
         assert mock_say.call_count == 0
 
@@ -251,13 +251,13 @@ async def test_empty_text_ignored():
     config.fleet_gateway_token = "gw_test"
     config.allowed_channel = "C_ALLOWED"
     config.bot_user_id = "U_FOREMAN_BOT"
-    
+
     with patch("bot.Agent") as MockAgent, \
          patch("bot.AsyncApp"):
-        
+
         bot = ForemanBot(config)
         mock_say = AsyncMock()
-        
+
         # Human message with empty text
         event_empty = {
             "ts": "1234.5691",
@@ -265,12 +265,12 @@ async def test_empty_text_ignored():
             "channel": "C_ALLOWED",
             "text": "",  # Empty
         }
-        
+
         await bot.handle_message(event_empty, mock_say)
-        
+
         # Verify: No Agent.create (empty text filter drops before agent access)
         assert MockAgent.create.call_count == 0
-        
+
         # Verify: say never called (no response posted)
         assert mock_say.call_count == 0
 
@@ -280,22 +280,22 @@ async def test_clean_shutdown(mock_config, mock_agent):
     """Shutdown tears down warm agent without leaking."""
     with patch("bot.Agent") as MockAgent:
         MockAgent.create.return_value = mock_agent
-        
+
         # Mock agent __aexit__ for context manager protocol
         mock_agent.__aexit__ = AsyncMock()
-        
+
         bot = ForemanBot(mock_config)
-        
+
         # Create warm agent
         await bot._invoke_grok("test message", "U_USER")
         assert bot._grok_agent is mock_agent
-        
+
         # Shutdown
         await bot.shutdown()
-        
+
         # Verify: agent __aexit__ called (clean teardown)
         mock_agent.__aexit__.assert_called_once()
-        
+
         # Verify: _grok_agent cleared
         assert bot._grok_agent is None
 
@@ -308,7 +308,7 @@ async def test_agent_failure_marks_unhealthy(mock_config):
         failing_agent = Mock()
         failing_agent.agent_id = "bc-failing-agent"
         failing_agent.send.side_effect = RuntimeError("send failed")
-        
+
         # Second agent (recovery)
         recovery_agent = Mock()
         recovery_agent.agent_id = "bc-recovery-agent"
@@ -319,22 +319,22 @@ async def test_agent_failure_marks_unhealthy(mock_config):
         recovery_result.result = "Recovery response"
         recovery_run.wait.return_value = recovery_result
         recovery_agent.send.return_value = recovery_run
-        
+
         MockAgent.create.side_effect = [failing_agent, recovery_agent]
-        
+
         bot = ForemanBot(mock_config)
-        
+
         # First message fails
         with pytest.raises(RuntimeError, match="send failed"):
             await bot._invoke_grok("first message", "U_USER")
-        
+
         # Verify: agent marked unhealthy (cleared)
         assert bot._grok_agent is None
-        
+
         # Second message recovers
         resp = await bot._invoke_grok("second message", "U_USER")
         assert resp == "Recovery response"
-        
+
         # Verify: Agent.create called TWICE (recovery after failure)
         assert MockAgent.create.call_count == 2
 

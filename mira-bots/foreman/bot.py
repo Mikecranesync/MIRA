@@ -17,8 +17,8 @@ import os
 import sys
 from typing import Any, Optional
 
-from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.async_app import AsyncApp
 
 try:
     from cursor_sdk import (
@@ -393,7 +393,7 @@ async def main() -> None:
 
     # Start Socket Mode handler
     handler = AsyncSocketModeHandler(bot.app, config.slack_app_token)
-    
+
     try:
         await handler.start_async()
     finally:
