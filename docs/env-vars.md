@@ -171,17 +171,3 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 
 Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
 See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.
-
-## FactoryLM Foreman (Fleet Orchestration Bot)
-
-| Var | Meaning |
-|---|---|
-| `CURSOR_API_KEY` | Cursor API key for launching cloud agents (starts with `crsr_`). Fallback: `CURSOR_API` (current Doppler name). Required. |
-| `FLEET_GATEWAY_MCP_URL` | Fleet Gateway MCP server endpoint URL. Default: `https://ultra-manufacturers-goat-enquiries.trycloudflare.com/mcp`. |
-| `FLEET_GATEWAY_TOKEN` | Fleet Gateway bearer token (from Bravo `.env`). Fallback: `FLEET_GATEWAY_BEARER`. Required. |
-| `FOREMAN_ALLOWED_CHANNEL` | Slack channel ID where Foreman operates. Default: `C0BTXHXBKML` (#factorylm-foreman). |
-| `FOREMAN_BOT_SLACK_TOKEN` | Slack bot token (starts with `xoxb-`). Fallback: `FOREMAN_SLACK_BOT_TOKEN`. Required. |
-| `FOREMAN_GROK_MODEL` | Cursor Grok model to use. Default: `grok-4.6` (live-proven; `cursor-grok-4.6-medium` is rejected by Agent.create). |
-| `FOREMAN_REPO_BRANCH` | Target Git branch for cloud agents. Default: `main`. |
-| `FOREMAN_REPO_URL` | Target repository URL for cloud agents. Default: `https://github.com/Mikecranesync/MIRA`. |
-| `FOREMAN_SLACK_APP_TOKEN` | Slack app-level token for Socket Mode (starts with `xapp-`). Required. |
