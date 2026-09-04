@@ -5,7 +5,7 @@ slack-bolt>=1.18.0
 slack-sdk>=3.23.0
 
 # Cursor SDK for programmatic cloud agents
-cursor-sdk>=0.1.0
+cursor-sdk>=1.0.0
 
 # WebSocket support for Slack Socket Mode
 websockets>=12.0

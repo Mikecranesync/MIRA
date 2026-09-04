@@ -102,6 +102,44 @@ class ForemanConfig:
         return errors
 
 
+def build_agent_options(config: ForemanConfig) -> AgentOptions:
+    """Build the AgentOptions passed to Agent.create.
+
+    Installed cursor-sdk (1.0.x) facts this encodes:
+    - CloudAgentOptions.__init__ has no mcpServers / mcp_servers
+      (TypeError: unexpected keyword argument).
+    - Agent.create() has no mcp_servers keyword; MCP belongs on AgentOptions.
+    - Bearer auth is HttpMcpServerConfig.headers, not a list of {name,value}.
+    """
+    mcp_servers: dict[str, Any] | None = None
+    if config.fleet_gateway_url and config.fleet_gateway_token:
+        mcp_servers = {
+            "fleet-gateway": HttpMcpServerConfig(
+                url=config.fleet_gateway_url,
+                headers={
+                    "Authorization": f"Bearer {config.fleet_gateway_token}",
+                },
+            )
+        }
+        logger.debug("Fleet Gateway MCP configured: url=%s", config.fleet_gateway_url)
+    else:
+        logger.warning("Fleet Gateway MCP not configured (missing URL or token)")
+
+    return AgentOptions(
+        api_key=config.cursor_api_key,
+        model=config.grok_model,
+        cloud=CloudAgentOptions(
+            repos=[
+                CloudRepository(
+                    url=config.repo_url,
+                    starting_ref=config.repo_branch,
+                )
+            ],
+        ),
+        mcp_servers=mcp_servers,
+    )
+
+
 class ForemanBot:
     """FactoryLM Foreman bot implementation."""
 
@@ -266,39 +304,7 @@ class ForemanBot:
 
             # Create new agent
             logger.info("Creating Grok cloud agent: model=%s", self.config.grok_model)
-
-            # mcp_servers belongs on AgentOptions (not CloudAgentOptions, not
-            # bare Agent.create kwargs). Live proof 2026-09-04: putting them
-            # on CloudAgentOptions / Agent.create left fleet-gateway unbound.
-            mcp_servers: dict[str, Any] | None = None
-            if self.config.fleet_gateway_url and self.config.fleet_gateway_token:
-                mcp_servers = {
-                    "fleet-gateway": HttpMcpServerConfig(
-                        url=self.config.fleet_gateway_url,
-                        headers={
-                            "Authorization": f"Bearer {self.config.fleet_gateway_token}",
-                        },
-                    )
-                }
-                logger.debug("Fleet Gateway MCP configured: url=%s", self.config.fleet_gateway_url)
-            else:
-                logger.warning("Fleet Gateway MCP not configured (missing URL or token)")
-
-            agent = Agent.create(
-                AgentOptions(
-                    api_key=self.config.cursor_api_key,
-                    model=self.config.grok_model,
-                    cloud=CloudAgentOptions(
-                        repos=[
-                            CloudRepository(
-                                url=self.config.repo_url,
-                                starting_ref=self.config.repo_branch,
-                            )
-                        ],
-                    ),
-                    mcp_servers=mcp_servers,
-                )
-            )
+            agent = Agent.create(build_agent_options(self.config))
 
             logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)
             self._grok_agent = agent
