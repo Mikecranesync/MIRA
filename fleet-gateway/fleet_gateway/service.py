@@ -184,18 +184,37 @@ class FleetGatewayService:
 
     # ── physical-node resolution ─────────────────────────────────────────────
     def _resolve_node(self, session_id: str | None, task_id: str | None = None) -> str:
-        """Which physical node owns this session/task. Fail closed if unknown."""
+        """Which physical node owns this session/task. Fail closed if unknown.
+
+        For a superseded attempt (a session that appears in attempts[]), return
+        that attempt's own node, not the task's current top-level node.
+        """
         node: str | None = None
         if session_id:
             node = self._session_nodes.get(session_id)
         if not node and task_id:
             art = self.artifacts.read_task(task_id) or {}
-            node = _as_str(art.get("role") or art.get("node"))
+            # Check if this session is a superseded attempt (in attempts[])
+            for attempt in art.get("attempts", []):
+                if attempt.get("session_id") == session_id:
+                    # Return the attempt's own node, not the live session's node
+                    node = _as_str(attempt.get("role") or attempt.get("node"))
+                    if node:
+                        break
+            if not node:
+                node = _as_str(art.get("role") or art.get("node"))
         if not node and session_id:
             tid = self.artifacts.find_task_id_for_session(session_id)
             if tid:
                 art = self.artifacts.read_task(tid) or {}
-                node = _as_str(art.get("role") or art.get("node"))
+                # Check if this session is a superseded attempt (in attempts[])
+                for attempt in art.get("attempts", []):
+                    if attempt.get("session_id") == session_id:
+                        node = _as_str(attempt.get("role") or attempt.get("node"))
+                        if node:
+                            break
+                if not node:
+                    node = _as_str(art.get("role") or art.get("node"))
         if not node:
             raise NotFoundError(
                 f"cannot resolve physical node for session {session_id!r} / task {task_id!r}"
@@ -497,8 +516,18 @@ class FleetGatewayService:
             task_id = self.artifacts.find_task_id_for_session(session_id)
         if task_id:
             existing = self.artifacts.read_task(task_id) or {"task_id": task_id}
-            existing["status"] = "stopped"
-            existing["claimed"] = False
+            # Check if this session is a superseded attempt (in attempts[])
+            is_superseded = False
+            for attempt in existing.get("attempts", []):
+                if attempt.get("session_id") == session_id:
+                    # Update only this attempt's status, leave top-level unchanged
+                    attempt["status"] = "stopped"
+                    is_superseded = True
+                    break
+            if not is_superseded:
+                # This is the live session - update top-level status/claimed
+                existing["status"] = "stopped"
+                existing["claimed"] = False
             self.artifacts.write_task(existing)
         result.setdefault("session_id", session_id)
         result.setdefault("status", "stopped")
@@ -557,6 +586,10 @@ class FleetGatewayService:
             raise ContractViolation("external_id is required")
         chosen = self._resolve_legacy_match(role, external_id)
         local_id = chosen.local_session_id
+        if not local_id:
+            raise ContractViolation(
+                "legacy session has no addressable session id; adoption refused"
+            )
         if self.artifacts.is_fleet_owned(local_id):
             raise ContractViolation(
                 f"already-owned: session '{local_id}' is already fleet-owned; no mutation"
@@ -691,7 +724,12 @@ class FleetGatewayService:
                 )
             raise NotFoundError(f"no live legacy session matches {external_id!r} on {role}")
         if len(on_node) > 1:
-            ids = ", ".join(item.local_session_id for item in on_node)
+            # Build a None-safe label for each item
+            labels = []
+            for item in on_node:
+                label = item.local_session_id or f"pid:{item.pid}"
+                labels.append(label)
+            ids = ", ".join(labels)
             raise ContractViolation(
                 f"ambiguous: identifier {external_id!r} matches multiple sessions on {role}: {ids}"
             )

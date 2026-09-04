@@ -166,6 +166,9 @@ class FilesystemClaudeProbe:
             bridge_id = str(bridge).strip() if bridge else None
             running = self.pid_alive(pid)
             classification, adoptable = classify_name(tmux_name or path.stem, running=running)
+            # A session with no identity tokens cannot be adopted even if classification says "legacy"
+            if adoptable and not any((session_id, name_from_metadata, bridge_id)):
+                adoptable = False
             provider = "claude"
             entry = str(data.get("entrypoint") or data.get("kind") or "").lower()
             if "codex" in entry:
