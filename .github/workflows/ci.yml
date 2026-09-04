@@ -396,7 +396,10 @@ jobs:
         # No --ignore here: test_bot.py and test_sdk_construction.py need slack-bolt
         # and cursor-sdk, which mira-bots/foreman/requirements.txt (installed above)
         # provides — an --ignore would have silently capped 21 tests.
-        run: python -m pytest mira-bots/foreman/ -v -p no:cacheprovider
+        # -rs prints every skip with its reason: test_specialists.py's WorkerRole
+        # drift guard importorskips mission_loop, which only exists once #3567 is
+        # in the tree, so on a branch without it the log must say SKIPPED and why.
+        run: python -m pytest mira-bots/foreman/ -v -rs -p no:cacheprovider
       - name: Bot regression suite (golden cases — never regress)
         # Pins the PowerFlex 525 F004 fix (2026-05-12) and other intent /
         # clarification invariants. Hermetic, no LLM, runs in <1s.
