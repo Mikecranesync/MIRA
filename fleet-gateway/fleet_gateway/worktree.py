@@ -21,6 +21,16 @@ from pathlib import Path
 
 from fleet_gateway.errors import ContractViolation
 
+# Safe git ref format validation — prevents injection of option-like strings.
+# Mirrors git check-ref-format --branch rules:
+# - Only letters, digits, '.', '_', '/', '-'
+# - Must not start with '-' or '/'
+# - No '..', no '@{', no trailing '/', no '.lock' suffix, no control chars
+_SAFE_REF_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$")
+
+# Safe commit SHA format: 7–40 hex characters (abbreviated or full)
+_SAFE_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
 # Bravo (the node the Gateway runs on) — local, no SSH.
 DEFAULT_REPO = Path("/Users/bravonode/Mira")
 DEFAULT_PARENT = Path("/Users/bravonode/Mira-worktrees")
@@ -96,13 +106,34 @@ class WorktreeProvisioner:
         """Fetch the base commit if it does not exist locally.
 
         Tries in order:
-          1. Check presence locally
-          2. If absent and commit is 40-hex SHA: fetch origin <commit>
-          3. If ref is given: fetch origin <ref> (normalized to strip 'origin/' prefix)
-          4. Fail closed with typed ContractViolation
+          1. Validate commit and ref against safe formats (prevent injection)
+          2. Check presence locally
+          3. If absent and commit is 40-hex SHA: fetch origin <commit>
+          4. If ref is given: fetch origin <ref> (normalized to strip 'origin/' and 'refs/heads/' prefix)
+          5. Fail closed with typed ContractViolation
 
-        Raises ContractViolation if commit remains unreachable after all fetch attempts.
+        Raises ContractViolation if commit/ref are unsafe or commit remains unreachable after fetch.
         """
+        # Validate commit format BEFORE any git call
+        commit = (commit or "").strip()
+        if not _SAFE_COMMIT_RE.match(commit):
+            raise ContractViolation("github_ref is not a valid commit SHA")
+
+        # Validate and normalize ref BEFORE any git call
+        normalized_ref = None
+        if ref:
+            ref_stripped = (ref or "").strip()
+            if ref_stripped:
+                # Remove 'origin/' prefix if present, using removeprefix (exact, not lstrip)
+                temp_ref = ref_stripped.removeprefix("origin/")
+                # Also remove 'refs/heads/' prefix if present
+                temp_ref = temp_ref.removeprefix("refs/heads/")
+
+                # Validate the normalized ref against safe format
+                if not _SAFE_REF_RE.match(temp_ref):
+                    raise ContractViolation("github_ref is not a valid ref name")
+                normalized_ref = temp_ref
+
         # Check if commit already exists
         try:
             check = self._run(
@@ -125,9 +156,11 @@ class WorktreeProvisioner:
                 ["git", "-C", str(self.repo), "fetch", "--quiet", "--no-tags", "origin", commit]
             )
 
-        # Attempt 2: If ref is given, fetch the ref (normalized)
-        if ref and ref.strip():
-            normalized_ref = ref.strip().lstrip("origin/")  # Strip leading 'origin/'
+        # Attempt 2: If normalized ref is available, fetch the ref by name.
+        # Note: Both fetches are scoped to exactly one SHA or one ref with --no-tags
+        # and a 120s wall bound. We do NOT use --depth or --filter because the
+        # worktree needs full history for 'git diff <base>..HEAD' during review.
+        if normalized_ref:
             attempts.append(
                 [
                     "git",

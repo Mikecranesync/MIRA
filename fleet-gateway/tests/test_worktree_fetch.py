@@ -359,3 +359,193 @@ def test_worktree_ref_fallback(
         text=True,
     )
     assert result.stdout.strip() == full_sha
+
+
+def test_ref_injection_attack_rejected():
+    """Option-like ref values ("--unshallow", "-b") are rejected before any git call.
+
+    Regression test for round-2 finding M2: unsafe ref values must be validated
+    and rejected BEFORE being passed to git, not by relying on git's error handling.
+    """
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+
+    # Track all calls to _run to ensure no git command is issued for unsafe refs
+    calls = []
+
+    def tracking_run(argv, *, timeout):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
+
+    p._run = tracking_run
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+
+    # Test cases: dangerous ref values that should be rejected
+    dangerous_refs = [
+        "--unshallow",
+        "-b",
+        "--depth=1",
+        "-o",
+        "--",
+        "refs/heads/--unshallow",
+        "/bad",
+    ]
+
+    for dangerous_ref in dangerous_refs:
+        calls.clear()
+        with pytest.raises(ContractViolation) as exc_info:
+            p._ensure_commit(full_sha, dangerous_ref)
+
+        # Verify the error is about invalid ref format, not a git error
+        assert "not a valid ref name" in str(exc_info.value)
+
+        # Verify NO git command was issued for this unsafe ref
+        assert len(calls) == 0, (
+            f"Unsafe ref '{dangerous_ref}' should be rejected before any git call, but got: {calls}"
+        )
+
+
+def test_ref_normalization_exact_prefix():
+    """Refs are normalized with exact-prefix removal, not character-set lstrip.
+
+    Regression test for round-2 finding M1: ref.lstrip("origin/") is unsafe
+    because lstrip() removes characters from a SET, not a prefix.
+    Verify refs like "release/v1" are NOT mangled to "elease/v1".
+    """
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+
+    fetch_log = []
+
+    def tracking_run(argv, *, timeout):
+        if "fetch" in argv:
+            fetch_log.append(argv.copy())
+            # First fetch (SHA) fails; second fetch (ref) succeeds
+            # This forces the code to try the ref fetch for proper validation
+            if len(fetch_log) == 1:
+                # First fetch (SHA): fail so we proceed to ref fetch
+                return subprocess.CompletedProcess(argv, returncode=1, stdout="", stderr="")
+            else:
+                # Subsequent fetches (ref): succeed
+                return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
+        # cat-file checks: only the first one (before any fetches) returns NOT FOUND
+        if "cat-file" in argv:
+            if len(fetch_log) == 0:
+                # First check: commit doesn't exist yet
+                return subprocess.CompletedProcess(argv, returncode=1, stdout="", stderr="")
+            else:
+                # Post-fetch verification: commit now exists (ref fetch succeeded)
+                return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
+
+    p._run = tracking_run
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+
+    test_cases = [
+        # (input_ref, expected_normalized)
+        ("release/v1", "release/v1"),
+        ("refs/heads/release/v1", "release/v1"),
+        ("origin/release/v1", "release/v1"),
+        ("origin/refs/heads/main", "main"),
+        ("integration", "integration"),
+        ("refs/heads/integration", "integration"),
+        # Edge case: starts with a letter (not stripped)
+        ("main", "main"),
+    ]
+
+    for input_ref, expected_normalized in test_cases:
+        fetch_log.clear()
+        p._ensure_commit(full_sha, input_ref)
+
+        # Extract the ref fetch (skip the SHA fetch which has the full SHA as the last arg)
+        # Filter: keep fetches where last arg is NOT the SHA and is NOT a hex string
+        ref_fetches = [
+            c
+            for c in fetch_log
+            if len(c) > 5
+            and c[-1] != full_sha
+            and not (len(c[-1]) >= 7 and all(x in "0123456789abcdef" for x in c[-1]))
+        ]
+        assert len(ref_fetches) > 0, f"No ref fetch found for '{input_ref}'; got: {fetch_log}"
+
+        actual_normalized = ref_fetches[-1][-1]
+        assert actual_normalized == expected_normalized, (
+            f"Ref '{input_ref}' normalized to '{actual_normalized}', "
+            f"expected '{expected_normalized}'"
+        )
+
+
+def test_timeout_expiration_wrapped():
+    """TimeoutExpired during git calls is wrapped in ContractViolation.
+
+    Regression test for round-2 m2: exception type checking and graceful failure.
+    """
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+
+    def timeout_run(argv, *, timeout):
+        raise subprocess.TimeoutExpired("git", timeout)
+
+    p._run = timeout_run
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+
+    with pytest.raises(ContractViolation) as exc_info:
+        p._ensure_commit(full_sha, "some-branch")
+
+    assert "base_commit fetch failed" in str(exc_info.value)
+
+
+def test_oserror_wrapped():
+    """OSError during git calls (e.g., process not found) is wrapped."""
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+
+    def oserror_run(argv, *, timeout):
+        raise OSError("git not found")
+
+    p._run = oserror_run
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+
+    with pytest.raises(ContractViolation) as exc_info:
+        p._ensure_commit(full_sha, "some-branch")
+
+    assert "base_commit fetch failed" in str(exc_info.value)
+
+
+def test_no_fallback_to_fetch_all():
+    """After bounded attempts fail, no unbounded "fetch all branches" fallback is issued.
+
+    Regression test for round-2 finding: the bounded strategy must NOT have a fallback
+    to `git fetch origin` (no refspec), as that would be unbounded.
+    Audit evidence: /Users/bravonode/Mira-worktrees/fleet-gateway-mcp-v1/fleet-gateway/var/audit.jsonl
+    """
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+
+    fetch_log = []
+
+    def tracking_run(argv, *, timeout):
+        if "fetch" in argv:
+            fetch_log.append(argv.copy())
+        # All git operations fail to simulate unreachable commit
+        return subprocess.CompletedProcess(argv, returncode=1, stdout="", stderr="")
+
+    p._run = tracking_run
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+
+    with pytest.raises(ContractViolation) as exc_info:
+        p._ensure_commit(full_sha, "some-branch")
+
+    # Verify the correct error message
+    assert "not reachable after fetch" in str(exc_info.value)
+
+    # Verify NO unbounded fetch-all was issued
+    # (an unbounded fetch would be: ["git", "-C", repo, "fetch", "--quiet", "--no-tags", "origin"])
+    for fetch_cmd in fetch_log:
+        # The fetch should have a refspec (SHA or ref name) as the last argument
+        assert len(fetch_cmd) >= 6, f"Fetch should have a refspec: {fetch_cmd}"
+        # Specifically: the last element should be the refspec (SHA or ref)
+        last_arg = fetch_cmd[-1]
+        assert last_arg in (
+            full_sha,
+            "some-branch",
+        ), f"Fetch refspec should be SHA or ref, got: {last_arg}"
