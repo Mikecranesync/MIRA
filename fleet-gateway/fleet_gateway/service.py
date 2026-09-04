@@ -184,18 +184,44 @@ class FleetGatewayService:
 
     # ── physical-node resolution ─────────────────────────────────────────────
     def _resolve_node(self, session_id: str | None, task_id: str | None = None) -> str:
-        """Which physical node owns this session/task. Fail closed if unknown."""
+        """Which physical node owns this session/task. Fail closed if unknown.
+
+        For a superseded attempt (a session that appears in attempts[]), return
+        that attempt's own node, not the task's current top-level node.
+        """
         node: str | None = None
+        found_attempt_without_node = False
         if session_id:
             node = self._session_nodes.get(session_id)
         if not node and task_id:
             art = self.artifacts.read_task(task_id) or {}
-            node = _as_str(art.get("role") or art.get("node"))
-        if not node and session_id:
+            # Check if this session is a superseded attempt (in attempts[])
+            for attempt in art.get("attempts", []):
+                if attempt.get("session_id") == session_id:
+                    # Return the attempt's own node, not the live session's node
+                    node = _as_str(attempt.get("role") or attempt.get("node"))
+                    if not node:
+                        found_attempt_without_node = True
+                    break
+            if not node and not found_attempt_without_node:
+                node = _as_str(art.get("role") or art.get("node"))
+        if not node and session_id and not found_attempt_without_node:
             tid = self.artifacts.find_task_id_for_session(session_id)
             if tid:
                 art = self.artifacts.read_task(tid) or {}
-                node = _as_str(art.get("role") or art.get("node"))
+                # Check if this session is a superseded attempt (in attempts[])
+                for attempt in art.get("attempts", []):
+                    if attempt.get("session_id") == session_id:
+                        node = _as_str(attempt.get("role") or attempt.get("node"))
+                        if not node:
+                            found_attempt_without_node = True
+                        break
+                if not node and not found_attempt_without_node:
+                    node = _as_str(art.get("role") or art.get("node"))
+        if found_attempt_without_node:
+            raise ContractViolation(
+                f"superseded attempt {session_id!r} has no recorded node; refusing to route"
+            )
         if not node:
             raise NotFoundError(
                 f"cannot resolve physical node for session {session_id!r} / task {task_id!r}"
@@ -497,8 +523,18 @@ class FleetGatewayService:
             task_id = self.artifacts.find_task_id_for_session(session_id)
         if task_id:
             existing = self.artifacts.read_task(task_id) or {"task_id": task_id}
-            existing["status"] = "stopped"
-            existing["claimed"] = False
+            # Check if this session is a superseded attempt (in attempts[])
+            is_superseded = False
+            for attempt in existing.get("attempts", []):
+                if attempt.get("session_id") == session_id:
+                    # Update only this attempt's status, leave top-level unchanged
+                    attempt["status"] = "stopped"
+                    is_superseded = True
+                    break
+            if not is_superseded:
+                # This is the live session - update top-level status/claimed
+                existing["status"] = "stopped"
+                existing["claimed"] = False
             self.artifacts.write_task(existing)
         result.setdefault("session_id", session_id)
         result.setdefault("status", "stopped")
@@ -517,16 +553,19 @@ class FleetGatewayService:
             )
 
     def _require_task_owns_session(self, task_id: str, session_id: str) -> None:
-        """Raise unless the artifact store binds THIS session to THIS task.
+        """Raise unless the artifact store binds THIS LIVE session to THIS task.
 
         Fleet-ownership alone only proves the session belongs to *some* task; a
-        mismatched pair could hand off session A while rewriting task B.
+        mismatched pair could hand off session A while rewriting task B. The session
+        must be the LIVE one (not in attempts[]), not a superseded historical attempt.
         """
-        owner = self.artifacts.find_task_id_for_session(session_id)
-        if owner != task_id:
+        task = self.artifacts.read_task(task_id)
+        if not task:
+            raise OwnershipError(f"refuse: task '{task_id}' not found; no action taken")
+        if task.get("session_id") != session_id:
             raise OwnershipError(
-                f"refuse: task '{task_id}' does not own session '{session_id}' "
-                f"(owner: {owner or 'none'}); no action taken"
+                f"refuse: task '{task_id}' does not own live session '{session_id}' "
+                f"(owns: {task.get('session_id') or 'none'}); no action taken"
             )
 
     def _require_role(self, params: dict[str, Any]) -> str:
@@ -554,6 +593,10 @@ class FleetGatewayService:
             raise ContractViolation("external_id is required")
         chosen = self._resolve_legacy_match(role, external_id)
         local_id = chosen.local_session_id
+        if not local_id:
+            raise ContractViolation(
+                "legacy session has no addressable session id; adoption refused"
+            )
         if self.artifacts.is_fleet_owned(local_id):
             raise ContractViolation(
                 f"already-owned: session '{local_id}' is already fleet-owned; no mutation"
@@ -653,7 +696,28 @@ class FleetGatewayService:
     def _resolve_legacy_match(self, role: str, external_id: str) -> LegacySession:
         on_node = [item for item in self.probe.list_sessions(role) if item.matches(external_id)]
         elsewhere: list[LegacySession] = []
-        for other in ALLOWED_ROLES:
+        # Verify that the probe can check all CONFIGURED nodes; if it can't, fail
+        # closed to prevent silently ignoring cross-node conflicts in TRUE multi-node
+        # setups. Exempt single-node routers (legacy tests / single-CAO deployments).
+        is_multinode = not self.router.is_single()
+        has_known_nodes = hasattr(self.probe, "known_nodes")
+        if is_multinode:
+            if not has_known_nodes:
+                raise ContractViolation(
+                    "cross_node_probe_unavailable: multi-node router requires probe with "
+                    "known_nodes() method"
+                )
+            probe_known = set(self.probe.known_nodes())
+            configured_nodes = self.router.nodes  # nodes is a property, not a method
+            uncovered = configured_nodes - probe_known
+            if uncovered:
+                raise ContractViolation(
+                    f"cross_node_probe_unavailable: probe doesn't cover configured nodes "
+                    f"{sorted(uncovered)}; probe knows {sorted(probe_known)}"
+                )
+        else:
+            probe_known = set(self.probe.known_nodes()) if has_known_nodes else set()
+        for other in self.router.nodes:
             if other == role:
                 continue
             elsewhere.extend(
@@ -667,7 +731,12 @@ class FleetGatewayService:
                 )
             raise NotFoundError(f"no live legacy session matches {external_id!r} on {role}")
         if len(on_node) > 1:
-            ids = ", ".join(item.local_session_id for item in on_node)
+            # Build a None-safe label for each item
+            labels = []
+            for item in on_node:
+                label = item.local_session_id or f"pid:{item.pid}"
+                labels.append(label)
+            ids = ", ".join(labels)
             raise ContractViolation(
                 f"ambiguous: identifier {external_id!r} matches multiple sessions on {role}: {ids}"
             )
