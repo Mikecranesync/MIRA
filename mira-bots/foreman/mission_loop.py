@@ -527,7 +527,10 @@ class ForemanPolicy:
         head = self._state.head_sha or ""
         approved = self._state.reviewer.git_ref if self._state.reviewer else ""
         verified = self._state.verifier.git_ref if self._state.verifier else ""
-        sha_bound = bool(approved) and approved == head and (not verified or verified == head)
+        # Both records must exist and both must be bound to the exact head SHA.
+        # A verdict with no dispatch record (e.g. a hand-edited persisted state)
+        # is not evidence — absent Verifier is NO-GO (AC H, 2026-09-04).
+        sha_bound = bool(approved) and approved == head and bool(verified) and verified == head
         if (
             self._state.reviewer_verdict == "PASS"
             and self._state.verifier_verdict == "PASS"
@@ -554,6 +557,13 @@ class ForemanPolicy:
                 gates.insert(
                     0,
                     f"Verifier verdict is {self._state.verifier_verdict!r} — must be PASS.",
+                )
+            elif not verified or verified != head:
+                gates.insert(
+                    0,
+                    "Verifier PASS is not bound to the head SHA "
+                    f"(record: {verified or 'none'}, head: {head or 'unset'}) — "
+                    "NO-GO; re-dispatch the Verifier on the current revision.",
                 )
             if self._state.reviewer_verdict == "PASS" and not sha_bound:
                 gates.insert(
