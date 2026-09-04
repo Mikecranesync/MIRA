@@ -23,6 +23,8 @@ Claude | Codex
 ### Warm Session Management
 
 - **One agent, many messages:** Foreman creates a single Cursor cloud agent on the first accepted message, then reuses it for subsequent messages
+- **Serialized turns:** each accepted Slack message owns that agent from `agent.send()` through `run.wait()`; concurrent accepted messages queue. This is the `agent_busy` warm-session fix.
+- **Non-blocking Slack loop:** Cursor SDK create/send/wait run in `asyncio.to_thread` so Socket Mode can still ack and filter while a Grok run is in flight
 - **Conversation context:** Grok retains conversation history across messages (per Cursor SDK design)
 - **Recovery:** If the agent dies (network error, timeout, etc.), the next message automatically creates a new agent
 - **Clean shutdown:** On exit, Foreman tears down the warm agent gracefully (no leaks)

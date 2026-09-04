@@ -148,7 +148,9 @@ class ForemanBot:
         self.app = AsyncApp(token=config.slack_bot_token)
         self.seen_events: set[str] = set()
 
-        # Warm/persistent Grok session
+        # Warm/persistent Grok session. One lock covers the whole accepted
+        # turn: ensure-agent + agent.send() + run.wait(). Releasing between
+        # send and wait is the proven agent_busy race (PROOF-PING-H).
         self._grok_agent: Optional[Any] = None
         self._agent_lock = asyncio.Lock()
 
@@ -282,39 +284,41 @@ class ForemanBot:
         logger.info("← Foreman posted response: %d chars", len(response_text))
 
     async def _ensure_agent(self) -> Any:
-        """Ensure warm Grok agent exists, creating or recovering as needed.
+        """Return the live warm agent, creating or recovering as needed.
 
-        Returns the live agent. Thread-safe via _agent_lock.
+        Caller MUST hold ``_agent_lock``. ``Agent.create`` is sync Cursor SDK
+        work and runs in a worker thread so it does not stall Slack's loop.
         """
-        async with self._agent_lock:
-            if self._grok_agent is not None:
-                # Warm agent exists; verify it's still alive
-                try:
-                    # Quick health check: agents have agent_id
-                    _ = self._grok_agent.agent_id
-                    logger.debug("Reusing warm agent: %s", self._grok_agent.agent_id)
-                    return self._grok_agent
-                except Exception as exc:
-                    logger.warning(
-                        "Warm agent unhealthy (id=%s): %s — will recover",
-                        getattr(self._grok_agent, "agent_id", "unknown"),
-                        exc,
-                    )
-                    self._grok_agent = None
+        if self._grok_agent is not None:
+            try:
+                _ = self._grok_agent.agent_id
+                logger.debug("Reusing warm agent: %s", self._grok_agent.agent_id)
+                return self._grok_agent
+            except Exception as exc:
+                logger.warning(
+                    "Warm agent unhealthy (id=%s): %s — will recover",
+                    getattr(self._grok_agent, "agent_id", "unknown"),
+                    exc,
+                )
+                self._grok_agent = None
 
-            # Create new agent
-            logger.info("Creating Grok cloud agent: model=%s", self.config.grok_model)
-            agent = Agent.create(build_agent_options(self.config))
+        logger.info("Creating Grok cloud agent: model=%s", self.config.grok_model)
+        options = build_agent_options(self.config)
+        agent = await asyncio.to_thread(Agent.create, options)
 
-            logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)
-            self._grok_agent = agent
-            return agent
+        logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)
+        self._grok_agent = agent
+        return agent
 
     async def _invoke_grok(self, prompt: str, user_id: str) -> str:
         """Send prompt to warm Grok agent and return response.
 
-        Reuses the persistent agent across messages. Agent retains conversation
-        context. If agent dies, _ensure_agent recovers.
+        One accepted Slack turn owns the persistent agent from
+        ``agent.send()`` through ``run.wait()``. Concurrent accepted
+        messages queue on ``_agent_lock`` so the Cursor SDK never sees
+        overlapping sends (the ``agent_busy`` warm-session race). Sync
+        SDK calls run in ``asyncio.to_thread`` so the Slack event loop
+        stays free to ack, filter, and queue the next turn.
 
         Args:
             prompt: User's message
@@ -323,32 +327,28 @@ class ForemanBot:
         Returns:
             Agent's final response text
         """
-        agent = await self._ensure_agent()
-
-        try:
-            # Send prompt to warm agent (retains conversation context)
-            run = agent.send(prompt)
-            logger.info("Run started: run_id=%s agent=%s", run.run_id, agent.agent_id)
-
-            # Wait for completion
-            result = run.wait()
-            response_text = result.result or "(no response)"
-
-            logger.info(
-                "Run completed: run_id=%s status=%s",
-                run.run_id,
-                result.status,
-            )
-
-            return response_text
-
-        except Exception as exc:
-            logger.error("Agent execution failed: %s", exc, exc_info=True)
-            # Mark agent unhealthy so next message recovers
-            async with self._agent_lock:
+        async with self._agent_lock:
+            agent = await self._ensure_agent()
+            try:
+                run = await asyncio.to_thread(agent.send, prompt)
+                logger.info(
+                    "Run started: run_id=%s agent=%s",
+                    run.run_id,
+                    agent.agent_id,
+                )
+                result = await asyncio.to_thread(run.wait)
+                response_text = result.result or "(no response)"
+                logger.info(
+                    "Run completed: run_id=%s status=%s",
+                    run.run_id,
+                    result.status,
+                )
+                return response_text
+            except Exception as exc:
+                logger.error("Agent execution failed: %s", exc, exc_info=True)
                 if self._grok_agent is agent:
                     self._grok_agent = None
-            raise
+                raise
 
     async def shutdown(self) -> None:
         """Clean shutdown: tear down warm agent without leaking."""

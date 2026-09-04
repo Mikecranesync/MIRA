@@ -6,7 +6,10 @@ All tests use mocked Slack and Cursor SDK — no real tokens, no live Gateway.
 """
 
 # Mock cursor_sdk before importing bot
+import asyncio
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -83,6 +86,109 @@ async def test_warm_session_reuse(mock_config, mock_agent):
         assert mock_agent.send.call_count == 2
         assert mock_agent.send.call_args_list[0][0][0] == "first message"
         assert mock_agent.send.call_args_list[1][0][0] == "second message"
+
+
+def _busy_detecting_agent():
+    """One warm agent that raises agent_busy if send overlaps an in-flight wait."""
+    agent = Mock()
+    agent.agent_id = "bc-warm-one"
+    send_order: list[str] = []
+    busy_hits: list[str] = []
+    wait_windows: list[tuple[float, float]] = []
+    in_flight = threading.Event()
+    send_gate = threading.Lock()
+
+    def send(prompt: str):
+        with send_gate:
+            if in_flight.is_set():
+                busy_hits.append(prompt)
+                raise RuntimeError("agent_busy")
+            in_flight.set()
+            send_order.append(prompt)
+
+        run = Mock()
+        run.run_id = f"run-{len(send_order)}"
+
+        def wait():
+            # Long enough that a second concurrent send would overlap
+            # unless _agent_lock covers send() through wait().
+            t0 = time.monotonic()
+            time.sleep(0.08)
+            t1 = time.monotonic()
+            wait_windows.append((t0, t1))
+            result = Mock()
+            result.status = "completed"
+            result.result = f"reply:{prompt}"
+            in_flight.clear()
+            return result
+
+        run.wait = wait
+        return run
+
+    agent.send.side_effect = send
+    agent._send_order = send_order
+    agent._busy_hits = busy_hits
+    agent._wait_windows = wait_windows
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_concurrent_accepted_messages_serialize_warm_agent(mock_config):
+    """Two concurrent accepted Slack messages: one warm agent, ordered sends,
+    no agent_busy, both replies. Also proves run.wait() does not block the
+    Slack event loop (ticker timestamps fall inside the wait windows).
+    """
+    agent = _busy_detecting_agent()
+    loop_ticks: list[float] = []
+
+    with patch("bot.Agent") as MockAgent, patch("bot.AsyncApp"):
+        MockAgent.create.return_value = agent
+        bot = ForemanBot(mock_config)
+        say1 = AsyncMock()
+        say2 = AsyncMock()
+
+        event1 = {
+            "ts": "2000.0001",
+            "user": "U_HUMAN",
+            "channel": mock_config.allowed_channel,
+            "text": "first concurrent",
+            "thread_ts": "2000.0001",
+        }
+        event2 = {
+            "ts": "2000.0002",
+            "user": "U_HUMAN",
+            "channel": mock_config.allowed_channel,
+            "text": "second concurrent",
+            "thread_ts": "2000.0002",
+        }
+
+        async def ticker():
+            for _ in range(30):
+                loop_ticks.append(time.monotonic())
+                await asyncio.sleep(0.01)
+
+        await asyncio.gather(
+            bot.handle_message(event1, say1),
+            bot.handle_message(event2, say2),
+            ticker(),
+        )
+
+        assert MockAgent.create.call_count == 1
+        assert bot._grok_agent is agent
+        assert agent._send_order == ["first concurrent", "second concurrent"]
+        assert agent._busy_hits == []
+        say1.assert_awaited_once()
+        say2.assert_awaited_once()
+        assert say1.await_args.kwargs["text"] == "reply:first concurrent"
+        assert say2.await_args.kwargs["text"] == "reply:second concurrent"
+        assert say1.await_args.kwargs["thread_ts"] == "2000.0001"
+        assert say2.await_args.kwargs["thread_ts"] == "2000.0002"
+        ticks_during_wait = [
+            t for t in loop_ticks if any(start <= t <= end for start, end in agent._wait_windows)
+        ]
+        assert ticks_during_wait, (
+            "event loop did not tick during run.wait() — sync Cursor SDK work is blocking Slack"
+        )
 
 
 @pytest.mark.asyncio
