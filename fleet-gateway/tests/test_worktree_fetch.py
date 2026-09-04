@@ -555,3 +555,57 @@ def test_no_fallback_to_fetch_all():
             full_sha,
             "some-branch",
         ), f"Fetch refspec should be SHA or ref, got: {last_arg}"
+
+
+def _delegating_run_present_commit(calls: list[list[str]]):
+    """Fake ``_run`` that lets ``git check-ref-format`` hit the REAL git binary
+    and answers every other git call as if the commit were already present."""
+
+    def run(argv, *, timeout):
+        calls.append(argv)
+        if "check-ref-format" in argv:
+            return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "ref, git_accepts",
+    [
+        ("feature+fast", True),
+        ("team@prod", True),
+        ("release/v1.2-rc.1", True),
+        ("foo..bar", False),
+        ("foo/", False),
+        ("foo.lock", False),
+        ("foo//bar", False),
+    ],
+)
+def test_ref_validation_matches_git_check_ref_format(ref, git_accepts):
+    """Round-4 finding M1: validation must agree with ``git check-ref-format --branch``
+    on refs a regex got wrong (valid '+'/'@' refs; invalid '..', trailing '/', '.lock',
+    '//'), and it must run BEFORE the presence check even when the commit exists."""
+    assert (
+        subprocess.run(["git", "check-ref-format", "--branch", ref], capture_output=True).returncode
+        == 0
+    ) is git_accepts, "test premise: git's own verdict for this ref"
+    calls: list[list[str]] = []
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+    p._run = _delegating_run_present_commit(calls)
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+    if git_accepts:
+        p._ensure_commit(full_sha, ref)
+        assert any("check-ref-format" in c for c in calls)
+    else:
+        with pytest.raises(ContractViolation, match="not a valid ref name"):
+            p._ensure_commit(full_sha, ref)
+        # Rejected before the presence check: no cat-file, no fetch.
+        assert not any("cat-file" in c or "fetch" in c for c in calls)
+
+
+def test_invalid_base_commit_names_the_field():
+    """Round-4 finding m1: an invalid base_commit must be reported as base_commit."""
+    p = WorktreeProvisioner(repo=Path("/repo"), parent=Path("/wt"))
+    with pytest.raises(ContractViolation, match="base_commit is not a valid commit SHA"):
+        p._ensure_commit("HEAD", "main")

@@ -21,12 +21,10 @@ from pathlib import Path
 
 from fleet_gateway.errors import ContractViolation
 
-# Safe git ref format validation — prevents injection of option-like strings.
-# Mirrors git check-ref-format --branch rules:
-# - Only letters, digits, '.', '_', '/', '-'
-# - Must not start with '-' or '/'
-# - No '..', no '@{', no trailing '/', no '.lock' suffix, no control chars
-_SAFE_REF_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$")
+# Ref validation is delegated to ``git check-ref-format --branch`` (through
+# ``_run``, so it also runs on the remote node) after a cheap local pre-reject of
+# option-like / control-character input. A hand-written regex was tried first and
+# disagreed with git in both directions (round-3 review of #3577).
 
 # Safe commit SHA format: 7–40 hex characters (abbreviated or full)
 _SAFE_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
