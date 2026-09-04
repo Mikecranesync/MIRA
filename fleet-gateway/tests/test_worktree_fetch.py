@@ -417,6 +417,9 @@ def test_ref_normalization_exact_prefix():
     fetch_log = []
 
     def tracking_run(argv, *, timeout):
+        if "check-ref-format" in argv:
+            # Ref validation: accept all refs in the test (they're valid)
+            return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
         if "fetch" in argv:
             fetch_log.append(argv.copy())
             # First fetch (SHA) fails; second fetch (ref) succeeds
@@ -523,6 +526,9 @@ def test_no_fallback_to_fetch_all():
     fetch_log = []
 
     def tracking_run(argv, *, timeout):
+        if "check-ref-format" in argv:
+            # Ref validation succeeds, so we proceed to the fetch phase
+            return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
         if "fetch" in argv:
             fetch_log.append(argv.copy())
         # All git operations fail to simulate unreachable commit

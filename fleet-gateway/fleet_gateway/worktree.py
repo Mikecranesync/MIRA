@@ -117,7 +117,7 @@ class WorktreeProvisioner:
         # Validate commit format BEFORE any git call
         commit = (commit or "").strip()
         if not _SAFE_COMMIT_RE.match(commit):
-            raise ContractViolation("github_ref is not a valid commit SHA")
+            raise ContractViolation("base_commit is not a valid commit SHA")
 
         # Validate and normalize ref BEFORE any git call
         normalized_ref = None
@@ -129,9 +129,22 @@ class WorktreeProvisioner:
                 # Also remove 'refs/heads/' prefix if present
                 temp_ref = temp_ref.removeprefix("refs/heads/")
 
-                # Validate the normalized ref against safe format
-                if not _SAFE_REF_RE.match(temp_ref):
+                # Cheap local pre-reject: empty, leading '-', leading '/', or any whitespace/control/NUL
+                if not temp_ref or temp_ref[0] in "-/" or any(c in temp_ref for c in "\x00\t\n\r "):
                     raise ContractViolation("github_ref is not a valid ref name")
+
+                # Validate the normalized ref with git check-ref-format
+                try:
+                    result = self._run(
+                        ["git", "check-ref-format", "--branch", temp_ref],
+                        timeout=15,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise ContractViolation("base_commit fetch failed") from exc
+
+                if result.returncode != 0:
+                    raise ContractViolation("github_ref is not a valid ref name")
+
                 normalized_ref = temp_ref
 
         # Check if commit already exists
