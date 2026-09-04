@@ -653,9 +653,22 @@ class FleetGatewayService:
     def _resolve_legacy_match(self, role: str, external_id: str) -> LegacySession:
         on_node = [item for item in self.probe.list_sessions(role) if item.matches(external_id)]
         elsewhere: list[LegacySession] = []
+        # Verify that the probe can check all CONFIGURED nodes; if it can't, fail
+        # closed to prevent silently ignoring cross-node conflicts in TRUE multi-node
+        # setups. Exempt single-node routers (legacy tests / single-CAO deployments).
+        is_multinode = not self.router.is_single()
+        probe_known = set(self.probe.known_nodes()) if hasattr(self.probe, "known_nodes") else set()
         for other in ALLOWED_ROLES:
             if other == role:
                 continue
+            # Only fail closed if: (1) this is a TRUE multi-node setup, AND
+            # (2) the probe doesn't know about this node. This prevents silently
+            # ignoring cross-node conflicts when we can't verify them.
+            if is_multinode and probe_known and other not in probe_known:
+                raise ContractViolation(
+                    f"cross_node_probe_unavailable: cannot verify node '{other}' for "
+                    f"cross-node ambiguity; probe only knows {sorted(probe_known)}"
+                )
             elsewhere.extend(
                 item for item in self.probe.list_sessions(other) if item.matches(external_id)
             )

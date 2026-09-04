@@ -72,6 +72,9 @@ class ArtifactStore:
 
         Missing ``fleet_owned`` on a matching artifact still counts (launch
         records predate the flag). Explicit ``fleet_owned: false`` does not.
+
+        Checks only the LIVE top-level session_id, not attempts[] (history).
+        Ownership mutations must use the live session, not historical ones.
         """
         if not session_id or not self.tasks_dir.exists():
             return False
@@ -80,13 +83,12 @@ class ArtifactStore:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            records = [data, *(data.get("attempts") or [])]
-            for record in records:
-                if record.get("session_id") != session_id:
-                    continue
-                if record.get("fleet_owned") is False:
-                    continue
-                return True
+            # Only check the live top-level session, not attempts[]
+            if data.get("session_id") != session_id:
+                continue
+            if data.get("fleet_owned") is False:
+                continue
+            return True
         return False
 
     def write_handoff(self, *, task_id: str, session_id: str, record: dict[str, Any]) -> Path:

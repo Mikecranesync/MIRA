@@ -51,7 +51,6 @@ class LegacySession:
             self.local_session_id,
             self.tmux_name,
             self.bridge_session_id,
-            str(self.pid) if self.pid is not None else None,
         ):
             text = (raw or "").strip()
             if text:
