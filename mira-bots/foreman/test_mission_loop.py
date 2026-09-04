@@ -556,3 +556,69 @@ class TestVerifierRecordBinding:
         )
         policy = ForemanPolicy.load_state(state.to_json())
         assert policy.evaluate_go_no_go().verdict == "NO-GO"
+
+    def test_reviewer_record_in_verifier_slot_is_no_go(self):
+        """Round-6 Codex blocker: a REVIEWER record parked in the verifier slot
+        must not count as a Verifier, even with a matching SHA."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="review", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="other", git_ref=head
+            ),
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("not a Verifier" in g for g in result.human_gates)
+
+    def test_verifier_sharing_reviewer_session_is_no_go(self):
+        """Independence: the Verifier must come from a different session than the Reviewer."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="same", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=Worker(
+                WorkerRole.VERIFIER, WorkerState.STOPPED, session_id="same", git_ref=head
+            ),
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("not independent" in g for g in result.human_gates)
+
+    def test_only_verifier_missing_does_not_demand_re_review(self):
+        """Round-6 minor: when only the Verifier record is missing, the gates must
+        ask for a Verifier, not for a fresh Reviewer pass on an already-bound SHA."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="review", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=None,
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert not any("re-review the current revision" in g for g in result.human_gates)

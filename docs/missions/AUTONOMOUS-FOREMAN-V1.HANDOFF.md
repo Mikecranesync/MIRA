@@ -51,15 +51,18 @@ pytest mira-bots/foreman/test_mission_loop.py -v
 | E | HELD stays HELD | ✅ PRs #3533/#3558 + HELD-titled PRs refused |
 | F | Hard boundaries | ✅ 18 forbidden actions including gateway/tunnels/Doppler/secrets |
 | G | GitHub source of truth | ✅ MissionState JSON round-trip; save_state/load_state |
-| H | GO/NO-GO shape | ✅ Exactly "GO"/"NO-GO" + PR URL + SHA + reviewer verdict + human gates |
+| H | GO/NO-GO shape | ✅ Exactly "GO"/"NO-GO" + PR URL + SHA + reviewer AND verifier verdicts (independent, head-bound) + human gates — tightened 2026-09-04 (#3572) |
 | I | Isolation | ✅ Branch fleet/AUTONOMOUS-FOREMAN-V1 from base SHA, worktree |
 | J | Tests | ✅ 73 tests, ruff clean |
 
 ## What Mike Must Do
 
 1. Dispatch a Codex session on physical Charlie to independently review exact SHA `c2aad8f04ed53d034d788d7fef097021930c665f`
-2. If Charlie returns PASS: merge the Draft PR via `gh pr merge 3567 --squash`
-3. If Charlie returns FAIL: dispatch a Bravo fix round, re-review the new SHA
+2. Dispatch an independent Verifier (separate session) on the same exact SHA — an absent
+   Verifier is NO-GO (AC H tightened 2026-09-04, see #3572)
+3. Only if BOTH the Reviewer and the Verifier return PASS on that SHA: merge the Draft PR via
+   `gh pr merge 3567 --squash`
+4. If either returns FAIL: dispatch a Bravo fix round, then re-review AND re-verify the new SHA
 
 ## Not Touched
 

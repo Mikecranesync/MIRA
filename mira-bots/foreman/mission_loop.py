@@ -527,14 +527,28 @@ class ForemanPolicy:
         head = self._state.head_sha or ""
         approved = self._state.reviewer.git_ref if self._state.reviewer else ""
         verified = self._state.verifier.git_ref if self._state.verifier else ""
-        # Both records must exist and both must be bound to the exact head SHA.
-        # A verdict with no dispatch record (e.g. a hand-edited persisted state)
-        # is not evidence — absent Verifier is NO-GO (AC H, 2026-09-04).
-        sha_bound = bool(approved) and approved == head and bool(verified) and verified == head
+        # Both records must exist, carry the right ROLE, and be bound to the exact
+        # head SHA. A verdict with no dispatch record (e.g. a hand-edited persisted
+        # state), a Reviewer record parked in the verifier slot, or a Verifier
+        # that reused the Reviewer's session is not independent evidence —
+        # absent/unbound/non-independent Verifier is NO-GO (AC H, 2026-09-04).
+        rev = self._state.reviewer
+        ver = self._state.verifier
+        reviewer_bound = bool(rev) and rev.role == WorkerRole.REVIEWER and approved == head
+        verifier_bound = bool(ver) and ver.role == WorkerRole.VERIFIER and verified == head
+        independent = (
+            bool(rev)
+            and bool(ver)
+            and bool(rev.session_id)
+            and bool(ver.session_id)
+            and rev.session_id != ver.session_id
+        )
+        sha_bound = reviewer_bound and verifier_bound
         if (
             self._state.reviewer_verdict == "PASS"
             and self._state.verifier_verdict == "PASS"
             and sha_bound
+            and independent
             and SHA_RE.match(head)
             and self._state.pr_url
         ):
@@ -558,6 +572,12 @@ class ForemanPolicy:
                     0,
                     f"Verifier verdict is {self._state.verifier_verdict!r} — must be PASS.",
                 )
+            elif ver is not None and ver.role != WorkerRole.VERIFIER:
+                gates.insert(
+                    0,
+                    f"Verifier slot holds a {ver.role.value!r} record, not a Verifier — "
+                    "NO-GO; dispatch a real Verifier on the current revision.",
+                )
             elif not verified or verified != head:
                 gates.insert(
                     0,
@@ -565,7 +585,13 @@ class ForemanPolicy:
                     f"(record: {verified or 'none'}, head: {head or 'unset'}) — "
                     "NO-GO; re-dispatch the Verifier on the current revision.",
                 )
-            if self._state.reviewer_verdict == "PASS" and not sha_bound:
+            elif not independent:
+                gates.insert(
+                    0,
+                    "Verifier is not independent of the Reviewer (same or missing session) — "
+                    "NO-GO; acceptance must come from a separate session.",
+                )
+            if self._state.reviewer_verdict == "PASS" and not reviewer_bound:
                 gates.insert(
                     0,
                     f"Approval is for {approved or 'no SHA'}"
