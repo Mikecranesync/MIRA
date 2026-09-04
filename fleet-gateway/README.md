@@ -33,6 +33,8 @@ Provider mapping: `claude` → `claude_code`, `codex` → `codex`.
 
 The Gateway creates the git worktree **before** calling CAO and passes the real path as `working_directory`. CAO's `use_worktree` is never set — Gateway worktrees are never deleted by CAO.
 
+**Fetch before add:** When a remote node (Charlie, Alpha) is asked to provision a worktree at a `base_commit` SHA that the node's clone has not yet fetched, `WorktreeProvisioner._ensure_commit()` fetches the commit before calling `git worktree add`. The fetch tries in order: the specific SHA (GitHub serves reachable SHAs by id), the provided `ref` branch/tag, or a full fetch of all branches. If the commit remains unreachable after all attempts, `create()` raises `ContractViolation("base_commit is not reachable after fetch")` with a distinct error message so operators can diagnose fetch failures vs. disk failures.
+
 ## Run (local / loopback)
 
 ```bash

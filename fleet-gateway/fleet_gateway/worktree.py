@@ -92,13 +92,67 @@ class WorktreeProvisioner:
         return Path(path).is_dir()
 
     # ── public API ───────────────────────────────────────────────────────────
-    def create(self, *, task_id: str, session_id: str, base_commit: str) -> Path:
+    def _ensure_commit(self, commit: str, ref: str | None = None) -> None:
+        """Fetch the base commit if it does not exist locally.
+
+        Tries in order:
+          1. Check presence locally
+          2. If absent and commit is 40-hex SHA: fetch origin <commit>
+          3. If ref is given: fetch origin <ref>
+          4. Final fallback: fetch origin (all branches)
+
+        Raises ContractViolation if commit remains unreachable after all fetch attempts.
+        """
+        # Check if commit already exists
+        check = self._run(
+            ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+            timeout=15,
+        )
+        if check.returncode == 0:
+            # Commit exists, no fetch needed
+            return
+
+        # Commit is missing; try fetches in order
+        attempts = []
+
+        # Attempt 1: If it's a full 40-hex SHA, GitHub serves reachable SHAs by id
+        if len(commit) == 40 and all(c in "0123456789abcdef" for c in commit.lower()):
+            attempts.append(["git", "-C", str(self.repo), "fetch", "--quiet", "origin", commit])
+
+        # Attempt 2: If ref is given, fetch the ref
+        if ref and ref.strip():
+            attempts.append(
+                ["git", "-C", str(self.repo), "fetch", "--quiet", "origin", ref.strip()]
+            )
+
+        # Attempt 3: Fallback to fetch all
+        attempts.append(["git", "-C", str(self.repo), "fetch", "--quiet", "origin"])
+
+        for attempt_cmd in attempts:
+            result = self._run(attempt_cmd, timeout=120)
+            if result.returncode == 0:
+                # Fetch succeeded, verify commit is now present
+                verify = self._run(
+                    ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                    timeout=15,
+                )
+                if verify.returncode == 0:
+                    # Success!
+                    return
+
+        # All attempts failed
+        raise ContractViolation("base_commit is not reachable after fetch")
+
+    def create(
+        self, *, task_id: str, session_id: str, base_commit: str, ref: str | None = None
+    ) -> Path:
         if not self._isdir(self.repo):
             raise ContractViolation("isolated worktree source repo is not available")
         commit = (base_commit or "").strip()
         if not commit:
             raise ContractViolation("base_commit is required to create an isolated worktree")
         # Ensure the parent dir exists on the target machine.
+        self._ensure_commit(commit, ref)
         mkdir = self._run(["mkdir", "-p", str(self.parent)], timeout=15)
         if mkdir.returncode != 0:
             raise ContractViolation("failed to create isolated worktree parent directory")

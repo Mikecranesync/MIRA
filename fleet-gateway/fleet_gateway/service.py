@@ -326,6 +326,7 @@ class FleetGatewayService:
             task_id=spec["task_id"],
             session_id=temp_session,
             base_commit=spec["base_commit"],
+            ref=spec["github_ref"],
         )
         target.worktrees.maybe_write_proof(
             worktree_path,
