@@ -73,8 +73,17 @@ session, verdicts, GO/NO-GO) must be serializable to a durable artifact under
 ### H. GO/NO-GO shape
 
 Terminal recommendation is exactly one of `GO` or `NO-GO` plus: PR URL,
-exact SHA, reviewer verdict, what Mike would merge (nothing auto-merged),
+exact SHA, reviewer verdict, verifier verdict, what Mike would merge (nothing auto-merged),
 remaining human gates.
+
+**GO requires:**
+- Reviewer verdict == PASS
+- Verifier verdict == PASS (independent acceptance required — absent Verifier is NO-GO, Mike decision 2026-09-04)
+- Both bound to the exact head SHA
+- head_sha is a valid 40-char exact SHA
+- pr_url is set
+
+**Anything else is NO-GO.**
 
 ### I. Isolation
 

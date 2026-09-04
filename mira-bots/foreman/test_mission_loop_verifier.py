@@ -170,17 +170,16 @@ def test_passing_verification_allows_go_and_is_reported():
     assert not any("Verifier has not run" in g for g in result.human_gates)
 
 
-def test_absent_verifier_surfaces_as_a_gate_without_flipping_the_verdict():
-    """AC H defines GO without a verifier; this change does not redefine it.
+def test_absent_verifier_is_no_go():
+    """Verifier absent = NO-GO (Mike decision, 2026-09-04).
 
-    Whether verification should be REQUIRED for GO is a doctrine decision for
-    Foreman/Mike, not something to change silently here.
+    GO requires independent verification. Absent verifier is NO-GO.
     """
     result = _ready(_reviewed_pass()).evaluate_go_no_go()
 
-    assert result.verdict == "GO"
+    assert result.verdict == "NO-GO"
     assert result.verifier_verdict == ""
-    assert any("Verifier has not run" in g for g in result.human_gates)
+    assert any("Verifier" in g and "NO-GO" in g for g in result.human_gates)
 
 
 # --- state must survive a restart (AC G) -----------------------------------

@@ -511,6 +511,7 @@ class ForemanPolicy:
 
         GO requires:
           - reviewer_verdict == "PASS"
+          - verifier_verdict == "PASS" (independent acceptance required)
           - head_sha is a valid 40-char exact SHA
           - pr_url is set
 
@@ -529,17 +530,12 @@ class ForemanPolicy:
         sha_bound = bool(approved) and approved == head and (not verified or verified == head)
         if (
             self._state.reviewer_verdict == "PASS"
-            and self._state.verifier_verdict != "FAIL"
+            and self._state.verifier_verdict == "PASS"
             and sha_bound
             and SHA_RE.match(head)
             and self._state.pr_url
         ):
             verdict = "GO"
-            if not self._state.verifier_verdict:
-                # Not a NO-GO: AC H defines GO without a verifier, and silently
-                # redefining an accepted AC is not this change's job. Surfaced as
-                # a gate so Mike sees acceptance was never independently checked.
-                gates.insert(0, "Verifier has not run — acceptance not independently verified.")
         else:
             verdict = "NO-GO"
             if not self._state.reviewer_verdict:
@@ -549,8 +545,16 @@ class ForemanPolicy:
                     0,
                     f"Reviewer verdict is {self._state.reviewer_verdict!r} — must be PASS.",
                 )
-            if self._state.verifier_verdict == "FAIL":
-                gates.insert(0, "Verifier verdict is 'FAIL' — acceptance checks did not pass.")
+            if not self._state.verifier_verdict:
+                gates.insert(
+                    0,
+                    f"Verifier has not run — NO-GO until an independent Verifier reports PASS on {head or 'head SHA'}.",
+                )
+            elif self._state.verifier_verdict != "PASS":
+                gates.insert(
+                    0,
+                    f"Verifier verdict is {self._state.verifier_verdict!r} — must be PASS.",
+                )
             if self._state.reviewer_verdict == "PASS" and not sha_bound:
                 gates.insert(
                     0,

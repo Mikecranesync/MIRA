@@ -427,12 +427,26 @@ class TestACGoNoGoShape:
         result = policy.evaluate_go_no_go()
         assert result.verdict == "NO-GO"
 
+    def test_no_go_when_verifier_absent(self):
+        """Verifier absent = NO-GO (Mike decision, 2026-09-04)."""
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-verifier-absent")
+        policy.record_reviewer_verdict("PASS")
+        # No verifier dispatched — verifier_verdict is None
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("Verifier" in g and "NO-GO" in g for g in result.human_gates)
+
     def test_go_when_all_conditions_met(self):
         policy = _fresh_policy()
         policy._state.head_sha = HEAD_SHA
         policy._state.pr_url = PR_URL
         policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h")
         policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-ac-h")
+        policy.record_verifier_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
 
@@ -491,6 +505,8 @@ class TestACGoNoGoShape:
         policy._state.pr_url = PR_URL
         policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h2")
         policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-ac-h2")
+        policy.record_verifier_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
         # Human merge gate must still be in the list.
