@@ -49,6 +49,8 @@ class CAOClient(Protocol):
 
     def record_worktree(self, session_id: str, worktree: str) -> None: ...
 
+    def register_adopted_session(self, session_id: str, meta: dict[str, Any]) -> None: ...
+
 
 def assert_loopback_cao_url(url: str) -> str:
     """Refuse anything that is not http(s)://127.0.0.1[:port][/path]."""
@@ -199,6 +201,29 @@ class FakeCAO:
         if session is None:
             return
         session["worktree"] = worktree
+
+    def register_adopted_session(self, session_id: str, meta: dict[str, Any]) -> None:
+        """Bind an already-running session without launch_worker."""
+        self.calls.append(("register_adopted_session", {"session_id": session_id, **dict(meta)}))
+        existing = dict(self.sessions.get(session_id) or {})
+        existing.update(
+            {
+                "session_id": session_id,
+                "task_id": meta.get("task_id"),
+                "role": meta.get("role"),
+                "provider": meta.get("provider"),
+                "status": "running",
+                "claimed": True,
+                "adopted": True,
+                "worktree": meta.get("cwd") or existing.get("worktree"),
+                "chat_claimed_done": False,
+            }
+        )
+        self.sessions[session_id] = existing
+        task_id = str(meta.get("task_id") or "").strip()
+        if task_id:
+            self._latest_by_task[task_id] = session_id
+            self.tasks[task_id] = existing
 
 
 class LoopbackCAOClient:
@@ -570,3 +595,22 @@ class LoopbackCAOClient:
         stored = self._sessions.get(session_id)
         if stored is not None:
             stored["worktree"] = worktree
+
+    def register_adopted_session(self, session_id: str, meta: dict[str, Any]) -> None:
+        stored = {
+            "session_id": session_id,
+            "task_id": meta.get("task_id"),
+            "role": meta.get("role"),
+            "provider": meta.get("provider"),
+            "status": "running",
+            "claimed": True,
+            "adopted": True,
+            "terminal_id": "",
+            "worktree": meta.get("cwd") or "",
+        }
+        self._sessions[session_id] = stored
+        if session_id not in self._session_order:
+            self._session_order.append(session_id)
+        live = self.get_session(session_id)
+        if live and live.get("terminal_id"):
+            stored["terminal_id"] = live["terminal_id"]

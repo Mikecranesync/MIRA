@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fleet_gateway.auth import configured_bearer
 from fleet_gateway.cao import CAOClient, FakeCAO, LoopbackCAOClient
+from fleet_gateway.legacy import FilesystemClaudeProbe
 from fleet_gateway.router import NodeRouter, NodeTarget
 from fleet_gateway.service import FleetGatewayService, build_service
 from fleet_gateway.worktree import (
@@ -94,10 +95,26 @@ def load_local_env() -> None:
         os.environ[key] = value
 
 
+def _pid_alive(pid: int) -> bool:
+    """POSIX liveness only (signal 0). Never sends a killing signal."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def bravo_legacy_probe_from_env() -> FilesystemClaudeProbe:
+    raw = (os.environ.get("FLEET_GATEWAY_CLAUDE_SESSIONS_DIR") or "").strip()
+    sessions_dir = Path(raw) if raw else Path.home() / ".claude" / "sessions"
+    return FilesystemClaudeProbe(node="bravo", sessions_dir=sessions_dir, pid_alive=_pid_alive)
+
+
 def service_from_env(*, requester: str = "unknown") -> FleetGatewayService:
     return build_service(
         bearer_token=configured_bearer(),
         router=router_from_env(),
         data_dir=data_dir_from_env(),
         requester=requester,
+        probe=bravo_legacy_probe_from_env(),
     )

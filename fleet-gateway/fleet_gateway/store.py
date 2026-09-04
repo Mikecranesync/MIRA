@@ -67,6 +67,28 @@ class ArtifactStore:
                 continue
         return None
 
+    def is_fleet_owned(self, session_id: str) -> bool:
+        """True when a durable artifact records this session as fleet-owned.
+
+        Missing ``fleet_owned`` on a matching artifact still counts (launch
+        records predate the flag). Explicit ``fleet_owned: false`` does not.
+        """
+        if not session_id or not self.tasks_dir.exists():
+            return False
+        for path in self.tasks_dir.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            records = [data, *(data.get("attempts") or [])]
+            for record in records:
+                if record.get("session_id") != session_id:
+                    continue
+                if record.get("fleet_owned") is False:
+                    continue
+                return True
+        return False
+
     def write_handoff(self, *, task_id: str, session_id: str, record: dict[str, Any]) -> Path:
         path = self._handoff_path(task_id)
         lines = [

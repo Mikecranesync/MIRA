@@ -1,4 +1,4 @@
-"""Optional FastMCP registration. Exactly the seven locked tools; deny-list absent."""
+"""Optional FastMCP registration. Locked tool surface; deny-list absent."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def mcp_tool_names() -> tuple[str, ...]:
 
 
 def register_fastmcp(mcp: Any, service: FleetGatewayService) -> None:
-    """Register the seven tools on a FastMCP instance. Deny-list tools are omitted."""
+    """Register the locked tools on a FastMCP instance. Deny-list tools are omitted."""
 
     @mcp.tool
     def fleet_status() -> dict:
@@ -26,6 +26,15 @@ def register_fastmcp(mcp: Any, service: FleetGatewayService) -> None:
         return service.invoke(
             "task_status",
             {"task_id": task_id},
+            authorization=f"Bearer {service.bearer_token}",
+        )
+
+    @mcp.tool
+    def list_legacy_sessions(role: str) -> dict:
+        """Read-only discover running legacy Claude/Codex sessions on one physical node."""
+        return service.invoke(
+            "list_legacy_sessions",
+            {"role": role},
             authorization=f"Bearer {service.bearer_token}",
         )
 
@@ -93,13 +102,24 @@ def register_fastmcp(mcp: Any, service: FleetGatewayService) -> None:
             authorization=f"Bearer {service.bearer_token}",
         )
 
+    @mcp.tool
+    def adopt_legacy_session(role: str, external_id: str) -> dict:
+        """Adopt exactly one uniquely mapped legacy session into Gateway ownership. No launch."""
+        return service.invoke(
+            "adopt_legacy_session",
+            {"role": role, "external_id": external_id},
+            authorization=f"Bearer {service.bearer_token}",
+        )
+
     # Bind so linters see the registrations as used.
     _ = (
         fleet_status,
         task_status,
+        list_legacy_sessions,
         launch_worker,
         message_worker,
         request_handoff,
         request_review,
         stop_worker,
+        adopt_legacy_session,
     )

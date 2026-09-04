@@ -6,9 +6,9 @@ from fleet_gateway.errors import DeniedToolError
 from fleet_gateway.mcp_api import mcp_tool_names
 
 
-def test_exactly_seven_tools(service):
+def test_exactly_nine_tools(service):
     assert tuple(service.list_tools()) == ALLOWED_TOOLS
-    assert len(service.list_tools()) == 7
+    assert len(service.list_tools()) == 9
     assert mcp_tool_names() == ALLOWED_TOOLS
 
 
