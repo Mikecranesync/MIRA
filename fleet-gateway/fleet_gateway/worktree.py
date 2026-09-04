@@ -21,6 +21,14 @@ from pathlib import Path
 
 from fleet_gateway.errors import ContractViolation
 
+# Ref validation is delegated to ``git check-ref-format --branch`` (through
+# ``_run``, so it also runs on the remote node) after a cheap local pre-reject of
+# option-like / control-character input. A hand-written regex was tried first and
+# disagreed with git in both directions (round-3 review of #3577).
+
+# Safe commit SHA format: 7–40 hex characters (abbreviated or full)
+_SAFE_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
 # Bravo (the node the Gateway runs on) — local, no SSH.
 DEFAULT_REPO = Path("/Users/bravonode/Mira")
 DEFAULT_PARENT = Path("/Users/bravonode/Mira-worktrees")
@@ -92,13 +100,126 @@ class WorktreeProvisioner:
         return Path(path).is_dir()
 
     # ── public API ───────────────────────────────────────────────────────────
-    def create(self, *, task_id: str, session_id: str, base_commit: str) -> Path:
+    def _ensure_commit(self, commit: str, ref: str | None = None) -> None:
+        """Fetch the base commit if it does not exist locally.
+
+        Tries in order:
+          1. Validate commit and ref against safe formats (prevent injection)
+          2. Check presence locally
+          3. If absent and commit is 40-hex SHA: fetch origin <commit>
+          4. If ref is given: fetch origin <ref> (normalized to strip 'origin/' and 'refs/heads/' prefix)
+          5. Fail closed with typed ContractViolation
+
+        Raises ContractViolation if commit/ref are unsafe or commit remains unreachable after fetch.
+        """
+        # Validate commit format BEFORE any git call
+        commit = (commit or "").strip()
+        if not _SAFE_COMMIT_RE.match(commit):
+            raise ContractViolation("base_commit is not a valid commit SHA")
+
+        # Validate and normalize ref BEFORE any git call
+        normalized_ref = None
+        if ref:
+            ref_stripped = (ref or "").strip()
+            if ref_stripped:
+                # Remove 'origin/' prefix if present, using removeprefix (exact, not lstrip)
+                temp_ref = ref_stripped.removeprefix("origin/")
+                # Also remove 'refs/heads/' prefix if present
+                temp_ref = temp_ref.removeprefix("refs/heads/")
+
+                # Cheap local pre-reject: empty, leading '-', leading '/', or any whitespace/control/NUL
+                if not temp_ref or temp_ref[0] in "-/" or any(c in temp_ref for c in "\x00\t\n\r "):
+                    raise ContractViolation("github_ref is not a valid ref name")
+
+                # Validate the normalized ref with git check-ref-format
+                try:
+                    result = self._run(
+                        ["git", "check-ref-format", "--branch", temp_ref],
+                        timeout=15,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise ContractViolation("base_commit fetch failed") from exc
+
+                if result.returncode != 0:
+                    raise ContractViolation("github_ref is not a valid ref name")
+
+                normalized_ref = temp_ref
+
+        # Check if commit already exists
+        try:
+            check = self._run(
+                ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                timeout=15,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ContractViolation("base_commit fetch failed") from exc
+
+        if check.returncode == 0:
+            # Commit exists, no fetch needed
+            return
+
+        # Commit is missing; try fetches in order
+        attempts = []
+
+        # Attempt 1: If it's a full 40-hex SHA, GitHub serves reachable SHAs by id
+        if len(commit) == 40 and all(c in "0123456789abcdef" for c in commit.lower()):
+            attempts.append(
+                ["git", "-C", str(self.repo), "fetch", "--quiet", "--no-tags", "origin", commit]
+            )
+
+        # Attempt 2: If normalized ref is available, fetch the ref by name.
+        # Note: Both fetches are scoped to exactly one SHA or one ref with --no-tags
+        # and a 120s wall bound. We do NOT use --depth or --filter because the
+        # worktree needs full history for 'git diff <base>..HEAD' during review.
+        if normalized_ref:
+            attempts.append(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo),
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "origin",
+                    normalized_ref,
+                ]
+            )
+
+        # No fallback to fetch-all; fail closed instead
+
+        for attempt_cmd in attempts:
+            try:
+                result = self._run(attempt_cmd, timeout=120)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise ContractViolation("base_commit fetch failed") from exc
+
+            if result.returncode == 0:
+                # Fetch succeeded, verify commit is now present
+                try:
+                    verify = self._run(
+                        ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                        timeout=15,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise ContractViolation("base_commit fetch failed") from exc
+
+                if verify.returncode == 0:
+                    # Success!
+                    return
+
+        # All attempts failed
+        raise ContractViolation("base_commit is not reachable after fetch")
+
+    def create(
+        self, *, task_id: str, session_id: str, base_commit: str, ref: str | None = None
+    ) -> Path:
         if not self._isdir(self.repo):
             raise ContractViolation("isolated worktree source repo is not available")
         commit = (base_commit or "").strip()
         if not commit:
             raise ContractViolation("base_commit is required to create an isolated worktree")
         # Ensure the parent dir exists on the target machine.
+        self._ensure_commit(commit, ref)
         mkdir = self._run(["mkdir", "-p", str(self.parent)], timeout=15)
         if mkdir.returncode != 0:
             raise ContractViolation("failed to create isolated worktree parent directory")
