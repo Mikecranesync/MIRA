@@ -126,7 +126,7 @@ def test_verification_requires_an_exact_sha(bad_ref):
 def test_only_one_verifier_at_a_time():
     p = _reviewed_pass()
     p.dispatch_verifier(SHA_A, session_id="cao-verify-1")
-    second = p.dispatch_verifier(SHA_B, session_id="cao-verify-2")
+    second = p.dispatch_verifier(SHA_A, session_id="cao-verify-2")
 
     assert second.allowed is False
     assert "already running" in second.reason
@@ -210,3 +210,86 @@ def test_state_without_a_verifier_still_loads():
     restored = ForemanPolicy.load_state(p.save_state())
     assert restored.state.verifier is None
     assert restored.state.verifier_verdict == ""
+
+
+# --- fail-open holes found by independent review (Codex, 2026-09-04) --------
+
+
+def test_verdicts_must_be_bound_to_the_head_sha():
+    """Reviewer approved A, verifier ran B, head is C — this returned GO."""
+    p = _policy()
+    p.dispatch_reviewer(SHA_A, session_id="rev")
+    p.record_reviewer_verdict("PASS")
+    p.state.head_sha = SHA_B
+    p.state.pr_url = "https://example/pr/1"
+
+    result = p.evaluate_go_no_go()
+    assert result.verdict == "NO-GO"
+    assert any("re-review the current revision" in g for g in result.human_gates)
+
+
+def test_verifier_must_target_the_reviewed_sha():
+    p = _reviewed_pass()
+    result = p.can_dispatch_verifier(SHA_B)
+    assert result.allowed is False
+    assert "not the SHA the reviewer approved" in result.reason
+
+
+def test_verdict_cannot_be_recorded_without_a_dispatch():
+    """record_*_verdict succeeded with no worker — a forgeable PASS."""
+    p = _policy()
+    assert p.record_reviewer_verdict("PASS").allowed is False
+    assert p.state.reviewer_verdict == ""
+
+    p2 = _reviewed_pass()
+    assert p2.record_verifier_verdict("PASS").allowed is False
+    assert p2.state.verifier_verdict == ""
+
+
+def test_new_implementation_invalidates_prior_approvals():
+    """PASS/PASS on A, then new code — the old approvals authorized the new SHA."""
+    p = _ready(_reviewed_pass())
+    p.dispatch_verifier(SHA_A, session_id="ver")
+    p.record_verifier_verdict("PASS")
+    assert p.evaluate_go_no_go().verdict == "GO"
+
+    p.stop_implementer()
+    p.dispatch_implementer(session_id="impl-2", node="bravo", provider="claude")
+
+    assert p.state.reviewer is None
+    assert p.state.reviewer_verdict == ""
+    assert p.state.verifier is None
+    assert p.state.verifier_verdict == ""
+    assert p.evaluate_go_no_go().verdict == "NO-GO"
+
+
+def test_new_review_round_clears_the_old_verification():
+    p = _reviewed_pass()
+    p.dispatch_verifier(SHA_A, session_id="ver")
+    p.record_verifier_verdict("PASS")
+
+    p.dispatch_reviewer(SHA_A, session_id="rev-2")
+
+    assert p.state.verifier is None
+    assert p.state.verifier_verdict == ""
+
+
+def test_blank_session_id_is_not_a_different_session():
+    """Empty ids passed the reuse check because it required a truthy id."""
+    p = _policy()
+    p.dispatch_reviewer(SHA_A, session_id="")
+    p.record_reviewer_verdict("PASS")
+
+    result = p.dispatch_verifier(SHA_A, session_id="")
+    assert result.allowed is False
+    assert "session_id is required" in result.reason
+
+
+@pytest.mark.parametrize(
+    "node,provider", [("alpha", "codex"), ("bravo", "codex"), ("charlie", "anything")]
+)
+def test_verifier_placement_is_validated(node, provider):
+    """node/provider were stored unvalidated, contradicting the verifier card."""
+    p = _reviewed_pass()
+    result = p.dispatch_verifier(SHA_A, session_id="ver", node=node, provider=provider)
+    assert result.allowed is False

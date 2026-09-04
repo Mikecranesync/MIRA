@@ -431,7 +431,8 @@ class TestACGoNoGoShape:
         policy = _fresh_policy()
         policy._state.head_sha = HEAD_SHA
         policy._state.pr_url = PR_URL
-        policy._state.reviewer_verdict = "PASS"
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h")
+        policy.record_reviewer_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
 
@@ -488,7 +489,8 @@ class TestACGoNoGoShape:
         policy = _fresh_policy()
         policy._state.head_sha = HEAD_SHA
         policy._state.pr_url = PR_URL
-        policy._state.reviewer_verdict = "PASS"
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h2")
+        policy.record_reviewer_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
         # Human merge gate must still be in the list.

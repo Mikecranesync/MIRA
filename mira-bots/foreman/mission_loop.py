@@ -210,6 +210,19 @@ class ForemanPolicy:
             )
         return PolicyResult(allowed=True, reason="no active implementer")
 
+    def _invalidate_approvals(self, why: str) -> None:
+        """Drop review/verification state that a new revision has invalidated.
+
+        Approvals are for a SPECIFIC revision. Carrying them across a new
+        implementation or a re-review let old PASSes authorize new code.
+        """
+        self._state.reviewer = None
+        self._state.reviewer_verdict = ""
+        self._state.verifier = None
+        self._state.verifier_verdict = ""
+        self._state.go_no_go = ""
+        self._state.remaining_human_gates = [why]
+
     def dispatch_implementer(
         self,
         session_id: str,
@@ -220,6 +233,9 @@ class ForemanPolicy:
         check = self.can_dispatch_implementer()
         if not check.allowed:
             return check
+        self._invalidate_approvals(
+            "New implementation dispatched — prior review/verification no longer apply."
+        )
         self._state.implementer = Worker(
             role=WorkerRole.IMPLEMENTER,
             state=WorkerState.RUNNING,
@@ -276,6 +292,8 @@ class ForemanPolicy:
                 allowed=False,
                 reason=f"Reviewer must use codex provider, got {provider!r}.",
             )
+        self._state.verifier = None
+        self._state.verifier_verdict = ""
         self._state.reviewer = Worker(
             role=WorkerRole.REVIEWER,
             state=WorkerState.RUNNING,
@@ -288,6 +306,11 @@ class ForemanPolicy:
 
     def record_reviewer_verdict(self, verdict: str) -> PolicyResult:
         """Record PASS or FAIL from the Charlie/Codex reviewer."""
+        if self._state.reviewer is None:
+            return PolicyResult(
+                allowed=False,
+                reason="no reviewer was dispatched — a verdict cannot be recorded",
+            )
         if verdict not in ("PASS", "FAIL"):
             return PolicyResult(
                 allowed=False,
@@ -320,8 +343,15 @@ class ForemanPolicy:
             got = self._state.reviewer_verdict or "no verdict yet"
             return PolicyResult(
                 allowed=False,
+                reason=(f"Verifier runs only after adversarial review PASSes (reviewer: {got})."),
+            )
+        approved = self._state.reviewer.git_ref if self._state.reviewer else ""
+        if approved and git_ref != approved:
+            return PolicyResult(
+                allowed=False,
                 reason=(
-                    f"Verifier runs only after adversarial review PASSes (reviewer: {got})."
+                    f"Verifier SHA {git_ref} is not the SHA the reviewer approved "
+                    f"({approved}). Verifying a different revision proves nothing."
                 ),
             )
         verifier = self._state.verifier
@@ -347,8 +377,22 @@ class ForemanPolicy:
         check = self.can_dispatch_verifier(git_ref)
         if not check.allowed:
             return check
+        if not (session_id or "").strip():
+            return PolicyResult(
+                allowed=False,
+                reason="verifier session_id is required — a blank id cannot be audited",
+            )
+        if node != "charlie":
+            return PolicyResult(
+                allowed=False, reason=f"Verifier must run on charlie, got {node!r}."
+            )
+        if provider not in ("codex", "claude"):
+            return PolicyResult(
+                allowed=False,
+                reason=f"Verifier provider must be codex or claude, got {provider!r}.",
+            )
         reviewer = self._state.reviewer
-        if reviewer is not None and session_id and session_id == reviewer.session_id:
+        if reviewer is not None and session_id == reviewer.session_id:
             return PolicyResult(
                 allowed=False,
                 reason=(
@@ -368,6 +412,11 @@ class ForemanPolicy:
 
     def record_verifier_verdict(self, verdict: str) -> PolicyResult:
         """Record PASS or FAIL from the verifier. Separate from the reviewer's."""
+        if self._state.verifier is None:
+            return PolicyResult(
+                allowed=False,
+                reason="no verifier was dispatched — a verdict cannot be recorded",
+            )
         if verdict not in ("PASS", "FAIL"):
             return PolicyResult(
                 allowed=False,
@@ -474,10 +523,15 @@ class ForemanPolicy:
         ]
 
         verdict: str
+        head = self._state.head_sha or ""
+        approved = self._state.reviewer.git_ref if self._state.reviewer else ""
+        verified = self._state.verifier.git_ref if self._state.verifier else ""
+        sha_bound = bool(approved) and approved == head and (not verified or verified == head)
         if (
             self._state.reviewer_verdict == "PASS"
             and self._state.verifier_verdict != "FAIL"
-            and SHA_RE.match(self._state.head_sha or "")
+            and sha_bound
+            and SHA_RE.match(head)
             and self._state.pr_url
         ):
             verdict = "GO"
@@ -497,6 +551,13 @@ class ForemanPolicy:
                 )
             if self._state.verifier_verdict == "FAIL":
                 gates.insert(0, "Verifier verdict is 'FAIL' — acceptance checks did not pass.")
+            if self._state.reviewer_verdict == "PASS" and not sha_bound:
+                gates.insert(
+                    0,
+                    f"Approval is for {approved or 'no SHA'}"
+                    + (f" / verified {verified}" if verified else "")
+                    + f", but head is {head or 'unset'} — re-review the current revision.",
+                )
             if not SHA_RE.match(self._state.head_sha or ""):
                 gates.insert(0, "head_sha is not a valid 40-char SHA.")
             if not self._state.pr_url:
