@@ -98,16 +98,20 @@ class WorktreeProvisioner:
         Tries in order:
           1. Check presence locally
           2. If absent and commit is 40-hex SHA: fetch origin <commit>
-          3. If ref is given: fetch origin <ref>
-          4. Final fallback: fetch origin (all branches)
+          3. If ref is given: fetch origin <ref> (normalized to strip 'origin/' prefix)
+          4. Fail closed with typed ContractViolation
 
         Raises ContractViolation if commit remains unreachable after all fetch attempts.
         """
         # Check if commit already exists
-        check = self._run(
-            ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
-            timeout=15,
-        )
+        try:
+            check = self._run(
+                ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                timeout=15,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ContractViolation("base_commit fetch failed") from exc
+
         if check.returncode == 0:
             # Commit exists, no fetch needed
             return
@@ -117,25 +121,44 @@ class WorktreeProvisioner:
 
         # Attempt 1: If it's a full 40-hex SHA, GitHub serves reachable SHAs by id
         if len(commit) == 40 and all(c in "0123456789abcdef" for c in commit.lower()):
-            attempts.append(["git", "-C", str(self.repo), "fetch", "--quiet", "origin", commit])
-
-        # Attempt 2: If ref is given, fetch the ref
-        if ref and ref.strip():
             attempts.append(
-                ["git", "-C", str(self.repo), "fetch", "--quiet", "origin", ref.strip()]
+                ["git", "-C", str(self.repo), "fetch", "--quiet", "--no-tags", "origin", commit]
             )
 
-        # Attempt 3: Fallback to fetch all
-        attempts.append(["git", "-C", str(self.repo), "fetch", "--quiet", "origin"])
+        # Attempt 2: If ref is given, fetch the ref (normalized)
+        if ref and ref.strip():
+            normalized_ref = ref.strip().lstrip("origin/")  # Strip leading 'origin/'
+            attempts.append(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo),
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "origin",
+                    normalized_ref,
+                ]
+            )
+
+        # No fallback to fetch-all; fail closed instead
 
         for attempt_cmd in attempts:
-            result = self._run(attempt_cmd, timeout=120)
+            try:
+                result = self._run(attempt_cmd, timeout=120)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise ContractViolation("base_commit fetch failed") from exc
+
             if result.returncode == 0:
                 # Fetch succeeded, verify commit is now present
-                verify = self._run(
-                    ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
-                    timeout=15,
-                )
+                try:
+                    verify = self._run(
+                        ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                        timeout=15,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise ContractViolation("base_commit fetch failed") from exc
+
                 if verify.returncode == 0:
                     # Success!
                     return

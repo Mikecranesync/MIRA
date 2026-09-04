@@ -39,9 +39,9 @@ def git_repo_pair(tmp_path: Path):
     origin = tmp_path / "origin.git"
     origin.mkdir()
 
-    # Initialize bare repo
+    # Initialize bare repo with main as default branch (hermetic test)
     subprocess.run(
-        ["git", "init", "--bare"],
+        ["git", "init", "--bare", "-b", "main"],
         cwd=origin,
         env=env,
         check=True,
@@ -177,12 +177,11 @@ def test_worktree_fetch_unfetched_commit_red_before_fix(
     assert check_result.returncode != 0, "Commit should not exist in clone1 before fetch"
 
     # Now try to create a worktree with the unfetched commit
-    # With the fix, this should succeed because _ensure_commit() fetches it
+    # With the fix, this should succeed because _ensure_commit() fetches it by SHA
     path = prov.create(
         task_id="test-task",
         session_id="test-session",
         base_commit=unfetched_sha,
-        ref="feature-branch",
     )
 
     # Verify the worktree was created and is at the right commit
@@ -220,6 +219,7 @@ def test_worktree_no_fetch_for_present_commit(
     # Monkeypatch _run to track calls
     original_run = prov._run
     fetch_calls = []
+
     def tracked_run(argv, *, timeout):
         if "fetch" in argv:
             fetch_calls.append(argv)
@@ -311,15 +311,43 @@ def test_worktree_ref_fallback(
     )
     full_sha = result.stdout.strip()
 
-    # Create worktree using ref parameter (not the full SHA)
+    # Use an abbreviated SHA so the SHA fetch fails and ref fetch is required
+    abbreviated_sha = full_sha[:12]
+
+    # Track which fetches are called via a wrapper
+    fetch_calls = []
+
+    def track_run(argv, *, timeout):
+        if "fetch" in argv:
+            fetch_calls.append(argv.copy())
+        return subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+
+    original_run = prov._run
+    prov._run = track_run
+
+    # Create worktree using abbreviated SHA + ref parameter
+    # This forces the ref fetch to be used (SHA fetch will fail on abbreviated SHA)
     path = prov.create(
         task_id="test-task",
         session_id="test-session",
-        base_commit=full_sha,
+        base_commit=abbreviated_sha,
         ref="test-ref-branch",
     )
 
-    assert path.exists(), "Worktree should be created via ref"
+    prov._run = original_run
+
+    assert path.exists(), "Worktree should be created via ref fallback"
+
+    # Verify that ref fetch was actually called (not SHA fetch on abbreviated SHA)
+    ref_fetches = [c for c in fetch_calls if "test-ref-branch" in c]
+    assert len(ref_fetches) > 0, f"Ref fetch should be called, but got: {fetch_calls}"
 
     # Verify the worktree is at the right commit
     result = subprocess.run(
