@@ -37,9 +37,19 @@ export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown
     return (
       r.kind !== "machine_evidence" &&
       r.kind !== "visual_observation" &&
-      r.kind !== "safety_notice"
+      r.kind !== "safety_notice" &&
+      r.kind !== "identity_dispute"
     );
   });
+}
+
+/** 086 §3: does the persisted row carry the server's identity-dispute marker?
+ *  Presence-only, like `safetyNoticeEntry` — the asset ids are audit data. */
+export function hasIdentityDispute(evidence: unknown[] | undefined): boolean {
+  if (!Array.isArray(evidence)) return false;
+  return evidence.some(
+    (e) => typeof e === "object" && e !== null && (e as Record<string, unknown>).kind === "identity_dispute",
+  );
 }
 
 /**
@@ -94,6 +104,7 @@ function assistantParts(opts: {
   basisLabel?: string | null;
   followups?: string[];
   safetyTrigger?: string;
+  identityDisputed?: boolean;
   unknown?: unknown[];
   error?: "stopped" | "provider_failure";
 }): MessagePart[] {
@@ -115,6 +126,9 @@ function assistantParts(opts: {
     text: opts.text,
     knownCitationIds: citations.map((c) => c.citationId),
   });
+  // NOT success chrome: the dispute explains a withheld attribution, so it is
+  // shown on safety and stopped turns too — wherever the marker exists.
+  if (opts.identityDisputed) parts.push({ type: "identity_dispute" });
   for (const citation of citations) parts.push({ type: "source", citation });
   if (!safety) {
     for (const entry of opts.visual) parts.push({ type: "observation", entry });
@@ -157,6 +171,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
             // sticky. Leaving the two inconsistent is how a contract change
             // later becomes a silent safety regression.
             safetyTrigger: safetyNotice?.trigger,
+            identityDisputed: hasIdentityDispute(t.evidence),
             error: "stopped",
           }),
           lifecycle: "stopped",
@@ -177,6 +192,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
           visual: visualObservationEntries(t.evidence ?? []),
           basis: t.basis,
           safetyTrigger: safetyNotice?.trigger,
+          identityDisputed: hasIdentityDispute(t.evidence),
           unknown: unknownEvidenceEntries(t.evidence),
           ...(failed ? { error: "provider_failure" as const } : {}),
         }),
@@ -214,6 +230,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           // downgrade a LOTO refusal to a plain "Incomplete" answer, which is
           // exactly the misread this slice exists to prevent.
           safetyTrigger: a.safetyTrigger,
+          identityDisputed: a.identityDisputed === true,
           error: "provider_failure",
         }),
         lifecycle: "failed",
@@ -235,6 +252,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           // Same stickiness: stopping the stream after a safety frame keeps
           // the safety identity (partial text + "Stopped" + the banner).
           safetyTrigger: a.safetyTrigger,
+          identityDisputed: a.identityDisputed === true,
           error: "stopped",
         }),
         lifecycle: "stopped",
@@ -257,6 +275,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
         basisLabel: a.evidenceLabel || null,
         followups: a.status === "answered" ? a.followups : undefined,
         safetyTrigger: a.safetyTrigger,
+        identityDisputed: a.identityDisputed === true,
         unknown: a.unknownFrames,
         ...(failed ? { error: "provider_failure" as const } : {}),
       }),
@@ -329,11 +348,16 @@ export function comparableProjection(msg: AdapterMessage): {
    *  answer projects identically on every OTHER field. Presence only — the
    *  trigger phrase is observability, never rendered. */
   safetyNotice: boolean;
+  /** 086 §3: a withheld attribution is part of the parity contract — a
+   *  disputed turn that reloads as an ordinary general answer would otherwise
+   *  project identically on every other field. Presence only. */
+  identityDisputed: boolean;
 } {
   const status = msg.lifecycle === "stopped" ? "error" : msg.status;
   return {
     role: msg.role,
     safetyNotice: msg.parts.some((p) => p.type === "safety_notice"),
+    identityDisputed: msg.parts.some((p) => p.type === "identity_dispute"),
     text: msg.parts
       .filter((p) => p.type === "text")
       .map((p) => (p as { text: string }).text)

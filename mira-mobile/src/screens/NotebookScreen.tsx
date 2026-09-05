@@ -56,9 +56,10 @@ import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { ChatV2 } from "./ChatV2";
 import { SafetyNotice } from "./SafetyNotice";
+import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
 import { useChatV2Enabled } from "../lib/chat-ui-pref";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
@@ -748,6 +749,7 @@ export function NotebookScreen({
                       diverge if that contract ever changes. */}
                   {safety && <SafetyNotice />}
                   <AnswerMarkdown text={t.answerText!} citations={[]} />
+                  {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                   <div className="meta answer-stopped">Stopped</div>
                 </div>
               ) : (
@@ -759,6 +761,10 @@ export function NotebookScreen({
                   citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
+                {/* 086 §3: read from the persisted row, like `basis` and the
+                    safety marker — never inferred. Not success chrome, so it
+                    is not gated on `safety`. */}
+                {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
@@ -831,6 +837,7 @@ export function NotebookScreen({
                     onCitation={setViewCitation}
                   />
                 )}
+                {t.a.identityDisputed && <IdentityDisputeNotice />}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
                     last turn only — tapping one sends it as the next turn.
                     Never on a safety turn: "ask me more" is success chrome. */}

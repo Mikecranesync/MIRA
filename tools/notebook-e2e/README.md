@@ -105,15 +105,22 @@ one exception, and it exists for **test setup**, never for assertions. There is 
 technician into User A's tenant is the same move `mira-hub/scripts/provision-beta-gate.ts` makes:
 mirror/place a row directly. Every *assertion* in this scenario still comes from HTTP responses
 (chat frames, `GET` bodies) — `--db` is used exactly once, to run
-`UPDATE hub_users SET tenant_id = …, role = 'technician' WHERE email_lower
-= lower(…)`, mirroring what accepting a team invite does to that row.
+`UPDATE hub_users SET tenant_id = …, role = 'technician', status = 'approved' WHERE email_lower
+= lower(…)`. This is a direct placement, not invite acceptance: there is no self-service join
+endpoint, and the real invite path (`users.ts`) would refuse an account that already owns another
+workspace — the harness deliberately skips that check for a throwaway second account.
 
 Safety rules, enforced before any connection is opened:
 
 - **`MIRA_TEST_DB_CONFIRM=DISPOSABLE` must be set in the environment**, mirroring
   `mira-hub/scripts/setup-integration-db.mjs`'s `assertDisposable()`. Missing it is exit `2`.
-- **Any `--db` URL whose host or path contains `prod` or `prd` is refused**, exit `2`, before a
-  connection is attempted. Unlike `setup-integration-db.mjs`, a **staging**-shaped URL is deliberately
+- **The guard inspects the host node-postgres will actually connect to** (`pg-connection-string`'s
+  parse, not the URL authority) and refuses, exit `2`, before any HTTP request or connection:
+  a `host=`/`hostaddr=` query parameter; a URL with no explicit host or database (pg would fill
+  them from `PGHOST`/`PGDATABASE`); a host that is not loopback/RFC-1918 by exact rule — unless
+  `--db-remote-ok` is passed; a `--base` that is a production Hub (`app.factorylm.com`,
+  `factorylm.com`, trailing dot and case normalised); and any host/path containing `prod`, `prd`
+  or `production`. Unlike `setup-integration-db.mjs`, a **staging**-shaped URL is deliberately
   *not* refused here — a dev/staging DB is exactly what this scenario is for.
 - `pg` is resolved lazily out of `mira-hub/node_modules/pg` (mira-hub's own dependency — see the
   "resolving `pg`" note below); nothing new is installed anywhere else.
@@ -135,9 +142,11 @@ Safety rules, enforced before any connection is opened:
 1. **Trailing slashes are load-bearing.** The Hub 308-redirects slashless API paths; with
    `redirect: "manual"` you then parse the redirect body as JSON and get a syntax error nowhere near
    the real cause.
-2. **`sourceDocIds` is required** on the chat body. Omit it and the route returns
-   `422 no_sources_selected` — that check is the tenant/notebook ownership boundary evaluated *before*
-   retrieval, so it is a feature.
+2. **`sourceDocIds` is required** on the chat body. Omit it without `mode: "general"` and the route
+   returns `422 no_sources_selected`. That check is NOT an ownership boundary — it returns before
+   touching the database. Ownership of the notebook is proven separately, by a tenant-scoped
+   `getNotebook` lookup on every zero-source turn (a foreign or unknown id is a 404 with nothing
+   spent and nothing written) and by `validateChatSources` on grounded turns.
 3. **Notebook display names must be unique per tenant.** Creating one mints a `kg_entities` row keyed
    `(tenant, type, name)`; a duplicate surfaces as a 500 on `kg_entities_tenant_type_name_uq`, which
    reads like a server bug. The harness timestamps the name.

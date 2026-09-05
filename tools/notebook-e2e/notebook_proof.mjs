@@ -407,7 +407,9 @@ function isLocalDbHost(hostRaw) {
  *   3. the parsed host is local/private by exact rule (see isLocalDbHost) — a
  *      remote host is accepted ONLY with the explicit `--db-remote-ok` flag;
  *   4. never when `--base` is a production Hub host (trailing dot and case
- *      normalised), and never when the host/path contains prod/prd/production. */
+ *      normalised), and never when the host/path contains prod/prd/production;
+ *   5. host AND database are explicit in the URL — an omitted one would be
+ *      filled from PGHOST/PGDATABASE by pg itself, behind the guard's back. */
 function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
   const PRODUCTION_HUB_HOSTS = new Set(["app.factorylm.com", "factorylm.com", "www.factorylm.com"]);
   if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
@@ -434,6 +436,11 @@ function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
   }
   const parsed = loadPgConnectionStringParse()(urlText);
   const pgHost = String(parsed.host || "");
+  // node-postgres fills an OMITTED host/database from PGHOST/PGDATABASE — so a
+  // hostless URL could pass every host rule here and still connect to whatever
+  // the environment names. Both must be explicit in the URL, or it is refused.
+  if (!pgHost) fail(2, "Refusing --db: the URL names no host, so pg would fall back to $PGHOST. Name the disposable host explicitly.");
+  if (!parsed.database) fail(2, "Refusing --db: the URL names no database, so pg would fall back to $PGDATABASE. Name the disposable database explicitly.");
   const lower = `${pgHost} ${url.hostname} ${url.pathname} ${parsed.database || ""}`.toLowerCase();
   if (lower.includes("prod") || lower.includes("prd") || lower.includes("production")) {
     fail(2, `Refusing --db: host/path looks like production (${pgHost}${url.pathname}).`);

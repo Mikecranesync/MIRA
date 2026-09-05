@@ -360,3 +360,72 @@ describe("machine-specific claims need a confirmed, matching asset binding", () 
     expect(askedAsset).toBe(ASSET);
   });
 });
+
+describe("a zero-source SAFETY STOP is persisted like every other turn (asset snapshot, identity dispute)", () => {
+  const confirmedBinding = {
+    state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: FAULT_AT,
+  };
+  const SMOKE = "there is smoke coming from the drive panel";
+  function lastTurn() {
+    return (nbMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as {
+      equipmentEntityId?: string | null;
+      assetUnsPath?: string | null;
+      evidence: Record<string, unknown>[];
+    };
+  }
+
+  it("carries the CONFIRMED asset snapshot — a stop about a machine is a record about that machine", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
+    const res = await POST(req({ message: SMOKE, sourceDocIds: [] }), params);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    await frames(res);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
+    const turn = lastTurn();
+    expect(turn.equipmentEntityId).toBe(ASSET);
+    expect(turn.assetUnsPath).toBe(UNS);
+    expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+  });
+
+  it("with a MISMATCHED asset request: the dispute is persisted and the snapshot withheld — same as any other turn", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
+    const res = await POST(
+      req({ message: SMOKE, sourceDocIds: [], machineEvidence: { assetId: OTHER_ASSET, anchorAt: FAULT_AT } }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    await frames(res);
+    expect(historyMock.fetchMachineHistory).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    const turn = lastTurn();
+    expect(turn.equipmentEntityId ?? null).toBeNull();
+    expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+    expect(turn.evidence.find((e) => e.kind === "identity_dispute")).toMatchObject({
+      kind: "identity_dispute", requestedAssetId: OTHER_ASSET, boundAssetId: ASSET,
+    });
+  });
+
+  it("an UNRESOLVABLE binding never blocks a hazard report: the stop is served and persisted about no machine", async () => {
+    // A technician reporting smoke must not be answered with "re-select the
+    // machine" — the safety stop is evaluated before the uns_required refusal,
+    // on the grounded AND the zero-source path.
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "unresolvable", entityId: ASSET });
+    for (const body of [{ message: SMOKE, sourceDocIds: [DOC_A] }, { message: SMOKE, sourceDocIds: [] }]) {
+      nbMock.recordTurn.mockClear();
+      const res = await POST(req(body), params);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+      await frames(res);
+      expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
+      const turn = lastTurn();
+      expect(turn.equipmentEntityId ?? null).toBeNull();
+      expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+    }
+  });
+});

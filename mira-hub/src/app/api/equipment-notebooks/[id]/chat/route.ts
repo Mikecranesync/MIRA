@@ -502,21 +502,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // "Smoke is coming from the panel" in a notebook with nothing attached must
     // not be answered with a filing complaint. Ownership was proven by the
     // getNotebook check just above (086) — `no_sources_selected` itself proves
-    // nothing — so the stop is safe to serve and safe to persist here.
-    if (safetyTrigger && validated.error === "no_sources_selected") {
-      const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
-      await recordTurn(ctx.tenantId, notebookId, {
-        // 086: the owner is the authenticated technician (session), never the body.
-        ownerUserId: ctx.userId,
-        question: message,
-        answerStatus: "answered",
-        answerText: SAFETY_STOP,
-        enabledSourceDocIds: [],
-        evidence: [safetyEntry],
-        model: null,
-      });
-      return safetyStopResponse(safetyTrigger, []);
-    }
+    // nothing — so the stop is safe to serve. It is NOT served here: a stop
+    // persisted before the machine binding is resolved carried no asset
+    // snapshot and no identity dispute, unlike every other turn, so a reload
+    // could not say which machine the hazard was reported at (or that the
+    // client's asset claim was disputed). The zero-source stop falls through
+    // to the single post-resolution safety stop below.
+    //
     // A notebook with nothing attached is exactly the case the Universal
     // Technician Rule exists for: the technician is standing at a machine with
     // no manual loaded and still needs help.
@@ -527,8 +519,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if (general && validated.error === "no_sources_selected") {
-      // Ownership was proven above for every zero-source turn.
+    if ((general || safetyTrigger) && validated.error === "no_sources_selected") {
+      // Ownership was proven above for every zero-source turn; a safety stop
+      // needs neither sources nor general mode to be served.
     } else {
       const status =
         validated.error === "notebook_not_found"
@@ -548,27 +541,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
   const boundAsset: ResolvedAsset = await resolveBoundAsset(ctx.tenantId, notebookId);
-  if (boundAsset.state === "unresolvable") {
-    // Fail closed. Quietly answering as if unbound is the downgrade
-    // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
-    // would keep showing the last stored machine name while answering about
-    // nothing in particular.
-    //
-    // `error` is a sentence and `code` is the discriminator: mira-mobile renders
-    // `data.error` verbatim (client.ts:198-208), so returning only the token
-    // puts the literal string "uns_required" on the technician's phone.
-    return NextResponse.json(
-      {
-        error:
-          "This notebook points at equipment that is no longer available in your account. " +
-          "Re-select the machine before asking about it.",
-        code: "uns_required",
-        notebookId,
-        entityId: boundAsset.entityId,
-      },
-      { status: 422 },
-    );
-  }
   // Private conversations §3: a client-supplied asset id is a REQUEST, not
   // truth. Machine history / live evidence is served only for the notebook's
   // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
@@ -629,6 +601,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ...assetSnapshot,
     });
     return safetyStopResponse(safetyTrigger, docIds);
+  }
+  // Evaluated AFTER the safety stop, deliberately: a hazard report is never
+  // answered with "re-select the machine". The stop above persisted about no
+  // machine (state !== "resolved" → null snapshot), which is the honest record.
+  if (boundAsset.state === "unresolvable") {
+    // Fail closed. Quietly answering as if unbound is the downgrade
+    // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
+    // would keep showing the last stored machine name while answering about
+    // nothing in particular.
+    //
+    // `error` is a sentence and `code` is the discriminator: mira-mobile renders
+    // `data.error` verbatim (client.ts:198-208), so returning only the token
+    // puts the literal string "uns_required" on the technician's phone.
+    return NextResponse.json(
+      {
+        error:
+          "This notebook points at equipment that is no longer available in your account. " +
+          "Re-select the machine before asking about it.",
+        code: "uns_required",
+        notebookId,
+        entityId: boundAsset.entityId,
+      },
+      { status: 422 },
+    );
   }
 
   // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
