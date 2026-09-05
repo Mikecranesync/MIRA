@@ -1,6 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ComposerButton, MessageBubble, NodeChat, isEnterToSend, restoreComposer } from "./NodeChat";
+import {
+  ComposerButton,
+  MessageBubble,
+  NodeChat,
+  RetryChip,
+  composerAfterRetry,
+  failedAfterEdit,
+  isEnterToSend,
+  restoreComposer,
+  rollbackFailedExchange,
+  shouldShowRetry,
+} from "./NodeChat";
 
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
@@ -269,5 +280,106 @@ describe("NodeChat restoreComposer", () => {
 
   it("treats whitespace-only composer content as empty and restores the failed message", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
+  });
+});
+
+// FLEET-013: a real Retry button that re-posts the exact failed text via the
+// existing sendMessage() — completes the CMPS-2 contract FLEET-012 started.
+describe("NodeChat shouldShowRetry", () => {
+  it("shows the Retry chip after a failure while idle", () => {
+    expect(shouldShowRetry("What does fault F005 mean?", false)).toBe(true);
+  });
+
+  it("hides the Retry chip when there is no failed send", () => {
+    expect(shouldShowRetry(null, false)).toBe(false);
+  });
+
+  it("hides the Retry chip while a new attempt is streaming", () => {
+    expect(shouldShowRetry("What does fault F005 mean?", true)).toBe(false);
+  });
+
+  it("hides the Retry chip when both there is no failure and it is streaming", () => {
+    expect(shouldShowRetry(null, true)).toBe(false);
+  });
+});
+
+describe("NodeChat composerAfterRetry", () => {
+  it("clears the composer when it still shows exactly the failed text", () => {
+    expect(composerAfterRetry("What does fault F005 mean?", "What does fault F005 mean?")).toBe("");
+  });
+
+  it("leaves a manually-started different draft untouched", () => {
+    expect(composerAfterRetry("actually, a different question", "What does fault F005 mean?")).toBe(
+      "actually, a different question",
+    );
+  });
+});
+
+describe("NodeChat failedAfterEdit", () => {
+  it("withdraws the Retry offer once the composer no longer matches the failed text", () => {
+    expect(failedAfterEdit("What does fault F005 mean?", "something else")).toBe(null);
+  });
+
+  it("keeps the Retry offer while the composer still matches the failed text", () => {
+    expect(failedAfterEdit("What does fault F005 mean?", "What does fault F005 mean?")).toBe(
+      "What does fault F005 mean?",
+    );
+  });
+
+  it("is a no-op when there is no failed send to withdraw", () => {
+    expect(failedAfterEdit(null, "anything")).toBe(null);
+  });
+});
+
+describe("NodeChat RetryChip", () => {
+  it("renders the Retry affordance with its testid, icon, and label", () => {
+    const html = renderToStaticMarkup(<RetryChip onClick={() => {}} />);
+
+    expect(html).toContain('data-testid="retry-button"');
+    expect(html).toContain("Retry");
+    expect(html).toContain("<svg"); // RotateCcw icon
+  });
+});
+
+// FLEET-013 defect (found during the overnight prep of #3531): a failed send
+// used to pop only the empty assistant bubble, orphaning the user turn in the
+// transcript. Retry then appended a SECOND copy of the same question — a
+// duplicate user turn, and the same question twice in the API payload.
+// NotebookChat (the reference) rolls back the whole optimistic exchange.
+describe("NodeChat rollbackFailedExchange — a failed send leaves no orphan turn", () => {
+  const exchange = () => [
+    { id: "u0", role: "user", content: "earlier question" },
+    { id: "a0", role: "assistant", content: "earlier answer" },
+    { id: "u1", role: "user", content: "What does fault F005 mean?" },
+    { id: "a1", role: "assistant", content: "" },
+  ];
+
+  it("removes BOTH the user turn and the empty assistant bubble", () => {
+    expect(rollbackFailedExchange(exchange(), "u1", "a1")).toEqual([
+      { id: "u0", role: "user", content: "earlier question" },
+      { id: "a0", role: "assistant", content: "earlier answer" },
+    ]);
+  });
+
+  it("leaves earlier history untouched", () => {
+    const out = rollbackFailedExchange(exchange(), "u1", "a1");
+    expect(out.map((m) => m.id)).toEqual(["u0", "a0"]);
+  });
+
+  it("a Retry after rollback cannot produce a duplicate user turn", () => {
+    // failure rolls the exchange back...
+    const afterFailure = rollbackFailedExchange(exchange(), "u1", "a1");
+    // ...then Retry re-sends, appending the question exactly once.
+    const afterRetry = [
+      ...afterFailure,
+      { id: "u2", role: "user", content: "What does fault F005 mean?" },
+      { id: "a2", role: "assistant", content: "" },
+    ];
+    const asked = afterRetry.filter((m) => m.content === "What does fault F005 mean?");
+    expect(asked).toHaveLength(1);
+  });
+
+  it("is a no-op when the ids are not present", () => {
+    expect(rollbackFailedExchange(exchange(), "nope", "alsonope")).toHaveLength(4);
   });
 });

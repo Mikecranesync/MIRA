@@ -50,12 +50,65 @@ export function isEnterToSend(e: {
   return true;
 }
 
+/** A failed send rolls back the WHOLE optimistic exchange — the empty assistant
+ *  bubble AND the user turn that provoked it — so the question survives only in
+ *  the composer (restoreComposer) and a Retry cannot append a second copy of it.
+ *  Mirrors NotebookChat's `prev.filter(x => x.id !== aId && x.id !== userTurn.id)`;
+ *  a bare `pop()` removed only the assistant bubble and orphaned the user turn.
+ *  Exported for the unit test. */
+export function rollbackFailedExchange<T extends { id: string }>(
+  messages: T[],
+  userId: string,
+  assistantId: string,
+): T[] {
+  return messages.filter((m) => m.id !== userId && m.id !== assistantId);
+}
+
 /** After a failed send the technician's question goes back into the composer
  *  — unless they already started typing something else. Local copy of
  *  Notebook chat's CMPS-2 fix (notebook-chat-utils.ts); not imported to avoid
  *  a cross-surface coupling for a 2-line pure function. */
 export function restoreComposer(current: string, failedMessage: string): string {
   return current.trim() ? current : failedMessage;
+}
+
+/** CMPS-2 (FLEET-013): the Retry chip shows only after a real send failure,
+ *  and only while a new attempt isn't already streaming. Local copy of
+ *  Notebook chat's failed/busy visibility rule. */
+export function shouldShowRetry(failed: string | null, streaming: boolean): boolean {
+  return failed !== null && !streaming;
+}
+
+/** On Retry, clear the composer only if it still shows exactly the failed
+ *  text — if the technician started a different draft, leave it alone.
+ *  Mirrors Notebook's `cur === failed.message ? "" : cur`. */
+export function composerAfterRetry(current: string, failedText: string): string {
+  return current === failedText ? "" : current;
+}
+
+/** Editing the composer away from the failed text withdraws the Retry offer
+ *  — it no longer matches what's in the box. A manual edit is never clobbered:
+ *  this only ever clears `failed`, never rewrites the composer value. */
+export function failedAfterEdit(failed: string | null, nextValue: string): string | null {
+  return failed !== null && nextValue !== failed ? null : failed;
+}
+
+/** Same visual pattern as Notebook chat's retry-chip. Exported for the
+ *  static render test (AssetChat.test.tsx). */
+export function RetryChip({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors hover:opacity-80"
+        style={{ border: "1px solid var(--border)", background: "var(--surface-1)", color: "var(--foreground)" }}
+        data-testid="retry-button"
+      >
+        <RotateCcw size={12} aria-hidden /> Retry
+      </button>
+    </div>
+  );
 }
 
 // Exported for the static render test (AssetChat.test.tsx).
@@ -193,6 +246,9 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // CMPS-2: the exact text of the last failed send. Retry re-posts it as-is
+  // through the same sendMessage() the Send button uses — no duplicated logic.
+  const [failed, setFailed] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -216,6 +272,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     abortRef.current?.abort();
     setMessages([]);
     setError(null);
+    setFailed(null);
     setStreaming(false);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
@@ -230,6 +287,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     if (!text.trim() || streaming) return;
 
     setError(null);
+    setFailed(null);
     const userMsg: ChatMessage = { id: uid(), role: "user", content: text.trim() };
     const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "" };
 
@@ -357,14 +415,17 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           ? `Chat unavailable (${statusCode}). Try again or refresh the page.`
           : "Connection lost. Check your network and try again.",
       );
-      setMessages((prev) => {
-        const next = [...prev];
-        next.pop(); // remove empty assistant bubble
-        return next;
-      });
+      // Roll back the whole optimistic exchange (assistant bubble AND the user
+      // turn). Leaving the user turn behind orphaned it in the transcript and
+      // let Retry append a duplicate of the same question.
+      setMessages((prev) => rollbackFailedExchange(prev, userMsg.id, assistantMsg.id));
       // Restore the failed question to the composer (CMPS-2) unless the
       // technician already started typing something new.
       setInput((current) => restoreComposer(current, text));
+      // Offer Retry with the identical text (CMPS-2/FLEET-013) — clicking it
+      // re-posts the exact same failed request without the technician having
+      // to notice the pre-filled composer or hit Send again.
+      setFailed(text);
     } finally {
       if (isSafety) {
         setMessages((prev) => {
@@ -380,6 +441,15 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
       abortRef.current = null;
     }
   }, [assetId, messages, streaming]);
+
+  // Re-posts the exact failed text through the same sendMessage() the Send
+  // button uses — never a duplicated send path.
+  const retry = useCallback(() => {
+    if (!failed || streaming) return;
+    const retryText = failed;
+    setInput((cur) => composerAfterRetry(cur, retryText));
+    void sendMessage(retryText);
+  }, [failed, streaming, sendMessage]);
 
   function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -465,6 +535,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           </div>
         )}
 
+        {shouldShowRetry(failed, streaming) && <RetryChip onClick={retry} />}
+
         <div ref={bottomRef} />
       </div>
 
@@ -502,7 +574,11 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setInput(val);
+            setFailed((f) => failedAfterEdit(f, val));
+          }}
           onKeyDown={handleKeyDown}
           disabled={streaming}
           placeholder={streaming ? "MIRA is thinking…" : "Ask about this asset…"}
