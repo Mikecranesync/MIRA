@@ -2,10 +2,16 @@
  * Stripe integration — Checkout sessions, billing portal, webhook verification.
  *
  * Env vars (Doppler):
- *   STRIPE_SECRET_KEY    — Stripe API secret
- *   STRIPE_WEBHOOK_SECRET — Webhook endpoint signing secret (whsec_...)
- *   STRIPE_PRICE_ID      — Price ID for $97/mo beta subscription
- *   STRIPE_DRIVE_COMMANDER_PRICE_ID — Price ID for Drive Commander Pro ($29/mo)
+ *   STRIPE_SECRET_KEY                — Stripe API secret
+ *   STRIPE_WEBHOOK_SECRET            — Webhook endpoint signing secret (whsec_...)
+ *   STRIPE_PRICE_ID                  — Price ID for $97/mo beta subscription (CMMS/Hub)
+ *   STRIPE_DRIVE_COMMANDER_PRICE_ID  — Price ID for Drive Commander Pro ($197/yr annual,
+ *                                      Doppler key factorylm/prd:STRIPE_DRIVE_COMMANDER_PRICE_ID)
+ *
+ * Drive Commander Pro pricing: $197/yr annual is the lead SKU (locked by Mike 2026-09-05).
+ * The Stripe price must be configured as a recurring/annual interval in the Stripe dashboard
+ * before setting the env var. Leave STRIPE_DRIVE_COMMANDER_PRICE_ID unset in dev to exercise
+ * the graceful fallback to /pricing?product=drive-commander-pro.
  */
 
 import Stripe from "stripe";
@@ -143,13 +149,53 @@ export async function createDriveCommanderCheckoutSession(): Promise<string> {
     subscription_data: {
       metadata: { product: "drive-commander-pro" },
     },
-    success_url: `${base}/drive-commander/siemens-g120?checkout=success`,
+    // {CHECKOUT_SESSION_ID} is a Stripe template literal — filled in by Stripe on redirect.
+    // The server uses session_id to verify the purchase and issue a Pro entitlement cookie.
+    success_url: `${base}/drive-commander/siemens-g120?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/drive-commander/siemens-g120?checkout=cancelled`,
     allow_promotion_codes: true,
   });
 
   if (!session.url) throw new Error("Stripe session created without URL");
   return session.url;
+}
+
+/**
+ * Verify a Drive Commander Pro checkout session and return the customer email.
+ * Used on the success redirect (?session_id=cs_xxx) to issue a Pro entitlement
+ * cookie without requiring a separate sign-up step.
+ *
+ * Returns null if the session is not a completed drive-commander-pro purchase.
+ * Fail-closed: any error returns null (no Pro granted on uncertainty).
+ */
+export async function verifyDCProSession(
+  sessionId: string,
+): Promise<{ email: string; customerId: string; subscriptionId: string } | null> {
+  if (!sessionId || !sessionId.startsWith("cs_")) return null;
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["customer"],
+    });
+    if (
+      session.payment_status !== "paid" ||
+      session.metadata?.product !== "drive-commander-pro"
+    ) {
+      return null;
+    }
+    const email = session.customer_details?.email ?? "";
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : (session.customer as { id: string } | null)?.id ?? "";
+    const subscriptionId =
+      typeof session.subscription === "string" ? session.subscription : "";
+    if (!email) return null;
+    return { email, customerId, subscriptionId };
+  } catch (err) {
+    console.error("[verifyDCProSession] Stripe lookup failed:", err);
+    return null;
+  }
 }
 
 /**

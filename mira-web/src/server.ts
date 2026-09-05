@@ -95,6 +95,7 @@ import {
   createDriveCommanderCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
+  verifyDCProSession,
 } from "./lib/stripe.js";
 import {
   activateHubUserByEmail,
@@ -577,12 +578,56 @@ app.get("/feature/:slug", (c) => {
 // Content is served from a vendored, committed pack (src/data/drive-packs/*.json);
 // every answer is cited from the pack — no generic AI. No auth; free tier only.
 // ---------------------------------------------------------------------------
-app.get("/drive-commander/:model", (c) => {
+app.get("/drive-commander/:model", async (c) => {
   const pack = getPack(c.req.param("model"));
   if (!pack) return c.notFound();
-  // Stripe checkout returns here with ?checkout=success|cancelled.
+
+  const checkout = c.req.query("checkout");
+  const sessionId = c.req.query("session_id") ?? "";
+  let isPro = false;
+
+  // 1. Verify a fresh Stripe checkout session to grant a Pro entitlement cookie.
+  if (checkout === "success" && sessionId) {
+    const verified = await verifyDCProSession(sessionId).catch(() => null);
+    if (verified) {
+      const dcTenant = await findTenantByEmail(verified.email).catch(() => null);
+      if (dcTenant?.tier === "drive_commander_pro") {
+        isPro = true;
+        // Issue a JWT entitlement cookie so returning visits don't re-verify.
+        const tok = await signToken({
+          tenantId: dcTenant.id,
+          email: dcTenant.email,
+          tier: "drive_commander_pro",
+          atlasCompanyId: 0,
+          atlasUserId: 0,
+          atlasRole: "USER",
+        });
+        c.header("Set-Cookie", buildSessionCookie(tok));
+      }
+    }
+  }
+
+  // 2. Accept existing session JWT (cookie) for returning Pro subscribers.
+  if (!isPro) {
+    const raw = c.req.header("cookie") ?? "";
+    const cookies = Object.fromEntries(
+      raw.split(";").map((s) => {
+        const [k, ...v] = s.trim().split("=");
+        return [k ?? "", v.join("=")];
+      }),
+    );
+    const sessionCookie = cookies["mira_session"] ?? "";
+    if (sessionCookie) {
+      const { verifyToken } = await import("./lib/auth.js");
+      const payload = await verifyToken(sessionCookie).catch(() => null);
+      if (payload?.tier === "drive_commander_pro") {
+        isPro = true;
+      }
+    }
+  }
+
   return c.html(
-    renderDriveLandingPage(pack, { checkout: c.req.query("checkout") }),
+    renderDriveLandingPage(pack, { checkout, isPro }),
   );
 });
 
@@ -1164,7 +1209,7 @@ app.post("/api/stripe/webhook", async (c) => {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      // Drive Commander Pro (individual $29/mo) — record the purchase and STOP.
+      // Drive Commander Pro (individual $197/yr annual, lead SKU locked 2026-09-05) — record the purchase and STOP.
       // This is NOT a CMMS team tenant: no tier activation, no Atlas, no Hub
       // provisioning. Entitlement delivery is tracked separately.
       if (session.metadata?.product === "drive-commander-pro") {
