@@ -91,6 +91,44 @@ class WorktreeProvisioner:
             return self._run(["test", "-d", str(path)], timeout=15).returncode == 0
         return Path(path).is_dir()
 
+    def _commit_present(self, commit: str) -> bool:
+        """True if `commit` is a commit object already in the node's local repo."""
+        return (
+            self._run(
+                ["git", "-C", str(self.repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+                timeout=15,
+            ).returncode
+            == 0
+        )
+
+    def _ensure_commit(self, commit: str) -> None:
+        """Make `commit` available locally, fetching from origin if it's missing.
+
+        The #3566 blocker: launch_worker passes a base_commit that is a fresh tip
+        of an origin branch (e.g. main just advanced), but the node's local repo
+        has never fetched it, so `git worktree add … <commit>` fails with
+        `fatal: bad object` and the create is reported as a generic failure — with
+        NO Claude/Codex session ever started. Fetch-if-missing closes that: it runs
+        on the SAME machine as the worktree (local, or ON the node over SSH via
+        self._run), so on-node workers stop failing every time main moves.
+        """
+        if self._commit_present(commit):
+            return
+        # Try the specific SHA first (GitHub allows reachable-SHA fetch); if the
+        # server refuses a bare SHA, fall back to a full origin fetch which pulls
+        # every branch tip and will include a reachable commit.
+        self._run(
+            ["git", "-C", str(self.repo), "fetch", "--no-tags", "origin", commit], timeout=120
+        )
+        if self._commit_present(commit):
+            return
+        self._run(["git", "-C", str(self.repo), "fetch", "--no-tags", "origin"], timeout=180)
+        if not self._commit_present(commit):
+            raise ContractViolation(
+                f"base_commit {commit!r} not found in the repo even after fetching origin "
+                "(check the commit exists on the remote and this node can reach it)"
+            )
+
     # ── public API ───────────────────────────────────────────────────────────
     def create(self, *, task_id: str, session_id: str, base_commit: str) -> Path:
         if not self._isdir(self.repo):
@@ -98,6 +136,9 @@ class WorktreeProvisioner:
         commit = (base_commit or "").strip()
         if not commit:
             raise ContractViolation("base_commit is required to create an isolated worktree")
+        # Make the base commit available locally (fetch-if-missing) so a fresh
+        # origin SHA doesn't fail as `bad object` before any worker starts (#3566).
+        self._ensure_commit(commit)
         # Ensure the parent dir exists on the target machine.
         mkdir = self._run(["mkdir", "-p", str(self.parent)], timeout=15)
         if mkdir.returncode != 0:
@@ -121,9 +162,14 @@ class WorktreeProvisioner:
         try:
             completed = self._run(cmd, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ContractViolation("failed to create isolated worktree") from exc
+            raise ContractViolation(f"failed to create isolated worktree: {exc}") from exc
         if completed.returncode != 0 or not self._isdir(path):
-            raise ContractViolation("failed to create isolated worktree")
+            # Surface the REAL git error instead of a generic message — the #3566
+            # investigation was slowed by the swallowed `fatal: bad object`.
+            detail = (completed.stderr or completed.stdout or "").strip()[:300]
+            raise ContractViolation(
+                f"failed to create isolated worktree (git rc={completed.returncode}): {detail}"
+            )
         return path
 
     def maybe_write_proof(
