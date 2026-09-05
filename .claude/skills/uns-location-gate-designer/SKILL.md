@@ -5,22 +5,27 @@ description: Use when designing, modifying, or reviewing the technician flow whe
 
 # UNS Location-Gate Designer
 
+> **Legacy alias:** `mira-uns-architecture` owns the current gate. Under
+> [`docs/PRODUCT_CONSTITUTION.md`](../../../docs/PRODUCT_CONSTITUTION.md), confirmation is required
+> before asset-specific, historical, or live claims—not before labelled L0 general maintenance
+> help. The older broader language below is superseded accordingly.
+
 ## The non-negotiable rule
 
-**MIRA must not begin troubleshooting until it has resolved the technician's work context inside the Unified Namespace or asset namespace AND the technician has confirmed.**
+**MIRA must not make asset-specific, historical, or live claims until it has resolved the technician's work context inside the Unified Namespace or asset namespace and the technician has confirmed.**
 
-A code path that emits troubleshooting advice before the gate is a **bug**. The audit command `/mira-run-hallucination-audit` exists to find these.
+A code path that emits those claims before the gate is a **bug**. Clearly labelled L0 general maintenance help does not require the gate.
 
 ## Required flow (8 steps)
 
-1. **Receive technician message** at the Slack adapter (`mira-bots/slack/bot.py`).
+1. **Receive technician message** through a FactoryLM customer surface or retained adapter.
 2. **Extract candidates** — asset, line, area, machine, component, symptom, fault_code — from message text + thread context + user profile.
 3. **Search the UNS / asset namespace** via `uns_resolver.resolve_uns_path()` per `docs/specs/uns-message-resolver-spec.md`. Backed by `kg_entities` (NeonDB) and `mira-crawler/ingest/uns.py` builders.
 4. **Identify candidate contexts** — top K (default 3) ranked tuples of `(site, area, line, asset, component, fault, evidence)`.
 5. **Gather evidence** — for the top candidate, attach: message hint, work-order history hit, PLC tag match, manual reference, prior session context, technician hint.
-6. **Send the confirmation message** to Slack — see template below.
+6. **Send the confirmation message** through the active client — see the legacy Slack template below.
 7. **Wait** for confirmation, correction, or "different asset". Implement a timeout + re-prompt cycle.
-8. **Only after confirmation, enter troubleshooting mode.** FSM transition: `awaiting_context` → `troubleshooting`.
+8. **Only after confirmation, enter asset-specific troubleshooting mode.** FSM transition: `awaiting_context` → `troubleshooting`.
 
 ## Confirmation message template
 
@@ -55,7 +60,7 @@ Slack rendering uses block-kit; the engine returns a structured payload that the
 
 ## Edge cases to handle
 
-- **No UNS match at all** → don't fabricate. Ask the technician for asset/line/component context.
+- **No UNS match at all** → don't fabricate. Ask for asset/line/component before specific claims, or offer clearly labelled L0 general help.
 - **Multiple equally-likely candidates** → present top 2 side-by-side and ask the technician to pick.
 - **Technician corrects the candidate** → record the correction as evidence for future inference, transition to `troubleshooting` with the corrected context.
 - **Technician changes asset mid-thread** → reset the gate, don't carry context across asset changes (`_clear_diagnostic_carryover` per memory).
@@ -63,7 +68,7 @@ Slack rendering uses block-kit; the engine returns a structured payload that the
 
 ## Anti-patterns (these are bugs)
 
-- Returning troubleshooting advice on the first message without confirmation.
+- Returning asset-specific, historical, or live troubleshooting claims without confirmation.
 - Defaulting to "common asset" or "Line 1" or any other guess.
 - Marking confidence high without a UNS match.
 - Skipping the gate when the technician uses imperative language ("just tell me how to fix the conveyor").
@@ -74,7 +79,7 @@ Slack rendering uses block-kit; the engine returns a structured payload that the
 1. Locate the gate enforcement code (likely in `mira-bots/shared/engine.py` FSM `awaiting_context` state).
 2. Verify each of the 8 steps is implemented.
 3. Verify the confirmation message contains all required fields.
-4. Verify the FSM cannot reach the troubleshooting state without passing through the gate.
+4. Verify the FSM cannot emit asset-specific, historical, or live claims without passing through the gate, while labelled L0 general help remains available.
 5. If gaps exist, propose minimal patches with file:line.
 6. Add or update golden cases in `tests/golden_factorylm.csv` covering each edge case above.
 

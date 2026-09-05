@@ -1,7 +1,13 @@
 # MIRA — Rules & Constraints
 **Last Updated:** 2026-05-05
 
-Every rule that any agent or human contributor must follow, consolidated from `CLAUDE.md`, `.claude/rules/*`, and the cluster's 7 Laws. Anything in conflict with this file is wrong unless explicitly amended here in the same change.
+> **Status:** Historical consolidation snapshot. Current authority is `AGENTS.md`,
+> `docs/PRODUCT_CONSTITUTION.md`, and `docs/ENGINEERING_GUARDRAILS.md`. Do not restore a provider
+> order, expired plan, secret-storage mechanism, or operational state from this snapshot; verify
+> current accepted decisions, source, and environment configuration.
+
+This file records the rules consolidated on 2026-05-05. It remains useful only where consistent
+with the current authority stack.
 
 ## Hard product constraints (CLAUDE.md §4)
 1. **Licenses:** Apache 2.0 or MIT only. GPL upstream allowed for opaque images (`mira-cmms` Atlas) where no code is imported.

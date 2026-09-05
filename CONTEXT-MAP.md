@@ -1,6 +1,8 @@
 # CONTEXT-MAP
 
 MIRA is a multi-context monorepo. This file points engineering skills at the per-module contexts.
+It is a navigation aid, not an authority resolver: read `AGENTS.md`,
+`docs/PRODUCT_CONSTITUTION.md`, and `docs/ENGINEERING_GUARDRAILS.md` first.
 
 | Context | Module | Seed doc (until CONTEXT.md grows lazily) | Role |
 |---|---|---|---|
@@ -19,6 +21,8 @@ System-wide language: `CONTEXT.md` (cross-cutting glossary; grown by `/grill-wit
 System-wide ADRs: `docs/adr/` (0001–0016).
 System-wide specs: `docs/specs/`.
 System-wide plans: `docs/plans/`.
-Primary doctrine: `docs/THEORY_OF_OPERATIONS.md`.
+Canonical product direction: `docs/PRODUCT_CONSTITUTION.md`.
+Canonical protected engineering rules: `docs/ENGINEERING_GUARDRAILS.md`.
+Historical operational context and vocabulary: `docs/THEORY_OF_OPERATIONS.md`.
 
 Per-context ADRs may grow under `<module>/docs/adr/` later; none today.

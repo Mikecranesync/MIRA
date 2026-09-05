@@ -1,10 +1,16 @@
 # FactoryLM — Full Build Specification (PRD for an AI Coding Agent)
 
+> **Authority note (2026-09-05):** This remains an implementation-rich design source, not current
+> product authority. [`docs/PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) supersedes its
+> web-only framing, strict source-only answer rule, and any implication that setup or a manual is
+> required before L0 general maintenance help. Reuse and consolidate existing mobile/web code;
+> this document does not authorize an end-to-end rebuild.
+
 > **What this document is.** A complete, self-contained blueprint for building **FactoryLM**, an AI-grounded knowledge workspace for industrial equipment. FactoryLM is a functional clone of Google's **NotebookLM** (notebook.google.com), re-purposed from a general research tool into a purpose-built assistant for factory equipment manuals, sensor/telemetry data, and technical troubleshooting.
 >
 > **Who this is for.** An AI coding agent (e.g., Claude Code / Cursor) building the app end-to-end. Every section is written to be actionable: concrete screens, components, data models, API endpoints, a design-token system, and a phased build plan. Where a decision is left open, a **recommended default** is given so the agent can proceed without blocking.
 >
-> **Source of truth.** The UI/UX, feature set, and design tokens described here were captured directly from the live NotebookLM product (August 2026) and adapted. The design-token values are real, extracted from the running app, then rebranded for FactoryLM.
+> **Design source.** The UI/UX, feature set, and design tokens described here were captured directly from the live NotebookLM product (August 2026) and adapted. The design-token values are real, extracted from the running app, then rebranded for FactoryLM. Product decisions remain governed by the Product Constitution.
 
 ---
 
@@ -472,4 +478,3 @@ Worth your input before/**during** build:
 ---
 
 *End of specification. Companion files: `factorylm-design-tokens.css` (drop-in CSS variables) and the captured reference screenshots.*
-

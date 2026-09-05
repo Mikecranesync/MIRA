@@ -1,10 +1,18 @@
 # MIRA — Theory of Operations
 
-**Status:** ACTIVE — primary operational doctrine
+> **Authority notice:** This is historical operational context. `docs/PRODUCT_CONSTITUTION.md`
+> governs current product direction, and `docs/ENGINEERING_GUARDRAILS.md` governs protected rules.
+> In particular, its unified mobile/web product, Universal Technician L0, and asset-specific
+> confirmation boundary supersede this document's Slack-primary and confirm-before-all-
+> troubleshooting language. Retain useful architecture evidence, but verify it against the current
+> tree before implementation.
+
+**Status:** Historical operational reference — subordinate to the canonical authority stack
 **Authored:** 2026-05-15
 **Owner:** Mike Harper
 
-This is **the primary doc for "what MIRA is, how it works, and why."** Read it first. Everything else in the repo is either implementation of, or evidence for, what is written here.
+This document records an earlier operating model. It is implementation evidence, not current
+product authority.
 
 ---
 
@@ -102,15 +110,23 @@ Dependencies flow downward. Front doors call the engine; engine calls memory + e
 
 ## The Seven Invariants
 
-These are non-negotiable. A PR that breaks one of them is a bug, not a feature.
+These were the original operating invariants. The Product Constitution and Engineering Guardrails
+now define their current meaning; a conflicting historical formulation is superseded.
 
 1. **MIRA is not a generic chatbot.** It answers grounded maintenance questions. Refuse drift.
-2. **Slack is the front door.** Other adapters (Web Hub, Telegram, monday.com) follow Slack's contract — same engine, same gate, same grounding. The Web Hub is a parallel adapter for visual workflows, not a replacement.
+2. **Historical surface model — superseded:** Slack was treated as the front door. The current
+   Product Constitution makes mobile and web the primary customer product and Slack/Foreman the
+   internal command center. Retained adapters still share applicable evidence and safety contracts.
 3. **UNS / MQTT is the live context layer.** Plant context comes from the namespace + relay + Ignition streams. New live sources integrate here; they do not bypass.
 4. **Knowledge graph is memory.** Every edge has a status (`proposed` / `verified` / `rejected` / `deprecated`). LLM-generated edges enter as `proposed`. Promotion to `verified` is a human action.
-5. **Customer docs and work orders are evidence.** Manuals, drawings, work-order history, and technician confirmations are what makes answers groundable. Never ungrounded.
-6. **All troubleshooting is grounded.** No answer without at least one cited source. The citation_compliance hook exists for this reason.
-7. **Confirmation over guessing.** The UNS Location-Confirmation Gate must resolve the technician's work context (site / area / line / machine / asset / component / fault) before any troubleshooting answer. A confirmation question is cheaper than a wrong answer in a plant.
+5. **Customer docs and work orders are evidence.** Manuals, drawings, work-order history, and
+   technician confirmations support grounded answers. General reasoning must remain explicitly
+   labelled and must not masquerade as that evidence.
+6. **Asset-specific troubleshooting is grounded.** Asset-specific, historical, and live claims
+   require admitted evidence. Universal Technician L0 may provide clearly labelled general
+   maintenance reasoning without pretending it has a cited source.
+7. **Confirmation over guessing.** Resolve and confirm the tenant-scoped asset context before
+   asset-specific, historical, or live claims. A general question does not require asset identity.
 
 ## The Levels-Unlock Model (AI Readiness)
 
@@ -235,10 +251,12 @@ Status badges follow NORTH_STAR.md convention: ✅ built · ⚠️ partial · �
 
 ## Document Hierarchy
 
-This doc is at the top. Specs live under it. ADRs and plans live under them.
+This section records the document hierarchy used when this operating model was authored. The
+current hierarchy is root `AGENTS.md` → Product Constitution and Engineering Guardrails →
+applicable accepted ADRs/contracts. The tree below is historical.
 
 ```
-docs/THEORY_OF_OPERATIONS.md            ◄── (you are here) primary doctrine
+docs/THEORY_OF_OPERATIONS.md            ◄── historical operational model
 ├── docs/specs/maintenance-namespace-builder-spec.md
 │   └── the technical contract for the namespace-builder product surface
 ├── docs/specs/mira-component-intelligence-architecture.md
@@ -257,7 +275,7 @@ docs/THEORY_OF_OPERATIONS.md            ◄── (you are here) primary doctrin
     └── phased execution roadmap
 ```
 
-Commercial layer (still authoritative as written, but interpreted through this doc):
+Historical commercial layer (use only where consistent with the Product Constitution):
 - `NORTH_STAR.md` (repo root) — the commercial flywheel + Three Offers.
 - `STRATEGY.md` (repo root) — ICP, GTM motion, competitive table.
 - `docs/specs/dt-scorecard-spec.md` — the manual self-rating scorecard (distinct from the automated L0–L6 model).

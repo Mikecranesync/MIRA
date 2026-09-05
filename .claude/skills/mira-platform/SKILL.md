@@ -27,6 +27,12 @@ related-skills:
 # mira-platform
 
 > **Status:** Draft (Phase 6 of the Fuuz-adaptation initiative). Replaces the role of `mira-architecture-guardian/` once Phase A of the implementation roadmap completes. Until then, both can coexist; this skill is the more comprehensive target shape.
+>
+> **Authority:** This skill is subordinate to
+> [`docs/PRODUCT_CONSTITUTION.md`](../../../docs/PRODUCT_CONSTITUTION.md) and
+> [`docs/ENGINEERING_GUARDRAILS.md`](../../../docs/ENGINEERING_GUARDRAILS.md). Those documents
+> supersede remembered provider orders, Slack-first product positioning, all-answers-grounded
+> rules, and confirmation gates applied to L0 general maintenance help.
 
 ## 1. When to invoke
 
@@ -35,7 +41,7 @@ Invoke as a **co-skill** whenever any of the following hold:
 - A feature request, PR, or refactor could expand MIRA's surface area beyond the maintenance-intelligence wedge.
 - A PR touches `mira-bots/`, `mira-pipeline/`, `mira-mcp/`, `mira-crawler/`, `mira-cmms/`, `mira-web/`, `mira-bridge/`, `mira-relay/`, or `mira-hub/`.
 - Any task involves provider selection, secrets, environment boundaries, the screenshot rule, or the commit convention.
-- A reply needs to be checked against MIRA's North Star ("Slack = front door, UNS/MQTT = nervous system, KG + component templates = memory, customer docs + work orders = evidence").
+- A reply needs to be checked against the unified mobile/web FactoryLM product and shared, server-governed MIRA contract.
 
 ### Do NOT trigger as the primary skill for
 
@@ -53,9 +59,11 @@ Authoritative MIRA files. Every constraint below traces to one of these:
 
 | File | What it covers |
 |---|---|
+| `docs/PRODUCT_CONSTITUTION.md` | Canonical product identity, surfaces, L0, and product boundaries |
+| `docs/ENGINEERING_GUARDRAILS.md` | Canonical safety, tenant, evidence, git, secrets, and deployment rules |
 | `CLAUDE.md` | Build state, env vars, container map, hard constraints |
 | `.claude/CLAUDE.md` | Product rules, North Star, UNS gate, grounded troubleshooting |
-| `docs/THEORY_OF_OPERATIONS.md` | Primary doctrine — what MIRA is and is not |
+| `docs/THEORY_OF_OPERATIONS.md` | Historical operational context |
 | `docs/ARCHITECTURE.md` | Layer map + dependency rules |
 | `docs/environments.md` | Dev / Staging / Prod doctrine |
 | `NORTH_STAR.md` | Commercial flywheel |
@@ -70,8 +78,8 @@ If a constraint here doesn't trace to one of these files, that's a bug in this s
 
 ```
         ┌─────────────────────────────────────────┐
-        │ Slack technician (front door)            │
-        │ (Telegram / Teams optional, same engine) │
+        │ FactoryLM mobile + web/Hub               │
+        │ (retained adapters use same contracts)   │
         └────────────────┬─────────────────────────┘
                          │
         ┌────────────────▼─────────────────────────┐
@@ -80,7 +88,7 @@ If a constraint here doesn't trace to one of these files, that's a bug in this s
         │  • UNS resolver (uns_resolver.py)        │
         │  • Confirmation gate                     │
         │  • Grounding + citation compliance       │
-        │  • Inference cascade (Groq→Cerebras→Gem) │
+        │  • Server-owned inference routing        │
         └────────────────┬─────────────────────────┘
                          │
    ┌─────────────────────┼──────────────────────────┐
@@ -96,14 +104,14 @@ Lines that cross these layers do so through the engine. New front doors must con
 
 ### 4.1 Product wedge
 
-- **PLT-001** `[FATAL]` MIRA is not a generic chatbot. Replies that are not grounded in plant context, manuals, work orders, or component templates must be rerouted to "I don't have evidence for that yet."
-- **PLT-002** `[FATAL]` Slack is the front door. Adding a new front door (web chat, voice, email, etc.) must preserve the Slack contract: same engine, same gate, same grounding. See `.claude/CLAUDE.md` "North Star architecture".
+- **PLT-001** `[FATAL]` MIRA is maintenance intelligence, not an unrestricted chatbot. Universal Technician L0 may answer general maintenance questions without an asset or manual when it labels the answer as general and does not imply customer, machine, live, historical, or OEM evidence.
+- **PLT-002** `[FATAL]` FactoryLM mobile and web are the primary customer surfaces and must share account, tenant, conversations, history, intelligence, evidence, tools, and safety behavior. Slack/Foreman is internal orchestration; every retained adapter consumes the applicable shared server contract.
 - **PLT-003** `[FATAL]` Never replace SCADA or CMMS. MIRA augments them; it never becomes them. Cross-check with `mira-saas-scope-guard` before approving any feature that looks SCADA-adjacent.
 - **PLT-004** `[FATAL]` Never expose arbitrary PLC writes through MIRA. PLC reads via `mira-relay`/`mira-connect` (when shipped) are read-only by default; write paths require a separate, audited interface and explicit human approval.
 
 ### 4.2 Inference + provider cascade
 
-- **PLT-010** `[FATAL]` Never reintroduce Anthropic as an LLM provider. Removed PR #610 (verified by memory). Provider cascade is **Groq → Cerebras → Gemini**.
+- **PLT-010** `[FATAL]` This skill does not define or restore a provider allowlist or cascade from memory. Inspect accepted security decisions and current runtime configuration; changing provider policy requires an explicit scoped mission.
 - **PLT-011** `[WARNING]` Always go through `InferenceRouter.complete()` (`mira-bots/shared/inference/router.py`). Default behavior includes PII sanitization (IP/MAC/SN). Setting `sanitize=False` requires a justified comment in the PR.
 - **PLT-012** `[STYLE]` Single-provider direct calls are a code smell. If you find one in the codebase, file an issue or fix it in the same PR.
 
@@ -131,8 +139,8 @@ See `references/environment-doctrine.md` for the full table.
 
 ### 4.6 Grounding contract
 
-- **PLT-050** `[FATAL]` MIRA must not begin troubleshooting before the UNS gate confirms. See `mira-uns-architecture` and `.claude/CLAUDE.md` "non-negotiable UNS location-confirmation gate".
-- **PLT-051** `[WARNING]` Every claim cites at least one of: UNS / asset namespace, MQTT / live tag data, PLC tag map, customer manuals, wiring diagrams, work-order history, verified KG relationships, technician confirmation, admin-approved component profile.
+- **PLT-050** `[FATAL]` Confirm tenant-scoped asset identity before asset-specific, historical, or live claims. The gate does not block clearly labelled L0 general maintenance help.
+- **PLT-051** `[WARNING]` Grounded claims cite admitted evidence such as UNS / asset namespace, MQTT / live tag data, PLC tag map, customer manuals, wiring diagrams, work-order history, verified KG relationships, technician confirmation, or an admin-approved component profile. L0 general reasoning must be labelled general rather than carrying a fabricated citation.
 - **PLT-052** `[WARNING]` Feature changes that can lower groundedness scores must call that out in the PR. See `mira-bots/shared/citation_compliance.py` and `mira-bots/shared/benchmark_db.py`.
 
 ### 4.7 Knowledge graph
@@ -161,8 +169,8 @@ See `references/environment-doctrine.md` for the full table.
 ## 5. Workflow — reviewing a feature proposal
 
 1. **Locate the wedge.** Does this request align with the maintenance-intelligence wedge? If unclear → activate `mira-saas-scope-guard` and reroute.
-2. **Locate the front door.** Does this preserve Slack as the front door? If a new front door is proposed, does it route through `mira-bots/shared/engine.py`?
-3. **Locate the evidence.** Does this surface grounded answers (UNS, KG, manuals, WO history) or does it produce un-grounded chat? If un-grounded, refuse.
+2. **Locate the customer seam.** Do mobile and web use the same server-governed conversation, intelligence, tenant, evidence, and safety contracts? Do retained adapters consume those contracts rather than define them?
+3. **Locate the evidence state.** Are general answers labelled general, and are grounded claims backed by admitted citations or provenance? Refuse only when the requested claim exceeds the available evidence or safety boundary.
 4. **Locate the safety surface.** Could this surface advice on energized equipment, LOTO, confined spaces? If yes → activate `mira-industrial-safety`.
 5. **Locate the environment.** Does this touch prod NeonDB, the VPS, the production bot, or the KG `verified` set without staging gate? If yes → refuse or require explicit human override.
 6. **Locate the abstractions.** Does this add LangChain/TensorFlow/n8n or a wrapper over the LLM call? If yes → refuse.
@@ -172,7 +180,7 @@ See `references/environment-doctrine.md` for the full table.
 
 | Error / symptom | Likely cause | Fix |
 |---|---|---|
-| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Gemini cascade (PLT-010) |
+| Provider configuration differs from this skill's remembered order | This skill is stale or the runtime changed | Do not restore a remembered cascade; inspect accepted security decisions and current runtime configuration (PLT-010) |
 | Prod NeonDB write from a feature branch | `prod-guard.sh` bypassed via `MIRA_ALLOW_PROD=1` | Revert the write; rerun against staging |
 | Engine PR merged without smoke test | `smoke-test.yml` skipped | Run smoke against `factorylm.com` + `app.factorylm.com`; rollback if fails |
 | Grounding score drop after merge | A change weakened evidence requirements | Surface in PR, revert if not justified by a feature change |
@@ -184,11 +192,11 @@ See `references/environment-doctrine.md` for the full table.
 Before declaring a feature proposal aligned with `mira-platform`, confirm all of:
 
 - [ ] Aligned with the maintenance-intelligence wedge (or explicitly out-of-scope and routed to `mira-saas-scope-guard`).
-- [ ] Slack front door preserved (or new adapter routes through `shared/engine.py`).
-- [ ] Provider cascade preserved (Groq → Cerebras → Gemini; no Anthropic).
+- [ ] Unified mobile/web customer contract preserved; retained adapters do not create another brain.
+- [ ] Provider policy verified from current accepted security decisions and runtime configuration; no remembered cascade restored.
 - [ ] Environment boundaries respected (no prod psql, no direct VPS docker compose, no feature-branch traffic to `@FactoryLM_Diagnose`).
 - [ ] Secrets via Doppler.
-- [ ] UNS gate preserved (or explicitly evolved through `mira-uns-architecture`).
+- [ ] Asset-identity gate preserved for asset-specific, historical, and live claims without blocking labelled L0 general help.
 - [ ] Safety keywords still trigger STOP+escalate (`mira-industrial-safety` consulted if applicable).
 - [ ] KG `verified` state still requires admin promotion.
 - [ ] No LangChain / TensorFlow / n8n / generic LLM-abstraction framework introduced.

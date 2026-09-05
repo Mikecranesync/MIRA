@@ -1,7 +1,11 @@
 # MIRA — Architecture Context
 **Last Updated:** 2026-05-05
 
-This file is the **session-loadable** view of the system. For canonical layered domain rules see `docs/ARCHITECTURE.md`. For container topology in mermaid see `docs/architecture/c4-containers.md`. For per-module contracts see `docs/specs/SPEC_INDEX.md`.
+> **Status:** Historical implementation snapshot. It does not define current product surfaces,
+> provider policy/order, deployment state, or authority. Read `AGENTS.md`, the Product Constitution,
+> and Engineering Guardrails, then verify current source and runtime evidence.
+
+This file is the 2026-05-05 session-loadable view of the system. For canonical layered domain rules see `docs/ARCHITECTURE.md`. For container topology in mermaid see `docs/architecture/c4-containers.md`. For per-module contracts see `docs/specs/SPEC_INDEX.md`.
 
 ## Layer map (dependencies flow downward only)
 ```

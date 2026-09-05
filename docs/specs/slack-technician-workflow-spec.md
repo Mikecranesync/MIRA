@@ -1,17 +1,24 @@
-# Slack-First Technician Workflow Specification
+# Slack Technician Workflow Specification (Historical Channel Contract)
 
-**Status:** Authoritative product spec
+**Status:** Historical Slack-channel design; not current product authority
 **Owner:** Mike Harper
 **Updated:** 2026-05-14
-**Related rule:** `.claude/rules/uns-confirmation-gate.md` (hard rule)
+**Current authority:** [`docs/PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) and
+[`docs/ENGINEERING_GUARDRAILS.md`](../ENGINEERING_GUARDRAILS.md)
+
+This document preserves useful mechanics for a retained Slack adapter. Its Slack-first positioning
+and any requirement to confirm an asset before L0 general help are superseded. Slack/Foreman is the
+internal orchestration command center; FactoryLM mobile and web are the primary customer product.
 
 ---
 
 ## 0. One-Line Summary
 
-> **Slack is the front door. MIRA is the translator. UNS is the live factory language.**
+> **Historical framing:** Slack was treated as the front door; this is no longer product doctrine.
 
-MIRA is a **Slack-first, natural-language input surface** for industrial maintenance. Technicians work in Slack — talking, photographing, asking, flagging. MIRA listens, resolves ambiguous human input into the customer's UNS (Unified Namespace), confirms context, then troubleshoots, monitors, and remembers.
+Where the Slack adapter is retained, it consumes the same server-governed MIRA contracts as the
+FactoryLM customer product. The workflow below describes that channel's legacy interaction design;
+it does not establish a separate brain or customer-product priority.
 
 ---
 
@@ -362,7 +369,7 @@ MIRA explicitly tells the technician what to do, not what it will do:
 
 ---
 
-## 8. Slack as Interface AND Ingestion Pipeline
+## 8. Historical Slack Interface and Ingestion Pipeline
 
 Slack is not just chat. Every Slack interaction is an ingestion event.
 
@@ -378,13 +385,15 @@ Slack is not just chat. Every Slack interaction is an ingestion event.
 | `/mira note ...` slash command | Free-form note attached to session |
 | Channel topic mentioning asset | Channel-asset binding proposal |
 
-### 8.2 Slack is the front door
+### 8.2 Superseded front-door framing
 
-Mike's framing — to be preserved verbatim in onboarding docs:
+The historical onboarding framing was:
 
 > **"Slack is the front door. MIRA is the translator. UNS is the live factory language."**
 
-A technician should never have to leave Slack to do their job with MIRA. Photos, voice memos (transcribed), PDFs, "is this the right part?" — all flow through Slack and out into the graph.
+Do not reuse this as current onboarding copy. Under the Product Constitution, equivalent customer
+work belongs in the unified FactoryLM mobile/web product; a retained Slack adapter may still feed
+the same server-owned ingestion and conversation contracts.
 
 ---
 
@@ -505,12 +514,13 @@ Out of scope for MVP (defer):
 
 ---
 
-## 12. Slogans (Preserve Verbatim)
+## 12. Historical slogans
 
-These go in product copy, onboarding, and internal docs:
+These are retained as provenance, not current product-copy instructions:
 
-- **"Slack is the front door. MIRA is the translator. UNS is the live factory language."**
-- **"No confirmed namespace context, no troubleshooting."**
+- **Superseded:** "Slack is the front door. MIRA is the translator. UNS is the live factory language."
+- **Narrowed:** "No confirmed namespace context, no troubleshooting" applies only to asset-specific,
+  historical, or live claims; labelled L0 general help remains available.
 - **"The LLM proposes. The graph remembers. The human verifies. MIRA gets smarter."**
 
 ---

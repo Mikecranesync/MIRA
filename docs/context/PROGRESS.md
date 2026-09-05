@@ -1,11 +1,15 @@
 # MIRA — Progress Log
 **Last Updated:** 2026-05-05
 
-This is the file that **updates every session**. Top of the file is current state; below the divider is an append-only log written by the stop hook (`.claude/hooks/stop.sh`). Keep the top section short — if it grows past one screen, prune it into a section below the divider.
+> **Status:** Historical progress snapshot. It is not current priority, branch, provider,
+> deployment, or product authority. Read `AGENTS.md` and verify current git/PR/runtime evidence.
+> The stop hook now writes local state to `docs/context/PROGRESS.local.md`.
+
+The content below records the repository's 2026-05 state and is retained for provenance.
 
 ---
 
-## Current state (top section — edit in place)
+## Historical state at the snapshot
 
 ### Phase
 **90-day MVP** (locked window: **2026-04-19 → 2026-07-19**).
