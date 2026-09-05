@@ -4,7 +4,10 @@ How the engineering skills should consume MIRA's domain documentation when explo
 
 ## Before exploring, read these
 
-- **`docs/THEORY_OF_OPERATIONS.md`** — MIRA's primary doctrine (what it is, how it works, why). This is the project glossary equivalent until a real `CONTEXT.md` is grown lazily.
+- **`AGENTS.md`** — root resolver and precedence rules.
+- **`docs/PRODUCT_CONSTITUTION.md`** — canonical durable product direction.
+- **`docs/ENGINEERING_GUARDRAILS.md`** — canonical safety, evidence, tenant, git, secrets, and deployment constraints.
+- **`docs/THEORY_OF_OPERATIONS.md`** — historical operational context and vocabulary where consistent with the canonical authorities above.
 - **`CONTEXT-MAP.md`** at the repo root — points at MIRA's per-module contexts (mira-bots, mira-core, mira-hub, etc.).
 - **`docs/adr/`** — 16 system-wide ADRs (0001–0016). Read ones that touch the area you're about to work in.
 - **Per-module `CLAUDE.md`** — each module dir (`mira-bots/`, `mira-core/`, `mira-hub/`, `mira-cmms/`, `mira-mcp/`, `mira-pipeline/`, `mira-web/`, `mira-sidecar/`, `mira-bridge/`) carries its own deep context. These are the seed "CONTEXT.md per context" until lazy per-module CONTEXT.md files emerge via `/grill-with-docs`.
@@ -20,7 +23,9 @@ If any per-module `CONTEXT.md` doesn't exist yet, proceed silently — `/grill-w
 ├── CONTEXT-MAP.md                       ← lists per-module contexts
 ├── CLAUDE.md                            ← root build-state + repo map
 ├── docs/
-│   ├── THEORY_OF_OPERATIONS.md          ← primary doctrine (glossary seed)
+│   ├── PRODUCT_CONSTITUTION.md           ← canonical product direction
+│   ├── ENGINEERING_GUARDRAILS.md         ← canonical engineering constraints
+│   ├── THEORY_OF_OPERATIONS.md           ← historical operational context
 │   ├── adr/                             ← 16 system-wide decisions
 │   ├── specs/                           ← product-surface contracts
 │   └── plans/                           ← phased execution
@@ -38,15 +43,18 @@ If any per-module `CONTEXT.md` doesn't exist yet, proceed silently — `/grill-w
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (issue title, refactor proposal, hypothesis, test name), use MIRA terminology as defined in `THEORY_OF_OPERATIONS.md` and `.claude/rules/uns-compliance.md` + `.claude/rules/security-boundaries.md`.
+When your output names a domain concept (issue title, refactor proposal, hypothesis, test name), use
+MIRA terminology consistent with `docs/PRODUCT_CONSTITUTION.md`,
+`docs/ENGINEERING_GUARDRAILS.md`, `THEORY_OF_OPERATIONS.md`, and the applicable `.claude/rules/`.
 
 Examples of correct MIRA vocabulary:
 - "UNS path" not "namespace string"
 - "fault code" not "error code"
 - "asset" / "component" / "instance" — distinct concepts; don't conflate
 - "proposed relationship" vs "verified relationship" — never collapse the distinction
-- "UNS location confirmation gate" — the non-negotiable pre-troubleshooting checkpoint
-- "Slack-first" — the product surface, not "chatbot"
+- "UNS location confirmation gate" — required before asset-specific, historical, or live claims
+- "FactoryLM mobile and web" — the primary customer surfaces of one product
+- "Slack/Foreman" — the internal orchestration command center, not the customer-product authority
 
 If the concept you need isn't in `THEORY_OF_OPERATIONS.md` yet, that's a signal — either you're inventing language MIRA doesn't use (reconsider), or there's a real gap (note it for `/grill-with-docs`).
 
@@ -62,6 +70,8 @@ Especially watch for conflicts with:
 - ADR-0013 (UNS namespace builder schema canonicalization)
 - ADR-0016 (mira-bridge → FlowFuse)
 
-## Marketplace objective lock
+## Historical marketplace objective
 
-Per `~/.claude/CLAUDE.md` (global) and root `CLAUDE.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.
+The former monday.com marketplace lock ended 2026-07-19 and is not current product authority. Keep
+its plans as history. Scope decisions now follow `docs/PRODUCT_CONSTITUTION.md` plus the user's
+explicit mission; preserve useful ideas in `docs/ideation/` rather than reviving an expired lock.

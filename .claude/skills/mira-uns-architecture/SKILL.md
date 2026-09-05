@@ -25,6 +25,10 @@ related-skills:
 # mira-uns-architecture
 
 > **Status:** Draft (Phase 6 of the Fuuz-adaptation initiative). Subsumes the role of `uns-location-gate-designer/`. Until the alias is wired (Phase B of the roadmap), both may coexist; this one is the broader target.
+>
+> **Authority:** [`docs/PRODUCT_CONSTITUTION.md`](../../../docs/PRODUCT_CONSTITUTION.md) limits this
+> gate to asset-specific, historical, or live claims. Universal Technician L0 general maintenance
+> help does not require an asset, manual, or UNS confirmation.
 
 ## 1. When to invoke
 
@@ -60,9 +64,9 @@ Invoke for any task that:
 
 ## 3. The non-negotiable rule
 
-**MIRA must not begin troubleshooting until it has resolved the technician's work context inside the UNS AND the technician has confirmed.**
+**Before making asset-specific, historical, or live claims, MIRA must resolve the technician's work context inside the UNS and the technician must confirm it.**
 
-A code path that emits troubleshooting advice before the gate is a **bug**. `/mira-run-hallucination-audit` exists to find these.
+A code path that emits those claims before the gate is a **bug**. Clearly labelled L0 general maintenance reasoning is not a bypass and does not enter asset-specific troubleshooting.
 
 ## 4. Constraints
 
@@ -83,7 +87,7 @@ A code path that emits troubleshooting advice before the gate is a **bug**. `/mi
 
 ### 4.3 The location gate
 
-- **UNS-020** `[FATAL]` The FSM cannot reach the `troubleshooting` state without passing through the gate. New front doors (Teams, email, voice, web chat) must invoke the gate; they cannot bypass to direct LLM completion.
+- **UNS-020** `[FATAL]` The FSM cannot enter asset-specific troubleshooting or emit historical/live claims without passing through the gate. Customer surfaces and retained adapters must use the shared server contract; labelled L0 general help may proceed without asset confirmation.
 - **UNS-021** `[FATAL]` Never auto-confirm context based on a thumbs-up emoji reaction or a single-character reply. Require text confirmation or an explicit button click.
 - **UNS-022** `[FATAL]` Never default to "common asset", "Line 1", or any other guess. When no UNS match exists, ask for context; do not fabricate.
 - **UNS-023** `[WARNING]` When confidence is `low` (only message-text hint, no UNS match), ask the technician for context rather than presenting a candidate.
@@ -100,18 +104,18 @@ A code path that emits troubleshooting advice before the gate is a **bug**. `/mi
 - **UNS-040** `[WARNING]` MQTT topic mapping to MIRA's UNS must respect ISA-95 hierarchy and translate via `mira-relay` / `mira-crawler/ingest/uns.py` builders — not via free-form `topic.replace("/", ".")` shortcuts.
 - **UNS-041** `[STYLE]` Sparkplug B `spBv1.0/group_id/MESSAGE_TYPE/edge_node_id/device_id` topic segments translate to ISA-95 levels by convention; document the mapping in code comments at each translation site.
 
-## 5. Workflow — the gate, in detail
+## 5. Workflow — the asset-specific gate, in detail
 
 When implementing or reviewing the gate, walk these steps in order:
 
-1. **Receive technician message** at the front-door adapter (Slack: `mira-bots/slack/bot.py`).
+1. **Receive technician message** through a FactoryLM customer surface or retained adapter.
 2. **Extract candidates** — asset, line, area, machine, component, symptom, fault_code — from message text + thread context + user profile. All extraction lives in `uns_resolver.py`; do not duplicate.
 3. **Search the UNS** via `uns_resolver.resolve_uns_path()`. For multi-candidate use `resolve_uns_path_multi()`.
 4. **Identify candidates** — top K (default 3) `(site, area, line, asset, component, fault, evidence)` tuples.
 5. **Gather evidence** for the top candidate: message hint, work-order history hit, PLC tag match, manual reference, prior session context, technician profile hint.
-6. **Send the confirmation message** to Slack. The structured payload contains site / area / line / machine / asset / component / fault / evidence list / confidence band / confirm-buttons.
+6. **Send the confirmation message** through the active client. The structured payload contains site / area / line / machine / asset / component / fault / evidence list / confidence band / confirm-buttons.
 7. **Wait** for confirmation, correction, or "different asset". Implement timeout + re-prompt cycle.
-8. **Only after confirmation, transition** FSM `awaiting_context` → `troubleshooting`.
+8. **Only after confirmation, transition** FSM `awaiting_context` → asset-specific `troubleshooting`.
 
 ### Confirmation message shape
 
@@ -136,20 +140,20 @@ Confirm before I troubleshoot.
 [ ✅ Yes ]   [ ✏️ Different asset ]   [ ❌ Wrong, let me clarify ]
 ```
 
-Slack rendering uses block-kit; the engine returns a structured payload that the adapter renders. See `mira-maintenance-workflow/references/slack-message-templates.md` for the canonical block-kit JSON.
+Each client renders the server-owned structured payload using device-appropriate controls. The retained Slack adapter may use block-kit; that rendering does not define the customer-product contract.
 
 ## 6. Edge cases
 
-- **No UNS match at all** → don't fabricate. Ask for asset/line/component (UNS-022, UNS-023).
+- **No UNS match at all** → don't fabricate. Ask for asset/line/component before specific claims, or offer clearly labelled L0 general help (UNS-022, UNS-023).
 - **Multiple equally-likely candidates** → present top 2 side-by-side and ask the technician to pick.
 - **Technician corrects the candidate** → record the correction as evidence for future inference; transition to `troubleshooting` with the corrected context.
 - **Technician changes asset mid-thread** → reset the gate (UNS-025).
 - **Quick repeat fault on same asset** → prior-session context is evidence, but still confirm.
-- **Imperative language ("just tell me how to fix the conveyor")** → still gate. The gate is cheap; the bug is expensive.
+- **Imperative asset-specific language ("just tell me how to fix the conveyor")** → still gate before claims about that conveyor; general safe guidance may be labelled L0.
 
 ## 7. Anti-patterns (these are bugs)
 
-- Returning troubleshooting advice on the first message without confirmation (UNS-020).
+- Returning asset-specific, historical, or live troubleshooting claims without confirmation (UNS-020).
 - Defaulting to a guess (UNS-022).
 - Marking confidence `high` without a UNS match (UNS-024).
 - Skipping the gate when the technician uses imperative language.
@@ -180,7 +184,7 @@ Before declaring a UNS-touching change complete, verify all of:
 - [ ] Resolver extraction happens once per turn; downstream consumers read `state["uns_context"]`.
 - [ ] Confidence reported in bands, not floats.
 - [ ] Offline mode produces a useful result (DB optional).
-- [ ] The FSM cannot reach `troubleshooting` without passing the gate.
+- [ ] The FSM cannot emit asset-specific, historical, or live claims without passing the gate; labelled L0 remains available.
 - [ ] The confirmation message contains site / area / line / machine / asset / component / fault + evidence + confidence + buttons.
 - [ ] Auto-confirmation on emoji reactions blocked.
 - [ ] `_clear_diagnostic_carryover` wired on asset-change.

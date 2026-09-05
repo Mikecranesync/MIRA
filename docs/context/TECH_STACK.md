@@ -1,7 +1,12 @@
 # MIRA — Tech Stack
 **Last Updated:** 2026-05-05
 
-Source of truth for "what we use." Anything not on this list either doesn't exist in this repo or needs a deliberate decision (and probably an ADR) to introduce. Hard constraints from `CLAUDE.md` are restated where relevant.
+> **Status:** Historical implementation snapshot, not standing authority. Read `AGENTS.md` and
+> `docs/ENGINEERING_GUARDRAILS.md`; verify current source and accepted decisions before changing a
+> provider, dependency, runtime, database, service, or deployment.
+
+This is the 2026-05-05 record of what the repository used. It must not be used to restore a dated
+provider order or infer that a capability is still active.
 
 ## Languages & runtimes
 | Layer | Choice | Notes |
@@ -37,7 +42,8 @@ Source of truth for "what we use." Anything not on this list either doesn't exis
 | ChromaDB | Legacy in `mira-sidecar` (deprecated, ADR-0008) |
 
 ## LLMs & inference
-- **Cloud cascade (default):** Groq → Cerebras → Gemini (OpenAI-compat). Set via `INFERENCE_BACKEND=cloud`.
+- **Cloud cascade at this snapshot:** Groq → Cerebras → Gemini (OpenAI-compat). Do not restore this
+  order from this file; verify current accepted policy and runtime configuration.
 - **Local fallback:** Open WebUI → Ollama → `qwen2.5vl:7b`. `INFERENCE_BACKEND=local`.
 - **Vision:** Gemini native; Groq via `GROQ_VISION_MODEL`; local via qwen2.5vl.
 - **Embeddings:** `nomic-embed-text-v1.5` (768-d) for text; `nomic-embed-vision-v1.5` for image.

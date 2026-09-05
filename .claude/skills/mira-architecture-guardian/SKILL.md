@@ -1,26 +1,32 @@
 ---
 name: mira-architecture-guardian
-description: Use whenever a feature request, refactor proposal, or PR could expand MIRA outside its product wedge or break the grounded-by-default contract. Keeps Claude aligned with the North Star: Slack = front door, UNS/MQTT = nervous system, KG + component templates = memory, customer docs + work orders = evidence.
+description: Use when a feature request, refactor, or PR could break the unified mobile/web product, shared server intelligence, safety, tenant, or evidence contracts. Product direction comes from docs/PRODUCT_CONSTITUTION.md and engineering constraints from docs/ENGINEERING_GUARDRAILS.md.
 ---
 
 # MIRA Architecture Guardian
 
+> **Authority:** This legacy skill is subordinate to
+> [`docs/PRODUCT_CONSTITUTION.md`](../../../docs/PRODUCT_CONSTITUTION.md) and
+> [`docs/ENGINEERING_GUARDRAILS.md`](../../../docs/ENGINEERING_GUARDRAILS.md). Its former Slack-first,
+> all-answers-grounded, and confirm-before-any-troubleshooting rules are superseded where they
+> conflict with Universal Technician L0 or the unified mobile/web product.
+
 ## When to invoke
 
 - Any new feature, refactor, or scope change touching `mira-bots/`, `mira-pipeline/`, `mira-mcp/`, `mira-crawler/`, `mira-cmms/`, or `mira-web/`.
-- Any PR that adds a new front door (web chat, REST endpoint, voice, etc.) — verify it preserves the Slack-first contract.
+- Any PR that changes a customer surface — verify mobile and web retain one server-governed MIRA contract.
 - Any commit that touches the FSM, the engine, or the response generator — verify grounding remains intact.
 - Any time a request sounds like "make MIRA do X" where X is generic.
 
 ## Architecture invariants
 
-1. **MIRA is not a generic AI chatbot.** It answers grounded maintenance questions. If a request would produce un-grounded chitchat, push back.
-2. **Slack is the front door.** Other adapters (Telegram, email, gchat, reddit) follow Slack's contract — same engine, same gate, same grounding. Slack is not optional.
+1. **MIRA is a maintenance intelligence, not an unrestricted chatbot.** Universal Technician L0 may provide clearly labelled general maintenance reasoning without an asset or manual.
+2. **FactoryLM mobile and web are the primary customer surfaces.** They share the same server-owned intelligence, history, tools, evidence, tenant, and safety contracts. Slack/Foreman is internal orchestration; retained adapters do not define the customer contract.
 3. **UNS / MQTT is the live context layer.** Plant context comes from `mira-crawler/ingest/uns.py` + the `mira-relay/` + Ignition tag streams. New context sources must integrate here, not bypass.
 4. **Component templates + knowledge graph are memory.** Reusable knowledge lives in `kg_entities` + `kg_relationships`. Per-tenant per-instance specifics extend the templates.
-5. **Customer docs and work orders are evidence.** Ingestion (manuals, drawings, work-order history) is what makes answers groundable. Never ungrounded.
-6. **All troubleshooting is grounded.** No answer without at least one cited source (UNS / docs / PLC tag / work order / KG / technician confirmation / admin-approved profile).
-7. **Prefer asking for confirmation over guessing.** A confirmation question is cheaper than a wrong answer in a plant.
+5. **Customer docs and work orders are evidence.** Asset-specific, historical, and live claims require admitted, tenant-authorized evidence.
+6. **Evidence state is explicit.** L0 general reasoning is labelled general; grounded claims carry inspectable citations or provenance.
+7. **Confirm identity rather than guessing.** Confirm tenant-scoped asset identity before asset-specific, historical, or live claims—not before a general maintenance question.
 
 ## Watch for feature creep
 
@@ -35,7 +41,7 @@ Push back when a request smells like:
 
 ## What to do when invoked
 
-1. Re-read `.claude/CLAUDE.md` (product rules) and the relevant module CLAUDE.md (build state).
+1. Read `AGENTS.md`, `docs/PRODUCT_CONSTITUTION.md`, `docs/ENGINEERING_GUARDRAILS.md`, and the relevant module instructions.
 2. Identify which invariant the change might affect.
 3. If the change preserves invariants → approve, suggest where to put code, point at conventions.
 4. If the change risks an invariant → state which invariant + why + propose a smaller/safer scope.
@@ -49,7 +55,9 @@ Push back when a request smells like:
 
 ## Cross-references
 
-- `.claude/CLAUDE.md` — product rules
+- `docs/PRODUCT_CONSTITUTION.md` — canonical product direction
+- `docs/ENGINEERING_GUARDRAILS.md` — canonical engineering constraints
+- `.claude/CLAUDE.md` — compatibility entrypoint
 - `.claude/skills/mira-saas-scope-guard/SKILL.md` — scope classifier
 - `.claude/skills/uns-location-gate-designer/SKILL.md` — gate flow
 - `.claude/skills/slack-technician-ux-writer/SKILL.md` — UX contract

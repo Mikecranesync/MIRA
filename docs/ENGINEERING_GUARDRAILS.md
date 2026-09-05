@@ -122,8 +122,10 @@ documentation, cleanup, incident, “autonomous,” or “finish” request does
 
 ## 7. Secrets and environments
 
-- Secrets live in Doppler and never in committed `.env` files, source, prompts, logs, screenshots,
-  fixtures, or documentation.
+- Doppler is the source of truth for runtime secrets. Approved CI/deployment workflows may consume
+  least-privilege copies or references through GitHub environment/repository secrets; those are
+  controlled bridges, not alternate developer storage. Never put secret values in committed
+  `.env` files, source, prompts, logs, screenshots, fixtures, or documentation.
 - Use environment-specific configuration: `factorylm/dev` for development, `factorylm/stg` for
   staging, and `factorylm/prd` for production. Never copy or export production values into a dev or
   test shell.

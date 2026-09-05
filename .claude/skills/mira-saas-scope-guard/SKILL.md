@@ -7,7 +7,14 @@ description: Use whenever a feature request, customer ask, or PR proposes expand
 
 Prevent feature creep. Keep the product sellable as a focused industrial-maintenance-intelligence SaaS.
 
-The product wedge is **a Slack-first maintenance copilot that grounds answers in real factory context**. Anything outside that needs strong justification.
+> **Authority:** [`docs/PRODUCT_CONSTITUTION.md`](../../../docs/PRODUCT_CONSTITUTION.md) defines the
+> product wedge and surfaces; [`docs/ENGINEERING_GUARDRAILS.md`](../../../docs/ENGINEERING_GUARDRAILS.md)
+> defines protected constraints. This skill may narrow a proposal but may not restore Slack-first
+> positioning or treat an asset/manual as a prerequisite for Universal Technician L0.
+
+The product wedge is **one FactoryLM technician product across mobile and web, powered by shared
+server-governed MIRA intelligence and progressively stronger factory evidence**. Anything outside
+that needs strong justification.
 
 ## Three tiers
 
@@ -15,7 +22,8 @@ The product wedge is **a Slack-first maintenance copilot that grounds answers in
 
 These are the wedge. New features in these areas are usually good:
 
-- Slack technician copilot
+- Unified FactoryLM mobile/web technician experience
+- Labelled L0 general maintenance help without setup
 - UNS location-confirmation gate
 - Manual ingestion (PDFs, drawings, datasheets)
 - Component profile generation
@@ -45,8 +53,8 @@ These break the wedge. Push back hard:
 - Generic executive dashboards (we're not Power BI)
 - Custom consulting-only dashboards (one-off, not reusable)
 - Uncontrolled write access to live equipment (safety-critical)
-- Generic chatbot functionality (we're not ChatGPT for factories)
-- Voice-only interfaces as primary surface (Slack first)
+- Unrestricted generic-chat functionality outside industrial maintenance (L0 maintenance help remains core)
+- A channel-specific product or independent client brain that breaks mobile/web parity
 - Public-facing marketing-driven content generation (not the product)
 - Compliance / audit reporting as primary product (adjacent at best)
 

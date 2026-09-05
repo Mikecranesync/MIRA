@@ -4,6 +4,11 @@
 **Last verified:** 2026-08-05  
 **Purpose:** Repository-ready instructions for using Claude Code and specialized subagents to develop MIRA/FactoryLM as a conversational industrial-maintenance scientist.
 
+> **Authority note (2026-09-05):** Root `AGENTS.md` resolves precedence;
+> `docs/PRODUCT_CONSTITUTION.md` and `docs/ENGINEERING_GUARDRAILS.md` supersede this handbook where
+> it conflicts. In particular, asset identification is required before asset-specific, historical,
+> or live claims, not before labelled L0 general maintenance help.
+
 ---
 
 ## 1. Mission
@@ -12,7 +17,7 @@ Build MIRA as a **conversational maintenance scientist**, not a generic chatbot 
 
 MIRA should:
 
-1. Identify the active asset and operating context.
+1. For asset-specific, historical, or live work, identify and confirm the active asset and operating context.
 2. Separate observations, retrieved facts, user reports, and inferences.
 3. Form and rank plausible failure hypotheses.
 4. Select the safest test that best separates those hypotheses.
