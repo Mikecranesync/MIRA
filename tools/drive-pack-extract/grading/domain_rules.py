@@ -104,6 +104,12 @@ _CRANE_SAFETY_RE = re.compile(
     r"\bencoder\b|\bhoist\b",
     re.I,
 )
+# Safety-critical crane fault-id prefixes (Magnetek IMPULSE crane firmware):
+# BE* brake answer-back, LL*/UL* lower/upper travel limits, LC load check,
+# STO safe-torque-off, PG* encoder/pulse-generator loss. Matching on the id —
+# not only the (possibly garbled) name — means a safety code is still caught
+# when the extractor mangles its name text (the Run B fault-bleed defect).
+_CRANE_SAFETY_FAULT_ID_RE = re.compile(r"^(BE|LL|UL|LC|STO|PG)", re.I)
 
 
 def _is_crane_family(pack_dict: dict[str, Any]) -> bool:
@@ -161,6 +167,34 @@ def _crane_domain_violations(pack_dict: dict[str, Any]) -> list[str]:
                     f"crane-safety keypad goal={goal!r}: uncited — "
                     "crane-safety content must be cited"
                 )
+
+    # A crane-safety fault_entry (schema_version 3 runtime surface) must carry a
+    # CITED CORRECTIVE ACTION. This is the RUN_C item-3 extension: G+ Mini is
+    # mnemonic-only, so live_decode.fault_codes is {} and every fault lives here
+    # in fault_entries[] (string fault_id). Without this the crane check above
+    # sees zero faults on a real runtime crane pack. A FaultEntry carries its own
+    # source_citation (unlike int-keyed fault_codes, which lean on
+    # provenance.sources), so the citation is checked on the entry itself.
+    for entry in pack_dict.get("fault_entries", []) or []:
+        fid = entry.get("fault_id", "")
+        name = str(entry.get("name") or "")
+        secondary = str(entry.get("secondary_label") or "")
+        is_safety = bool(_CRANE_SAFETY_FAULT_ID_RE.match(str(fid))) or bool(
+            _CRANE_SAFETY_RE.search(f"{name} {secondary}")
+        )
+        if not is_safety:
+            continue
+        if _is_blank(entry.get("action")):
+            violations.append(
+                f"crane-safety fault_entry {fid!r}={name!r}: empty corrective action "
+                "(crane-safety content must carry a cited corrective action)"
+            )
+        cit = entry.get("source_citation") or {}
+        if _is_blank(cit.get("excerpt")) or _is_blank(cit.get("page")):
+            violations.append(
+                f"crane-safety fault_entry {fid!r}={name!r}: uncited (empty "
+                "source_citation excerpt/page) — crane-safety content must be cited"
+            )
 
     return violations
 
