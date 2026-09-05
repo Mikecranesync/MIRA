@@ -95,6 +95,7 @@ import type {
   NotebookStatusFrame,
   SafetyNoticeEntry,
   VisualObservationEntry,
+  IdentityDisputeEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
@@ -581,6 +582,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // the binding is disputed — it must not be stated as a confirmed identity in
   // the prompt, and the turn must not be persisted as a record about it.
   let machineRequestRefused: "asset_unconfirmed" | "asset_mismatch" | null = null;
+  const disputedRequestedAssetId = machineRequest?.assetId ?? "";
   if (machineRequest) {
     if (boundAsset.state !== "resolved" || !boundAsset.confirmedAt) machineRequestRefused = "asset_unconfirmed";
     else if (boundAsset.entityId !== machineRequest.assetId) machineRequestRefused = "asset_mismatch";
@@ -593,6 +595,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
   const identityDisputed = machineRequestRefused === "asset_mismatch";
+  // The dispute is persisted WITH the turn (inside evidence[], like the other
+  // kinds) so reload can explain the missing attribution and a client cannot
+  // strip attribution without leaving a trace of what it claimed.
+  const disputeEntries: IdentityDisputeEntry[] =
+    identityDisputed && boundAsset.state === "resolved"
+      ? [{ kind: "identity_dispute", requestedAssetId: disputedRequestedAssetId, boundAssetId: boundAsset.entityId, boundUnsPath: boundAsset.unsPath }]
+      : [];
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -615,7 +624,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [safetyEntry],
+      evidence: [safetyEntry, ...disputeEntries],
       model: null,
       ...assetSnapshot,
     });
@@ -796,7 +805,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       answerStatus: "insufficient_evidence",
       answerText: null,
       enabledSourceDocIds: docIds,
-      evidence: [],
+      evidence: [...disputeEntries],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
@@ -902,7 +911,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     getNotebook(ctx.tenantId, notebookId).catch(() => null),
     listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
   ]);
-  const identity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+  const identity = identityDisputed
+    ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
+    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
   // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
   // a QR scan proves which sticker was scanned, not which machine wears it, and
@@ -922,7 +933,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
-    `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
+    `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
@@ -1215,7 +1226,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [],
+            evidence: [...disputeEntries],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -1330,6 +1341,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // frame, additively — the basis and label above are untouched by them.
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
+      if (identityDisputed) evidenceFrame.identityDisputed = true;
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
@@ -1358,7 +1370,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // from the coverage plan + proven facet evidence; no LLM call, no new
       // retrieval. General mode gets only the answer-derived lanes (chunks is
       // empty, so no facet chip can name unproven evidence).
-      if (answerStatus === "answered") {
+      // A disputed identity never gets machine-flavoured follow-ups ("… on this
+      // drive?") — the technician must re-select the machine first.
+      if (answerStatus === "answered" && !identityDisputed) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]
               .filter(([, pages]) => pages.length)
@@ -1391,8 +1405,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
           evidence: served
-            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : [])]
-            : emittedCitations,
+            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            : [...emittedCitations, ...disputeEntries],
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.

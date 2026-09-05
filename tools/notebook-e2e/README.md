@@ -72,11 +72,16 @@ MIRA_TEST_DB_CONFIRM=DISPOSABLE node tools/notebook-e2e/notebook_proof.mjs \
   --expect-private-history
 ```
 
-**`--db` safety (the only write this harness ever makes):** it is refused unless `MIRA_TEST_DB_CONFIRM=DISPOSABLE`
-is set, the database host is local/private (loopback, RFC1918, `*.local`), `--base` is not a production Hub
-host, and the host/path contains no `prod`/`prd`. A disposable **remote** dev database additionally needs
-`--db-remote-ok`. Substring checks alone are not a guard — a real Neon production URL contains neither
-`prod` nor `prd` — which is why the local-host rule is the default. User B is placed as `role='technician'`.
+**`--db` safety (the only write this harness ever makes):** the guard inspects the host that
+node-postgres will actually connect to (`pg-connection-string` parse), not the URL authority. It
+refuses unless `MIRA_TEST_DB_CONFIRM=DISPOSABLE` is set; refuses any `host`/`hostaddr` query
+parameter; requires the parsed host to be loopback/RFC1918 by exact rule (no suffix or prefix
+matching — `127.0.0.1.evil.example` is not local); refuses production Hub `--base` hosts (trailing
+dot and case normalised) and any `prod`/`prd`/`production` in host or path; and runs BEFORE the
+first HTTP request, so a refused run registers nothing. A disposable **remote** dev database
+additionally needs `--db-remote-ok`. User B is placed as `role='technician', status='approved'`
+(the state an accepted invite produces). This is a DB placement, not an invite acceptance: B's own
+throwaway tenant is left behind — fine for a disposable database, not something to run elsewhere.
 
 (`--notebook <uuid>` also works here to reuse an existing shared notebook instead of creating one.)
 
@@ -100,7 +105,7 @@ one exception, and it exists for **test setup**, never for assertions. There is 
 technician into User A's tenant is the same move `mira-hub/scripts/provision-beta-gate.ts` makes:
 mirror/place a row directly. Every *assertion* in this scenario still comes from HTTP responses
 (chat frames, `GET` bodies) — `--db` is used exactly once, to run
-`UPDATE hub_users SET tenant_id = …, role = COALESCE(NULLIF(role,''),'technician') WHERE email_lower
+`UPDATE hub_users SET tenant_id = …, role = 'technician' WHERE email_lower
 = lower(…)`, mirroring what accepting a team invite does to that row.
 
 Safety rules, enforced before any connection is opened:

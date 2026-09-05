@@ -143,6 +143,26 @@ export type NotebookEvidenceFrame = {
   /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
    *  turn was asked with. Additive, same discipline as `machineEvidence`. */
   visualEvidence?: VisualObservationEntry;
+  /** 086 §3: the client asked about a DIFFERENT asset than this notebook's
+   *  confirmed binding, so the identity was treated as unconfirmed for this
+   *  turn (no machine evidence, no asset snapshot, no machine-specific facts).
+   *  Additive; older clients ignore it. */
+  identityDisputed?: boolean;
+};
+
+/**
+ * Persisted record that a turn's asset identity was DISPUTED (086 §3): rides
+ * inside the turn's `evidence[]` next to citations, discriminated by `kind`
+ * like MachineEvidenceEntry / SafetyNoticeEntry, so reload can say WHY the
+ * asset snapshot is absent and a client cannot erase attribution silently.
+ */
+export type IdentityDisputeEntry = {
+  kind: "identity_dispute";
+  /** What the client claimed to be looking at (a request, never trusted). */
+  requestedAssetId: string;
+  /** The notebook's server-resolved, confirmed binding at the time. */
+  boundAssetId: string;
+  boundUnsPath: string;
 };
 
 /**

@@ -313,9 +313,37 @@ describe("machine-specific claims need a confirmed, matching asset binding", () 
     const system = messages.find((m) => m.role === "system")?.content ?? "";
     expect(system).toContain("DISPUTED");
     expect(system).not.toContain("Identity CONFIRMED");
-    // And the turn is not persisted as a record about the bound machine.
-    const turn = (nbMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { equipmentEntityId?: string | null };
+    // And the turn is not persisted as a record about the bound machine …
+    const turn = (nbMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as {
+      equipmentEntityId?: string | null;
+      evidence: Record<string, unknown>[];
+    };
     expect(turn.equipmentEntityId ?? null).toBeNull();
+    // … but the dispute itself is durable: reload can say WHY attribution is
+    // absent, and a client cannot erase attribution without leaving a trace.
+    const dispute = turn.evidence.find((e) => e.kind === "identity_dispute");
+    expect(dispute).toMatchObject({ kind: "identity_dispute", requestedAssetId: OTHER_ASSET, boundAssetId: ASSET });
+  });
+
+  it("mismatch propagates through the whole answer contract: frame marker, no machine follow-ups, neutral machine context", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Conveyor 1", manufacturer: "Rockwell", model: "PowerFlex 525" });
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: FAULT_AT,
+    });
+    historyServed();
+    const res = await POST(req({ ...machineTurn, machineEvidence: { assetId: OTHER_ASSET, anchorAt: FAULT_AT } }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    const evidence = fr.find((f) => f.kind === "evidence") as { identityDisputed?: boolean } | undefined;
+    expect(evidence?.identityDisputed).toBe(true);
+    expect(fr.find((f) => f.kind === "followups")).toBeUndefined();
+    const messages = (seamMock.buildRequestBody.mock.calls[0] as unknown[])[1] as { role: string; content: string }[];
+    const system = messages.find((m) => m.role === "system")?.content ?? "";
+    // The machine-context header must not present the bound machine as a fact
+    // for this question.
+    expect(system).not.toMatch(/Equipment: Rockwell PowerFlex 525/);
+    expect(system).toContain("DISPUTED");
   });
 
   it("confirmed AND matching: history is fetched for the BOUND asset", async () => {
