@@ -80,6 +80,54 @@ _FAULT_CONTEXT_RE = re.compile(
 # somewhere in the message. Empirically all real phrasings put the trigger within
 # 3 tokens ("drive is showing F0004", "warning A501", "getting F4 on my drive").
 _FAULT_PROXIMITY = 3
+
+# A drive manual is full of identifiers that share a fault code's SHAPE but are
+# not faults: parameters (P031), terminals (T1), enclosure ratings (IP20), panel
+# labels (A1). These matter only on the product-licensed path — a context word
+# ("fault P031") still admits anything — where the first version of that signal
+# extracted all four (Codex #3337 F1). A bogus code is worse than a miss: it
+# queries `fault_codes` and, on a hit, promotes an unrelated machine's fault as
+# authoritative structured evidence.
+#
+# Denylist, not a whitelist of fault prefixes. The fault space is open-ended
+# (377 codes across ~20 prefixes in the live table, growing with every vendor),
+# so a whitelist would silently drop real codes as the corpus grows. The
+# non-fault space is small and stable. Verified against the live table: ZERO of
+# the 377 codes use a bare P, T, or IP prefix.
+_NON_FAULT_PREFIXES = frozenset({"P", "T", "IP"})
+# ...and a nearby noun that names what the identifier IS. This catches the case
+# a prefix rule cannot: "panel A1" shares its prefix with real alarm codes (A501).
+_NON_FAULT_NOUN_RE = re.compile(
+    r"\b(parameter|param|terminal|panel|enclosure|rating|port|pin|slot|cabinet|"
+    r"connector|jumper|dip|switch)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_non_fault_identifier(tok: str, i: int, tokens: list[str]) -> bool:
+    """Is this code-shaped token a parameter/terminal/rating rather than a fault?
+
+    The noun must IMMEDIATELY precede the candidate, because that is the only
+    position in which it labels it. A symmetric proximity veto was tried first
+    and suppressed genuine faults (Codex #3337 round 2 F1) —
+
+        "PowerFlex 525 panel has F004"     -> [] (wrong; F004 is a real fault)
+        "PowerFlex 525 F004 at terminal block" -> [] (wrong)
+
+    — because "panel"/"terminal" merely appeared nearby while labelling something
+    else. English puts the label directly before the identifier it names
+    ("panel A1", "parameter P031", "terminal T1"), so distance-1 is both
+    sufficient for the real cases and unable to swallow a fault mentioned in the
+    same sentence.
+    """
+    prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
+    if prefix and prefix.group(0).upper() in _NON_FAULT_PREFIXES:
+        return True
+    if i == 0:
+        return False
+    return bool(_NON_FAULT_NOUN_RE.search(tokens[i - 1]))
+
+
 # Leading alphabetic prefix of a candidate code (e.g. "F" of "F0004", "OC" of "OC1").
 _CODE_ALPHA_PREFIX_RE = re.compile(r"^[A-Za-z]+")
 
@@ -301,33 +349,103 @@ def _extract_fault_codes(query_text: str) -> list[str]:
          VFD code, so "RE-DO"/"CO-OP" are rejected while "E-OC" passes.
       3. Alpha-only VFD codes (OC, GF, OCA): must be in ``_VFD_ALPHA_CODES``.
 
-    Trade-off (documented): a bare code with no nearby context word no longer
-    extracts; real technician messages carry context ("fault F0004", "showing
-    F0004"). Staging fault-recall eval gates this.
+    Licensing signal — EITHER of two, then shape rules decide:
+
+      (a) a fault-context word within ``_FAULT_PROXIMITY`` tokens, or
+      (b) a recognised PRODUCT NAME anywhere in the query (#3334).
+
+    (b) exists because the trade-off this function used to document was
+    empirically false. It said "real technician messages carry context ('fault
+    F0004', 'showing F0004')". A 100-question live probe against the staging bot
+    measured the opposite: **7 of 10 realistic fault phrasings carried no context
+    word at all** and therefore extracted nothing —
+
+        "Got an F013 on a PowerFlex 525. What causes it?"      -> []
+        "PowerFlex 525 F005 — what is it?"                     -> []
+        "We keep getting F004 on that PowerFlex."              -> []
+
+    and the consequence was not a slightly worse ranking. The structured
+    ``fault_codes`` lookup in stage 2 is the ONLY deterministic, authoritative
+    answer path, and it is keyed entirely on this function's output. When it
+    fires the answer is rank 1 (`retrieval_streams=['structured_fault']`); when
+    it does not, the query falls through to prose ranking, where the PowerFlex
+    520-series **spare-parts catalog** (front covers, finger guards, EMC cores)
+    outranks the fault table. MIRA then correctly refuses to answer a fault
+    question from finger-guard rows and tells the technician no documentation
+    exists — for a fault whose row is sitting in the corpus. Full evidence:
+    ``docs/testing/probe-100/FINDINGS.md``.
+
+    A product name is a STRONGER disambiguator than a context word, not a weaker
+    one: "F013" beside "PowerFlex 525" is unambiguous in a way "F013" beside
+    "drive" is not. Nothing about the shape rules is relaxed, so the tokens (b)
+    newly admits are still filtered by them — "BAY-12" (3-char prefix), "RE-DO"
+    (not a known compound), "525" and "820" (no alpha prefix) remain rejected
+    even when a product name is present.
     """
     if not query_text:
         return []
 
     tokens = _normalise_fault_query(query_text).split()
     context_positions = [i for i, tok in enumerate(tokens) if _FAULT_CONTEXT_RE.search(tok)]
-    if not context_positions:
-        # No fault-context word anywhere → nothing is a fault code.
+    # A named product licenses extraction on its own, and licenses it for the
+    # WHOLE query — the product may sit anywhere ("Got an F013 on a PowerFlex
+    # 525"), so proximity would re-break the phrasings this exists to fix.
+    products = _extract_product_names(query_text)
+    product_present = bool(products)
+
+    # ...but the product's OWN tokens are never fault codes. "GS10" is a model
+    # whose shape is indistinguishable from a code (2-char alpha prefix + digits),
+    # so without this "gs10" alone extracts itself and fires a bogus structured
+    # lookup. That over-extraction PRE-DATES the product-licensing signal — the
+    # context-word gate already admitted it via "GS10 showing CE10" -> both — it
+    # is simply reachable more often now, so it is fixed here rather than left.
+    # Lowercased: _normalise_fault_query preserves case, so an upper-case model
+    # ("GS10") would never match the lower-cased candidate token.
+    product_tokens: set[str] = set()
+    for name in products:
+        product_tokens.update(t.lower() for t in _normalise_fault_query(name).split())
+
+    if not context_positions and not product_present:
+        # Neither signal → nothing here is a fault code.
         return []
 
     def _near_context(i: int) -> bool:
+        if product_present:
+            return True
         return any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
+
+    def _product_licensed_only(i: int) -> bool:
+        """True when ONLY the product signal admits this token, not a context word."""
+        return not any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
 
     codes: set[str] = set()
     for i, raw in enumerate(tokens):
         if not _near_context(i):
             continue
         tok = raw.strip(".,!?:;()\"'")  # keep internal/leading dash
+        if tok.lower() in product_tokens:
+            continue  # this token names the equipment, not a fault on it
         up = tok.upper()
 
         # Shape 1: alphanumeric code with a short (≤2) alpha prefix.
         if _FAULT_CODE_RE.fullmatch(tok):
             prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
             if prefix and len(prefix.group(0)) <= 2:
+                # A product name says "this query is about equipment"; it does
+                # NOT say a code-shaped token is a FAULT. A drive manual is full
+                # of identifiers sharing the shape — parameters (P031),
+                # terminals (T1), enclosure ratings (IP20), panel labels (A1) —
+                # and the first version of the product signal extracted all four
+                # (Codex #3337 F1). A bogus code here is worse than a miss: it
+                # queries `fault_codes` and, on a hit, promotes an unrelated
+                # machine's fault as authoritative structured evidence.
+                #
+                # So when ONLY the product licenses this token, its prefix must
+                # also be one the fault tables actually use. A context word
+                # ("fault P031") still admits anything, exactly as before — this
+                # narrows only the path this change opened.
+                if _product_licensed_only(i) and _is_non_fault_identifier(tok, i, tokens):
+                    continue
                 codes.add(up)
                 continue
 
@@ -953,8 +1071,24 @@ def recall_knowledge(
             structured_fault_results: list[dict] = []
             if fault_codes:
                 # Try structured fault_codes table first (deterministic, fast)
+                # Scope the lookup to the machine the technician named. The
+                # `model` parameter has existed on recall_fault_code since it was
+                # written and was never passed, so ANY extracted code searched
+                # the whole table and a hit for a DIFFERENT machine was promoted
+                # as rank-1 authoritative evidence.
+                #
+                # This is the structural half of the extractor narrowing above
+                # (Codex #3337, raised in all three rounds). Tightening the
+                # regex reduces how often a non-fault identifier is extracted;
+                # this makes it not matter, because "A1" can now only resolve
+                # against the PowerFlex 525's own rows. Defence in depth: the
+                # heuristic will always have edges, the scope constraint does not.
+                #
+                # No product named => None => unconstrained, exactly as before.
+                _fc_model = _extract_product_names(query_text)
+                _fc_model = _fc_model[0] if _fc_model else None
                 for fc in fault_codes[:3]:
-                    fc_rows = recall_fault_code(fc, tenant_id)
+                    fc_rows = recall_fault_code(fc, tenant_id, model=_fc_model)
                     for row in fc_rows:
                         # Format structured data as a pseudo-chunk for prompt injection
                         content = (
