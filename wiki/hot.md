@@ -481,6 +481,26 @@ operational again after the Groq vision deprecation.
 
 ---
 
+# Hot Cache — 2026-07-03 — CV-101 electrical print recovery: E-007 shipped as FIELD VERIFICATION DRAFT
+
+Evidence-law print package built on `main` working tree (uncommitted). Mike uploaded 9 bench photos
+in-session; archived at `docs/onboarding/cv-101-evidence/photos/` (P1-P9, cataloged in
+`wiring_evidence.md`). Source of truth: `devices/terminals/wires/open_items.yaml` (same dir) —
+every drawn line = one wires.yaml row. **E-007 RS-485/Modbus** at `docs/prints/E007_rs485_modbus.{md,svg,pdf}`:
+Micro820 serial TB (D+=BLU, D−=WHT, G=GRN — photo-VERIFIED, P4) ↔ GS10 RJ45 (SG+ 5 / SG− 4 / SGND 3,7
+per GS10 UM Rev B p.5-9, extract archived in `manual-extracts/`). ALL conductors dashed FIELD VERIFY —
+drive-end landing unphotographed (OI-1b flips it to Rev A solid). Devices photo-verified: PLC
+2080-LC20-20QBB SerC FW12.011; VFD **GS11N-20P2** 0.25HP; relay **CA3KN22BD** "MLC" (control relay —
+CONFLICTS with legacy gist's power-contactor Q1 story, OI-5). Key resolved conflicts: legacy
+`gist-master-wiring-guide.md` RJ45 pinout REFUTED by manual (C-1); Channel 2 (not 0) is embedded
+serial (C-5, `micro820.yaml` gotcha stale); GS10 guide's ×10 scale wrong, manual+ST say ×100 (C-7).
+Open: 8N1 vs 8N2 keypad read (OI-9), May-22 PhaseA smoke-test PDF still on PLC laptop (OI-11).
+Crosswalk: `docs/onboarding/cv-101-evidence/plc_logic_to_wiring_crosswalk.md`; matrix:
+`electrical_evidence_matrix.md`; prior-art: `docs/discovery/electrical_print_prior_artifact_recovery.md`.
+Next: drive-end RJ45 photo → upgrade E-007; then E-005/E-006 from P5/P6 + behind-panel photos (OI-2).
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
