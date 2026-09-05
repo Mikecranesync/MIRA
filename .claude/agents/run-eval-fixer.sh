@@ -27,6 +27,16 @@ MIRA_REPO="$REPO" "$REPO/tools/hooks/safe-cron-pull.sh" origin main -q >> "$LOG"
   echo "safe-cron-pull failed — proceeding with local state" >> "$LOG"
 }
 
+# Canary: a run's output stranded on local `main`. `main` is protected, so a commit made
+# there can never be pushed — it sits until a human notices. That happened four times
+# (#3134 rescued 3 nights, #3255 5 nights, #3473 10 nights, #3574 1 night) before the
+# publish step below existed. If this fires, the publish path has regressed.
+STRANDED="$(git -C "$REPO" log --oneline origin/main..main -- wiki/hot.d/ 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${STRANDED:-0}" -gt 0 ]; then
+  echo "ERROR: $STRANDED eval-fixer fragment commit(s) stranded on local main (unpushable — main is protected)." >> "$LOG"
+  git -C "$REPO" log --oneline origin/main..main -- wiki/hot.d/ >> "$LOG" 2>&1
+fi
+
 INSTRUCTIONS="$(cat "$INSTRUCTIONS_FILE")"
 
 # Run claude non-interactively.
@@ -40,13 +50,27 @@ INSTRUCTIONS="$(cat "$INSTRUCTIONS_FILE")"
 #   $1. Bumped to 10.00 based on an observed partial run using ~$0.87 on just
 #   report-reading + exploration, no eval runs yet. Re-tune from real
 #   /tmp/mira-eval-fixer.log spend data once a few nights complete successfully.
+# `set -e` would abort here on a non-zero claude exit, skipping both the publish step and
+# the "finished" log line. Take the exit code explicitly instead — the run's fragment must
+# still be published even if the agent itself ended badly.
+set +e
 claude \
   --print \
   --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
   --max-budget-usd 10.00 \
   -p "$INSTRUCTIONS" \
   >> "$LOG" 2>> "$ERR"
-
 EXIT_CODE=$?
+set -e
+
+# Publish the fragment. This is deterministic code, not an instruction, because the prose
+# telling the agent "never push to main directly — always use a branch + PR" was already
+# in the instructions through all four stranding incidents above and was ignored every
+# time. The helper builds the commit with plumbing and pushes the ref: it never checks
+# out, so it is safe to run against this shared working tree while a session is live.
+python3 "$REPO/tools/eval_fixer_fragment.py" \
+  --date "$(date +%Y-%m-%d)" --publish --repo "$REPO" >> "$LOG" 2>&1 \
+  || echo "publish step failed — the fragment may be unpushed; see above" >> "$LOG"
+
 echo "=== eval-fixer finished $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=$EXIT_CODE ===" >> "$LOG"
 exit $EXIT_CODE

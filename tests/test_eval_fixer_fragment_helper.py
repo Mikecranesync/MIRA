@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -221,3 +222,186 @@ def test_cli_rejects_a_concurrent_second_acquire(
     capsys.readouterr()
     assert efp.main(["--date", "2026-08-04", "--acquire"]) == 2, "second concurrent run must exit 2"
     assert "already active" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# Publishing — the fragment has to actually reach the remote.
+#
+# The defect these cover: on a no-patch night the agent committed the fragment to local
+# `main`, which is protected, so the push never happened and the run's output sat in an
+# unpushable local commit until a human rescued it (#3134, #3255, #3473, #3574). The fix
+# is deterministic code, so these point at that code — not at the instruction prose,
+# which already forbade the behaviour through all four incidents.
+# --------------------------------------------------------------------------
+
+
+def _run(*args: str, cwd: Path, **kw) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True, **kw)
+
+
+@pytest.fixture
+def origin_and_clone(tmp_path: Path) -> tuple[Path, Path]:
+    """A bare 'origin' with a `main`, plus a clone standing in for the shared checkout."""
+    origin = tmp_path / "origin.git"
+    _run("git", "init", "--bare", "-b", "main", str(origin), cwd=tmp_path)
+
+    seed = tmp_path / "seed"
+    _run("git", "clone", str(origin), str(seed), cwd=tmp_path)
+    for k, v in (("user.email", "t@t.local"), ("user.name", "T"), ("commit.gpgsign", "false")):
+        _run("git", "config", k, v, cwd=seed)
+    (seed / "README.md").write_text("seed\n", encoding="utf-8")
+    _run("git", "add", "README.md", cwd=seed)
+    _run("git", "commit", "-m", "seed", cwd=seed)
+    _run("git", "push", "origin", "main", cwd=seed)
+
+    clone = tmp_path / "clone"
+    _run("git", "clone", str(origin), str(clone), cwd=tmp_path)
+    for k, v in (("user.email", "t@t.local"), ("user.name", "T"), ("commit.gpgsign", "false")):
+        _run("git", "config", k, v, cwd=clone)
+    return origin, clone
+
+
+def _write_fragment(clone: Path, date: str, worker: str, body: str = "# run\n") -> Path:
+    path = clone / efp.fragment_path(date, worker)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _branch_sha(origin: Path, branch: str) -> str:
+    got = subprocess.run(
+        ["git", "-C", str(origin), "rev-parse", f"refs/heads/{branch}"],
+        capture_output=True,
+        text=True,
+    )
+    return got.stdout.strip() if got.returncode == 0 else ""
+
+
+def test_publish_branch_is_keyed_like_the_fragment() -> None:
+    assert efp.publish_branch("2026-08-30", "charlie") == "docs/eval-fixer-2026-08-30-charlie"
+
+
+def test_publish_pushes_the_fragment_to_its_own_branch(origin_and_clone) -> None:
+    origin, clone = origin_and_clone
+    _write_fragment(clone, "2026-08-30", "charlie", "# eval-fixer run\n- 56/65\n")
+
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert ok, reason
+    branch = efp.publish_branch("2026-08-30", "charlie")
+    assert _branch_sha(origin, branch), f"branch {branch} not on origin: {reason}"
+    shown = _run(
+        "git",
+        "-C",
+        str(origin),
+        "show",
+        f"refs/heads/{branch}:{efp.fragment_path('2026-08-30', 'charlie')}",
+        cwd=origin,
+    )
+    assert "56/65" in shown.stdout
+
+
+def test_publish_never_moves_head_or_dirties_the_shared_tree(origin_and_clone) -> None:
+    """The whole reason this uses plumbing: it runs at 05:00 into a SHARED checkout."""
+    origin, clone = origin_and_clone
+    _run("git", "checkout", "-b", "someone-elses-wip", cwd=clone)
+    (clone / "their_work.py").write_text("# uncommitted\n", encoding="utf-8")
+    head_before = _run("git", "rev-parse", "HEAD", cwd=clone).stdout.strip()
+    branch_before = _run("git", "rev-parse", "--abbrev-ref", "HEAD", cwd=clone).stdout.strip()
+
+    _write_fragment(clone, "2026-08-30", "charlie")
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert ok, reason
+    assert _run("git", "rev-parse", "HEAD", cwd=clone).stdout.strip() == head_before
+    assert (
+        _run("git", "rev-parse", "--abbrev-ref", "HEAD", cwd=clone).stdout.strip() == branch_before
+    )
+    assert (clone / "their_work.py").read_text(encoding="utf-8") == "# uncommitted\n"
+
+
+def test_publish_rescues_a_fragment_stranded_in_a_local_main_commit(origin_and_clone) -> None:
+    """The exact four-time incident: committed to protected `main`, so never pushed."""
+    origin, clone = origin_and_clone
+    frag = _write_fragment(clone, "2026-08-30", "charlie", "# stranded\n")
+    _run("git", "add", str(frag.relative_to(clone)), cwd=clone)
+    _run("git", "commit", "-m", "docs(wiki): eval-fixer run 2026-08-30 (charlie)", cwd=clone)
+    assert frag.is_file()
+    frag.unlink()  # committed and gone from the tree — recoverable only from the commit
+
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert ok, reason
+    branch = efp.publish_branch("2026-08-30", "charlie")
+    shown = _run(
+        "git",
+        "-C",
+        str(origin),
+        "show",
+        f"refs/heads/{branch}:{efp.fragment_path('2026-08-30', 'charlie')}",
+        cwd=origin,
+    )
+    assert "stranded" in shown.stdout
+
+
+def test_publish_is_idempotent_across_a_rerun(origin_and_clone) -> None:
+    origin, clone = origin_and_clone
+    _write_fragment(clone, "2026-08-30", "charlie", "# first\n")
+    assert efp.publish_fragment("2026-08-30", "charlie", repo=clone)[0]
+    first = _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+
+    _write_fragment(clone, "2026-08-30", "charlie", "# corrected\n")
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert ok, reason
+    second = _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+    assert second and second != first, "a restart must update its own branch in place"
+    shown = _run(
+        "git",
+        "-C",
+        str(origin),
+        "show",
+        f"refs/heads/{efp.publish_branch('2026-08-30', 'charlie')}:"
+        f"{efp.fragment_path('2026-08-30', 'charlie')}",
+        cwd=origin,
+    )
+    assert "corrected" in shown.stdout
+
+
+def test_publish_reports_nothing_to_do_once_the_fragment_is_on_main(origin_and_clone) -> None:
+    origin, clone = origin_and_clone
+    frag = _write_fragment(clone, "2026-08-30", "charlie", "# merged already\n")
+    _run("git", "add", str(frag.relative_to(clone)), cwd=clone)
+    _run("git", "commit", "-m", "docs(wiki): fragment", cwd=clone)
+    _run("git", "push", "origin", "main", cwd=clone)
+
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert ok
+    assert "already on" in reason
+    assert not _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+
+
+def test_publish_fails_loudly_when_there_is_no_fragment(origin_and_clone) -> None:
+    _, clone = origin_and_clone
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+    assert not ok
+    assert "no fragment to publish" in reason
+
+
+def test_wrapper_publishes_after_the_agent_exits() -> None:
+    """The publish must be in the wrapper, not the prose the agent already ignored."""
+    wrapper = (
+        Path(__file__).resolve().parents[1] / ".claude" / "agents" / "run-eval-fixer.sh"
+    ).read_text(encoding="utf-8")
+    assert "--publish" in wrapper, "wrapper must run the publish step itself"
+    assert wrapper.index("claude \\") < wrapper.index("--publish"), "publish runs after the agent"
+    assert "origin/main..main" in wrapper, "wrapper must carry the stranded-commit canary"
+
+
+def test_instructions_no_longer_tell_the_agent_to_commit_to_main() -> None:
+    """The line that caused four strandings: 'or main if no patch was made'."""
+    text = (
+        Path(__file__).resolve().parents[1] / ".claude" / "agents" / "eval-fixer-instructions.md"
+    ).read_text(encoding="utf-8")
+    assert "or main if no patch was made" not in text
