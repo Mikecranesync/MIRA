@@ -430,6 +430,12 @@ export function canBeChatSource(
 }
 
 export interface NotebookServerTurn {
+  /** 086: hub_users.id of the technician who asked; null = legacy shared row.
+   *  The server already scopes `turns` to the caller + legacy, so this is
+   *  informational (additive; older Hubs omit it). */
+  ownerUserId?: string | null;
+  /** 086: true for a pre-ownership row every tenant user can read. */
+  sharedLegacy?: boolean;
   id: string;
   question: string;
   answerStatus: string;
