@@ -7289,6 +7289,34 @@ class Supervisor:
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
 
+    def _instructional_kb_coverage(self, message: str, state: dict, history: list) -> bool:
+        """Can the KB ground this procedural question? (#3602)
+
+        Reuses `_handle_general_question`'s extraction window and coverage probe so
+        the two DST siblings share one definition of "we have documentation for
+        this" and cannot drift.
+
+        Fails CLOSED to the direct-LLM path: if resolution or the probe raises, the
+        caller answers as it did before. A grounding *upgrade* must never turn a
+        transient KB hiccup into a worse answer than the old behaviour gave.
+        """
+        try:
+            user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
+            combined = " ".join([*user_window, message]).strip()
+            tenant = state.get("tenant_id") or ""
+
+            resolution = resolve_uns_path_multi(combined, tenant_id=tenant)
+            mfr = resolution.primary.manufacturer or (
+                ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
+            )
+            if not mfr:
+                return False
+            covered, _reason = kb_has_coverage(mfr, combined, tenant)
+            return bool(covered)
+        except Exception as exc:  # noqa: BLE001 - never fail a turn over a coverage probe
+            logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
+            return False
+
     async def _handle_instructional_question(
         self,
         chat_id: str,
@@ -7296,10 +7324,38 @@ class Supervisor:
         state: dict,
         trace_id: str,
     ) -> dict:
-        """Answer a procedural how-to question directly via the LLM.
+        """Answer a procedural how-to question, grounded in the KB when it can be.
 
-        Bypasses the doc-crawl path and the Q1/Q2/Q3 diagnosis FSM. Injects
-        the known asset context so the answer is equipment-specific when available.
+        Falls back to a direct LLM answer (no doc-crawl, no Q1/Q2/Q3 diagnosis FSM)
+        only when the knowledge base has no coverage for the equipment in question.
+
+        WHY THE KB CHECK IS HERE (#3602). This handler used to go straight to
+        `router.complete()` for every `ASK_PROCEDURAL` turn — no retrieval, no
+        citations, no KB-gap admission. Its sibling `_handle_general_question`,
+        reached from the same DST dispatch table, is "KB-first" and does ground.
+        Two sibling handlers disagreeing about grounding is an oversight, not a
+        design.
+
+        The cost was measured, not theorised. All six MIRA Answer Radar seed
+        questions — real posts from technicians — landed here and were answered
+        with **zero retrieved chunks**, while `recall_knowledge` returns hits for
+        the same text when asked. One reply confidently described an
+        Allen-Bradley SLC 5/03's DH-485 port as using "DH+ (Data Highway Plus)
+        framing" three times, uncited. DH-485 and DH+ are different networks, and
+        an SLC 5/03 has no DH+ capability at all.
+
+        That is the exact failure the product exists to prevent: `.claude/CLAUDE.md`
+        requires every claim to be grounded, and an ungrounded confident answer is
+        worse for a technician than an admitted gap.
+
+        The coverage probe reuses `_handle_general_question`'s decision verbatim —
+        `resolve_uns_path_multi` + `kb_has_coverage` — rather than a second copy,
+        so the two siblings cannot drift apart again.
+
+        Behaviour is deliberately unchanged when the KB has nothing: a procedural
+        answer with no corpus behind it is still the best available reply, and
+        routing it to a grounded path that has no grounding would only produce a
+        refusal where a useful answer used to be.
         """
         # target_state="IDLE": instructional answers are background responses;
         # the FSM must return IDLE so state.get("state") doesn't surface ASSET_IDENTIFIED.
@@ -7309,6 +7365,23 @@ class Supervisor:
         asset = state.get("asset_identified", "")
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
+
+        # Ground it if we can. Same extraction window and same coverage probe as
+        # _handle_general_question, so a procedural question about a documented
+        # asset gets the same cited answer a general one would.
+        if self._instructional_kb_coverage(message, state, history):
+            logger.info(
+                "INSTRUCTIONAL_ROUTED_TO_KB chat_id=%s — KB has coverage, "
+                "answering from documentation instead of parametric memory (#3602)",
+                chat_id,
+            )
+            return await self._handle_general_question(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                tenant_id=state.get("tenant_id") or None,
+            )
 
         system = (
             "You are MIRA, an industrial maintenance assistant. "
