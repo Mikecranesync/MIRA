@@ -42,23 +42,29 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-001.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-001",
-      "mira_run_id": "ar-343ece7ebcaf",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-56cc1d7df4bc",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
-      "answer_text": "**Why it stops communicating**  \nThe SLC\u202f5/03\u2019s DH\u2011485 port expects **DH+ (Data Highway Plus) protocol framing**. A \u201ctransparent\u201d RS\u2011485\u2011to\u2011Ethernet converter (USR\u2011N540) passes raw bytes only \u2013 it does **not** add or interpret DH+ start/stop characters, address bytes, or checksum. Consequently the PLC never sees a valid DH+ packet and drops the link.\n\n---\n\n### What to check first (step\u2011by\u2011step)\n\n1. **Confirm the converter type**  \n   - Verify that the USR\u2011N540 is set to *transparent* mode only.  \n   - If you need DH+ support, you must use a **protocol\u2011aware gateway** (e.g., Rockwell DH\u2011485 to Ethernet module) or a DH+\u2011compatible converter.\n\n2. **Inspect the PLC\u2019s DH\u2011485 configuration**  \n   - Open the SLC 5/03 program (RSLogix\u202f500) \u2192 *Communications* \u2192 *DH\u2011485* settings.  \n   - Note the **baud rate, parity, stop bits, and node address** that the PLC is using.\n\n3. **Match the physical layer settings**  \n   - On the USR\u2011N540, set the same **baud rate, parity, and stop bits** as the PLC.  \n   - Check the DIP\u2011switches (if any) on the SLC\u2019s DH\u2011485 port for termination and biasing; make sure they are correct for a point\u2011to\u2011point link.\n\n4. **Verify wiring and termination**  \n   - Ensure A/B polarity is correct (A \u2192 A, B \u2192 B).  \n   - Confirm that the **120\u202f\u03a9 termination resistor** is present at the far end of the RS\u2011485 segment (usually on the PLC or the last device).  \n   - Check for loose or broken conductors.\n\n5. **Check the Ethernet side of the converter**  \n   - Confirm the N540 has a valid **IP address, subnet mask, and gateway**\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "answer_text": "**Why it stops communicating**  \nThe original SLC\u202f5/03 DH\u2011485 interface is *protocol\u2011aware* \u2013 it builds and parses the DH\u2011485 (DH+) frames that the PLC expects. The USR\u2011N540 is a *transparent* RS\u2011485\u2011to\u2011Ethernet converter; it simply passes raw bytes and does **not** generate or interpret DH\u2011485 framing. When you swap the devices, the PLC still expects DH\u2011485\u2011formatted traffic, but the converter is sending raw RS\u2011485 data (or Ethernet packets) that the PLC cannot understand, so the link goes dead.\n\n---\n\n### What to check first (step\u2011by\u2011step)\n\n1. **Confirm Converter Mode**  \n   - Open the USR\u2011N540 web/serial configuration.  \n   - Verify whether it is set to *transparent* mode only. If so, the PLC will never see proper DH\u2011485 frames.  \n   - If the unit supports a *DH\u2011485 (DH+)* protocol mode, enable it; otherwise you need a true DH\u2011485 gateway.\n\n2. **Match Physical Layer Settings**  \n   - Check baud rate, data bits, parity, and stop bits on the PLC\u2019s DH\u2011485 port.  \n   - Replicate those exact settings in the USR\u2011N540\u2019s RS\u2011485 side (most converters let you set them manually).  \n   - Ensure the RS\u2011485 wiring polarity (A/B) matches the PLC\u2019s pinout and that the line is properly terminated (120\u202f\u03a9 at each end).\n\n3. **Verify\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
       "answer_status": "answered",
       "citations": [],
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 1983,
-      "time_to_first_answer_ms": 1983,
+      "total_answer_time_ms": 1954,
+      "time_to_first_answer_ms": 1954,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:31:49+00:00"
+      "evaluated_at": "2026-09-05T23:02:23+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   },
   {
@@ -104,9 +110,9 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-002.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-002",
-      "mira_run_id": "ar-94abf6695d4b",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-f74ec423cbb6",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
       "answer_text": "I have Festo documentation indexed.\n\nCorrection: I can't produce a citation for that, so treat the reference above as unverified \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base.]",
       "answer_status": "answered",
@@ -114,13 +120,19 @@
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 9058,
-      "time_to_first_answer_ms": 9058,
+      "total_answer_time_ms": 5590,
+      "time_to_first_answer_ms": 5590,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:31:58+00:00"
+      "evaluated_at": "2026-09-05T23:02:29+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   },
   {
@@ -166,23 +178,29 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-003.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-003",
-      "mira_run_id": "ar-e9979d3a4473",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-7a2d0eb67bb9",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
-      "answer_text": "**Recovering an AUMA\u202fAC\u202f01.2 actuator controller that is stuck in bootloader mode**\n\n1. **Secure the unit**  \n   - Verify that the actuator is **de\u2011energized** (no motion commands are being sent).  \n   - Disconnect any external load or brake to prevent accidental movement while you work.\n\n2. **Provide a stable power source**  \n   - Connect the controller to a **regulated 24\u202fV\u202fDC supply** (or the voltage specified on the unit\u2019s nameplate).  \n   - Use a UPS or a bench\u2011top power supply with **+/-\u202f5\u202f% tolerance** to avoid another power drop during the recovery.\n\n3. **Connect the programming interface**  \n   - Locate the **programming port** on the AC\u202f01.2 (usually a 6\u2011pin mini\u2011DIN or RJ45).  \n   - Attach the **AUMA USB\u2011to\u2011RS\u2011485 cable** (or the appropriate serial cable) to a service laptop.  \n   - If the unit has a **USB\u2011bootloader port**, use that instead \u2013 it bypasses the RS\u2011485 transceiver and is more reliable.\n\n4. **Launch the AUMA firmware tool**  \n   - Open **AUMA Service Suite** (or \u201cAUMA Firmware Update\u201d utility) on the laptop.  \n   - Select **\u201cBootloader/Recovery Mode\u201d** from the connection dialog.  \n   - The tool should detect the controller as **\u201cBootloader \u2013 AC\u202f01.2\u201d**. If not detected, try:\n     - Power\u2011cycling the unit while holding the **\u201cProgram\u201d** button (if present).  \n     - Using a different USB port or a **USB\u2011to\u2011TTL** adapter set to 115\u202f200\u202fbps, 8N1.\n\n5. **Download the correct firmware files**  \n   - From the AUMA support portal, retrieve the **exact firmware package** for the AC\u202f01.2 **hardware revision** (e.g., Rev\u202fA, Rev\u202fB).  \n   - Verify the file checksum (MD5/SHA\u2011256) before proceeding.\n\n6. **Re\u2011flash the bootloader (if required)**  \n   - Some AC\u202f01.2 units store the bootloader in a separate flash sector.  \n   - In the service suite, choose **\u201cBootloader Update\u201d** \u2192 select the **bootloader.bin** file.\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "answer_text": "**Recovering an AUMA\u202fAC\u202f01.2 that is stuck in bootloader after a power loss**\n\n> **Safety first** \u2013 make sure the actuator is isolated from the plant, the brake is released (if applicable), and you are wearing the required PPE.\n\n---\n\n### 1. Verify the bootloader state\n1. Power the controller with the **main supply** (24\u202fV\u202fDC).  \n2. Observe the status LEDs: a steady **blue** (or flashing \u201cB\u201d) indicates the bootloader is active.  \n3. If the LEDs are off or show an error code, press the **RESET** button for 3\u202fs and re\u2011check \u2013 the controller should now stay in bootloader mode.\n\n### 2. Prepare the PC and firmware files\n1. On a laptop (Windows\u202f10/11, admin rights) install the **AUMA Firmware Update Tool** (latest version from the AUMA support portal).  \n2. Download the **exact firmware package** for the AC\u202f01.2 (check the label on the controller for hardware revision \u2013 e.g., \u201cRev\u202fA\u201d vs \u201cRev\u202fB\u201d).  \n3. Extract the package to a folder you can access (no spaces in the path).\n\n### 3. Connect the controller to the PC\n1. Use the **USB\u2011to\u2011RS\u2011485** cable supplied with the update kit.  \n2. Plug the **USB end** into the laptop and the **RS\u2011485 terminal** into the **COM\u2011port** on the AC\u202f01.2 (usually the 9\u2011pin D\u2011sub labeled \u201cPC\u2011Link\u201d).  \n3. In Device Manager confirm a COM port appears (e.g., COM3). Note the number.\n\n### 4. Put the controller into \u201cfirmware\u2011download\u201d mode\n1. With power still on, **hold the BOOT/PROGRAM button** (the small recessed button next to the reset) for **5\u202fs**.  \n2. Release the button \u2013 the bootloader LED will change to a rapid **blinking** pattern, indicating it is ready to receive a new\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
       "answer_status": "answered",
       "citations": [],
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 1881,
-      "time_to_first_answer_ms": 1881,
+      "total_answer_time_ms": 1849,
+      "time_to_first_answer_ms": 1849,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:32:00+00:00"
+      "evaluated_at": "2026-09-05T23:02:31+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   },
   {
@@ -228,23 +246,29 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-004.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-004",
-      "mira_run_id": "ar-cc216c822561",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-9c0b5c131fd7",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
-      "answer_text": "**Connecting a Mitsubishi FX5U PLC to a Baykon\u202fBX11\u2011EN (Modbus/TCP) \u2013 Quick\u2011Start Procedure**\n\n| Step | Action | Why it matters |\n|------|--------|----------------|\n| **1. Verify hardware** | \u2022 FX5U\u2011CPU (with Ethernet port)  <br>\u2022 Baykon\u202fBX11\u2011EN (Modbus/TCP enabled) <br>\u2022 Cat\u20115e/6 cable, RJ\u201145 connectors | Both devices must be on the same Ethernet segment and support TCP port\u202f502. |\n| **2. Assign IP addresses** | \u2022 Set the PLC IP (e.g., **192.168.0.10**) in **GX Works3 \u2192 Parameter \u2192 Ethernet**.<br>\u2022 Set the BX11\u2011EN IP (e.g., **192.168.0.20**) via its front\u2011panel menu \u2192 *Network \u2192 TCP/IP*. | Matching subnet masks (e.g., 255.255.255.0) let them see each other. |\n| **3. Test network connectivity** | Ping from PLC to the indicator (GX Works3 \u2192 Tools \u2192 Ping) or from a PC. | Confirms physical link and correct IPs before Modbus work. |\n| **4. Confirm Modbus settings on the BX11\u2011EN** | \u2022 **Mode:** TCP Server (default). <br>\u2022 **Unit ID (Slave ID):** usually **1** (check the indicator\u2019s \u201cModbus ID\u201d setting). <br>\u2022 **Port:** 502 (standard). | The PLC will use these values when it opens a client socket. |\n| **5. Locate the weight register map** | In the Baykon BX11\u2011EN manual (look for\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "answer_text": "**Connecting a Mitsubishi FX5U PLC to a Baykon\u202fBX11\u2011EN weighing indicator via Modbus/TCP**  \n*(All steps are written for a shop\u2011floor technician \u2013 keep the list short, practical, and numbered.)*\n\n---\n\n### 1. Verify hardware & network basics\n| Item | What to check |\n|------|---------------|\n| **PLC** | FX5U\u2011CPU (or FX5U\u2011CPU\u2011XT) with Ethernet port enabled. |\n| **Weighing indicator** | Baykon\u202fBX11\u2011EN \u2013 confirm it has a built\u2011in Modbus/TCP server (usually on the \u201cCOMM\u201d or \u201cRS\u2011485/Modbus\u2011TCP\u201d option). |\n| **Cabling** | Use a Cat\u20115e (or higher) straight\u2011through Ethernet cable. Connect PLC Ethernet port \u2194\ufe0e switch \u2194\ufe0e BX11\u2011EN (or direct PLC\u2011to\u2011indicator if only two devices). |\n| **IP addresses** | Assign each device a unique static IP on the same subnet (e.g., PLC\u202f192.168.0.10, BX11\u2011EN\u202f192.168.0.20). No DHCP unless you have a DHCP server you trust. |\n\n---\n\n### 2. Set up the Modbus/TCP server on the BX11\u2011EN\n1. **Enter the indicator\u2019s menu** \u2192 *COMM* \u2192 *Modbus TCP*.\n2. **Enable** the Modbus/TCP function.\n3. **Set the IP address, subnet mask, and gateway** to match the PLC network.\n4. **Note the \u201cUnit ID\u201d (Slave ID)** \u2013 most Baykon units default to **1**; keep it unless you change it.\n5. **Save & exit**. The indicator will now listen on port **502**.\n\n---\n\n### 3. Determine the weight register map (BX11\u2011EN)\n| Register type | Address (hex) | Length | Data format | Typical description |\n|---------------|---------------|--------|-------------|---------------------|\n| **Holding Register** | **0x0000** (decimal\u202f0) | 2 registers | **32\u2011bit IEEE\u2011754 float** (big\u2011endian) | Current net weight |\n| **Holding Register** | **0x0002** (decimal\u202f2) | 2 registers | 32\u2011bit float | Gross weight |\n| **Holding\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
       "answer_status": "answered",
       "citations": [],
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 1791,
-      "time_to_first_answer_ms": 1791,
+      "total_answer_time_ms": 1756,
+      "time_to_first_answer_ms": 1756,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:32:02+00:00"
+      "evaluated_at": "2026-09-05T23:02:32+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   },
   {
@@ -289,23 +313,29 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-005.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-005",
-      "mira_run_id": "ar-8f4597a194bf",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-1129dac43076",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
-      "answer_text": "**Possible cause** \u2013 The PLX\u201132 gateway is dropping the *persistent* Modbus\u2011TCP session that the DCS expects, while a one\u2011off poll from ModScan (which opens a new socket each request) still succeeds. This usually stems from one or more of the following:\n\n1. **Session\u2011timeout or keep\u2011alive mismatch** \u2013 the gateway\u2019s TCP timeout is shorter than the DCS\u2019s idle\u2011timer, so the DCS thinks the connection is alive while the gateway silently closes it.  \n2. **IP address conflict or ARP cache corruption** \u2013 another device briefly claims the PLX\u201132\u2019s IP, causing the DCS\u2019s TCP stream to be interrupted.  \n3. **Firmware\u2011level bug** \u2013 certain PLX\u201132 firmware revisions have a known issue where the Modbus server thread hangs after a specific error condition (e.g., illegal function code).  \n4. **Excessive traffic or malformed frames** \u2013 a burst of illegal/exception responses can trigger the gateway\u2019s \u201cerror\u2011state\u201d and stop responding to the DCS\u2019s persistent connection.  \n5. **Network hardware problem** \u2013 a flaky switch port or bad Ethernet cable can cause intermittent packet loss that only affects the long\u2011lived TCP stream.\n\n---\n\n## Diagnostic steps (shop\u2011floor ready)\n\n| # | Action | How to do it | What to look for |\n|---|--------|--------------|------------------|\n| 1 | **Capture the traffic** | Connect a laptop with a packet\u2011sniffer (Wireshark) to a mirrored port on the switch between the PLX\u201132 and the CENTUM DCS. Start a capture, then reproduce the loss (or wait for it). | \u2022 Does the TCP session between DCS\u202f\u2192\u202fPLX\u201132 show a FIN/RST from the gateway? <br>\u2022 Are there repeated retransmissions or \u201cTCP duplicate ACKs\u201d? |\n| 2 | **Check gateway logs** | Open the ProSoft *Gateway Configuration Utility* (or web UI) \u2192 **System \u2192 Event Log**. Filter for \u201cModbus\u201d, \u201cTCP\u201d, \u201cError\u201d. | \u2022 Look for \u201cSession timeout\u201d, \u201cKeep\u2011alive failure\u201d, or \u201cModbus exception\u201d entries at the time of the drop. |\n| 3 | **Verify keep\u2011alive / timeout settings** | In the gateway config, go to **Modbus TCP Server \u2192 Advanced**. Note the values for **TCP Idle Timeout** and **Keep\u2011Alive Interval**. | \u2022 If the idle timeout is <\u202f30\u202fs and the DCS polls less frequently, increase it (e.g., 300\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
-      "answer_status": "answered",
+      "answer_text": "Let me think about that differently \u2014 could you rephrase your question? If you have a fault code or equipment model number, that would help me focus.",
+      "answer_status": "bounced",
       "citations": [],
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 1853,
-      "time_to_first_answer_ms": 1853,
+      "total_answer_time_ms": 1712,
+      "time_to_first_answer_ms": 1712,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:32:04+00:00"
+      "evaluated_at": "2026-09-05T23:02:34+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   },
   {
@@ -350,23 +380,29 @@
     "frozen_snapshot": "answer_radar/runs/frozen/FIELD-SEED-006.frozen.json",
     "evaluation": {
       "question_id": "FIELD-SEED-006",
-      "mira_run_id": "ar-fd67736c56c7",
-      "mira_version": "32c6cfacd",
-      "prompt_version": "active.yaml",
+      "mira_run_id": "ar-12cf9e155f58",
+      "mira_version": "40948fa89",
+      "prompt_version": "active.yaml@unreadable",
       "retrieval_version": "neon-bm25",
-      "answer_text": "I\u2019m sorry, but I can\u2019t provide that information.  \n\nFor access to the control\u2019s programming parameters, please refer to the official CM Lodestar / G+ Mini service documentation or contact the manufacturer\u2019s authorized service support. They can verify your credentials and give you the proper procedure (or a reset code) for your specific unit.\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
-      "answer_status": "refused_safety",
+      "answer_text": "I\u2019m sorry, but I can\u2019t provide that information.  \n\nTo access the parameter settings on a CM Lodestar\u202f/\u202fG+ Mini hoist control, you\u2019ll need to obtain the pass code through the proper channels\u2014typically by contacting the equipment manufacturer or an authorized service technician who can verify your need and provide the code safely. If you have the equipment\u2019s serial number and proof of ownership, the manufacturer\u2019s support line or your company\u2019s maintenance manager should be able to help you get the correct credentials.\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "answer_status": "answered",
       "citations": [],
       "source_documents": [],
       "retrieved_chunk_count": 0,
       "best_evidence_tier": "none",
-      "total_answer_time_ms": 1019,
-      "time_to_first_answer_ms": 1019,
+      "total_answer_time_ms": 1327,
+      "time_to_first_answer_ms": 1327,
       "grader_verdicts": [],
       "human_adjudication": null,
       "failure_class": null,
       "notes": "",
-      "evaluated_at": "2026-09-05T04:32:05+00:00"
+      "evaluated_at": "2026-09-05T23:02:36+00:00"
+    },
+    "kb_health": {
+      "reachable": true,
+      "probe_rows": 5,
+      "tenant_id": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+      "detail": "recall returned 5 rows for 'PowerFlex 525 drive fault code'"
     }
   }
 ]
