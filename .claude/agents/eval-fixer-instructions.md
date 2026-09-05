@@ -295,14 +295,28 @@ the same node resolves the same filename and **overwrites it in place** — do n
 suffix, a counter, or a second file. (That is also why the lock reclaims after a crash
 rather than blocking: a retry is the *same* run, not a competing one.)
 
-Then commit **only that fragment** to the current branch (or main if no patch was made):
+**Leave the fragment in the working tree. Do not commit it, and above all do not commit
+it to `main`.** Publishing is not your job — the wrapper (`run-eval-fixer.sh`) runs
+`tools/eval_fixer_fragment.py --publish` after you exit, which pushes the fragment to its
+own branch (`docs/eval-fixer-<date>-<worker>`) and opens a draft PR.
+
+That step is code rather than an instruction here for a specific reason: this file has
+said "never push to main directly — always use a branch + PR" the whole time, and on
+every no-patch night the fragment was committed to local `main` anyway. `main` is
+protected, so those commits could never be pushed and simply accumulated until a human
+rescued them by hand — four times (#3134 recovered 3 nights, #3255 5 nights, #3473 10
+nights, #3574 1 night). A fifth sentence of prose would not have changed that.
+
+If you *did* make a patch, Step 8 already put you on a `fix/eval-auto-<date>` branch;
+commit the fragment there **by its exact path** alongside the patch:
+
 ```bash
 git add "$FRAGMENT"
 git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d) (${WORKER})"
 ```
 
-Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, or
-`git add .` — the working tree is shared and may carry another session's work.
+Never `git add wiki/`, `git add -A`, or `git add .` — the working tree is shared and may
+carry another session's work.
 
 ## Reminders
 
