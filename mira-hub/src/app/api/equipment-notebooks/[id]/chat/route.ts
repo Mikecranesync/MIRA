@@ -40,6 +40,7 @@ import {
   resolveBoundAsset,
   validateChatSources,
   type ResolvedAsset,
+  type NotebookSource,
   originFileIdsByDoc,
 } from "@/lib/equipment-notebooks";
 import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
@@ -97,6 +98,12 @@ import type {
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
+import {
+  isPhotoSource,
+  photoSourceDirective,
+  photoSourcesInScope,
+  photoTurnObservation,
+} from "@/lib/photo-source-honesty";
 
 export const dynamic = "force-dynamic";
 
@@ -857,7 +864,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // so it can flag when the loaded doc only partially covers a question.
   const [nb, srcs] = await Promise.all([
     getNotebook(ctx.tenantId, notebookId).catch(() => null),
-    listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
+    // The catch arm was narrowing the row type to `{ filename }` alone, which
+    // discarded `sourceRole`/`originFileId` — the two columns the Sources sheet
+    // renders a picture from, and the only server proof that one is attached.
+    listSources(ctx.tenantId, notebookId).catch(() => [] as NotebookSource[]),
   ]);
   const identity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
@@ -875,12 +885,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "Identity CONFIRMED by a technician."
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
-  const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
+  // Whether a picture is attached is SERVER STATE, not something the model may
+  // infer from text-only excerpts. `photosInScope` intersects the notebook's
+  // rows with THIS turn's server-revalidated docIds, so it is proof.
+  const photosAttached = srcs.filter(isPhotoSource);
+  const photosInScope = photoSourcesInScope(srcs, docIds);
+  const loadedDocs =
+    srcs
+      .filter((s) => s.filename)
+      .map((s) => (isPhotoSource(s) ? `${s.filename} (text extracted from an attached PICTURE)` : String(s.filename)))
+      .join(", ") || "none";
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
-    `- Loaded source documents: ${loadedDocs}.\n` +
-    `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
+    `- Loaded source documents: ${loadedDocs}.` +
+    // Returns EXACTLY "" with no picture in scope, so the composed string stays
+    // byte-identical to what it was before this line existed. The trailing "\n"
+    // moved from the loadedDocs literal to the head of the coverage literal to
+    // keep that true.
+    photoSourceDirective(photosInScope, photosAttached.length) +
+    `\n- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
   // Coverage planning (answer completeness): the answer SHAPE determines how
   // much evidence the answer owes. Family questions get an explicit EVIDENCE
@@ -1234,6 +1258,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         : refused
           ? "insufficient_evidence"
           : "answered";
+
+      // OBSERVABILITY ONLY — this block reads nothing from `answerText` and
+      // writes nothing to the stream. The directive above is a prompt
+      // instruction handed to a probabilistic model, so its compliance rate is
+      // unknown; this emits the denominator (how often a picture is attached at
+      // all) so that rate can be established by joining to
+      // equipment_notebook_turns on (tenantId, notebookId, time).
+      if (served && photosAttached.length > 0) {
+        console.log(
+          JSON.stringify(
+            photoTurnObservation({
+              tenantId: ctx.tenantId,
+              notebookId,
+              photosAttached: photosAttached.length,
+              photosInScope: photosInScope.length,
+              answerStatus,
+              citationCount: emittedCitations.length,
+              general,
+            }),
+          ),
+        );
+      }
 
       const sourcesFrame: NotebookSourcesFrame = {
         kind: "sources",
