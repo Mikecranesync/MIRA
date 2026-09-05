@@ -1,15 +1,17 @@
-"""Locked Fleet Gateway MCP v1 contract — seven tools, deny-by-construction."""
+"""Locked Fleet Gateway MCP contract — nine tools, deny-by-construction."""
 
 from __future__ import annotations
 
 ALLOWED_TOOLS: tuple[str, ...] = (
     "fleet_status",
     "task_status",
+    "list_legacy_sessions",
     "launch_worker",
     "message_worker",
     "request_handoff",
     "request_review",
     "stop_worker",
+    "adopt_legacy_session",
 )
 
 MUTATE_TOOLS: frozenset[str] = frozenset(
@@ -19,10 +21,13 @@ MUTATE_TOOLS: frozenset[str] = frozenset(
         "request_handoff",
         "request_review",
         "stop_worker",
+        "adopt_legacy_session",
     }
 )
 
-READ_TOOLS: frozenset[str] = frozenset({"fleet_status", "task_status"})
+READ_TOOLS: frozenset[str] = frozenset(
+    {"fleet_status", "task_status", "list_legacy_sessions"}
+)
 
 # Physical fleet nodes (COMPUTER NAMES, not providers/profiles). Each one must
 # have a real CAO reachable on loopback and a node-local worktree provisioner —

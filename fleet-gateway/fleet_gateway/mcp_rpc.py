@@ -37,6 +37,18 @@ TOOL_DEFINITIONS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "list_legacy_sessions",
+        "description": (
+            "Read-only discover running legacy Claude/Codex sessions on one physical node."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"role": {"type": "string", "enum": ["bravo", "charlie", "alpha"]}},
+            "required": ["role"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "launch_worker",
         "description": "Launch bravo|charlie on claude|codex in an isolated worktree. No merge/deploy.",
         "inputSchema": {
@@ -104,6 +116,20 @@ TOOL_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "type": "object",
             "properties": {"session_id": {"type": "string"}},
             "required": ["session_id"],
+        },
+    },
+    {
+        "name": "adopt_legacy_session",
+        "description": (
+            "Adopt exactly one uniquely mapped legacy session into Gateway ownership. No launch."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "enum": ["bravo", "charlie", "alpha"]},
+                "external_id": {"type": "string"},
+            },
+            "required": ["role", "external_id"],
         },
     },
 )

@@ -33,14 +33,14 @@ def test_mcp_unauthenticated_401(service):
     assert get_resp.status_code == 401
 
 
-def test_mcp_tools_list_exactly_seven(service, auth):
+def test_mcp_tools_list_matches_contract(service, auth):
     client = TestClient(create_http_app(service))
     response = _rpc(client, "tools/list", auth=auth)
     assert response.status_code == 200
     tools = response.json()["result"]["tools"]
     names = [item["name"] for item in tools]
     assert names == list(ALLOWED_TOOLS)
-    assert len(names) == 7
+    assert len(names) == 9
     assert DENIED_TOOLS.isdisjoint(set(names))
     assert "merge" not in names
 

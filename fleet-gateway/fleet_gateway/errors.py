@@ -29,6 +29,16 @@ class NotFoundError(FleetGatewayError):
     http_status = 404
 
 
+class OwnershipError(FleetGatewayError):
+    """Refused: the fleet cannot prove it owns this session.
+
+    Raised before any CAO call when the artifact store has no fleet-owned
+    record for the target session_id. Ambiguous ownership always refuses.
+    """
+
+    http_status = 403
+
+
 class CaoConfigError(FleetGatewayError):
     """CAO adapter refused a non-loopback or credentialed URL."""
 

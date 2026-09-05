@@ -7,6 +7,6 @@ exposure of CAO (tunnel/VPS) is a later Mike-approved step, not this PR.
 
 from __future__ import annotations
 
-FLEET_GATEWAY_VERSION = "1.0.0"
+FLEET_GATEWAY_VERSION = "1.1.0"
 
 __all__ = ["FLEET_GATEWAY_VERSION"]
