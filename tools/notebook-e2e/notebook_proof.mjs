@@ -383,32 +383,32 @@ function loadPgClient() {
 // Mirrors mira-hub/scripts/setup-integration-db.mjs's assertDisposable(), with
 // one deliberate difference: this scenario's whole point is a dev/staging-shaped
 // DB, so — unlike that script — "staging" is NOT refused here.
-function isLocalHost(hostname) {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    h === "localhost" ||
-    h === "::1" ||
-    h.startsWith("127.") ||
-    h.startsWith("10.") ||
-    h.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
-    h.endsWith(".local") ||
-    h.endsWith(".internal")
-  );
+/** Exact-rule host classification for the --db guard. No suffix or prefix
+ *  matching: "127.0.0.1.evil.example" is not loopback and "*.local" proves
+ *  nothing. IPs are parsed numerically; names must be exactly "localhost". */
+function isLocalDbHost(hostRaw) {
+  const h = String(hostRaw || "").toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (h === "localhost" || h === "::1") return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
 /** The `--db` write is the ONE destructive thing this harness can do, so the
- *  guard is fail-closed rather than pattern-based. Substring checks for
- *  "prod"/"prd" are NOT enough: real production Postgres URLs (Neon endpoint
- *  names, `/neondb`) contain neither. Rules, all required:
+ *  guard is fail-closed and inspects the SAME host node-postgres will connect
+ *  to — `pg-connection-string`'s parse — not the URL authority. (`?host=` in
+ *  the query string overrides the authority host for pg; a guard that reads
+ *  `URL.hostname` would approve 127.0.0.1 while pg connects elsewhere.) Rules,
+ *  all required:
  *   1. MIRA_TEST_DB_CONFIRM=DISPOSABLE in the environment;
- *   2. the DB host is local/private (loopback, RFC1918, *.local) — a remote
- *      host is accepted ONLY with the explicit `--db-remote-ok` flag;
- *   3. never when `--base` is a production Hub host, and never when the DB
- *      host/path contains prod/prd/production (belt and braces). */
+ *   2. no host/hostaddr override in the query string at all;
+ *   3. the parsed host is local/private by exact rule (see isLocalDbHost) — a
+ *      remote host is accepted ONLY with the explicit `--db-remote-ok` flag;
+ *   4. never when `--base` is a production Hub host (trailing dot and case
+ *      normalised), and never when the host/path contains prod/prd/production. */
 function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
-  // Function-local on purpose: this guard runs BEFORE the top-level flow, so it
-  // must not depend on any top-level `const` (temporal dead zone).
   const PRODUCTION_HUB_HOSTS = new Set(["app.factorylm.com", "factorylm.com", "www.factorylm.com"]);
   if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
     fail(2, "Set MIRA_TEST_DB_CONFIRM=DISPOSABLE in env to confirm --db is a disposable dev database.");
@@ -419,25 +419,46 @@ function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
   } catch (err) {
     fail(2, `--db is not a valid connection URL: ${err.message}`);
   }
+  for (const key of url.searchParams.keys()) {
+    if (/^(host|hostaddr)$/i.test(key)) fail(2, `Refusing --db: a "${key}" query parameter would override the connection host.`);
+  }
   let base;
   try {
     base = new URL(baseText);
   } catch {
     base = null;
   }
-  if (base && PRODUCTION_HUB_HOSTS.has(base.hostname.toLowerCase())) {
+  const baseHost = base ? base.hostname.toLowerCase().replace(/\.$/, "") : "";
+  if (baseHost && PRODUCTION_HUB_HOSTS.has(baseHost)) {
     fail(2, `Refusing --db: --base ${base.hostname} is a production Hub. The two-user scenario never runs against production.`);
   }
-  const lower = `${url.hostname} ${url.pathname}`.toLowerCase();
+  const parsed = loadPgConnectionStringParse()(urlText);
+  const pgHost = String(parsed.host || "");
+  const lower = `${pgHost} ${url.hostname} ${url.pathname} ${parsed.database || ""}`.toLowerCase();
   if (lower.includes("prod") || lower.includes("prd") || lower.includes("production")) {
-    fail(2, `Refusing --db: host/path looks like production (${url.hostname}${url.pathname}).`);
+    fail(2, `Refusing --db: host/path looks like production (${pgHost}${url.pathname}).`);
   }
-  if (!isLocalHost(url.hostname) && !remoteOk) {
+  if (!isLocalDbHost(pgHost) && !remoteOk) {
     fail(
       2,
-      `Refusing --db: ${url.hostname} is not a local/private host. A disposable REMOTE dev database needs the explicit --db-remote-ok flag (and is still refused for production Hub hosts).`,
+      `Refusing --db: ${pgHost || "(no host)"} is not a local/private host. A disposable REMOTE dev database needs the explicit --db-remote-ok flag (and is still refused for production Hub hosts).`,
     );
   }
+}
+
+/** pg-connection-string is what node-postgres itself uses to decide where to
+ *  connect; resolve it from mira-hub the same way loadPgClient() resolves pg. */
+function loadPgConnectionStringParse() {
+  const require = createRequire(HUB_PACKAGE_JSON);
+  let mod;
+  try {
+    mod = require("pg-connection-string");
+  } catch (err) {
+    fail(2, `--db: could not resolve "pg-connection-string" from mira-hub (${err.message}); run npm ci in mira-hub first.`);
+  }
+  const parse = mod?.parse ?? mod?.default?.parse;
+  if (typeof parse !== "function") fail(2, `--db: pg-connection-string resolved from mira-hub has no parse export`);
+  return parse;
 }
 
 /** The ONLY database write this file ever makes: move a second test account
@@ -453,7 +474,7 @@ async function placeSecondUserInTenant(dbUrl, email, tenantId) {
       // The documented case is technician-to-technician: a freshly registered
       // account defaults to role 'owner', so set the role explicitly rather
       // than installing User B as a second owner.
-      `UPDATE hub_users SET tenant_id = $1, role = 'technician' WHERE email_lower = lower($2)`,
+      `UPDATE hub_users SET tenant_id = $1, role = 'technician', status = 'approved' WHERE email_lower = lower($2)`,
       [tenantId, email],
     );
   } finally {
