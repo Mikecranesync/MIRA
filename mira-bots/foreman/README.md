@@ -331,6 +331,26 @@ if self._is_bot_message(event):
 
 The second message (Foreman's own reply) is rejected BEFORE any agent launch attempt.
 
+## Autonomous Management Loop (Mission Policy)
+
+The Foreman management loop is encoded as pure, offline-testable policy in
+`mission_loop.py`. No Slack Socket, no Doppler, no Gateway HTTP is required
+to run or test the policy.
+
+Key guarantees (AC A–H, issue #3566):
+- Manager ≠ implementer — `ForemanPolicy` has no `open_worktree`, `edit_file`, or `commit`
+- Max one implementer worker at a time
+- Charlie/Codex reviewer requires an exact 40-char commit SHA
+- `can_merge()` and `can_deploy()` always return `allowed=False`
+- PRs #3533 and #3558 (and any HELD-titled PR) are refused by `can_touch_pr()`
+- Hard-boundary actions (gateway, tunnels, Doppler, secrets) are refused by `validate_action()`
+- `MissionState` round-trips to JSON for durable GitHub storage
+- `evaluate_go_no_go()` returns exactly `"GO"` or `"NO-GO"` with human gates
+
+Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (73 tests)
+
+Mission spec: `docs/missions/AUTONOMOUS-FOREMAN-V1.md`
+
 ## Support
 
 - **Logs:** `docker logs -f factorylm-foreman`
