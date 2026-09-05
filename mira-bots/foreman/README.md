@@ -20,6 +20,8 @@ Alpha | Bravo | Charlie
 Claude | Codex
 ```
 
+**Standing Grok specialist:** [Repo Archaeologist](../../.claude/agents/repo-archaeologist.md) — read-only, search-before-create, used constantly by Foreman / Answer Radar. Not a Slack bot and not a Gateway node. Skill: `.claude/skills/repo-archaeologist/`.
+
 ### Warm Session Management
 
 - **One agent, many messages:** Foreman creates a single Cursor cloud agent on the first accepted message, then reuses it for subsequent messages
