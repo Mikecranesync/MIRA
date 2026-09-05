@@ -11,8 +11,17 @@ concurrency:
 # deploy-vps.yml is allowed to run. See issue #689.
 #
 # Triggers:
-#   push to main  — fires first; deploy-vps.yml waits for this to succeed
-#   PR to main    — blocks merge if smoke fails (branch protection rule)
+#   push to main  — fires first; deploy-vps.yml waits for this to succeed, so a failure
+#                   here DOES stop the deploy. This is the enforcing path.
+#   PR to main    — ADVISORY ONLY. This job is not in the branch's required contexts, so a
+#                   red smoke does not block a merge and auto-merge still fires.
+#                   (CORRECTED 2026-09-05: this line previously read "blocks merge if smoke
+#                   fails (branch protection rule)". That was false — verify the real
+#                   required set with `tools/pr-merge-blocker.sh <pr>`. The wrong comment
+#                   mattered: on 2026-09-05 `app.factorylm.com/login` 502'd twice, the
+#                   check went red both times, and nothing stopped — the failure was nearly
+#                   dismissed as flake because everyone believed this line. Issue #3598.
+#                   The alert step below exists because of that gap.)
 #   workflow_dispatch — manual trigger for ad-hoc checks
 #
 # deploy-vps.yml listens for workflow_run: ["Smoke Test"] types: [completed]
@@ -96,6 +105,66 @@ jobs:
           name: smoke-failures-${{ github.run_id }}
           path: mira-hub/test-results/
           retention-days: 3
+
+      - name: Alert on a real production failure
+        # WHY THIS EXISTS. On a pull request this job is NOT a required context (verify
+        # with `tools/pr-merge-blocker.sh <pr>`, which lists the required set). So when it
+        # goes red on a genuine production fault, nothing blocks, auto-merge still fires,
+        # and the only trace is a red line someone has to notice by eye.
+        #
+        # That is not hypothetical. On 2026-09-05 `app.factorylm.com/login` returned 502
+        # twice (runs 33990652852 and 33991277593); both times the check went red, nothing
+        # stopped, and it was nearly written off as flake. Filed as issue #3598.
+        #
+        # A check that runs but cannot fail the merge is not a guard — the same lesson
+        # `ci.yml` records on its Ignition step. The fix here is deliberately NOT to make
+        # it required: a PR author cannot fix a production outage, and blocking their merge
+        # on live-site health only teaches people to ignore this check. Instead the signal
+        # is routed to a human who can act on it.
+        #
+        # Fires ONLY when a test step actually failed. A setup failure (lockfile drift, a
+        # Playwright browser flake) never assessed production and must not raise a
+        # production alarm — the same distinction the PR annotation below draws.
+        #
+        # Best-effort and non-fatal: reuses the Telegram path already proven in
+        # `dogfood-judge-heartbeat.yml`, and no-ops with a warning if the secrets are
+        # absent. It never changes this job's conclusion.
+        if: always() && (steps.smoke.outcome == 'failure' || steps.signup.outcome == 'failure')
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN_STG }}
+          TG_CHAT: ${{ secrets.DOGFOOD_ALERT_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          SIGNUP_OUTCOME: ${{ steps.signup.outcome }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then
+            echo "::warning::Production smoke failed but TELEGRAM_BOT_TOKEN_STG / DOGFOOD_ALERT_CHAT_ID are not set — no alert sent."
+            exit 0
+          fi
+
+          # On push-to-main this job gates deploy-vps.yml (workflow_run on "Smoke Test"),
+          # so a failure here has already stopped the deploy. On a PR it blocks nothing.
+          if [ "${EVENT}" = "push" ]; then
+            impact="deploy is BLOCKED (deploy-vps.yml gates on this workflow)"
+          else
+            impact="does NOT block this PR — smoke is not a required context"
+          fi
+
+          failed=""
+          [ "${SMOKE_OUTCOME}" = "failure" ] && failed="${failed} smoke"
+          [ "${SIGNUP_OUTCOME}" = "failure" ] && failed="${failed} signup-money-path"
+
+          msg="$(printf 'FactoryLM — PRODUCTION smoke failed\nfailed:%s\nimpact: %s\nrun: https://github.com/%s/actions/runs/%s\ncontext: issue #3598 (intermittent 502 on app.factorylm.com/login)' \
+            "${failed}" "${impact}" "${REPO}" "${RUN_ID}")"
+
+          curl -s --max-time 15 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${msg}" \
+            --data-urlencode "disable_web_page_preview=true" >/dev/null \
+            && echo "Production smoke alert sent." || echo "::warning::Alert dispatch failed (non-fatal)."
 
       - name: Annotate PR with failure summary
         if: failure() && github.event_name == 'pull_request'
