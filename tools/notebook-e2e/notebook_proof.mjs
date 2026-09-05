@@ -197,6 +197,13 @@ function parseSseFrames(raw) {
   return { frames, answer };
 }
 
+// --- 0. pre-flight: the only destructive capability is checked before ANY HTTP
+// call, so a refused --db never registers accounts or spends provider budget.
+if (args["expect-private-history"]) {
+  assertDisposableDbUrl(req("db"), BASE, { remoteOk: Boolean(args["db-remote-ok"]) });
+  loadPgClient();
+}
+
 // --- 1. account -------------------------------------------------------------
 await registerAccount(api, EMAIL, PASSWORD);
 
@@ -376,8 +383,6 @@ function loadPgClient() {
 // Mirrors mira-hub/scripts/setup-integration-db.mjs's assertDisposable(), with
 // one deliberate difference: this scenario's whole point is a dev/staging-shaped
 // DB, so — unlike that script — "staging" is NOT refused here.
-const PRODUCTION_HUB_HOSTS = new Set(["app.factorylm.com", "factorylm.com", "www.factorylm.com"]);
-
 function isLocalHost(hostname) {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   return (
@@ -402,6 +407,9 @@ function isLocalHost(hostname) {
  *   3. never when `--base` is a production Hub host, and never when the DB
  *      host/path contains prod/prd/production (belt and braces). */
 function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
+  // Function-local on purpose: this guard runs BEFORE the top-level flow, so it
+  // must not depend on any top-level `const` (temporal dead zone).
+  const PRODUCTION_HUB_HOSTS = new Set(["app.factorylm.com", "factorylm.com", "www.factorylm.com"]);
   if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
     fail(2, "Set MIRA_TEST_DB_CONFIRM=DISPOSABLE in env to confirm --db is a disposable dev database.");
   }
