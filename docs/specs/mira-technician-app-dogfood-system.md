@@ -1,5 +1,12 @@
 # FactoryLM Technician App Dogfood System
 
+> **Authority notice:** Durable product decisions from this design now live in
+> `docs/PRODUCT_CONSTITUTION.md`; protected implementation rules live in
+> `docs/ENGINEERING_GUARDRAILS.md`. Those canonical documents resolve internal legacy wording in
+> this file—including “no equipment selected” and the old every-troubleshooting-turn DoD—so it
+> cannot be read as blocking labelled L0 general maintenance help. This remains an implementation
+> design source, not the top-level authority.
+
 **Status:** Approved product design; implementation has not started from this document
 
 **Owner:** Mike Crane
@@ -355,7 +362,7 @@ For the garage dogfood session, the conveyor is operated only through existing p
 
 | Situation | Required app behavior |
 |---|---|
-| No equipment selected | Ask for the asset; do not troubleshoot. |
+| No equipment selected | Continue with labelled L0 general help; ask for identity before any asset-specific, historical, or live claim. |
 | Ambiguous equipment | Show candidates and ask for confirmation. |
 | Tenant/capability missing | Deny the action. Missing permission never means allowed. |
 | Authentication expires | Stop protected requests, preserve only a safe local draft, and ask for sign-in. |
@@ -529,7 +536,8 @@ This design is implemented only when all of the following are true:
 
 - There is one FactoryLM mobile app, one visible Notebook conversation surface, and one canonical Notebook server seam.
 - Phone and web show the same persisted notebook turns and evidence.
-- Every troubleshooting turn is bound to a tenant-scoped, confirmed canonical asset or asks for clarification.
+- Every asset-specific, historical, or live turn is bound to a tenant-scoped, confirmed canonical
+  asset or asks for clarification; labelled L0 general maintenance help requires no asset.
 - The phone contains no provider, plant, database, or signing secrets and no direct plant protocol client.
 - Manual/source ownership is checked before retrieval; missing evidence fails closed.
 - Citations open and support the claims they are attached to.

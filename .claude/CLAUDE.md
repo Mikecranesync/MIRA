@@ -1,50 +1,49 @@
 # MIRA — Product & Architecture Operating Guide
 
-> Companion to root `CLAUDE.md` (which is the **build-state + repo map**). This file is the **product rules** Claude Code must honor while editing this codebase.
->
-> **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
-> **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
-> **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
+> **Authority:** Read root `AGENTS.md` first. `docs/PRODUCT_CONSTITUTION.md` governs product
+> direction, and `docs/ENGINEERING_GUARDRAILS.md` governs protected engineering rules. Those
+> documents supersede conflicting Slack-first, asset-first, safety, tenant, git, secret,
+> environment, review, merge, or deployment guidance below. This file is a legacy detailed
+> implementation reference.
 
-## 🚦 Primary product focus: Beta readiness
+> Companion implementation reference to root `AGENTS.md`. Read the Product Constitution and
+> Engineering Guardrails before using details below. Older specifications and plans remain evidence,
+> not current priority or authority.
 
-The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
-Until the beta gate is met, every product change is judged against one question:
+## Primary product focus
 
-> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
-> troubleshooting question, and gets a grounded answer with citations from that manual —
-> without Mike manually fixing anything?**
+FactoryLM is one cohesive technician product across mobile and web. Its shared Notebook/conversation
+uses one server-governed MIRA, tenant model, history, evidence system, tool authority, and safety
+behavior. Universal Technician L0 accepts general maintenance questions without an asset or manual;
+confirmed identity gates asset-specific, historical, and live claims.
 
-The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
-met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
-chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
-features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+Implementation must reuse and consolidate the existing mobile, Hub, Notebook, evidence, safety, and
+inference seams. A historical beta status is not current proof; verify the exact build and
+environment under review.
 
 ## What MIRA is
 
-**MIRA** (Maintenance Intelligence Resource Agent) is the grounded diagnostic **agent** on top of **FactoryLM**, the maintenance-context layer. **Canonical wedge (`NORTH_STAR.md`, 2026-06-22): FactoryLM makes a factory's messy reality trustworthy enough for AI on top of *any* UNS; MIRA proves it by diagnosing with cited sources. Lead with the context platform, not the copilot.** Slack/Telegram/Ignition/QR/web are retained consumption surfaces — every adapter renders the *same approved-context answer*, grounded in the customer's real factory context.
+MIRA is the shared server-governed intelligence inside FactoryLM. Mobile and web are the primary
+customer surfaces. Slack/Foreman is the internal orchestration command center. Other adapters may
+consume the shared contracts; none defines a separate brain or customer product.
 
-It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
+## Product surface roles
 
-**Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
-
-## North Star architecture
-
-| Layer | Role | Lives in |
+| Surface | Role |
 |---|---|---|
-| **Slack / ChatOps** | Front door — where the technician talks | `mira-bots/slack/bot.py` (slack-bolt AsyncApp, Socket Mode) |
-| **Maintenance intelligence** | The brain — engine, FSM, grounding, classifier | `mira-bots/shared/engine.py` (Supervisor / GSD engine) |
-| **UNS / MQTT / Sparkplug B** | Live nervous system — real plant context | `mira-crawler/ingest/uns.py`, `mira-relay/`, `ignition/` |
-| **Component templates + KG** | Memory — reusable asset/component knowledge | NeonDB `kg_entities` + `kg_relationships` (migrations 004/005) |
-| **Customer docs + work orders** | Evidence — what we cite | `mira-crawler/ingest/`, `mira-mcp/server.py` (CMMS tools), `mira-cmms/` (Atlas) |
+| **FactoryLM mobile** | Portable customer product; device-appropriate view of shared conversations and tools |
+| **FactoryLM web/Hub** | Same customer product on a larger surface; onboarding and administration where appropriate |
+| **MIRA server** | Shared intelligence, tenant/context admission, tools, evidence, safety, history, and persistence |
+| **Slack/Foreman** | Internal orchestration and engineering command center |
+| **Other adapters** | Contract-compliant consumers; not independent brains or product authorities |
 
-Slack is the first **front door** — *not* the wedge (the wedge is the context layer; `NORTH_STAR.md`). Telegram/email/Ignition/QR adapters at `mira-bots/` are **retained consumption surfaces**: each renders the same approved-context answer and follows the engine's contract, not the other way around.
+## The asset-specific UNS location-confirmation gate
 
-## The non-negotiable UNS location-confirmation gate
+**MIRA must not make asset-specific, historical, or live claims until it has resolved and confirmed
+the technician's tenant-scoped work context inside the Unified Namespace or asset namespace.**
+Labelled L0 general maintenance help remains available without this context.
 
-**MIRA must not begin troubleshooting until it has resolved the technician's work context inside the Unified Namespace or asset namespace.**
-
-Required flow (enforced in `mira-bots/shared/engine.py`):
+For an asset-specific request, the required flow is:
 
 1. Receive technician message.
 2. Extract candidate `asset`, `area`, `line`, `machine`, `component`, `symptom`, `fault_code`.
@@ -53,9 +52,10 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 5. Gather evidence (UNS hit, work-order history, manual reference, PLC tag, prior session, technician hint).
 6. **Send a confirmation message** identifying site / area / line / machine / asset / component / fault, evidence used, confidence level, and a confirmation question.
 7. **Wait for confirmation or correction.**
-8. Only then enter troubleshooting / live-assist mode.
+8. Only then enter asset-specific troubleshooting / live-assist mode.
 
-A code path that begins troubleshooting before step 7 is a **bug**. The `mira-run-hallucination-audit` command exists to find such paths.
+A code path that makes an asset-specific, historical, or live claim before step 7 is a **bug**. A
+labelled L0 response that makes no such claim is not.
 
 **Carve-out — direct machine connections are UNS-certified by construction.** The flow above (and the chat-gate in `.claude/rules/uns-confirmation-gate.md`) applies to chat surfaces (Slack/Telegram/email/generic web). When a turn arrives over a surface that already knows which machine the technician is on — Ignition cloud-chat (`mira-pipeline /api/v1/ignition/chat`), a Perspective "Ask MIRA" panel, an MQTT/Sparkplug B turn from `mira-bridge`/`mira-relay`, a PLC bridge tag-snapshot, a Hub Command Center display, a QR-scan deep-link — the connection itself certifies the UNS path. The engine MUST skip steps 6–7 and treat `state["uns_context"]["source"]=="direct_connection"` as already confirmed. A direct-connection surface that lacks a UNS identifier on its payload must **reject** the turn (`{"error":"uns_required"}`), NOT downgrade to a chat-gate. Full rule + surface list + rejection contract: `.claude/rules/direct-connection-uns-certified.md`.
 

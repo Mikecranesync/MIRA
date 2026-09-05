@@ -1,22 +1,29 @@
 # MIRA — Build State
 
-**Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
+> **Authority:** Read `AGENTS.md` first. `docs/PRODUCT_CONSTITUTION.md` governs product direction,
+> and `docs/ENGINEERING_GUARDRAILS.md` governs protected engineering rules. They supersede any
+> conflicting product, safety, tenant, git, secret, environment, review, merge, or deployment
+> guidance below; this file is a detailed implementation reference. Provider, runtime, deployment,
+> status, and path claims below are snapshots—verify them against the current tree and configuration.
+
+**Version:** derived from git tags; see `docs/versioning.md` (the monorepo `/VERSION` file no longer exists)
 **One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Together (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
 
-## North Star
-- **🧭 CANONICAL WEDGE — `NORTH_STAR.md` (2026-06-22).** FactoryLM = the maintenance-context layer (makes messy data trustworthy for AI on *any* UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Lead with the context platform, never the copilot.** Adapters (Slack/Telegram/Ignition/QR/web) are retained consumption surfaces — each renders the *same approved-context answer*. The competitive map + the **ProveIt! 2027 demo runbook** (`docs/plans/2026-06-22-proveit-2027-demo-runbook.md`) live there. Supersedes the older "Slack-first copilot" / "digital-transformation-firm" framings.
-- **🚦 BETA GATE — A stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** The release gate for the "Path to Beta Testers" phase. **Status (2026-06-17): MET / PASSING on deploy truth** — the upload→retrieval gap is **closed** (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077). `tests/beta/beta_ready_upload_retrieval_citation.py` is now a **real assertion**, CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path — `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. Keep it green; see `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
-- **🧭 PRODUCT DIRECTION — Train before deploy.** The Command Center (`mira-hub`) builds the namespace and **validates** MIRA. Ignition/HMI **consumes approved intelligence** — it is a deployment surface, not the onboarding system. Doctrine: `.claude/rules/train-before-deploy.md`; lifecycle spec: `docs/specs/asset-agent-validation-spec.md`.
-- **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
-- **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
-- **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
-- **Implementation-level architecture:** `docs/specs/mira-component-intelligence-architecture.md` — component templates, KG mechanics. (Self-declared "supersedes" header is historical; the TOO doc re-layers the hierarchy.)
-- **Commercial flywheel:** `NORTH_STAR.md` (still authoritative for offers + flywheel mechanics).
-- **GTM motion:** `STRATEGY.md` (still authoritative for ICP + competitive table).
+## Authority and product direction
+
+- **Product:** `docs/PRODUCT_CONSTITUTION.md` — one FactoryLM product across mobile and web,
+  Universal Technician L0, one server-governed MIRA, and Slack/Foreman as the internal command
+  center.
+- **Protected engineering rules:** `docs/ENGINEERING_GUARDRAILS.md`.
+- **Company strategy and commercial context:** `NORTH_STAR.md` and `STRATEGY.md`, only where
+  consistent with the Product Constitution.
+- **Implementation evidence:** `docs/THEORY_OF_OPERATIONS.md`, older PRDs/plans, and the detailed
+  maps below. Verify their volatile status, paths, providers, and deployments against current
+  source before acting.
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
@@ -371,4 +378,6 @@ Pocock canonical names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 
 ### Domain docs
 
-Multi-context. Root `CONTEXT-MAP.md` lists per-module contexts. Primary doctrine: `docs/THEORY_OF_OPERATIONS.md`. See `docs/agents/domain.md`.
+Multi-context. Root `CONTEXT-MAP.md` lists per-module contexts. Product authority:
+`docs/PRODUCT_CONSTITUTION.md`; protected engineering authority:
+`docs/ENGINEERING_GUARDRAILS.md`. See `docs/agents/domain.md`.
