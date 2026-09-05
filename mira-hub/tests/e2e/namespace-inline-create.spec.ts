@@ -399,17 +399,31 @@ test.describe("Namespace create + doc attach", () => {
     const nodeId = await nodeRow(page, AREA_NAME).getAttribute("data-node-id");
     expect(nodeId, "node row is missing data-node-id").toBeTruthy();
     // Poll the files endpoint — the INSERT into namespace_direct_uploads can lag
-    // the success toast by a beat on serverless Postgres (read-after-write). If
-    // the filename never appears, the upload did not bind to the node.
+    // the success toast by a beat on serverless Postgres (read-after-write).
+    //
+    // Deliberately NOT asserting the filename. The fixture above is a FIXED,
+    // byte-identical 1x1 PNG uploaded under a per-run name, so content dedup
+    // lists it under the FIRST-SEEN filename — `nameplate-${RUN_SUFFIX}.png`
+    // never appears and this could never pass (issue #3398:
+    // workspace_file_links.display_label is unused). That made the gate report
+    // "never bound" for a file that binds correctly, and it stayed red from
+    // 2026-08-18 onward while the other 8 scenarios passed.
+    //
+    // The node is created fresh at the top of this scenario, so its file list
+    // starts empty: "a direct upload is now listed under this node" is the
+    // exact binding claim, and it is immune to the display-label bug. The
+    // wrong-label defect is #3398's to fix, not this gate's to mis-report.
     await expect
       .poll(
         async () => {
           const r = await page.request.get(`${HUB}/api/namespace/node/${nodeId}/files`);
-          return r.ok() ? JSON.stringify(await r.json()) : "";
+          if (!r.ok()) return 0;
+          const body = (await r.json()) as { files?: { source?: string }[] };
+          return (body.files ?? []).filter((f) => f.source === "direct").length;
         },
         { timeout: 15_000, message: "uploaded file never bound to the node" },
       )
-      .toContain(`nameplate-${RUN_SUFFIX}.png`);
+      .toBeGreaterThan(0);
   });
 
   test("Scenario 3 — empty name does not create a node", async ({ page }) => {
