@@ -22,6 +22,15 @@ def render_teams(response: NormalizedChatResponse) -> dict:
             )
         elif block.kind == "paragraph":
             body.append({"type": "TextBlock", "text": block.data.get("text", ""), "wrap": True})
+        elif block.kind == "bullet_list":
+            items = block.data.get("items", [])
+            body.append(
+                {
+                    "type": "TextBlock",
+                    "text": "\n".join(f"- {i}" for i in items),
+                    "wrap": True,
+                }
+            )
         elif block.kind == "key_value":
             facts = [{"title": k, "value": v} for k, v in block.data.get("pairs", [])]
             body.append({"type": "FactSet", "facts": facts})
