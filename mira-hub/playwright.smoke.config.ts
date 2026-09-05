@@ -29,6 +29,14 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testMatch: ["**/smoke.spec.ts", "**/money-path.spec.ts"],
+  // Wait for prod to settle before judging it (#3082). A merge to main restarts
+  // the prod containers, and a smoke run landing in that window hits a real
+  // outage — #3035 has the evidence. This waits for the surface to come back,
+  // then judges normally, and still FAILS when it never comes back. It is not a
+  // tolerance knob. `retries: 1` below was already set when #3082 was filed and
+  // did not help: Playwright retries immediately, so both attempts landed in the
+  // same window.
+  globalSetup: "./tests/e2e/prod-settle.globalSetup.ts",
   fullyParallel: false,
   retries: 1,       // one retry absorbs transient network blips; two failures = real breakage
   workers: 1,
