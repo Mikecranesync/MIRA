@@ -51,8 +51,18 @@ fragment to local `main`. `main` is protected, so that commit could never be pus
 sat there until a human noticed — **four times** (#3134 rescued 3 nights, #3255 5 nights,
 #3473 10 nights, #3574 1 night), even though the instructions said "never push to main
 directly — always use a branch + PR" the entire time. `--publish` also recovers a fragment
-that is already stranded in such a commit. The wrapper additionally logs a loud `ERROR` if it
-ever finds `wiki/hot.d/` commits on local `main` again.
+that is already stranded in such a commit.
+
+**If the push itself fails** (no network, a rejected ref), the commit is anchored to a local
+`refs/heads/docs/eval-fixer-<date>-<worker>` rather than left as an untracked file — an
+untracked file in this shared checkout would die to the next `git clean -fd`, which is *less*
+recoverable than the bug being fixed. The wrapper's canary has a half for each failure mode:
+`wiki/hot.d/` commits on local `main` (the old bug returning), and local `docs/eval-fixer-*`
+branches that never reached `origin` (a publish that could not push).
+
+Exit codes: `0` published (or already on `main`), `4` a real delivery failure, `5` no fragment
+was written at all — the ordinary outcome when the eval was clean and the agent exited at
+Step 1, which the wrapper deliberately does **not** log as an error.
 
 ## Why this exists
 
@@ -121,6 +131,9 @@ superseded, so the evidence is re-runnable rather than a number in a PR body:
 | Stranded local-`main` commit is rescued | `test_publish_rescues_a_fragment_stranded_in_a_local_main_commit` |
 | Re-run updates its own branch | `test_publish_is_idempotent_across_a_rerun` |
 | Wrapper publishes, prose does not | `test_wrapper_publishes_after_the_agent_exits` |
+| **Failed push keeps a durable local ref** | `test_failed_push_keeps_the_commit_on_a_local_ref` |
+| Clean night is not a delivery failure | `test_cli_uses_a_distinct_code_for_no_fragment_vs_a_real_failure` |
+| Canary sees an unpushed run branch | `test_wrapper_canary_detects_an_unpushed_local_eval_fixer_branch` |
 
 ## Rules for writers
 

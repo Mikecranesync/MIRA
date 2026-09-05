@@ -303,7 +303,7 @@ def test_publish_pushes_the_fragment_to_its_own_branch(origin_and_clone) -> None
 
 def test_publish_never_moves_head_or_dirties_the_shared_tree(origin_and_clone) -> None:
     """The whole reason this uses plumbing: it runs at 05:00 into a SHARED checkout."""
-    origin, clone = origin_and_clone
+    _, clone = origin_and_clone
     _run("git", "checkout", "-b", "someone-elses-wip", cwd=clone)
     (clone / "their_work.py").write_text("# uncommitted\n", encoding="utf-8")
     head_before = _run("git", "rev-parse", "HEAD", cwd=clone).stdout.strip()
@@ -395,7 +395,9 @@ def test_wrapper_publishes_after_the_agent_exits() -> None:
         Path(__file__).resolve().parents[1] / ".claude" / "agents" / "run-eval-fixer.sh"
     ).read_text(encoding="utf-8")
     assert "--publish" in wrapper, "wrapper must run the publish step itself"
-    assert wrapper.index("claude \\") < wrapper.index("--publish"), "publish runs after the agent"
+    # Match the invocation, not the prose above it — the canary comment names `--publish` too.
+    invocation = wrapper.index('--date "$(date +%Y-%m-%d)" --publish')
+    assert wrapper.index("claude \\") < invocation, "publish must run after the agent exits"
     assert "origin/main..main" in wrapper, "wrapper must carry the stranded-commit canary"
 
 
@@ -405,3 +407,51 @@ def test_instructions_no_longer_tell_the_agent_to_commit_to_main() -> None:
         Path(__file__).resolve().parents[1] / ".claude" / "agents" / "eval-fixer-instructions.md"
     ).read_text(encoding="utf-8")
     assert "or main if no patch was made" not in text
+
+
+def test_failed_push_keeps_the_commit_on_a_local_ref(origin_and_clone) -> None:
+    """A failed push must not leave the run's only copy as an untracked file.
+
+    That would be strictly WORSE than the stranded-commit bug this replaced: an untracked
+    file in the shared checkout dies to the next `git clean -fd`. The commit object already
+    exists, so it gets anchored to a local ref instead — durable, and findable by the
+    wrapper's canary.
+    """
+    origin, clone = origin_and_clone
+    _write_fragment(clone, "2026-08-30", "charlie", "# undelivered\n")
+    _run("git", "remote", "set-url", "--push", "origin", "/nonexistent/unreachable.git", cwd=clone)
+
+    ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
+
+    assert not ok
+    assert "kept locally" in reason
+    branch = efp.publish_branch("2026-08-30", "charlie")
+    local = _run("git", "rev-parse", "--verify", f"refs/heads/{branch}", cwd=clone).stdout.strip()
+    assert local, "the commit must survive on a local ref"
+    shown = _run("git", "show", f"{branch}:{efp.fragment_path('2026-08-30', 'charlie')}", cwd=clone)
+    assert "undelivered" in shown.stdout
+    assert not _branch_sha(origin, branch), "nothing should have reached origin"
+
+
+def test_cli_uses_a_distinct_code_for_no_fragment_vs_a_real_failure(
+    capsys: pytest.CaptureFixture[str], monkeypatch, origin_and_clone
+) -> None:
+    """Clean-eval nights write no fragment. That is normal, not a delivery failure."""
+    _, clone = origin_and_clone
+    monkeypatch.setenv(efp.WORKER_ENV, "charlie")
+
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
+    assert "no fragment to publish" in capsys.readouterr().err
+
+    _write_fragment(clone, "2026-08-30", "charlie")
+    _run("git", "remote", "set-url", "--push", "origin", "/nonexistent/unreachable.git", cwd=clone)
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 4
+
+
+def test_wrapper_canary_detects_an_unpushed_local_eval_fixer_branch() -> None:
+    """The canary must watch the failure mode that can actually happen now."""
+    wrapper = (
+        Path(__file__).resolve().parents[1] / ".claude" / "agents" / "run-eval-fixer.sh"
+    ).read_text(encoding="utf-8")
+    assert "refs/heads/docs/eval-fixer-*" in wrapper, "canary must look for unpushed run branches"
+    assert "refs/remotes/origin/" in wrapper, "canary must compare against what reached origin"

@@ -301,7 +301,17 @@ def publish_fragment(
 
     pushed = _git(repo, "push", "--force", remote, f"{commit}:refs/heads/{branch}", check=False)
     if pushed.returncode != 0:
-        return False, f"could not push {branch}: {pushed.stderr.strip()}"
+        # The push failed (no network, SSH under launchd, a rejected ref). Do NOT leave the
+        # run's only copy as an untracked file: an untracked file in a SHARED checkout dies
+        # to the next `git clean -fd` or gets swept into someone else's `git add -A`, which
+        # is strictly less recoverable than the stranded-commit bug this function replaced.
+        # The commit object already exists, so anchor it to a local ref. That makes the
+        # output durable and gives the wrapper's canary something to find.
+        _git(repo, "update-ref", f"refs/heads/{branch}", commit, check=False)
+        return False, (
+            f"could not push {branch}: {pushed.stderr.strip()} — kept locally as "
+            f"refs/heads/{branch} ({commit[:9]}); push it to deliver this run"
+        )
 
     return _open_draft_pr(repo, branch=branch, base=base, date=date, worker=worker)
 
@@ -381,7 +391,11 @@ def main(argv: list[str] | None = None) -> int:
         repo = Path(args.repo) if args.repo else Path(__file__).resolve().parents[1]
         ok, reason = publish_fragment(args.date, worker, repo=repo)
         print(reason, file=sys.stderr)
-        return 0 if ok else 4
+        if ok:
+            return 0
+        # 5 distinguishes "this run wrote no fragment" (the ordinary clean-eval outcome,
+        # where the agent exits at Step 1) from 4, a real failure to deliver one.
+        return 5 if reason.startswith("no fragment to publish") else 4
     if args.acquire:
         ok, reason = acquire_lock(args.date, worker)
         if not ok:
