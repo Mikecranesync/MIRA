@@ -146,7 +146,17 @@ export type NotebookEvidenceFrame = {
   /** 086 §3: the client asked about a DIFFERENT asset than this notebook's
    *  confirmed binding, so the identity was treated as unconfirmed for this
    *  turn (no machine evidence, no asset snapshot, no machine-specific facts).
-   *  Additive; older clients ignore it. */
+   *  Additive; older clients ignore it.
+   *
+   *  CONTRACT EXCEPTION — the marker-only frame. On a disputed turn the route
+   *  ALSO emits `{kind:"evidence", identityDisputed:true}` as the FIRST frame,
+   *  with NO `basis`/`label` (route.ts `IDENTITY_DISPUTE_FRAME`), so that a
+   *  Stop mid-answer has already seen the dispute and a live safety stop /
+   *  abstention projects the same basis (none) as its persisted row. Readers
+   *  must therefore treat `basis`/`label` as absent on an evidence frame that
+   *  carries `identityDisputed` and no `basis`; the answered path's final,
+   *  full evidence frame still follows. This is the only case in which more
+   *  than one evidence frame is emitted per turn. */
   identityDisputed?: boolean;
 };
 

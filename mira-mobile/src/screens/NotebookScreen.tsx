@@ -897,6 +897,10 @@ export function NotebookScreen({
                     (wire order: content* → safety → status), so the in-flight
                     turn must be able to show the banner too. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
+                {/* 086 §3: the dispute marker is the FIRST frame on a disputed
+                    wire — it must show while the answer is still streaming,
+                    exactly as ChatV2's pendingMessages does. */}
+                {pending.a.identityDisputed && <IdentityDisputeNotice />}
                 {pending.a.answer ? (
                   <AnswerMarkdown text={pending.a.answer} citations={[]} />
                 ) : (

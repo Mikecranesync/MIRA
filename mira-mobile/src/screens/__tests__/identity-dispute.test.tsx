@@ -54,6 +54,8 @@ vi.mock("../../lib/native-pick", async (importOriginal) => {
 import { NotebookScreen } from "../NotebookScreen";
 import { parseChatSse, type ChatTurn } from "../../lib/sse";
 
+const wire = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+
 const DISPUTE = {
   kind: "identity_dispute",
   requestedAssetId: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
@@ -150,6 +152,41 @@ describe.each(SURFACES)("identity dispute — %s", (_name, available) => {
     expect(notice.textContent).not.toMatch(/answered/i);
     expect(notice.textContent).not.toMatch(/general guidance/i);
     expect(notice.textContent).toMatch(/history was not used/i);
+  });
+
+  it("the IN-FLIGHT turn shows the dispute the moment the marker lands — before any content (round 6)", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    askNotebook.mockImplementation(async (_id: string, _msg: string, _scope: unknown, opts: { onUpdate?: (t: ChatTurn) => void }) => {
+      // The marker frame is FIRST on a disputed wire; the parser reports it
+      // with no answer text yet.
+      opts.onUpdate?.({ answer: "", citations: [], status: "", identityDisputed: true });
+      await gate;
+      return parseChatSse(
+        wire({ kind: "evidence", identityDisputed: true }) +
+          wire({ kind: "content", content: "An overcurrent fault usually means the motor drew too much." }) +
+          wire({ kind: "sources", citations: [] }) +
+          wire({ kind: "status", status: "answered" }),
+      );
+    });
+    mount(available);
+    const input = (await screen.findByRole("textbox", { name: "Ask a question" })) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "what happened around the fault?" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    // Still pending (the provider has not produced a byte) — the notice is up.
+    const notice = await screen.findByTestId("identity-dispute");
+    expect(notice.textContent).toMatch(/not the machine this notebook is bound to/i);
+    expect(screen.queryByText(/overcurrent fault/i)).toBeNull();
+    release();
+    await act(async () => {
+      await gate;
+    });
+    expect(await screen.findByText(/overcurrent fault/i)).toBeTruthy();
+    expect(screen.getAllByTestId("identity-dispute").length).toBeGreaterThan(0);
   });
 
   it("a LIVE disputed turn shows the notice from the evidence frame", async () => {
