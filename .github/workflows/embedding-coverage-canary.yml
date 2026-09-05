@@ -1,0 +1,179 @@
+name: Embedding Coverage Canary
+
+# WHY THIS EXISTS (2026-09-03).
+#
+# The prod embedder (OLLAMA_BASE_URL -> the Bravo tailnet node) was unreachable
+# for ~5 days. Every document uploaded in that window landed with
+# `embedding = NULL` — invisible to the vector ranker, BM25-only, so a
+# technician's manual could be attached, "Searchable", and still fail to answer
+# a question its own text covers. Nothing detected it. It was found by reading
+# container logs by hand while chasing an unrelated bug.
+#
+# The two existing nets do not cover this:
+#   * `apply-seeds.yml` has an embedding-coverage gate, but it only runs when
+#     somebody seeds. It is a release gate, not a monitor.
+#   * `embedPendingNodeChunks` (mira-hub) is a best-effort trailing pass scoped
+#     to ONE `source_url` at ingest time, with no retry and no sweep. A chunk
+#     that misses its one chance stays dark forever — the log line's
+#     `"permanent": false` means "this failure class is retryable", NOT "some
+#     process will retry it". Nothing will.
+#
+# So this canary watches the metric directly and fails loudly.
+#
+# READ-ONLY. Counts only, no content, no writes. CI cannot embed (GitHub
+# runners have no tailnet reach to Ollama) — remediation is a human running the
+# backfill from a tailnet node; the failure message says exactly how.
+
+on:
+  schedule:
+    - cron: "20 6 * * *" # daily 06:20 UTC, before the working day
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "NeonDB target. staging = factorylm/stg, prod = factorylm/prd."
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - prod
+          - staging
+      fresh_dark_threshold:
+        description: "Fail if more than this many NEW dark chunks appeared in the last 24h. 0 = any new dark chunk fails."
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: embedding-coverage-canary-${{ inputs.target || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Embedding coverage (${{ inputs.target || 'prod' }})
+    runs-on: ubuntu-latest
+    environment: ${{ (inputs.target || 'prod') == 'prod' && 'production' || 'staging' }}
+    timeout-minutes: 6
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          psql --version
+
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          case "${{ inputs.target || 'prod' }}" in
+            staging) DOPPLER_CFG=stg ;;
+            prod)    DOPPLER_CFG=prd ;;
+            *) echo "::error::Unknown target"; exit 1 ;;
+          esac
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch (factorylm/${DOPPLER_CFG})"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      # ── The measurement. READ-ONLY, counts only. ────────────────────────────
+      #
+      # FRESH dark rows are the leading indicator and the one that matters: new
+      # NULL-embedding chunks in the last 24h mean the embedder is failing NOW.
+      # The corpus-wide total is a lagging indicator — it stays high after an
+      # outage until somebody backfills, so it must not be the alarm on its own
+      # or the canary screams every day until remediation and gets ignored.
+      #
+      # The by-source_type split is the diagnostic signature from the 2026-08-21
+      # incident: corpus coverage high while `node_attachment` alone is near
+      # zero means customer uploads are dark while the shared OEM corpus is fine.
+      - name: Measure embedding coverage — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -At -F'|' \
+            -c "SELECT count(*) FILTER (WHERE embedding IS NULL AND created_at > now() - interval '24 hours'),
+                       count(*) FILTER (WHERE created_at > now() - interval '24 hours'),
+                       count(*) FILTER (WHERE embedding IS NULL),
+                       count(*)
+                  FROM knowledge_entries" > /tmp/counts.txt
+
+          IFS='|' read -r FRESH_DARK FRESH_TOTAL DARK TOTAL < /tmp/counts.txt
+          {
+            echo "FRESH_DARK=${FRESH_DARK}"
+            echo "FRESH_TOTAL=${FRESH_TOTAL}"
+            echo "DARK=${DARK}"
+            echo "TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
+
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+            -c "SELECT source_type,
+                       count(*) AS chunks,
+                       count(*) FILTER (WHERE embedding IS NULL) AS dark,
+                       round(100.0 * count(*) FILTER (WHERE embedding IS NULL) / greatest(count(*),1), 1) AS dark_pct
+                  FROM knowledge_entries
+                 GROUP BY source_type
+                 ORDER BY dark DESC, chunks DESC" > /tmp/by_type.txt
+
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+            -c "SELECT date_trunc('day', created_at)::date AS day,
+                       count(*) AS chunks,
+                       count(*) FILTER (WHERE embedding IS NULL) AS dark
+                  FROM knowledge_entries
+                 WHERE created_at > now() - interval '10 days'
+                 GROUP BY 1 ORDER BY 1 DESC" > /tmp/by_day.txt
+
+      - name: Report
+        run: |
+          set -euo pipefail
+          {
+            echo "## Embedding coverage — ${{ inputs.target || 'prod' }}"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Chunks ingested, last 24h | ${FRESH_TOTAL} |"
+            echo "| **…of those, DARK (no embedding)** | **${FRESH_DARK}** |"
+            echo "| Dark chunks, corpus-wide | ${DARK} |"
+            echo "| Total chunks | ${TOTAL} |"
+            echo ""
+            echo "### By source_type"
+            echo '```'
+            cat /tmp/by_type.txt
+            echo '```'
+            echo "### Last 10 days"
+            echo '```'
+            cat /tmp/by_day.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── The gate. Fresh dark rows only — see the note above. ────────────────
+      - name: Gate on FRESH dark chunks
+        env:
+          THRESHOLD: ${{ inputs.fresh_dark_threshold || '0' }}
+        run: |
+          set -euo pipefail
+          if [ "${FRESH_DARK}" -gt "${THRESHOLD}" ]; then
+            echo "::error::${FRESH_DARK} chunk(s) ingested in the last 24h have NO embedding (threshold ${THRESHOLD}). The embedder is failing NOW: uploads are landing BM25-only and are invisible to the vector ranker. Nothing will retry them — embedPendingNodeChunks runs once at ingest, scoped to one source_url, with no sweep. FIX: (1) confirm OLLAMA_BASE_URL on mira-hub points at a REACHABLE node — check 'tailscale status' for the Ollama host and curl \$OLLAMA_BASE_URL/api/tags from the VPS; (2) once it is reachable, backfill from a TAILNET node (GitHub runners have no tailnet reach): doppler run -p factorylm -c prd -- python tools/backfill_knowledge_embeddings.py --dry-run   then re-run without --dry-run."
+            exit 1
+          fi
+          echo "No fresh dark chunks in the last 24h (${FRESH_TOTAL} ingested)."
+          if [ "${DARK}" -gt 0 ]; then
+            echo "::warning::${DARK} dark chunk(s) remain corpus-wide from an EARLIER outage. Not failing (the embedder is healthy now), but these stay invisible to vector retrieval until backfilled from a tailnet node: doppler run -p factorylm -c prd -- python tools/backfill_knowledge_embeddings.py"
+          fi
