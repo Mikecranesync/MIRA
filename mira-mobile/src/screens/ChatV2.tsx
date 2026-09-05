@@ -24,13 +24,14 @@ import {
   useMiraChatRuntime,
 } from "../chat-adapter/runtime";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
-import type { NotebookServerTurn } from "../api/resources";
+import type { NotebookServerTurn, PhotoPin } from "../api/resources";
 import type { MachineEvidenceEntry } from "../lib/replay";
 import type { VisualObservationEntry } from "../lib/sensor";
 import { basisCaption, replayCardTitle } from "../lib/replay";
 import { visualCardTitle } from "../lib/sensor";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { SourceThumb } from "./FilePreview";
+import { PhotoPinChip } from "./PhotoPinChip";
 import { SafetyNotice } from "./SafetyNotice";
 import { Sheet } from "./Sheet";
 
@@ -47,6 +48,10 @@ export interface ChatV2Handlers {
   onAttachFile: () => void;
   /** Retry the byte-identical failed body, when one is pending. */
   onRetry?: () => void;
+  /** Un-point the next question from the pinned photograph. The SCREEN owns
+   *  the pin (ADR-0039: ChatV2 never fetches, uploads, or persists); this is
+   *  only the undo affordance for it. */
+  onClearPhotoPin?: () => void;
 }
 
 // --- registered MIRA part components ---------------------------------------
@@ -262,6 +267,7 @@ export function ChatV2({
   scopeCount,
   chatError,
   canRetry,
+  photoPin,
   handlers,
 }: {
   turns: NotebookServerTurn[];
@@ -274,6 +280,9 @@ export function ChatV2({
   scopeCount: number;
   chatError: unknown;
   canRetry: boolean;
+  /** The photograph the next question is pointed at, ALREADY re-derived
+   *  against live sources and scope by the screen. Absent = no pin. */
+  photoPin?: PhotoPin | null;
   handlers: ChatV2Handlers;
 }) {
   // Module-level sinks keep the registered part components stable (remounting
@@ -352,6 +361,12 @@ export function ChatV2({
             Every data-testid and aria-label below is unchanged: the shipping
             ChatV2 suites drive Send/Stop/attach through them, and this is a
             presentation change, not a behaviour change. */}
+        {/* Above the capsule, not inside it: the pin is a statement about the
+            next question, and a technician must be able to see and undo it
+            before tapping Send. */}
+        {photoPin && (
+          <PhotoPinChip pin={photoPin} onClear={() => handlers.onClearPhotoPin?.()} />
+        )}
         <div className="composer v2-composer">
           <div className="v2-capsule">
           <button
