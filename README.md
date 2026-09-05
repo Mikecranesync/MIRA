@@ -1,25 +1,19 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
-> **⚠️ PRODUCT FRAMING UPDATE (2026-07-11):** This README describes the infrastructure layer. The **first
-> sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504,
-> ADR-0025). The generic "AI-powered maintenance diagnostics" framing below is foundational but no
-> longer the lead pitch — **start at the [Drive Commander ADR](docs/adr/0025-drive-intelligence-packs-and-drive-commander.md)
-> and [product strategy](NORTH_STAR.md)** to understand the current direction. **See also the canonical
-> wedge statement in [NORTH_STAR.md](NORTH_STAR.md).**
+**FactoryLM is a clean conversational maintenance app. MIRA helps technicians ask questions, add photos or manuals, get evidence-backed help, and keep the result with their work.**
 
-**FactoryLM is the maintenance-context layer that makes a factory's messy reality trustworthy enough for AI.
-MIRA is the grounded agent that proves it by diagnosing with cited sources.**
+The approved September 5, 2026 direction is to improve the **existing FactoryLM mobile app**. Chat is the front door; projects, knowledge, work, and settings are accessible through a quiet menu. Existing accounts, equipment, notebooks, documents, and integrations stay usable.
 
-The first product delivering this vision is **Drive Commander** — context-led, read-only VFD fault intelligence
-on a phone. Earlier framing (generic "copilot", whole-plant "signal difference engine") is archived; see
-`docs/product/` for those framings' superseded-by headers.
+Start with [NORTH_STAR.md](NORTH_STAR.md), the [unified delivery plan](docs/product/2026-09-05-sellable-app-alignment.md), and [MIRA #3586](https://github.com/Mikecranesync/MIRA/issues/3586). `Mikecranesync/factorylm` supplies supporting capabilities. Slack/Foreman is the internal command center.
+
+This is approved product direction, not a claim that the redesign is deployed. Prior context-platform / Drive Commander positioning is preserved in the [decision history](docs/product/2026-09-05-decision-history.md). Its useful technology remains part of the app's foundation.
 
 ---
 
 ## Where do I go?
 
 ### 🏭 I'm a customer / plant user
-- **Live product:** [app.factorylm.com](https://app.factorylm.com)
+- **App entry point (verify release/build before rollout):** [app.factorylm.com](https://app.factorylm.com)
 - **Marketing site:** [factorylm.com](https://factorylm.com)
 - **Product documentation:** [docs/product/](docs/product/)
   - [What is MIRA?](docs/product/what-is-mira.md)
@@ -44,16 +38,14 @@ on a phone. Earlier framing (generic "copilot", whole-plant "signal difference e
 
 ---
 
-## What MIRA does, in one minute
+## The customer journey we are proving
 
-1. A technician walks up to a faulting machine.
-2. They scan a QR sticker on the equipment (or type in the asset tag, or upload a nameplate photo).
-3. MIRA opens a chat pre-loaded with the asset's vendor, model, service history, and recent faults.
-4. The technician describes the symptom — by voice or text.
-5. MIRA asks diagnostic questions, pulls the relevant page from the manual, and proposes a fix.
-6. When the fault is resolved, MIRA auto-generates the CMMS work order closeout. One tap to confirm.
+1. Open MIRA and ask a question.
+2. Add a photo, manual, or equipment context when it helps.
+3. Confirm the required equipment context and receive cited help, or a clear request for missing evidence.
+4. Ask a follow-up, save a useful finding or approved action, and reopen the same work later.
 
-Competitive differentiators: asset-scoped entry, industrial knowledge grounding (25K+ chunks across 100+ vendors), voice-first mobile UX, Atlas/MaintainX/Limble/Fiix CMMS integration.
+The release gate is a fresh user completing this journey with their own material, without manual repair by Mike. Evidence, tenant isolation, read-only equipment behavior, and existing review/deployment controls remain required. General help before equipment selection must be implemented without bypassing asset-specific confirmation or grounding.
 
 ---
 

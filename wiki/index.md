@@ -31,6 +31,7 @@
 
 | Page | Summary |
 |------|---------|
+| [[references/product-north-star]] | Approved existing-app direction, shared delivery plan, and cross-repo tracking |
 | [[references/kanban]] | GitHub Projects board — commands for session start + commit |
 | [[references/coding-principles]] | Karpathy-adapted agent coding rules (moved from CLAUDE.md) |
 

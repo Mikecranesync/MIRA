@@ -246,3 +246,8 @@ Changed: `wiki/log.md`
 - **Cluster SSH proven + persistent.** Shells on bravo/charlie/ultron; added `ControlMaster auto` + `ControlPath ~/.ssh/cm/%r@%h:%p` + `ControlPersist 10m` to `~/.ssh/config` `Host *`. PLC laptop (`laptop-0ka3c70h` 100.72.2.99) reachable (TCP 22/3389) but SSH-blocked: alpha pubkey not in hharp's authorized_keys; no PLC key in Doppler. Added `plc-laptop` alias; key-add pending user RDP.
 - **Wiki divergence reconciled.** This frozen Alpha clone had drifted to **218 behind / 12 ahead** origin/main (all 12 ahead = `wiki:` auto-commits). Root cause: the doctrine's hourly `git pull --rebase` cron (`install_wiki_pull_cron.sh`) was **not installed** here → silent drift. Fix: backup tag `backup/wiki-2026-06-08` → `git reset --hard origin/main` → replayed conflict-free deltas (this `log.md` is a clean superset — origin never touched log.md since 622ce505, so all 4 days of stranded Alpha session logs are preserved) + the tailscale gotcha (new file). Left origin's newer CLOUD `hot.md` untouched (no cross-node clobber). Dropped `PROGRESS.local.md` churn (+1014 lines, the tracked-but-should-be-gitignored CI-flood file).
 - Machine: Alpha
+
+## [2026-09-05] session | Existing sellable mobile app becomes shared product north star
+
+- Mike approved preserving the existing app and making MIRA chat the front door. Mirrored direction and delivery plan added in MIRA/factorylm; startup docs reconciled. Tracking: MIRA #3586 and factorylm #227.
+- Documentation-only isolated branches; no app, provider, OT, merge, or deployment changes. Required review/check evidence is tracked on those issues. Next: current mobile inventory and feature-to-navigation map.
