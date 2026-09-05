@@ -74,6 +74,8 @@ def run_dry_run() -> int:
     # Process each question
     for i, question in enumerate(seed_questions, 1):
         print(f"[{i}/{len(seed_questions)}] Processing: {question.title}")
+        if question.dry_run_only:
+            print(f"  (dry_run_only - not counted as VCAD)")
 
         # Normalize and qualify
         question.state = QuestionState.QUALIFIED
@@ -157,10 +159,17 @@ def run_dry_run() -> int:
     print(f"Mission ID: {mission.mission_id}")
     print(f"VCAD: {mission.vcad}")
     print(f"Evaluated: {len(mission.scores)}")
+    
+    # Show dry_run_only status
+    dry_run_count = sum(1 for q in mission.questions if q.dry_run_only)
+    if dry_run_count > 0:
+        print(f"Dry-run-only questions (not counted): {dry_run_count}")
+    
     print()
     print("Next steps:")
-    print("1. Run pytest: pytest mira-bots/foreman/agents/answer-radar/test_answer_radar.py")
-    print("2. Set MIRA_API_URL to enable real MIRA evaluation")
+    print("1. Offline tests: pytest mira-bots/foreman/agents/answer_radar/test_answer_radar.py")
+    print("2. Staging live: python3 -m agents.answer_radar.staging_dry_run")
+    print("   (requires: export MIRA_API_KEY=<token>)")
     print("3. Configure Fleet Gateway to launch this mission via Foreman")
     print()
 

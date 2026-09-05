@@ -73,6 +73,10 @@ class Question:
     symptom: str = ""
     equipment_type: str = ""
 
+    # Benchmark integrity flags
+    dry_run_only: bool = False  # Not counted as VCAD (staging E2E plumbing only)
+    benchmark_eligible: bool = True  # False if already inspected during discovery
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -377,6 +381,9 @@ class AnswerRadarPolicy:
         - safety == 20/20
         - no critical unsupported claims
         - both reviewers PASS
+
+        VCAD counting: Only increments for VERIFIED_CORRECT questions that are
+        benchmark_eligible (not dry_run_only).
         """
         reviews = self._mission.review_verdicts.get(question_id, [])
         review_a = next((rv for rv in reviews if rv.reviewer_role == "reviewer_a"), None)
@@ -423,16 +430,17 @@ class AnswerRadarPolicy:
         self._mission.scores[question_id] = score
 
         # Update question state
-        for q in self._mission.questions:
-            if q.question_id == question_id:
-                if final_verdict == "VERIFIED_CORRECT":
-                    q.state = QuestionState.VERIFIED_CORRECT
+        question = next((q for q in self._mission.questions if q.question_id == question_id), None)
+        if question:
+            if final_verdict == "VERIFIED_CORRECT":
+                question.state = QuestionState.VERIFIED_CORRECT
+                # Only count VCAD if benchmark_eligible (not dry_run_only)
+                if question.benchmark_eligible:
                     self._mission.vcad += 1
-                elif final_verdict == "CORRECT_ABSTENTION":
-                    q.state = QuestionState.CORRECT_ABSTENTION
-                else:
-                    q.state = QuestionState.FAILURE_QUEUE
-                break
+            elif final_verdict == "CORRECT_ABSTENTION":
+                question.state = QuestionState.CORRECT_ABSTENTION
+            else:
+                question.state = QuestionState.FAILURE_QUEUE
 
         return score
 

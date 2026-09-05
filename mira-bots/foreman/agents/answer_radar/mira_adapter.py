@@ -24,11 +24,17 @@ class MiraAdapter(ABC):
 
 
 class RealMiraAdapter(MiraAdapter):
-    """Production adapter that calls the real MIRA HTTP product path.
+    """Production adapter that calls the real MIRA OpenAI-compatible HTTP path.
+
+    Matches the staging contract:
+    - POST to MIRA_API_URL (default: http://165.245.138.91:4099/v1/chat/completions)
+    - Authorization: Bearer $MIRA_API_KEY
+    - OpenAI-compatible message format
+    - Unique chat_id per question to prevent FSM/memory bleed
 
     Requires:
-    - MIRA_API_URL: The production MIRA endpoint
-    - MIRA_API_KEY: Authentication token (optional, if auth is enabled)
+    - MIRA_API_URL: The MIRA endpoint (defaults to staging)
+    - MIRA_API_KEY: Bearer token for authentication
     """
 
     def __init__(
@@ -36,34 +42,69 @@ class RealMiraAdapter(MiraAdapter):
         api_url: Optional[str] = None,
         api_key: Optional[str] = None,
     ) -> None:
-        self.api_url = api_url or os.environ.get("MIRA_API_URL", "")
+        # Default to staging endpoint
+        self.api_url = api_url or os.environ.get(
+            "MIRA_API_URL", "http://165.245.138.91:4099/v1/chat/completions"
+        )
         self.api_key = api_key or os.environ.get("MIRA_API_KEY", "")
 
-        if not self.api_url:
+        if not self.api_key:
             raise ValueError(
-                "MIRA_API_URL must be set for RealMiraAdapter. "
-                "Example: http://factorylm.com:9099/v1/chat/completions"
+                "MIRA_API_KEY must be set for RealMiraAdapter. "
+                "Set environment variable or pass to constructor."
             )
 
-    def evaluate(self, question: Question) -> MiraAttempt:
-        """Call real MIRA product HTTP endpoint.
+        # Extract base URL for health endpoint
+        # http://165.245.138.91:4099/v1/chat/completions -> http://165.245.138.91:4099
+        import re
 
-        This is a placeholder that would be implemented with actual HTTP calls.
-        For V1 MVP, this demonstrates the contract.
+        match = re.match(r"(https?://[^/]+(?::\d+)?)", self.api_url)
+        self.base_url = match.group(1) if match else None
+
+    def _probe_health(self) -> dict:
+        """Probe GET /health endpoint to capture version metadata."""
+        import requests
+
+        if not self.base_url:
+            return {"version": "unknown", "error": "cannot parse base URL"}
+
+        try:
+            health_url = f"{self.base_url}/health"
+            response = requests.get(health_url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            return {"version": "unknown", "error": str(exc)}
+
+    def evaluate(self, question: Question) -> MiraAttempt:
+        """Call real MIRA OpenAI-compatible endpoint.
+
+        OpenAI-compatible contract:
+        - model: "mira-diagnostic"
+        - messages: [{"role": "user", "content": "<question>"}]
+        - stream: false
+        - user: "answer-radar-<question_id>" (unique per question)
+        - metadata: {"chat_id": "answer-radar-<question_id>"}
+
+        Unique chat_id per question prevents FSM/memory bleed across evaluations.
         """
         import requests
 
-        headers = {}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        # Probe health endpoint for version
+        health = self._probe_health()
+        mira_version = health.get("version", "unknown")
+
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+        # Unique chat_id per question to prevent FSM/memory bleed
+        chat_id = f"answer-radar-{question.question_id}"
 
         payload = {
-            "benchmark_id": question.question_id,
-            "question": question.body,
-            "manufacturer": question.manufacturer or "unknown",
-            "model": question.model or "unknown",
-            "mode": "fresh_holdout",
-            "allow_community_answers": False,
+            "model": "mira-diagnostic",
+            "messages": [{"role": "user", "content": question.body}],
+            "stream": False,
+            "user": chat_id,
+            "metadata": {"chat_id": chat_id},
         }
 
         start_ms = int(datetime.utcnow().timestamp() * 1000)
@@ -73,35 +114,50 @@ class RealMiraAdapter(MiraAdapter):
                 self.api_url,
                 json=payload,
                 headers=headers,
-                timeout=60,
+                timeout=120,
             )
             response.raise_for_status()
             data = response.json()
 
             end_ms = int(datetime.utcnow().timestamp() * 1000)
 
+            # Parse OpenAI-compatible response
+            choices = data.get("choices", [])
+            if not choices:
+                raise ValueError("No choices in response")
+
+            answer = choices[0].get("message", {}).get("content", "")
+            if not answer:
+                raise ValueError("Empty answer in response")
+
+            # Extract citations if present (MIRA-specific extension)
+            mira_citations = data.get("citations", [])
+            source_documents = data.get("source_documents", [])
+
             return MiraAttempt(
                 question_id=question.question_id,
-                mira_version_sha=data.get("mira_version_sha", "unknown"),
-                mira_answer=data.get("answer", ""),
-                mira_citations=data.get("citations", []),
-                retrieval_version=data.get("retrieval_version", "unknown"),
-                prompt_version=data.get("prompt_version", "unknown"),
-                model_provider=data.get("model_provider", "unknown"),
+                mira_version_sha=mira_version,
+                mira_answer=answer,
+                mira_citations=mira_citations,
+                retrieval_version="unknown",  # Not exposed by current endpoint
+                prompt_version="unknown",  # Not exposed by current endpoint
+                model_provider=data.get("model", "mira-diagnostic"),
                 latency_ms=end_ms - start_ms,
-                cost_usd=data.get("cost_usd", 0.0),
+                cost_usd=0.0,  # Not tracked by current endpoint
                 answer_status="success",
                 attempted_at=datetime.utcnow().isoformat() + "Z",
-                source_documents=data.get("source_documents", []),
+                source_documents=source_documents,
             )
 
         except Exception as exc:
             end_ms = int(datetime.utcnow().timestamp() * 1000)
             return MiraAttempt(
                 question_id=question.question_id,
-                mira_version_sha="error",
+                mira_version_sha=mira_version,
                 mira_answer=f"ERROR: {exc}",
                 mira_citations=[],
+                retrieval_version="unknown",
+                prompt_version="unknown",
                 answer_status="error",
                 attempted_at=datetime.utcnow().isoformat() + "Z",
                 latency_ms=end_ms - start_ms,
