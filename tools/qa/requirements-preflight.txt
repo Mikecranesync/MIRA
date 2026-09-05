@@ -1,0 +1,4 @@
+# Runtime dependency of tools/qa/notebook_source_admission_preflight.py (the
+# PRD §7.3 read-only preflight report). asyncpg is Apache-2.0 (PRD §4: Apache-2.0
+# or MIT only). Pinned. Install: pip install -r tools/qa/requirements-preflight.txt
+asyncpg==0.31.0

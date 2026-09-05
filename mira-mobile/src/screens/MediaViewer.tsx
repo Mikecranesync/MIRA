@@ -60,6 +60,12 @@ export function MediaViewer({
       styles={{
         // Contract 1 (see header): keep the ✕ out of the status-bar input frame.
         toolbar: { paddingTop: "calc(env(safe-area-inset-top, 0px) + 4px)" },
+        // Same contract for the Captions title bar: it is absolutely positioned
+        // at the top of the slide and otherwise draws under the status-bar
+        // clock (Phase-4 cosmetic nit, 2026-08-29).
+        captionsTitleContainer: {
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 4px)",
+        },
         container: { backgroundColor: "rgba(0, 0, 0, 0.92)" },
       }}
     />

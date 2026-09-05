@@ -4,12 +4,14 @@
 
 import {
   isMachineEvidenceEntry,
+  isSafetyNoticeEntry,
   isVisualObservationEntry,
   parseFrame,
   type EvidenceBasis,
   type EvidenceCitation,
   type MachineEvidenceEntry,
   type NotebookChatFrame,
+  type SafetyNoticeEntry,
   type VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 
@@ -79,7 +81,9 @@ export function machineReplayCaption(e: MachineEvidenceEntry, clock: (iso: strin
   if (e.reason === "unavailable") return MACHINE_HISTORY_UNAVAILABLE_CAPTION;
   if (e.rowCount === 0) return MACHINE_NO_CHANGES_CAPTION;
   const fresh = FRESHNESS_LABEL[e.freshness] ?? FRESHNESS_LABEL.unknown;
-  return `Machine Replay · ${recordedObservationsPhrase(e.rowCount)} around ${clock(e.anchorAt)} · ${fresh}`;
+  // §6.8 (Workstream C): a historical card's freshness is the connection AS
+  // IT WAS at capture — labelled, never a bare "Live" beside a recorded count.
+  return `Machine Replay · ${recordedObservationsPhrase(e.rowCount)} around ${clock(e.anchorAt)} · connection at capture: ${fresh}`;
 }
 
 /** "Visual observation · Photo captured · 02:14:21" (contract §4.5, S5 D3). */
@@ -135,6 +139,17 @@ export type StreamResult = {
   machineEvidence: MachineEvidenceEntry | null;
   /** Sensor LOOK (S5 D3): the server-verified photo the turn was asked with. */
   visualEvidence: VisualObservationEntry | null;
+  /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash refusal. */
+  safetyNotice: SafetyNoticeEntry | null;
+  /** ADR-0038 rule 6: did a terminal `status` frame ACTUALLY arrive? `status`
+   *  is the only terminal marker on the wire a client may trust — `[DONE]` is
+   *  a transport sentinel carrying no state, and stream closure is
+   *  indistinguishable from a truncation (an aborted fetch does not reliably
+   *  reject `reader.read()`; the body is simply closed with `done:true`). A
+   *  reader that assumed "answered" therefore turned every truncation into a
+   *  fabricated, cited completion. `false` here means TRUNCATED: keep the
+   *  partial text, claim nothing. */
+  sawStatus: boolean;
 };
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
@@ -144,7 +159,14 @@ export type StreamResult = {
  *
  *  If the reader throws (an abort, a dropped connection) the partial `content`
  *  accumulated so far is attached to the error as `partial` so the caller can
- *  keep what streamed (STRM-2). */
+ *  keep what streamed (STRM-2).
+ *
+ *  If the reader does NOT throw but the stream ended without a terminal
+ *  `status` frame, the result carries `sawStatus:false` (ADR-0038 rule 6) and
+ *  the caller MUST render it as an incomplete turn — never as an answered or
+ *  cited one. This is the non-throwing truncation: a server-side close, a
+ *  dropped connection, or a proxy cut all end the read loop with `done:true`,
+ *  exactly as a healthy stream does. */
 export async function readNotebookStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onContent: (content: string, citations: EvidenceCitation[]) => void,
@@ -154,11 +176,15 @@ export async function readNotebookStream(
   const out: StreamResult = {
     content: "",
     citations: [],
-    status: "answered",
+    // ADR-0038 rule 6: seed the terminal state as NOT-an-answer. A stream that
+    // ends without a `status` frame must never resolve as `answered`.
+    status: "error",
     basis: null,
     followups: [],
     machineEvidence: null,
     visualEvidence: null,
+    safetyNotice: null,
+    sawStatus: false,
   };
   try {
     while (true) {
@@ -180,11 +206,17 @@ export async function readNotebookStream(
           out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
           out.visualEvidence = isVisualObservationEntry(frame.visualEvidence) ? frame.visualEvidence : null;
         }
+        else if (frame.kind === "safety") {
+          out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
+        }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
           out.content += frame.content;
           onContent(out.content, out.citations);
-        } else if (frame.kind === "status") out.status = frame.status;
+        } else if (frame.kind === "status") {
+          out.status = frame.status;
+          out.sawStatus = true;
+        }
       }
     }
   } catch (err) {
@@ -266,10 +298,10 @@ export type PersistedTurn = {
   question: string;
   answerStatus: string;
   answerText: string | null;
-  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries riding in
-   *  the same JSONB. Non-document entries are split out, never rendered as
-   *  citations. */
-  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry>;
+  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries and (safety)
+   *  any `{kind:"safety_notice"}` entries riding in the same JSONB.
+   *  Non-document entries are split out, never rendered as citations. */
+  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry>;
   basis?: string | null;
 };
 
@@ -282,27 +314,31 @@ type HydratedTurn = {
   basis?: string | null;
   machineEvidence?: MachineEvidenceEntry[];
   visualEvidence?: VisualObservationEntry[];
+  safetyNotice?: SafetyNoticeEntry;
   stopped?: boolean;
 };
 
-/** Split a persisted evidence[] into citations vs machine entries. Anything
- *  without a docId that is not machine evidence is dropped (never a dead chip). */
+/** Split a persisted evidence[] into citations vs non-citation entries. Anything
+ *  without a docId that is not a known typed entry is dropped (never a dead chip). */
 export function splitEvidence(evidence: unknown[]): {
   citations: EvidenceCitation[];
   machineEvidence: MachineEvidenceEntry[];
   visualEvidence: VisualObservationEntry[];
+  safetyNotice: SafetyNoticeEntry | null;
 } {
   const citations: EvidenceCitation[] = [];
   const machineEvidence: MachineEvidenceEntry[] = [];
   const visualEvidence: VisualObservationEntry[] = [];
+  let safetyNotice: SafetyNoticeEntry | null = null;
   for (const e of Array.isArray(evidence) ? evidence : []) {
     if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
     else if (isVisualObservationEntry(e)) visualEvidence.push(e);
+    else if (isSafetyNoticeEntry(e)) safetyNotice = e;
     else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
       citations.push(e as EvidenceCitation);
     }
   }
-  return { citations, machineEvidence, visualEvidence };
+  return { citations, machineEvidence, visualEvidence, safetyNotice };
 }
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
@@ -315,7 +351,7 @@ export function splitEvidence(evidence: unknown[]): {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
-    const { citations, machineEvidence, visualEvidence } = splitEvidence(t.evidence);
+    const { citations, machineEvidence, visualEvidence, safetyNotice } = splitEvidence(t.evidence);
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -330,6 +366,9 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
         // D3 (S5): the Visual observation card survives reload the same way.
         ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
+        // Safety marker — a reloaded safety turn is distinguishable from a
+        // normal `answered` turn: the `safetyNotice` field carries the trigger.
+        ...(!stopped && safetyNotice ? { safetyNotice } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];
@@ -338,13 +377,36 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
 
 /** What a stopped generation becomes: the partial text stays, the turn is an
  *  `error` (never `answered`), and it carries no citations / basis / follow-ups
- *  — a stopped answer is not an answer (STRM-2). */
-export function stoppedTurn<T extends { content: string }>(turn: T, partial: string): T & {
+ *  — a stopped answer is not an answer (STRM-2).
+ *
+ *  `reason` separates the two ways a turn can end without a terminal `status`
+ *  frame. Both are non-answers and both are excluded from history, but they are
+ *  NOT the same event and must not read the same to a technician:
+ *    - `"stopped"`   — the technician pressed Stop. Expected, their own action.
+ *    - `"truncated"` — the stream ended on its own (ADR-0038 rule 6). Nobody
+ *                      pressed anything; the answer may be missing content the
+ *                      server did produce. Labelling this "Stopped" would blame
+ *                      the technician for a transport failure. */
+export function stoppedTurn<T extends { content: string }>(
+  turn: T,
+  partial: string,
+  reason: "stopped" | "truncated" = "stopped",
+): T & {
   status: "error";
   stopped: true;
+  truncated: boolean;
   citations: EvidenceCitation[];
   basis: null;
   followups: string[];
 } {
-  return { ...turn, content: partial, status: "error", stopped: true, citations: [], basis: null, followups: [] };
+  return {
+    ...turn,
+    content: partial,
+    status: "error",
+    stopped: true,
+    truncated: reason === "truncated",
+    citations: [],
+    basis: null,
+    followups: [],
+  };
 }

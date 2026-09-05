@@ -13,7 +13,7 @@ import {
   preferencesStore,
   purgeAllQueues,
 } from "./lib/offline-queue";
-import { TABS, visibleTabs, type TabId } from "./nav";
+import { TABS, can, visibleTabs, type TabId } from "./nav";
 import { extractAssetTag } from "./lib/tags";
 import { openNotebookTransition } from "./lib/scan-landing";
 import { Login } from "./screens/Login";
@@ -122,7 +122,12 @@ export default function App() {
         {tab === "workorders" && <WorkordersTab me={me} backRef={backHandler} />}
         {tab === "schedule" && <ScheduleTab me={me} backRef={backHandler} />}
         {tab === "chat" && (
-          <NotebooksTab backRef={backHandler} route={notebookRoute} setRoute={setNotebookRoute} />
+          <NotebooksTab
+            backRef={backHandler}
+            route={notebookRoute}
+            setRoute={setNotebookRoute}
+            capabilities={me.capabilities}
+          />
         )}
         {tab === "assets" && (
           <AssetsTab
@@ -143,6 +148,7 @@ export default function App() {
         {tab === "more" && (
           <MoreTab
             me={me}
+            chatV2Available={can(me.capabilities, "chat_v2")}
             backRef={backHandler}
             onSignOut={async () => {
               // Phase 4: local data never outlives the session — but try to

@@ -22,7 +22,14 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
-    get: vi.fn(async () => ({ value: null })),
+    // These suites pin the CLASSIC chat surface, which still ships behind
+    // More → "Chat style". ChatV2 is the default, so the preference is
+    // returned explicitly here rather than relied upon — the ChatV2 contracts
+    // are pinned separately in src/screens/__tests__/chat-v2.test.tsx and
+    // src/chat-adapter/__tests__/.
+    get: vi.fn(async ({ key }: { key: string }) =>
+      key === "flm.chatui.v1" ? { value: "legacy" } : { value: null },
+    ),
     set: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
   },
@@ -128,7 +135,8 @@ describe("Sensor REPLAY (S4)", () => {
     // S5 D2: the phone names its window; the server default (5 s / 2 s) is never relied on.
     expect(getAssetHistory).toHaveBeenCalledWith("asset-1", { pre: 60, post: 10 });
     expect(tl.getAttribute("data-freshness")).toBe("stale");
-    expect(screen.getByTestId("freshness-label").textContent).toBe("Stale");
+    // Workstream C: the current-cache freshness is its OWN labelled line
+    expect(screen.getByTestId("current-connection").textContent).toBe("Current connection: Stale");
     expect(screen.getByText("Live unavailable — showing recorded history")).toBeTruthy();
     const rows = screen.getAllByRole("listitem");
     expect(rows).toHaveLength(3);
@@ -152,7 +160,7 @@ describe("Sensor REPLAY (S4)", () => {
     await openReplay();
     await screen.findByTestId("replay-timeline");
     expect(screen.queryByText(/Live unavailable/)).toBeNull();
-    expect(screen.getByTestId("freshness-label").textContent).toBe("Live");
+    expect(screen.getByTestId("current-connection").textContent).toBe("Current connection: Live");
   });
 
   it("no fault window → honest empty with the latest recorded state; no rows drawn", async () => {
@@ -212,7 +220,8 @@ describe("Sensor REPLAY (S4)", () => {
     // Nothing was read, so nothing is counted and nothing is labelled: an
     // "0 recorded observations · Stale" header would claim it was quiet.
     expect(screen.getByTestId("replay-window-header").textContent).not.toMatch(/recorded observation/);
-    expect(screen.queryByTestId("freshness-label")).toBeNull();
+    // the current connection is still a fact about the CACHE and stays labelled as such
+    expect(screen.getByTestId("current-connection").textContent).toMatch(/^Current connection: /);
     expect(screen.queryByText(/Live unavailable/)).toBeNull();
   });
 
@@ -303,12 +312,82 @@ describe("Sensor REPLAY (S4)", () => {
     mount();
     const card = await screen.findByTestId("machine-replay-card");
     // S5 D5 cross-lane copy, exact: title + fault-window suffix gated on windowId.
-    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Live`);
+    expect(card.querySelector(".title")?.textContent).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · connection at capture: Live`);
     expect(card.textContent).toContain("· fault window");
     // Byte-identical to the hub caption, trailing period included (#3461).
     expect(screen.getByText("Grounded in live machine evidence.")).toBeTruthy();
     // Exactly one citation chip — the document one; the machine entry is not a chip.
     const chips = screen.getAllByRole("button", { name: /gs10\.pdf/ });
     expect(chips).toHaveLength(1);
+  });
+});
+
+// ── Workstream C (PRD §9.2 / #3469 / #3470) ─────────────────────────────────
+describe("Workstream C — REPLAY is useful or explicitly unavailable", () => {
+  const withCoverage = (h: ReturnType<typeof history>, coverage: Record<string, unknown>, rows?: unknown[]) => ({
+    ...h,
+    history: { ...h.history, coverage, ...(rows ? { rows } : {}) },
+  });
+
+  it("empty window: the PRD sentence, NO 'Ask MIRA what happened', and no unqualified 'Live'", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockResolvedValue(
+      withCoverage(history("live"), { recorded: 0, events: 0, diffs: 0, historyAvailable: true, diffsAvailable: true, admissible: false, earliest: null, latest: null, ingestLagMaxMs: null }, []),
+    );
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(screen.getByText("Nothing was recorded in this window. Widen the window or check the gateway.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
+    // current connection is labelled as such — the word Live never stands alone beside the window
+    const label = screen.getByTestId("current-connection");
+    expect(label.textContent).toBe("Current connection: Live");
+    const header = screen.getByTestId("replay-window-header").textContent ?? "";
+    expect(header).toContain("0 recorded observations");
+    expect(header).not.toMatch(/Live/);
+    expect(askNotebook).not.toHaveBeenCalled();
+  });
+
+  it("history unavailable: its own sentence, no CTA, no count, no connection label masquerading as coverage", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockResolvedValue({
+      ...withCoverage(history("live"), { recorded: 0, events: 0, diffs: 0, historyAvailable: false, diffsAvailable: false, admissible: false, earliest: null, latest: null, ingestLagMaxMs: null }, []),
+      history: { ...withCoverage(history("live"), { recorded: 0, admissible: false, historyAvailable: false }, []).history, reason: "unavailable" },
+    });
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(screen.queryByRole("button", { name: "Ask MIRA what happened" })).toBeNull();
+    expect(screen.queryByText("Nothing was recorded in this window. Widen the window or check the gateway.")).toBeNull();
+    expect(screen.getByText(/isn.t available for this workspace yet/)).toBeTruthy();
+    expect(screen.getByTestId("replay-window-header").textContent).toContain("History source unavailable");
+  });
+
+  it("non-empty window: coverage + separately labelled current connection + ingest lag; CTA present", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    getAssetHistory.mockResolvedValue(
+      withCoverage(history("stale"), { recorded: 3, events: 1, diffs: 2, historyAvailable: true, diffsAvailable: true, admissible: true, earliest: "2026-08-28T23:16:28.860Z", latest: "2026-08-28T23:16:31.160Z", ingestLagMaxMs: 13840 }),
+    );
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(screen.getByTestId("replay-window-header").textContent).toContain("3 recorded observations in −5 s … +2 s");
+    expect(screen.getByTestId("current-connection").textContent).toBe("Current connection: Stale");
+    expect(screen.getByText("Recorded up to 13.8 s after it happened")).toBeTruthy();
+    expect(screen.getByTestId("recorded-bounds").textContent).toBe(`first ${hhmmss("2026-08-28T23:16:28.860Z")} · last ${hhmmss("2026-08-28T23:16:31.160Z")}`);
+    expect(screen.getByRole("button", { name: "Ask MIRA what happened" })).toBeTruthy();
+  });
+
+  it("the fault title is the canonical summary sentence — internal tag suffixes are never rendered", async () => {
+    getNotebookDetail.mockResolvedValue(bound());
+    const h = history("live");
+    getAssetHistory.mockResolvedValue(
+      withCoverage({ ...h, history: { ...h.history, summary: { summary: "Active fault: PLC/bridge offline. Next: Check the PLC bridge / Modbus link." } } }, { recorded: 3, admissible: true, historyAvailable: true }),
+    );
+    mount();
+    await openReplay();
+    await screen.findByTestId("replay-timeline");
+    expect(screen.getByText(/PLC\/bridge offline/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/_stale_s/);
   });
 });

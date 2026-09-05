@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Send, AlertTriangle, RotateCcw, Loader2, ClipboardCheck } from "lucide-react";
+import { Bot, Send, AlertTriangle, RotateCcw, ClipboardCheck, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
@@ -11,6 +11,13 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   isSafetyStop?: boolean;
+  /** H4 gap-admission safety alert (#2542) — appended AFTER a real answer, so
+   *  it's a distinct flag from `isSafetyStop` (the hard-stop that replaces an
+   *  answer entirely). Never conflate the two or their styling. */
+  hasSafetyAlert?: boolean;
+  /** The technician pressed Stop mid-stream (STRM-2): `content` is whatever had
+   *  streamed so far; the turn is not sent back as history on the next ask. */
+  stopped?: boolean;
   traceId?: string;
   nextCheck?: string;
 }
@@ -26,6 +33,29 @@ const WELCOME = (name: string, tag: string) =>
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+/** Enter sends; Shift+Enter is a newline; an in-progress IME composition
+ *  (Japanese/Chinese/Korean keyboards, keyCode 229) never sends. Local copy —
+ *  intentionally not imported from notebook-chat-utils.ts (Notebook-specific;
+ *  see FLEET-011). Exported for AssetChat.test.tsx. */
+export function isEnterToSend(e: {
+  key: string;
+  shiftKey: boolean;
+  nativeEvent?: { isComposing?: boolean };
+  keyCode?: number;
+}): boolean {
+  if (e.key !== "Enter" || e.shiftKey) return false;
+  if (e.nativeEvent?.isComposing || e.keyCode === 229) return false;
+  return true;
+}
+
+/** After a failed send the technician's question goes back into the composer
+ *  — unless they already started typing something else. Local copy of
+ *  Notebook chat's CMPS-2 fix (notebook-chat-utils.ts); not imported to avoid
+ *  a cross-surface coupling for a 2-line pure function. */
+export function restoreComposer(current: string, failedMessage: string): string {
+  return current.trim() ? current : failedMessage;
 }
 
 // Exported for the static render test (AssetChat.test.tsx).
@@ -51,12 +81,12 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       <div
         className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{
-          background: isSafety ? "#FEF2F2" : "var(--surface-1)",
+          background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
           border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
         }}
       >
         {isSafety ? (
-          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+          <AlertTriangle className="w-3.5 h-3.5" style={{ color: "var(--status-red)" }} />
         ) : (
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--brand-blue)" }} />
         )}
@@ -65,13 +95,28 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
         <div
           className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
           style={{
-            background: isSafety ? "#FEF2F2" : "var(--surface-1)",
+            background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
         >
           {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
         </div>
+        {msg.hasSafetyAlert && (
+          <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Safety alert included above
+          </div>
+        )}
+        {msg.stopped && (
+          <p
+            className="mt-1.5 text-xs"
+            style={{ color: "var(--foreground-subtle)" }}
+            data-testid="stopped-caption"
+          >
+            Stopped
+          </p>
+        )}
         {msg.nextCheck && !isSafety && (
           <div
             className="mt-1.5 inline-flex items-center gap-1.5 text-xs"
@@ -84,6 +129,51 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
         {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
       </div>
     </div>
+  );
+}
+
+// The submit-button slot: an enabled Stop control while streaming (STRM-2),
+// same pattern as NotebookChat's busy ? <Stop> : <Send> branch — the existing
+// Send button otherwise. Exported for the static render test.
+export function ComposerButton({
+  streaming,
+  canSend,
+  onStop,
+}: {
+  streaming: boolean;
+  canSend: boolean;
+  onStop: () => void;
+}) {
+  if (streaming) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        onClick={onStop}
+        className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
+        style={{ background: "var(--surface-1)", color: "var(--foreground)" }}
+        aria-label="Stop generating"
+        data-testid="stop-button"
+      >
+        <Square className="w-4 h-4" />
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      type="submit"
+      size="sm"
+      disabled={!canSend}
+      aria-label="Send"
+      className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
+      style={{
+        background: canSend ? "var(--brand-blue)" : "var(--surface-1)",
+        color: canSend ? "#fff" : "var(--foreground-subtle)",
+      }}
+    >
+      <Send className="w-4 h-4" />
+    </Button>
   );
 }
 
@@ -130,6 +220,12 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
 
+  // Stop generation (STRM-2) — same pattern as NotebookChat's `stop`. Aborts
+  // the in-flight request WITHOUT wiping the message array (unlike clearHistory).
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || streaming) return;
 
@@ -143,7 +239,9 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // A stopped turn is not an answer (STRM-2) — it must not enter what the
+    // model sees on the next turn, mirroring notebook-chat-utils' historyFromTurns.
+    const apiMessages = [...messages, userMsg].filter((m) => !m.stopped).map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -184,13 +282,28 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") break;
           try {
-            const parsed = JSON.parse(data) as { content?: string; traceId?: string; next_check?: string };
+            const parsed = JSON.parse(data) as {
+              content?: string;
+              traceId?: string;
+              next_check?: string;
+              safetyAlert?: boolean;
+            };
             if (parsed.content) {
               setMessages((prev) => {
                 const next = [...prev];
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, content: last.content + parsed.content };
+                }
+                return next;
+              });
+            }
+            if (parsed.safetyAlert) {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, hasSafetyAlert: true };
                 }
                 return next;
               });
@@ -223,7 +336,20 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         }
       }
     } catch (err) {
-      if ((err as Error).name === "AbortError") return;
+      if ((err as Error).name === "AbortError") {
+        // Stopped by the technician: keep whatever partial content had already
+        // streamed in and mark the turn as not an answer (STRM-2). No wipe —
+        // only clearHistory wipes the thread.
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, stopped: true };
+          }
+          return next;
+        });
+        return;
+      }
       console.error("[AssetChat] chat request failed:", err);
       const statusCode = /(\d{3})/.exec((err as Error).message ?? "")?.[1];
       setError(
@@ -236,6 +362,9 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         next.pop(); // remove empty assistant bubble
         return next;
       });
+      // Restore the failed question to the composer (CMPS-2) unless the
+      // technician already started typing something new.
+      setInput((current) => restoreComposer(current, text));
     } finally {
       if (isSafety) {
         setMessages((prev) => {
@@ -260,7 +389,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isEnterToSend(e)) {
       e.preventDefault();
       const text = input;
       setInput("");
@@ -330,7 +459,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         {error && (
           <div
             className="text-xs px-3 py-2 rounded-lg"
-            style={{ background: "#FEF2F2", color: "#991B1B", border: "1px solid #FECACA" }}
+            style={{ background: "var(--status-red-bg)", color: "#991B1B", border: "1px solid #FECACA" }}
           >
             {error}
           </div>
@@ -377,6 +506,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           onKeyDown={handleKeyDown}
           disabled={streaming}
           placeholder={streaming ? "MIRA is thinking…" : "Ask about this asset…"}
+          aria-label="Ask about this asset"
           rows={1}
           className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 transition-all"
           style={{
@@ -388,22 +518,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
             fieldSizing: "content" as React.CSSProperties["fieldSizing"],
           }}
         />
-        <Button
-          type="submit"
-          size="sm"
-          disabled={!input.trim() || streaming}
-          className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
-          style={{
-            background: input.trim() && !streaming ? "var(--brand-blue)" : "var(--surface-1)",
-            color: input.trim() && !streaming ? "#fff" : "var(--foreground-subtle)",
-          }}
-        >
-          {streaming ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
+        <ComposerButton streaming={streaming} canSend={!!input.trim()} onStop={stopGeneration} />
       </form>
     </div>
   );

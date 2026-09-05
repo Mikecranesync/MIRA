@@ -6,15 +6,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { nativePlatform } = vi.hoisted(() => ({ nativePlatform: { value: false } }));
+
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => nativePlatform.value },
   CapacitorHttp: { request: vi.fn() },
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: { get: vi.fn(async () => ({ value: null })), set: vi.fn(async () => {}) },
 }));
 
-import { requestStream, ApiError } from "../../api/client";
+import { requestStream, ApiError, canCancelChatTransport } from "../../api/client";
 
 function streamOf(chunks: string[], opts: { status?: number; gate?: () => Promise<void> } = {}) {
   const enc = new TextEncoder();
@@ -31,7 +33,16 @@ function streamOf(chunks: string[], opts: { status?: number; gate?: () => Promis
 }
 
 describe("requestStream", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    nativePlatform.value = false;
+  });
+
+  it("only advertises real cancellation on the browser streaming transport", () => {
+    expect(canCancelChatTransport()).toBe(true);
+    nativePlatform.value = true;
+    expect(canCancelChatTransport()).toBe(false);
+  });
 
   it("calls onChunk per body chunk, in order, and returns the whole text", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(streamOf(["a\n\n", "b\n\n", "c"]));

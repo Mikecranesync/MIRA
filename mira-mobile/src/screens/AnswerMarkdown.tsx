@@ -27,7 +27,7 @@ import remarkBreaks from "remark-breaks";
 import { remarkCitationMarks } from "../lib/remark-citation-marks";
 import type { ChatCitation } from "../lib/sse";
 
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   // @capacitor/clipboard is not a dependency of this shell; the WebView's
   // `navigator.clipboard` is the platform primitive and works in-app.
   try {

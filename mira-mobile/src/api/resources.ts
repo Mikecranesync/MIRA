@@ -1388,6 +1388,9 @@ export async function getAssetHistory(
     summary: (d.summary ?? {}) as AssetHistory["summary"],
     provenance: "machine_memory",
     reason: d.reason === "unavailable" ? "unavailable" : null,
+    // Workstream C: the server's own coverage facts (null on an older Hub —
+    // the lib derives them from rows + reason, never from freshness).
+    coverage: coverageFrom(d.coverage),
     // The window the SERVER fetched, which is nested (`historyResponseBody`
     // emits `window:{from,to,pre,post}`), NOT the one we asked for. The server
     // clamps to the §4.3 120 s cap, so echoing the request would misname the
@@ -1401,6 +1404,28 @@ export async function getAssetHistory(
     to: w.to != null ? String(w.to) : null,
   };
   return { ok: true, history };
+}
+
+/** The Hub's HistoryCoverage, taken verbatim when present and well-formed. */
+function coverageFrom(raw: unknown): AssetHistory["coverage"] {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.recorded !== "number" || typeof c.admissible !== "boolean") return null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    recorded: c.recorded,
+    events: num(c.events) ?? undefined,
+    diffs: num(c.diffs) ?? undefined,
+    historyAvailable: c.historyAvailable !== false,
+    diffsAvailable: typeof c.diffsAvailable === "boolean" ? c.diffsAvailable : undefined,
+    admissible: c.admissible,
+    from: str(c.from),
+    to: str(c.to),
+    earliest: str(c.earliest),
+    latest: str(c.latest),
+    ingestLagMaxMs: num(c.ingestLagMaxMs),
+  };
 }
 
 /** One bound of the fetched window, in seconds: the server's own `pre`/`post`

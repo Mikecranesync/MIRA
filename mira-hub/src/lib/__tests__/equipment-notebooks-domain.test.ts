@@ -45,6 +45,8 @@ import { attachSource, createNotebook, validateChatSources } from "../equipment-
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC = "33333333-3333-4333-8333-333333333333";
+const DOC2 = "44444444-4444-4444-8444-444444444444";
+const DOC3 = "55555555-5555-4555-8555-555555555555";
 
 function callFor(re: RegExp): Call | undefined {
   return calls.find((c) => re.test(c.sql));
@@ -164,5 +166,59 @@ describe("validateChatSources", () => {
     );
     const res = await validateChatSources(TENANT, NB, [DOC]);
     expect(res).toEqual({ ok: true, docIds: [DOC], nodeId: "n1" });
+  });
+
+  // #3442: a nameplate re-confirm supersedes the derived doc while the client's
+  // composer still holds the OLD doc id. The technician's intent ("use my
+  // nameplate") is unambiguous — map the stale id to its visible successor for
+  // the same (notebook, origin photo) instead of a mislabeled 403.
+  it("remaps a superseded doc id to its visible successor for the same origin photo (#3442)", async () => {
+    rowsByMatch.push(
+      { re: /FROM equipment_notebooks/, rows: [{ node_id: "n1" }] },
+      // Successor lookup (self-join) — must be listed BEFORE the plain
+      // membership matcher because its SQL also contains the FROM clause.
+      { re: /JOIN equipment_notebook_sources/, rows: [{ old_doc_id: DOC, new_doc_id: DOC2 }] },
+      { re: /FROM equipment_notebook_sources/, rows: [] }, // membership: stale id not visible
+    );
+    const res = await validateChatSources(TENANT, NB, [DOC]);
+    expect(res).toEqual({
+      ok: true,
+      docIds: [DOC2],
+      nodeId: "n1",
+      remapped: { [DOC]: DOC2 },
+    });
+    const remap = callFor(/JOIN equipment_notebook_sources/);
+    // The stale row must be PROVEN superseded in this tenant+notebook, and the
+    // successor must clear the same positive-trust bar as a direct member —
+    // remapping must not become a side door around the positive-trust rule.
+    expect(remap?.sql).toContain("superseded_at IS NOT NULL");
+    expect(remap?.sql).toContain("match_state IN ('user_confirmed', 'verified')");
+    expect(remap?.sql).toContain("enabled_by_default = true");
+    expect(remap?.params?.[2]).toEqual([DOC]);
+  });
+
+  it("keeps directly-valid ids and remaps only the stale ones", async () => {
+    rowsByMatch.push(
+      { re: /FROM equipment_notebooks/, rows: [{ node_id: "n1" }] },
+      { re: /JOIN equipment_notebook_sources/, rows: [{ old_doc_id: DOC2, new_doc_id: DOC3 }] },
+      { re: /FROM equipment_notebook_sources/, rows: [{ doc_id: DOC }] },
+    );
+    const res = await validateChatSources(TENANT, NB, [DOC, DOC2]);
+    expect(res).toEqual({
+      ok: true,
+      docIds: [DOC, DOC3],
+      nodeId: "n1",
+      remapped: { [DOC2]: DOC3 },
+    });
+  });
+
+  it("still refuses a stale id with no visible successor (no side door)", async () => {
+    rowsByMatch.push(
+      { re: /FROM equipment_notebooks/, rows: [{ node_id: "n1" }] },
+      { re: /JOIN equipment_notebook_sources/, rows: [] }, // no successor
+      { re: /FROM equipment_notebook_sources/, rows: [] },
+    );
+    const res = await validateChatSources(TENANT, NB, [DOC]);
+    expect(res).toEqual({ ok: false, error: "source_not_in_notebook" });
   });
 });

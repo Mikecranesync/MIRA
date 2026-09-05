@@ -46,6 +46,51 @@ export interface ChatTurn {
    *  re-derived from `body.visualEvidence` and echoed on the same `evidence`
    *  frame. Never a citation. Absent = none. */
   visualEvidence?: VisualObservationEntry[];
+  /** Safety hard-stop (hub `{kind:"safety", trigger}` frame): the streamed
+   *  content is an isolation/LOTO notice, not an answer, and the UI must
+   *  render it distinctly (PRD §9.2 safety_notice). The trigger phrase is
+   *  observability-only — never shown to the technician. Previously this
+   *  frame was silently dropped, which erased the safety identity of the
+   *  turn on every surface. Absent = no safety stop. */
+  safetyTrigger?: string;
+  /** Frames whose `kind` this parser version does not know (PRD §9.2
+   *  unknown-part rule): preserved for inspection, never a crash, never
+   *  rendered as content. `usage` is known-and-ignored, not unknown. */
+  unknownFrames?: unknown[];
+  /**
+   * Did the authoritative `status` frame actually arrive?
+   *
+   * The ONLY trustworthy terminal marker on this wire is the `status` frame —
+   * `[DONE]` is not modelled as one, and a closed body is not one either. A
+   * stream that dies after `sources` (server crash, proxy timeout, dropped
+   * connection) otherwise folds into a turn that carries answer text AND
+   * citations and is indistinguishable from a completed answer: a fabricated
+   * completion (PRD §10.9) and a client inferring terminal state the server
+   * never sent (PRD §7.6). Consumers MUST treat `sawStatus === false` as a
+   * truncated turn — no citations, no basis, not an answer.
+   *
+   * Only ever `false` (present) when the frame was absent, so an existing
+   * consumer comparing whole turns is unaffected on the healthy path.
+   */
+  sawStatus?: false;
+}
+
+/**
+ * ADR-0038 rule 6, as ONE predicate both render paths share.
+ *
+ * A turn is TRUNCATED when the authoritative `status` frame never arrived and
+ * the technician did not press Stop. Both are non-answers, but they are
+ * different events: a Stop is the technician's own action, a truncation is a
+ * transport failure that may have cut content the server did produce. Only the
+ * truncation case is in doubt about what the server decided.
+ *
+ * This lives here, next to `ChatTurn`, because the ChatV2 adapter
+ * (`chat-adapter/turns-to-parts.ts`) and the classic `NotebookScreen` render
+ * must not be allowed to drift apart on it — the classic screen shipping
+ * without this check is the defect this predicate exists to close.
+ */
+export function isTruncatedTurn(a: Pick<ChatTurn, "sawStatus" | "status">): boolean {
+  return a.sawStatus === false && a.status !== "stopped";
 }
 
 /** Explicit field-by-field mapping so a new server field is a deliberate
@@ -92,6 +137,9 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let evidenceLabel: string | undefined;
   let machineEvidence: MachineEvidenceEntry[] | undefined;
   let visualEvidence: VisualObservationEntry[] | undefined;
+  let safetyTrigger: string | undefined;
+  let unknownFrames: unknown[] | undefined;
+  let sawStatus = false;
   let buffer = "";
 
   const applyBlock = (block: string) => {
@@ -104,7 +152,10 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
       if (frame.kind === "content") answer += String(frame.content ?? "");
       else if (frame.kind === "sources")
         citations = normalizeCitations(frame.citations);
-      else if (frame.kind === "status") status = String(frame.status ?? "");
+      else if (frame.kind === "status") {
+        status = String(frame.status ?? "");
+        sawStatus = true;
+      }
       else if (frame.kind === "followups") {
         followups = Array.isArray(frame.suggestions)
           ? (frame.suggestions as unknown[]).map(String)
@@ -129,6 +180,12 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         if (entries.length) machineEvidence = entries;
         const visual = visualObservationEntries(carried);
         if (visual.length) visualEvidence = visual;
+      } else if (frame.kind === "safety") {
+        safetyTrigger = String(frame.trigger ?? "");
+      } else if (frame.kind !== "usage") {
+        // `usage` is known-and-deliberately-ignored (telemetry only). Any
+        // OTHER kind is a future frame: keep it inspectable (PRD §9.2).
+        (unknownFrames ??= []).push(frame);
       }
     } catch {
       /* keep parsing subsequent frames */
@@ -144,6 +201,10 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     followups,
     ...(machineEvidence ? { machineEvidence } : {}),
     ...(visualEvidence ? { visualEvidence } : {}),
+    ...(safetyTrigger !== undefined ? { safetyTrigger } : {}),
+    ...(unknownFrames ? { unknownFrames } : {}),
+    // Present ONLY when the authoritative terminal frame never arrived.
+    ...(sawStatus ? {} : { sawStatus: false as const }),
   });
 
   return {

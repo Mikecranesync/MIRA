@@ -7,7 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto, pickPdf } from "../lib/native-pick";
+import { canPickNatively, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -19,6 +19,7 @@ import {
   uploadSourceToNotebook,
   getSourcePassage,
   getFile,
+  lookAtPhoto,
   enabledDocIds,
   canBeChatSource,
   fileCapabilityLabel,
@@ -34,7 +35,7 @@ import { answerBody } from "../lib/chat-copy";
 import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
-import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import { isTruncatedTurn, normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import {
   photoCapturedLabel,
   visualCardTitle,
@@ -53,6 +54,13 @@ import { FilePreview, SourceThumb } from "./FilePreview";
 import { BackDismiss, Sheet } from "./Sheet";
 import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
+import { ChatV2 } from "./ChatV2";
+import { SafetyNotice } from "./SafetyNotice";
+// The persisted-marker reader is the adapter's, not a second copy: one
+// definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
+import { safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { useChatV2Enabled } from "../lib/chat-ui-pref";
+import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -128,12 +136,14 @@ const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
 
 export function NotebookScreen({
   id,
+  chatV2Available = false,
   openAddSources,
   backRef,
   onExit,
   onOpenNotebook,
 }: {
   id: string;
+  chatV2Available?: boolean;
   openAddSources?: boolean;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
@@ -185,7 +195,11 @@ export function NotebookScreen({
   // React commits `deleting` and disables the button.
   const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
+  // Overflow sheet: everything the one-row app bar no longer shows inline.
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Which conversation surface (PRD §12.4). `null` = still loading.
+  const chatV2 = useChatV2Enabled(chatV2Available);
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
@@ -204,9 +218,17 @@ export function NotebookScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // `detail` belongs in these deps. Without it, opening a machine that already
+  // has history landed on the OLDEST turn: on mount the component is still in
+  // its `loading` branch so `scrollRef.current` is null and this is a no-op,
+  // and on the render where the thread finally appears none of the other deps
+  // changed, so it never ran again. Measured at 412x915: scrollTop 0 of 4635.
+  // ChatV2 sticks to the bottom, so this was also a surface-parity gap — and a
+  // safety hard-stop is normally the LAST turn, i.e. exactly the thing that was
+  // being hidden below the fold.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [liveTurns, busy, panel, pending]);
+  }, [detail, liveTurns, busy, panel, pending]);
 
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
@@ -290,6 +312,72 @@ export function NotebookScreen({
     }
   };
   const stopGeneration = () => abortRef.current?.abort();
+  const canStopGeneration =
+    busy && abortRef.current !== null && canCancelChatTransport();
+
+  /**
+   * ChatV2 attachment: photograph → the EXISTING LOOK path (parked + linked
+   * server-side before vision, SHA-256 deduped by `clientKey`), then the same
+   * `visualEvidence` rider Sensor uses. No second attachment system: the
+   * bytes travel the one upload door, and the server re-derives the evidence
+   * entry it echoes back — the client never asserts an observation.
+   */
+  const attachPhotoAndAsk = async () => {
+    if (busy) return;
+    const file = await pickPhoto("photo.jpg");
+    if (!file) return; // backed out — draft untouched
+    const question = q.trim() || "What am I looking at, and what should I check?";
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
+    try {
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      refresh(); // the photo is now a linked file — refresh Photos
+      setBusy(false);
+      setPending(null);
+      if (!look.fileId) {
+        setChatError(new Error("The photo didn't upload — try again."));
+        return;
+      }
+      await sendQuestion(question, undefined, {
+        visualEvidence: {
+          fileId: look.fileId,
+          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      setBusy(false);
+      setPending(null);
+      setQ(question); // the draft survives a failed attachment
+      setChatError(e);
+    }
+  };
+
+  /**
+   * ChatV2 attachment: PDF → the EXISTING two-step source upload
+   * (`uploadSourceToNotebook`), so the document becomes a CITABLE source in
+   * this notebook's scope. Honest about the not-indexed case rather than
+   * pretending the manual is searchable.
+   */
+  const attachPdfSource = async () => {
+    if (busy) return;
+    const file = await pickPdf();
+    if (!file) return;
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: `Adding ${file.name}…`, a: EMPTY_TURN });
+    try {
+      const r = await uploadSourceToNotebook(notebook, file, { sourceRole: "manual" });
+      refresh();
+      if (!r.attached && r.warning) setChatError(new Error(r.warning));
+    } catch (e) {
+      setChatError(e);
+    } finally {
+      setBusy(false);
+      setPending(null);
+    }
+  };
+
   // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
   // enter it, whatever the checkbox says about a candidate row.
   const scope = enabledDocIds(sources.filter(canBeChatSource));
@@ -308,51 +396,91 @@ export function NotebookScreen({
 
   return (
     <>
-      <div className="content" style={{ paddingBottom: 8, flex: "none" }}>
-        <button className="btn-link" onClick={onExit}>
-          ← Notebooks
+      {/* ONE-ROW HEADER (chrome pass). This used to be four stacked rows —
+          back link, title + two text buttons, a metadata line, and a 3-tab
+          segmented control — about 240 px of a 915 px screen before the first
+          message. A quarter of the viewport spent saying "you are in an app"
+          rather than showing the conversation.
+
+          Now: back · title · Sensor · overflow. Everything that was a tab
+          (Sources, Studio) or a rare action (Delete) moved into the overflow
+          sheet; the machine metadata moved to where it is actually useful —
+          the empty state, before any turns exist. Sensor keeps its place
+          because LOOK/READ/REPLAY is a working instrument for a technician,
+          not chrome, and it keeps its `aria-label` so the existing sensor
+          suites still find it. */}
+      <div className="nb-appbar">
+        <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
+          ‹
         </button>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
-          {/* Compact Sensor door in the existing header row — no new chrome.
-              The same instrument is reachable from the Add-sources sheet. */}
-          <button
-            className="btn-link"
-            aria-label="Open Sensor"
-            onClick={() => setSensorOpen(true)}
-            style={{ flex: "none" }}
-          >
-            Sensor
-          </button>
-          <button
-            className="btn-link"
-            aria-label="Delete notebook"
-            onClick={() => {
-              setDeleteError(null);
-              setConfirmDelete(true);
-            }}
-            style={{ color: "var(--fl-danger, #dc2626)", flex: "none" }}
-          >
-            Delete
-          </button>
-        </div>
-        <div className="meta">
-          {sources.length} source{sources.length === 1 ? "" : "s"}
-          {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
-          {notebook.model ? ` ${notebook.model}` : ""}
-        </div>
-        <div className="panel-tabs">
-          {(["sources", "chat", "studio"] as const).map((p) => (
-            <button
-              key={p}
-              className={`panel-tab ${p === panel ? "panel-tab-active" : ""}`}
-              onClick={() => setPanel(p)}
-            >
-              {p === "sources" ? `Sources (${sources.length})` : p === "chat" ? "Chat" : "Studio"}
-            </button>
-          ))}
-        </div>
+        <h3 className="nb-appbar-title">{notebook.displayName}</h3>
+        <button
+          className="nb-appbar-icon"
+          aria-label="Open Sensor"
+          onClick={() => setSensorOpen(true)}
+        >
+          ⌕
+        </button>
+        <button
+          className="nb-appbar-icon"
+          aria-label="More options"
+          data-testid="nb-overflow"
+          onClick={() => setOverflowOpen(true)}
+        >
+          ⋯
+        </button>
       </div>
+
+      {/* Leaving Chat is now a deliberate trip, so the way back is explicit.
+          Chat is the default and the 95% case, and it stays at one row. */}
+      {panel !== "chat" && (
+        <button className="nb-panel-back" onClick={() => setPanel("chat")}>
+          ‹ Back to chat
+        </button>
+      )}
+
+      {overflowOpen && (
+        <Sheet label="Notebook options" onClose={() => setOverflowOpen(false)}>
+          <div className="v2-attach-menu" data-testid="nb-overflow-menu">
+            <h3>{notebook.displayName}</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {sources.length} source{sources.length === 1 ? "" : "s"}
+              {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
+              {notebook.model ? ` ${notebook.model}` : ""}
+            </div>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("sources");
+              }}
+            >
+              📄 Sources ({sources.length})
+            </button>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("studio");
+              }}
+            >
+              ✨ Studio
+            </button>
+            <button
+              className="v2-attach-item"
+              aria-label="Delete notebook"
+              style={{ color: "var(--fl-danger, #dc2626)" }}
+              onClick={() => {
+                setOverflowOpen(false);
+                setDeleteError(null);
+                setConfirmDelete(true);
+              }}
+            >
+              🗑 Delete notebook
+            </button>
+          </div>
+        </Sheet>
+      )}
 
       {confirmDelete && (
         <>
@@ -551,7 +679,33 @@ export function NotebookScreen({
         </div>
       )}
 
-      {panel === "chat" && (
+      {/* ChatV2 (PRD 2026-08-30): the ChatGPT-class surface. Same send path,
+          same scope, same citation viewer, same evidence cards — only the
+          conversation shell changes. `null` while the preference loads, so
+          the technician never sees one surface flash into the other. */}
+      {panel === "chat" && chatV2 === true && (
+        <ChatV2
+          turns={turns}
+          liveTurns={liveTurns}
+          pending={pending}
+          busy={busy}
+          canStop={canStopGeneration}
+          draft={q}
+          onDraftChange={setQ}
+          scopeCount={scope.length}
+          chatError={chatError}
+          canRetry={Boolean(failedSend) && !busy}
+          handlers={{
+            onSend: (text) => void sendQuestion(text),
+            onStop: stopGeneration,
+            onCitation: setViewCitation,
+            onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachFile: () => void attachPdfSource(),
+            onRetry: () => failedSend && void sendQuestion("", failedSend),
+          }}
+        />
+      )}
+      {panel === "chat" && chatV2 === false && (
         <>
           <div className="content" style={{ paddingTop: 0 }} ref={scrollRef}>
             {turns.length === 0 && liveTurns.length === 0 && (
@@ -574,71 +728,114 @@ export function NotebookScreen({
                 )}
               </>
             )}
-            {turns.map((t) =>
-              isStoppedTurn(t) ? (
+            {turns.map((t) => {
+              // FLEET-003: the persisted safety marker is READ from the row
+              // (`{kind:"safety_notice"}` in evidence[], written by FLEET-001),
+              // exactly as `basis` is. Before this, the classic screen dropped
+              // it on the floor and a LOTO refusal reloaded here wearing full
+              // answer chrome — citations, basis, evidence cards.
+              const safety = safetyNoticeEntry(t.evidence);
+              return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the
                 // live "stopped" branch below — partial text, "Stopped"
                 // caption, no citations, no basis, no follow-ups.
                 <div key={t.id}>
                   <div className="msg-user">{t.question}</div>
+                  {/* Same hardening as the adapter's stopped branch: not
+                      reachable under today's server contract (a stopped turn
+                      persists evidence=[]), kept so the two paths cannot
+                      diverge if that contract ever changes. */}
+                  {safety && <SafetyNotice />}
                   <AnswerMarkdown text={t.answerText!} citations={[]} />
                   <div className="meta answer-stopped">Stopped</div>
                 </div>
               ) : (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
+                {safety && <SafetyNotice />}
                 <AnswerMarkdown
                   text={answerBody(t.answerText, t.answerStatus)}
-                  citations={citationsFromEvidence(t.evidence)}
+                  citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
-                {t.basis === "general_reasoning" && (
+                {!safety && t.basis === "general_reasoning" && (
                   <div className="evidence-basis-general">
                     General guidance — not grounded in this machine's documents.
                   </div>
                 )}
-                <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
-                <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
-                <div>
-                  {citationsFromEvidence(t.evidence).map((c) => (
-                    <button
-                      key={c.citationId}
-                      className="cite-chip"
-                      style={{ border: "none", cursor: "pointer" }}
-                      onClick={() => setViewCitation(c)}
-                    >
-                      {c.citationId} · {c.sourceTitle}
-                      {c.page ? ` p.${c.page}` : ""}
-                    </button>
-                  ))}
-                </div>
+                {!safety && (
+                  <>
+                    <VisualEvidenceCards entries={visualObservationEntries(t.evidence)} />
+                    <MachineEvidenceCards entries={machineEvidenceEntries(t.evidence)} basis={t.basis} />
+                    <div>
+                      {citationsFromEvidence(t.evidence).map((c) => (
+                        <button
+                          key={c.citationId}
+                          className="cite-chip"
+                          style={{ border: "none", cursor: "pointer" }}
+                          onClick={() => setViewCitation(c)}
+                        >
+                          {c.citationId} · {c.sourceTitle}
+                          {c.page ? ` p.${c.page}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-              ),
-            )}
-            {liveTurns.map((t, i) => (
+              );
+            })}
+            {liveTurns.map((t, i) => {
+              // FLEET-003: `safetyTrigger` is parsed by the one SSE parser
+              // (lib/sse.ts) and was already on the turn — the classic screen
+              // simply never read it. Sticky by design: it survives a stop or a
+              // truncation, matching the adapter's rule for ChatV2.
+              const safety = t.a.safetyTrigger !== undefined;
+              // ADR-0038 rule 6. The stream ended without the authoritative
+              // `status` frame and the technician did NOT press Stop — a
+              // server-side close, a dropped connection, a proxy cut. The read
+              // loop ends with done:true exactly as a healthy stream does, so
+              // nothing throws and `status` is simply "". Before this, such a
+              // turn fell through to the ordinary branch and rendered WITH its
+              // citation chips: a cut-off stream presented as a complete, cited
+              // answer (PRD §10.9). ChatV2's adapter already refused to do that;
+              // the classic screen is what still could.
+              const truncated = isTruncatedTurn(t.a);
+              const incomplete = truncated || t.a.status === "stopped";
+              return (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
-                {t.a.status === "stopped" ? (
+                {safety && <SafetyNotice />}
+                {incomplete ? (
                   <>
                     {t.a.answer.trim() && (
                       <AnswerMarkdown text={t.a.answer} citations={[]} />
                     )}
-                    <div className="meta answer-stopped">Stopped</div>
+                    {/* A truncation is NOT the technician's action. Labelling
+                        it "Stopped" blames them for a transport failure and
+                        hides that content may be missing. */}
+                    <div className="meta answer-stopped">
+                      {truncated
+                        ? "Incomplete — the connection ended before the answer finished. Ask again to retry."
+                        : "Stopped"}
+                    </div>
                   </>
                 ) : (
                   <AnswerMarkdown
                     text={answerBody(t.a.answer, t.a.status)}
-                    citations={t.a.citations}
+                    citations={safety ? [] : t.a.citations}
                     onCitation={setViewCitation}
                   />
                 )}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
-                    last turn only — tapping one sends it as the next turn. */}
-                {!busy &&
+                    last turn only — tapping one sends it as the next turn.
+                    Never on a safety turn: "ask me more" is success chrome. */}
+                {!safety &&
+                  !busy &&
                   i === liveTurns.length - 1 &&
                   t.a.status === "answered" &&
                   (t.a.followups?.length ?? 0) > 0 && (
@@ -654,38 +851,45 @@ export function NotebookScreen({
                     a grounded one already shows its citation chips, and a second
                     badge saying "grounded" would be noise. Silence here never
                     means "trust it" — an unlabelled answer shows its chips. */}
-                {t.a.evidenceBasis === "general_reasoning" && (
+                {!safety && !incomplete && t.a.evidenceBasis === "general_reasoning" && (
                   <div className="evidence-basis-general">
                     {t.a.evidenceLabel || "General guidance — not grounded in this machine's documents."}
                   </div>
                 )}
-                {t.a.status !== "stopped" && (
+                {!safety && !incomplete && (
                   <>
                     <VisualEvidenceCards entries={t.a.visualEvidence ?? []} />
                     <MachineEvidenceCards entries={t.a.machineEvidence ?? []} basis={t.a.evidenceBasis} />
                   </>
                 )}
-                <div>
-                  {t.a.citations.map((c) => (
-                    <button
-                      key={c.citationId}
-                      className="cite-chip"
-                      style={{ border: "none", cursor: "pointer" }}
-                      onClick={() => setViewCitation(c)}
-                    >
-                      {c.citationId} · {c.sourceTitle}
-                      {c.page ? ` p.${c.page}` : ""}
-                    </button>
-                  ))}
-                </div>
+                {!safety && !incomplete && (
+                  <div>
+                    {t.a.citations.map((c) => (
+                      <button
+                        key={c.citationId}
+                        className="cite-chip"
+                        style={{ border: "none", cursor: "pointer" }}
+                        onClick={() => setViewCitation(c)}
+                      >
+                        {c.citationId} · {c.sourceTitle}
+                        {c.page ? ` p.${c.page}` : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
             {/* In-flight turn (STRM-1): the question posts immediately; the
                 answer paints per content frame. No chips until the turn is
                 final — citations arrive AFTER the content on the wire. */}
             {pending && (
               <div aria-live="polite" aria-busy="true">
                 <div className="msg-user">{pending.q}</div>
+                {/* The safety frame can land BEFORE the terminal status frame
+                    (wire order: content* → safety → status), so the in-flight
+                    turn must be able to show the banner too. */}
+                {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
                 {pending.a.answer ? (
                   <AnswerMarkdown text={pending.a.answer} citations={[]} />
                 ) : (
@@ -739,9 +943,13 @@ export function NotebookScreen({
             <span className="counter">
               {scope.length} source{scope.length === 1 ? "" : "s"}
             </span>
-            {busy ? (
+            {busy && canStopGeneration ? (
               <button className="btn-primary" aria-label="Stop generating" onClick={stopGeneration}>
                 Stop
+              </button>
+            ) : busy ? (
+              <button className="btn-primary" aria-label="Working" disabled>
+                Working…
               </button>
             ) : (
               <button

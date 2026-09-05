@@ -470,6 +470,31 @@ services:
       retries: 3
       start_period: 15s
 
+  # ─── FactoryLM Foreman — Fleet orchestration bot (Grok + Fleet Gateway MCP) ───
+  # Listens in #factorylm-foreman, launches Cursor cloud agents with grok-4.6,
+  # agents call Fleet Gateway MCP tools (launch_worker, fleet_status, etc.).
+  # Rejects bot messages (including its own) BEFORE agent launch to prevent loops.
+  factorylm-foreman:
+    build:
+      context: ./mira-bots/foreman
+      dockerfile: Dockerfile
+    container_name: factorylm-foreman
+    environment:
+      - FOREMAN_BOT_SLACK_TOKEN=${FOREMAN_BOT_SLACK_TOKEN}
+      - FOREMAN_SLACK_APP_TOKEN=${FOREMAN_SLACK_APP_TOKEN}
+      - CURSOR_API_KEY=${CURSOR_API_KEY}
+      - FLEET_GATEWAY_MCP_URL=${FLEET_GATEWAY_MCP_URL}
+      - FLEET_GATEWAY_TOKEN=${FLEET_GATEWAY_TOKEN}
+      - FOREMAN_GROK_MODEL=${FOREMAN_GROK_MODEL:-grok-4.6}
+      - FOREMAN_ALLOWED_CHANNEL=${FOREMAN_ALLOWED_CHANNEL:-C0BTXHXBKML}
+      - FOREMAN_REPO_URL=${FOREMAN_REPO_URL:-https://github.com/Mikecranesync/MIRA}
+      - FOREMAN_REPO_BRANCH=${FOREMAN_REPO_BRANCH:-main}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
   # ─── mira-ask — "Ask MIRA" FastAPI endpoint for the Ignition HMI (ASK_MIRA_IGNITION A2) ───
   # Wraps the same Supervisor engine the bots use and exposes POST /ask + GET /health.
   # Build mirrors mira-bot-slack (context ./mira-bots) but uses ask_api/Dockerfile so
@@ -773,6 +798,9 @@ services:
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
       - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # Server-authoritative rollout/rollback for the mobile ChatV2 surface.
+      # Default OFF: /api/me omits chat_v2 and every client stays on legacy.
+      - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
       # Per-turn output ceiling under the seam (cost guard).
       - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
       # Command Center display registration SSRF lockdown (PR #1960): comma-separated
@@ -975,6 +1003,15 @@ services:
       - JOURNEY_SWARM_SOFT_LIMIT_S=${JOURNEY_SWARM_SOFT_LIMIT_S:-1500}
       - JOURNEY_SWARM_HARD_LIMIT_S=${JOURNEY_SWARM_HARD_LIMIT_S:-1800}
       - JOURNEY_SWARM_MAX_RETRIES=${JOURNEY_SWARM_MAX_RETRIES:-3}
+      # ── CV-101 Machine Memory observer (PRD §9.4) — READ-ONLY ───────────
+      # Daily GETs against the Hub's public APIs; never a fault generator,
+      # never an equipment write, never SQL. Inert unless ENABLED=1. The
+      # observer login is an EXISTING user in the tenant that owns CV-101
+      # (it signs in; it never registers) — values come from Doppler.
+      - MACHINE_MEMORY_OBSERVER_ENABLED=${MACHINE_MEMORY_OBSERVER_ENABLED:-0}
+      - MACHINE_MEMORY_OBSERVER_ASSET_ID=${MACHINE_MEMORY_OBSERVER_ASSET_ID:-}
+      - MACHINE_MEMORY_OBSERVER_EMAIL=${MACHINE_MEMORY_OBSERVER_EMAIL:-}
+      - MACHINE_MEMORY_OBSERVER_PASSWORD=${MACHINE_MEMORY_OBSERVER_PASSWORD:-}
     networks:
       - mira-net
     volumes:
@@ -998,6 +1035,9 @@ services:
       - CELERY_BEAT_PROFILE=synthetic-dogfood
       # Cadence knob — change the schedule without rebuilding the image.
       - JOURNEY_SWARM_CRON_HOURS=${JOURNEY_SWARM_CRON_HOURS:-*/6}
+      # The observer beat entry exists only when enabled (PRD §9.4) — same
+      # flag as the worker, so a disabled deployment publishes nothing.
+      - MACHINE_MEMORY_OBSERVER_ENABLED=${MACHINE_MEMORY_OBSERVER_ENABLED:-0}
     networks:
       - mira-net
     volumes:

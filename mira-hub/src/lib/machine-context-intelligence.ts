@@ -22,6 +22,7 @@
 
 import type { LiveTag, LatestDiff } from "./machine-memory-response";
 import type { CurrentState } from "./machine-current-state";
+import { conditionDisplayTitle } from "./anomaly-titles";
 
 /** A persisted typed anomaly (run_diff), normalized for the packet. */
 export interface ActiveCondition {
@@ -68,17 +69,10 @@ function ruleIdFromDiffType(diffType: string | null): string | null {
   return diffType.startsWith("anomaly_") ? diffType.slice("anomaly_".length) : null;
 }
 
-/** A readable title from the diff type + tag leaf, no rule catalog needed. */
-function conditionTitle(diffType: string | null, tagPath: string): string {
-  const leaf = leafName(tagPath);
-  const ruleId = ruleIdFromDiffType(diffType);
-  if (ruleId) {
-    // "A2_VFD_FAULT" -> "vfd fault" (drop the leading rule index, humanize).
-    const words = ruleId.replace(/^A\d+_/, "").replace(/_/g, " ").toLowerCase().trim();
-    return words ? `${words} on ${leaf}` : `anomaly on ${leaf}`;
-  }
-  const kind = (diffType ?? "deviation").replace(/_/g, " ");
-  return `${kind} on ${leaf}`;
+/** The technician-facing title (PRD §9.2 / #3470) — ONE helper shared with the
+ *  Machine Memory card and the work-order prefill (anomaly-titles.ts). */
+function conditionTitle(diffType: string | null, tagPath: string, persistedTitle?: string | null): string {
+  return conditionDisplayTitle(diffType, tagPath, persistedTitle);
 }
 
 function toMs(t: string | null | undefined): number | null {
@@ -158,7 +152,7 @@ export function deriveContextIntelligence(input: IntelligenceInput): ContextInte
     .map((d) => ({
       rule_id: ruleIdFromDiffType(d.diff_type),
       severity: d.severity,
-      title: conditionTitle(d.diff_type, d.tag_path),
+      title: conditionTitle(d.diff_type, d.tag_path, d.title),
       tag_path: d.tag_path,
       next_check: d.next_check,
     }))

@@ -18,7 +18,14 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
-    get: vi.fn(async () => ({ value: null })),
+    // These suites pin the CLASSIC chat surface, which still ships behind
+    // More → "Chat style". ChatV2 is the default, so the preference is
+    // returned explicitly here rather than relied upon — the ChatV2 contracts
+    // are pinned separately in src/screens/__tests__/chat-v2.test.tsx and
+    // src/chat-adapter/__tests__/.
+    get: vi.fn(async ({ key }: { key: string }) =>
+      key === "flm.chatui.v1" ? { value: "legacy" } : { value: null },
+    ),
     set: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
   },
@@ -247,6 +254,10 @@ describe("Sensor LOOK (S2)", () => {
       ],
     });
     mount();
+    // Sources moved out of the header tab bar into the overflow sheet when the
+    // notebook header collapsed to one row (chrome pass). Same destination,
+    // one more tap — the assertion below is unchanged.
+    fireEvent.click(await screen.findByTestId("nb-overflow"));
     fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
     const group = await screen.findByTestId("notebook-photos");
     expect(group.textContent).toContain("Photos (1)");
@@ -263,6 +274,10 @@ describe("Sensor LOOK (S2)", () => {
 
   it("no linked photos → no Photos group at all (never an empty 'Photos (0)')", async () => {
     mount();
+    // Sources moved out of the header tab bar into the overflow sheet when the
+    // notebook header collapsed to one row (chrome pass). Same destination,
+    // one more tap — the assertion below is unchanged.
+    fireEvent.click(await screen.findByTestId("nb-overflow"));
     fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
     expect(await screen.findByRole("button", { name: "+ Add sources" })).toBeTruthy();
     expect(screen.queryByTestId("notebook-photos")).toBeNull();

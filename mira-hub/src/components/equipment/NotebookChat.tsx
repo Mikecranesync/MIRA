@@ -5,9 +5,9 @@
 // (hub has no jsdom/RTL — audit §11).
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera } from "lucide-react";
+import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
-import type { EvidenceCitation, MachineEvidenceEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
+import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
 import { AnswerMarkdown } from "./notebook-markdown";
 import {
   basisLabel,
@@ -55,9 +55,18 @@ export type ChatTurn = {
   visualEvidence?: VisualObservationEntry[];
   /** Deterministic follow-up questions from the server (answered turns only). */
   followups?: string[];
-  /** The technician pressed Stop mid-stream (STRM-2): `content` is what had
+  /** The technician pressed Stop mid-stream (STRM-2), OR the stream ended
+   *  without a terminal `status` frame (ADR-0038 rule 6): `content` is what had
    *  streamed; status is `error`, never `answered`. */
   stopped?: boolean;
+  /** Narrows `stopped`: the stream ended on its own, nobody pressed Stop
+   *  (ADR-0038 rule 6). Rendered with different copy — a transport failure is
+   *  not the technician's action, and the answer may be missing content the
+   *  server did produce. */
+  truncated?: boolean;
+  /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash
+   *  refusal — suppresses all ordinary-answer affordances. */
+  safetyNotice?: SafetyNoticeEntry;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -117,12 +126,29 @@ export function Bubble({
   // lists because the split happens in the markdown tree, not on the string.
   return (
     <div className="w-full">
+      {turn.safetyNotice && (
+        <div
+          className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold"
+          style={{ background: "#FEF2F2", color: "#991B1B", border: "1px solid #FECACA" }}
+          data-testid="safety-notice-banner"
+          role="alert"
+          aria-label="Safety stop"
+        >
+          <AlertTriangle size={16} aria-hidden />
+          Safety stop — isolate the machine before proceeding
+        </div>
+      )}
       <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
         <AnswerMarkdown content={turn.content} citations={cites} onCite={onCite} />
       </div>
-      {turn.stopped && (
+      {turn.stopped && !turn.truncated && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="stopped-caption">
           Stopped
+        </p>
+      )}
+      {turn.truncated && (
+        <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="truncated-caption">
+          Incomplete — the connection ended before the answer finished. Ask again to retry.
         </p>
       )}
       {turn.status === "insufficient_evidence" && (
@@ -130,7 +156,7 @@ export function Bubble({
           Not found in the selected sources. Add a source or rephrase.
         </p>
       )}
-      {(turn.machineEvidence?.length ?? 0) > 0 && (
+      {!turn.safetyNotice && (turn.machineEvidence?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-col gap-1" data-testid="machine-replay-cards">
           {turn.machineEvidence!.map((e) => (
             <div
@@ -150,7 +176,7 @@ export function Bubble({
           ))}
         </div>
       )}
-      {(turn.visualEvidence?.length ?? 0) > 0 && (
+      {!turn.safetyNotice && (turn.visualEvidence?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-col gap-1" data-testid="visual-observation-cards">
           {turn.visualEvidence!.map((e) => (
             <div
@@ -181,7 +207,7 @@ export function Bubble({
           ))}
         </div>
       )}
-      {basisLabel(turn.basis) && (
+      {basisLabel(turn.basis) && !turn.safetyNotice && (
         <p
           className="mt-1 text-xs font-medium"
           style={{
@@ -197,7 +223,7 @@ export function Bubble({
           {basisLabel(turn.basis)}
         </p>
       )}
-      {onFollowup && turn.status === "answered" && (turn.followups?.length ?? 0) > 0 && (
+      {onFollowup && turn.status === "answered" && !turn.safetyNotice && (turn.followups?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" aria-label="Ask follow-up:" data-testid="followup-chips">
           <span className="sr-only">Ask follow-up:</span>
           {turn.followups!.map((q) => (
@@ -216,7 +242,7 @@ export function Bubble({
           ))}
         </div>
       )}
-      {passages.length > 0 && (
+      {passages.length > 0 && !turn.safetyNotice && (
         <div className="mt-2">
           <button
             onClick={() => setShowSources((s) => !s)}
@@ -313,7 +339,7 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, basis, followups, machineEvidence, visualEvidence } = await postNotebookChat(
+      const { content, citations, status, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
@@ -321,6 +347,30 @@ export function NotebookChat({
           setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
         },
       );
+      // ADR-0038 rule 6: no terminal `status` frame arrived, so the stream was
+      // truncated — a server-side close, a dropped connection, a proxy cut. It
+      // does NOT throw (the read loop ends with done:true exactly as a healthy
+      // stream does), so this is the only place it can be caught. Keep the
+      // partial text; drop citations, basis, machine/visual evidence and
+      // follow-ups, all of which would present a cut-off stream as a complete,
+      // cited answer.
+      if (!sawStatus) {
+        setTurns((prev) =>
+          prev.map((x) =>
+            x.id === aId
+              ? {
+                  ...stoppedTurn(x, content, "truncated"),
+                  // A `safety` frame that DID arrive is a determination the
+                  // server actually made and sent. Suppressing a LOTO/arc-flash
+                  // warning because the tail was lost is the unsafe direction,
+                  // so it is the one marker that survives a truncation.
+                  ...(safetyNotice ? { safetyNotice } : {}),
+                }
+              : x,
+          ),
+        );
+        return;
+      }
       setTurns((prev) =>
         prev.map((x) =>
           x.id === aId
@@ -339,6 +389,10 @@ export function NotebookChat({
                 ...(status === "answered" && machineEvidence ? { machineEvidence: [machineEvidence] } : {}),
                 ...(status === "answered" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
                 followups,
+                // Safety marker rides on answered turns — the server emits
+                // status:"answered" even for a hard-stop. Store it so the
+                // live and reloaded views are byte-semantically identical.
+                ...(safetyNotice ? { safetyNotice } : {}),
               }
             : x,
         ),

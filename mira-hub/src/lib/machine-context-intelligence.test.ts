@@ -147,3 +147,81 @@ describe("deriveContextIntelligence", () => {
     expect(out.summary).not.toMatch(/looks healthy/i);
   });
 });
+
+// ── Workstream C (PRD §9.2) — technician-facing fault titles ────────────────
+//
+// The A0–A12 writer stores the anomaly's evidence topic as `tag_path`, which
+// for A0_OFFLINE is the pseudo-topic `_stale_s`. The title must come from the
+// canonical anomaly summary (persisted `metadata.title`, else the rule
+// catalog ported from rules_core), never from a raw tag suffix.
+describe("condition titles never leak internal identifiers (§9.2)", () => {
+  const stale: CurrentState = { state: "comm_down", since: null, fresh: false };
+
+  function diff(over: Partial<LatestDiff>): LatestDiff {
+    return {
+      diff_id: "d1",
+      tag_path: "_stale_s",
+      severity: "critical",
+      diff_type: "anomaly_A0_OFFLINE",
+      observed: null,
+      baseline: null,
+      delta_percent: null,
+      event_timestamp: new Date(NOW).toISOString(),
+      next_check: "Check the PLC bridge / Modbus link.",
+      title: null,
+      ...over,
+    };
+  }
+
+  it("A0_OFFLINE on the _stale_s pseudo-topic renders the canonical rule title, no suffix leak", () => {
+    const out = deriveContextIntelligence({ machine_state: stale, live_tags: [], latest_diffs: [diff({})], nowMs: NOW });
+    expect(out.active_conditions[0].title).toBe("PLC/bridge offline");
+    expect(out.active_conditions[0].title).not.toMatch(/_stale_s/);
+    expect(out.summary).toBe("Active fault: PLC/bridge offline. Next: Check the PLC bridge / Modbus link.");
+    expect(out.summary).not.toMatch(/_stale_s|offline on/);
+  });
+
+  it("a persisted metadata.title wins over the catalog and over the tag leaf", () => {
+    const out = deriveContextIntelligence({
+      machine_state: stale,
+      live_tags: [],
+      latest_diffs: [diff({ title: "GS10 drive fault active (ocA)", diff_type: "anomaly_A2_VFD_FAULT", tag_path: "vfd/vfd101/fault_code" })],
+      nowMs: NOW,
+    });
+    expect(out.active_conditions[0].title).toBe("GS10 drive fault active (ocA)");
+  });
+
+  it("every catalogued rule renders its canonical title; the internal tag never appears", () => {
+    for (const rule of ["A1_COMM_STALE", "A3_ESTOP_WIRING", "A8_OVERCURRENT", "A12_PHOTOEYE_JAM"]) {
+      const out = deriveContextIntelligence({
+        machine_state: stale,
+        live_tags: [],
+        latest_diffs: [diff({ diff_type: `anomaly_${rule}`, tag_path: "[default]MIRA_IOCheck/VFD/_internal_x", severity: "warning" })],
+        nowMs: NOW,
+      });
+      expect(out.active_conditions[0].title).not.toMatch(/_internal_x|\[default\]|MIRA_IOCheck/);
+      expect(out.active_conditions[0].title.length).toBeGreaterThan(5);
+    }
+  });
+
+  it("an uncatalogued anomaly on a pseudo-topic still never renders the pseudo-topic", () => {
+    const out = deriveContextIntelligence({
+      machine_state: stale,
+      live_tags: [],
+      latest_diffs: [diff({ diff_type: "anomaly_A99_FUTURE_RULE", tag_path: "_freq_frozen_s" })],
+      nowMs: NOW,
+    });
+    expect(out.active_conditions[0].title).not.toMatch(/_freq_frozen_s/);
+    expect(out.active_conditions[0].title).toMatch(/future rule/);
+  });
+
+  it("a statistical (non-anomaly) deviation on a real tag keeps the readable leaf", () => {
+    const out = deriveContextIntelligence({
+      machine_state: stale,
+      live_tags: [],
+      latest_diffs: [diff({ diff_type: "deviation", tag_path: "[default]MIRA_IOCheck/VFD/vfd_dc_bus", severity: "warning" })],
+      nowMs: NOW,
+    });
+    expect(out.active_conditions[0].title).toBe("deviation on vfd_dc_bus");
+  });
+});

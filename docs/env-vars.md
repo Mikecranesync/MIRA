@@ -19,6 +19,20 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 
 Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN` in Doppler `factorylm/prd` authenticate to the `FactoryLM` workspace (`T0AK2CU16T1`) as bot user `U0AM3EZBSNQ` / bot id `B0ALXRE4CDU`. `SLACK_EXPECTED_BOT_USER_ID=U0AM3EZBSNQ` is set in prod for drift detection. `SLACK_ALLOWED_CHANNELS` is currently unset; do not set it to only `C0AKBEL8C4T` while DM testing is required, because the Slack adapter currently applies the allowlist before distinguishing DMs from shared channels.
 
+FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **separate Slack bot identity**. Do not reuse product `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN`.
+
+| Var | Used By |
+|-----|---------|
+| `FOREMAN_BOT_SLACK_TOKEN` | factorylm-foreman — Slack bot token (`xoxb-…`). Doppler name; code also accepts `FOREMAN_SLACK_BOT_TOKEN`. |
+| `FOREMAN_SLACK_APP_TOKEN` | factorylm-foreman — Slack app-level token (`xapp-…`) for Socket Mode. |
+| `CURSOR_API_KEY` | factorylm-foreman — Cursor SDK key (`crsr_…`) for `Agent.create`. Code also accepts `CURSOR_API`. |
+| `FLEET_GATEWAY_MCP_URL` | factorylm-foreman — HTTPS Fleet Gateway MCP endpoint passed to `HttpMcpServerConfig`. |
+| `FLEET_GATEWAY_TOKEN` | factorylm-foreman — Bearer token for Fleet Gateway MCP. Code also accepts `FLEET_GATEWAY_BEARER`. |
+| `FOREMAN_GROK_MODEL` | factorylm-foreman — Cursor model id. Default `grok-4.6` (live-proven; not `cursor-grok-4.6-medium`). |
+| `FOREMAN_ALLOWED_CHANNEL` | factorylm-foreman — Slack channel ID allowlist. Default `C0BTXHXBKML` (`#factorylm-foreman`). |
+| `FOREMAN_REPO_URL` | factorylm-foreman — repo URL stamped on `CloudRepository`. Default `https://github.com/Mikecranesync/MIRA`. |
+| `FOREMAN_REPO_BRANCH` | factorylm-foreman — `CloudRepository.starting_ref`. Default `main`. |
+
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: openai/gpt-oss-120b |
@@ -128,6 +142,10 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` | mira-hub — comma-separated exact hosts allowed as Command Center display targets (e.g. `127.0.0.1,192.168.1.20,100.72.2.99`). The tree route server-side-probes each registered display host; **set this in prod** to bound the SSRF surface of `POST /api/command-center/display` to known proxy/HMI origins. Unset = no restriction beyond the validator's link-local/metadata block (dev/bench). Interim control until #578 enables a true admin-role gate. |
 | `CSP_FRAME_SRC_DISPLAY_HOSTS` | mira-hub `src/middleware.ts` — comma-separated hosts added to the site-wide CSP `frame-src` allowlist (for any framed display surface). Distinct from the allowlist above: this governs what the browser may frame, not what may be registered. |
 | `MIRA_MACHINE_MEMORY_UNS_PATHS` | `mira-crawler/tasks/historize_runs.py` — extra `uns_path`s (comma-separated) to derive state windows + A0-A12 anomaly diffs for, even without a `MIRA_RUN_TRIGGERS` entry (migration 040). |
+| `MACHINE_MEMORY_OBSERVER_ENABLED` | `mira-crawler/tasks/machine_memory_observer.py` — `1` enables the daily READ-ONLY CV-101 Machine Memory observer on the synthetic-dogfood beat (PRD §9.4). Default `0` (inert). Forwarded by `docker-compose.saas.yml` (mira-synthetic-dogfood-worker). |
+| `MACHINE_MEMORY_OBSERVER_ASSET_ID` | The CV-101 `kg_entities` id the observer reads through `/api/assets/{id}/history/` + `/machine-memory/`. |
+| `MACHINE_MEMORY_OBSERVER_EMAIL` | Login (an EXISTING user in the tenant that owns CV-101) the observer signs in with; it never registers. Doppler-managed; never in the image. |
+| `MACHINE_MEMORY_OBSERVER_PASSWORD` | Password for `MACHINE_MEMORY_OBSERVER_EMAIL`. Doppler-managed; never printed or written to the observer's report files. |
 | `MQTT_INGEST_BROKER_HOST` | `mira-relay/mqtt_ingest/config.py` — Sparkplug B subscriber broker hostname. Default `mosquitto`. |
 | `MQTT_INGEST_BROKER_PORT` | `mira-relay/mqtt_ingest/config.py` — broker port. Default `1883` (`8883` for TLS). |
 | `MQTT_INGEST_TLS` | `mira-relay/mqtt_ingest/config.py` — `"1"`/`"true"` enables TLS to the broker. |
@@ -147,6 +165,7 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | Var | Default | Meaning |
 |---|---|---|
 | `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
+| `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
 
