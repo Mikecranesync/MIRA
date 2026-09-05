@@ -227,8 +227,9 @@ function provBadge(pack: DrivePackDisplay): string {
 }
 
 function waitlistCTA(): string {
-  return `<a class="cta" href="${PRICING_HREF}"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $29/mo or $197/yr &rarr;</a>
-    <p class="price-note">Cancel anytime &middot; 30-day money-back guarantee</p>`;
+  // Lead price is $197/yr annual (locked 2026-09-05). Monthly is not the primary offer.
+  return `<a class="cta" href="${PRICING_HREF}" data-cta="dc-pro-annual"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $197/yr &rarr;</a>
+    <p class="price-note">Annual plan &middot; cancel anytime &middot; 30-day money-back guarantee</p>`;
 }
 
 // The Pro teaser. IMPORTANT: no real pack data (no value tables, no full param
@@ -278,7 +279,7 @@ function paramCardFree(p: ParameterCard, modelSlug: string): string {
 
 export function renderDriveLandingPage(
   pack: DrivePackDisplay,
-  opts?: { checkout?: string },
+  opts?: { checkout?: string; isPro?: boolean },
 ): string {
   const canonical = `${BASE_URL}/drive-commander/${pack.modelSlug}`;
   const product = productName(pack);
@@ -324,7 +325,10 @@ export function renderDriveLandingPage(
         ? `<div class="checkout-note" role="status">Checkout cancelled &mdash; no charge was made.
             The free cited lookups below stay free.</div>`
         : "";
-  const paid = opts?.checkout === "success";
+  // isPro=true when the entitlement cookie or Stripe session confirms drive_commander_pro tier.
+  // Fail-closed: any uncertainty defaults to false (free tier shown).
+  const isPro = opts?.isPro === true;
+  const paid = opts?.checkout === "success" || isPro;
 
   return `<!DOCTYPE html>
 <html lang="en"><head>${pageHead(title, description, canonical, jsonLd)}</head>
