@@ -616,12 +616,17 @@ def test_cascade_treats_empty_completion_as_failure_not_success(monkeypatch):
         return responses.pop(0)
 
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
     text, provider, attempts = call_cascade("prompt", reasoning_effort="high")
     assert text == "real review"
     assert provider.startswith("cerebras")
-    assert "empty completion" in attempts[0]
+    # Searched across attempts rather than asserted at a fixed index: the locked
+    # behaviour is "an empty completion falls through", not "which position groq
+    # happens to occupy in PROVIDERS". Indexing broke when gemini was added ahead
+    # of groq even though the behaviour was unchanged.
+    assert any("empty completion" in a for a in attempts)
 
 
 def test_cascade_records_provider_default_when_reasoning_unsupported(monkeypatch):
