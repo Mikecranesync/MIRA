@@ -1,4 +1,15 @@
-"""Create real isolated git worktrees — node-locally. Never delete them (deny-list).
+"""Create real isolated git worktrees — node-locally, with a bounded retention sweep.
+
+No Gateway *tool* can delete a worktree: ``delete_worktree`` is hard-denied in
+``contract`` and ``stop_worker`` raises on it. That stays true. What this module
+adds is an internal, create-time bound so Gateway-created ``fleet-e2e-*``
+directories cannot accumulate without limit — every ``launch_worker`` used to
+strand ~561 MB forever, which filled Charlie's disk to 100% on 2026-09-04 (#3546).
+
+The sweep never uses ``rm -rf`` on a worktree. It clears only the artifact files
+the Gateway itself writes, then calls ``git worktree remove`` WITHOUT ``--force``
+so that **git refuses** on any real modification or unexpected untracked file.
+That refusal is the safety property: anything a human might care about survives.
 
 A worktree must be created on the SAME physical machine the worker runs on. The
 Gateway process runs on Bravo, so a Bravo worker's worktree is created with a
@@ -37,6 +48,22 @@ CHARLIE_SSH_HOST = "charlie"
 ALPHA_REPO = Path("/Users/factorylm/MIRA")
 ALPHA_PARENT = Path("/Users/factorylm/MIRA-worktrees")
 ALPHA_SSH_HOST = "alpha"
+
+# Retention bound for Gateway-created worktrees. 0 disables the sweep.
+RETAIN_ENV = "FLEET_GATEWAY_WORKTREE_RETAIN"
+DEFAULT_RETAIN = 12
+
+# Only these machine-written files may be cleared to let `git worktree remove`
+# proceed. Anything else (source edits, hand-written .fleet/*.md handoffs) makes
+# git refuse, and the worktree is skipped. Keep this list minimal and boring.
+DISPOSABLE_ARTIFACTS: tuple[str, ...] = (
+    "FOREMAN-GATEWAY-PROOF.txt",
+    ".enum-drift-allowlist.txt",
+)
+
+# Gateway-created worktrees carry this prefix. Human-made siblings (e.g. a CAO
+# session's own working directory) do not, and are therefore never candidates.
+WORKTREE_PREFIX = "fleet-e2e-"
 
 PROOF_TASK_ID = "foreman-gateway-proof"
 PROOF_MARKER = "FOREMAN-GATEWAY-PROOF"
@@ -143,6 +170,8 @@ class WorktreeProvisioner:
         mkdir = self._run(["mkdir", "-p", str(self.parent)], timeout=15)
         if mkdir.returncode != 0:
             raise ContractViolation("failed to create isolated worktree parent directory")
+        # Bound accumulation BEFORE adding another. Best-effort; never fatal.
+        self.reap(retain=retain_from_env())
         path = self.parent / f"fleet-e2e-{_safe_segment(task_id)}-{_short_session(session_id)}"
         while self._isdir(path):
             path = self.parent / (
@@ -172,6 +201,57 @@ class WorktreeProvisioner:
             )
         return path
 
+    # ── retention ────────────────────────────────────────────────────────────
+    def _candidates_oldest_first(self, retain: int) -> list[str]:
+        """`fleet-e2e-*` dirs on the owning node beyond the newest `retain`."""
+        # -d dirs only, -t newest first; run on the node that owns the parent.
+        listing = self._run(
+            ["sh", "-c", f"ls -dt {shlex.quote(str(self.parent))}/{WORKTREE_PREFIX}* 2>/dev/null"],
+            timeout=30,
+        )
+        if listing.returncode != 0:
+            return []
+        paths = [ln.strip() for ln in listing.stdout.splitlines() if ln.strip()]
+        return paths[retain:]
+
+    def reap(self, *, retain: int | None = None) -> list[str]:
+        """Remove Gateway worktrees beyond the retention bound. Never raises.
+
+        Safety comes from git, not from a predicate we invented: after clearing
+        the known machine-written artifacts we call ``git worktree remove``
+        WITHOUT ``--force``, so a worktree holding real work is refused and
+        skipped. Returns the paths actually removed.
+        """
+        bound = DEFAULT_RETAIN if retain is None else retain
+        if bound <= 0:
+            return []
+        removed: list[str] = []
+        try:
+            for path in self._candidates_oldest_first(bound):
+                # Never touch anything outside the Gateway's own naming scheme.
+                if not os.path.basename(path).startswith(WORKTREE_PREFIX):
+                    continue
+                if not path.startswith(str(self.parent) + os.sep):
+                    continue
+                for artifact in DISPOSABLE_ARTIFACTS:
+                    self._run(
+                        ["rm", "-f", os.path.join(path, artifact)],
+                        timeout=15,
+                    )
+                # No --force: git refuses if anything of value remains.
+                done = self._run(
+                    ["git", "-C", str(self.repo), "worktree", "remove", path],
+                    timeout=60,
+                )
+                if done.returncode == 0:
+                    removed.append(path)
+            if removed:
+                self._run(["git", "-C", str(self.repo), "worktree", "prune"], timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            # A sweep failure must never break a launch.
+            return removed
+        return removed
+
     def maybe_write_proof(
         self,
         worktree: Path,
@@ -190,6 +270,18 @@ class WorktreeProvisioner:
             self._run(["sh", "-c", inner], timeout=15)
         else:
             target.write_text(PROOF_MARKER, encoding="utf-8")
+
+
+def retain_from_env() -> int:
+    """Retention bound from env; invalid or negative disables the sweep."""
+    raw = (os.environ.get(RETAIN_ENV) or "").strip()
+    if not raw:
+        return DEFAULT_RETAIN
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_RETAIN
+    return max(value, 0)
 
 
 def _provisioner(
