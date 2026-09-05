@@ -218,6 +218,63 @@ describe("stoppedTurn — stopped vs truncated (ADR-0038 rule 6)", () => {
   });
 });
 
+/**
+ * A provider outage must not be re-labelled as a documentation gap.
+ *
+ * `notebook-chat-types.ts` states the contract outright:
+ *   `answer_status==='error' && answer_text` null ⇒ the existing error copy.
+ *
+ * The LIVE path honours it ("No answer provider was available."). Hydration did
+ * not: it fell back to the ABSTAIN copy for any null `answerText`, so the exact
+ * same persisted row said something materially different after a reload —
+ * "I couldn't find that in the selected sources." That tells a technician their
+ * manual does not cover the question, when in fact every provider was down.
+ */
+describe("persistedTurns — an error turn is not an abstain (reload parity)", () => {
+  const errorRow = {
+    id: "t-err",
+    question: "what is F004?",
+    answerStatus: "error",
+    answerText: null,
+    evidence: [],
+    basis: null,
+  };
+
+  it("a provider-exhaustion row does NOT reload as the abstain copy", () => {
+    const [, a] = persistedTurns([errorRow]);
+    expect(a.content).not.toContain("couldn't find that in the selected sources");
+  });
+
+  it("it reloads with the same copy the live path shows", () => {
+    const [, a] = persistedTurns([errorRow]);
+    expect(a.content).toBe("No answer provider was available.");
+    expect(a.status).toBe("error");
+  });
+
+  it("a genuine abstain still reads as an abstain", () => {
+    const [, a] = persistedTurns([
+      { ...errorRow, id: "t-abstain", answerStatus: "insufficient_evidence" },
+    ]);
+    expect(a.content).toBe("I couldn't find that in the selected sources.");
+    expect(a.status).toBe("insufficient_evidence");
+  });
+
+  it("a STOPPED turn (error + partial text) is untouched by this rule", () => {
+    const [, a] = persistedTurns([
+      { ...errorRow, id: "t-stop", answerText: "F004 is under" },
+    ]);
+    expect(a.content).toBe("F004 is under");
+    expect(a.stopped).toBe(true);
+  });
+
+  it("an answered turn is untouched", () => {
+    const [, a] = persistedTurns([
+      { ...errorRow, id: "t-ok", answerStatus: "answered", answerText: "F004 is undervoltage." },
+    ]);
+    expect(a.content).toBe("F004 is undervoltage.");
+  });
+});
+
 describe("isAbortError", () => {
   it("recognises DOMException AbortError and rejects other errors", () => {
     expect(isAbortError(new DOMException("x", "AbortError"))).toBe(true);
@@ -346,7 +403,10 @@ describe("persistedTurns — reload applies the STOPPED-TURN CONTRACT", () => {
     expect(a).toEqual({
       id: "t2-a",
       role: "assistant",
-      content: "I couldn't find that in the selected sources.",
+      // Was asserting the ABSTAIN copy while the test's own name — and
+      // notebook-chat-types.ts, and the live path — all say "the existing
+      // error copy". The assertion had locked in the defect, not the contract.
+      content: "No answer provider was available.",
       status: "error",
       citations: [],
       basis: null,
