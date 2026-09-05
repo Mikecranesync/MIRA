@@ -4,41 +4,34 @@
 >
 > **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
-> **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
+> **Current product execution:** `docs/product/2026-09-05-sellable-app-alignment.md`; namespace implementation plans remain technical references.
 
-## 🚦 Primary product focus: Beta readiness
+## Primary product focus: the existing sellable app
 
-The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
-Until the beta gate is met, every product change is judged against one question:
+Read `NORTH_STAR.md` (approved 2026-09-05) and `docs/product/2026-09-05-sellable-app-alignment.md`. The current sequence is inventory → existing mobile chat/home/history → retained features → end-to-end cited-answer proof → paid pilot readiness. Track slices under MIRA #3586 with factorylm #227 for supporting services.
 
-> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
-> troubleshooting question, and gets a grounded answer with citations from that manual —
-> without Mike manually fixing anything?**
-
-The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
-met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
-chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
-features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+The customer gate remains: a fresh user uploads their own manual, asks a real question, and receives a supported cited answer without Mike repairing the system. Do not reuse historical pass/xfail claims as current proof; run the applicable beta and tenant checks against the reviewed build. Preserve approved retrieval and refusal paths.
 
 ## What MIRA is
 
-**MIRA** (Maintenance Intelligence Resource Agent) is the grounded diagnostic **agent** on top of **FactoryLM**, the maintenance-context layer. **Canonical wedge (`NORTH_STAR.md`, 2026-06-22): FactoryLM makes a factory's messy reality trustworthy enough for AI on top of *any* UNS; MIRA proves it by diagnosing with cited sources. Lead with the context platform, not the copilot.** Slack/Telegram/Ignition/QR/web are retained consumption surfaces — every adapter renders the *same approved-context answer*, grounded in the customer's real factory context.
+MIRA is the assistant inside the existing FactoryLM maintenance app. Lead with a clean conversation that helps a technician complete useful work. Equipment, manuals, knowledge, projects, and work are accessible when needed; context infrastructure supplies the evidence. Reuse existing capabilities and records.
 
-It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
+The target includes general explanations and app help before an asset is selected. Asset-specific diagnosis still requires its confirmation and evidence gates. Resolve the general/asset-specific boundary in a scoped design and prove it before changing the engine; this product summary does not bypass the UNS rules below.
 
 **Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
 
-## North Star architecture
+## Product surfaces and supporting architecture
 
-| Layer | Role | Lives in |
+| Layer | Role | Existing implementation to inspect/reuse |
 |---|---|---|
-| **Slack / ChatOps** | Front door — where the technician talks | `mira-bots/slack/bot.py` (slack-bolt AsyncApp, Socket Mode) |
-| **Maintenance intelligence** | The brain — engine, FSM, grounding, classifier | `mira-bots/shared/engine.py` (Supervisor / GSD engine) |
-| **UNS / MQTT / Sparkplug B** | Live nervous system — real plant context | `mira-crawler/ingest/uns.py`, `mira-relay/`, `ignition/` |
-| **Component templates + KG** | Memory — reusable asset/component knowledge | NeonDB `kg_entities` + `kg_relationships` (migrations 004/005) |
-| **Customer docs + work orders** | Evidence — what we cite | `mira-crawler/ingest/`, `mira-mcp/server.py` (CMMS tools), `mira-cmms/` (Atlas) |
+| Existing mobile app | Primary customer front door: MIRA conversation and durable work | `mira-mobile/`, existing ChatV2 integration |
+| Web companion | Shared customer access, onboarding, and administration | `mira-hub/` and existing web routes |
+| Slack / Foreman | Mike's internal delivery command center | `mira-bots/slack/` and existing Foreman paths; verify actual wiring |
+| Maintenance intelligence | Grounding, engine, classifier, evidence | `mira-bots/shared/engine.py` and current pipeline contracts |
+| UNS / asset context | Confirmed equipment identity and available live evidence | `mira-crawler/ingest/uns.py`, `mira-relay/`, `ignition/` |
+| Customer docs and work | Sources and durable findings | Existing ingestion, knowledge, notebook, and CMMS services |
 
-Slack is the first **front door** — *not* the wedge (the wedge is the context layer; `NORTH_STAR.md`). Telegram/email/Ignition/QR adapters at `mira-bots/` are **retained consumption surfaces**: each renders the same approved-context answer and follows the engine's contract, not the other way around.
+Retained adapters use the same applicable evidence and permission contracts. They do not replace the mobile app as the current product priority. Historical technical plans remain references; follow the north star for sequencing and the applicable rules for implementation and release.
 
 ## The non-negotiable UNS location-confirmation gate
 

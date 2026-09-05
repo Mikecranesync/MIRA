@@ -1,5 +1,14 @@
 # Hot Cache — 2026-08-31 — Mobile ChatV2 merged, capability-gated and default-off
 
+## September 5, 2026 — Approved existing-app north star
+
+- Mike approved the clean chat-first direction inside the existing FactoryLM mobile app and requested commits in MIRA and factorylm.
+- `NORTH_STAR.md` and `docs/product/2026-09-05-sellable-app-alignment.md` are the shared direction; MIRA #3586 / factorylm #227 coordinate delivery.
+- Existing app/account/data/evidence capabilities are retained. Slack/Foreman serves internal delivery. Older channel, context-platform, Drive Commander, and Auto-PM launch priorities are historical where they conflict.
+- Documentation authored on isolated `docs/sellable-app-north-star-2026-09-05` branches. This records direction, not a deployed redesign. Runtime/provider/OT/review/release restrictions remain in force.
+- Next implementation slice: inventory the current mobile build, routes, features, records, and flags; map them to the new navigation before app-level chat/home/history work.
+- Commit/PR/check results belong in the linked tracking issues. Required review and release gates remain pending until recorded there.
+
 PR #3516 merged to `main` as `1ed59e988` after PR #3517 landed persisted safety-stop markers.
 The mobile equipment-notebook chat now has the quiet ChatGPT-style thread shell, open assistant
 answers, user bubbles, typed MIRA parts, citation chips/viewer, evidence cards, safety banners,

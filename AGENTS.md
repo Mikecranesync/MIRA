@@ -1,7 +1,13 @@
 # MIRA — Build State
 
+## Current product direction — September 5, 2026
+
+Read [NORTH_STAR.md](NORTH_STAR.md) and the [unified delivery plan](docs/product/2026-09-05-sellable-app-alignment.md) before selecting work. The first customer surface is the existing mobile app; reuse its chat, records, and services. Slack/Foreman supports internal delivery. Link app outcomes and evidence to [MIRA #3586](https://github.com/Mikecranesync/MIRA/issues/3586) and supporting [factorylm #227](https://github.com/Mikecranesync/factorylm/issues/227).
+
+This approved direction supersedes historical product priorities, including the dated 90-day plan, where they conflict. Historical build/provider summaries below are not fresh runtime evidence; this documentation decision does not change provider permissions. Keep the applicable evidence, security, OT, claims, review, and release gates. Verify current code/build before implementation.
+
 **Version:** v3.4.0 | **Updated:** 2026-04-17
-**One-liner:** AI-powered industrial maintenance diagnostic platform
+**One-liner:** The existing FactoryLM mobile app becomes a clean conversational maintenance product, with MIRA providing evidence-backed help.
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
 
