@@ -1,0 +1,176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`hydrateMessages (criterion 1) > full-thread part snapshot (criterion 1 regression pin) 1`] = `
+[
+  {
+    "id": "t1-q",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "What does the oC fault on the GS10 mean?",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+    "status": null,
+  },
+  {
+    "id": "t1-a",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [
+          "1",
+          "2",
+        ],
+        "text": "The oC fault is an output overcurrent during acceleration [1]. Check the motor leads before resetting [2].",
+        "type": "text",
+      },
+      {
+        "citation": {
+          "citationId": "1",
+          "docId": "doc-gs10-manual",
+          "fileId": "file-gs10",
+          "page": 42,
+          "quote": "Fault oC indicates output overcurrent during acceleration.",
+          "sourceTitle": "GS10 Drive User Manual",
+        },
+        "type": "source",
+      },
+      {
+        "citation": {
+          "citationId": "2",
+          "docId": "doc-gs10-manual",
+          "fileId": "file-gs10",
+          "page": 57,
+          "quote": "Check motor lead insulation before resetting the fault.",
+          "sourceTitle": "GS10 Drive User Manual",
+        },
+        "type": "source",
+      },
+      {
+        "basis": "oem_documentation",
+        "label": null,
+        "type": "basis",
+      },
+    ],
+    "role": "assistant",
+    "status": "answered",
+  },
+  {
+    "id": "t2-q",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "Tell me everything about the drive",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+    "status": null,
+  },
+  {
+    "id": "t2-a",
+    "lifecycle": "stopped",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "The oC fault is an output overcurrent during accel",
+        "type": "text",
+      },
+      {
+        "reason": "stopped",
+        "type": "error",
+      },
+    ],
+    "role": "assistant",
+    "status": "error",
+  },
+  {
+    "id": "t3-q",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "What is the torque spec for the terminal screws?",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+    "status": null,
+  },
+  {
+    "id": "t3-a",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "I couldn't find that in the selected sources.",
+        "type": "text",
+      },
+    ],
+    "role": "assistant",
+    "status": "insufficient_evidence",
+  },
+  {
+    "id": "t4-q",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [],
+        "text": "What happened around 14:03?",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+    "status": null,
+  },
+  {
+    "id": "t4-a",
+    "lifecycle": "completed",
+    "parts": [
+      {
+        "knownCitationIds": [
+          "1",
+        ],
+        "text": "Around 14:03 the DC bus dipped before the trip [1].",
+        "type": "text",
+      },
+      {
+        "citation": {
+          "citationId": "1",
+          "docId": "doc-gs10-manual",
+          "fileId": "file-gs10",
+          "page": 42,
+          "quote": "Fault oC indicates output overcurrent during acceleration.",
+          "sourceTitle": "GS10 Drive User Manual",
+        },
+        "type": "source",
+      },
+      {
+        "entry": {
+          "anchorAt": "2026-08-28T14:03:00.000Z",
+          "assetId": "asset-cv101",
+          "freshness": "stale",
+          "kind": "machine_evidence",
+          "post": 120,
+          "pre": 120,
+          "rowCount": 7,
+          "runId": "run-91",
+          "windowId": "win-14",
+        },
+        "type": "machine_evidence",
+      },
+      {
+        "basis": "machine_history",
+        "label": null,
+        "type": "basis",
+      },
+    ],
+    "role": "assistant",
+    "status": "answered",
+  },
+]
+`;
