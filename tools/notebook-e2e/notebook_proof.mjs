@@ -376,9 +376,34 @@ function loadPgClient() {
 // Mirrors mira-hub/scripts/setup-integration-db.mjs's assertDisposable(), with
 // one deliberate difference: this scenario's whole point is a dev/staging-shaped
 // DB, so — unlike that script — "staging" is NOT refused here.
-function assertDisposableDbUrl(urlText) {
+const PRODUCTION_HUB_HOSTS = new Set(["app.factorylm.com", "factorylm.com", "www.factorylm.com"]);
+
+function isLocalHost(hostname) {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    h === "localhost" ||
+    h === "::1" ||
+    h.startsWith("127.") ||
+    h.startsWith("10.") ||
+    h.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal")
+  );
+}
+
+/** The `--db` write is the ONE destructive thing this harness can do, so the
+ *  guard is fail-closed rather than pattern-based. Substring checks for
+ *  "prod"/"prd" are NOT enough: real production Postgres URLs (Neon endpoint
+ *  names, `/neondb`) contain neither. Rules, all required:
+ *   1. MIRA_TEST_DB_CONFIRM=DISPOSABLE in the environment;
+ *   2. the DB host is local/private (loopback, RFC1918, *.local) — a remote
+ *      host is accepted ONLY with the explicit `--db-remote-ok` flag;
+ *   3. never when `--base` is a production Hub host, and never when the DB
+ *      host/path contains prod/prd/production (belt and braces). */
+function assertDisposableDbUrl(urlText, baseText, { remoteOk = false } = {}) {
   if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
-    fail(2, "Set MIRA_TEST_DB_CONFIRM=DISPOSABLE in env to confirm --db is a disposable dev/staging database.");
+    fail(2, "Set MIRA_TEST_DB_CONFIRM=DISPOSABLE in env to confirm --db is a disposable dev database.");
   }
   let url;
   try {
@@ -386,11 +411,23 @@ function assertDisposableDbUrl(urlText) {
   } catch (err) {
     fail(2, `--db is not a valid connection URL: ${err.message}`);
   }
+  let base;
+  try {
+    base = new URL(baseText);
+  } catch {
+    base = null;
+  }
+  if (base && PRODUCTION_HUB_HOSTS.has(base.hostname.toLowerCase())) {
+    fail(2, `Refusing --db: --base ${base.hostname} is a production Hub. The two-user scenario never runs against production.`);
+  }
   const lower = `${url.hostname} ${url.pathname}`.toLowerCase();
-  if (lower.includes("prod") || lower.includes("prd")) {
+  if (lower.includes("prod") || lower.includes("prd") || lower.includes("production")) {
+    fail(2, `Refusing --db: host/path looks like production (${url.hostname}${url.pathname}).`);
+  }
+  if (!isLocalHost(url.hostname) && !remoteOk) {
     fail(
       2,
-      `Refusing --db: host/path looks like production (${url.hostname}${url.pathname}). This harness only runs against a disposable dev/staging database.`,
+      `Refusing --db: ${url.hostname} is not a local/private host. A disposable REMOTE dev database needs the explicit --db-remote-ok flag (and is still refused for production Hub hosts).`,
     );
   }
 }
@@ -405,7 +442,10 @@ async function placeSecondUserInTenant(dbUrl, email, tenantId) {
   await client.connect().catch((err) => fail(2, `--db connect failed: ${err.message}`));
   try {
     await client.query(
-      `UPDATE hub_users SET tenant_id = $1, role = COALESCE(NULLIF(role,''),'technician') WHERE email_lower = lower($2)`,
+      // The documented case is technician-to-technician: a freshly registered
+      // account defaults to role 'owner', so set the role explicitly rather
+      // than installing User B as a second owner.
+      `UPDATE hub_users SET tenant_id = $1, role = 'technician' WHERE email_lower = lower($2)`,
       [tenantId, email],
     );
   } finally {
@@ -463,7 +503,7 @@ async function runPrivateHistoryScenario({ api: apiA, session: sessionA }) {
   const secondEmail = req("second-email");
   const secondPassword = req("second-password");
   const dbUrl = req("db");
-  assertDisposableDbUrl(dbUrl);
+  assertDisposableDbUrl(dbUrl, BASE, { remoteOk: Boolean(args["db-remote-ok"]) });
   loadPgClient(); // fail fast if mira-hub/node_modules/pg is missing, before spending any HTTP calls
 
   const problems = [];
