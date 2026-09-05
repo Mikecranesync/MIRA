@@ -28,7 +28,9 @@ const defaultMigrationFiles = [
   // 073 → 081 (asset snapshot) → 084 (basis; FK to 027 namespace_direct_uploads)
   // → 085 (provenance) → 086 (owner_user_id).
   "027_namespace_direct_uploads.sql",
+  "059_namespace_filing_cabinet.sql",
   "073_equipment_notebooks.sql",
+  "075_workspace_file_links.sql",
   "081_notebook_asset_binding.sql",
   "084_notebook_turn_basis_and_source_origin.sql",
   "085_notebook_source_canonical_provenance.sql",
