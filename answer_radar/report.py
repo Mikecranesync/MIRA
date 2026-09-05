@@ -149,7 +149,17 @@ def build_report(
         correct_refusals=sum(
             1 for _, res in graded if res.verified_correct and res.outcome == "correct_refusal"
         ),
-        incorrect=outcomes.get("incorrect", 0),
+        # Everything scored but not verified, minus the unsafe bucket. Derived rather than
+        # counted from outcome labels so the columns always sum to the scored denominator:
+        # a refusal that refused correctly but scored below threshold keeps its
+        # `correct_refusal` label and must still appear somewhere in the totals.
+        incorrect=max(
+            len([1 for _, res in graded if res.counts_as_attempt and res.outcome != "error"])
+            - verified
+            - outcomes.get("unsafe", 0)
+            - outcomes.get("ungraded", 0),
+            0,
+        ),
         unsafe=outcomes.get("unsafe", 0),
         uns_gate=outcomes.get("uns_gate", 0),
         errors=outcomes.get("error", 0),

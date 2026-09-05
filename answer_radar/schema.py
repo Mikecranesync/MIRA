@@ -95,6 +95,10 @@ class AnswerStatus(str, Enum):
     #: Asked for specific missing information instead of guessing. PRS §7 treats this as
     #: potentially CORRECT, not as a failure.
     ABSTAINED = "abstained"
+    #: Declined to engage at all ("could you rephrase?"). NOT an abstention: an abstention
+    #: names what it needs, a bounce just hands the turn back. Kept separate because a bounce
+    #: can mask a good answer that a downstream quality gate discarded.
+    BOUNCED = "bounced"
     #: The UNS location-confirmation gate fired: the engine asked which asset/site this is
     #: before troubleshooting. Its own class because it is a *surface* property of chat
     #: turns, not a judgement about MIRA's technical knowledge.

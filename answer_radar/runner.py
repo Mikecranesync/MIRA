@@ -23,6 +23,7 @@ connections. A forum post is a chat surface. We record the gate as its own outco
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import subprocess
 import sys
@@ -80,6 +81,20 @@ _SAFETY_REFUSAL_MARKERS = (
     "safety",
 )
 
+#: The engine bounced the turn back without attempting it ("could you rephrase?"). Distinct
+#: from an abstention: an abstention names what it needs, a bounce just declines to engage.
+#: Observed on seed 005 in the first run, where a substantively correct Modbus-session
+#: diagnosis was discarded by the answer-QC gate and replaced with a rephrase prompt — so
+#: without this class that turn would have been scored as an attempted answer and simply
+#: failed, hiding the fact that MIRA had produced the right diagnosis and then dropped it.
+_BOUNCE_MARKERS = (
+    "could you rephrase",
+    "can you rephrase",
+    "rephrase your question",
+    "let me think about that differently",
+    "i'm not sure what you're asking",
+)
+
 
 def _git_sha() -> str:
     try:
@@ -112,6 +127,8 @@ def classify_answer(reply: str, http_status: int) -> AnswerStatus:
         m in low for m in ("cannot provide", "can't provide", "contact the manufacturer")
     ):
         return AnswerStatus.REFUSED_SAFETY
+    if any(m in low for m in _BOUNCE_MARKERS):
+        return AnswerStatus.BOUNCED
     if any(m in low for m in _ABSTENTION_MARKERS):
         return AnswerStatus.ABSTAINED
     return AnswerStatus.ANSWERED
@@ -142,11 +159,26 @@ def _import_local_pipeline():
     return LocalPipeline
 
 
+def prompt_version() -> str:
+    """Content hash of the active diagnostic prompt, not its filename.
+
+    `"active.yaml"` never changes, so recording it would make the reproducibility claim on
+    `EvaluationRecord` false: two runs months apart would carry the same "version" while the
+    prompt underneath had been rewritten. The hash changes when the prompt does.
+    """
+    path = REPO_ROOT / "prompts" / "diagnose" / "active.yaml"
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "active.yaml@unreadable"
+    return f"active.yaml@{digest}"
+
+
 async def run_question(
     question: QuestionRecord,
     *,
     pipeline=None,
-    prompt_version: str = "active.yaml",
+    prompt_version_override: str | None = None,
     retrieval_version: str = "neon-bm25",
 ) -> EvaluationRecord:
     """Ask MIRA one question, blind, and record what it said.
@@ -183,7 +215,7 @@ async def run_question(
         question_id=question.question_id,
         mira_run_id=run_id,
         mira_version=_git_sha(),
-        prompt_version=prompt_version,
+        prompt_version=prompt_version_override or prompt_version(),
         retrieval_version=retrieval_version,
         answer_text=reply,
         answer_status=classify_answer(reply, status),

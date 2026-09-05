@@ -1,4 +1,0 @@
-# Batch artefacts are run outputs, not source. The frozen snapshots ARE committed:
-# they are the evidence of what MIRA was asked, and PRS §20 requires the question be
-# frozen before the answer exists.
-batch-*.json
