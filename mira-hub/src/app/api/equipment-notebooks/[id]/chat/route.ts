@@ -486,6 +486,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // fall-through to the global corpus.
   const validated = await validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []);
   if (!validated.ok) {
+    // 086 / private conversations §2: `no_sources_selected` is returned from an
+    // early `requestedDocIds.length === 0` check that never touches the
+    // database, so it proves NOTHING about ownership — yet both zero-source
+    // branches below (the safety stop, which persists, and general mode, which
+    // spends provider budget) used to trust it. Prove tenant ownership here,
+    // once, before either. getNotebook() is tenant-scoped: a foreign or
+    // nonexistent id is a 404 with nothing spent and nothing written. The
+    // grounded path needs no extra query — validateChatSources already proved
+    // membership for every id in docIds.
+    if (validated.error === "no_sources_selected" && !(await getNotebook(ctx.tenantId, notebookId))) {
+      return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    }
     // "Smoke is coming from the panel" in a notebook with nothing attached must
     // not be answered with a filing complaint. `no_sources_selected` already
     // proves the notebook exists and belongs to this tenant (the resolver
@@ -494,6 +506,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (safetyTrigger && validated.error === "no_sources_selected") {
       const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
       await recordTurn(ctx.tenantId, notebookId, {
+        // 086: the owner is the authenticated technician (session), never the body.
+        ownerUserId: ctx.userId,
         question: message,
         answerStatus: "answered",
         answerText: SAFETY_STOP,
@@ -514,9 +528,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
     if (general && validated.error === "no_sources_selected") {
-      if (!(await getNotebook(ctx.tenantId, notebookId))) {
-        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
-      }
+      // Ownership was proven above for every zero-source turn.
     } else {
       const status =
         validated.error === "notebook_not_found"
@@ -564,12 +576,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
       : { equipmentEntityId: null, assetUnsPath: null };
 
+  // Private conversations §3: a client-supplied asset id is a REQUEST, not
+  // truth. Machine history / live evidence is served only for the notebook's
+  // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
+  // technician-CONFIRMED — and only when the request names that same asset.
+  // Anything else drops the machine request and the turn proceeds as general
+  // or document guidance: no machine packet is built, so nothing machine-
+  // specific can be presented as fact (the MACHINE CONTEXT line below already
+  // says when the identity is unconfirmed).
+  let machineRequestRefused: "asset_unconfirmed" | "asset_mismatch" | null = null;
+  if (machineRequest) {
+    if (boundAsset.state !== "resolved" || !boundAsset.confirmedAt) machineRequestRefused = "asset_unconfirmed";
+    else if (boundAsset.entityId !== machineRequest.assetId) machineRequestRefused = "asset_mismatch";
+    if (machineRequestRefused) {
+      console.info(
+        `[notebook-chat] machineEvidence refused (${machineRequestRefused}) for notebook ${notebookId}: ` +
+          `requested asset ${machineRequest.assetId}, bound ${boundAsset.state === "resolved" ? boundAsset.entityId : boundAsset.state}`,
+      );
+      machineRequest = null;
+    }
+  }
+
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     await recordTurn(ctx.tenantId, notebookId, {
+      // 086: the owner is the authenticated technician (session), never the body.
+      ownerUserId: ctx.userId,
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
@@ -749,6 +784,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (chunks.length === 0 && !general && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     await recordTurn(ctx.tenantId, notebookId, {
+      // 086: the owner is the authenticated technician (session), never the body.
+      ownerUserId: ctx.userId,
       question: message,
       answerStatus: "insufficient_evidence",
       answerText: null,
@@ -1165,6 +1202,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         try {
           await recordTurn(ctx.tenantId, notebookId, {
+            // 086: the owner is the authenticated technician (session), never the body.
+            ownerUserId: ctx.userId,
             question: message,
             answerStatus: "error",
             answerText: partialText,
@@ -1335,6 +1374,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       try {
         await recordTurn(ctx.tenantId, notebookId, {
+          // 086: the owner is the authenticated technician (session), never the body.
+          ownerUserId: ctx.userId,
           question: message,
           answerStatus,
           answerText: served ? answerText : null,

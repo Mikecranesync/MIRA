@@ -28,7 +28,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!notebook) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const [sources, turns, photos] = await Promise.all([
     listSources(ctx.tenantId, id),
-    listTurns(ctx.tenantId, id),
+    // 086: history is read AS the authenticated technician — own turns plus
+    // labeled legacy rows, never another user's. Same endpoint for Mobile and
+    // Web, so this is where "your conversation on any device" is decided.
+    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
     // S5 D1 (hub half): linked LOOK photos (workspace_file_links role
     // "photo") as a SEPARATE additive array — reuses listFilesForTarget,
     // touches neither the sources semantics nor the trust gate. A failure
