@@ -1150,6 +1150,15 @@ export async function validateChatSources(
   });
 }
 
+/** Thrown by recordTurn when the notebook does not exist for this tenant —
+ *  the INSERT is atomic with ownership, so a foreign id lands zero rows. */
+export class NotebookNotFoundError extends Error {
+  constructor(notebookId: string) {
+    super(`notebook_not_found: ${notebookId}`);
+    this.name = "NotebookNotFoundError";
+  }
+}
+
 export async function recordTurn(
   tenantId: string,
   notebookId: string,
@@ -1160,6 +1169,11 @@ export async function recordTurn(
     enabledSourceDocIds: string[];
     evidence: unknown[];
     model: string | null;
+    /** 086: the technician who asked. The ROUTE derives this from the
+     *  authenticated session (ctx.userId) — never from the request body.
+     *  Required so no code path can persist an ownerless turn by omission;
+     *  ownerless rows exist only as pre-086 legacy history. */
+    ownerUserId: string;
     /** 081 snapshot: which asset this specific answer was about. Point-in-time
      *  and never backfilled — rewriting it when a notebook is rebound would
      *  destroy the only record of what an answer was actually grounded on. */
@@ -1171,13 +1185,23 @@ export async function recordTurn(
     basis?: string | null;
   },
 ): Promise<void> {
+  const owner = (turn.ownerUserId ?? "").trim();
+  if (!owner) throw new Error("recordTurn requires ownerUserId (server-derived)");
   await withTenantContext(tenantId, async (c) => {
-    await c.query(
+    // Atomic with tenant ownership: the row set is SELECTed from the notebook
+    // itself, scoped to (id, tenant_id). A notebook id that is not this
+    // tenant's yields zero rows — nothing is written, and we fail closed —
+    // instead of a turn carrying the caller's tenant_id landing in a foreign
+    // notebook (the hole the zero-source safety-stop path used to have).
+    const res = await c.query(
       `INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path, basis)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)`,
+          equipment_entity_id, asset_uns_path, basis, owner_user_id)
+       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12
+         FROM equipment_notebooks nb
+        WHERE nb.id = $1::uuid AND nb.tenant_id = $2::uuid
+       RETURNING id`,
       [
         notebookId,
         tenantId,
@@ -1190,8 +1214,10 @@ export async function recordTurn(
         turn.equipmentEntityId ?? null,
         turn.assetUnsPath ?? null,
         turn.basis ?? null,
+        owner,
       ],
     );
+    if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
   });
 }
 
@@ -1273,6 +1299,11 @@ export async function listTurns(
   tenantId: string,
   notebookId: string,
   limit = 50,
+  /** 086: WHO is reading. History is the viewer's own turns plus ownerless
+   *  legacy rows; another technician's owned turns are never returned. With
+   *  no viewer only legacy rows are returned (fail closed), so a caller that
+   *  forgets the session cannot leak a private conversation. */
+  opts: { viewerUserId?: string | null } = {},
 ): Promise<
   {
     id: string;
@@ -1282,25 +1313,34 @@ export async function listTurns(
     evidence: unknown[];
     basis: string | null;
     createdAt: string;
+    /** 086: hub_users.id of the asking technician; null = legacy shared row. */
+    ownerUserId: string | null;
+    /** 086: true for a pre-ownership row every tenant user can read. */
+    sharedLegacy: boolean;
   }[]
 > {
+  const viewer = (opts.viewerUserId ?? "").trim() || null;
   const turns = await withTenantContext(tenantId, async (c) => {
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
     // returns the OLDEST n — so past n turns the recent conversation vanishes
     // from the notebook on reload. Recent-window + chronological display fixes
     // that while keeping the render order the UI expects.
+    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    const values: unknown[] = [tenantId, notebookId, limit];
+    if (viewer) values.push(viewer);
     const res = await c.query(
-      `SELECT id, question, answer_status, answer_text, evidence, basis, created_at
+      `SELECT id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
-           SELECT id::text AS id, question, answer_status, answer_text, evidence, basis, created_at
+           SELECT id::text AS id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
              FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+              AND ${ownerPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent
         ORDER BY created_at ASC`,
-      [tenantId, notebookId, limit],
+      values,
     );
     return res.rows.map((r: Record<string, unknown>) => ({
       id: String(r.id),
@@ -1310,6 +1350,8 @@ export async function listTurns(
       evidence: Array.isArray(r.evidence) ? (r.evidence as unknown[]) : [],
       basis: (r.basis as string) ?? null,
       createdAt: String(r.created_at),
+      ownerUserId: r.owner_user_id == null ? null : String(r.owner_user_id),
+      sharedLegacy: r.owner_user_id == null,
     }));
   });
 

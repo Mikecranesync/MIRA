@@ -5,8 +5,8 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Bubble, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
-import { persistedTurns, stoppedTurn } from "./notebook-chat-utils";
+import { Bubble, chatBodyFor, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
+import { buildChatBody, persistedTurns, stoppedTurn } from "./notebook-chat-utils";
 
 const citation = {
   citationId: "1",
@@ -433,5 +433,26 @@ describe("Bubble — Visual observation card", () => {
     const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: "oem_documentation" }} />);
     expect(html).not.toContain("visual-observation");
     expect(html).not.toContain("<img");
+  });
+});
+
+describe("chatBodyFor — zero sources converge on Mobile's `mode: \"general\"` (086)", () => {
+  const turns: ChatTurn[] = [
+    { id: "u1", role: "user", content: "earlier question" },
+    { id: "a1", role: "assistant", content: "earlier answer", status: "answered" },
+  ];
+
+  it("with no enabled sources it asks the SAME endpoint for general guidance instead of refusing locally", () => {
+    const body = chatBodyFor("What is a VFD?", [], turns);
+    expect(body.mode).toBe("general");
+    expect(body.sourceDocIds).toEqual([]);
+    expect(body.message).toBe("What is a VFD?");
+    expect(body.history).toHaveLength(2);
+  });
+
+  it("with sources it is the grounded body, byte-identical to buildChatBody (no mode key)", () => {
+    const body = chatBodyFor("Which coil?", ["d1"], turns);
+    expect(body).toEqual(buildChatBody("Which coil?", ["d1"], turns));
+    expect("mode" in body).toBe(false);
   });
 });

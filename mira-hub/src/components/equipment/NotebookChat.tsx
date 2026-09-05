@@ -279,6 +279,18 @@ export function Bubble({
   );
 }
 
+/** 086 (private conversations §4 — Hub convergence): the request body for a
+ *  send. With ZERO enabled sources the Hub no longer refuses locally — it asks
+ *  the SAME Notebook endpoint for general guidance exactly as Mobile does
+ *  (`mode: "general"`, spec §1.1), so both surfaces get one MIRA answer with
+ *  one basis label ("General guidance", amber, no citations). With sources the
+ *  body is byte-identical to buildChatBody — Retry re-posts either as-is. */
+export type SendBody = ChatBody & { mode?: "general" };
+export function chatBodyFor(message: string, enabledDocIds: string[], turns: ChatTurn[]): SendBody {
+  const body = buildChatBody(message, enabledDocIds, turns);
+  return enabledDocIds.length === 0 ? { ...body, mode: "general" } : body;
+}
+
 export function NotebookChat({
   notebookId,
   enabledDocIds,
@@ -294,7 +306,7 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
-  const [failed, setFailed] = useState<ChatBody | null>(null);
+  const [failed, setFailed] = useState<SendBody | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -329,7 +341,7 @@ export function NotebookChat({
 
   // Post one body and stream the answer. Shared by a fresh send and Retry so
   // the retried request is byte-identical to the one that failed.
-  const post = useCallback(async (body: ChatBody) => {
+  const post = useCallback(async (body: SendBody) => {
     setFailed(null);
     setBusy(true);
     const controller = new AbortController();
@@ -420,24 +432,12 @@ export function NotebookChat({
   const sendText = useCallback(async (raw: string) => {
     const message = raw.trim();
     if (!message || busy) return;
-    if (enabledDocIds.length === 0) {
-      setTurns((t) => [
-        ...t,
-        { id: `u${Date.now()}`, role: "user", content: message },
-        {
-          id: `a${Date.now()}`,
-          role: "assistant",
-          content: "Select at least one source for a grounded answer.",
-          status: "insufficient_evidence",
-        },
-      ]);
-      setInput("");
-      return;
-    }
     setInput("");
     // Recent thread (before this exchange) → multi-turn memory; stopped turns
     // are excluded (historyFromTurns).
-    await post(buildChatBody(message, enabledDocIds, turnsRef.current));
+    // Zero sources → `mode: "general"` on the same endpoint (chatBodyFor);
+    // the server proves ownership and labels the answer. No local refusal.
+    await post(chatBodyFor(message, enabledDocIds, turnsRef.current));
   }, [busy, enabledDocIds, post]);
 
   const retry = useCallback(() => {

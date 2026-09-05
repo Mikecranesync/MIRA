@@ -34,7 +34,7 @@ vi.mock("@/lib/session", () => ({
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
-  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  resolveBoundAsset: vi.fn(async (): Promise<Record<string, unknown>> => ({ state: "unbound" })),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -175,7 +175,12 @@ beforeEach(() => {
   delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
   delete process.env.MIRA_ENFORCE_APPROVED_ASK;
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Conveyor 1", manufacturer: "Automation Direct", model: "GS10" });
-  nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
+  // 086 / private conversations §3: machine history is served only for the
+  // notebook's server-resolved, technician-CONFIRMED binding that matches the
+  // request. These replay tests exercise the machine path, so their notebook
+  // is bound and confirmed to ASSET; an unbound/unconfirmed notebook is now
+  // covered by turn-ownership.test.ts (no fetch, no machine evidence).
+  nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: "2026-08-27T23:00:00.000Z" });
   nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
   ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
   vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("The photo eye went ON, then the drive faulted [1]."), { status: 200 })));

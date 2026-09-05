@@ -95,6 +95,7 @@ import type {
   NotebookStatusFrame,
   SafetyNoticeEntry,
   VisualObservationEntry,
+  IdentityDisputeEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
@@ -486,14 +487,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // fall-through to the global corpus.
   const validated = await validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []);
   if (!validated.ok) {
+    // 086 / private conversations §2: `no_sources_selected` is returned from an
+    // early `requestedDocIds.length === 0` check that never touches the
+    // database, so it proves NOTHING about ownership — yet both zero-source
+    // branches below (the safety stop, which persists, and general mode, which
+    // spends provider budget) used to trust it. Prove tenant ownership here,
+    // once, before either. getNotebook() is tenant-scoped: a foreign or
+    // nonexistent id is a 404 with nothing spent and nothing written. The
+    // grounded path needs no extra query — validateChatSources already proved
+    // membership for every id in docIds.
+    if (validated.error === "no_sources_selected" && !(await getNotebook(ctx.tenantId, notebookId))) {
+      return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    }
     // "Smoke is coming from the panel" in a notebook with nothing attached must
-    // not be answered with a filing complaint. `no_sources_selected` already
-    // proves the notebook exists and belongs to this tenant (the resolver
-    // returns `notebook_not_found` otherwise), so the stop is safe to serve and
-    // safe to persist here.
+    // not be answered with a filing complaint. Ownership was proven by the
+    // getNotebook check just above (086) — `no_sources_selected` itself proves
+    // nothing — so the stop is safe to serve and safe to persist here.
     if (safetyTrigger && validated.error === "no_sources_selected") {
       const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
       await recordTurn(ctx.tenantId, notebookId, {
+        // 086: the owner is the authenticated technician (session), never the body.
+        ownerUserId: ctx.userId,
         question: message,
         answerStatus: "answered",
         answerText: SAFETY_STOP,
@@ -514,9 +528,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
     if (general && validated.error === "no_sources_selected") {
-      if (!(await getNotebook(ctx.tenantId, notebookId))) {
-        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
-      }
+      // Ownership was proven above for every zero-source turn.
     } else {
       const status =
         validated.error === "notebook_not_found"
@@ -557,10 +569,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { status: 422 },
     );
   }
+  // Private conversations §3: a client-supplied asset id is a REQUEST, not
+  // truth. Machine history / live evidence is served only for the notebook's
+  // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
+  // technician-CONFIRMED — and only when the request names that same asset.
+  // Anything else drops the machine request and the turn proceeds as general
+  // or document guidance: no machine packet is built, so nothing machine-
+  // specific can be presented as fact.
+  //
+  // A MISMATCH is stronger than "unconfirmed": the technician's device says it
+  // is at a different machine than this notebook is bound to, so for THIS turn
+  // the binding is disputed — it must not be stated as a confirmed identity in
+  // the prompt, and the turn must not be persisted as a record about it.
+  let machineRequestRefused: "asset_unconfirmed" | "asset_mismatch" | null = null;
+  const disputedRequestedAssetId = machineRequest?.assetId ?? "";
+  if (machineRequest) {
+    if (boundAsset.state !== "resolved" || !boundAsset.confirmedAt) machineRequestRefused = "asset_unconfirmed";
+    else if (boundAsset.entityId !== machineRequest.assetId) machineRequestRefused = "asset_mismatch";
+    if (machineRequestRefused) {
+      console.info(
+        `[notebook-chat] machineEvidence refused (${machineRequestRefused}) for notebook ${notebookId}: ` +
+          `requested asset ${machineRequest.assetId}, bound ${boundAsset.state === "resolved" ? boundAsset.entityId : boundAsset.state}`,
+      );
+      machineRequest = null;
+    }
+  }
+  const identityDisputed = machineRequestRefused === "asset_mismatch";
+  // The dispute is persisted WITH the turn (inside evidence[], like the other
+  // kinds) so reload can explain the missing attribution and a client cannot
+  // strip attribution without leaving a trace of what it claimed.
+  const disputeEntries: IdentityDisputeEntry[] =
+    identityDisputed && boundAsset.state === "resolved"
+      ? [{ kind: "identity_dispute", requestedAssetId: disputedRequestedAssetId, boundAssetId: boundAsset.entityId, boundUnsPath: boundAsset.unsPath }]
+      : [];
+
   // Snapshot for every persisted turn, including abstains and safety stops: a
-  // refusal about a specific machine is still a record about that machine.
+  // refusal about a specific machine is still a record about that machine —
+  // unless the identity is disputed for this turn, in which case the turn is
+  // about no machine in particular (never a silent swap onto the bound one).
   const assetSnapshot =
-    boundAsset.state === "resolved"
+    boundAsset.state === "resolved" && !identityDisputed
       ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
       : { equipmentEntityId: null, assetUnsPath: null };
 
@@ -570,11 +618,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (safetyTrigger) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     await recordTurn(ctx.tenantId, notebookId, {
+      // 086: the owner is the authenticated technician (session), never the body.
+      ownerUserId: ctx.userId,
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [safetyEntry],
+      evidence: [safetyEntry, ...disputeEntries],
       model: null,
       ...assetSnapshot,
     });
@@ -749,11 +799,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (chunks.length === 0 && !general && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     await recordTurn(ctx.tenantId, notebookId, {
+      // 086: the owner is the authenticated technician (session), never the body.
+      ownerUserId: ctx.userId,
       question: message,
       answerStatus: "insufficient_evidence",
       answerText: null,
       enabledSourceDocIds: docIds,
-      evidence: [],
+      evidence: [...disputeEntries],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
@@ -859,13 +911,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     getNotebook(ctx.tenantId, notebookId).catch(() => null),
     listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
   ]);
-  const identity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+  const identity = identityDisputed
+    ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
+    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
   // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
   // a QR scan proves which sticker was scanned, not which machine wears it, and
   // the model must never present a scan as a confirmed identity.
-  const assetLine =
-    boundAsset.state === "resolved"
+  const assetLine = identityDisputed
+    ? " Asset identity DISPUTED for this question: the technician's device reports a different machine than this notebook is bound to. Treat the identity as unconfirmed — do NOT state any machine-specific fact as confirmed for this machine; say the identity must be re-selected before machine-specific guidance."
+    : boundAsset.state === "resolved"
       ? " Asset: " +
         (boundAsset.name || "(unnamed)") +
         " — canonical path " +
@@ -878,7 +933,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
-    `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
+    `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
@@ -1165,11 +1220,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         try {
           await recordTurn(ctx.tenantId, notebookId, {
+            // 086: the owner is the authenticated technician (session), never the body.
+            ownerUserId: ctx.userId,
             question: message,
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [],
+            evidence: [...disputeEntries],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -1284,6 +1341,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // frame, additively — the basis and label above are untouched by them.
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
+      if (identityDisputed) evidenceFrame.identityDisputed = true;
       controller.enqueue(enc.encode(sse(evidenceFrame)));
 
       const statusFrame: NotebookStatusFrame =
@@ -1312,7 +1370,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // from the coverage plan + proven facet evidence; no LLM call, no new
       // retrieval. General mode gets only the answer-derived lanes (chunks is
       // empty, so no facet chip can name unproven evidence).
-      if (answerStatus === "answered") {
+      // A disputed identity never gets machine-flavoured follow-ups ("… on this
+      // drive?") — the technician must re-select the machine first.
+      if (answerStatus === "answered" && !identityDisputed) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]
               .filter(([, pages]) => pages.length)
@@ -1335,6 +1395,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       try {
         await recordTurn(ctx.tenantId, notebookId, {
+          // 086: the owner is the authenticated technician (session), never the body.
+          ownerUserId: ctx.userId,
           question: message,
           answerStatus,
           answerText: served ? answerText : null,
@@ -1343,8 +1405,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
           evidence: served
-            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : [])]
-            : emittedCitations,
+            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            : [...emittedCitations, ...disputeEntries],
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.
