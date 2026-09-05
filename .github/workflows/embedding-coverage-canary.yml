@@ -165,6 +165,7 @@ jobs:
 
       # ── The gate. Fresh dark rows only — see the note above. ────────────────
       - name: Gate on FRESH dark chunks
+        id: gate
         env:
           THRESHOLD: ${{ inputs.fresh_dark_threshold || '0' }}
         run: |
@@ -177,3 +178,54 @@ jobs:
           if [ "${DARK}" -gt 0 ]; then
             echo "::warning::${DARK} dark chunk(s) remain corpus-wide from an EARLIER outage. Not failing (the embedder is healthy now), but these stay invisible to vector retrieval until backfilled from a tailnet node: doppler run -p factorylm -c prd -- python tools/backfill_knowledge_embeddings.py"
           fi
+
+      # ── Route the signal to a human. ────────────────────────────────────────
+      - name: Alert on fresh dark chunks
+        # WHY THIS EXISTS. A canary that only reddens a workflow row reaches
+        # nobody. That is not a hypothesis. On this repo the CV-101 live gate ran
+        # red on EVERY execution for 18 straight days (2026-08-18 → 2026-09-05)
+        # while a bench gateway wrote ~693k junk rows/day into production
+        # `tag_events`, and no human acted — the only trace was a red line in a
+        # list nobody reads. `reference_post_deploy_red_normalized` records the
+        # same failure mode costing six days. So this gate routes to a person; it
+        # does not merely fail.
+        #
+        # Alerts ONLY on the scheduled (unattended) run. A workflow_dispatch has a
+        # human already reading the output, and paging them about a result they
+        # are looking at is exactly the self-inflicted noise that gets an alert
+        # channel muted within a week.
+        #
+        # Conditioned on the GATE step's own outcome, not on `failure()`. A setup
+        # failure (missing DOPPLER_TOKEN, psql install) never measured coverage
+        # and must not claim the embedder is broken — the same distinction
+        # `smoke-test.yml` draws between a test failure and a CI failure.
+        #
+        # Non-fatal by construction: it cannot change this job's conclusion, and
+        # no-ops with a warning when the secrets are absent. Reuses the Telegram
+        # path proven in `smoke-test.yml` (#3600).
+        if: always() && steps.gate.outcome == 'failure' && github.event_name == 'schedule'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN_STG }}
+          TG_CHAT: ${{ secrets.DOGFOOD_ALERT_CHAT_ID }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then
+            echo "::warning::Fresh dark chunks detected but TELEGRAM_BOT_TOKEN_STG / DOGFOOD_ALERT_CHAT_ID are not set — no alert sent."
+            exit 0
+          fi
+
+          # FRESH_DARK is what makes this urgent: those rows landed in the last
+          # 24h and nothing will ever retry them (embedPendingNodeChunks runs once
+          # at ingest, scoped to one source_url, with no sweep). Every hour the
+          # embedder stays down adds permanently BM25-only chunks.
+          msg="$(printf 'FactoryLM - embedder is DOWN NOW\n%s of %s chunks ingested in the last 24h have NO embedding.\nThey are BM25-only and invisible to the vector ranker. Nothing retries them.\ncorpus-wide dark: %s\nrun: https://github.com/%s/actions/runs/%s\nFIX: confirm OLLAMA_BASE_URL on mira-hub reaches a live Ollama node, then backfill FROM A TAILNET NODE (CI has no tailnet reach):\n  doppler run -p factorylm -c prd -- python tools/backfill_knowledge_embeddings.py --dry-run' \
+            "${FRESH_DARK}" "${FRESH_TOTAL}" "${DARK}" "${REPO}" "${RUN_ID}")"
+
+          curl -s --max-time 15 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${msg}" \
+            --data-urlencode "disable_web_page_preview=true" >/dev/null \
+            && echo "Dark-embedding alert sent." || echo "::warning::Alert dispatch failed (non-fatal)."
