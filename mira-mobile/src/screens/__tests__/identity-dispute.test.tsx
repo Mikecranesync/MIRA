@@ -69,6 +69,26 @@ const PERSISTED_DISPUTED = {
   basis: "general_reasoning",
 };
 const PERSISTED_PLAIN = { ...PERSISTED_DISPUTED, id: "t-plain", evidence: [] };
+const CITATION = { citationId: "1", sourceTitle: "GS10 manual", page: 42, quote: "115% FLA", docId: "d1", fileId: "f1", originFileId: null };
+/** A disputed turn that was still answered FROM THE MANUALS (the owner's
+ *  decision: only machine identity/history is withheld on a dispute). */
+const PERSISTED_DISPUTED_CITED = {
+  id: "t-dispute-cited",
+  question: "what does an OC fault mean?",
+  answerStatus: "answered",
+  answerText: "Overcurrent: the motor drew more than the drive's limit [1].",
+  evidence: [DISPUTE, CITATION],
+  basis: "oem_documentation",
+};
+/** A disputed turn that was NOT answered at all. */
+const PERSISTED_DISPUTED_ABSTAINED = {
+  id: "t-dispute-abstain",
+  question: "what is the belt tension spec?",
+  answerStatus: "insufficient_evidence",
+  answerText: null,
+  evidence: [DISPUTE],
+  basis: null,
+};
 
 const detail = (turns: unknown[] = []) => ({
   notebook: { id: "nb1", displayName: "CV-101", manufacturer: null, model: null },
@@ -111,6 +131,25 @@ describe.each(SURFACES)("identity dispute — %s", (_name, available) => {
     mount(available);
     expect(await screen.findByText(/overcurrent fault usually means/i)).toBeTruthy();
     expect(screen.queryByTestId("identity-dispute")).toBeNull();
+  });
+
+  it("a CITED disputed turn keeps its citation and is NOT labelled general guidance (round 5 copy)", async () => {
+    getNotebookDetail.mockResolvedValue(detail([PERSISTED_DISPUTED_CITED]));
+    mount(available);
+    const notice = await screen.findByTestId("identity-dispute");
+    expect(notice.textContent).toMatch(/not the machine this notebook is bound to/i);
+    expect(await screen.findByText(/GS10 manual/)).toBeTruthy();
+    expect(screen.queryByText(/general guidance/i)).toBeNull();
+    expect(notice.textContent).not.toMatch(/answered/i);
+  });
+
+  it("an ABSTAINED disputed turn is explained without being described as answered (round 5 copy)", async () => {
+    getNotebookDetail.mockResolvedValue(detail([PERSISTED_DISPUTED_ABSTAINED]));
+    mount(available);
+    const notice = await screen.findByTestId("identity-dispute");
+    expect(notice.textContent).not.toMatch(/answered/i);
+    expect(notice.textContent).not.toMatch(/general guidance/i);
+    expect(notice.textContent).toMatch(/history was not used/i);
   });
 
   it("a LIVE disputed turn shows the notice from the evidence frame", async () => {

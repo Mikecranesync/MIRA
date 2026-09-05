@@ -1293,9 +1293,13 @@ export async function askNotebook(
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
       },
       onChunk: (chunk) => {
-        const before = parser.turn().answer;
+        const before = parser.turn();
         const partial = parser.push(chunk);
-        if (partial.answer !== before) opts.onUpdate?.(partial);
+        // Text growth, or the identity-dispute marker landing (086 §3 — it
+        // precedes content on the wire and must show at once).
+        if (partial.answer !== before.answer || partial.identityDisputed !== before.identityDisputed) {
+          opts.onUpdate?.(partial);
+        }
       },
       signal: opts.signal,
       timeoutMs: 120_000,

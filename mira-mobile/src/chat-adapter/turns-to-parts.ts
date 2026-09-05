@@ -305,6 +305,9 @@ export function pendingMessages(q: string, a: ChatTurn): AdapterMessage[] {
           ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null }]
           : []),
         { type: "text" as const, text: a.answer, knownCitationIds: [] },
+        // 086 §3: the marker frame is the FIRST thing on a disputed wire, so
+        // the in-flight turn can — and must — say it before any content.
+        ...(a.identityDisputed ? [{ type: "identity_dispute" as const }] : []),
       ],
       lifecycle: "running",
       status: null,

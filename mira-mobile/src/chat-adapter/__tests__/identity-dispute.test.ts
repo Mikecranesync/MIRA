@@ -16,6 +16,7 @@ import {
   comparableProjection,
   hydrateMessages,
   liveTurnMessages,
+  pendingMessages,
   unknownEvidenceEntries,
 } from "../turns-to-parts";
 import { toThreadMessage } from "../runtime";
@@ -107,5 +108,70 @@ describe("library conversion", () => {
     const types = (msg.content as unknown as readonly { type: string }[]).map((c) => c.type);
     expect(types).toContain("data-identity-dispute");
     expect(types).not.toContain("data-unknown");
+  });
+});
+
+describe("terminal paths carry the dispute live, exactly as persisted (round 5)", () => {
+  // The server's wire contract: a basis-less evidence frame carrying ONLY the
+  // marker, emitted FIRST on every disputed stream (safety stop, abstention,
+  // answered — so a Stop mid-answer has already seen it).
+  const DISPUTE_FRAME = frame({ kind: "evidence", identityDisputed: true });
+
+  it("a basis-less dispute frame sets the flag and NO basis; a later evidence frame adds the basis and the flag stays", () => {
+    const bare = parseChatSse(DISPUTE_FRAME + frame({ kind: "sources", citations: [] }) + frame({ kind: "status", status: "insufficient_evidence" }) + DONE);
+    expect(bare.identityDisputed).toBe(true);
+    expect(bare.evidenceBasis).toBe("");
+    const full = parseChatSse(
+      DISPUTE_FRAME +
+        frame({ kind: "content", content: "x" }) +
+        frame({ kind: "sources", citations: [] }) +
+        frame({ kind: "evidence", basis: "general_reasoning", label: "General guidance", identityDisputed: true }) +
+        frame({ kind: "status", status: "answered" }) +
+        DONE,
+    );
+    expect(full.identityDisputed).toBe(true);
+    expect(full.evidenceBasis).toBe("general_reasoning");
+  });
+
+  it("safety stop: live projects like its persisted row (basis null, safety + dispute)", () => {
+    const live = parseChatSse(
+      DISPUTE_FRAME +
+        frame({ kind: "sources", citations: [] }) +
+        frame({ kind: "content", content: "STOP." }) +
+        frame({ kind: "safety", trigger: "smoke" }) +
+        frame({ kind: "status", status: "answered" }) +
+        DONE,
+    );
+    const row: NotebookServerTurn = {
+      id: "t-stop-dispute", question: "smoke!", answerStatus: "answered", answerText: "STOP.",
+      evidence: [{ kind: "safety_notice", trigger: "smoke" }, DISPUTE], basis: null,
+    };
+    const l = comparableProjection(liveTurnMessages(row.question, live, 0)[1]);
+    expect(l).toEqual(comparableProjection(hydrateMessages([row])[1]));
+    expect(l.identityDisputed).toBe(true);
+    expect(l.safetyNotice).toBe(true);
+  });
+
+  it("abstention: live projects like its persisted row", () => {
+    const live = parseChatSse(DISPUTE_FRAME + frame({ kind: "sources", citations: [] }) + frame({ kind: "status", status: "insufficient_evidence" }) + DONE);
+    const row: NotebookServerTurn = { id: "t-abstain", question: "q", answerStatus: "insufficient_evidence", answerText: null, evidence: [DISPUTE], basis: null };
+    const l = comparableProjection(liveTurnMessages("q", live, 0)[1]);
+    expect(l).toEqual(comparableProjection(hydrateMessages([row])[1]));
+    expect(l.identityDisputed).toBe(true);
+  });
+
+  it("client-stopped: live projects like its persisted row", () => {
+    const live = { ...parseChatSse(DISPUTE_FRAME + frame({ kind: "content", content: "partial" })), status: "stopped" };
+    const row: NotebookServerTurn = { id: "t-stopped", question: "q", answerStatus: "error", answerText: "partial", evidence: [DISPUTE], basis: null };
+    const l = comparableProjection(liveTurnMessages("q", live, 0)[1]);
+    expect(l).toEqual(comparableProjection(hydrateMessages([row])[1]));
+    expect(l.identityDisputed).toBe(true);
+  });
+
+  it("the IN-FLIGHT turn shows the dispute as soon as the frame lands — before any content", () => {
+    const [, pending] = pendingMessages("q", { answer: "", citations: [], status: "", identityDisputed: true });
+    expect(pending.parts.some((p) => p.type === "identity_dispute")).toBe(true);
+    const [, plain] = pendingMessages("q", { answer: "", citations: [], status: "" });
+    expect(plain.parts.some((p) => p.type === "identity_dispute")).toBe(false);
   });
 });

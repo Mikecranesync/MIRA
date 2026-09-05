@@ -429,3 +429,62 @@ describe("a zero-source SAFETY STOP is persisted like every other turn (asset sn
     }
   });
 });
+
+describe("a disputed identity is on the wire FIRST on every path — live ≡ hydrated for the terminal paths too", () => {
+  const confirmedBinding = {
+    state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: FAULT_AT,
+  };
+  const mismatch = { assetId: OTHER_ASSET, anchorAt: FAULT_AT };
+  const SMOKE = "there is smoke coming from the drive panel";
+  const isDisputeFrame = (f: Record<string, unknown>) => f.kind === "evidence" && f.identityDisputed === true;
+
+  beforeEach(() => {
+    nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
+  });
+
+  it("safety stop: a basis-less dispute frame precedes the content, matching the persisted row (basis null + identity_dispute)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const res = await POST(req({ message: SMOKE, sourceDocIds: [], machineEvidence: mismatch }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    expect(fr[0]).toMatchObject({ kind: "evidence", identityDisputed: true });
+    expect(fr[0]).not.toHaveProperty("basis");
+    expect(fr.findIndex((f) => f.kind === "content")).toBeGreaterThan(0);
+    expect(fr.some((f) => f.kind === "safety")).toBe(true);
+  });
+
+  it("abstention (Gate G): dispute frame first, no basis, then the honest insufficient_evidence status", async () => {
+    const res = await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A], machineEvidence: mismatch }), params);
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fr[0]).toMatchObject({ kind: "evidence", identityDisputed: true });
+    expect(fr[0]).not.toHaveProperty("basis");
+    expect(fr.at(-1)).toMatchObject({ kind: "status", status: "insufficient_evidence" });
+  });
+
+  it("answered: the dispute frame precedes the first content frame (so a Stop mid-answer still saw it); the final evidence frame keeps basis + marker", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const res = await POST(
+      req({ message: "what happened around the fault?", sourceDocIds: [], mode: "general", machineEvidence: mismatch }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    const fr = await frames(res);
+    const firstDispute = fr.findIndex(isDisputeFrame);
+    const firstContent = fr.findIndex((f) => f.kind === "content");
+    expect(firstDispute).toBe(0);
+    expect(firstContent).toBeGreaterThan(firstDispute);
+    const finalEvidence = fr.filter((f) => f.kind === "evidence").at(-1);
+    expect(finalEvidence).toMatchObject({ kind: "evidence", basis: "general_reasoning", identityDisputed: true });
+  });
+
+  it("control: an UNDISPUTED safety stop and abstention emit no evidence frame at all (wire unchanged)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const stop = await frames(await POST(req({ message: SMOKE, sourceDocIds: [] }), params));
+    expect(stop.some((f) => f.kind === "evidence")).toBe(false);
+    notebookOwnedByTenant();
+    const abstain = await frames(await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A] }), params));
+    expect(abstain.some((f) => f.kind === "evidence")).toBe(false);
+  });
+});

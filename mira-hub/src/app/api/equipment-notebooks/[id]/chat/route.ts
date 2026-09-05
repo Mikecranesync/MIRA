@@ -377,10 +377,25 @@ function sse(obj: unknown): string {
  * a single blob arrives as a jarring instant wall of text next to every other
  * reply the technician has seen.
  */
-function safetyStopResponse(trigger: string, docIds: string[]): Response {
+/** 086 §3 — the identity-dispute MARKER frame. A basis-less `evidence` frame
+ *  carrying only the marker, emitted FIRST on every disputed stream (safety
+ *  stop, abstention, answered) so that (a) a client that stops the answer
+ *  mid-content has already seen it, and (b) a live safety stop / abstention —
+ *  which persist `basis: null` — project the same basis (none) as their
+ *  persisted row. The answered path's final evidence frame still carries the
+ *  basis + the marker. Older clients ignore unknown fields on a known kind;
+ *  the Hub's stream reader tolerates a basis-less frame (`out.basis =
+ *  undefined`, restored by the final frame where there is one). */
+const IDENTITY_DISPUTE_FRAME = { kind: "evidence", identityDisputed: true } as const satisfies Pick<
+  NotebookEvidenceFrame,
+  "kind" | "identityDisputed"
+>;
+
+function safetyStopResponse(trigger: string, docIds: string[], identityDisputed = false): Response {
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
       const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
       controller.enqueue(enc.encode(sse(sources)));
       for (const word of SAFETY_STOP.split(" ")) {
@@ -600,7 +615,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       model: null,
       ...assetSnapshot,
     });
-    return safetyStopResponse(safetyTrigger, docIds);
+    return safetyStopResponse(safetyTrigger, docIds, identityDisputed);
   }
   // Evaluated AFTER the safety stop, deliberately: a hazard report is never
   // answered with "re-select the machine". The stop above persisted about no
@@ -820,6 +835,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           status: "insufficient_evidence",
           message: "I couldn't find that in the selected sources.",
         };
+        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
         controller.enqueue(enc.encode(sse(sources)));
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -1011,6 +1027,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       clientAbort.abort();
     },
     async start(controller) {
+      // 086 §3: the dispute marker goes out before the first content byte, so
+      // a Stop mid-answer (persisted WITH the dispute) has already shown it.
+      if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
       // Citations are emitted AFTER generation, filtered to what the answer
       // actually cited — so a refusal ships no pages and a grounded answer ships
       // only its supporting evidence (no retrieved-but-unused pages as proof).
