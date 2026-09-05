@@ -10,9 +10,9 @@
 | 1 Daytime pass (BACK ladder, Q1) | BACK PASS · **Q1 FAIL on sourced notebook** | rungs p1-07-*; refusals p1-10/11/17 → **#3468 (P0)** |
 | 2 Real camera | PASS (limited) | QR viewfinder: camera HAL open + released (dumpsys); "Photograph a nameplate" = **picker** on hardware (#3436); LOOK card + answer p2-17/19 |
 | 3 Real-machine REPLAY (G1) | LIMITED | CV-101 bound; timeline `0 recorded observations`, label **Live** with empty window (**#3470**); Ask MIRA → 412 approved-context (**#3469**); LOOK card + binding persist across force-stop |
-| 4 Soak | **10/10 clean cycles**, cycle 11 aborted by USB disconnect (guard worked) | phase4.json: every cycle open ✓ REPLAY ✓ honest ✓ BACK×2 ✓ answered ✓ turn +1 ✓ Photos (1) ✓; PSS 192–214 MB flat; 0 FATAL/ANR; prod ok; battery 100 % |
-| 5 Morning regression | pending phone reconnect | — |
-| 6 Restore | pending phone reconnect (rotation lock + stay-awake still applied) | — |
+| 4 Soak | **10 cycles clean on the checks that were real**; cycle 11 aborted by USB disconnect (guard worked) | phase4.json: every cycle relaunch ✓ REPLAY ✓ honest copy ✓ BACK×2 ✓ Photos (1) ✓ (dedup held all night); PSS 192–214 MB flat; 0 FATAL/ANR; prod ok. **CORRECTION (Phase 5):** the soak's chat asks never sent — `Send` bounds moved when the IME opened and the tap missed; the `answered` and `turn +1` probes were vacuous (Send always visible; the composer text matched the count). Persistence is still proven: the Phase-2 LOOK turn survived all 10 force-stop/relaunch cycles. Real chat turns used overnight ≈7, not 16. |
+| 5 Morning regression | PASS (5/6; the 1 fail = the soak harness bug above, not the app) | markdown table + general caption; REPLAY view unchanged (0 rows, Live label, `_stale_s` leak = #3470); BACK ladder; Photos (1); list loads; logcat 0 FATAL/ANR; p5-*.png |
+| 6 Restore | DONE | accelerometer_rotation=1 (saved value), stay_on_while_plugged_in=0, HOME, release build + login intact (p5-14) |
 
 ## Truthfulness sweep (hardware)
 Live vs recorded: honest everywhere except #3470 (Live label on an empty anchored window). Stale/fresh: n/a (no rows). Requested window: header mirrors the request (−60/+10, −120/+10). Machine identity: bind persisted; banner copy broken (#3472). Provenance: LOOK card names phone photo; nameplate source cites the plate. Persistence: LOOK card, caption, binding survive force-stop; failed REPLAY ask correctly not persisted.
@@ -25,6 +25,7 @@ Live vs recorded: honest everywhere except #3470 (Live label on an empty anchore
 - #3472 — lows: nameplate fields blank, evidence-card time mismatch (#3465), bind banner copy, source-count mismatch.
 
 ## Harness notes (for the skill)
+- **Soak bug:** re-find the `Send` node AFTER typing (IME shifts layout); count turns from rendered assistant bubbles, never from nodes containing the question text (the composer matches). The app does NOT always restore the last notebook on relaunch (it landed on the list in the morning).
 `tap-text` needs content-desc matching for LOOK/READ/REPLAY and the Sensor door ("Open Sensor"); the composer is the only EditText; "answered" = Send button back (the word "stop" appears in answers); screencap shows the camera viewfinder black — use `dumpsys media.camera`; the app restores the last notebook on relaunch.
 
 ## Phone state at disconnect
