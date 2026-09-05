@@ -427,11 +427,26 @@ class TestACGoNoGoShape:
         result = policy.evaluate_go_no_go()
         assert result.verdict == "NO-GO"
 
+    def test_no_go_when_verifier_absent(self):
+        """Verifier absent = NO-GO (Mike decision, 2026-09-04)."""
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-verifier-absent")
+        policy.record_reviewer_verdict("PASS")
+        # No verifier dispatched — verifier_verdict is the empty string
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("Verifier" in g and "NO-GO" in g for g in result.human_gates)
+
     def test_go_when_all_conditions_met(self):
         policy = _fresh_policy()
         policy._state.head_sha = HEAD_SHA
         policy._state.pr_url = PR_URL
-        policy._state.reviewer_verdict = "PASS"
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-ac-h")
+        policy.record_verifier_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
 
@@ -488,8 +503,122 @@ class TestACGoNoGoShape:
         policy = _fresh_policy()
         policy._state.head_sha = HEAD_SHA
         policy._state.pr_url = PR_URL
-        policy._state.reviewer_verdict = "PASS"
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-ac-h2")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-ac-h2")
+        policy.record_verifier_verdict("PASS")
         result = policy.evaluate_go_no_go()
         assert result.verdict == "GO"
         # Human merge gate must still be in the list.
         assert any("merge" in g.lower() or "human" in g.lower() for g in result.human_gates)
+
+
+class TestVerifierRecordBinding:
+    """A PASS verdict with no Verifier dispatch record is NO-GO (AC H, 2026-09-04).
+
+    Round-5 Codex blocker on #3572: ``sha_bound`` tolerated a missing verifier
+    ref, so a persisted state carrying ``verifier_verdict="PASS"`` but
+    ``verifier=None`` returned GO. Both the verdict AND the dispatch record
+    bound to the head SHA are required.
+    """
+
+    def test_verdict_without_dispatch_record_is_no_go(self):
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(WorkerRole.REVIEWER, WorkerState.STOPPED, git_ref=head),
+            reviewer_verdict="PASS",
+            verifier=None,
+            verifier_verdict="PASS",
+        )
+        policy = ForemanPolicy.load_state(state.to_json())
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("Verifier" in g for g in result.human_gates)
+
+    def test_verifier_ref_must_match_head(self):
+        head = HEAD_SHA
+        other = "b" * 40
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(WorkerRole.REVIEWER, WorkerState.STOPPED, git_ref=head),
+            reviewer_verdict="PASS",
+            verifier=Worker(WorkerRole.VERIFIER, WorkerState.STOPPED, git_ref=other),
+            verifier_verdict="PASS",
+        )
+        policy = ForemanPolicy.load_state(state.to_json())
+        assert policy.evaluate_go_no_go().verdict == "NO-GO"
+
+    def test_reviewer_record_in_verifier_slot_is_no_go(self):
+        """Round-6 Codex blocker: a REVIEWER record parked in the verifier slot
+        must not count as a Verifier, even with a matching SHA."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="review", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="other", git_ref=head
+            ),
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("not a Verifier" in g for g in result.human_gates)
+
+    def test_verifier_sharing_reviewer_session_is_no_go(self):
+        """Independence: the Verifier must come from a different session than the Reviewer."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="same", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=Worker(
+                WorkerRole.VERIFIER, WorkerState.STOPPED, session_id="same", git_ref=head
+            ),
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert any("not independent" in g for g in result.human_gates)
+
+    def test_only_verifier_missing_does_not_demand_re_review(self):
+        """Round-6 minor: when only the Verifier record is missing, the gates must
+        ask for a Verifier, not for a fresh Reviewer pass on an already-bound SHA."""
+        head = HEAD_SHA
+        state = MissionState(
+            mission_id="m",
+            base_sha=head,
+            branch="b",
+            pr_url=PR_URL,
+            head_sha=head,
+            reviewer=Worker(
+                WorkerRole.REVIEWER, WorkerState.STOPPED, session_id="review", git_ref=head
+            ),
+            reviewer_verdict="PASS",
+            verifier=None,
+            verifier_verdict="PASS",
+        )
+        result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+        assert not any("re-review the current revision" in g for g in result.human_gates)

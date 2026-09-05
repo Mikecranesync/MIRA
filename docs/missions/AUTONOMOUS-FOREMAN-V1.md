@@ -26,8 +26,12 @@ Slack is not the source of truth. Mission state is serialized to `docs/missions/
 4. On explicit mission dispatch: one implementation worker (`isolated_worktree=true`).
 5. Collect proof on GitHub (commits, draft PR, handoff artifact).
 6. Independent Codex review on Charlie of the exact head SHA (not a Bravo summary).
-7. If review fails: stop the reviewer, relaunch one Bravo Claude fix, then re-review the new SHA.
-8. Never merge or deploy. Return GO/NO-GO.
+7. Independent Verifier (acceptance: did it actually run?) on the same exact head SHA, in a
+   **separate session** from the Reviewer. An absent, unbound, or non-independent Verifier is
+   NO-GO (Mike decision 2026-09-04).
+8. If review or verification fails: stop that worker, relaunch one Bravo Claude fix, then
+   re-review AND re-verify the new SHA.
+9. Never merge or deploy. Return GO/NO-GO.
 
 ## Acceptance Criteria
 
@@ -73,8 +77,19 @@ session, verdicts, GO/NO-GO) must be serializable to a durable artifact under
 ### H. GO/NO-GO shape
 
 Terminal recommendation is exactly one of `GO` or `NO-GO` plus: PR URL,
-exact SHA, reviewer verdict, what Mike would merge (nothing auto-merged),
+exact SHA, reviewer verdict, verifier verdict, what Mike would merge (nothing auto-merged),
 remaining human gates.
+
+**GO requires:**
+- Reviewer verdict == PASS
+- Verifier verdict == PASS (independent acceptance required — absent Verifier is NO-GO, Mike decision 2026-09-04)
+- Both bound to the exact head SHA, with the correct role in each slot (a Reviewer record in the
+  verifier slot is not a Verifier)
+- Verifier and Reviewer come from different sessions (independence)
+- head_sha is a valid 40-char exact SHA
+- pr_url is set
+
+**Anything else is NO-GO.**
 
 ### I. Isolation
 
