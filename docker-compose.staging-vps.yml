@@ -362,6 +362,9 @@ services:
       - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
       # Per-turn output ceiling under the seam (cost guard).
       - MIRA_TURN_MAX_OUTPUT_TOKENS=${MIRA_TURN_MAX_OUTPUT_TOKENS:-4000}
+      # WebView CORS allowlist for the phone app (#3453) — same declaration +
+      # default as docker-compose.saas.yml; staging proves the flag first.
+      - MOBILE_WEBVIEW_ORIGINS=${MOBILE_WEBVIEW_ORIGINS:-}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}

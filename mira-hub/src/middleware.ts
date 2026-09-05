@@ -1,5 +1,13 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtDecrypt } from "jose";
+import {
+  MOBILE_WEBVIEW_ORIGINS_ENV,
+  isWebviewCorsPath,
+  matchWebviewOrigin,
+  parseWebviewOrigins,
+  webviewCorsHeaders,
+  webviewPreflightHeaders,
+} from "@/lib/webview-cors";
 
 // Next.js 16 middleware runs in the edge runtime. We must NOT import
 // `node:crypto` or `next-auth/middleware` here — both pull native modules
@@ -152,7 +160,37 @@ function b64Nonce(raw: string): string {
   return btoa(raw).replace(/=+$/, "");
 }
 
-export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
+// Native-app WebView CORS (#3453). Read per request (cheap split) so the flag
+// is testable and hot-settable; EMPTY BY DEFAULT → every response is byte-
+// identical to today. Only the equipment-notebook routes, only an exactly
+// listed origin, never `*`. The preflight is answered BEFORE the session gate
+// because browsers never attach cookies to OPTIONS — without this the gate
+// would 401 the preflight and the WebView could never send the real request.
+// Actual responses (incl. the 401 an expired session gets) echo the origin so
+// the app can read the status and run its onAuthExpired path.
+export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
+  const pathname = req.nextUrl.pathname;
+  const origin = isWebviewCorsPath(pathname)
+    ? matchWebviewOrigin(
+        req.headers.get("origin"),
+        parseWebviewOrigins(process.env[MOBILE_WEBVIEW_ORIGINS_ENV]),
+      )
+    : null;
+  if (origin && req.method === "OPTIONS") {
+    const resp = new NextResponse(null, {
+      status: 204,
+      headers: webviewPreflightHeaders(origin, req.headers.get("access-control-request-headers")),
+    });
+    return applySecurityHeaders(resp, pathname, buildCsp(b64Nonce(crypto.randomUUID()), pathname));
+  }
+  const resp = await coreMiddleware(req, ev);
+  if (origin) {
+    for (const [k, v] of Object.entries(webviewCorsHeaders(origin))) resp.headers.set(k, v);
+  }
+  return resp;
+}
+
+async function coreMiddleware(req: NextRequest, _ev: NextFetchEvent) {
   void _ev;
   const pathname = req.nextUrl.pathname;
 
