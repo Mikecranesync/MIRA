@@ -298,6 +298,26 @@ describe("machine-specific claims need a confirmed, matching asset binding", () 
     expect(historyMock.fetchMachineHistory).not.toHaveBeenCalled();
   });
 
+  it("mismatch disputes the identity for THIS turn: no CONFIRMED identity in the prompt, no asset snapshot persisted", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: FAULT_AT,
+    });
+    historyServed();
+    const res = await POST(req({ ...machineTurn, machineEvidence: { assetId: OTHER_ASSET, anchorAt: FAULT_AT } }), params);
+    expect(res.status).toBe(200);
+    await frames(res);
+    // The provider saw the dispute, not a confirmed identity.
+    expect(seamMock.buildRequestBody).toHaveBeenCalled();
+    const messages = (seamMock.buildRequestBody.mock.calls[0] as unknown[])[1] as { role: string; content: string }[];
+    const system = messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain("DISPUTED");
+    expect(system).not.toContain("Identity CONFIRMED");
+    // And the turn is not persisted as a record about the bound machine.
+    const turn = (nbMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { equipmentEntityId?: string | null };
+    expect(turn.equipmentEntityId ?? null).toBeNull();
+  });
+
   it("confirmed AND matching: history is fetched for the BOUND asset", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     nbMock.resolveBoundAsset.mockResolvedValue({

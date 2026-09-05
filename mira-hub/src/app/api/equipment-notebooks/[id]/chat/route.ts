@@ -499,10 +499,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
     }
     // "Smoke is coming from the panel" in a notebook with nothing attached must
-    // not be answered with a filing complaint. `no_sources_selected` already
-    // proves the notebook exists and belongs to this tenant (the resolver
-    // returns `notebook_not_found` otherwise), so the stop is safe to serve and
-    // safe to persist here.
+    // not be answered with a filing complaint. Ownership was proven by the
+    // getNotebook check just above (086) — `no_sources_selected` itself proves
+    // nothing — so the stop is safe to serve and safe to persist here.
     if (safetyTrigger && validated.error === "no_sources_selected") {
       const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
       await recordTurn(ctx.tenantId, notebookId, {
@@ -569,21 +568,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { status: 422 },
     );
   }
-  // Snapshot for every persisted turn, including abstains and safety stops: a
-  // refusal about a specific machine is still a record about that machine.
-  const assetSnapshot =
-    boundAsset.state === "resolved"
-      ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
-      : { equipmentEntityId: null, assetUnsPath: null };
-
   // Private conversations §3: a client-supplied asset id is a REQUEST, not
   // truth. Machine history / live evidence is served only for the notebook's
   // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
   // technician-CONFIRMED — and only when the request names that same asset.
   // Anything else drops the machine request and the turn proceeds as general
   // or document guidance: no machine packet is built, so nothing machine-
-  // specific can be presented as fact (the MACHINE CONTEXT line below already
-  // says when the identity is unconfirmed).
+  // specific can be presented as fact.
+  //
+  // A MISMATCH is stronger than "unconfirmed": the technician's device says it
+  // is at a different machine than this notebook is bound to, so for THIS turn
+  // the binding is disputed — it must not be stated as a confirmed identity in
+  // the prompt, and the turn must not be persisted as a record about it.
   let machineRequestRefused: "asset_unconfirmed" | "asset_mismatch" | null = null;
   if (machineRequest) {
     if (boundAsset.state !== "resolved" || !boundAsset.confirmedAt) machineRequestRefused = "asset_unconfirmed";
@@ -596,6 +592,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       machineRequest = null;
     }
   }
+  const identityDisputed = machineRequestRefused === "asset_mismatch";
+
+  // Snapshot for every persisted turn, including abstains and safety stops: a
+  // refusal about a specific machine is still a record about that machine —
+  // unless the identity is disputed for this turn, in which case the turn is
+  // about no machine in particular (never a silent swap onto the bound one).
+  const assetSnapshot =
+    boundAsset.state === "resolved" && !identityDisputed
+      ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
+      : { equipmentEntityId: null, assetUnsPath: null };
 
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
@@ -901,8 +907,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
   // a QR scan proves which sticker was scanned, not which machine wears it, and
   // the model must never present a scan as a confirmed identity.
-  const assetLine =
-    boundAsset.state === "resolved"
+  const assetLine = identityDisputed
+    ? " Asset identity DISPUTED for this question: the technician's device reports a different machine than this notebook is bound to. Treat the identity as unconfirmed — do NOT state any machine-specific fact as confirmed for this machine; say the identity must be re-selected before machine-specific guidance."
+    : boundAsset.state === "resolved"
       ? " Asset: " +
         (boundAsset.name || "(unnamed)") +
         " — canonical path " +

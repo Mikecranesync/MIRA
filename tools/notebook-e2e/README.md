@@ -72,6 +72,12 @@ MIRA_TEST_DB_CONFIRM=DISPOSABLE node tools/notebook-e2e/notebook_proof.mjs \
   --expect-private-history
 ```
 
+**`--db` safety (the only write this harness ever makes):** it is refused unless `MIRA_TEST_DB_CONFIRM=DISPOSABLE`
+is set, the database host is local/private (loopback, RFC1918, `*.local`), `--base` is not a production Hub
+host, and the host/path contains no `prod`/`prd`. A disposable **remote** dev database additionally needs
+`--db-remote-ok`. Substring checks alone are not a guard — a real Neon production URL contains neither
+`prod` nor `prd` — which is why the local-host rule is the default. User B is placed as `role='technician'`.
+
 (`--notebook <uuid>` also works here to reuse an existing shared notebook instead of creating one.)
 
 What it proves:

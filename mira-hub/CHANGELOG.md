@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.32.0 - 2026-09-05
+- feat(hub): shared Equipment Notebooks with private per-technician conversations — `equipment_notebook_turns.owner_user_id` (migration 086, NULL = legacy shared history); `recordTurn` derives the owner from the session and inserts atomically against the notebook's tenant row; `listTurns`/GET history return the viewer's turns plus labeled legacy rows; every zero-source turn proves notebook ownership before persistence or any provider call; machine history requires a confirmed, matching asset binding (a mismatch disputes the identity for that turn); the Hub sends `mode: "general"` with zero sources like Mobile instead of refusing locally.
+
 ## v2.20.3 - 2026-06-27
 - fix(hub): synthetic QA seeding now creates real RBAC personas for all tenant roles plus a second-tenant isolation account, and the Hermes login helper fails loudly without a NextAuth session cookie.
 
