@@ -1,7 +1,7 @@
 # ADR-0036 — Hub nameplate vision + manual-discovery egress: a policy decision REQUIRED before this ships
 
-**Status: PROPOSED — NOT accepted. Blocks merge of the nameplate→manual arc until the
-owner decides.** This ADR does not, by itself, authorize anything.
+**Status: ACCEPTED — options A/C (2026-08-26, Mike).** Every scope limit listed under "If approved (A/C)" below is retained verbatim and binding. Vision moves behind the canonical server-side seam later (decision 3, `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`).
+*(Superseded 2026-08-26: "PROPOSED — NOT accepted. Blocks merge of the nameplate→manual arc until the owner decides. This ADR does not, by itself, authorize anything.")*
 **Date:** 2026-08-16
 **Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
 bypassing the governed inference router/sanitizer; Serper lacks a documented production
