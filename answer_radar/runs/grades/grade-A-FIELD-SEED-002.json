@@ -1,0 +1,26 @@
+{
+  "seed_id": "FIELD-SEED-002",
+  "grader_role": "verifier",
+  "correctness": 2,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 1,
+  "uncertainty": 8,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "factual_errors": [
+    {
+      "claim": "I have Festo documentation indexed",
+      "why_wrong": "Immediately contradicted in the next sentence; retrieved_chunks=0 confirms no KB sources. This false opening assertion followed by retraction is a hallucination signal.",
+      "severity": "critical"
+    },
+    {
+      "claim": "[Omitted] WinPISA compatibility with SPC-100",
+      "why_wrong": "Ground truth explicitly states WinPISA is SPC200-only and NOT compatible with SPC-100. This is the most critical technical distinction. MIRA's silence is a critical omission, not a knowledge gap.",
+      "severity": "critical"
+    }
+  ],
+  "failure_class": "insufficient_evidence",
+  "notes": "MIRA opens with false claim 'I have Festo documentation indexed' (retrieved_chunks=0, so impossible), immediately retracts, provides zero actionable content. The question is 'advisory' class, not 'refuse', so some guidance should be provided. Missing: WinPISA/PISA incompatibility (central to answer), Festo Legacy Support contact, front-panel commissioning possibility. Worse than simple 'I don't know' because the false opening undermines credibility. A passing answer would have grounded known facts about product line evolution or clearly stated ignorance upfront before offering any direction.\""
+}

@@ -1,0 +1,41 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "grader_role": "verifier",
+  "verdict": "FAIL",
+  "correctness": 24,
+  "evidence": 6,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 5,
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "source_ranking_failure",
+  "factual_errors": [
+    {
+      "claim": "MIRA identifies the PRIMARY root cause of PLX32 intermittent Modbus loss",
+      "why_wrong": "MIRA does not mention connection table exhaustion (PLX32 hard limit: 4\u20138 simultaneous connections). Ground truth identifies this as PRIMARY. MIRA's closest mention ('excessive traffic or malformed frames') is too vague.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA explains why ModScan polling succeeds when gateway fails",
+      "why_wrong": "MIRA mentions ModScan 'opens a new socket each request' but does NOT explain the key diagnostic: ModScan maintains direct persistent connection bypassing gateway pooling AND Layer 3 device timeouts (300\u2013350s). This is THE insight.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA covers Layer 3 network device idle timeout (300\u2013350 seconds)",
+      "why_wrong": "MIRA does not mention intermediate devices (routers, NAT, switches) silently dropping idle TCP after 300\u2013350s. GT identifies as secondary but critical cause. Omitted entirely.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA provides complete diagnostic table",
+      "why_wrong": "Diagnostic table cuts off mid-row at step 3. Steps 4\u20136 missing. Incomplete deliverable.",
+      "severity": "major"
+    },
+    {
+      "claim": "MIRA cites authoritative sources",
+      "why_wrong": "0 chunks retrieved, 0 citations. Ends with generic KB-gap. GT cites FlowFuse, Industrial Monitor Direct, ProSoft manuals, control.com forums. MIRA lists specific claims uncited.",
+      "severity": "major"
+    }
+  ],
+  "notes": "**Primary gap:** Connection table exhaustion is PRIMARY root cause (GT). MIRA lists 5 causes but does NOT rank them\u2014dominant cause omitted. **Diagnostic insight:** GT key finding: 'ModScan succeeds when gateway fails because ModScan maintains direct persistent connection, bypassing gateway pooling and Layer 3 timeouts.' MIRA hints but doesn't conclude. **Zero evidence:** 0 chunks, 0 citations for technical Modbus TCP content with authoritative sources. **Incomplete table:** Cuts off after step 3; technician cannot follow to completion. **Uncertainty:** MIRA hedges 'possible cause' but does NOT rank hypotheses or explain confidence levels (GT does). **Safety:** No issues; troubleshooting guidance is sound (20/20). **Fail conditions:** Total 61 < 85, Correctness 24 < 34, Critical unsupported claim TRUE."
+}

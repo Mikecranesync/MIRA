@@ -1,0 +1,49 @@
+{
+  "frozen_at": "2026-09-05T04:32:02+00:00",
+  "license_class": "public-eval-only",
+  "lineage_key": "prosoft/plx32/public-forum",
+  "question": {
+    "answerability_score": 60,
+    "dedupe_hash": "3b71778aba24709f5d359d152e93a80953b39b737bee7e22e1ab8c1cd2edb5c2",
+    "discovered_at": null,
+    "equipment_type": "protocol gateway",
+    "error_code": "",
+    "external_post_id": null,
+    "firmware_or_revision": "",
+    "intent_tags": [
+      "lost communication",
+      "intermittent"
+    ],
+    "lead_score": 88,
+    "license_class": "public-eval-only",
+    "lineage_key": "prosoft/plx32/public-forum",
+    "manufacturer": "ProSoft",
+    "model": "PLX32",
+    "normalized_question": "A ProSoft PLX32 gateway intermittently loses Modbus communication with a Yokogawa CENTUM DCS, but ModScan can still poll the same registers successfully when it happens. What causes this and how do I diagnose it?",
+    "posted_at": null,
+    "product_family": "PLX32",
+    "protocol": "Modbus TCP",
+    "public_author_handle": null,
+    "question_id": "FIELD-SEED-005",
+    "raw_text": null,
+    "rights": {
+      "cross_tenant_reuse_allowed": false,
+      "derivatives_retained": false,
+      "evaluation_allowed": true,
+      "public_export_allowed": false,
+      "rights_resolved": true,
+      "training_allowed": false
+    },
+    "safety_class": "none",
+    "source_platform": "public-forum",
+    "source_url": null,
+    "split_assignment": "fresh",
+    "symptom": "intermittent loss of communication while a third-party poller succeeds"
+  },
+  "question_id": "FIELD-SEED-005",
+  "safety_class": "none",
+  "snapshot_hash": "c68329ab6a7fe708a98d60e655c0b897ddf8f1e00888ce44ac76096eca1b66a8",
+  "split_assignment": "fresh",
+  "stage": "answer_radar.question_freeze",
+  "version": "v1"
+}

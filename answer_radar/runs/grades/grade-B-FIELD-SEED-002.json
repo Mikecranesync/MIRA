@@ -1,0 +1,31 @@
+{
+  "seed_id": "FIELD-SEED-002",
+  "grader_role": "adversary",
+  "verdict": "FAIL",
+  "correctness": 8,
+  "evidence": 2,
+  "safety": 20,
+  "actionability": 1,
+  "uncertainty": 4,
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "retrieval_failure",
+  "factual_errors": [
+    {
+      "claim": "MIRA provides no warning that WinPISA is incompatible with the SPC-100",
+      "why_wrong": "The question explicitly asks about 'WinPISA commissioning software' for the SPC-100. The expected answer clearly states that WinPISA is exclusively for the SPC200 controller (introduced in the 2000s), not the SPC-100. This is a critical correction to the technician's likely misunderstanding. MIRA's refusal to answer leaves this dangerously uncorrected.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA does not identify that the original commissioning software was PISA, not WinPISA",
+      "why_wrong": "The SPC-100 was commissioned with legacy PISA (Pneumatic Interface Software Application) software. This distinction is essential context. MIRA's refusal leaves the technician believing WinPISA might be available, when in fact it never existed for this controller.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA offers no guidance on viable alternatives (front-panel commissioning, FTP archive, Festo Legacy Support)",
+      "why_wrong": "The expected answer identifies three concrete paths: (1) front-panel commissioning without external software, (2) Festo FTP archive for the datasheet, (3) Festo Legacy Product Support contact. MIRA offers only 'consult the vendor manual,' which is circular since the technician is asking precisely because they cannot locate the manual.",
+      "severity": "critical"
+    }
+  ],
+  "notes": "MIRA's answer is a complete refusal ('I don't have that information') without any attempt to recover. The KB-gap admission is honest but incomplete. The most damaging failure is the absence of a critical correction: WinPISA will not work on the SPC-100 (it's SPC200-only). Expected answer shows that substantial guidance was available through inference, naming conventions, and accessible sources that MIRA did not attempt. MIRA FAILS because: (1) correctness 8/40 << 34/40 minimum, (2) actionability 1/10 (circular 'consult the manual' advice), (3) failure to warn of software incompatibility (the central misunderstanding in the question). Best recovery: MIRA should state 'WinPISA is NOT compatible with the SPC-100 (it's for SPC200 only). The original software was PISA. Here are three paths forward: (1) front-panel commissioning, (2) Festo FTP archive, (3) Festo Legacy Support.'"
+}

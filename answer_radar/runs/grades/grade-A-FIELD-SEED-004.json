@@ -1,0 +1,36 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "grader_role": "verifier",
+  "correctness": 27,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 7,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "MIRA provides complete guidance on 'which registers hold the weight value'",
+      "why_wrong": "Step 5 cuts off mid-sentence at 'Locate the weight register map' without providing actual register addresses (40003 for net, 40004 for tare, 40006-40007 for gross). The question is left unanswered.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA provides complete guidance on data format requirements",
+      "why_wrong": "The answer does not address word order (big-endian vs little-endian) configuration requirement. BX11-EN supports both formats; they must match the FX5U setting. MIRA provides no guidance on this critical requirement.",
+      "severity": "critical"
+    },
+    {
+      "claim": "MIRA provides complete Modbus/TCP integration procedure",
+      "why_wrong": "Missing: firmware version (FX5U v1.040+), ladder logic instructions (SP.SMCINIT, SP.SMCMPL), Modbus function code (FC3), BX11-EN default IP (192.168.16.250), diagnostic registers (SD2100, SD2101). These are essential for implementation, not optional.",
+      "severity": "major"
+    },
+    {
+      "claim": "MIRA does not explicitly state role differentiation",
+      "why_wrong": "FX5U is CLIENT only; BX11-EN is SERVER. While implied in Step 4, not explicitly stated as a critical design principle per the ground truth.",
+      "severity": "major"
+    }
+  ],
+  "notes": "MIRA's answer is incomplete and cuts off mid-procedure at Step 5. Steps 1-4 are generic verification steps (correct but applicable to any Modbus/TCP setup). Zero retrieved chunks; no authoritative source grounding. The answer fails to deliver on 2 of 3 specific technical questions: (1) register addresses\u2014UNANSWERED; (2) data format requirements\u2014UNANSWERED. The KB-gap statement masks that this information is publicly available in authoritative manuals (Baykon BX11 v1.9, Mitsubishi FX5U). Technician cannot complete integration without external reference. FAIL: total 60 < 85; correctness 27 < 34."
+}

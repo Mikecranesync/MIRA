@@ -1,0 +1,31 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "grader_role": "adversary",
+  "verdict": "FAIL",
+  "correctness": 28,
+  "evidence": 3,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 7,
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "MIRA states the PLC stops communicating because the transparent converter lacks DH+ protocol framing.",
+      "why_wrong": "Correct diagnosis but incomplete. MIRA omits the TX-EN (Transmit Enable) open-collector signal, which is critical to multi-device DH-485 networks. The ground truth identifies this as a distinct failure mode: transparent converters have no TX-EN control line at all, which makes them incapable of supporting intermediate devices like couplers or network-aware bridges. This is not 'just' a framing issue \u2014 it is a fundamental hardware control signal absence.",
+      "severity": "major"
+    },
+    {
+      "claim": "MIRA recommends checking baud rate, parity, stop bits, and wiring as the first diagnostic steps.",
+      "why_wrong": "These are generic troubleshooting steps, but they assume a configuration problem. The real root cause is hardware incompatibility: a transparent RS-485-to-Ethernet converter cannot ever succeed on a DH-485 network because it lacks protocol intelligence, TX-EN control, and proper half-duplex turnaround timing. Recommending config checks first delays the technician from reaching the only correct action: replace with a protocol-aware interface (1747-AIC, 1761-NET-AIC).",
+      "severity": "major"
+    },
+    {
+      "claim": "MIRA does not address voltage levels or potential damage from connecting the wrong converter type.",
+      "why_wrong": "The ground truth explicitly states DH-485 RJ45 uses 0-5V RS-485 levels, not Ethernet voltages. Connecting a standard Ethernet converter could damage the PLC's network card. MIRA does not warn of this risk.",
+      "severity": "major"
+    }
+  ],
+  "notes": "MIRA's core diagnosis\u2014that DH-485 requires protocol-aware handling and transparent converters lack it\u2014is correct. However, the answer is entirely ungrounded (zero citations, explicit KB-gap admission). A technician cannot verify this against authoritative documentation. Additionally, MIRA omits four critical technical details that ground truth includes: TX-EN signal absence, token-passing network arbitration, half-duplex timing requirements, and voltage damage risk. Most importantly, MIRA's recommended first checks are generic troubleshooting that do not lead to the primary action (replacement with protocol-aware device). The answer is accurate but presents it as partially-known and partially-guessed information with no source backing. Total score 64/100 fails the 85/100 threshold. Verdict: FAIL due to insufficient evidence, incomplete technical grounding, and actionability gaps.\""
+}
