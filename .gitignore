@@ -336,3 +336,8 @@ tests/beta/fixtures/t2108/*.pdf
 
 # Adversarial-review runner artifacts (prompts, envelopes, logs) — never committed
 .adversarial-review/
+
+# Fleet Gateway MCP v1 local state (never commit tokens or runtime artifacts)
+fleet-gateway/.env
+fleet-gateway/var/**
+!fleet-gateway/var/.gitignore
