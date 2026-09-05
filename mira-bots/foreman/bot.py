@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
+from specialists import render_roster, routing_card_enabled
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +43,9 @@ except ImportError:
 # `cursor-grok-4.6-medium` slug is rejected by Agent.create.
 DEFAULT_GROK_MODEL = "grok-4.6"
 
+# Briefing is best-effort and must never hold _agent_lock indefinitely.
+BRIEFING_TIMEOUT_S: float = 60.0
+
 
 class ForemanConfig:
     """Configuration for FactoryLM Foreman bot."""
@@ -56,14 +60,10 @@ class ForemanConfig:
 
         # Cursor API key for launching cloud agents
         # Prefer CURSOR_API_KEY, fall back to CURSOR_API (current Doppler name)
-        self.cursor_api_key = os.environ.get(
-            "CURSOR_API_KEY", os.environ.get("CURSOR_API", "")
-        )
+        self.cursor_api_key = os.environ.get("CURSOR_API_KEY", os.environ.get("CURSOR_API", ""))
 
         # Target repository for cloud agents
-        self.repo_url = os.environ.get(
-            "FOREMAN_REPO_URL", "https://github.com/Mikecranesync/MIRA"
-        )
+        self.repo_url = os.environ.get("FOREMAN_REPO_URL", "https://github.com/Mikecranesync/MIRA")
         self.repo_branch = os.environ.get("FOREMAN_REPO_BRANCH", "main")
 
         # Grok model to use. Override with FOREMAN_GROK_MODEL; default is the
@@ -300,7 +300,55 @@ class ForemanBot:
         agent = await asyncio.to_thread(Agent.create, build_agent_options(self.config))
         logger.info("✓ Warm agent created: agent_id=%s", agent.agent_id)
         self._grok_agent = agent
+        await self._brief_agent(agent)
         return agent
+
+    async def _brief_agent(self, agent: Any) -> None:
+        """Send the specialist routing card once, on a freshly created agent.
+
+        Opt-in via FOREMAN_ROUTING_CARD; unset means this is a no-op and Foreman
+        behaves exactly as it did before. Sent ONCE at creation rather than
+        prepended to every message because the warm agent retains conversation
+        context — re-sending it each turn would pay for it repeatedly and bury
+        the user's actual message.
+
+        Best-effort: a briefing failure must never cost Mike his message, so it
+        is logged and swallowed. The agent then behaves as an unbriefed one.
+        """
+        if not routing_card_enabled():
+            return
+        try:
+            card = render_roster()
+        except Exception as exc:  # a malformed definition must not break Slack
+            logger.error("Routing card failed to render: %s", exc, exc_info=True)
+            return
+        if not card:
+            logger.warning("Routing card enabled but no specialist definitions found")
+            return
+        try:
+            # Bounded: a hung run.wait() would otherwise hold _agent_lock forever and
+            # block this Slack message and every later one. Briefing is best-effort,
+            # so a timeout drops the card rather than the user's message.
+            await asyncio.wait_for(
+                asyncio.to_thread(self._send_and_wait, agent, card),
+                timeout=BRIEFING_TIMEOUT_S,
+            )
+            logger.info("✓ Routing card sent to agent_id=%s", agent.agent_id)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Routing card timed out after %ss on agent_id=%s — continuing unbriefed",
+                BRIEFING_TIMEOUT_S,
+                agent.agent_id,
+            )
+        except asyncio.CancelledError:
+            # Not an Exception subclass. The agent is cached and may still be mid-run,
+            # so drop it rather than let the next send race an active briefing.
+            logger.warning("Routing card cancelled — dropping agent %s", agent.agent_id)
+            if self._grok_agent is agent:
+                self._grok_agent = None
+            raise
+        except Exception as exc:
+            logger.error("Routing card send failed: %s", exc, exc_info=True)
 
     async def _ensure_agent(self) -> Any:
         """Ensure warm Grok agent exists, creating or recovering as needed.
