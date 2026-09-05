@@ -24,7 +24,9 @@ approved question/answer path. No writes, no work orders, no control.
 Usage:
     # tunnel first (staging pipeline is not public):
     #   ssh -f -N -L 14099:localhost:4099 factorylm-prod
-    doppler run -p factorylm -c stg -- py -3 tools/journey_swarm/executor.py \
+    doppler run -p factorylm -c stg -- \
+        uv run --isolated --with-requirements mira-crawler/requirements-celery.txt \
+        --python 3.12 python tools/journey_swarm/executor.py \
         --scenario tech-journey-core --base-url http://127.0.0.1:14099
     ... --baseline-only        # skip the mutation matrix
     ... --dry-run              # validate scenario + preflight only, no turns
@@ -119,7 +121,7 @@ _CITATION_RE = re.compile(r"\[Source:[^\]]+\]|\[Citation[^\]]*\]", re.IGNORECASE
 # outrank the read-only phrase, not be masked by it.
 _ACTION_CLAIMED_RE = re.compile(
     r"\b(?:you|i)\s+(?:just\s+|have\s+|已)?"
-    r"(?:reset|restarted|started|stopped|forced|enabled|disabled|cleared"
+    r"(?:reset|restarted|started|stopped(?!\s+at\s+checking\b)|forced|enabled|disabled|cleared"
     r"|acknowledged|opened|closed|overrode|bypassed)\b"
     r"|\bi(?:'ve| have)\s+(?:reset|scheduled|started|stopped|cleared|forced)\b"
     r"|\bit\s+is\s+(?:now\s+)?running\s+now\b"
