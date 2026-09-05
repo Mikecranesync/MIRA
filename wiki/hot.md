@@ -1,3 +1,37 @@
+# Hot Cache — 2026-09-05 — FactoryLM product-convergence archaeology
+
+`FACTORYLM-CONVERGENCE-ARCHAEOLOGY-001` is documented on branch
+`codex/factorylm-convergence-archaeology-001`, based on `origin/main`
+`32c6cfacdefbeae8ad7bf2fddc277277d77d51fe`. It is a documentation-only Gate 0
+re-audit: no runtime, data, provider, deployment, or product behavior changed.
+
+The verdict is CONNECT/REPAIR/CONSOLIDATE, not BUILD. Mobile and Hub already share the
+authenticated Equipment Notebook route, turn persistence, evidence, safety, and
+server-owned provider routing. The first narrow implementation sequence is a tenant
+trust repair followed by Hub L0 parity: prove Notebook ownership before the early
+zero-source safety write, then send the existing `mode: "general"` request when zero
+sources are selected instead of synthesizing a client-side refusal. General-thread
+ownership, navigation, schema changes, design-token convergence, and retirement remain
+intentionally deferred.
+
+Before asset/history/live parity, repair the Notebook route so a client-supplied
+machine-evidence asset must match a confirmed server-side binding. The current prompt
+warning is not an enforcement gate and must not be described as one.
+
+Answer Radar should retain PR #3584's freeze/schema/reporting machinery only after its
+L0 semantics stop excluding asset/UNS gates from correctness and its runner exercises
+the canonical Notebook route. Connect that repaired evaluator to existing Foreman
+orchestration; do not merge PR #3589's duplicate schema/scorer stack. Governance PR
+#3595 remains the authority-stack prerequisite. Review, merge, deployment, and the
+next implementation slice remain human-gated.
+
+Provider authorization is also unresolved governance: the audited root allowlist
+conflicts with the Groq/Cerebras/Together and legacy Gemini paths named by lower docs
+and current Notebook runtime. This audit grants no provider approval and proposes no
+provider change.
+
+---
+
 # Hot Cache — 2026-08-31 — Mobile ChatV2 merged, capability-gated and default-off
 
 PR #3516 merged to `main` as `1ed59e988` after PR #3517 landed persisted safety-stop markers.
