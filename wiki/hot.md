@@ -1,3 +1,94 @@
+# Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 governance Tasks 1-4 + PR-template exception scaffold done (local, not pushed)
+
+**Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001` — freeze the legacy public/Hub/mobile presentation
+trees and make the shared FactoryLM shell (`packages/factorylm-theme/**`,
+`packages/factorylm-interaction/**`, `packages/factorylm-ui/**`, `apps/factorylm-ui-lab/**`) the
+only destination for new product UI work, while preserving legacy runtime rollback and every
+existing capability seam (auth, billing, Equipment Notebook persistence, typed SSE, evidence,
+safety, identity, provider routing, authorization).
+
+**Coordination:** [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync/MIRA/issues/3626)
+(the durable `[WORK-CLAIM]` record for this governance slice lives there). **Charter:**
+`docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`. **Implementation plan:**
+`docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md`.
+
+**Branch:** `codex/factorylm-unified-ui-cutover-001`, currently at local HEAD `f235b1ef5`. **No PR
+opened yet** — Task 5 (close-out) is what opens the draft PR against `main`, after a fresh
+collision recheck.
+
+Landed locally (Tasks 1-4, task-sized commits, all local — nothing pushed):
+- `4a666fa2d` — Registry/capability-closure/rule declarations (Task 1): `REGISTRY.yaml` gained 4
+  canonical `factorylm-*` package entries + 3 `*-legacy-ui` guarded-path entries
+  (`mira-web-legacy-ui`, `mira-hub-legacy-ui`, `mira-mobile-legacy-ui`), the 5 duplicate
+  `factorylm-repo` top-level keys were renamed unique (`factorylm-docs/-infra/-scripts/-tests/-tools`)
+  so the registry now `yaml.safe_load`s cleanly; `CAPABILITY_CLOSURE.yaml` gained `unified_ui_shell`
+  (`implemented_unconnected`, all environments unset — no deployment claimed); new rule
+  `.claude/rules/factorylm-unified-ui-cutover.md`; pointers added to root `AGENTS.md`/`CLAUDE.md`.
+- `4f0255a9a` — Lifecycle guard, test-first (Task 2): `tools/ui_surface_lifecycle_guard.py` +
+  `tests/test_ui_surface_lifecycle_guard.py`, RED confirmed (missing module) before GREEN.
+- `c7f151308` — **Four fail-closed hardening fixes** found on independent review, retrofitted into
+  Tasks 1-2 before Task 3 (tests-first, RED→GREEN, 111/111): (1) closed the `mira-web/public/**`
+  "sibling bypass" — every static file there now runs through a code-owned classifier (passive
+  asset suffixes + exactly `sw.js`/`posthog-init.js` unguarded, everything else including unknown
+  suffixes/extensionless names guarded — a new sibling used to slip through when only the two
+  known chat files were listed); (2) closed a GitHub pull-files pagination-truncation gap — the
+  files endpoint silently caps around 3000 entries, so the guard now requires
+  `--expected-change-count-file` (sourced from the PR's own `.changed_files`) whenever
+  `--changes-json-file` is used, and fails closed on a malformed/negative/>3000 count, a duplicate
+  filename record, or any count mismatch; (3) standardized on `--labels-file` everywhere (the
+  plan's own prose said the ambiguous `--labels` in one place; the implementation always used
+  `--labels-file` — docs now match code); (4) added `.github/pull_request_template.md` to
+  `CONTROL_PATTERNS` since it documents the exact exception-section shape the guard parses.
+- `94e51823e` — Trusted-base CI wiring (Task 3): `.github/workflows/ui-lifecycle-guard.yml`
+  (`pull_request_target`, base-sha-only checkout with `persist-credentials: false`, minimal
+  `contents:read`/`pull-requests:read`/`statuses:write`, token-bearing metadata step kept separate
+  from the no-token evaluation step, `Legacy UI Lifecycle Guard` status posted to the PR head SHA)
+  + the optional `## Legacy UI exception` scaffold added to `.github/pull_request_template.md`
+  (blank fields, explanation only in HTML comments — verified to fail closed unfilled and pass once
+  substantively completed, against the real registry). `actionlint` clean. This workflow **cannot
+  run on the bootstrap PR that introduces it** (`pull_request_target` always uses the workflow
+  definition already on the default branch) — it becomes a required `main` check only after merge.
+- `f235b1ef5` — Three Claude Code dynamic workflows (Task 4): `.claude/workflows/flm-ui-map.js`
+  (read-only fan-out + adversarial invented-path/symbol cross-check + proposed `[WORK-CLAIM]`
+  drafts, never edits/claims/opens a PR), `flm-ui-slice.js` (claim preflight requiring
+  `claimStatus: "WON"` -> one writer in an isolated worktree, TDD, draft PR only, no merge/deploy ->
+  parallel read-only contract/safety/test review keyed to the writer's validated 40-char `headSha`),
+  `flm-ui-verify.js` (read-only 7-dimension fan-out at one immutable `headSha` -> synthesized
+  GREEN/PARTIAL/BLOCKED). All three validate required structured `args` (mission/issue + a full
+  40-character base/head SHA) and throw before dispatch otherwise. **Known validation gap:** the
+  plan's literal `bun build --target=bun --format=esm` parse check fails on all three scripts with
+  "Top-level return cannot be used inside an ECMAScript module" — reproduced on a 2-line minimal
+  file, so this is a mismatch in the plan's own validation recipe (the `/workflow-authoring`
+  reference's canonical examples all use top-level `return`/`await`, meaning the real Workflow
+  runtime executes a script as an async-function body, not literal ESM) rather than a defect in
+  these three files; confirmed each parses cleanly when wrapped as an async-function body (the
+  runtime's actual execution shape). `/reload-skills` + slash-command autocomplete confirmation is
+  an interactive Claude Code step, not reproducible from a non-interactive session.
+
+**Legacy exception policy (live):** any addition/modification/deletion/rename touching a guarded
+legacy path or a `CONTROL_PATTERNS` control-plane file fails the guard by default. A maintainer
+opens it ONLY via the `legacy-ui-exception` label + a substantive `## Legacy UI exception` PR-body
+section (`Reason:` / `Canonical replacement impact:` / `Rollback:` — blank, `N/A`, placeholder,
+fenced-code, and HTML-comment-only values all fail closed). Full policy:
+`docs/architecture/convergence/UNIFIED_UI_CUTOVER.md` §3; enforcement:
+`tools/ui_surface_lifecycle_guard.py` + `.github/workflows/ui-lifecycle-guard.yml`.
+
+**Active shared-core claim — do not duplicate:** shared-shell plan Task 5 (conversation parts,
+Ask/Work interaction rendering, universal composer —
+`docs/superpowers/plans/2026-09-06-factorylm-unified-ui-v2-shell.md`) is **ACTIVE** under **Claude
+5.1 on CHARLIE**, branch `feat/flm-ui-v2-task5-conversation-composer`, draft PR
+[#3628](https://github.com/Mikecranesync/MIRA/issues/3628), claimed on issue #3626. This governance
+session did **not** touch `packages/factorylm-theme/**`, `packages/factorylm-interaction/**`,
+`packages/factorylm-ui/**`, or `apps/factorylm-ui-lab/**` — those stay that session's lane.
+
+**No production change of any kind was made or attempted:** no merge, no deploy, no branch
+protection change, no label creation, no push, no production route/database/provider change. This
+governance slice is docs/registry/tests/tooling/CI-definition/Claude-workflow files only, all still
+local to this worktree. Next: Task 5 Step 2 (full local verification) -> Step 3 (collision recheck
++ push + draft PR) -> Step 4 (adversarial review gate) -> Step 5 (owner-authorized merge — human only).
+
+---
+
 # Hot Cache — 2026-09-06 — FLM-UI-4000 shared shell foundation started (local, not pushed)
 
 PR #3622 remains the draft design authority at exact head `470aa1873f05da597b5304ead119aeb19ba3d9b9`.
