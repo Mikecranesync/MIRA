@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,11 +19,15 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ]
   },
   "include": [
     "src",
     "scripts",
+    "playwright.config.ts",
+    "e2e",
     "../../packages/factorylm-interaction/src",
     "../../packages/factorylm-theme/src",
     "../../packages/factorylm-ui/src"

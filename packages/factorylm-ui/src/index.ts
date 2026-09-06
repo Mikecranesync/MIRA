@@ -1,7 +1,9 @@
-export { Composer, type ComposerProps } from "./Composer";
+export { Composer, type ComposerProps, type ComposerKeyEvent, composerKeyAction } from "./Composer";
 export { Conversation, type ConversationProps, breadcrumb } from "./Conversation";
-export { FactoryLMShell, type FactoryLMShellProps } from "./FactoryLMShell";
+export { FactoryLMShell, type FactoryLMShellProps, BACK_EVENT, closeLayerAction, topLayer } from "./FactoryLMShell";
+export { focusableWithin, trapTab, useFocusReturn } from "./focus";
 export { Inspector } from "./Inspector";
+export { Overlay, type LayerName, type OverlayProps } from "./Overlay";
 export { PartRenderer, type PartRendererProps, assertNever, describeContext, lifecycleLabel, machineName } from "./parts";
 export { ProjectTree } from "./ProjectTree";
 export { Sidebar } from "./Sidebar";
