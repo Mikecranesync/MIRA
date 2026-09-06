@@ -11,6 +11,13 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
   const canInspect = state.profile.enterpriseInspector && state.inspector !== undefined;
 
   return <header className="fl-shell__header">
+    <button
+      className="fl-shell__navigation-toggle"
+      type="button"
+      onClick={() => dispatch({ type: "set-navigation-visible", visible: true })}
+    >
+      Open navigation
+    </button>
     <div>
       <p className="fl-shell__eyebrow">{state.profile.kind}</p>
       <h1>{state.thread.title}</h1>

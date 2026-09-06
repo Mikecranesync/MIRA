@@ -10,6 +10,13 @@ interface SidebarProps {
 export function Sidebar({ state, dispatch }: SidebarProps) {
   return <aside className="fl-shell__sidebar" aria-label="FactoryLM navigation">
     <div className="fl-shell__brand">FactoryLM</div>
+    <button
+      className="fl-shell__drawer-close"
+      type="button"
+      onClick={() => dispatch({ type: "set-navigation-visible", visible: false })}
+    >
+      Close navigation
+    </button>
     <button className="fl-shell__new-chat" type="button" disabled title="New threads are not available yet">
       New chat
     </button>

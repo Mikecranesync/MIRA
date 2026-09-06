@@ -34,18 +34,28 @@ Bun 1.4 resolves TSX peer imports from the physical package path rather than the
 
 The license audit now resolves a linked package by its real `package.json` path. This follows the package-local dependency closure rather than the incomplete Bun mirror under the lab's `node_modules`; the final audit covered 26 external package manifests, all MIT or Apache-2.0.
 
+## Fix Round 1 — reproducibility and mobile navigation
+
+- `bootstrap:ui` is checked in and runs `bun install --frozen-lockfile --ignore-scripts` in the UI package before every runtime test and license audit. Every nested lab script uses `$npm_execpath`, while the bootstrap subprocess uses `process.execPath`, so the invoking Bun executable—not `PATH`—is retained. Both manifests pin `packageManager: bun@1.4.0`.
+- Focused tests were written before the controls existed. RED was `7 pass, 2 fail`: both failures reported that the required mobile navigation controls were absent. GREEN is `9 pass, 0 fail, 44 expectations` after adding the reducer-backed Open/Close controls and close-on-project/folder/machine selection.
+- The duplicate Drive A test now finds `machine-drive-a` only below the selected Brake folder's `<li>` subtree. Removing that nested link makes the test fail before selection.
+- CSS contract coverage protects the fixed/translated mobile drawer and fixed bottom-sheet Inspector foundation. Task 6 remains responsible for scrim, focus trap, Escape/hardware Back, and final overlay accessibility.
+
 ## Verification
 
-Run from `apps/factorylm-ui-lab` after normal Bun installs in both the lab and `packages/factorylm-ui`:
+Run from `apps/factorylm-ui-lab`:
 
 ```text
-bun test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx  # 6 pass
-bun test ../../packages                                           # 38 pass, 563 expectations
+bun install --frozen-lockfile                                     # exit 0
+bun run test:shell                                                # 9 pass, 44 expectations
+bun run test                                                      # 41 pass, 573 expectations
 bunx tsc --noEmit                                                  # exit 0
-bun run licenses                                                   # 26 external manifests; pass
+bun run licenses                                                   # 26 external manifests, all MIT/Apache-2.0
 bun run verify                                                     # exit 0
 git diff --check                                                   # exit 0
 ```
+
+Clean-state proof: after moving only the generated `packages/factorylm-ui/node_modules` directory to Trash, `/opt/homebrew/bin/bun install --frozen-lockfile` followed by `PATH="/Users/charlienode/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin" /opt/homebrew/bin/bun run test:shell` recreated only the package-local eight-package closure and passed all 9 focused tests. No repository archive was created. This same PATH adversarial check had Bun 1.3.10 first but printed `bun install v1.4.0` and `bun test v1.4.0`, proving all nested scripts keep the invoking executable.
 
 ## Contract verification
 

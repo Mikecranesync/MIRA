@@ -19,7 +19,7 @@ export function ProjectTree({ projects, state, dispatch }: ProjectTreeProps) {
           className="fl-tree__project"
           data-project-id={project.id}
           aria-current={state.selectedProjectId === project.id ? "page" : undefined}
-          onClick={() => dispatch({ type: "select-project", projectId: project.id })}
+          onClick={() => selectAndCloseNavigation(dispatch, { type: "select-project", projectId: project.id })}
         >
           {project.name}
         </button>
@@ -39,7 +39,7 @@ function Nodes({ nodes, state, dispatch }: Omit<ProjectTreeProps, "projects"> & 
             className="fl-tree__folder"
             data-folder-id={node.id}
             aria-current={state.selectedFolderId === node.id ? "page" : undefined}
-            onClick={() => dispatch({ type: "select-folder", folderId: node.id })}
+            onClick={() => selectAndCloseNavigation(dispatch, { type: "select-folder", folderId: node.id })}
           >
             <ChevronIcon className="fl-tree__chevron" />{node.label}
           </button>
@@ -53,7 +53,7 @@ function Nodes({ nodes, state, dispatch }: Omit<ProjectTreeProps, "projects"> & 
             className="fl-tree__machine"
             data-machine-id={node.machineId}
             aria-current={state.activeContext.machineId === node.machineId ? "page" : undefined}
-            onClick={() => dispatch({ type: "select-machine", machineId: node.machineId })}
+            onClick={() => selectAndCloseNavigation(dispatch, { type: "select-machine", machineId: node.machineId })}
           >
             {node.label}
           </button>
@@ -62,4 +62,9 @@ function Nodes({ nodes, state, dispatch }: Omit<ProjectTreeProps, "projects"> & 
       return <li className="fl-tree__item" key={node.id}>{node.label}</li>;
     })}
   </ul>;
+}
+
+function selectAndCloseNavigation(dispatch: Dispatch<ShellAction>, action: ShellAction) {
+  dispatch(action);
+  dispatch({ type: "set-navigation-visible", visible: false });
 }

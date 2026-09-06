@@ -3,15 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "scripts": {
-    "dev": "bun --watch src/main.tsx",
-    "build": "tsc --noEmit",
-    "preview": "bun src/main.tsx",
-    "test": "bun test ../../packages",
-    "test:watch": "bun test --watch ../../packages",
-    "test:e2e": "bunx playwright test",
-    "licenses": "bun scripts/check-dependency-licenses.ts",
-    "verify": "bun run test && bun run build && bun run licenses"
+    "bootstrap:ui": "\"$npm_execpath\" scripts/bootstrap-ui.ts",
+    "dev": "\"$npm_execpath\" --watch src/main.tsx",
+    "build": "\"$npm_execpath\" x tsc --noEmit",
+    "preview": "\"$npm_execpath\" src/main.tsx",
+    "test": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages",
+    "test:shell": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx",
+    "test:watch": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test --watch ../../packages",
+    "test:e2e": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" x playwright test",
+    "licenses": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" scripts/check-dependency-licenses.ts",
+    "verify": "\"$npm_execpath\" run test && \"$npm_execpath\" run build && \"$npm_execpath\" run licenses"
   },
   "dependencies": {
     "@factorylm/interaction": "file:../../packages/factorylm-interaction",

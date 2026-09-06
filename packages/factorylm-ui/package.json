@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "exports": {
     ".": "./src/index.ts",
     "./shell.css": "./src/shell.css"
