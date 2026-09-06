@@ -57,6 +57,8 @@ function partToContent(part: MessagePart, citations: ChatCitation[]): TMLPart | 
       return { type: "data-followups", data: { suggestions: part.suggestions } as never };
     case "error":
       return { type: "data-error", data: { reason: part.reason } as never };
+    case "identity_dispute":
+      return { type: "data-identity-dispute", data: {} as never };
     case "unknown":
       return { type: "data-unknown", data: { raw: part.raw } as never };
   }
