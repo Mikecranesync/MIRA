@@ -67,6 +67,21 @@ describe("FactoryLM theme package contract", () => {
     );
   });
 
+  it("keeps state text contrast-safe in light mode and state-specific in dark mode", () => {
+    const css = readFileSync(WORKSPACE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const light = declarationsFor(css, ":root");
+    const dark = declarationsFor(css, '\\[data-theme="dark"\\]');
+
+    expect(light.get("--fl-workspace-ok-ink")).toBe("var(--fl-ok-ink)");
+    expect(light.get("--fl-workspace-warn-ink")).toBe("var(--fl-ink)");
+    expect(light.get("--fl-workspace-fault-ink")).toBe("var(--fl-ink)");
+    expect(light.get("--fl-workspace-off-ink")).toBe("var(--fl-ink)");
+    expect(dark.get("--fl-workspace-ok-ink")).toBe("var(--fl-dark-ok)");
+    expect(dark.get("--fl-workspace-warn-ink")).toBe("var(--fl-dark-warn)");
+    expect(dark.get("--fl-workspace-fault-ink")).toBe("var(--fl-dark-fault)");
+    expect(dark.get("--fl-workspace-off-ink")).toBe("var(--fl-dark-muted)");
+  });
+
   it("exposes only the TypeScript and stylesheet package entrypoints", () => {
     const manifest = JSON.parse(readFileSync(new URL("package.json", PACKAGE_ROOT), "utf8"));
 

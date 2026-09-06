@@ -28,15 +28,15 @@
   --fl-workspace-warn: var(--fl-warn);
   --fl-workspace-warn-tint: var(--fl-warn-bg);
   --fl-workspace-warn-line: var(--fl-warn);
-  --fl-workspace-warn-ink: var(--fl-warn);
+  --fl-workspace-warn-ink: var(--fl-ink);
   --fl-workspace-fault: var(--fl-fault);
   --fl-workspace-fault-tint: var(--fl-fault-bg);
   --fl-workspace-fault-line: var(--fl-fault);
-  --fl-workspace-fault-ink: var(--fl-fault);
+  --fl-workspace-fault-ink: var(--fl-ink);
   --fl-workspace-off: var(--fl-off);
   --fl-workspace-off-tint: var(--fl-bg);
   --fl-workspace-off-line: var(--fl-off);
-  --fl-workspace-off-ink: var(--fl-off);
+  --fl-workspace-off-ink: var(--fl-ink);
 
   --fl-workspace-font: var(--fl-font);
   --fl-workspace-mono: var(--fl-mono);
@@ -98,7 +98,7 @@
   --fl-workspace-off: var(--fl-dark-faint);
   --fl-workspace-off-tint: var(--fl-dark-surface-hi);
   --fl-workspace-off-line: var(--fl-dark-line-hi);
-  --fl-workspace-off-ink: var(--fl-dark-faint);
+  --fl-workspace-off-ink: var(--fl-dark-muted);
 
   --fl-workspace-font: var(--fl-dark-font);
   --fl-workspace-mono: var(--fl-dark-mono);
