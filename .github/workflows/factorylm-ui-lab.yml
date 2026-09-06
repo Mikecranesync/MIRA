@@ -42,14 +42,17 @@ name: Shared UI (factorylm-ui-lab)
 # SCOPE: unit/contract only. Playwright/browser-matrix, accessibility, and
 # performance belong to shared-shell Task 8 and are intentionally NOT run here.
 
+# REQUIRED-CONTEXT RULE
+# ---------------------
+# "Shared UI contract (bun 1.4.0)" is a required status check on `main`
+# (registered 2026-09-06). A required check that is path-filtered never
+# reports on PRs outside its paths, and GitHub then waits for it forever —
+# #3592 (mira-web only) was blocked within minutes of registration. So the
+# pull_request trigger is deliberately UNFILTERED: the job runs on every PR
+# (about one minute) and always reports. Keep the path filter on push only.
+
 on:
   pull_request:
-    paths:
-      - "apps/factorylm-ui-lab/**"
-      - "packages/factorylm-theme/**"
-      - "packages/factorylm-interaction/**"
-      - "packages/factorylm-ui/**"
-      - ".github/workflows/factorylm-ui-lab.yml"
   push:
     branches: [main]
     paths:
