@@ -263,13 +263,25 @@ def test_empty_chunks_produce_no_context(sup) -> None:
 
 def test_context_uses_the_canonical_label_helper(sup) -> None:
     """Requirement 4, asserted by a test rather than by prose in the docstring."""
+    st = _state()
+    st["_instructional_vendor"] = "Allen-Bradley"
+    st["_instructional_model"] = "PowerFlex 525"
     with (
-        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "Set P041."}]),
+        patch(
+            "shared.neon_recall.recall_knowledge",
+            return_value=[
+                {
+                    "content": "Set P041.",
+                    "manufacturer": "Allen-Bradley",
+                    "model_number": "PowerFlex 525",
+                }
+            ],
+        ),
         patch(
             "shared.workers.rag_worker.format_source_label", return_value="Allen-Bradley PF525"
         ) as fmt,
     ):
-        out = sup._instructional_kb_context("q", _state(), [], tenant_id="t")
+        out = sup._instructional_kb_context("q", st, [], tenant_id="t")
 
     fmt.assert_called_once()
     assert out.startswith("[Source: Allen-Bradley PF525]")
@@ -433,3 +445,52 @@ def test_uncovered_question_path_is_untouched_by_the_gate(sup) -> None:
 )
 def test_chunk_matches_model(chunk_model, chunk_text, query_model, expected) -> None:
     assert chunk_matches_model(chunk_model, chunk_text, query_model) is expected
+
+
+# ── Codex round 3 blocker: absence of contradiction is not evidence ───────────
+
+
+def test_untagged_unrelated_chunk_cannot_ground_a_vendor_only_question(sup) -> None:
+    """BLOCKER (round 3). Both canonical filters are permissive by design:
+    `chunk_matches_vendor` keeps untagged chunks, and `chunk_matches_model` keeps
+    everything when the query resolved no model. Individually right; together they let
+    an untagged, unrelated chunk through a vendor-only question — no contradiction and
+    no evidence. A positive tie to the equipment is now required."""
+    st = _state()
+    st["_instructional_vendor"] = "Allen-Bradley"
+    st["_instructional_model"] = ""  # vendor-only question
+    with patch(
+        "shared.neon_recall.recall_knowledge",
+        return_value=[{"content": "Unrelated boilerplate about warranty terms."}],
+    ):
+        assert sup._instructional_kb_context("how do I reset it?", st, [], tenant_id="t") == ""
+
+
+def test_untagged_chunk_that_names_the_equipment_is_kept(sup) -> None:
+    """Over-rejection is its own failure: an untagged chunk that actually names the
+    equipment is real evidence and must still ground."""
+    st = _state()
+    st["_instructional_vendor"] = "Allen-Bradley"
+    st["_instructional_model"] = ""
+    with patch(
+        "shared.neon_recall.recall_knowledge",
+        return_value=[{"content": "On the Allen-Bradley unit, press ESC to exit."}],
+    ):
+        out = sup._instructional_kb_context("how do I reset it?", st, [], tenant_id="t")
+    assert "press ESC" in out
+
+
+def test_followup_keeps_the_prior_turn_model(sup) -> None:
+    """MAJOR 1. A follow-up that names only the vendor must not make the model gate
+    vacuous — otherwise the filter stops filtering exactly when a conversation gets going."""
+    st = _state()
+    st["context"] = {
+        "history": [],
+        "uns_context": {"manufacturer": "Allen-Bradley", "model": "PowerFlex 525"},
+    }
+    with (
+        patch("shared.engine.resolve_uns_path_multi", return_value=_resolution(model="")),
+        patch("shared.engine.kb_has_coverage", return_value=(True, "covered")),
+    ):
+        assert sup._instructional_kb_coverage("and the accel time?", st, [], tenant_id="t") is True
+    assert st["_instructional_model"] == "PowerFlex 525", "prior-turn model was discarded"

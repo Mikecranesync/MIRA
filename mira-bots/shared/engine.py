@@ -7329,8 +7329,15 @@ class Supervisor:
             # Remember what we resolved. Coverage is a per-VENDOR count, so it says
             # "this OEM has documentation", never "this documentation is about the
             # thing asked". The retrieval step filters on these (#3605).
+            prior_uns = (state.get("context") or {}).get("uns_context") or {}
             state["_instructional_vendor"] = mfr
-            state["_instructional_model"] = resolution.primary.model or ""
+            # Fall back to the prior turn's resolved model when THIS turn names only the
+            # vendor. Without it a follow-up ("and the accel time?") resolves no model and
+            # the model gate goes vacuous — the filter silently stops filtering exactly
+            # when a conversation gets going.
+            state["_instructional_model"] = (
+                resolution.primary.model or prior_uns.get("model") or ""
+            )
             return True
         except Exception as exc:  # noqa: BLE001 - never fail a turn over a coverage probe
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
@@ -7381,13 +7388,39 @@ class Supervisor:
                     continue
 
                 # RELEVANCE GATE (#3605). "This vendor has documentation" is not
-                # evidence. A chunk must match the resolved manufacturer AND the
-                # resolved model/series before it may ground anything. Rejected
-                # chunks are dropped BEFORE the citation label is built, so a
-                # rejected chunk can never appear as a [Source: ...] tag.
+                # evidence. Rejected chunks are dropped BEFORE the citation label is
+                # built, so a rejected chunk can never appear as a [Source: ...] tag.
+                #
+                # Two steps, and the second is the one that is easy to miss.
+                #
+                # (a) No CONTRADICTION on either axis — the canonical filters.
                 if not chunk_matches_vendor(ch.get("manufacturer"), want_vendor):
                     continue
                 if not chunk_matches_model(ch.get("model_number"), body, want_model):
+                    continue
+
+                # (b) At least one POSITIVE tie to the resolved equipment.
+                #
+                # Both canonical filters are permissive by design: `chunk_matches_vendor`
+                # keeps untagged chunks (generic fault tables are legitimately useful to
+                # the RAG path), and `chunk_matches_model` keeps everything when the
+                # query resolved no model. Individually correct; together they mean an
+                # untagged, unrelated chunk sails through a vendor-only question — no
+                # contradiction, and no evidence either. Grounding on that is exactly
+                # the failure this gate exists to stop.
+                #
+                # So absence of contradiction is not enough: something must actually tie
+                # the chunk to the equipment.
+                tagged_mfr = (ch.get("manufacturer") or "").strip()
+                tagged_model = (ch.get("model_number") or "").strip()
+                low_body = body.lower()
+                positive = bool(
+                    (tagged_mfr and chunk_matches_vendor(tagged_mfr, want_vendor))
+                    or (tagged_model and want_model)
+                    or (want_vendor and want_vendor.lower() in low_body)
+                    or (want_model and want_model.lower() in low_body)
+                )
+                if not positive:
                     continue
 
                 label = format_source_label(ch)
