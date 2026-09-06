@@ -8,9 +8,17 @@ drawer, source viewer). It ships **over the air** — no new APK.
 
 ## 1. Install the app (once)
 
-Plug the Pixel into the laptop and run the plug-in script (Windows lane, `tools/`), or
-open **https://updates.factorylm.com/download** on the phone and tap Download → Install
-(allow installs from Chrome once). You need versionCode **10** (1.1.0) or later.
+Plug the Pixel into the laptop (USB debugging on, accept the prompt) and run:
+
+```
+powershell -ExecutionPolicy Bypass -File tools\android\install-latest.ps1    # Windows
+bash tools/android/install-latest.sh                                          # macOS/Linux
+```
+
+It downloads the latest signed APK from updates.factorylm.com, verifies the sha256 that
+`latest.json` declares, installs with `adb install -r` (keeps your data), and launches the
+app. Or open **https://updates.factorylm.com/download** on the phone and tap Download →
+Install (allow installs from Chrome once). You need versionCode **10** (1.1.0) or later.
 
 ## 2. Sign in, then switch the update channel
 
