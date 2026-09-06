@@ -22,6 +22,16 @@ The 10 tests cover: source viewer → inspector → host precedence on Hub; atta
 - **The inspector is never modal.** On Hub it is a side panel; there is no mobile inspector profile. Escape still closes it in precedence order.
 - **Hardware Back is a DOM event, not an adapter method.** `PlatformAdapter.onBack()` is the host's handler for a Back the shell did not consume; the inbound signal is `document.dispatchEvent(new Event("factorylm:back"))`, exported as `BACK_EVENT`, so the Capacitor wrapper stays outside shared code.
 
+## Commodity-before-custom escalation (`.claude/rules/commodity-before-custom.md`)
+
+`Overlay` + `focus.ts` hand-build modal focus trapping, focus return, and Back handling — behaviors that rule names as commodity. The five questions, answered:
+
+1. **Standard platform behavior?** Partly. `<dialog>.showModal()` gives a focus trap, Escape-to-cancel, and an inert background for a *dialog*. It does not cover the navigation drawer (an `<aside>` positioned by Task 4's CSS, open at mount), the non-modal attachment menu, or a hardware-Back signal, and its Escape fires before the shell can apply one closing precedence across all four layers.
+2. **Capacitor?** Exposes the hardware Back event only; no focus or layer semantics. The shell consumes it as the `factorylm:back` document event.
+3. **Mature library?** `focus-trap` (MIT) would replace `trapTab`/`useFocusReturn`. Rejected for now: this lab's rule is a complete MIT/Apache closure with **no new dependencies** in Phase 1, and the trap here is ~40 lines with tests.
+4. **Existing MIRA abstraction?** The mobile audit table lists a WebView resume guard and an SSE client, not a layer stack; nothing to reuse.
+5. **Why custom is superior here:** one deterministic closing path (source viewer → attachment menu → inspector → drawer → host) that is unit-testable without a browser, exercised by 10 happy-dom tests and the Chromium spec. Maintenance impact: two files, 100 lines. Accessibility: focus trap, return, `aria-modal`, and Escape are covered by tests. Longevity: the source viewer can migrate to a native `<dialog>` behind the same `Overlay` props without a contract change once the Hub host adopts it; that migration is the first thing to revisit in Phase 2.
+
 ## Verification
 
 ```text
