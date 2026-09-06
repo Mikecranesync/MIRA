@@ -180,6 +180,11 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
       ];
     }
     const failed = t.answerStatus === "error";
+    // A failed turn never completed, so it wears no success chrome — the same
+    // rule the stopped branch above enforces. A provider failure persists
+    // `answerText=null` and therefore misses `isStoppedTurn`; if the row
+    // carries evidence anyway (a later server change, a partial write), it
+    // must not rehydrate as a cited, graded answer (F1, fleet-001-review-e9).
     return [
       user,
       {
@@ -187,10 +192,10 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
         role: "assistant",
         parts: assistantParts({
           text: answerBody(t.answerText, t.answerStatus),
-          citations: normalizeCitations(t.evidence),
-          machine: machineEvidenceEntries(t.evidence ?? []),
-          visual: visualObservationEntries(t.evidence ?? []),
-          basis: t.basis,
+          citations: failed ? [] : normalizeCitations(t.evidence),
+          machine: failed ? [] : machineEvidenceEntries(t.evidence ?? []),
+          visual: failed ? [] : visualObservationEntries(t.evidence ?? []),
+          basis: failed ? undefined : t.basis,
           safetyTrigger: safetyNotice?.trigger,
           identityDisputed: hasIdentityDispute(t.evidence),
           unknown: unknownEvidenceEntries(t.evidence),
