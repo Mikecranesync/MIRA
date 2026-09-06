@@ -47,6 +47,12 @@ export interface DriveFamily {
   aliases: string[];
 }
 
+export interface FaultSource {
+  doc: string;
+  page: string;
+  excerpt: string;
+}
+
 export interface DrivePackDisplay {
   modelSlug: string; // URL slug, e.g. "powerflex-525"
   packId: string; // pack id, e.g. "powerflex_525"
@@ -55,6 +61,7 @@ export interface DrivePackDisplay {
   parameters: ParameterCard[];
   manualDoc: string; // canonical source document (from the citations)
   provenanceLabel: string; // "manual-cited" — honest provenance shown on every page
+  faultSources: Record<string, FaultSource>; // per-fault cited cause text from provenance.sources
 }
 
 export interface FaultView {
@@ -107,6 +114,21 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
   const allManualCited =
     Object.values(items).length > 0 && Object.values(items).every((v) => v === "manual_cited");
 
+  // Extract per-fault cause text from provenance.sources.
+  // Excerpts lead with "F30001 Power unit: ..." or "F07011 Drive: ..." — extract by fault number.
+  const faultSources: Record<string, FaultSource> = {};
+  for (const src of (raw.provenance?.sources ?? []) as Array<any>) {
+    const excerpt: string = src.excerpt ?? "";
+    const m = excerpt.match(/^F(\d+)\s/i);
+    if (!m) continue;
+    const key = faultNum(`F${m[1]}`);
+    faultSources[key] = {
+      doc: String(src.doc ?? ""),
+      page: String(src.page ?? ""),
+      excerpt,
+    };
+  }
+
   return {
     modelSlug,
     packId: raw.pack_id,
@@ -119,6 +141,7 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
     parameters,
     manualDoc,
     provenanceLabel: allManualCited ? "manual-cited" : "mixed provenance",
+    faultSources,
   };
 }
 
