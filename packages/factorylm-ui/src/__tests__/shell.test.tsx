@@ -101,4 +101,27 @@ describe("shared FactoryLM shell", () => {
     hub.click(inspector);
     expect(hub.container.querySelector('[aria-label="Inspector"]')?.textContent).toContain("Asset binding");
   });
+
+  it("lets a host open project items and mount navigation footer controls", () => {
+    const opened: string[] = [];
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+      onOpenItem: (item) => opened.push(`${item.kind}:${item.id}`),
+      navigationFooter: <button type="button">Sign out</button>,
+    });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const item = view.container.querySelector<HTMLButtonElement>('button[data-item-id="thread-drive-a"]');
+    if (!shell || !item) throw new Error("thread item must be a button when onOpenItem is provided");
+
+    expect(item.dataset.itemKind).toBe("thread");
+    view.click(item);
+    expect(opened).toEqual(["thread:thread-drive-a"]);
+    expect(shell.dataset.navigationVisible).toBe("false");
+    expect(view.container.querySelector(".fl-shell__nav-footer")?.textContent).toContain("Sign out");
+
+    const inert = render({ surface: "web", fixture: "project-tree" });
+    expect(inert.container.querySelector('button[data-item-id="thread-drive-a"]')).toBeNull();
+    expect(inert.container.querySelector(".fl-shell__nav-footer")).toBeNull();
+  });
 });

@@ -1,5 +1,5 @@
-import type { PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, type Dispatch } from "react";
+import type { PlatformAdapter, ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
+import { useEffect, type Dispatch, type ReactNode } from "react";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { Inspector } from "./Inspector";
@@ -15,6 +15,10 @@ export interface FactoryLMShellProps {
   readonly adapter: PlatformAdapter;
   /** Optional live-host hooks (real send/stop/retry/citation viewer). Absent = fixture-only shell. */
   readonly hooks?: HostHooks;
+  /** Host hook: open a project item (thread/run/file/finding) from the tree. */
+  readonly onOpenItem?: (item: ProjectItem) => void;
+  /** Host-owned controls rendered at the bottom of navigation. */
+  readonly navigationFooter?: ReactNode;
 }
 
 /** Custom DOM event a host dispatches on `document` for a hardware Back press. */
@@ -51,7 +55,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, navigationFooter }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
   const scrimLayer: LayerName | null = sourceOpen ? "source" : (mobile && state.navigationVisible ? "navigation" : null);
@@ -90,7 +94,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks }: FactoryLMShe
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile}>
-      <Sidebar state={state} dispatch={dispatch} />
+      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} footer={navigationFooter} />
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
