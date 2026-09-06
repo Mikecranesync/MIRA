@@ -222,4 +222,36 @@ describe("universal composer", () => {
     await view.flush();
     expect(add.getAttribute("aria-busy")).toBe("false");
   });
+
+  it("routes send, stop, retry, and citations to host hooks when a live host provides them", () => {
+    const calls: string[] = [];
+    const hooks = {
+      onSend: (text: string) => calls.push(`send:${text}`),
+      onStop: () => calls.push("stop"),
+      onRetry: (turnId: string) => calls.push(`retry:${turnId}`),
+      onSource: (source: { id: string }) => calls.push(`source:${source.id}`),
+      busy: false,
+    };
+    const view = render({ surface: "mobile", fixture: "grounded-answer", hooks });
+    const { form, textarea } = composer(view);
+    view.type(textarea, "real question");
+    view.submit(form);
+    expect(calls).toEqual(["send:real question"]);
+    expect(view.outputs().draft).toBe("");
+    expect(view.outputs().turnCount).toBe(1);
+
+    view.click(view.container.querySelector('button[data-part-type="source"]') ?? new Error("citation is required") as never);
+    expect(calls).toContain("source:source-f30001-manual");
+    expect(view.container.querySelector('[aria-label="Source viewer"]')).toBeNull();
+
+    const failed = render({ surface: "mobile", fixture: "error-retry", hooks });
+    view.click(failed.buttonNamed("Retry") ?? new Error("Retry is required") as never);
+    expect(calls).toContain("retry:turn-error-retry");
+    expect(failed.outputs().retryTarget).toBe("");
+
+    const busy = render({ surface: "mobile", fixture: "grounded-answer", hooks: { ...hooks, busy: true } });
+    expect(busy.buttonNamed("Send")).toBeNull();
+    view.click(busy.buttonNamed("Stop") ?? new Error("Stop is required") as never);
+    expect(calls).toContain("stop");
+  });
 });

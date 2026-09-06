@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -9,7 +13,27 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
+    "baseUrl": ".",
+    "paths": {
+      "@factorylm/interaction": [
+        "../packages/factorylm-interaction/src/index.ts"
+      ],
+      "@factorylm/theme": [
+        "../packages/factorylm-theme/src/index.ts"
+      ],
+      "@factorylm/theme/*": [
+        "../packages/factorylm-theme/src/*"
+      ],
+      "@factorylm/ui": [
+        "../packages/factorylm-ui/src/index.ts"
+      ],
+      "@factorylm/ui/*": [
+        "../packages/factorylm-ui/src/*"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

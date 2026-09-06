@@ -4,6 +4,7 @@ import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { Inspector } from "./Inspector";
 import { Overlay, type LayerName } from "./Overlay";
+import type { HostHooks } from "./parts";
 import { Sidebar } from "./Sidebar";
 import { SourceViewer } from "./SourceViewer";
 import { ThreadHeader } from "./ThreadHeader";
@@ -12,6 +13,8 @@ export interface FactoryLMShellProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
+  /** Optional live-host hooks (real send/stop/retry/citation viewer). Absent = fixture-only shell. */
+  readonly hooks?: HostHooks;
 }
 
 /** Custom DOM event a host dispatches on `document` for a hardware Back press. */
@@ -48,7 +51,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
   const scrimLayer: LayerName | null = sourceOpen ? "source" : (mobile && state.navigationVisible ? "navigation" : null);
@@ -91,8 +94,8 @@ export function FactoryLMShell({ state, dispatch, adapter }: FactoryLMShellProps
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
-      <Conversation state={state} dispatch={dispatch} adapter={adapter} />
-      <Composer state={state} dispatch={dispatch} adapter={adapter} />
+      <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={false}>
       <Inspector state={state} />

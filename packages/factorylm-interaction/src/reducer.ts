@@ -36,8 +36,20 @@ export interface ShellState {
   readonly mode: "ask" | "work";
 }
 
+/** Live data a host feeds into the shell without resetting UI state (drawer, draft, mode, source). */
+export interface HydratePayload {
+  readonly thread: InteractionThread;
+  readonly run?: InteractionRun;
+  readonly projects?: readonly Project[];
+  readonly machines?: readonly Machine[];
+  readonly activeContext?: ContextSnapshot;
+  readonly offline?: OfflineState;
+  readonly inspector?: readonly InspectorField[];
+}
+
 export type ShellAction =
   | { readonly type: "load-fixture"; readonly fixture: ShellFixture; readonly profile?: SurfaceProfile }
+  | { readonly type: "hydrate"; readonly data: HydratePayload }
   | { readonly type: "set-mode"; readonly mode: "ask" | "work" }
   | { readonly type: "select-project"; readonly projectId: string }
   | { readonly type: "select-folder"; readonly folderId: string }
@@ -198,6 +210,28 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
     case "load-fixture": {
       const loaded = createShellState(action.fixture, action.profile ?? state.profile);
       return freezeState({ ...loaded, theme: state.theme });
+    }
+
+    case "hydrate": {
+      const data = copyValue(action.data);
+      const threadChanged = data.thread.id !== state.thread.id;
+      const selectedSource = state.selectedSource && findSource(data.thread, state.selectedSource.id)
+        ? state.selectedSource
+        : null;
+      return freezeState({
+        ...state,
+        thread: data.thread,
+        ...(data.run !== undefined ? { run: data.run } : threadChanged ? { run: undefined } : {}),
+        ...(data.projects !== undefined ? { projects: data.projects } : {}),
+        ...(data.machines !== undefined ? { machines: data.machines } : {}),
+        ...(data.activeContext !== undefined ? { activeContext: data.activeContext } : {}),
+        ...(data.offline !== undefined ? { offline: data.offline } : {}),
+        ...(data.inspector !== undefined ? { inspector: data.inspector } : {}),
+        ...(threadChanged ? { mode: data.thread.mode, draft: "", retryTargetTurnId: null } : {}),
+        selectedSource,
+        ...(data.activeContext?.projectId ? { selectedProjectId: data.activeContext.projectId } : {}),
+        ...(data.activeContext?.folderId ? { selectedFolderId: data.activeContext.folderId } : {}),
+      });
     }
 
     case "set-mode":

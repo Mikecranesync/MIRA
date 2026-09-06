@@ -1,0 +1,7 @@
+/* Host frame for the shared shell inside the mobile tab layout. The shell's own
+   stylesheet assumes it owns the viewport (min-block-size: 100dvh); here it
+   fills the notebook panel instead. Tokens only (.claude/rules/ui-style.md). */
+.unified-host { display: flex; flex: 1 1 auto; min-block-size: 0; flex-direction: column; overflow: hidden; }
+.unified-host .fl-shell { min-block-size: 0; block-size: 100%; flex: 1 1 auto; }
+.unified-host .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); }
+.unified-host .fl-conversation { padding-block-end: var(--fl-workspace-space-4); }

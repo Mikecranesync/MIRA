@@ -80,6 +80,7 @@
 .fl-card[data-finding-status="verified"] { border-color: var(--fl-workspace-ok-line); }
 .fl-card[data-finding-status="rejected"] { border-color: var(--fl-workspace-off-line); color: var(--fl-workspace-off-ink); }
 
+.fl-identity-dispute { padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-warn-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-context-change,
 .fl-status,
 .fl-usage { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
