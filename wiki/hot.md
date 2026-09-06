@@ -1,3 +1,30 @@
+# Hot Cache — 2026-09-06 — FLM-UI-4000 shared shell foundation started (local, not pushed)
+
+PR #3622 remains the draft design authority at exact head `470aa1873f05da597b5304ead119aeb19ba3d9b9`.
+The claimed implementation lane is local branch `codex/factorylm-unified-ui-v2-shell-001`, stacked
+on that head, currently at `bb8433a58`. No implementation PR, merge, deploy, production route, API,
+auth, database, provider, or customer-data change has been made.
+
+Approved implementation foundation now present:
+- `packages/factorylm-interaction`: 13 deterministic, deeply immutable Phase 1 fixtures; ordered
+  interaction-part vocabulary; canonical machine links; pure shared reducer; injected platform
+  adapter boundary; offline and enterprise-inspector state retained.
+- `packages/factorylm-theme`: byte-identical canonical tokens plus complete light/dark workspace
+  aliases; state text mappings are contrast-safe and protected by exact contract tests.
+- `packages/factorylm-ui`: one React shell for public/web/mobile/Hub, reducer-backed nested project /
+  folder / canonical-machine navigation, responsive drawer/sheet foundation, Hub-gated inspector,
+  honest disabled New chat, and an inert center placeholder for the next conversation slice.
+- `apps/factorylm-ui-lab`: MIT/Apache-only Bun test/toolchain boundary with a clean-checkout UI-peer
+  bootstrap. Current verification: 41 tests / 573 assertions, TypeScript clean, 26 external package
+  manifests license-audited. Tasks 1–4 each passed independent scoped review after fixes.
+
+Next implementation boundary: Task 5 conversation-part renderers + Ask/Work composer, then Task 6
+mobile focus/Back/overlay behavior, Task 7 runnable disconnected lab, and Task 8 browser/a11y/
+performance/screenshot matrix. CodeGraph is not initialized in this worktree, so current structural
+coverage used direct declarations plus TypeScript/tests; initialize before relying on graph coverage.
+
+---
+
 # Hot Cache — 2026-08-31 — Mobile ChatV2 merged, capability-gated and default-off
 
 PR #3516 merged to `main` as `1ed59e988` after PR #3517 landed persisted safety-stop markers.

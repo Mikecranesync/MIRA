@@ -95,7 +95,9 @@ import {
   createDriveCommanderCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
+  verifyDCProSession,
 } from "./lib/stripe.js";
+import { ensureDCProTenant } from "./lib/dc-pro-activation.js";
 import {
   activateHubUserByEmail,
   expireHubUserByEmail,
@@ -577,12 +579,57 @@ app.get("/feature/:slug", (c) => {
 // Content is served from a vendored, committed pack (src/data/drive-packs/*.json);
 // every answer is cited from the pack — no generic AI. No auth; free tier only.
 // ---------------------------------------------------------------------------
-app.get("/drive-commander/:model", (c) => {
+app.get("/drive-commander/:model", async (c) => {
   const pack = getPack(c.req.param("model"));
   if (!pack) return c.notFound();
-  // Stripe checkout returns here with ?checkout=success|cancelled.
+
+  const checkout = c.req.query("checkout");
+  const sessionId = c.req.query("session_id") ?? "";
+  let isPro = false;
+
+  // 1. Verify a fresh Stripe checkout session to grant a Pro entitlement cookie.
+  // The webhook may arrive after this redirect, so we upsert the tenant here
+  // (ensureDCProTenant is idempotent — the webhook becomes a no-op backup).
+  if (checkout === "success" && sessionId) {
+    const verified = await verifyDCProSession(sessionId).catch(() => null);
+    if (verified) {
+      const dcTenant = await ensureDCProTenant(verified).catch(() => null);
+      // Grant isPro from the verified session regardless of the tenant DB state —
+      // the upsert above guarantees tier is set, but we never block on it.
+      isPro = true;
+      const tok = await signToken({
+        tenantId: dcTenant?.id ?? verified.customerId,
+        email: dcTenant?.email ?? verified.email,
+        tier: "drive_commander_pro",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+        atlasRole: "USER",
+      });
+      c.header("Set-Cookie", buildSessionCookie(tok));
+    }
+  }
+
+  // 2. Accept existing session JWT (cookie) for returning Pro subscribers.
+  if (!isPro) {
+    const raw = c.req.header("cookie") ?? "";
+    const cookies = Object.fromEntries(
+      raw.split(";").map((s) => {
+        const [k, ...v] = s.trim().split("=");
+        return [k ?? "", v.join("=")];
+      }),
+    );
+    const sessionCookie = cookies["mira_session"] ?? "";
+    if (sessionCookie) {
+      const { verifyToken } = await import("./lib/auth.js");
+      const payload = await verifyToken(sessionCookie).catch(() => null);
+      if (payload?.tier === "drive_commander_pro") {
+        isPro = true;
+      }
+    }
+  }
+
   return c.html(
-    renderDriveLandingPage(pack, { checkout: c.req.query("checkout") }),
+    renderDriveLandingPage(pack, { checkout, isPro }),
   );
 });
 
@@ -1164,7 +1211,7 @@ app.post("/api/stripe/webhook", async (c) => {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      // Drive Commander Pro (individual $29/mo) — record the purchase and STOP.
+      // Drive Commander Pro (individual $197/yr annual, lead SKU locked 2026-09-05) — record the purchase and STOP.
       // This is NOT a CMMS team tenant: no tier activation, no Atlas, no Hub
       // provisioning. Entitlement delivery is tracked separately.
       if (session.metadata?.product === "drive-commander-pro") {
@@ -1179,34 +1226,10 @@ app.post("/api/stripe/webhook", async (c) => {
           "[stripe-webhook] Drive Commander Pro purchase:",
           dcEmail, dcCustomer, dcSubscription
         );
-        let dcTenant = dcEmail ? await findTenantByEmail(dcEmail) : null;
-        if (!dcTenant && dcEmail) {
-          const newId = crypto.randomUUID();
-          await createTenant({
-            id: newId,
-            email: dcEmail,
-            company: dcEmail.split("@")[1] || "unknown",
-            firstName: "",
-            tier: "drive_commander_pro",
-            atlasPassword: "",
-            atlasCompanyId: 0,
-            atlasUserId: 0,
-          });
-          dcTenant = await findTenantById(newId);
-        }
+        const dcTenant = dcEmail
+          ? await ensureDCProTenant({ email: dcEmail, customerId: dcCustomer, subscriptionId: dcSubscription })
+          : null;
         if (dcTenant) {
-          await updateTenantStripe(dcTenant.id, dcCustomer, dcSubscription);
-          if (dcTenant.tier !== "active") {
-            await updateTenantTier(dcTenant.id, "drive_commander_pro");
-          }
-          void recordAuditEvent({
-            tenantId: dcTenant.id,
-            actorType: "system",
-            actorId: "stripe.webhook",
-            action: "drive_commander_pro.purchased",
-            resource: dcSubscription,
-            metadata: { customer_id: dcCustomer, subscription_id: dcSubscription },
-          });
           captureServerEvent({
             event: "drive_commander_purchase",
             distinctId: dcTenant.id,

@@ -16,11 +16,14 @@ import {
 export function MoreTab({
   me,
   chatV2Available,
+  onChatUiChange,
   onSignOut,
   backRef,
 }: {
   me: Me;
   chatV2Available: boolean;
+  /** Unified root (FLM-UI-4000): the app re-roots when the choice changes. */
+  onChatUiChange?: (choice: ChatUiChoice) => void;
   onSignOut: () => Promise<void>;
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
@@ -124,24 +127,51 @@ export function MoreTab({
           surface is the default; this is the one-tap way back to the classic
           screen if anything misbehaves on the floor — the rollback lever that
           does not need a release. */}
-      {chatV2Available && <div className="card" style={{ marginTop: 10 }}>
-        <div className="title">Chat style</div>
-        <div className="meta" style={{ marginBottom: 8 }}>
-          {chatUi === "v2"
-            ? "New conversation (streaming, attachments, cited answers)."
-            : "Classic chat screen."}
+      {chatV2Available ? (
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="title">Chat style</div>
+          <div className="meta" style={{ marginBottom: 8 }}>
+            {chatUi === "v2"
+              ? "New conversation (streaming, attachments, cited answers)."
+              : chatUi === "unified"
+                ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+                : "Classic chat screen."}
+          </div>
+          <button
+            data-testid="chat-style-toggle"
+            onClick={() => {
+              const next: ChatUiChoice = chatUi === "v2" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
+              setChatUi(next);
+              void writeChatUiChoice(next);
+              onChatUiChange?.(next);
+            }}
+          >
+            {chatUi === "v2" ? "Try the unified interface (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
+          </button>
         </div>
-        <button
-          data-testid="chat-style-toggle"
-          onClick={() => {
-            const next: ChatUiChoice = chatUi === "v2" ? "legacy" : "v2";
-            setChatUi(next);
-            void writeChatUiChoice(next);
-          }}
-        >
-          {chatUi === "v2" ? "Use classic chat" : "Use new conversation"}
-        </button>
-      </div>}
+      ) : (
+        /* Without the chat_v2 capability only the classic screen and the
+           device-local unified BETA are offered; nothing here grants v2. */
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="title">Chat style</div>
+          <div className="meta" style={{ marginBottom: 8 }}>
+            {chatUi === "unified"
+              ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+              : "Classic chat screen."}
+          </div>
+          <button
+            data-testid="chat-style-toggle"
+            onClick={() => {
+              const next: ChatUiChoice = chatUi === "unified" ? "legacy" : "unified";
+              setChatUi(next);
+              void writeChatUiChoice(next);
+              onChatUiChange?.(next);
+            }}
+          >
+            {chatUi === "unified" ? "Use classic chat" : "Try the unified interface (beta)"}
+          </button>
+        </div>
+      )}
 
       <button style={{ marginTop: 10 }} onClick={() => setShowAbout(true)}>
         About &amp; updates

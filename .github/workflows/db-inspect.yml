@@ -145,6 +145,42 @@ jobs:
       # timeout-minutes: 5 and the kg/knowledge_entries sweeps below can consume
       # all of it, which cancelled the run that first tried to read this ledger.
       # A spend read must not depend on unrelated heavy queries completing.
+      - name: equipment_notebook_turns owner (migration 086) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo
+          \echo === equipment_notebook_turns.owner_user_id (migration 086) — READ-ONLY ===
+          \echo 'Pre-/post-release schema check for private technician conversations (#3597):'
+          \echo 'column present, index present, legacy rows still ownerless (no backfill), and'
+          \echo 'how many rows carry an owner. No question/answer text is selected.'
+          SELECT 'equipment_notebook_turns.owner_user_id' AS col, EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='equipment_notebook_turns'
+              AND column_name='owner_user_id' AND data_type='text' AND is_nullable='YES') AS present_text_nullable;
+          SELECT EXISTS(SELECT 1 FROM pg_indexes
+                        WHERE schemaname='public' AND tablename='equipment_notebook_turns'
+                          AND indexname='idx_equipment_notebook_turns_owner') AS index_present;
+          SELECT migration_name, applied_at FROM schema_migrations
+           WHERE migration_name LIKE '086_%' ORDER BY applied_at;
+          \echo
+          \echo === rows: total / ownerless (legacy, must equal pre-release total) / owned ===
+          SELECT count(*)                                   AS total_rows,
+                 count(*) FILTER (WHERE owner_user_id IS NULL)     AS ownerless_rows,
+                 count(*) FILTER (WHERE owner_user_id IS NOT NULL) AS owned_rows,
+                 min(created_at) FILTER (WHERE owner_user_id IS NOT NULL) AS first_owned_at,
+                 max(created_at)                                  AS newest_row_at
+            FROM equipment_notebook_turns;
+          \echo
+          \echo === owned rows per notebook (ids only), newest first ===
+          SELECT notebook_id, count(*) AS owned_turns, count(DISTINCT owner_user_id) AS distinct_owners,
+                 max(created_at) AS newest
+            FROM equipment_notebook_turns WHERE owner_user_id IS NOT NULL
+           GROUP BY notebook_id ORDER BY newest DESC LIMIT 10;
+          SQL
+
       - name: decision_traces spend ledger (migration 080) — READ-ONLY
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}

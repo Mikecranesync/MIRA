@@ -606,7 +606,7 @@ jobs:
             root@165.245.138.91 'bash -s' << 'ENDSSH'
           set -uo pipefail
           SE=/etc/nginx/sites-enabled
-          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm"
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm updates.factorylm.com"
           KNOWN_PENDING="factorylm-landing.bak.2026-05-13-csp factorylm-landing.bak.20260509-203650 mira.bak.20260426-082325 mira.bak.20260506-094431 mira.bak.20260509-121505 mira.bak.before-scan-restore-20260518-215310 mira.bak.cra-20260504-024235 mira.bak.inbox mira.bak.phase1 mira.bak.scan-deploy-20260504-224027"
 
           known=""; unknown=""

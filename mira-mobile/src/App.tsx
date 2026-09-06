@@ -20,6 +20,8 @@ import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
 import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
+import { UnifiedRoot } from "./screens/UnifiedRoot";
+import { readChatUiChoice, writeChatUiChoice, type ChatUiChoice } from "./lib/chat-ui-pref";
 import { closeTopTransientLayer } from "./lib/transient-layer";
 import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
 import { MoreTab } from "./screens/More";
@@ -41,16 +43,21 @@ export default function App() {
   // set the route in one go. Doing only the first drops the technician on the
   // notebook list, one tap away from the machine they are standing next to.
   const [notebookRoute, setNotebookRoute] = useState<NotebookRoute>({ name: "home" });
+  // FLM-UI-4000 unified root: when the device prefers the unified shell, it
+  // owns the whole app (navigation, header, conversation) instead of the tabs.
+  const [chatUi, setChatUi] = useState<ChatUiChoice | null>(null);
   // Each tab exposes a back-handler ref the shell calls on Android back.
   const backHandler = useRef<(() => boolean) | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const [{ value: savedTab }, m] = await Promise.all([
+      const [{ value: savedTab }, m, choice] = await Promise.all([
         Preferences.get({ key: TAB_KEY }),
         getMe(),
+        readChatUiChoice(),
       ]);
       if (savedTab && TABS.some((t) => t.id === savedTab)) setTab(savedTab as TabId);
+      setChatUi(choice);
       setMe(m);
       setBooted(true);
     })();
@@ -110,6 +117,39 @@ export default function App() {
 
   const tabs = visibleTabs(me.capabilities);
 
+  const signOutFlow = async () => {
+    // Phase 4: local data never outlives the session — but try to sync
+    // queued work orders first, and warn before destroying any.
+    if ((await pendingCount(preferencesStore, me.tenantId)) > 0) {
+      await drainQueue(preferencesStore, me.tenantId, createWorkOrder);
+      const left = await pendingCount(preferencesStore, me.tenantId);
+      if (
+        left > 0 &&
+        !window.confirm(
+          `${left} queued work order${left > 1 ? "s haven't" : " hasn't"} synced and will be deleted. Sign out anyway?`,
+        )
+      )
+        return;
+    }
+    await signOut();
+    await purgeAllQueues(preferencesStore);
+    setMe(null);
+  };
+
+  if (chatUi === "unified") {
+    return (
+      <UnifiedRoot
+        me={me}
+        backRef={backHandler}
+        onSignOut={signOutFlow}
+        onSwitchClassic={() => {
+          void writeChatUiChoice("legacy");
+          setChatUi("legacy");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="shell">
       <div className="topbar">
@@ -149,6 +189,7 @@ export default function App() {
           <MoreTab
             me={me}
             chatV2Available={can(me.capabilities, "chat_v2")}
+            onChatUiChange={setChatUi}
             backRef={backHandler}
             onSignOut={async () => {
               // Phase 4: local data never outlives the session — but try to

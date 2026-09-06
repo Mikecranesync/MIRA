@@ -25,6 +25,12 @@ on:
         default: "no"
         type: choice
         options: ["no", "yes"]
+      publish_download:
+        description: "Publish the signed APK to https://updates.factorylm.com/download (direct install, no Play)?"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
 
 permissions:
   contents: read
@@ -36,6 +42,9 @@ concurrency:
 jobs:
   build-and-distribute:
     runs-on: ubuntu-latest
+    # Same production environment + DOPPLER_TOKEN as deploy-vps.yml — the repo
+    # has no DOPPLER_TOKEN_PRD secret (this workflow had never run).
+    environment: production
     steps:
       - uses: actions/checkout@v6
 
@@ -73,7 +82,7 @@ jobs:
       # that exists only for this job. It is never echoed and never an artifact.
       - name: Materialise signing key
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/signing"
@@ -85,11 +94,13 @@ jobs:
 
       - name: Build signed release APK
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         working-directory: mira-mobile/android
         run: |
           set -euo pipefail
           export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          # gradlew was committed without the executable bit; belt and braces.
+          chmod +x ./gradlew
           doppler run --project factorylm --config prd -- ./gradlew --no-daemon assembleRelease
 
       # Fail loudly if the APK came out unsigned. build.gradle deliberately
@@ -107,10 +118,45 @@ jobs:
           grep -q "CN=FactoryLM" /tmp/signing.txt
           echo "signed OK"
 
+      # The signed APK is what testers receive anyway; keeping it as a run
+      # artifact lets a release be installed on an emulator/device for proof
+      # even when Firebase distribution is off. The keystore is never uploaded.
+      # Play accepts only an App Bundle. Same keystore, same run — the APK is for
+      # testers/emulators, the AAB is what gets uploaded to Play Console.
+      - name: Build signed release AAB (Play)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        working-directory: mira-mobile/android
+        run: |
+          set -euo pipefail
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          doppler run --project factorylm --config prd -- ./gradlew --no-daemon bundleRelease
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify -verbose -certs "$AAB" | tee /tmp/aab-signing.txt | tail -3
+          grep -q "jar verified" /tmp/aab-signing.txt
+          grep -q "CN=FactoryLM" /tmp/aab-signing.txt
+          echo "AAB signed OK"
+
+      - name: Upload signed AAB artifact (upload this to Play Console → Internal testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab-${{ github.sha }}
+          path: mira-mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk-${{ github.sha }}
+          path: mira-mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Distribute to testers
         if: inputs.distribute == 'yes'
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           set -euo pipefail
           doppler secrets get FIREBASE_SERVICE_ACCOUNT_JSON --plain \
@@ -124,6 +170,43 @@ jobs:
             --release-notes "${{ inputs.release_notes }}"
           rm -f "$RUNNER_TEMP/fb.json"
 
+      - name: Publish direct-install download (updates.factorylm.com/download)
+        if: inputs.publish_download == 'yes'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          APK=mira-mobile/android/app/build/outputs/apk/release/app-release.apk
+          VN=$(grep -E '^\s*versionName ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionName "([^"]+)".*/\1/')
+          VC=$(grep -E '^\s*versionCode ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionCode ([0-9]+).*/\1/')
+          test -n "$VN" && test -n "$VC"
+          FILE="factorylm-${VN}-vc${VC}.apk"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "$APK")
+          STAGE="$RUNNER_TEMP/app"; mkdir -p "$STAGE"
+          cp "$APK" "$STAGE/$FILE"
+          cp "$APK" "$STAGE/latest.apk"
+          cp deployment/ota-download/index.html "$STAGE/index.html"
+          printf '{"versionName":"%s","versionCode":%s,"file":"%s","sha256":"%s","sizeBytes":%s,"builtAt":"%s","commit":"%s"}\n' \
+            "$VN" "$VC" "$FILE" "$SHA" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ github.sha }}" > "$STAGE/latest.json"
+          cat "$STAGE/latest.json"
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91"
+          $SSH 'mkdir -p /srv/factorylm/ota/app'
+          # Versioned APK first (immutable), then the pointers, so a reader never sees
+          # latest.json naming a file that is not there yet.
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/$FILE" "root@165.245.138.91:/srv/factorylm/ota/app/$FILE"
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/latest.apk" "$STAGE/latest.json" "$STAGE/index.html" root@165.245.138.91:/srv/factorylm/ota/app/
+          $SSH "cd /srv/factorylm/ota/app && echo '$SHA  $FILE' | sha256sum -c - && echo '$SHA  latest.apk' | sha256sum -c -"
+          echo "=== public probes ==="
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/download -> %{http_code} %{redirect_url}\n" https://updates.factorylm.com/download
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/ -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/latest.json -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/latest.json
+          curl -sSI https://updates.factorylm.com/app/latest.apk | grep -i -E '^(HTTP|content-type|content-length)'
+          echo "download page: https://updates.factorylm.com/download ($FILE, sha256 $SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Report
         run: |
           {

@@ -1,0 +1,35 @@
+{
+  "name": "factorylm-ui-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "bootstrap:ui": "\"$npm_execpath\" scripts/bootstrap-ui.ts",
+    "dev": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" ./index.html",
+    "build": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" x tsc --noEmit && \"$npm_execpath\" scripts/build.ts",
+    "preview": "\"$npm_execpath\" scripts/preview.ts",
+    "test": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages src",
+    "test:shell": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx",
+    "test:watch": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test --watch ../../packages src",
+    "test:e2e": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" x playwright test",
+    "licenses": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" scripts/check-dependency-licenses.ts",
+    "verify": "\"$npm_execpath\" run test && \"$npm_execpath\" run build && \"$npm_execpath\" run budget && \"$npm_execpath\" run licenses",
+    "budget": "\"$npm_execpath\" scripts/check-build-budget.ts"
+  },
+  "dependencies": {
+    "@factorylm/interaction": "file:../../packages/factorylm-interaction",
+    "@factorylm/theme": "file:../../packages/factorylm-theme",
+    "@factorylm/ui": "file:../../packages/factorylm-ui",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "18.0.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@types/bun": "1.3.10",
+    "playwright": "1.59.1",
+    "typescript": "5.7.2"
+  }
+}

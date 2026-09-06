@@ -56,10 +56,12 @@ import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { ChatV2 } from "./ChatV2";
 import { SafetyNotice } from "./SafetyNotice";
+import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
-import { useChatV2Enabled } from "../lib/chat-ui-pref";
+import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { useChatUiChoice } from "../lib/chat-ui-pref";
+import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -141,10 +143,17 @@ export function NotebookScreen({
   backRef,
   onExit,
   onOpenNotebook,
+  chromeless = false,
+  unifiedShell,
 }: {
   id: string;
   chatV2Available?: boolean;
   openAddSources?: boolean;
+  /** Unified root (FLM-UI-4000): the shared shell owns the app bar and
+   *  navigation, so this screen renders no chrome of its own. */
+  chromeless?: boolean;
+  /** Host tree/footer for the unified shell when it owns the whole app. */
+  unifiedShell?: UnifiedShellHost;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
   /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
@@ -199,7 +208,8 @@ export function NotebookScreen({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
-  const chatV2 = useChatV2Enabled(chatV2Available);
+  const chatSurface = useChatUiChoice(chatV2Available);
+  const chatV2 = chatSurface === null ? null : chatSurface === "v2";
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
@@ -409,6 +419,7 @@ export function NotebookScreen({
           because LOOK/READ/REPLAY is a working instrument for a technician,
           not chrome, and it keeps its `aria-label` so the existing sensor
           suites still find it. */}
+      {!chromeless && (
       <div className="nb-appbar">
         <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
           ‹
@@ -430,6 +441,7 @@ export function NotebookScreen({
           ⋯
         </button>
       </div>
+      )}
 
       {/* Leaving Chat is now a deliberate trip, so the way back is explicit.
           Chat is the default and the 95% case, and it stays at one row. */}
@@ -705,7 +717,40 @@ export function NotebookScreen({
           }}
         />
       )}
-      {panel === "chat" && chatV2 === false && (
+      {/* Unified FactoryLM shell (FLM-UI-4000 Phase 2, mobile lane): the same
+          send path, scope, riders, uploads and citation viewer as ChatV2 — only
+          the shell changes. Device-local choice under the same capability. */}
+      {panel === "chat" && chatSurface === "unified" && (
+        <UnifiedChat
+          turns={turns}
+          liveTurns={liveTurns}
+          pending={pending}
+          busy={busy}
+          canStop={canStopGeneration}
+          canRetry={Boolean(failedSend) && !busy}
+          handlers={{
+            onSend: (text) => void sendQuestion(text),
+            onStop: stopGeneration,
+            onCitation: setViewCitation,
+            onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachFile: () => void attachPdfSource(),
+            onRetry: () => failedSend && void sendQuestion("", failedSend),
+          }}
+          host={unifiedShell}
+          meta={{
+            notebookId: notebook.id,
+            title: notebook.displayName,
+            asset: notebook.asset
+              ? {
+                  id: notebook.asset.entityId,
+                  name: [notebook.manufacturer, notebook.model].filter(Boolean).join(" ") || notebook.displayName,
+                }
+              : null,
+            identityConfirmed: notebook.identityStatus === "user_confirmed",
+          }}
+        />
+      )}
+      {panel === "chat" && chatSurface === "legacy" && (
         <>
           <div className="content" style={{ paddingTop: 0 }} ref={scrollRef}>
             {turns.length === 0 && liveTurns.length === 0 && (
@@ -748,6 +793,7 @@ export function NotebookScreen({
                       diverge if that contract ever changes. */}
                   {safety && <SafetyNotice />}
                   <AnswerMarkdown text={t.answerText!} citations={[]} />
+                  {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                   <div className="meta answer-stopped">Stopped</div>
                 </div>
               ) : (
@@ -759,6 +805,10 @@ export function NotebookScreen({
                   citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
+                {/* 086 §3: read from the persisted row, like `basis` and the
+                    safety marker — never inferred. Not success chrome, so it
+                    is not gated on `safety`. */}
+                {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
@@ -831,6 +881,7 @@ export function NotebookScreen({
                     onCitation={setViewCitation}
                   />
                 )}
+                {t.a.identityDisputed && <IdentityDisputeNotice />}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
                     last turn only — tapping one sends it as the next turn.
                     Never on a safety turn: "ask me more" is success chrome. */}
@@ -890,6 +941,10 @@ export function NotebookScreen({
                     (wire order: content* → safety → status), so the in-flight
                     turn must be able to show the banner too. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
+                {/* 086 §3: the dispute marker is the FIRST frame on a disputed
+                    wire — it must show while the answer is still streaming,
+                    exactly as ChatV2's pendingMessages does. */}
+                {pending.a.identityDisputed && <IdentityDisputeNotice />}
                 {pending.a.answer ? (
                   <AnswerMarkdown text={pending.a.answer} citations={[]} />
                 ) : (

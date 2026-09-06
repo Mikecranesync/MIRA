@@ -194,7 +194,7 @@ test.describe("Equipment Notebook loop", () => {
     await enableAllSources(page.request); // restore for downstream tests/projects
   });
 
-  test("zero selected sources → honest guard, no fabricated answer", async ({ page }) => {
+  test("zero selected sources → general guidance from the same endpoint, honestly labeled (086)", async ({ page }) => {
     await page.goto(`equipment/${NB}/`);
     await page.getByRole("button", { name: /^Sources · / }).click();
     const dialog = page.getByRole("dialog", { name: "Sources" });
@@ -208,9 +208,14 @@ test.describe("Equipment Notebook loop", () => {
     }
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: /^Sources · 0\// })).toBeVisible();
-    await page.getByLabel("Ask this machine anything").fill("Anything at all?");
+    await page.getByLabel("Ask this machine anything").fill("What does a VFD overcurrent fault usually mean?");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.locator("main")).toContainText(/Select at least one source/);
+    // The Hub no longer refuses locally: like Mobile it sends `mode: "general"`
+    // to the same Notebook endpoint and renders the server's answer with its
+    // basis caption (amber "General guidance"), never a fabricated citation.
+    await expect(page.locator("main")).not.toContainText(/Select at least one source/);
+    await expect(page.locator("main")).toContainText(/General guidance/, { timeout: 60_000 });
+    await expect(page.locator("main").getByRole("button", { name: /^\[\d+\]$/ })).toHaveCount(0);
     // Restore deterministically via the API so no other test/run inherits the
     // all-off state (UI toggling was unreliable — the isolation-bleed we fixed).
     await enableAllSources(page.request);
