@@ -16,7 +16,7 @@ export function SourceViewer({ state, dispatch }: SourceViewerProps) {
   const source = state.selectedSource;
   if (!source) return null;
 
-  return <aside className="fl-source-viewer" role="dialog" aria-label="Source viewer" data-source-id={source.id}>
+  return <aside className="fl-source-viewer" role="dialog" aria-modal="true" aria-label="Source viewer" data-source-id={source.id}>
     <div className="fl-source-viewer__head">
       <p className="fl-card__label">{KIND_LABEL[source.kind]}</p>
       <button type="button" aria-label="Close source viewer" onClick={() => dispatch({ type: "select-source", sourceId: null })}>Close</button>

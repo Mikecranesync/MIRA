@@ -17,8 +17,19 @@
 .fl-shell__inspector { inline-size: 18rem; border-inline-start: 1px solid var(--fl-workspace-line); }
 .fl-shell__brand { margin-block-end: var(--fl-workspace-space-4); font-size: var(--fl-workspace-fs-title); font-weight: 700; }
 
+.fl-overlay { display: contents; }
+
+.fl-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--fl-scrim);
+}
+.fl-scrim[data-layer="navigation"] { z-index: 0; }
+.fl-scrim[data-layer="source"] { z-index: 2; }
+
 .fl-shell button {
   min-block-size: 2.75rem;
+  min-inline-size: 2.75rem;
   border: 1px solid transparent;
   border-radius: var(--fl-workspace-radius-sm);
   background: transparent;
@@ -85,4 +96,8 @@
     border-block-start: 1px solid var(--fl-workspace-line);
     box-shadow: var(--fl-workspace-shadow-pop);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-shell__sidebar { transition: none; }
 }

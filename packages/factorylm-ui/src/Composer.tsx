@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useState, type Dispatch, type FormEvent } from "react";
+import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
 import { breadcrumb } from "./Conversation";
 import { machineName } from "./parts";
 
@@ -7,6 +7,21 @@ export interface ComposerProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
+}
+
+export interface ComposerKeyEvent {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly isComposing: boolean;
+  /** 229 is the IME-composition keyCode some engines report without `isComposing`. */
+  readonly keyCode: number;
+}
+
+/** Enter sends; Shift+Enter inserts a newline; Enter during IME composition is left to the editor. */
+export function composerKeyAction(event: ComposerKeyEvent): "send" | "newline" | "none" {
+  if (event.key !== "Enter") return "none";
+  if (event.isComposing || event.keyCode === 229) return "none";
+  return event.shiftKey ? "newline" : "send";
 }
 
 const OFFLINE_LABEL = { online: "Online", offline: "Offline", syncing: "Syncing", error: "Sync error" } as const;
@@ -70,6 +85,18 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
     dispatch({ type: "mock-send" });
   };
 
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const action = composerKeyAction({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      isComposing: event.nativeEvent.isComposing,
+      keyCode: event.keyCode,
+    });
+    if (action !== "send") return;
+    event.preventDefault();
+    if (canSend) dispatch({ type: "mock-send" });
+  };
+
   return <form className="fl-composer" aria-label="Composer" onSubmit={onSubmit}>
     {state.offline.state !== "online" ? <p className="fl-composer__sync" role="status" aria-label="Sync status" data-sync-state={state.offline.state}>
       {OFFLINE_LABEL[state.offline.state]} · {state.offline.pendingChanges} pending
@@ -130,6 +157,7 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
         rows={1}
         value={state.draft}
         onChange={(event) => dispatch({ type: "set-draft", draft: event.currentTarget.value })}
+        onKeyDown={onKeyDown}
       />
       <button
         type="button"
