@@ -93,6 +93,8 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          # gradlew was committed without the executable bit; belt and braces.
+          chmod +x ./gradlew
           doppler run --project factorylm --config prd -- ./gradlew --no-daemon assembleRelease
 
       # Fail loudly if the APK came out unsigned. build.gradle deliberately
