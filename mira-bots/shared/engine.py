@@ -3644,7 +3644,9 @@ class Supervisor:
                         tenant_id=resolved_tenant,
                         honest_prefix=_honest_prefix,
                     )
-                return await self._handle_instructional_question(chat_id, message, state, trace_id)
+                return await self._handle_instructional_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "continue_current" and detect_session_followup(
                 message, sc, state["state"]
@@ -7009,7 +7011,9 @@ class Supervisor:
         if kind == DISPATCH_ASK_PROCEDURAL:
             if _dst_in_active:
                 return None
-            return await self._handle_instructional_question(chat_id, message, state, trace_id)
+            return await self._handle_instructional_question(
+                chat_id, message, state, trace_id, tenant_id=resolved_tenant
+            )
         if kind == DISPATCH_ASK_GENERAL:
             if _dst_in_active:
                 return None
@@ -7289,7 +7293,9 @@ class Supervisor:
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
 
-    def _instructional_kb_coverage(self, message: str, state: dict, history: list) -> bool:
+    def _instructional_kb_coverage(
+        self, message: str, state: dict, history: list, tenant_id: str = ""
+    ) -> bool:
         """Can the KB ground this procedural question? (#3602)
 
         Reuses `_handle_general_question`'s extraction window and coverage probe so
@@ -7303,7 +7309,13 @@ class Supervisor:
         try:
             user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
             combined = " ".join([*user_window, message]).strip()
-            tenant = state.get("tenant_id") or ""
+            # The AUTHORITATIVE tenant is the caller's `resolved_tenant`
+            # (`tenant_id or resolve_tenant(chat_id) or self.rag.tenant_id`), not
+            # `state["tenant_id"]`, which can be absent or stale. `knowledge_entries`
+            # is a hybrid corpus carrying `is_private=true` per-tenant rows, so
+            # reading it under the wrong tenant is a cross-tenant read, not a
+            # cosmetic slip — see .claude/rules/knowledge-entries-tenant-scoping.md.
+            tenant = tenant_id or state.get("tenant_id") or ""
 
             resolution = resolve_uns_path_multi(combined, tenant_id=tenant)
             mfr = resolution.primary.manufacturer or (
@@ -7317,17 +7329,25 @@ class Supervisor:
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
             return False
 
-    def _instructional_kb_context(self, message: str, state: dict, history: list) -> str:
+    def _instructional_kb_context(
+        self, message: str, state: dict, history: list, tenant_id: str = ""
+    ) -> str:
         """Retrieved documentation for a procedural question, ready to inject (#3602).
 
         Reuses the production recall path (`recall_knowledge`) and the canonical
-        citation-label helper (`format_source_label`) rather than a second copy, so
-        the tag a procedural answer emits is identical to the one the RAG worker
-        emits for the same chunk.
+        citation-label helper (`format_source_label`) rather than a second copy, so a
+        tag emitted here is identical to the one the RAG worker emits for the same chunk.
 
-        Returns "" on any failure. The caller then answers exactly as it did before
-        this fix — a grounding upgrade must never be able to make the reply worse
-        than the ungrounded original.
+        `tenant_id` is the caller's AUTHORITATIVE tenant. It is threaded in rather than
+        read from `state`, because `state["tenant_id"]` can be absent or stale while
+        `knowledge_entries` is a hybrid corpus carrying `is_private=true` per-tenant
+        rows — reading it under the wrong tenant is a cross-tenant read, not a cosmetic
+        slip. See `.claude/rules/knowledge-entries-tenant-scoping.md`.
+
+        Returns "" on ANY failure, retrieval or formatting. The caller then answers
+        exactly as it did before this fix. Aborting a covered turn would be worse than
+        the ungrounded answer this replaced — the one outcome a grounding upgrade must
+        never produce, which is why the formatting loop is inside the try as well.
         """
         try:
             from .neon_recall import recall_knowledge  # noqa: PLC0415
@@ -7335,25 +7355,25 @@ class Supervisor:
 
             user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
             combined = " ".join([*user_window, message]).strip()
-            chunks = (
-                recall_knowledge(None, state.get("tenant_id") or "", limit=4, query_text=combined)
-                or []
-            )
+            tenant = tenant_id or state.get("tenant_id") or ""
+            chunks = recall_knowledge(None, tenant, limit=4, query_text=combined) or []
+
+            parts: list[str] = []
+            for ch in chunks:
+                if not isinstance(ch, dict):
+                    continue
+                body = (ch.get("content") or "").strip()
+                if not body:
+                    continue
+                label = format_source_label(ch)
+                # Cap each chunk: a procedural answer needs the relevant passage, not
+                # the whole manual, and an over-long prompt crowds out the
+                # numbered-steps instruction the technician actually needs.
+                parts.append(f"[Source: {label}]\n{body[:1200]}" if label else body[:1200])
+            return "\n\n".join(parts)
         except Exception as exc:  # noqa: BLE001 - never fail a turn over retrieval
             logger.warning("INSTRUCTIONAL_KB_CONTEXT_FAILURE error=%s", exc)
             return ""
-
-        parts: list[str] = []
-        for ch in chunks:
-            body = (ch.get("content") or "").strip()
-            if not body:
-                continue
-            label = format_source_label(ch)
-            # Cap each chunk: a procedural answer needs the relevant passage, not the
-            # whole manual, and an over-long prompt crowds out the numbered-steps
-            # instruction the technician actually needs.
-            parts.append(f"[Source: {label}]\n{body[:1200]}" if label else body[:1200])
-        return "\n\n".join(parts)
 
     async def _handle_instructional_question(
         self,
@@ -7361,6 +7381,8 @@ class Supervisor:
         message: str,
         state: dict,
         trace_id: str,
+        *,
+        tenant_id: str = "",
     ) -> dict:
         """Answer a procedural how-to question, grounded in the KB when it can be.
 
@@ -7417,8 +7439,8 @@ class Supervisor:
         # below is kept. Grounded, and still numbered steps a technician can work
         # through on the floor.
         kb_context = ""
-        if self._instructional_kb_coverage(message, state, history):
-            kb_context = self._instructional_kb_context(message, state, history)
+        if self._instructional_kb_coverage(message, state, history, tenant_id):
+            kb_context = self._instructional_kb_context(message, state, history, tenant_id)
             logger.info(
                 "INSTRUCTIONAL_GROUNDED chat_id=%s chunks=%d (#3602)",
                 chat_id,

@@ -57,7 +57,9 @@ def sup() -> Supervisor:
     s._infer_confidence = MagicMock(return_value="none")
     s._make_result = MagicMock(side_effect=lambda r, c, t, st: {"reply": r, "state": st})
     s._handle_general_question = AsyncMock(return_value={"reply": "grounded", "state": "IDLE"})
-    s._instructional_kb_context = MagicMock(return_value="")
+    # NOT mocked here: several tests exercise the real `_instructional_kb_context`.
+    # Mocking it in the fixture silently made those tests assert nothing — they passed
+    # against the mock's "" and never reached the code under test.
     return s
 
 
@@ -145,6 +147,7 @@ def test_covered_question_is_answered_from_documentation(sup) -> None:
 def test_uncovered_question_still_gets_a_direct_answer(sup) -> None:
     """The no-coverage path is deliberately unchanged. Routing it to a grounded
     handler with nothing to ground would turn a useful answer into a refusal."""
+    sup._instructional_kb_context = MagicMock(return_value="")
     with patch.object(sup, "_instructional_kb_coverage", return_value=False):
         out = asyncio.run(
             sup._handle_instructional_question(
@@ -183,3 +186,100 @@ def test_the_bypass_comment_cannot_quietly_return() -> None:
         "the procedural answer shape is a product requirement, not incidental — a "
         "technician on the floor needs steps, not prose"
     )
+
+
+# ── Codex review round 1 — the two blockers, pinned ──────────────────────────
+
+
+def test_retrieval_uses_the_authoritative_tenant_not_state(sup) -> None:
+    """BLOCKER 1. `state["tenant_id"]` can be absent or stale; the caller's
+    `resolved_tenant` is authoritative. `knowledge_entries` is a hybrid corpus with
+    `is_private=true` per-tenant rows, so the wrong tenant is a CROSS-TENANT read."""
+    seen = {}
+
+    def _recall(emb, tenant, **kw):
+        seen["tenant"] = tenant
+        return [{"content": "Accel time is P041.", "manufacturer": "Allen-Bradley"}]
+
+    st = _state()
+    st["tenant_id"] = "STALE-TENANT"
+    with (
+        patch("shared.neon_recall.recall_knowledge", side_effect=_recall),
+        patch("shared.workers.rag_worker.format_source_label", return_value="AB PF525"),
+    ):
+        sup._instructional_kb_context("accel time?", st, [], tenant_id="AUTHORITATIVE")
+
+    assert seen["tenant"] == "AUTHORITATIVE", (
+        f"retrieval ran under {seen['tenant']!r} — a stale session tenant can read "
+        f"another tenant's private KB rows"
+    )
+
+
+def test_coverage_probe_also_uses_the_authoritative_tenant(sup) -> None:
+    seen = {}
+
+    def _resolve(combined, tenant_id=None):
+        seen["tenant"] = tenant_id
+        return _resolution()
+
+    st = _state()
+    st["tenant_id"] = "STALE-TENANT"
+    with (
+        patch("shared.engine.resolve_uns_path_multi", side_effect=_resolve),
+        patch("shared.engine.kb_has_coverage", return_value=(True, "covered")),
+    ):
+        sup._instructional_kb_coverage("accel time?", st, [], tenant_id="AUTHORITATIVE")
+
+    assert seen["tenant"] == "AUTHORITATIVE"
+
+
+def test_a_malformed_chunk_falls_back_instead_of_aborting_the_turn(sup) -> None:
+    """BLOCKER 2. Formatting used to sit outside the try, so a bad chunk raised and
+    killed a covered turn — worse than the ungrounded answer this fix replaced."""
+    with (
+        patch("shared.neon_recall.recall_knowledge", return_value=["not-a-dict", None, 42]),
+        patch("shared.workers.rag_worker.format_source_label", return_value="x"),
+    ):
+        assert sup._instructional_kb_context("q", _state(), [], tenant_id="t") == ""
+
+
+def test_a_raising_label_formatter_falls_back(sup) -> None:
+    with (
+        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "body"}]),
+        patch("shared.workers.rag_worker.format_source_label", side_effect=RuntimeError("boom")),
+    ):
+        assert sup._instructional_kb_context("q", _state(), [], tenant_id="t") == ""
+
+
+def test_retrieval_failure_falls_back(sup) -> None:
+    with patch("shared.neon_recall.recall_knowledge", side_effect=RuntimeError("neon down")):
+        assert sup._instructional_kb_context("q", _state(), [], tenant_id="t") == ""
+
+
+def test_empty_chunks_produce_no_context(sup) -> None:
+    with patch("shared.neon_recall.recall_knowledge", return_value=[]):
+        assert sup._instructional_kb_context("q", _state(), [], tenant_id="t") == ""
+
+
+def test_context_uses_the_canonical_label_helper(sup) -> None:
+    """Requirement 4, asserted by a test rather than by prose in the docstring."""
+    with (
+        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "Set P041."}]),
+        patch(
+            "shared.workers.rag_worker.format_source_label", return_value="Allen-Bradley PF525"
+        ) as fmt,
+    ):
+        out = sup._instructional_kb_context("q", _state(), [], tenant_id="t")
+
+    fmt.assert_called_once()
+    assert out.startswith("[Source: Allen-Bradley PF525]")
+
+
+def test_chunk_bodies_are_capped(sup) -> None:
+    """Prompt growth stays bounded, so documentation cannot crowd out the
+    numbered-steps instruction."""
+    with (
+        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "x" * 5000}]),
+        patch("shared.workers.rag_worker.format_source_label", return_value=""),
+    ):
+        assert len(sup._instructional_kb_context("q", _state(), [], tenant_id="t")) <= 1200
