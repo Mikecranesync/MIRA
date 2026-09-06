@@ -1,0 +1,138 @@
+name: Legacy UI Lifecycle Guard
+
+# FACTORYLM-UNIFIED-UI-CUTOVER-001. Charter:
+# docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3.1 "Trusted enforcement
+# boundary". Governance plan:
+# docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md
+# Task 3.
+#
+# Runs on `pull_request_target` so it ALWAYS evaluates the PR against the
+# TRUSTED BASE revision's registry + guard code — never a revision the PR
+# author controls, even from a fork. It checks out ONLY `base.sha`, with
+# credential persistence disabled; it never checks out or executes the head
+# ref or any PR code. A separate, token-bearing metadata step fetches changed
+# files, labels, and the PR body as DATA ONLY (never interpolated into
+# executable script text — always written to a file and read back by the
+# guard). The guard-evaluation step itself carries no token and makes no
+# network call.
+#
+# Bootstrap note: this workflow cannot run on the PR that first introduces it
+# (a workflow file change from a PR is not trusted until it exists on the
+# default branch). The lifecycle guard's own local/pytest evidence covers that
+# bootstrap PR; this workflow becomes a required check on `main` only after
+# merge (charter §3.1).
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+      - ready_for_review
+
+concurrency:
+  group: ui-lifecycle-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+env:
+  STATUS_CONTEXT: "Legacy UI Lifecycle Guard"
+
+jobs:
+  guard:
+    name: Legacy UI Lifecycle Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post pending status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f "context=$STATUS_CONTEXT" \
+            -f description="Evaluating the legacy UI lifecycle guard..."
+
+      # Trusted base ONLY. Never the head ref, never a merge ref, never PR
+      # code. persist-credentials: false so no later step in this job can use
+      # a lingering git credential to push or fetch as the Actions bot.
+      - name: Checkout trusted base revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install guard dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pytest
+
+      # Runs the guard's OWN test suite from the trusted base checkout — this
+      # is the base revision's guard code proving itself, not a claim about
+      # the PR under review.
+      - name: Run trusted-base guard tests
+        run: python3 -m pytest tests/test_ui_surface_lifecycle_guard.py -q
+
+      # The ONLY token-bearing step besides the two status posts. Everything
+      # it produces is written to $RUNNER_TEMP as plain data files; nothing
+      # here is interpolated into a shell command or eval'd — the enforcement
+      # step below reads these files as pure input.
+      - name: Fetch PR metadata (data only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.changed_files' \
+            > "$RUNNER_TEMP/expected-change-count.txt"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[] | {filename, status, previous_filename}' \
+            > "$RUNNER_TEMP/changed-files.jsonl"
+          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' \
+            > "$RUNNER_TEMP/pr-body.md"
+          gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' \
+            > "$RUNNER_TEMP/labels.txt"
+
+      # No token, no network access. Pure policy + text evaluation of the
+      # trusted-base registry against the fetched metadata files.
+      - name: Evaluate the legacy UI lifecycle guard
+        run: |
+          python3 tools/ui_surface_lifecycle_guard.py \
+            --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
+            --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
+            --labels-file "$RUNNER_TEMP/labels.txt" \
+            --pr-body-file "$RUNNER_TEMP/pr-body.md"
+
+      # Posts success ONLY when every prior step (tests + evaluation) actually
+      # succeeded; any failure above — a test failure, a guard violation, a
+      # metadata-fetch error — reports failure to the SAME head SHA/context.
+      - name: Post final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            STATE=success
+            DESC="No unguarded legacy presentation or control-plane change, or an audited legacy-ui-exception is present."
+          else
+            STATE=failure
+            DESC="Guarded legacy presentation or control-plane path touched without an audited legacy-ui-exception (or a guard step failed)."
+          fi
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f "state=$STATE" \
+            -f "context=$STATUS_CONTEXT" \
+            -f "description=$DESC"

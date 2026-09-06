@@ -23,6 +23,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REAL_REGISTRY = REPO_ROOT / "docs" / "architecture" / "convergence" / "REGISTRY.yaml"
@@ -877,3 +878,147 @@ def test_every_control_pattern_is_guarded_without_exception(control_path):
         policy=real_policy,
     )
     assert result.allowed is False
+
+
+# ---------------------------------------------------------------------------
+# Trusted-base workflow structure — protects `.github/workflows/
+# ui-lifecycle-guard.yml` from accidental drift away from the security
+# properties the charter (§3.1) requires. The committed workflow is the
+# runtime authority; these are guard rails, not a reimplementation of it.
+# ---------------------------------------------------------------------------
+
+WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ui-lifecycle-guard.yml"
+
+
+def _workflow_text() -> str:
+    assert WORKFLOW_PATH.exists(), f"expected {WORKFLOW_PATH} to exist (Task 3)"
+    return WORKFLOW_PATH.read_text(encoding="utf-8")
+
+
+def test_workflow_uses_pull_request_target():
+    text = _workflow_text()
+    doc = yaml.safe_load(text)
+    assert "pull_request_target" in doc.get(True, doc.get("on", {}))
+
+
+def test_workflow_lists_every_metadata_sensitive_event():
+    doc = yaml.safe_load(_workflow_text())
+    on_block = doc.get(True, doc.get("on", {}))
+    types = set(on_block["pull_request_target"]["types"])
+    required = {
+        "opened",
+        "reopened",
+        "synchronize",
+        "edited",
+        "labeled",
+        "unlabeled",
+        "ready_for_review",
+    }
+    assert required <= types
+
+
+def test_workflow_checks_out_only_base_sha_with_no_credential_persistence():
+    text = _workflow_text()
+    assert "github.event.pull_request.base.sha" in text
+    assert "persist-credentials: false" in text
+
+
+def test_workflow_never_references_head_sha_in_checkout():
+    doc = yaml.safe_load(_workflow_text())
+    steps = doc["jobs"]["guard"]["steps"]
+    for step in steps:
+        if step.get("uses", "").startswith("actions/checkout"):
+            ref = step.get("with", {}).get("ref", "")
+            assert "head" not in ref, f"checkout step must not reference head: {step}"
+
+
+def test_workflow_separates_token_bearing_metadata_step_from_evaluation_step():
+    doc = yaml.safe_load(_workflow_text())
+    steps = doc["jobs"]["guard"]["steps"]
+    eval_steps = [s for s in steps if "tools/ui_surface_lifecycle_guard.py" in s.get("run", "")]
+    assert len(eval_steps) == 1
+    eval_step = eval_steps[0]
+    assert "GH_TOKEN" not in (eval_step.get("env") or {})
+
+    metadata_steps = [
+        s for s in steps if "gh api" in s.get("run", "") and "pulls" in s.get("run", "")
+    ]
+    assert metadata_steps, "expected a metadata-fetch step calling gh api against pulls"
+    for s in metadata_steps:
+        assert "GH_TOKEN" in (s.get("env") or {})
+
+
+def test_workflow_publishes_the_exact_status_context():
+    text = _workflow_text()
+    assert "Legacy UI Lifecycle Guard" in text
+    doc = yaml.safe_load(text)
+    assert doc["env"]["STATUS_CONTEXT"] == "Legacy UI Lifecycle Guard"
+
+
+def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():
+    text = _workflow_text()
+    assert ".changed_files" in text
+    assert "expected-change-count" in text
+    assert "--expected-change-count-file" in text
+
+
+def test_workflow_uses_labels_file_never_bare_labels_flag():
+    text = _workflow_text()
+    assert "--labels-file" in text
+    assert "--labels " not in text and not text.rstrip().endswith("--labels")
+
+
+def test_workflow_grants_only_the_minimal_permissions():
+    doc = yaml.safe_load(_workflow_text())
+    perms = doc["permissions"]
+    assert perms == {"contents": "read", "pull-requests": "read", "statuses": "write"}
+
+
+def test_workflow_posts_pending_then_a_final_success_or_failure_status():
+    text = _workflow_text()
+    assert "state=pending" in text
+    assert "if: always()" in text
+
+
+# ---------------------------------------------------------------------------
+# The committed PR template's exception scaffold must itself fail closed —
+# blank fields + explanatory HTML comments only, never a prefilled N/A or
+# placeholder that could satisfy the parser by accident.
+# ---------------------------------------------------------------------------
+
+
+def test_pr_template_has_exactly_one_blank_exception_section_that_fails_closed():
+    template_path = REPO_ROOT / ".github" / "pull_request_template.md"
+    assert template_path.exists()
+    body = template_path.read_text(encoding="utf-8")
+    assert body.count("## Legacy UI exception") == 1
+
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    result = evaluate(
+        [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=real_policy,
+    )
+    assert result.allowed is False, "the blank template scaffold must not itself satisfy the guard"
+
+
+def test_pr_template_exception_section_passes_once_filled_with_substantive_text():
+    template_path = REPO_ROOT / ".github" / "pull_request_template.md"
+    body = template_path.read_text(encoding="utf-8")
+    filled = body.replace(
+        "Reason:\nCanonical replacement impact:\nRollback:",
+        "Reason: severity-1 rollback repair\n"
+        "Canonical replacement impact: no change to the canonical shell, legacy hotfix only\n"
+        "Rollback: revert this commit",
+    )
+    assert filled != body, "expected the blank scaffold text to be present and replaceable"
+
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    result = evaluate(
+        [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
+        labels={"legacy-ui-exception"},
+        pr_body=filled,
+        policy=real_policy,
+    )
+    assert result.allowed is True

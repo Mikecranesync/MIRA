@@ -24,6 +24,31 @@ If this PR doesn't fit any existing spec:
 Anything else: write a spec first, then come back.
 -->
 
+## Legacy UI exception
+
+<!--
+OPTIONAL. Fill this in ONLY if this PR adds, modifies, deletes, or renames a
+guarded legacy FactoryLM presentation path or a lifecycle-guard control-plane
+file (docs/architecture/convergence/REGISTRY.yaml, the charter, the guard and
+its tests, the Claude rule, the three UI workflow files, the trusted GitHub
+workflow, or this template) — see
+docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 and
+.claude/rules/factorylm-unified-ui-cutover.md. If none of the above apply,
+leave this whole section out of the PR body (don't fill placeholder text into
+it — the guard rejects blank/N/A/angle-bracket/HTML-comment values and fails
+closed without a substantive value on all three lines below).
+
+Reviewers: applying the `legacy-ui-exception` label is human approval, not a
+convenience switch — approve only for a security/severity-0/1 repair,
+rollback-path correctness, parity work that cannot yet live in an adapter, the
+controlled adapter mount/cutover itself, or a repair of the guard's own
+trusted control plane.
+-->
+
+Reason:
+Canonical replacement impact:
+Rollback:
+
 ## Acceptance criteria verified
 
 - [ ] Yes — listed below
