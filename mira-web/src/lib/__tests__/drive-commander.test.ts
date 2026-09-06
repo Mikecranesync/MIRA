@@ -375,3 +375,82 @@ describe("powerflex packs — manual-verified truth pins (#2777)", () => {
     }
   });
 });
+
+// ── Slice 1: G120 F30001 / F30011 cited cause (GTM-FIXES-001) ─────────────
+describe("siemens g120 — cited cause on free fault pages (slice 1)", () => {
+  const pack = getPack("siemens-g120")!;
+
+  test("faultSources extracted from provenance.sources for F30001 and F30011", () => {
+    expect(pack.faultSources["30001"]).toBeDefined();
+    expect(pack.faultSources["30001"].page).toBe("522");
+    expect(pack.faultSources["30001"].excerpt).toContain("Overcurrent");
+    expect(pack.faultSources["30011"]).toBeDefined();
+    expect(pack.faultSources["30011"].page).toBe("525");
+    expect(pack.faultSources["30011"].excerpt).toContain("DC link voltage");
+  });
+
+  test("F30001 free fault page shows cited cause excerpt and page — no invented steps", () => {
+    const fault = getFault(pack, "F30001")!;
+    const html = renderFaultPage(pack, fault);
+    expect(html).toContain("Cited fault cause");
+    expect(html).toContain("p.522");
+    expect(html).toContain("Overcurrent");
+    // citation doc (List Manual) must be present
+    expect(html).toContain("List Manual");
+    // NOT the old bare-paywall callout that gave no free content
+    expect(html).not.toContain("isn’t in the free pack yet");
+    // NOT noindex — page has real content, must stay indexable
+    expect(html).not.toContain("noindex");
+  });
+
+  test("F30011 free fault page shows cited cause excerpt and page", () => {
+    const fault = getFault(pack, "F30011")!;
+    const html = renderFaultPage(pack, fault);
+    expect(html).toContain("Cited fault cause");
+    expect(html).toContain("p.525");
+    expect(html).toContain("DC link voltage");
+    expect(html).toContain("List Manual");
+    expect(html).not.toContain("isn’t in the free pack yet");
+  });
+
+  test("no related_faults fabrication — pack links unchanged", () => {
+    // Truth pin: F30001 and F30011 have NO linked parameters (no invented steps).
+    expect(getFault(pack, "F30001")!.hasDetail).toBe(false);
+    expect(getFault(pack, "F30011")!.hasDetail).toBe(false);
+    // Existing links untouched
+    expect(getParameter(pack, "p0210")!.related_faults).toContain("F30002");
+    expect(getParameter(pack, "p0210")!.related_faults).toContain("F30003");
+    expect(getParameter(pack, "p0210")!.related_faults).not.toContain("F30011");
+    expect(getParameter(pack, "p0640")!.related_faults).toContain("F30005");
+    expect(getParameter(pack, "p0640")!.related_faults).not.toContain("F30001");
+  });
+});
+
+// ── Slice 2: G120 landing page search (GTM-FIXES-001) ─────────────────────
+describe("siemens g120 — fault-code search on landing page (slice 2)", () => {
+  const pack = getPack("siemens-g120")!;
+  const html = renderDriveLandingPage(pack);
+
+  test("landing page has a search input with look-up button", () => {
+    expect(html).toContain('id="dc-q"');
+    expect(html).toContain("Look up");
+    expect(html).toContain('type="search"');
+  });
+
+  test("search script embeds pack fault keys for client-side not-in-pack detection", () => {
+    // Keys for G120 faults must appear in the embedded KEYS array
+    expect(html).toContain('"30001"');
+    expect(html).toContain('"30011"');
+    expect(html).toContain('"7011"');
+  });
+
+  test("search form has aria-label and aria-live for accessibility", () => {
+    expect(html).toContain('aria-label="Search a fault code"');
+    expect(html).toContain('aria-live="polite"');
+  });
+
+  test("no hex colors introduced — search CSS uses tokens only", () => {
+    const body = html.replace(/<meta name="theme-color"[^>]*>/, "");
+    expect(/#[0-9a-fA-F]{6}\b/.test(body.replace(/#[\w-]+"/g, ""))).toBe(false);
+  });
+});

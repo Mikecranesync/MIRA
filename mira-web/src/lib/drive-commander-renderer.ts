@@ -171,6 +171,23 @@ const STYLE = `
   .footer-links a { color:var(--text-dim); text-decoration:none; }
   .footer-links a:hover { color:var(--accent); }
   .muted { color:var(--text-faint); font-size:13px; }
+  /* cited cause block (Slice 1) */
+  .cited-cause { margin-bottom:16px; }
+  .cited-cause .cite { margin-top:6px; }
+  /* fault-code search (Slice 2) */
+  .dc-search-wrap { margin-top:20px; }
+  .dc-search-form { display:flex; gap:10px; flex-wrap:wrap; }
+  .dc-search-input { flex:1; min-width:160px; max-width:340px; padding:10px 14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:6px;
+    color:var(--text); font-family:var(--font-mono); font-size:14px;
+    transition:border-color 140ms var(--ease); }
+  .dc-search-input:focus { outline:none; border-color:var(--accent-line); }
+  .dc-search-input::placeholder { color:var(--text-faint); }
+  .dc-search-btn { padding:10px 20px; background:var(--accent); color:var(--page-bg);
+    border:1px solid var(--accent-line); border-radius:6px; font-size:14px;
+    font-weight:600; cursor:pointer; transition:background 140ms var(--ease); white-space:nowrap; }
+  .dc-search-btn:hover { background:var(--accent-hover); }
+  .dc-search-msg { margin-top:10px; font-size:13.5px; color:var(--text-dim); }
 `;
 
 function pageHead(title: string, description: string, canonical: string, jsonLd?: object): string {
@@ -340,6 +357,35 @@ export function renderDriveLandingPage(
         pack.family.series,
       )} manual. No PDF hunting, no generic AI guesses.</p>
       <div style="margin-bottom:8px">${provBadge(pack)}</div>
+      <div class="dc-search-wrap">
+        <form class="dc-search-form" role="search" onsubmit="return dcSearch(event)">
+          <input type="search" id="dc-q" class="dc-search-input"
+                 placeholder="e.g. F30001 or 30001"
+                 aria-label="Search a fault code" autocomplete="off" spellcheck="false">
+          <button type="submit" class="dc-search-btn">Look up &rarr;</button>
+        </form>
+        <p id="dc-search-msg" class="dc-search-msg" role="alert" aria-live="polite" hidden></p>
+      </div>
+      <script>
+(function(){
+  var KEYS=${JSON.stringify(Object.keys(pack.faultCodes))};
+  var SLUG="${escAttr(pack.modelSlug)}";
+  function faultNum(s){return s.replace(/^[Ff]/,'').replace(/^0+(?=\\d)/,'');}
+  window.dcSearch=function(e){
+    e.preventDefault();
+    var raw=document.getElementById('dc-q').value.trim();
+    if(!raw)return false;
+    var num=faultNum(raw)||raw;
+    var n=parseInt(num,10);
+    var display=Number.isNaN(n)?'F'+num:'F'+String(n).padStart(3,'0');
+    var msg=document.getElementById('dc-search-msg');
+    if(KEYS.indexOf(num)!==-1){window.location.href='/drive-commander/'+SLUG+'/faults/'+display;return false;}
+    msg.textContent='“'+display+'” is not in this pack — we only publish what we can cite from the manual.';
+    msg.hidden=false;
+    return false;
+  };
+})();
+      </script>
     </section>
 
     <section class="block">
@@ -397,9 +443,28 @@ export function renderFaultPage(pack: DrivePackDisplay, fault: FaultView): strin
     isPartOf: { "@type": "WebSite", name: "FactoryLM" },
   };
 
+  // Cited cause text from provenance.sources — present for some faults (e.g. G120 F30001/F30011).
+  // Never invented: verbatim from the hash-pinned manual, page-cited.
+  const faultSrc = pack.faultSources[fault.key];
+  const causeBlock = faultSrc
+    ? `<div class="cited-cause">
+         <div class="section-label">${ICON_CITE} Cited fault cause</div>
+         <div class="cite">
+           <div class="cite-src">${escHtml(faultSrc.doc)}, p.${escHtml(faultSrc.page)}</div>
+           <div class="cite-ex">&ldquo;${escHtml(faultSrc.excerpt)}&rdquo;</div>
+         </div>
+       </div>`
+    : "";
+
   const free = params.length
     ? `<h2 class="dc-h2">Parameters to check</h2>
+       ${causeBlock}
        ${params.map((p) => paramCardFree(p, pack.modelSlug)).join("")}`
+    : causeBlock
+    ? `${causeBlock}
+       <div class="callout" style="margin-top:16px">Cited parameter-level first-checks for <strong>${escHtml(
+         fault.display,
+       )}</strong> are in the Pro pack. We never invent steps we can&rsquo;t cite from the manual.</div>`
     : `<div class="callout">This fault is decoded from the ${escHtml(
         pack.manualDoc,
       )} (manual-cited). Cited parameter-level troubleshooting for <strong>${escHtml(
