@@ -2,5 +2,10 @@
   "name": "@factorylm/theme",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./workspace.css": "./src/workspace.css"
+  }
 }
