@@ -1,0 +1,221 @@
+name: OTA release — provision host / publish bundle / promote
+
+# The sanctioned path for docs/release/android/ota.md. Everything that touches the
+# prod nginx box or the release host goes through this workflow (production
+# environment + VPS_SSH_KEY), never a hand-run scp/rsync from a session
+# (tools/hooks/prod-guard.sh hard-denies those).
+#
+#   mode=provision  one-time (idempotent): DNS precheck, nginx vhost, TLS via
+#                   certbot webroot, /srv/factorylm/ota, well-known sync.
+#                   Requires the A record updates.factorylm.com -> 165.245.138.91
+#                   to exist first (Namecheap dashboard — the API is not enabled).
+#   mode=publish    build + sign the web bundle (OTA_SIGNING_PRIVATE_KEY from
+#                   Doppler prd), refuse if the diff since apk_base_sha touched
+#                   anything native (scripts/ota-guard.mjs), upload artifacts then
+#                   the manifest for `channel`.
+#   mode=promote    repoint the production manifest at an artifact that already
+#                   exists (canary -> production), never a rebuild.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "provision | publish | promote"
+        required: true
+        default: "publish"
+        type: choice
+        options: ["provision", "publish", "promote"]
+      channel:
+        description: "publish: canary | production (publish to canary first)"
+        required: false
+        default: "canary"
+        type: choice
+        options: ["canary", "production"]
+      version:
+        description: "publish: bundle version, e.g. 1.1.1 (must be > what phones on the channel run)"
+        required: false
+        default: ""
+        type: string
+      apk_base_sha:
+        description: "publish: commit the INSTALLED APK was built from (ota-guard base). Fail-closed if omitted."
+        required: false
+        default: ""
+        type: string
+      promote_to:
+        description: "promote: <version>/<hash>.zip from the canary manifest"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-release
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: inputs.mode == 'provision'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - name: DNS precheck
+        run: |
+          set -euo pipefail
+          A="$(dig +short A updates.factorylm.com | tail -1)"
+          if [ "$A" != "165.245.138.91" ]; then
+            echo "::error::updates.factorylm.com resolves to '${A:-nothing}', expected 165.245.138.91. Add the A record in the Namecheap dashboard (Advanced DNS → A → host 'updates' → 165.245.138.91), wait for propagation, re-run."
+            exit 1
+          fi
+          echo "DNS ok: $A"
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Copy vhost + well-known files
+        run: |
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            deployment/nginx-updates-factorylm.conf root@165.245.138.91:/etc/nginx/sites-available/updates.factorylm.com.full
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 'mkdir -p /opt/mira/well-known'
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            deployment/well-known/assetlinks.json root@165.245.138.91:/opt/mira/well-known/assetlinks.json
+      - name: Provision (idempotent) — http stub → certbot webroot → full vhost
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 'bash -s' << 'ENDSSH'
+          set -euo pipefail
+          mkdir -p /srv/factorylm/ota/releases /var/www/certbot
+          SITE=/etc/nginx/sites-available/updates.factorylm.com
+          LINK=/etc/nginx/sites-enabled/updates.factorylm.com
+          if [ ! -s /etc/letsencrypt/live/updates.factorylm.com/fullchain.pem ]; then
+            # TLS not issued yet: an http-only stub that can answer the ACME challenge.
+            cat > "$SITE" <<'STUB'
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name updates.factorylm.com;
+              location /.well-known/acme-challenge/ { root /var/www/certbot; }
+              location / { return 404; }
+          }
+          STUB
+            ln -sf "$SITE" "$LINK"
+            nginx -t && systemctl reload nginx
+            EXTRA=""
+            [ -d /etc/letsencrypt/accounts ] && [ -n "$(ls -A /etc/letsencrypt/accounts 2>/dev/null)" ] || EXTRA="--register-unsafely-without-email"
+            certbot certonly --webroot -w /var/www/certbot -d updates.factorylm.com -n --agree-tos --keep-until-expiring $EXTRA
+          fi
+          # Full vhost (repo file is authoritative) now that the cert files exist.
+          cp "$SITE.full" "$SITE"
+          ln -sf "$SITE" "$LINK"
+          nginx -t && systemctl reload nginx
+          echo "=== probes ==="
+          curl -sS --max-time 10 -o /dev/null -w "https://updates.factorylm.com/healthz -> %{http_code}\n" https://updates.factorylm.com/healthz || true
+          curl -sS --max-time 10 -o /dev/null -w "https://app.factorylm.com/.well-known/assetlinks.json -> %{http_code}\n" https://app.factorylm.com/.well-known/assetlinks.json || true
+          ENDSSH
+
+  publish:
+    if: inputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Inputs
+        run: |
+          set -euo pipefail
+          [ -n "${{ inputs.version }}" ] || { echo "::error::version is required for publish"; exit 1; }
+          [ -n "${{ inputs.apk_base_sha }}" ] || { echo "::error::apk_base_sha is required (the commit the installed APK was built from); the OTA guard fails closed without it"; exit 1; }
+      - name: OTA guard — refuse if anything native changed since the installed APK
+        working-directory: mira-mobile
+        run: |
+          set -euo pipefail
+          git cat-file -e "${{ inputs.apk_base_sha }}^{commit}" || { echo "::error::apk_base_sha not found in history"; exit 1; }
+          node scripts/ota-guard.mjs "${{ inputs.apk_base_sha }}" HEAD
+      - name: Install mobile deps
+        working-directory: mira-mobile
+        run: bun install --frozen-lockfile
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+      - name: Build + sign the bundle
+        working-directory: mira-mobile
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          doppler run --project factorylm --config prd -- \
+            node scripts/ota-publish.mjs --channel "${{ inputs.channel }}" --version "${{ inputs.version }}"
+          ls -la ota-out/releases/*/ ota-out/manifest.${{ inputs.channel }}.json
+      - name: Set up SSH (alias factorylm-prod used by ota-deploy.mjs)
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          printf 'Host factorylm-prod\n  HostName 165.245.138.91\n  User root\n  IdentityFile ~/.ssh/vps_deploy_key\n  StrictHostKeyChecking no\n' > ~/.ssh/config
+      - name: Upload — artifacts first, manifest last
+        working-directory: mira-mobile
+        run: |
+          set -euo pipefail
+          node scripts/ota-deploy.mjs --channel "${{ inputs.channel }}"
+          node scripts/ota-deploy.mjs --channel "${{ inputs.channel }}" --confirm
+      - name: Verify the published pointer
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 15 "https://updates.factorylm.com/manifest.${{ inputs.channel }}.json" | tee /tmp/manifest.json
+          grep -q '"version"' /tmp/manifest.json
+          {
+            echo "### OTA publish"
+            echo "- channel: \`${{ inputs.channel }}\` · version: \`${{ inputs.version }}\` · commit: \`${{ github.sha }}\`"
+            echo "- guard base (installed APK): \`${{ inputs.apk_base_sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    if: inputs.mode == 'promote'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Inputs
+        run: |
+          [ -n "${{ inputs.promote_to }}" ] || { echo "::error::promote_to is required, e.g. 1.1.1/<hash>.zip"; exit 1; }
+      - name: Install mobile deps
+        working-directory: mira-mobile
+        run: bun install --frozen-lockfile
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          printf 'Host factorylm-prod\n  HostName 165.245.138.91\n  User root\n  IdentityFile ~/.ssh/vps_deploy_key\n  StrictHostKeyChecking no\n' > ~/.ssh/config
+      - name: Fetch the current release store (artifacts are immutable; rollback/promote never rebuilds)
+        working-directory: mira-mobile
+        run: |
+          set -euo pipefail
+          mkdir -p ota-out
+          rsync -a factorylm-prod:/srv/factorylm/ota/ ota-out/
+      - name: Repoint production → promote_to, then upload
+        working-directory: mira-mobile
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          doppler run --project factorylm --config prd -- \
+            node scripts/ota-rollback.mjs --channel production --to "${{ inputs.promote_to }}"
+          node scripts/ota-deploy.mjs --channel production --confirm
+          curl -sS --max-time 15 https://updates.factorylm.com/manifest.production.json
