@@ -4,22 +4,17 @@ This directory contains the approved, disconnected V1 design reference for a sin
 
 ## Open the preview
 
-Open `index.html` directly in a browser. It is a mocked prototype and makes no network requests.
+Open `index.html` directly in a browser. It is a single-file mocked prototype, includes Web/Mobile/Hub and Ask/Work switches, and makes no network requests.
 
 ## Files
 
-- `index.html` — interactive V1 preview.
-- `styles.css` — shared visual system for the preview.
-- `app.js` — fixture interactions and responsive preview controls.
-- `screenshots/web.webp` — signed-in web layout.
-- `screenshots/mobile.webp` — mobile layout.
-- `screenshots/hub.webp` — enterprise Hub layout using the same shell.
-- `../../prd/2026-09-06-factorylm-unified-interaction-v1.md` — complete product requirements index.
-- `../../initiatives/FLM-UI-4000.md` — agent entrypoint, implementation order, boundaries, and acceptance gates.
+- `index.html` — interactive, single-file V1 preview.
+- `../../prd/2026-09-06-factorylm-unified-interaction-v1.md` — product requirements index and links to the complete five-part PRD.
+- `../../initiatives/FLM-UI-4000.md` — agent entrypoint, implementation order, boundaries, acceptance gates, and first implementation prompt.
 
 ## Approved direction
 
-FactoryLM has one UI, not separate product interfaces. The same shell, project tree, conversation surface, composer, machine context, evidence, safety states, files, diagnostic runs, and inspector adapt to device width and permission level.
+FactoryLM has one UI, not separate product interfaces. The same shell, project tree, conversation surface, composer, machine context, evidence, safety states, files, Diagnostic Runs, and inspector adapt to device width and permission level.
 
 - Public web: same shell in demo/marketing mode.
 - Signed-in web: everyday MIRA workspace.
