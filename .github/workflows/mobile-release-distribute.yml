@@ -36,6 +36,9 @@ concurrency:
 jobs:
   build-and-distribute:
     runs-on: ubuntu-latest
+    # Same production environment + DOPPLER_TOKEN as deploy-vps.yml — the repo
+    # has no DOPPLER_TOKEN_PRD secret (this workflow had never run).
+    environment: production
     steps:
       - uses: actions/checkout@v6
 
@@ -73,7 +76,7 @@ jobs:
       # that exists only for this job. It is never echoed and never an artifact.
       - name: Materialise signing key
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/signing"
@@ -85,7 +88,7 @@ jobs:
 
       - name: Build signed release APK
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         working-directory: mira-mobile/android
         run: |
           set -euo pipefail
@@ -107,10 +110,21 @@ jobs:
           grep -q "CN=FactoryLM" /tmp/signing.txt
           echo "signed OK"
 
+      # The signed APK is what testers receive anyway; keeping it as a run
+      # artifact lets a release be installed on an emulator/device for proof
+      # even when Firebase distribution is off. The keystore is never uploaded.
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk-${{ github.sha }}
+          path: mira-mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Distribute to testers
         if: inputs.distribute == 'yes'
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           set -euo pipefail
           doppler secrets get FIREBASE_SERVICE_ACCOUNT_JSON --plain \

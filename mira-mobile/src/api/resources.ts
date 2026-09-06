@@ -430,6 +430,12 @@ export function canBeChatSource(
 }
 
 export interface NotebookServerTurn {
+  /** 086: hub_users.id of the technician who asked; null = legacy shared row.
+   *  The server already scopes `turns` to the caller + legacy, so this is
+   *  informational (additive; older Hubs omit it). */
+  ownerUserId?: string | null;
+  /** 086: true for a pre-ownership row every tenant user can read. */
+  sharedLegacy?: boolean;
   id: string;
   question: string;
   answerStatus: string;
@@ -1287,9 +1293,13 @@ export async function askNotebook(
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
       },
       onChunk: (chunk) => {
-        const before = parser.turn().answer;
+        const before = parser.turn();
         const partial = parser.push(chunk);
-        if (partial.answer !== before) opts.onUpdate?.(partial);
+        // Text growth, or the identity-dispute marker landing (086 §3 — it
+        // precedes content on the wire and must show at once).
+        if (partial.answer !== before.answer || partial.identityDisputed !== before.identityDisputed) {
+          opts.onUpdate?.(partial);
+        }
       },
       signal: opts.signal,
       timeoutMs: 120_000,
