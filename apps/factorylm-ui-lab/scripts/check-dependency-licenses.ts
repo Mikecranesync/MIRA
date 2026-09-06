@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, realpath } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 type PackageManifest = {
   name?: string;
@@ -36,7 +36,7 @@ function isFirstPartyPackage(realPackagePath: string, manifest: PackageManifest)
 }
 
 async function auditPackage(packagePath: string): Promise<void> {
-  const realPackagePath = await realpath(packagePath);
+  const realPackagePath = dirname(await realpath(join(packagePath, "package.json")));
   if (auditedPaths.has(realPackagePath)) return;
   auditedPaths.add(realPackagePath);
 
