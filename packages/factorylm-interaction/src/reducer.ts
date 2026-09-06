@@ -279,7 +279,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         context: copyValue(state.activeContext),
         createdAt: state.thread.updatedAt,
         updatedAt: state.thread.updatedAt,
-        ...(state.run ? { runId: state.run.id } : {}),
+        ...(state.mode === "work" && state.run ? { runId: state.run.id } : {}),
       };
       return freezeState({
         ...state,

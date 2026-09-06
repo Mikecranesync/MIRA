@@ -213,6 +213,20 @@ describe("shared shell reducer", () => {
     expect(shellReducer(ask, { type: "mock-send" }).thread.turns.at(-1)?.runId).toBeUndefined();
   });
 
+  it("keeps a retained Work run out of mock turns after switching to Ask", () => {
+    const work = createShellState(getFixture("work-run"), PROFILES.web);
+    const ask = shellReducer(work, { type: "set-mode", mode: "ask" });
+    const after = shellReducer(
+      shellReducer(ask, { type: "set-draft", draft: "Summarize the inspection." }),
+      { type: "mock-send" },
+    );
+
+    expect(ask.run?.id).toBe("run-drive-a-f30001");
+    expect(ask.mode).toBe("ask");
+    expect(ask.thread.mode).toBe("ask");
+    expect(after.thread.turns.at(-1)?.runId).toBeUndefined();
+  });
+
   it("identifies only existing retryable failed turns without changing lifecycle", () => {
     const before = createShellState(getFixture("error-retry"), PROFILES.web);
     const retryableTurnId = before.thread.turns[0]?.id;
