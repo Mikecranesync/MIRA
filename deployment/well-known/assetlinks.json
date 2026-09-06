@@ -1,11 +1,14 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.factorylm.mira",
       "sha256_cert_fingerprints": [
-        "67:71:B2:30:82:E3:34:60:50:47:7F:B3:3F:2A:14:93:07:4F:39:83:55:D9:E0:8B:05:73:62:1D:E5:7E:35:4D"
+        "67:71:B2:30:82:E3:34:60:50:47:7F:B3:3F:2A:14:93:07:4F:39:83:55:D9:E0:8B:05:73:62:1D:E5:7E:35:4D",
+        "23:95:B9:60:50:C5:10:A5:C7:87:46:5B:83:25:6F:38:1B:1F:F5:E4:83:3D:2F:A8:8D:B7:35:79:29:3F:92:A9"
       ]
     }
   }

@@ -1,0 +1,50 @@
+{
+  "frozen_at": "2026-09-05T04:31:49+00:00",
+  "license_class": "public-eval-only",
+  "lineage_key": "festo/spc-100-p-f/public-forum",
+  "question": {
+    "answerability_score": 40,
+    "dedupe_hash": "17f1eafdbd66244296914ced0bbad94e1a920fbf55017c68674b0dc3af4cfac6",
+    "discovered_at": null,
+    "equipment_type": "positioning controller",
+    "error_code": "",
+    "external_post_id": null,
+    "firmware_or_revision": "",
+    "intent_tags": [
+      "looking for manual",
+      "software",
+      "obsolete"
+    ],
+    "lead_score": 65,
+    "license_class": "public-eval-only",
+    "lineage_key": "festo/spc-100-p-f/public-forum",
+    "manufacturer": "Festo",
+    "model": "SPC-100-P-F",
+    "normalized_question": "I have an obsolete Festo SPC-100-P-F positioning controller. I need the manual and the WinPISA commissioning software. Where is authoritative documentation, and what is required to commission or re-parameterise this controller today?",
+    "posted_at": null,
+    "product_family": "SPC-100",
+    "protocol": "",
+    "public_author_handle": null,
+    "question_id": "FIELD-SEED-002",
+    "raw_text": null,
+    "rights": {
+      "cross_tenant_reuse_allowed": false,
+      "derivatives_retained": false,
+      "evaluation_allowed": true,
+      "public_export_allowed": false,
+      "rights_resolved": true,
+      "training_allowed": false
+    },
+    "safety_class": "advisory",
+    "source_platform": "public-forum",
+    "source_url": null,
+    "split_assignment": "fresh",
+    "symptom": "documentation and commissioning software unavailable"
+  },
+  "question_id": "FIELD-SEED-002",
+  "safety_class": "advisory",
+  "snapshot_hash": "072293d875aefc7dc902c1af9f53703c09530002215cb43e3406d983d20ba949",
+  "split_assignment": "fresh",
+  "stage": "answer_radar.question_freeze",
+  "version": "v1"
+}

@@ -110,6 +110,59 @@ capabilities:
       enabled. Commented there 2026-08-18; the issue text remains stale.
 
   # =========================================================================
+  - id: private_notebook_turns
+    purpose: >-
+      Shared Equipment Notebooks with PRIVATE per-technician conversations: the
+      notebook (manuals, evidence, asset identity, machine history) is shared by
+      the tenant; every new chat turn is owned by the authenticated technician,
+      derived from the server session, and history returns the viewer's own
+      turns plus labeled ownerless legacy rows - never a colleague's turns.
+    customer_outcome: >-
+      Two technicians can work the same machine notebook from Mobile and Web
+      without reading each other's conversations, and pre-existing shared history
+      stays readable to both.
+    # No feature flag: the ownership column is nullable and the code path is
+    # unconditional (legacy rows stay NULL = shared). Rollback is a redeploy.
+    entrypoints:
+      - mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts
+      - mira-hub/src/lib/equipment-notebooks.ts
+    consumers:
+      - "mira-hub"
+      - "mira-mobile"
+    environments:
+      dev: "true"
+      staging: "true"                       # migration 086 auto-applied by migration-verify (PR #3597)
+      production: "true"                    # 086 applied 2026-09-06 00:29Z; Hub v3.320.1 live 00:43Z
+    state: production_enabled
+    owner: Mike
+    ci_jobs:
+      - mira-hub-unit
+      - mobile-unit-tests
+    required_checks: []
+    evidence:
+      - path: docs/proofs/2026-09-05-notebook-private-turns-production-proof.md
+        note: >-
+          Production proof 2026-09-06: migration 086 applied via apply-migrations.yml
+          (prod) and verified read-only via db-inspect.yml (column, index, 211 legacy
+          rows ownerless, 0 backfilled); Hub deployed at main fb60a0102 (v3.320.1);
+          grounded turn on an existing notebook cited its manual; a zero-source
+          general turn persisted with the session user as owner; a turn created by
+          the SIGNED RELEASE APK on an emulator was visible to its author on a real
+          browser reload and invisible to a same-tenant teammate; legacy history
+          (7 turns) readable to both.
+      - path: tools/notebook-e2e/notebook_proof.mjs
+        note: >-
+          Outside-in two-user harness (--expect-private-history) - PASS on local
+          production builds of every reviewed head of #3597 and on the shipped head.
+    rollback: >-
+      Redeploy the previous Hub image (rollback/2026-09-06-v3.320.0 checkpoint);
+      migration 086 is additive and nullable, so the old code runs unchanged
+      against the new schema. Never drop the column (legacy rows must stay NULL).
+    acknowledged_rules: []
+    promotion_criteria:
+      - "DONE 2026-09-06 - production smoke + cross-device proof passed (see evidence)."
+    review_by: "2026-12-05"
+
   - id: approved_context_retrieval
     purpose: >-
       Restrict retrieval to rows marked verified, so unapproved crawler or
@@ -161,7 +214,8 @@ capabilities:
     promotion_criteria:
       - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
       - "Record an owner."
-    review_by: "2026-09-05"
+      - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
+    review_by: "2026-10-05"
 
   # =========================================================================
   - id: technician_context_contract

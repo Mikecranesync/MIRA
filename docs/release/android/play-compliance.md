@@ -14,12 +14,12 @@ source named. Items marked **OWNER** need a business/legal decision — do not s
 | Permissions minimal | ✅ INTERNET + CAMERA only; `camera required=false` (manifest) |
 | Cleartext traffic | ✅ none — API base is https; no `usesCleartextTraffic`; no network-security-config overrides |
 | Exported components | ✅ only `MainActivity` (launcher + deep links); FileProvider `exported=false` |
-| App Links | ✅ `autoVerify` for `app.factorylm.com/m/*`; assetlinks.json staged in `deployment/well-known/` — **needs release-cert fingerprint added + deployed** (currently debug fingerprint) |
+| App Links | ✅ `autoVerify` for `app.factorylm.com/m/*`; `deployment/well-known/assetlinks.json` carries BOTH the debug and the release-cert fingerprint (`23:95:B9:60:…:92:A9`, added 2026-09-06); deployed by `ota-release.yml mode=provision` |
 | debuggable in release | ✅ false (AGP default; never overridden) |
 | Ads | ✅ none — declare "No ads" |
 | Target audience | 18+ / business users (not child-directed) — content rating questionnaire accordingly |
 | Account deletion (User Data policy) | ❌ **GAP — OWNER**: app has account creation but no in-app deletion path and no web deletion URL. Required for the Data Safety form before production. Sign-out purges device data (proven) but server-side account deletion does not exist yet. |
-| Privacy policy URL | ❌ **GAP — OWNER**: no public privacy policy page exists. Required before any track is published. |
+| Privacy policy URL | ✅ live: `https://factorylm.com/privacy` (mira-web `server.ts` `/privacy`, verified 200 on 2026-09-06). Put this URL in Play Console → App content → Privacy policy. |
 | Reviewer/app-access instructions | Needed (app is login-gated): provide a working demo account in Play Console → App access. **OWNER**: create a dedicated reviewer account (do NOT reuse internal QA creds). |
 
 ## Data inventory (what the app actually collects/transmits — from code)
@@ -59,3 +59,24 @@ except user-to-user content within a private workspace if asked).
 3. Reviewer demo account for App access.
 4. Support email + website on the listing.
 5. Data Safety "shared with third parties" wording sign-off (AI providers).
+
+## Individual (no-business) developer account — what Play actually requires (2026-09)
+
+You do not need a company. A **personal** developer account works; Play shows the
+developer name and country (an organization account additionally needs a D-U-N-S
+number and shows an address/phone).
+
+| Track | Gate for a personal account created after Nov 2023 |
+|---|---|
+| **Internal testing** (≤100 emailed testers) | none — upload the AAB, add tester emails, share the opt-in link. No review. **Start here.** |
+| Closed testing | none to *run* it; it is the prerequisite for production: **≥12 testers opted-in for 14 continuous days**, then "Apply for production access" |
+| Production | the closed-test gate above **plus** policy review (privacy policy URL, Data Safety form, App access reviewer login, account deletion) |
+
+Rejection triage — the things a login-gated business app gets bounced for, and where we stand:
+1. **App access** — reviewer must be able to log in: dedicated reviewer account (OWNER, do not reuse QA personas).
+2. **Privacy policy URL** — ✅ `https://factorylm.com/privacy`.
+3. **Account deletion (User Data policy)** — ❌ still missing (server endpoint + in-app entry + public web URL). Tracked as its own unit.
+4. **Data Safety form** — draft answers above; OWNER wording sign-off on AI-provider sharing.
+5. **versionCode reuse** — every upload, including a rejected one, burns the number; `build.gradle` is at 10 (9 was used).
+
+Paste the last rejection email into the tracking issue: the reason code decides which of the five above to fix first.
