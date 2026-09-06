@@ -9,14 +9,17 @@ import {
   type Attachment,
   type FixtureId,
   type PlatformAdapter,
+  type ShellAction,
   type SurfaceKind,
 } from "@factorylm/interaction";
+import type { Dispatch, MutableRefObject } from "react";
 import { FactoryLMShell } from "../FactoryLMShell";
 
 export interface HarnessProps {
   readonly surface: SurfaceKind;
   readonly fixture: FixtureId;
   readonly adapter?: PlatformAdapter;
+  readonly dispatchRef?: MutableRefObject<Dispatch<ShellAction> | null>;
 }
 
 export interface RecordingAdapter extends PlatformAdapter {
@@ -28,26 +31,34 @@ export interface FakeAdapterOptions {
   readonly file?: Attachment | null;
   readonly scannedMachineId?: string | null;
   readonly share?: "shared" | "cancelled";
+  readonly reject?: Error;
 }
 
 export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter {
   const calls: string[] = [];
+  const fail = () => {
+    if (options.reject) throw options.reject;
+  };
   return {
     calls,
     attachPhoto: async () => {
       calls.push("attachPhoto");
+      fail();
       return options.photo ?? null;
     },
     attachFile: async () => {
       calls.push("attachFile");
+      fail();
       return options.file ?? null;
     },
     scanMachine: async () => {
       calls.push("scanMachine");
+      fail();
       return options.scannedMachineId ?? null;
     },
     shareArtifact: async (artifactId) => {
       calls.push(`shareArtifact:${artifactId}`);
+      fail();
       return options.share ?? "cancelled";
     },
     onBack: () => {
@@ -57,11 +68,12 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
   };
 }
 
-export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessProps) {
+export function Harness({ surface, fixture, adapter = fakeAdapter(), dispatchRef }: HarnessProps) {
   const [state, dispatch] = useReducer(
     shellReducer,
     createShellState(getFixture(fixture), PROFILES[surface]),
   );
+  if (dispatchRef) dispatchRef.current = dispatch;
 
   return (
     <>
@@ -87,6 +99,7 @@ export interface HarnessView {
   type(element: HTMLTextAreaElement | HTMLInputElement, value: string): void;
   submit(element: HTMLFormElement): void;
   flush(): Promise<void>;
+  dispatch(action: ShellAction): void;
   activeContext(): { projectId: string; folderId: string; machineId: string };
   outputs(): { draft: string; mode: string; retryTarget: string; turnCount: number };
   cleanup(): void;
@@ -99,10 +112,11 @@ function accessibleName(button: HTMLButtonElement): string {
 export function renderHarness(props: HarnessProps): HarnessView {
   const container = document.createElement("div");
   document.body.append(container);
+  const dispatchRef: MutableRefObject<Dispatch<ShellAction> | null> = { current: null };
   let root: Root;
   act(() => {
     root = createRoot(container);
-    root.render(<Harness {...props} />);
+    root.render(<Harness {...props} dispatchRef={dispatchRef} />);
   });
 
   const output = () => {
@@ -133,6 +147,11 @@ export function renderHarness(props: HarnessProps): HarnessView {
     flush: () => act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
+    }),
+    dispatch: (action) => act(() => {
+      if (!dispatchRef.current) throw new Error("Harness dispatch is not ready");
+      dispatchRef.current(action);
     }),
     activeContext: () => ({
       projectId: output().dataset.projectId ?? "",

@@ -62,20 +62,27 @@ function Card({ type, label, title, children, className, extra }: {
 }
 
 function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPart, { type: "artifact" }>; readonly adapter: PlatformAdapter }) {
-  const [outcome, setOutcome] = useState<"shared" | "cancelled" | null>(null);
+  const [outcome, setOutcome] = useState<"shared" | "cancelled" | "failed" | null>(null);
+  const [busy, setBusy] = useState(false);
   const { artifact } = part;
+  const share = () => {
+    if (busy) return;
+    setBusy(true);
+    setOutcome(null);
+    adapter.shareArtifact(artifact.id)
+      .then((result) => setOutcome(result), () => setOutcome("failed"))
+      .finally(() => setBusy(false));
+  };
   return <Card type="artifact" label={`Artifact · ${artifact.kind.replace("_", " ")}`} title={artifact.title}>
     <div className="fl-card__actions">
-      <button
-        type="button"
-        aria-label={`Share ${artifact.title}`}
-        onClick={() => {
-          void adapter.shareArtifact(artifact.id).then((result) => setOutcome(result));
-        }}
-      >
+      <button type="button" aria-label={`Share ${artifact.title}`} aria-busy={busy} disabled={busy} onClick={share}>
         Share
       </button>
-      {outcome ? <span role="status" className="fl-card__meta">{outcome === "shared" ? "Shared" : "Share cancelled"}</span> : null}
+      {outcome === "failed"
+        ? <span role="alert" className="fl-card__meta">Share failed. Try again.</span>
+        : outcome
+          ? <span role="status" className="fl-card__meta">{outcome === "shared" ? "Shared" : "Share cancelled"}</span>
+          : null}
     </div>
   </Card>;
 }

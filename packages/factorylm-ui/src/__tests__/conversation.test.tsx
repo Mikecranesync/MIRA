@@ -188,6 +188,23 @@ describe("Ask and Work share one shell", () => {
     expect(view.container.querySelector('[data-part-type="artifact"]')?.textContent).toMatch(/shared/i);
   });
 
+  it("reports a failed artifact share and keeps the control retryable", async () => {
+    const adapter = fakeAdapter({ reject: new Error("share sheet unavailable") });
+    const view = render({ fixture: "work-run", surface: "mobile", adapter });
+    const share = view.buttonNamed("Share Shift handoff");
+    if (!share) throw new Error("artifact must offer share");
+
+    view.click(share);
+    expect(share.disabled).toBe(true);
+    await view.flush();
+    const artifact = view.container.querySelector('[data-part-type="artifact"]');
+    expect(artifact?.querySelector('[role="alert"]')?.textContent).toMatch(/share failed/i);
+    expect(share.disabled).toBe(false);
+    view.click(share);
+    await view.flush();
+    expect(adapter.calls).toEqual(["shareArtifact:artifact-handoff", "shareArtifact:artifact-handoff"]);
+  });
+
   it("uses theme tokens only in the conversation stylesheet", () => {
     const css = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
 

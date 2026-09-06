@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { getFixture } from "@factorylm/interaction";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -133,5 +134,92 @@ describe("universal composer", () => {
     expect(shell.dataset.navigationVisible).toBe("false");
     view.click(machine);
     expect(shell.dataset.navigationVisible).toBe("true");
+  });
+
+  it("keeps a pending attachment labelled with the machine it was captured for", async () => {
+    const adapter = fakeAdapter({
+      photo: { id: "file-new-photo", name: "terminal-block.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      scannedMachineId: "machine-drive-b",
+    });
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    const add = view.buttonNamed("Add attachment");
+    if (!add) throw new Error("Add attachment is required");
+    view.click(add);
+    view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+    await view.flush();
+    const before = view.container.querySelector<HTMLElement>('[aria-label="Pending attachments"] li');
+    expect(before?.dataset.capturedMachineId).toBe("machine-drive-a");
+    expect(before?.dataset.contextMismatch).toBe("false");
+
+    view.click(add);
+    view.click(view.buttonNamed("Scan machine") ?? new Error("Scan machine is required") as never);
+    await view.flush();
+    expect(view.activeContext().machineId).toBe("machine-drive-b");
+    const after = view.container.querySelector<HTMLElement>('[aria-label="Pending attachments"] li');
+    expect(after?.dataset.capturedMachineId).toBe("machine-drive-a");
+    expect(after?.dataset.contextMismatch).toBe("true");
+    expect(after?.textContent).toContain("captured for Launch 2 Drive A");
+    expect(after?.textContent).toMatch(/not the active machine/i);
+  });
+
+  it("does not carry pending attachments into a newly loaded thread", async () => {
+    const adapter = fakeAdapter({
+      photo: { id: "file-new-photo", name: "terminal-block.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+    });
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    view.click(view.buttonNamed("Add attachment") ?? new Error("Add attachment is required") as never);
+    view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+    await view.flush();
+    expect(view.container.querySelector('[aria-label="Pending attachments"]')).not.toBeNull();
+
+    view.dispatch({ type: "load-fixture", fixture: getFixture("general-ask") });
+    expect(view.container.querySelector('[aria-label="Pending attachments"]')).toBeNull();
+  });
+
+  it("surfaces adapter rejections as an accessible error and allows retry", async () => {
+    const adapter = fakeAdapter({ reject: new Error("permission denied") });
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    const add = view.buttonNamed("Add attachment");
+    if (!add) throw new Error("Add attachment is required");
+
+    view.click(add);
+    view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+    await view.flush();
+    const error = view.container.querySelector('[aria-label="Attachment error"]');
+    expect(error?.getAttribute("role")).toBe("alert");
+    expect(error?.textContent).toMatch(/photo capture failed/i);
+    expect(error?.textContent).toContain("permission denied");
+    expect(add.getAttribute("aria-busy")).toBe("false");
+    expect(view.container.querySelector('[aria-label="Pending attachments"]')).toBeNull();
+
+    view.click(add);
+    const scan = view.buttonNamed("Scan machine");
+    if (!scan) throw new Error("Scan machine is required");
+    expect(scan.disabled).toBe(false);
+    view.click(scan);
+    await view.flush();
+    expect(adapter.calls).toEqual(["attachPhoto", "scanMachine"]);
+    expect(view.container.querySelector('[aria-label="Attachment error"]')?.textContent).toMatch(/machine scan failed/i);
+    expect(view.activeContext().machineId).toBe("machine-drive-a");
+    expect(view.container.querySelector<HTMLButtonElement>('button[aria-label="Machine"]')?.disabled).toBe(false);
+  });
+
+  it("ignores duplicate activation while an adapter operation is pending", async () => {
+    let resolvePhoto: ((value: null) => void) | null = null;
+    const adapter = { ...fakeAdapter(), attachPhoto: () => new Promise<null>((resolve) => { resolvePhoto = resolve; }) };
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    const add = view.buttonNamed("Add attachment");
+    if (!add) throw new Error("Add attachment is required");
+
+    view.click(add);
+    view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+    expect(add.getAttribute("aria-busy")).toBe("true");
+    view.click(add);
+    expect(view.buttonNamed("Photo")?.disabled).toBe(true);
+    expect(view.buttonNamed("Scan machine")?.disabled).toBe(true);
+    if (!resolvePhoto) throw new Error("photo picker must be pending");
+    (resolvePhoto as (value: null) => void)(null);
+    await view.flush();
+    expect(add.getAttribute("aria-busy")).toBe("false");
   });
 });

@@ -108,9 +108,11 @@
 .fl-composer__sync { margin: 0 0 var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-warn-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__sync[data-sync-state="error"] { border-color: var(--fl-workspace-fault-line); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
 .fl-composer__context { margin: 0 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-composer__failure { margin: 0 0 var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-fault-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__pending { margin: 0 0 var(--fl-workspace-space-2); padding: 0; list-style: none; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__menu { display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); }
 .fl-composer__menu button { padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line); }
+.fl-composer__pending [data-context-mismatch="true"] { color: var(--fl-workspace-warn-ink); }
 .fl-composer__menu button:disabled { color: var(--fl-workspace-off-ink); border-color: var(--fl-workspace-off-line); }
 .fl-composer__row { display: flex; align-items: flex-end; gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); box-shadow: var(--fl-workspace-shadow-pop); }
 .fl-composer__row textarea { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.75rem; max-block-size: 7.5rem; padding: var(--fl-workspace-space-2); border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; resize: none; }
