@@ -20,7 +20,9 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from typing import Any
+from urllib.parse import unquote
 
 # Path builders live in shared/uns_paths.py — a verbatim, dep-free copy of the
 # subset of mira-crawler/ingest/uns.py the resolver needs. mira-bots cannot
@@ -29,6 +31,84 @@ from . import uns_paths as _uns
 from .neon_recall import kb_has_pair_coverage
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_identity_words(value: str) -> str:
+    """Normalize punctuation variants without weakening token boundaries."""
+    value = re.sub(r"\(\s*(?:r|tm|sm)\s*\)", " ", value.casefold())
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+@lru_cache(maxsize=128)
+def _drive_pack_identity_terms(
+    model_identity: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+    """Return pack aliases, keywords, and explicitly documented family models.
+
+    Pack lookup reads JSON from disk, so cache by the canonical query identity.
+    The pack remains the single source of truth; this helper does not introduce a
+    second identity mapping.
+    """
+    try:
+        from .drive_packs.loader import resolve_pack  # noqa: PLC0415
+
+        pack = resolve_pack(model_identity)
+    except Exception:  # noqa: BLE001 - drive packs are an optional refinement
+        return (), (), (), ""
+    if not pack:
+        return (), (), (), ""
+    aliases = tuple(
+        dict.fromkeys(_normalize_identity_words(alias) for alias in pack.family.aliases if alias)
+    )
+    keywords = tuple(
+        dict.fromkeys(
+            _normalize_identity_words(keyword)
+            for keyword in pack.nameplate.match_keywords
+            if keyword
+        )
+    )
+    # A declared umbrella series does not authorize every number sharing its
+    # prefix. Build the allow-list only from identities the repository already
+    # knows: the shipped pack itself, its cited provenance, and canonical
+    # resolver aliases that fall under the declared series. This admits the
+    # documented 523/525/527 family without guessing that a 529 exists.
+    series_identity = _normalize_identity_words(pack.family.series)
+    series_match = re.fullmatch(r"(?P<family>.+?)\s+(?P<model>\d{2,4})", series_identity)
+    family_name = series_match.group("family") if series_match else ""
+    documented_models: set[str] = set()
+    series_numbers = {
+        number
+        for alias in aliases
+        if " series " in f" {alias} "
+        for number in re.findall(r"\b\d{2,4}\b", alias)
+    }
+    series_prefixes = {number[:-1] for number in series_numbers if len(number) >= 2}
+
+    identity_texts = [pack.family.series, *pack.family.aliases, *pack.nameplate.match_keywords]
+    for source in pack.provenance.sources:
+        if isinstance(source, dict):
+            identity_texts.extend(str(source.get(key) or "") for key in ("doc", "excerpt"))
+    if family_name:
+        family_pattern = rf"(?:^|\s){re.escape(family_name)}\s+(?P<model>\d{{2,4}})(?:\s|$)"
+        for value in identity_texts:
+            normalized = _normalize_identity_words(value)
+            documented_models.update(
+                match.group("model") for match in re.finditer(family_pattern, normalized)
+            )
+
+        for expanded in FAMILY_FROM_ALIAS.values():
+            normalized = _normalize_identity_words(expanded)
+            expanded_match = re.fullmatch(r"(?P<family>.+?)\s+(?P<model>\d{2,4})", normalized)
+            if not expanded_match or expanded_match.group("family") != family_name:
+                continue
+            candidate = expanded_match.group("model")
+            if not series_prefixes or any(
+                candidate.startswith(prefix) for prefix in series_prefixes
+            ):
+                documented_models.add(candidate)
+
+    documented_models.update(series_numbers)
+    return aliases, keywords, tuple(sorted(documented_models)), pack.pack_id
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +658,40 @@ def vendors_in_text(text: str | None) -> set[str]:
     """
     if not text:
         return set()
-    return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
+
+    # Some legitimate vendor names are also ordinary maintenance words. Treat
+    # their bare lowercase forms as ambiguous in free prose: ``delta-connected``
+    # describes a motor winding and ``sew the sleeve`` is an instruction, not an
+    # attribution to Delta Electronics or SEW-Eurodrive. Branded forms remain
+    # detectable, as do the unambiguous model-family aliases in the same table.
+    lowered = text.lower()
+    delta_is_branded = bool(
+        re.search(
+            r"(?<![a-z0-9])delta[\W_]+(?:electronics?|drives?|vfds?|inverters?|servos?)"
+            r"(?![a-z])",
+            lowered,
+        )
+        or re.search(
+            r"(?<![a-z0-9])(?:drives?|vfds?|inverters?|servos?)[\W_]+"
+            r"(?:from[\W_]+|by[\W_]+)?delta(?![a-z0-9])",
+            lowered,
+        )
+    )
+    sew_is_branded = bool(
+        re.search(r"(?<![A-Z0-9])SEW(?![A-Z0-9])", text)
+        or re.search(r"(?<![a-z0-9])sew[\W_]+eurodrive(?![a-z0-9])", lowered)
+    )
+
+    vendors: set[str] = set()
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        if not re.search(_alias_pattern(alias), lowered):
+            continue
+        if alias == "delta" and not delta_is_branded:
+            continue
+        if alias == "sew" and not sew_is_branded:
+            continue
+        vendors.add(VENDOR_ALIASES[alias])
+    return vendors
 
 
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
@@ -720,9 +833,22 @@ def _confidence(
 
 
 def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext:
-    """Carry forward prior fields where the fresh ctx has nothing. Confidence
-    decays slightly each turn."""
+    """Carry forward prior fields unless this turn names a different vendor.
+
+    Confidence decays slightly each turn. An explicit vendor switch starts a new
+    identity: family, model, fault, and site data from the old machine must not be
+    merged into the new one.
+    """
     if prior is None:
+        return fresh
+
+    fresh_vendor = (
+        canonical_vendor(fresh.manufacturer) or (fresh.manufacturer or "").strip().casefold()
+    )
+    prior_vendor = (
+        canonical_vendor(prior.manufacturer) or (prior.manufacturer or "").strip().casefold()
+    )
+    if fresh_vendor and prior_vendor and fresh_vendor != prior_vendor:
         return fresh
 
     decayed = prior.confidence * 0.9
@@ -1081,6 +1207,9 @@ def chunk_matches_model(
     chunk_model: str | None,
     chunk_text: str | None,
     query_model: str | None,
+    *,
+    query_family: str | None = None,
+    chunk_source: str | None = None,
 ) -> bool:
     """Does a retrieved chunk plausibly concern the SAME model/series as the query?
 
@@ -1091,32 +1220,28 @@ def chunk_matches_model(
     WHY (#3605). Grounding was gated on `kb_has_coverage`, which is a per-vendor COUNT.
     "Allen-Bradley has 38k chunks" therefore read as *covered*, embedding-less recall
     returned lexically-similar but topically-unrelated passages, and the model anchored
-    on those instead of its own correct knowledge. DeepEval caught it as a category-level
-    regression: `de-in-04 [instructional] Technical Accuracy = 0.20`.
+    on those instead of its own correct knowledge. A live corpus probe reproduced this
+    as a PowerFlex 525 question answered from a PowerFlex 753 manual.
 
     Grounding on the wrong document is worse than not grounding at all — accuracy drops
     AND a citation is attached, which makes the weaker answer look more trustworthy.
 
     Rules, in order:
       * No model asked for -> cannot judge; keep (vendor filter still applies).
-      * The chunk's `model_number` matches the query model, either exactly-ish or
-        through `FAMILY_FROM_ALIAS` (so "PF525" matches "PowerFlex 525", the same alias
-        table the resolver uses — not a second mapping that can drift).
-      * Otherwise fall back to the chunk BODY: alias-aware, boundary-safe search using
-        `_alias_pattern`, so "PowerFlex525" and "GS10_manual.pdf" still match while
-        "cable" never matches vendor alias "ab".
-      * A chunk tagged with a DIFFERENT known model of the same vendor is rejected —
-        that is the same-vendor/wrong-model case this function was written for.
+      * Exact model metadata, aliases, and nameplate/manual identifiers come from the
+        existing resolver and shipped drive pack; declared umbrella series are allowed.
+      * For a shipped drive pack, metadata must be one declared identity and the body
+        or source filename must independently carry an exact-model, pack-identifier,
+        or declared-series tie. A bare family name is not model evidence.
+      * Explicit body identity is checked even when metadata matches, so a stale 525
+        tag cannot hide a body that says 753. Engineering ratings and parameter numbers
+        are not treated as model identity.
 
     Untagged, bodyless chunks are rejected when a model was asked for: with no metadata
     and no text there is nothing to justify grounding, and the caller's contract is that
-    surviving nothing means fall back to the ungrounded answer.
+    surviving nothing cannot authorize a model-specific answer or citation.
     """
     if not query_model:
-        return True
-
-    q = query_model.strip().lower()
-    if not q:
         return True
 
     def _norm(token: str) -> tuple[str, str]:
@@ -1140,12 +1265,54 @@ def chunk_matches_model(
         fam = re.sub(r"[\s\-_]*\d{2,4}\s*$", "", t).strip()
         return fam, num
 
+    q = query_model.strip().lower()
+    if not q:
+        return True
+    query_model_tokens = {
+        re.sub(r"[^a-z0-9]", "", query_model.casefold()),
+    }
+
+    # The resolver deliberately keeps a family-adjacent pure-digit model in two
+    # fields (product_family="PowerFlex", model="525"). Compare in that same
+    # identity space instead of requiring callers or tests to invent the friendlier
+    # but non-production string "PowerFlex 525".
+    family_hint = (query_family or "").strip()
+    q_family, _q_number = _norm(q)
+    hinted_family, _hinted_number = _norm(family_hint) if family_hint else ("", "")
+    if hinted_family and not q_family.startswith(hinted_family):
+        q = f"{family_hint} {q}"
+    query_model_tokens.add(re.sub(r"[^a-z0-9]", "", q.casefold()))
+
+    pack_aliases, pack_keywords, documented_pack_models, query_pack_id = _drive_pack_identity_terms(
+        q
+    )
+    has_drive_pack = bool(pack_aliases or pack_keywords)
+    declared_series_aliases = tuple(alias for alias in pack_aliases if " series " in f" {alias} ")
+
+    def _is_declared_series_identity(candidate: str) -> bool:
+        """Whether candidate names this model's umbrella series without conflict."""
+        normalized = _normalize_identity_words(candidate)
+        if not normalized:
+            return False
+        padded = f" {normalized} "
+        candidate_numbers = set(re.findall(r"\b\d{2,4}[a-z]{0,3}\b", normalized))
+        for alias in declared_series_aliases:
+            if f" {alias} " not in padded:
+                continue
+            alias_numbers = set(re.findall(r"\b\d{2,4}[a-z]{0,3}\b", alias))
+            allowed_numbers = alias_numbers | ({_q_number} if _q_number else set())
+            if candidate_numbers <= allowed_numbers:
+                return True
+        return False
+
     def _compatible(a: str, b: str) -> bool:
         """Same family, and same number unless one side is series-level (no number).
 
         A series-level document ("PowerFlex 520-series wiring") legitimately grounds a
         question about a 525; a 753 manual does not.
         """
+        if _is_declared_series_identity(a):
+            return True
         fa, na = _norm(a)
         fb, nb = _norm(b)
         if fa != fb:
@@ -1153,29 +1320,818 @@ def chunk_matches_model(
         return not na or not nb or na == nb
 
     q_family, _q_num = _norm(q)
+    known_family_models = {_q_num} if _q_num else set()
+    known_resolver_model_tokens: set[str] = set()
+    for expanded in FAMILY_FROM_ALIAS.values():
+        expanded_family, expanded_number = _norm(expanded)
+        if expanded_number:
+            known_resolver_model_tokens.add(re.sub(r"[^a-z0-9]", "", expanded.casefold()))
+        if expanded_family == q_family and expanded_number:
+            known_family_models.add(expanded_number)
+
+    def _identity_term_patterns(term: str) -> tuple[str, ...]:
+        parts = term.split()
+        if not parts:
+            return ()
+        joined = r"[\W_]*".join(re.escape(part) for part in parts)
+        # Publication identifiers commonly append one revision letter directly
+        # to a stable mixed alpha-numeric stem (``520-UM001O-EN-E``). Permit that
+        # one-letter revision only for such stems; numeric model aliases retain
+        # their strict terminal boundary.
+        last_part = parts[-1]
+        revision_suffix = (
+            r"(?:[a-z](?=[\W_]|$))?"
+            if re.search(r"[a-z]", last_part) and last_part[-1:].isdigit()
+            else ""
+        )
+        identity = f"{joined}{revision_suffix}"
+        patterns = [rf"(?<![a-z0-9]){identity}(?![a-z0-9])"]
+        family_term = _normalize_identity_words(q_family)
+        if family_term and not term.startswith(family_term):
+            family_joined = r"[\W_]*".join(re.escape(part) for part in family_term.split())
+            patterns.append(rf"(?<![a-z0-9]){family_joined}[\W_]*{identity}(?![a-z0-9])")
+        return tuple(patterns)
+
+    def _contains_identity_term(text: str, terms: tuple[str, ...] | set[str]) -> bool:
+        """Boundary-safe identity lookup with punctuation/separator normalization."""
+        normalized = _normalize_identity_words(text)
+        padded = f" {normalized} "
+        lowered = text.casefold()
+        for term in terms:
+            if not term:
+                continue
+            if f" {term} " in padded:
+                return True
+            for pattern in _identity_term_patterns(term):
+                if re.search(pattern, lowered):
+                    return True
+        return False
+
+    family_names = {q_family} if q_family else set()
+    for alias, expanded in FAMILY_FROM_ALIAS.items():
+        expanded_family, expanded_number = _norm(expanded)
+        if expanded_family == q_family and not expanded_number:
+            family_names.update({alias, expanded.lower()})
+
+    def _body_names_family(text: str) -> bool:
+        lowered = text.casefold()
+        return any(
+            re.search(_alias_pattern(family_name), lowered)
+            for family_name in family_names
+            if family_name
+        )
+
+    def _body_matches_query_identity(text: str) -> bool:
+        """Require positive query-model evidence; a bare family is insufficient."""
+        terms = tuple(dict.fromkeys((*pack_aliases, *pack_keywords, _normalize_identity_words(q))))
+        if _contains_identity_term(text, terms):
+            return True
+        if not (_q_num and _body_names_family(text)):
+            return False
+        # Documents also use separated relational wording: ``model 525`` or
+        # ``on the 525`` after naming the family earlier in the passage.
+        relation = (
+            r"(?<![a-z0-9])(?:model|type|unit|specifically|on|for)(?![a-z])"
+            r"(?:[\W_]+(?:model|number|no|the)(?![a-z]))?"
+            rf"[\W_]*{re.escape(_q_num)}(?![a-z0-9])"
+        )
+        return bool(re.search(relation, text.casefold()))
+
+    def _body_has_conflicting_identity(text: str, *, source_mode: bool = False) -> bool:
+        """Reject explicit body identity that contradicts the requested model.
+
+        This runs even when metadata names the expected model. Ingest metadata is
+        useful positive evidence, but it cannot erase an explicit contradiction in
+        the document body.
+        """
+        if not (text and _q_num):
+            return False
+
+        lowered = text.casefold()
+        expected = _normalize_identity_words(_q_num)
+        model_token = r"(?:\d{2,4}[a-z]{0,3}|\d[a-z]{1,3}|[a-z]{1,3}\d{1,4}[a-z]{0,3})"
+        pack_terms = tuple(dict.fromkeys((*pack_aliases, *pack_keywords)))
+
+        # Other Rockwell product families are explicit equipment identity, even
+        # when their model grammar differs from a drive (SLC 5/03, PLC-5,
+        # PanelView Plus 7, POINT/FLEX I/O catalog numbers, and the *Logix,
+        # Kinetix, or Stratix families).  Match the family form rather than an
+        # ever-growing list of individual models.  A chunk that mixes one of
+        # these with PowerFlex evidence is conservatively rejected.
+        other_equipment_family = re.compile(
+            r"(?<![a-z0-9])(?P<family>"
+            r"[a-z]+logix|panel[\W_]*view(?:[\W_]+plus)?|kinetix|stratix|"
+            r"(?:slc|plc)(?=[\W_]*\d)|(?:point|flex)[\W_]+i[\W_/]*o|"
+            r"micro[\W_]*\d{3,4}"
+            r")(?![a-z])"
+        )
+        compact_query = re.sub(r"[^a-z0-9]", "", _normalize_identity_words(q))
+        for family_match in other_equipment_family.finditer(lowered):
+            compact_family = re.sub(r"[^a-z0-9]", "", family_match.group("family"))
+            if compact_family and compact_family not in compact_query:
+                return True
+
+        # Record exact spans for shipped aliases/nameplate identifiers. An
+        # overlapping model-like token is therefore known-good (for example the
+        # 25B in ``25B-D024N104`` or 520 in ``520-UM001``), rather than guessed.
+        allowed_spans: list[tuple[int, int]] = []
+        for term in pack_terms:
+            for pattern in _identity_term_patterns(term):
+                allowed_spans.extend(match.span() for match in re.finditer(pattern, lowered))
+                if re.fullmatch(r"\d+[a-z]", term):
+                    # A PowerFlex catalog number has one defined nameplate
+                    # payload (for example 25B-D024N104 or 25B-D2P3N104).
+                    # Extending this through arbitrary separator-delimited
+                    # suffixes made ``25B-753`` and
+                    # ``25B-D024N104-753`` one giant trusted span, hiding the
+                    # wrong model.  Trust only the catalog grammar itself.
+                    catalog_pattern = (
+                        rf"(?:{pattern})[-_][a-z]\d+(?:p\d+)?[a-z]\d{{3}}"
+                        r"(?![a-z0-9])"
+                    )
+                    allowed_spans.extend(
+                        match.span() for match in re.finditer(catalog_pattern, lowered)
+                    )
+
+        def _overlaps_allowed(start: int, end: int) -> bool:
+            return any(
+                start < allowed_end and end > allowed_start
+                for allowed_start, allowed_end in allowed_spans
+            )
+
+        exact_query_aliases = tuple(
+            alias
+            for alias in pack_aliases
+            if "series" not in alias and expected in re.findall(r"\b\d{2,4}\b", alias)
+        )
+
+        def _declared_sibling_is_shared(candidate: str, start: int, end: int) -> bool:
+            """Allow declared 520 siblings only in clearly shared/cautionary prose.
+
+            A 520-Series manual contains both common sections and model-specific
+            pages. Merely belonging to the same manual cannot make a 523-only
+            terminal block valid evidence for a 525. The narrow exceptions here
+            require the same sentence to name the requested 525 and to identify
+            shared applicability, a supported-model list, or a safety warning.
+            """
+            if candidate not in documented_pack_models:
+                return False
+            sentence_start = max(
+                lowered.rfind(delimiter, 0, start) for delimiter in (".", "!", "?", "\n")
+            )
+            sentence_ends = [
+                position
+                for delimiter in (".", "!", "?", "\n")
+                if (position := lowered.find(delimiter, end)) >= 0
+            ]
+            sentence_end = min(sentence_ends) if sentence_ends else len(lowered)
+            sentence = lowered[sentence_start + 1 : sentence_end]
+            exact_expected_named = _contains_identity_term(sentence, exact_query_aliases)
+            expected_in_model_list = bool(
+                re.search(
+                    rf"(?<![a-z])models?(?![a-z]).{{0,100}}"
+                    rf"(?<![a-z0-9]){re.escape(expected)}(?![a-z0-9])",
+                    sentence,
+                )
+            )
+            declared_range = re.search(
+                r"(?<![a-z])models?(?![a-z]).{0,60}?"
+                r"(?P<start>\d{2,4})[\W_]*(?:-|–|—|to|through)[\W_]*"
+                r"(?P<end>\d{2,4})(?![a-z0-9])",
+                sentence,
+            )
+            expected_in_declared_range = bool(
+                declared_range
+                and declared_range.group("start") in documented_pack_models
+                and declared_range.group("end") in documented_pack_models
+                and expected.isdigit()
+                and int(declared_range.group("start"))
+                <= int(expected)
+                <= int(declared_range.group("end"))
+            )
+            if not (exact_expected_named or expected_in_model_list or expected_in_declared_range):
+                return False
+            return bool(
+                re.search(
+                    r"(?<![a-z])(?:supported|supports?|includes?|models?|"
+                    r"capable|warning|incorrect|damage|damages|such[\W_]+as)(?![a-z])",
+                    sentence,
+                )
+                or re.search(
+                    rf"powerflex[\W_]+{re.escape(candidate)}[\W_]+(?:and|or)[\W_]+"
+                    rf"powerflex[\W_]+{re.escape(expected)}[\W_]+drives?(?![a-z])",
+                    sentence,
+                )
+            )
+
+        measurement_units = re.compile(
+            r"[\W_]*(?:a|v|mhz|khz|hz|hertz|ms|milliseconds?|seconds?|secs?|"
+            r"ma|milliamps?|amps?|amperes?|volts?|vac|vdc|kw|kilowatts?|hp|rpm|percent|pct|"
+            r"ohms?|poles?|°?[cf]|degrees?|%)(?:\b|(?=\W|$))"
+        )
+        measurement_context = re.compile(
+            r"[\W_]*(?:(?:ac|dc)[\W_]+)?(?:bus|input|output|reading|voltage|"
+            r"rating|rated|measurement|level|class|carrier|frequency|fla|"
+            r"continuous[\W_]+output|(?:max[\W_]+)?ambient[\W_]+limit)(?![a-z])"
+        )
+        measurement_prefix = re.compile(
+            r"(?<![a-z])(?:rated(?:[\W_]+(?:nameplate|current|voltage|power))?|"
+            r"rating(?:[\W_]+is)?|"
+            r"ambient(?:[\W_]+temperature)?(?:[\W_]+limit)?(?:[\W_]+is)?|"
+            r"continuous(?:[\W_]+output)?(?:[\W_]+is)?|"
+            r"(?:input|output)(?:[\W_]+(?:current|voltage|power))?"
+            r"(?:[\W_]+(?:is|at))?)[\W_]*$"
+        )
+        measurement_range = re.compile(
+            r"[\W_]*(?:(?:-|–|—|/)|(?:to|through))[\W_]*\d{1,4}[\W_]*"
+            r"(?:vac|vdc|hz|hertz|ma|kw|hp|rpm|a|v|c|f|amps?|amperes?|volts?)\b"
+        )
+        non_identity_prefix = re.compile(
+            r"(?<![a-z])(?:page|table|figure|section|value|setting|parameter|"
+            r"revision|rev|code|fault)[\W_]*$|"
+            r"(?<![a-z])serial(?:[\W_]+number)?"
+            r"(?:[\W_]+ending(?:[\W_]+in)?)?[\W_]*$"
+        )
+        family_qualifier = (
+            r"|" + r"[\W_]+".join(re.escape(part) for part in q_family.split()) if q_family else ""
+        )
+        explicit_identity_qualifier = re.compile(
+            r"(?<![a-z])(?:model|product|series|type|catalog|sku|part|equipment|order"
+            + family_qualifier
+            + r")[\W_]+(?:code|value)[\W_]*$"
+        )
+
+        def _conflicts(
+            identity: re.Match[str], *, offset: int = 0, force_identity: bool = False
+        ) -> bool:
+            candidate = _normalize_identity_words(identity.group("model"))
+            start, end = identity.span("model")
+            start += offset
+            end += offset
+            if (
+                candidate == expected
+                or re.sub(r"[^a-z0-9]", "", candidate) in query_model_tokens
+                or _overlaps_allowed(start, end)
+            ):
+                return False
+            preceding = lowered[max(0, start - 48) : start]
+            if non_identity_prefix.search(preceding) and not explicit_identity_qualifier.search(
+                preceding
+            ):
+                return False
+            marker = _normalize_identity_words(identity.groupdict().get("marker") or "")
+            if _declared_sibling_is_shared(candidate, start, end):
+                return False
+            # PowerFlex parameter/fault groups are written immediately after the
+            # family name in real manuals (P041, F081, C125, A442, b001, t001).
+            # Keep this aligned with the canonical Notebook query vocabulary; they
+            # are not equipment models unless an explicit identity marker says so.
+            if (
+                marker in {"", "drive"}
+                and re.fullmatch(r"[abcdfhlptu]\d{2,4}", candidate)
+                and candidate not in known_resolver_model_tokens
+            ):
+                return False
+            compact_measurement = re.fullmatch(
+                r"(?P<value>\d{1,4})(?:vac|vdc|mhz|khz|hz|ms|ma|kw|hp|rpm|pct|a|v|c|f)",
+                candidate,
+            )
+            family_prefixes = {
+                model[:-1] for model in known_family_models if model.isdigit() and len(model) >= 3
+            }
+            explicit_marker = marker not in {"", "drive"}
+
+            # Decimal bounds such as ``0.00/Drive Rated Power`` contain a
+            # two-digit tail immediately before the word Drive. That is a
+            # parameter scale, not a model written before an identity noun.
+            if marker == "drive" and start > 0 and lowered[start - 1] == ".":
+                return False
+
+            def _looks_like_other_family_model(value: str) -> bool:
+                return (
+                    value != expected
+                    and len(value) >= 3
+                    and (
+                        value in known_family_models
+                        or any(value.startswith(prefix) for prefix in family_prefixes)
+                    )
+                )
+
+            if compact_measurement and not explicit_marker:
+                value = compact_measurement.group("value")
+                if measurement_context.match(lowered[end:]):
+                    return False
+                followed_by_identity_noun = bool(
+                    re.match(r"[\W_]*(?:drive|vfd|unit|model)(?![a-z])", lowered[end:])
+                )
+                looks_like_other_family_model = _looks_like_other_family_model(value)
+                if not (
+                    looks_like_other_family_model and (force_identity or followed_by_identity_noun)
+                ):
+                    return False
+            if (
+                force_identity
+                and not marker
+                and candidate.isdigit()
+                and start > 0
+                and lowered[start - 1] in "/-–—"
+                and not _looks_like_other_family_model(candidate)
+            ):
+                return False
+            # A range beginning with a known model (``753-480V``) is a model plus
+            # rating, not a 753-to-480V measurement range. Unknown numeric starts
+            # such as ``208-240VAC`` remain ordinary engineering ratings.
+            range_match = measurement_range.match(lowered[end:])
+            if not marker and range_match and candidate not in known_family_models:
+                # ``208-240 VAC`` is a rating; ``529-480V unit`` is an unknown
+                # same-series model plus its rating. Derive the family-like prefix
+                # from known identities instead of guessing a model-number range.
+                after_range = lowered[end + range_match.end() :]
+                followed_by_identity_noun = bool(
+                    re.match(r"[\W_]*(?:drive|vfd|unit|model)(?![a-z])", after_range)
+                )
+                if not (
+                    _looks_like_other_family_model(candidate)
+                    and (force_identity or followed_by_identity_noun)
+                ):
+                    return False
+            unit_match = measurement_units.match(lowered[end:])
+            if unit_match and not explicit_marker:
+                if not (force_identity and _looks_like_other_family_model(candidate)):
+                    return False
+            if marker in {
+                "for",
+                "applies to",
+                "apply to",
+                "covers",
+                "cover",
+                "compatible with",
+                "supports",
+                "support",
+                "intended for use with",
+            } and re.fullmatch(r"(?:19|20)\d{2}", candidate):
+                return False
+            return True
+
+        # Compact family prefixes are derived from the requested pack's aliases,
+        # not hard-coded. This catches PF755TL/PF-755TR while preserving the repo's
+        # deliberate decision that spaced ``PF 70`` can be a power-factor reading.
+        compact_prefixes: set[str] = set()
+        compact_family = re.sub(r"[^a-z0-9]", "", q_family)
+        for alias in pack_aliases:
+            compact = alias.replace(" ", "")
+            compact_match = re.fullmatch(rf"([a-z]{{2,}}){re.escape(expected)}", compact)
+            if compact_match and compact_match.group(1) != compact_family:
+                compact_prefixes.add(compact_match.group(1))
+        if compact_prefixes:
+            prefixes = "|".join(sorted(map(re.escape, compact_prefixes), key=len, reverse=True))
+            compact_identity = re.compile(
+                rf"(?<![a-z0-9])(?:{prefixes})[_-]?(?P<model>{model_token})(?![a-z0-9])"
+            )
+            if any(
+                _conflicts(identity, force_identity=True)
+                for identity in compact_identity.finditer(lowered)
+            ):
+                return True
+            # Keep the repo's deliberate ``PF 70`` power-factor exception, while
+            # still recognizing unambiguous alpha-suffixed identities such as
+            # ``PF 755TL``.
+            spaced_compact_identity = re.compile(
+                rf"(?<![a-z0-9])(?:{prefixes})[\W_]+"
+                rf"(?P<model>\d{{3,4}}[a-z]{{0,3}})(?![a-z0-9])"
+            )
+            if any(
+                _conflicts(identity, force_identity=True)
+                for identity in spaced_compact_identity.finditer(lowered)
+            ):
+                return True
+
+        # A family-adjacent token is an identity even if this repo has no alias for
+        # that model (PowerFlex 750-Series, 755TL, etc.). Shipped query-pack terms
+        # and immediately-following engineering units are explicit exceptions.
+        adjacent_identity = re.compile(
+            r"[\W_]*(?:(?:r|tm|sm)[\W_]*)?"
+            rf"(?P<model>{model_token})(?![a-z0-9])"
+            r"(?P<series>[\W_]*series)?"
+        )
+        reversed_series = re.compile(rf"[\W_]*series[\W_]+(?P<model>{model_token})(?![a-z0-9])")
+        coordinator = (
+            r"(?:and(?:\s*/\s*or|\s+also)?|or(?:\s+also)?|nor|also|plus|versus|"
+            r"vs\.?|compared\s+(?:to|with|against)|in\s+comparison\s+with|"
+            r"in\s+contrast\s+to|as\s+opposed\s+to|as\s+well\s+as|alongside|"
+            r"together\s+with|rather\s+than|instead\s+of|but\s+not|not|to|through|"
+            r"thru|&|\+)"
+        )
+        coordinated_separator = (
+            rf"(?:\s*(?:,|;)?\s*\(?\s*{coordinator}\s+"
+            r"(?:(?:the|a|model)[\W_]+)?|"
+            r"\s*(?:,|;|&|\+|\||/|-|–|—|:|\()\s*)"
+        )
+        coordinated_model = r"\d{2,4}[a-z]{0,3}"
+        family_list_qualifier = (
+            r"(?:family|series)"
+            r"(?:[\W_]+(?:includes?|supports?|contains?|comprises?|models?|units?|drives?)){0,3}"
+        )
+        coordinated_identity = re.compile(
+            r"[\W_]*(?:(?:r|tm|sm)[\W_]*)?"
+            rf"(?:{family_list_qualifier}[\W_]*)?"
+            r"(?:(?:both|either|neither)[\W_]+)?"
+            rf"(?P<first>{coordinated_model})"
+            rf"(?P<tail>(?:{coordinated_separator}{coordinated_model})+)"
+        )
+        for family_name in family_names:
+            for family_match in re.finditer(_alias_pattern(family_name), lowered):
+                suffix_start = family_match.end()
+                suffix = lowered[suffix_start:]
+                for pattern in (adjacent_identity, reversed_series):
+                    identity = pattern.match(suffix)
+                    if not identity:
+                        continue
+                    if measurement_units.match(suffix[identity.end() :]):
+                        continue
+                    if _conflicts(identity, offset=suffix_start, force_identity=True):
+                        return True
+
+                # Direct family lists often omit the word "models":
+                # ``PowerFlex 525, 753`` / ``PowerFlex 525-753``. Parse only a
+                # coordinated chain immediately after the family. If the chain
+                # terminates in an engineering unit it is a rating range instead
+                # (``PowerFlex 208-240 VAC``), not a list of equipment.
+                coordinated = coordinated_identity.match(suffix)
+                if coordinated:
+                    coordinated_text = coordinated.group(0)
+                    identities = list(
+                        re.finditer(rf"(?P<model>{coordinated_model})", coordinated_text)
+                    )
+                    last_model = (
+                        _normalize_identity_words(identities[-1].group("model"))
+                        if identities
+                        else ""
+                    )
+                    ends_in_compact_unit = bool(
+                        re.fullmatch(r"\d{1,4}(?:vac|vdc|hz|kw|hp|rpm|a|v|c|f)", last_model)
+                    ) and bool(measurement_context.match(suffix[coordinated.end() :]))
+                    ends_before_unit = bool(measurement_units.match(suffix[coordinated.end() :]))
+                    if not (ends_in_compact_unit or ends_before_unit) and any(
+                        _conflicts(identity, offset=suffix_start, force_identity=True)
+                        for identity in identities
+                    ):
+                        return True
+
+            # Model-first prose is common in titles and comparisons: ``753
+            # PowerFlex drive`` and ``753 in the PowerFlex family``. Keep the
+            # bridge vocabulary narrow so unrelated numbers earlier in a sentence
+            # cannot drift into an identity match.
+            reversed_identity = re.compile(
+                rf"(?<![a-z0-9])(?P<model>{model_token})(?![a-z0-9])"
+                r"(?:[\W_]+(?:in|of|for|the)(?![a-z])){0,4}[\W_]+" + _alias_pattern(family_name)
+            )
+            if any(
+                _conflicts(identity, force_identity=True)
+                for identity in reversed_identity.finditer(lowered)
+            ):
+                return True
+
+        # Singular identity markers are authoritative. Plural ``models`` is
+        # handled separately below so legitimate supported-model lists can pass.
+        marked = re.compile(
+            r"(?<![a-z0-9])"
+            r"(?P<marker>model|series|type|unit|part|product|publication|"
+            r"bulletin|specifically|vfd|family|family[\W_]+member|"
+            r"(?:ac[\W_]+)?drive)"
+            r"(?![a-z])"
+            r"(?:[\W_]+(?:model|numbers?|no|designation)(?![a-z]))?"
+            r"(?:[\W_]+is(?![a-z]))?"
+            rf"[\W_]*(?P<model>{model_token})(?![a-z0-9])"
+        )
+        if any(_conflicts(identity) for identity in marked.finditer(lowered)):
+            return True
+
+        # Document prose often puts the number before its identity word, or links
+        # it through a short relation rather than writing ``model 753``.
+        number_before_marker = re.compile(
+            rf"(?<![a-z0-9])(?P<model>{model_token})(?![a-z0-9])"
+            r"[\W_]+(?P<marker>drive|model|unit|series)(?![a-z])"
+        )
+        if any(_conflicts(identity) for identity in number_before_marker.finditer(lowered)):
+            return True
+
+        relational_identity = re.compile(
+            r"(?<![a-z0-9])"
+            r"(?P<marker>for|(?:applies|apply|applicable)[\W_]+to|covers?|"
+            r"compatible[\W_]+with|"
+            r"supports?|"
+            r"intended[\W_]+for(?:[\W_]+use[\W_]+with)?|"
+            r"(?:intended[\W_]+)?for[\W_]+use[\W_]+with)(?![a-z])"
+            r"(?:[\W_]+the(?![a-z]))?"
+            rf"[\W_]*(?P<model>{model_token})(?![a-z0-9])"
+            r"(?=[\W_]+(?:drives?|models?|units?|series|only)(?![a-z]))"
+        )
+        if any(_conflicts(identity) for identity in relational_identity.finditer(lowered)):
+            return True
+
+        # Strong relation verbs identify a model without needing a trailing noun:
+        # ``these instructions apply to the 753``. Generic ``for`` remains in the
+        # stricter expression above because it is common around years and ratings.
+        strong_relational_identity = re.compile(
+            r"(?<![a-z0-9])"
+            r"(?P<marker>(?:applies|apply|applicable)[\W_]+to|covers?|"
+            r"compatible[\W_]+with|"
+            r"supports?|(?:intended[\W_]+)?for[\W_]+use[\W_]+(?:with|on)|"
+            r"use[\W_]+on)(?![a-z])"
+            r"(?:[\W_]+the(?![a-z]))?"
+            rf"[\W_]*(?P<model>{model_token})(?![a-z0-9])"
+        )
+        if any(_conflicts(identity) for identity in strong_relational_identity.finditer(lowered)):
+            return True
+
+        # A plural model list is safe only when it explicitly includes the
+        # requested model. This admits ``523, 525, and 527`` but not ``753, 755``.
+        declared_series_numbers = set(documented_pack_models) | {expected}
+
+        def _is_declared_series_member(model: str) -> bool:
+            if model == expected:
+                return True
+            if not model.isdigit():
+                return False
+            return model in declared_series_numbers
+
+        list_separator = coordinated_separator
+        model_list = re.compile(
+            r"(?<![a-z])(?:"
+            r"supported[\W_]+(?:models?|units?|drives?)|"
+            r"models|units|drives|model[\W_]+numbers?"
+            r")(?![a-z])"
+            r"(?:[\W_]+(?:include|includes|supported|are)(?![a-z]))?[\W_]*"
+            rf"(?P<models>{model_token}(?:{list_separator}{model_token})*)"
+        )
+        for listed in model_list.finditer(lowered):
+            listed_text = listed["models"]
+            models = set(re.findall(rf"(?<![a-z0-9]){model_token}(?![a-z0-9])", listed_text))
+            numeric_models = {model for model in models if model.isdigit()}
+            range_match = re.fullmatch(
+                r"\s*(?P<start>\d{2,4})\s*(?:-|–|—|to|through)\s*"
+                r"(?P<end>\d{2,4})\s*",
+                listed_text,
+            )
+            valid_declared_range = False
+            if range_match:
+                start = range_match.group("start")
+                end = range_match.group("end")
+                valid_declared_range = (
+                    _is_declared_series_member(start)
+                    and _is_declared_series_member(end)
+                    and start.isdigit()
+                    and end.isdigit()
+                    and expected.isdigit()
+                    and int(start) <= int(expected) <= int(end)
+                )
+            if (
+                models
+                and not valid_declared_range
+                and (
+                    expected not in numeric_models
+                    or any(not _is_declared_series_member(model) for model in models)
+                )
+            ):
+                return True
+
+        # Connector spelling and omitted page headings must not decide safety.
+        # Scan for known/series-shaped models even when a chunk omits PowerFlex:
+        # stale metadata plus a shared-manual source cannot turn a bare ``753
+        # startup`` or ``523 terminal block`` heading into 525 evidence.
+        family_prefixes = {
+            model[:-1] for model in known_family_models if model.isdigit() and len(model) >= 3
+        }
+        identity_context = re.compile(
+            r"(?:[\s_]*|[-–—][\s_]*)(?:specific|startup|ramp[\W_]+up|"
+            r"acceleration|deceleration|"
+            r"operating[\W_]+instructions?|user[\W_]+manual|instructions?|"
+            r"procedure|wiring|manual|drive|servo|controller|plc|control|"
+            r"model|unit|series|behavior|"
+            r"uses?|has|requires?|provides?|supports?)"
+            r"(?![a-z])"
+        )
+        for token in re.finditer(rf"(?<![a-z0-9])(?P<model>{model_token})(?![a-z0-9])", lowered):
+            candidate = _normalize_identity_words(token.group("model"))
+            start, end = token.span("model")
+            if (
+                candidate == expected
+                or re.sub(r"[^a-z0-9]", "", candidate) in query_model_tokens
+                or _declared_sibling_is_shared(candidate, start, end)
+                or _overlaps_allowed(start, end)
+                or (
+                    re.fullmatch(r"[abcdfhlptu]\d{2,4}", candidate)
+                    and candidate not in known_resolver_model_tokens
+                )
+                or re.fullmatch(r"(?:page|table|figure|section)\d{1,4}", candidate)
+                or re.fullmatch(r"(?:19|20)\d{2}", candidate)
+            ):
+                continue
+
+            before = lowered[max(0, start - 24) : start]
+            after = lowered[end : end + 80]
+            nearby_measurement_unit = re.match(
+                r"[\W_\d./–—-]{0,32}(?:vac|vdc|hz|hertz|ma|kw|hp|rpm|"
+                r"amps?|amperes?|volts?|°?[cf]|degrees?|%)(?:\b|(?=\W|$))",
+                after,
+            )
+            catalog_number_list = bool(
+                re.fullmatch(r"\d{1,2}[a-z]", candidate)
+                and re.search(
+                    r"(?<![a-z])catalog[\W_]+numbers?(?![a-z]).{0,100}$",
+                    lowered[max(0, start - 120) : start],
+                )
+            )
+            if catalog_number_list:
+                continue
+            if non_identity_prefix.search(before) and not explicit_identity_qualifier.search(
+                before
+            ):
+                continue
+            # The global scan must mirror the decimal exemption in
+            # ``_conflicts``.  In real parameter tables, the fractional tail in
+            # ``0.00/Drive Rated Power`` otherwise looks like the model-first
+            # phrase ``00 Drive``.
+            if not source_mode and (
+                (start > 0 and lowered[start - 1] == ".")
+                or (
+                    end < len(lowered)
+                    and lowered[end] == "."
+                    and end + 1 < len(lowered)
+                    and lowered[end + 1].isdigit()
+                )
+                or (measurement_prefix.search(before) and nearby_measurement_unit)
+            ):
+                continue
+            compact_value = re.fullmatch(
+                r"(?P<value>\d{1,4})(?:vac|vdc|mhz|khz|hz|ms|ma|kw|hp|rpm|pct|a|v|c|f)",
+                candidate,
+            )
+            alpha_model = re.fullmatch(r"(?P<value>\d{1,4})[a-z]{1,3}", candidate)
+            base = (
+                compact_value.group("value")
+                if compact_value
+                else alpha_model.group("value")
+                if alpha_model
+                else candidate
+            )
+            model_like = base.isdigit() and (
+                base in known_family_models
+                or (len(base) >= 3 and any(base.startswith(prefix) for prefix in family_prefixes))
+            )
+            coordinated_with_query = bool(
+                re.search(rf"(?:{coordinator}|[,/&+|:()\-–—])[\W_]*$", before)
+                and _body_matches_query_identity(lowered[:start])
+            )
+            left_range_bound = re.search(
+                r"(?<![a-z0-9])(?P<value>\d{1,4})[\s_]*(?:[-–—/])[\s_]*$",
+                before,
+            )
+            range_match = measurement_range.match(after)
+            if range_match:
+                after_range = after[range_match.end() :]
+                followed_by_identity_noun = bool(
+                    re.match(r"[\W_]*(?:drive|vfd|unit|model)(?![a-z])", after_range)
+                )
+                if not model_like and not followed_by_identity_noun:
+                    continue
+            if compact_value and not source_mode:
+                # A compact engineering value can share a number with a real
+                # drive model (``70A``, ``40C``, ``755V``).  Treat it as an
+                # identity only when the following words actually describe an
+                # equipment identity (``700S startup``, ``753V unit``).  This
+                # preserves ratings while still catching family-omitting model
+                # headings under stale 525 metadata.
+                # A suffix sharing a known model number (753A/753V) is
+                # presumptively an equipment identity.  Treat it as a unit only
+                # when measurement grammar says so. Unknown numeric-unit values
+                # retain the older permissive behavior. A left numeric range
+                # such as 0-10V is measurement grammar; PF525-753A is not,
+                # because the left token is not a standalone number.
+                left_is_measurement_bound = bool(
+                    left_range_bound and left_range_bound.group("value") != expected
+                )
+                if (
+                    measurement_context.match(after)
+                    or measurement_prefix.search(before)
+                    or left_is_measurement_bound
+                    or (
+                        not model_like
+                        and not identity_context.match(after)
+                        and not coordinated_with_query
+                    )
+                ):
+                    continue
+            if measurement_units.match(lowered[end:]):
+                continue
+            if re.fullmatch(r"\d{1,4}x", candidate):
+                continue
+            if re.fullmatch(r"(?:rs|rj|ip)\d{2,4}", candidate):
+                continue
+            if re.search(r"(?<![a-z])(?:rs|rj|ip)[\W_]*$", before):
+                continue
+            explicitly_used_as_identity = bool(
+                identity_context.match(after)
+                or re.search(
+                    r"(?<![a-z])(?:for|on|in|with|model|type|unit)(?![a-z])"
+                    r"[\W_]+(?:(?:the|a)(?![a-z])[\W_]+)?$",
+                    before,
+                )
+                or (
+                    candidate.isdigit()
+                    and len(candidate) == 4
+                    and re.search(
+                        r"(?<![a-z0-9])(?:[a-z]+logix|kinetix|panelview)[\W_]*$",
+                        before,
+                    )
+                )
+                or (
+                    candidate.isdigit()
+                    and len(candidate) == 4
+                    and not 1900 <= int(candidate) <= 2099
+                    and (
+                        re.search(
+                            r"(?<![a-z])(?:the|model|type|unit|manual)[\W_]*$",
+                            before,
+                        )
+                        or re.match(r"[\W_]*(?:['’]s)(?![a-z])", after)
+                    )
+                )
+            )
+            alpha_numeric_model = bool(alpha_model) or bool(
+                re.fullmatch(r"[a-z]{1,3}\d{1,4}[a-z]{0,3}", candidate)
+            )
+            numeric_series_model = bool(
+                candidate.isdigit()
+                and (
+                    (len(candidate) == 3 and 300 <= int(candidate) <= 999)
+                    or (len(candidate) == 4 and not 1900 <= int(candidate) <= 2099)
+                )
+            )
+            if (
+                model_like
+                or alpha_numeric_model
+                or numeric_series_model
+                or explicitly_used_as_identity
+            ):
+                return True
+
+        publication_identity = re.compile(
+            r"(?<![a-z0-9])(?P<model>\d{3,4})[\W_]*"
+            r"(?P<marker>(?:um|pm|rm|td)\d{3,4}[a-z]?)(?![a-z0-9])"
+        )
+        if any(_conflicts(identity) for identity in publication_identity.finditer(lowered)):
+            return True
+        return False
 
     cm = (chunk_model or "").strip().lower()
+    body = (chunk_text or "").strip()
+    # Decode URL escapes exactly once before identity checks.  Real source URLs
+    # commonly encode spaces/dashes; leaving `%20`/`%2D` opaque let an explicit
+    # wrong model evade the same parser that rejects its plain-text form.
+    source = unquote((chunk_source or "").strip())
+    if query_pack_id and source:
+        _source_aliases, _source_keywords, _source_models, source_pack_id = (
+            _drive_pack_identity_terms(source)
+        )
+        if source_pack_id and source_pack_id != query_pack_id:
+            return False
     if cm:
-        if _compatible(cm, q):
-            return True
-        # Tagged with a model that is not compatible -> same-vendor/wrong-model. Reject.
-        return False
+        # Metadata can itself be a merged or malformed identity list. Finding the
+        # requested token is insufficient if that field also names a 753.
+        if _body_has_conflicting_identity(cm):
+            return False
 
-    body = (chunk_text or "").lower()
-    if not body:
-        return False
+        if not has_drive_pack:
+            return _compatible(cm, q) and not _body_has_conflicting_identity(body)
 
-    # Match the query model itself, and any alias that maps to the same family, using
-    # the resolver's boundary rule rather than a bare substring.
-    candidates = {q} | {a for a, fam in FAMILY_FROM_ALIAS.items() if _compatible(fam, q)}
-    for cand in candidates:
-        if re.search(_alias_pattern(cand), body):
+        # A model_number field is supposed to be one identity, not prose or a
+        # merged list. For a known pack, accept only a declared alias/series.
+        normalized_cm = _normalize_identity_words(cm)
+        if normalized_cm not in set(pack_aliases):
+            return False
+
+        if _body_has_conflicting_identity(body) or _body_has_conflicting_identity(
+            source, source_mode=True
+        ):
+            return False
+
+        # Metadata and body are not independent when ingest assigned the wrong
+        # label. Require the chunk itself or its source filename to corroborate
+        # the shipped pack. A metadata-only call with no chunk is retained for
+        # helper compatibility; the runtime never processes a bodyless chunk.
+        if not body and not source:
             return True
-    # Bare numeric tail ("525" for "PowerFlex 525") only alongside the family word.
-    tail = _q_num
-    if tail and q_family and q_family.split()[0] in body and re.search(_alias_pattern(tail), body):
-        return True
-    return False
+        return _body_matches_query_identity(body) or _body_matches_query_identity(source)
+
+    if not body and not source:
+        return False
+    return (
+        (_body_matches_query_identity(body) or _body_matches_query_identity(source))
+        and not _body_has_conflicting_identity(body)
+        and not _body_has_conflicting_identity(source, source_mode=True)
+    )
 
 
 def vendor_named_in(text: str | None, vendor: str | None) -> bool:

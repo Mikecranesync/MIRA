@@ -13,6 +13,7 @@ import sqlite3
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote
 
 import httpx
 
@@ -20,6 +21,7 @@ from . import print_recall, quality_gate
 from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
+from .citation_compliance import _emitted_labels as _citation_labels
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
@@ -125,7 +127,14 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
-from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .uns_resolver import (
+    UNSContext,
+    UNSResolution,
+    canonical_vendor,
+    resolve_uns_path,
+    resolve_uns_path_multi,
+    vendors_in_text,
+)
 from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
@@ -3615,11 +3624,12 @@ class Supervisor:
 
             if (
                 _router_intent == "general_question"
-                # N1 (UAT 2026-08-06): help/greeting join safety/documentation —
+                # N1 (UAT 2026-08-06): procedural/help/greeting join safety/documentation —
                 # the deterministic keyword lanes outrank the router's label
                 # (RTE-001 doctrine). "what can you do?" was stolen here and
                 # got a KB-gap footer instead of the canned help lane.
-                and _keyword_intent not in ("safety", "documentation", "help", "greeting")
+                and _keyword_intent
+                not in ("safety", "documentation", "instructional", "help", "greeting")
                 and not _router_industrial_override
             ):
                 return await self._handle_general_question(
@@ -7293,14 +7303,14 @@ class Supervisor:
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
 
-    def _instructional_kb_coverage(
+    def _instructional_vendor_has_rows(
         self, message: str, state: dict, history: list, tenant_id: str = ""
     ) -> bool:
-        """Can the KB ground this procedural question? (#3602)
+        """Does the resolved vendor have any KB rows? (#3602)
 
-        Reuses `_handle_general_question`'s extraction window and coverage probe so
-        the two DST siblings share one definition of "we have documentation for
-        this" and cannot drift.
+        This is a cheap vendor-level prefilter, not an evidence decision. The
+        caller may claim grounding only after `_instructional_kb_context` returns
+        at least one identity-matching chunk.
 
         Fails CLOSED to the direct-LLM path: if resolution or the probe raises, the
         caller answers as it did before. A grounding *upgrade* must never turn a
@@ -7317,7 +7327,68 @@ class Supervisor:
             # cosmetic slip — see .claude/rules/knowledge-entries-tenant-scoping.md.
             tenant = tenant_id or state.get("tenant_id") or ""
 
-            resolution = resolve_uns_path_multi(combined, tenant_id=tenant)
+            # A new equipment name on THIS turn outranks older machines in the
+            # six-turn extraction window. Resolving only the concatenated text picks
+            # the first historical vendor and can carry a PowerFlex model into a new
+            # Siemens question.
+            prior_uns = (state.get("context") or {}).get("uns_context") or {}
+            current_resolution = resolve_uns_path_multi(message, tenant_id=tenant)
+
+            # A technician often shortens a same-family switch to "on the 753?".
+            # The resolver intentionally will not interpret a bare number without
+            # family context, while the history-wide fallback sees the older 525
+            # first. Re-resolve only an explicit current-turn model reference against
+            # the already-established family; engineering values such as "60 Hz" are
+            # excluded before they can replace the machine identity.
+            if not current_resolution.primary.manufacturer and prior_uns.get("product_family"):
+                bare_model = None
+                model_reference = re.compile(
+                    r"(?<![a-z0-9])(?:model|type|unit|drive|vfd|on|for)(?![a-z])"
+                    r"[\W_]+(?:the[\W_]+|a[\W_]+)?(?:model[\W_]+)?"
+                    r"(?P<model>\d{2,4}[a-z]{0,3})(?![a-z0-9])",
+                    re.IGNORECASE,
+                )
+                measurement_unit = re.compile(
+                    r"[\W_]*(?:a|v|vac|vdc|hz|kw|hp|rpm|°?[cf]|amps?|volts?)\b",
+                    re.IGNORECASE,
+                )
+                for match in model_reference.finditer(message):
+                    candidate = match.group("model")
+                    if re.fullmatch(
+                        r"\d{2,4}(?:a|v|vac|vdc|hz|kw|hp|rpm|c|f)",
+                        candidate,
+                        re.IGNORECASE,
+                    ) or measurement_unit.match(message[match.end("model") :]):
+                        continue
+                    bare_model = candidate
+                    break
+                if bare_model:
+                    contextual = resolve_uns_path_multi(
+                        f"{prior_uns['product_family']} {bare_model}", tenant_id=tenant
+                    )
+                    if contextual.primary.manufacturer and contextual.primary.model:
+                        current_resolution = contextual
+                        # This correction is canonical conversation identity, not
+                        # a one-handler hint. Persist it under context so the next
+                        # pronoun-only turn does not fall back to the older model.
+                        context = state.get("context") or {}
+                        stored_uns = dict(context.get("uns_context") or {})
+                        stored_uns.update(contextual.primary.as_dict())
+                        context["uns_context"] = stored_uns
+                        state["context"] = context
+                        prior_uns = stored_uns
+
+            resolution = current_resolution
+            if not current_resolution.primary.manufacturer:
+                # `state.context.uns_context` is the canonical per-turn resolver
+                # result and survives storage. Prefer it for anaphoric follow-ups;
+                # scanning concatenated history first can resurrect an older 525
+                # after the technician has switched the conversation to a 753.
+                persisted = UNSContext.from_dict(prior_uns)
+                if persisted and persisted.manufacturer:
+                    resolution = UNSResolution(primary=persisted, candidates=(persisted,))
+                else:
+                    resolution = resolve_uns_path_multi(combined, tenant_id=tenant)
             mfr = resolution.primary.manufacturer or (
                 ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
             )
@@ -7329,15 +7400,26 @@ class Supervisor:
             # Remember what we resolved. Coverage is a per-VENDOR count, so it says
             # "this OEM has documentation", never "this documentation is about the
             # thing asked". The retrieval step filters on these (#3605).
-            prior_uns = (state.get("context") or {}).get("uns_context") or {}
+            current_vendor = current_resolution.primary.manufacturer or ""
+            # Inherit only for a genuinely anaphoric follow-up.  Repeating the
+            # same OEM is not proof that the technician is still discussing the
+            # same product (for example, PowerFlex -> CompactLogix).  An explicit
+            # current-turn manufacturer therefore clears older family/model
+            # fields unless the resolver also established replacements.
+            may_inherit_prior_identity = not current_vendor
             state["_instructional_vendor"] = mfr
+            state["_instructional_family"] = resolution.primary.product_family or (
+                prior_uns.get("product_family") if may_inherit_prior_identity else ""
+            )
             # Fall back to the prior turn's resolved model when THIS turn names only the
             # vendor. Without it a follow-up ("and the accel time?") resolves no model and
             # the model gate goes vacuous — the filter silently stops filtering exactly
             # when a conversation gets going.
-            state["_instructional_model"] = resolution.primary.model or prior_uns.get("model") or ""
+            state["_instructional_model"] = resolution.primary.model or (
+                prior_uns.get("model") if may_inherit_prior_identity else ""
+            )
             return True
-        except Exception as exc:  # noqa: BLE001 - never fail a turn over a coverage probe
+        except Exception as exc:  # noqa: BLE001 - never fail a turn over a vendor prefilter
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
             return False
 
@@ -7356,11 +7438,13 @@ class Supervisor:
         rows — reading it under the wrong tenant is a cross-tenant read, not a cosmetic
         slip. See `.claude/rules/knowledge-entries-tenant-scoping.md`.
 
-        Returns "" on ANY failure, retrieval or formatting. The caller then answers
-        exactly as it did before this fix. Aborting a covered turn would be worse than
-        the ungrounded answer this replaced — the one outcome a grounding upgrade must
-        never produce, which is why the formatting loop is inside the try as well.
+        Returns "" on any retrieval, identity, or formatting miss. The caller
+        distinguishes a genuine vendor-row miss (the existing direct-answer path)
+        from a vendor hit whose retrieved chunks all failed identity (an honest gap).
         """
+        # This is per-call evidence, not conversation identity. Reset before any
+        # possible early return so a failed retrieval cannot reuse old labels.
+        state["_instructional_source_labels"] = []
         try:
             from .neon_recall import recall_knowledge  # noqa: PLC0415
             from .uns_resolver import (  # noqa: PLC0415
@@ -7370,7 +7454,7 @@ class Supervisor:
                 vendor_named_in as _vendor_named_in,
             )
             from .workers.rag_worker import (  # noqa: PLC0415
-                chunk_matches_vendor,
+                _neutralize_chunk_text,
                 format_source_label,
             )
 
@@ -7380,7 +7464,14 @@ class Supervisor:
             chunks = recall_knowledge(None, tenant, limit=4, query_text=combined) or []
 
             want_vendor = state.get("_instructional_vendor") or ""
+            want_family = state.get("_instructional_family") or ""
             want_model = state.get("_instructional_model") or ""
+
+            # Vendor coverage is not machine identity.  Without a resolved model,
+            # any same-OEM model returned by recall would be arbitrary, so do not
+            # put model-specific documentation in the prompt at all.
+            if not want_model:
+                return ""
 
             parts: list[str] = []
             for ch in chunks:
@@ -7397,19 +7488,68 @@ class Supervisor:
                 # Two steps, and the second is the one that is easy to miss.
                 #
                 # (a) No CONTRADICTION on either axis — the canonical filters.
-                if not chunk_matches_vendor(ch.get("manufacturer"), want_vendor):
+                tagged_mfr = (ch.get("manufacturer") or "").strip()
+                if tagged_mfr and not _vendor_named_in(tagged_mfr, want_vendor):
                     continue
-                if not chunk_matches_model(ch.get("model_number"), body, want_model):
+                metadata = ch.get("metadata") if isinstance(ch.get("metadata"), dict) else {}
+                source_identity = " ".join(
+                    str(value)
+                    for value in (
+                        ch.get("source_url"),
+                        ch.get("section"),
+                        metadata.get("source_url"),
+                        metadata.get("equipment_id"),
+                        metadata.get("section"),
+                    )
+                    if value
+                )
+                # Source URLs often percent-encode separators. Decode once so
+                # vendor/model checks see the same identity as a human reading
+                # the filename; nested encodings are intentionally not chased.
+                source_identity = unquote(source_identity)
+                want_vendor_key = canonical_vendor(want_vendor) or want_vendor.strip().casefold()
+                expected_vendors = {want_vendor_key} if want_vendor_key else set()
+                tagged_vendors = vendors_in_text(tagged_mfr)
+                body_vendors = vendors_in_text(body)
+                # Filenames encode vendor names with punctuation or camel case
+                # (`A.B.B.`, `Automation-Direct`, `BoschRexroth`).  Inspect the
+                # original plus one separator-collapsed/camel-split view.  The
+                # canonical boundary matcher still makes the decision, so this
+                # does not restore substring bugs such as ABB in "grabbed".
+                acronym_source = re.sub(
+                    r"(?<![A-Za-z0-9])(?:[A-Za-z][._-]){2,}[A-Za-z]"
+                    r"(?=[._-]|[^A-Za-z0-9]|$)",
+                    lambda match: re.sub(r"[._-]", "", match.group(0)),
+                    source_identity,
+                )
+                spaced_source = re.sub(r"[._-]+", " ", source_identity)
+                source_views = {
+                    source_identity,
+                    acronym_source,
+                    re.sub(r"(?<=[a-z])(?=[A-Z])", " ", spaced_source),
+                }
+                source_vendors = set().union(*(vendors_in_text(view) for view in source_views))
+                if (
+                    tagged_vendors - expected_vendors
+                    or body_vendors - expected_vendors
+                    or source_vendors - expected_vendors
+                ):
+                    continue
+                if not chunk_matches_model(
+                    ch.get("model_number"),
+                    body,
+                    want_model,
+                    query_family=want_family,
+                    chunk_source=source_identity,
+                ):
                     continue
 
                 # (b) At least one POSITIVE tie to the resolved equipment.
                 #
-                # Both canonical filters are permissive by design: `chunk_matches_vendor`
-                # keeps untagged chunks (generic fault tables are legitimately useful to
-                # the RAG path), and `chunk_matches_model` keeps everything when the query
-                # resolved no model. Individually correct; together they mean an untagged,
-                # unrelated chunk sails through a vendor-only question — no contradiction,
-                # and no evidence either.
+                # Untagged manufacturer metadata remains eligible (generic fault tables
+                # can be useful), and `chunk_matches_model` keeps everything when the
+                # query resolved no model. That makes this separate positive tie
+                # necessary: absence of contradiction is not evidence.
                 #
                 # Matching here is ALIAS-AWARE and canonical, never a raw substring. A
                 # bare `want_vendor.lower() in body` is wrong in both directions at once:
@@ -7425,22 +7565,24 @@ class Supervisor:
                 # decide topical relevance; that is a retrieval-quality problem and is
                 # tracked on #3602. What this gate buys is narrow and real: wrong-equipment
                 # documentation can no longer ground an answer or emit a citation.
-                tagged_mfr = (ch.get("manufacturer") or "").strip()
-                tagged_model = (ch.get("model_number") or "").strip()
                 positive = bool(
-                    (tagged_mfr and chunk_matches_vendor(tagged_mfr, want_vendor))
-                    or (tagged_model and want_model)
+                    want_model
+                    or (tagged_mfr and _vendor_named_in(tagged_mfr, want_vendor))
                     or (want_vendor and _vendor_named_in(body, want_vendor))
-                    or (want_model and chunk_matches_model(None, body, want_model))
                 )
                 if not positive:
                     continue
 
                 label = format_source_label(ch)
+                safe_body = _neutralize_chunk_text(body)
+                if label and label not in state["_instructional_source_labels"]:
+                    state["_instructional_source_labels"].append(label)
                 # Cap each chunk: a procedural answer needs the relevant passage, not
                 # the whole manual, and an over-long prompt crowds out the
                 # numbered-steps instruction the technician actually needs.
-                parts.append(f"[Source: {label}]\n{body[:1200]}" if label else body[:1200])
+                parts.append(
+                    f"[Source: {label}]\n{safe_body[:1200]}" if label else safe_body[:1200]
+                )
             return "\n\n".join(parts)
         except Exception as exc:  # noqa: BLE001 - never fail a turn over retrieval
             logger.warning("INSTRUCTIONAL_KB_CONTEXT_FAILURE error=%s", exc)
@@ -7479,14 +7621,14 @@ class Supervisor:
         requires every claim to be grounded, and an ungrounded confident answer is
         worse for a technician than an admitted gap.
 
-        The coverage probe reuses `_handle_general_question`'s decision verbatim —
-        `resolve_uns_path_multi` + `kb_has_coverage` — rather than a second copy,
-        so the two siblings cannot drift apart again.
+        The vendor-row prefilter reuses `_handle_general_question`'s
+        `resolve_uns_path_multi` + `kb_has_coverage` decision. Grounding is stricter:
+        at least one retrieved chunk must also survive the equipment-identity gate.
 
         Behaviour is deliberately unchanged when the KB has nothing: a procedural
-        answer with no corpus behind it is still the best available reply, and
-        routing it to a grounded path that has no grounding would only produce a
-        refusal where a useful answer used to be.
+        answer with no corpus behind it still uses the prior direct path. When vendor
+        rows exist but none match the requested equipment, the handler returns an
+        honest evidence gap instead of allowing a wrong-model answer or citation.
         """
         # target_state="IDLE": instructional answers are background responses;
         # the FSM must return IDLE so state.get("state") doesn't surface ASSET_IDENTIFIED.
@@ -7510,13 +7652,21 @@ class Supervisor:
         # below is kept. Grounded, and still numbered steps a technician can work
         # through on the floor.
         kb_context = ""
-        if self._instructional_kb_coverage(message, state, history, tenant_id):
+        vendor_has_rows = self._instructional_vendor_has_rows(message, state, history, tenant_id)
+        if vendor_has_rows:
             kb_context = self._instructional_kb_context(message, state, history, tenant_id)
-            logger.info(
-                "INSTRUCTIONAL_GROUNDED chat_id=%s chunks=%d (#3602)",
-                chat_id,
-                kb_context.count("[Source:"),
-            )
+            if kb_context:
+                logger.info(
+                    "INSTRUCTIONAL_GROUNDED chat_id=%s chunks=%d (#3602)",
+                    chat_id,
+                    kb_context.count("[Source:"),
+                )
+            else:
+                logger.info(
+                    "INSTRUCTIONAL_IDENTITY_MISS chat_id=%s — vendor rows exist but "
+                    "no retrieved chunk matches the resolved equipment",
+                    chat_id,
+                )
 
         system = (
             "You are MIRA, an industrial maintenance assistant. "
@@ -7540,12 +7690,47 @@ class Supervisor:
             user_content = f"{user_content}\n\nDocumentation:\n{kb_context}"
         messages.append({"role": "user", "content": user_content})
 
-        raw, _usage = await self.router.complete(messages, max_tokens=600, session_id=chat_id)
-        reply = (
-            raw.strip()
-            if raw
-            else "I need more context about this specific equipment to answer that accurately. What's the make and model?"
-        )
+        if vendor_has_rows and not kb_context:
+            # A vendor-level row count is only a retrieval prefilter. If every
+            # retrieved chunk fails the equipment-identity gate, do not give the
+            # provider a chance to invent model-specific steps or a same-vendor,
+            # wrong-model citation. Reuse the canonical H4 honesty language.
+            reply = enforce_citation_or_gap_admission(
+                "I couldn't verify this procedure against documentation matching "
+                "the exact equipment named in the question."
+            )
+        else:
+            raw, _usage = await self.router.complete(messages, max_tokens=600, session_id=chat_id)
+            reply = (
+                raw.strip()
+                if raw
+                else "I need more context about this specific equipment to answer that accurately. What's the make and model?"
+            )
+
+            if kb_context:
+                # A provider can ignore the prompt and invent a source tag after
+                # retrieval has correctly filtered the chunks.  Normalize block
+                # citations, then require every emitted label to be one of the
+                # exact labels actually supplied in this filtered prompt.  Any
+                # departure fails closed: do not preserve claims that the model
+                # itself attributed to documentation it never received.
+                reply = _normalize_sources_block(reply)
+                allowed_labels = set(state.pop("_instructional_source_labels", []))
+                emitted_labels = _citation_labels(reply)
+                unexpected_labels = emitted_labels - allowed_labels
+                if not emitted_labels or unexpected_labels:
+                    logger.warning(
+                        "INSTRUCTIONAL_CITATION_LABEL_MISS chat_id=%s emitted=%r allowed=%r",
+                        chat_id,
+                        sorted(unexpected_labels),
+                        sorted(allowed_labels),
+                    )
+                    reply = enforce_citation_or_gap_admission(
+                        "I couldn't verify this procedure against the documentation "
+                        "retrieved for the equipment named in the question."
+                    )
+                else:
+                    reply = enforce_citation_or_gap_admission(reply)
 
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": reply})
