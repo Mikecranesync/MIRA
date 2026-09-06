@@ -86,7 +86,22 @@ await auditNodeModules(join(appRoot, "node_modules"));
 // installed-tree walk did not already cover, resolving its licence from the
 // registry. This fails CLOSED — an unresolvable package is a violation, not a
 // pass, because "we could not check it" must never read as "it is fine".
-const lockfilePaths = [join(appRoot, "bun.lock"), join(firstPartyPackagesRoot, "factorylm-ui/bun.lock")];
+// Lockfiles are DISCOVERED, not listed. A hardcoded list silently stops
+// auditing the moment a task adds a package with its own bun.lock — the same
+// class of blind spot as only auditing the installed tree. Globbing `apps/` as
+// well as `packages/` costs nothing and covers a future sibling app too.
+const workspaceRoot = resolve(appRoot, "../..");
+const lockfilePaths: string[] = [];
+for (const pattern of ["apps/factorylm-*/bun.lock", "packages/factorylm-*/bun.lock"]) {
+  for await (const match of new Bun.Glob(pattern).scan({ cwd: workspaceRoot, absolute: true })) {
+    lockfilePaths.push(match);
+  }
+}
+lockfilePaths.sort(); // deterministic order, so the audit output is stable
+if (lockfilePaths.length === 0) {
+  console.error("Dependency license audit failed: no bun.lock discovered under apps/factorylm-*/ or packages/factorylm-*/.");
+  process.exit(1);
+}
 const registryLicenseCache = new Map<string, string | undefined>();
 let auditedClosureOnlyPackageCount = 0;
 
@@ -169,5 +184,6 @@ if (violations.length > 0) {
 
 console.log(
   `Dependency license audit passed: ${auditedExternalPackageCount} external package manifests are MIT or Apache-2.0` +
-    ` (plus ${auditedClosureOnlyPackageCount} platform-skipped package(s) resolved from the registry).`,
+    ` (plus ${auditedClosureOnlyPackageCount} platform-skipped package(s) resolved from the registry` +
+    `, across ${lockfilePaths.length} discovered lockfile(s)).`,
 );
