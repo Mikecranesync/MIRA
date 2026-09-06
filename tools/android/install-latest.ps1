@@ -23,7 +23,11 @@ if ($got -ne $latest.sha256.ToLower()) { throw "sha256 mismatch: expected $($lat
 Write-Host "   ok $got"
 if ($DryRun) { Write-Host "dry run: APK verified at $apk; skipping adb."; exit 0 }
 
-if (-not (Get-Command adb -ErrorAction SilentlyContinue)) { throw "adb not found on PATH (install Android platform-tools)." }
+if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
+  $sdkAdb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools"
+  if (Test-Path (Join-Path $sdkAdb "adb.exe")) { $env:Path = "$sdkAdb;$env:Path" }
+  else { throw "adb not found on PATH and no Android SDK platform-tools under $sdkAdb (install Android platform-tools)." }
+}
 $devices = (& adb devices) | Select-Object -Skip 1 | Where-Object { $_ -match "\tdevice$" }
 if (-not $devices) { & adb devices; throw "no device in 'device' state. Plug the phone in, unlock it, accept the USB debugging prompt, then re-run." }
 Write-Host "→ installing on: $devices"
