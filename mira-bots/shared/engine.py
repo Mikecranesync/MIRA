@@ -7324,7 +7324,14 @@ class Supervisor:
             if not mfr:
                 return False
             covered, _reason = kb_has_coverage(mfr, combined, tenant)
-            return bool(covered)
+            if not covered:
+                return False
+            # Remember what we resolved. Coverage is a per-VENDOR count, so it says
+            # "this OEM has documentation", never "this documentation is about the
+            # thing asked". The retrieval step filters on these (#3605).
+            state["_instructional_vendor"] = mfr
+            state["_instructional_model"] = resolution.primary.model or ""
+            return True
         except Exception as exc:  # noqa: BLE001 - never fail a turn over a coverage probe
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
             return False
@@ -7351,12 +7358,19 @@ class Supervisor:
         """
         try:
             from .neon_recall import recall_knowledge  # noqa: PLC0415
-            from .workers.rag_worker import format_source_label  # noqa: PLC0415
+            from .uns_resolver import chunk_matches_model  # noqa: PLC0415
+            from .workers.rag_worker import (  # noqa: PLC0415
+                chunk_matches_vendor,
+                format_source_label,
+            )
 
             user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
             combined = " ".join([*user_window, message]).strip()
             tenant = tenant_id or state.get("tenant_id") or ""
             chunks = recall_knowledge(None, tenant, limit=4, query_text=combined) or []
+
+            want_vendor = state.get("_instructional_vendor") or ""
+            want_model = state.get("_instructional_model") or ""
 
             parts: list[str] = []
             for ch in chunks:
@@ -7365,6 +7379,17 @@ class Supervisor:
                 body = (ch.get("content") or "").strip()
                 if not body:
                     continue
+
+                # RELEVANCE GATE (#3605). "This vendor has documentation" is not
+                # evidence. A chunk must match the resolved manufacturer AND the
+                # resolved model/series before it may ground anything. Rejected
+                # chunks are dropped BEFORE the citation label is built, so a
+                # rejected chunk can never appear as a [Source: ...] tag.
+                if not chunk_matches_vendor(ch.get("manufacturer"), want_vendor):
+                    continue
+                if not chunk_matches_model(ch.get("model_number"), body, want_model):
+                    continue
+
                 label = format_source_label(ch)
                 # Cap each chunk: a procedural answer needs the relevant passage, not
                 # the whole manual, and an over-long prompt crowds out the

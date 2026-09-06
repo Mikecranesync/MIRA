@@ -283,3 +283,153 @@ def test_chunk_bodies_are_capped(sup) -> None:
         patch("shared.workers.rag_worker.format_source_label", return_value=""),
     ):
         assert len(sup._instructional_kb_context("q", _state(), [], tenant_id="t")) <= 1200
+
+
+# ── Relevance gate (#3605) — vendor coverage is not evidence ──────────────────
+#
+# The regression this closes: grounding was gated on `kb_has_coverage`, a per-VENDOR
+# COUNT. "Allen-Bradley has 38k chunks" read as covered, embedding-less recall returned
+# topically-unrelated passages, and the model anchored on those instead of its own
+# correct knowledge. DeepEval caught it at category level:
+# `de-in-04 [instructional] Technical Accuracy = 0.20`.
+#
+# Grounding on the wrong document is worse than not grounding: accuracy drops AND a
+# citation is attached, which makes the weaker answer look more trustworthy.
+
+from shared.uns_resolver import chunk_matches_model  # noqa: E402
+
+
+def _ctx(sup, chunks, *, vendor="Allen-Bradley", model="PowerFlex 525"):
+    st = _state()
+    st["_instructional_vendor"] = vendor
+    st["_instructional_model"] = model
+    with patch("shared.neon_recall.recall_knowledge", return_value=chunks):
+        return sup._instructional_kb_context("accel time?", st, [], tenant_id="t")
+
+
+def test_vendor_and_correct_model_is_accepted(sup) -> None:
+    out = _ctx(
+        sup,
+        [
+            {
+                "content": "Accel time is P041.",
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 525",
+            }
+        ],
+    )
+    assert "P041" in out
+
+
+def test_vendor_but_wrong_model_is_rejected(sup) -> None:
+    """Same OEM, different drive. This is the case vendor-level coverage let through."""
+    out = _ctx(
+        sup,
+        [
+            {
+                "content": "Torque proving on the 753.",
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 753",
+            }
+        ],
+    )
+    assert out == ""
+
+
+def test_a_valid_alias_is_accepted(sup) -> None:
+    """`PF525` resolves through FAMILY_FROM_ALIAS — the resolver's own table, not a
+    second mapping that could drift from it."""
+    out = _ctx(
+        sup, [{"content": "Set P041.", "manufacturer": "Allen-Bradley", "model_number": "PF525"}]
+    )
+    assert "P041" in out
+
+
+def test_unrelated_vendor_chunk_is_rejected(sup) -> None:
+    out = _ctx(
+        sup, [{"content": "Yaskawa oC fault.", "manufacturer": "Yaskawa", "model_number": "A1000"}]
+    )
+    assert out == ""
+
+
+def test_no_relevant_chunks_means_no_context_and_the_old_path(sup) -> None:
+    """Nothing survives -> "" -> the handler answers exactly as it did before."""
+    out = _ctx(
+        sup,
+        [
+            {
+                "content": "Overload relay current ratings.",
+                "manufacturer": "Allen-Bradley",
+                "model_number": "193-EE",
+            }
+        ],
+    )
+    assert out == ""
+
+
+def test_rejected_chunks_never_produce_a_citation(sup) -> None:
+    """The gate runs BEFORE format_source_label, so a rejected chunk cannot be cited."""
+    with patch("shared.workers.rag_worker.format_source_label") as fmt:
+        out = _ctx(
+            sup,
+            [
+                {
+                    "content": "Torque proving.",
+                    "manufacturer": "Allen-Bradley",
+                    "model_number": "PowerFlex 753",
+                }
+            ],
+        )
+    assert out == ""
+    fmt.assert_not_called(), "a rejected chunk must never reach the citation formatter"
+
+
+def test_relevant_chunk_survives_alongside_an_irrelevant_one(sup) -> None:
+    out = _ctx(
+        sup,
+        [
+            {
+                "content": "Torque proving on the 753.",
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 753",
+            },
+            {
+                "content": "Accel time is P041.",
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 525",
+            },
+        ],
+    )
+    assert "P041" in out
+    assert "753" not in out
+
+
+def test_uncovered_question_path_is_untouched_by_the_gate(sup) -> None:
+    """No coverage -> no retrieval at all -> the original procedural answer."""
+    sup._instructional_kb_context = MagicMock(return_value="")
+    with patch.object(sup, "_instructional_kb_coverage", return_value=False):
+        out = asyncio.run(
+            sup._handle_instructional_question("g", "how do I bleed a line?", _state(), "t")
+        )
+    assert out["reply"] == "direct llm answer"
+
+
+# ── the matcher itself ───────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("chunk_model", "chunk_text", "query_model", "expected"),
+    [
+        ("PowerFlex 525", None, "PowerFlex 525", True),
+        ("PF525", None, "PowerFlex 525", True),  # alias
+        ("PowerFlex 753", None, "PowerFlex 525", False),  # same vendor, wrong model
+        ("PowerFlex 520", None, "PowerFlex 525", False),  # adjacent model
+        ("PowerFlex", None, "PowerFlex 525", True),  # series-level doc
+        (None, "See PowerFlex525 accel time", "PowerFlex 525", True),  # body, no tag
+        (None, "Overload relay ratings", "PowerFlex 525", False),
+        ("anything", None, None, True),  # no model asked
+        (None, None, "PowerFlex 525", False),  # nothing to judge on
+    ],
+)
+def test_chunk_matches_model(chunk_model, chunk_text, query_model, expected) -> None:
+    assert chunk_matches_model(chunk_model, chunk_text, query_model) is expected

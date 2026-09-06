@@ -1075,3 +1075,104 @@ def resolve_uns_path_multi(
         [c.manufacturer for c in candidates_list],
     )
     return UNSResolution(primary=candidates_list[0], candidates=tuple(candidates_list))
+
+
+def chunk_matches_model(
+    chunk_model: str | None,
+    chunk_text: str | None,
+    query_model: str | None,
+) -> bool:
+    """Does a retrieved chunk plausibly concern the SAME model/series as the query?
+
+    The vendor half of relevance already exists as
+    `rag_worker.chunk_matches_vendor`. This is the missing model half, and it exists
+    because vendor-level matching alone is not evidence.
+
+    WHY (#3605). Grounding was gated on `kb_has_coverage`, which is a per-vendor COUNT.
+    "Allen-Bradley has 38k chunks" therefore read as *covered*, embedding-less recall
+    returned lexically-similar but topically-unrelated passages, and the model anchored
+    on those instead of its own correct knowledge. DeepEval caught it as a category-level
+    regression: `de-in-04 [instructional] Technical Accuracy = 0.20`.
+
+    Grounding on the wrong document is worse than not grounding at all — accuracy drops
+    AND a citation is attached, which makes the weaker answer look more trustworthy.
+
+    Rules, in order:
+      * No model asked for -> cannot judge; keep (vendor filter still applies).
+      * The chunk's `model_number` matches the query model, either exactly-ish or
+        through `FAMILY_FROM_ALIAS` (so "PF525" matches "PowerFlex 525", the same alias
+        table the resolver uses — not a second mapping that can drift).
+      * Otherwise fall back to the chunk BODY: alias-aware, boundary-safe search using
+        `_alias_pattern`, so "PowerFlex525" and "GS10_manual.pdf" still match while
+        "cable" never matches vendor alias "ab".
+      * A chunk tagged with a DIFFERENT known model of the same vendor is rejected —
+        that is the same-vendor/wrong-model case this function was written for.
+
+    Untagged, bodyless chunks are rejected when a model was asked for: with no metadata
+    and no text there is nothing to justify grounding, and the caller's contract is that
+    surviving nothing means fall back to the ungrounded answer.
+    """
+    if not query_model:
+        return True
+
+    q = query_model.strip().lower()
+    if not q:
+        return True
+
+    def _norm(token: str) -> tuple[str, str]:
+        """(family, number) for a model string, expanded through the alias table.
+
+        Family alone is NOT enough: "PowerFlex 525" and "PowerFlex 753" share a family
+        but are different drives, and treating them as equal is exactly the
+        same-vendor/wrong-model acceptance this function must reject. So the number is
+        carried separately and compared.
+        """
+        t = token.strip().lower()
+        if t in FAMILY_FROM_ALIAS:
+            t = FAMILY_FROM_ALIAS[t].lower()
+        else:
+            for alias, fam in FAMILY_FROM_ALIAS.items():
+                if re.search(_alias_pattern(alias), t):
+                    t = re.sub(_alias_pattern(alias), fam.lower(), t, count=1)
+                    break
+        num_m = re.search(r"(\d{2,4})\s*$", t)
+        num = num_m.group(1) if num_m else ""
+        fam = re.sub(r"[\s\-_]*\d{2,4}\s*$", "", t).strip()
+        return fam, num
+
+    def _compatible(a: str, b: str) -> bool:
+        """Same family, and same number unless one side is series-level (no number).
+
+        A series-level document ("PowerFlex 520-series wiring") legitimately grounds a
+        question about a 525; a 753 manual does not.
+        """
+        fa, na = _norm(a)
+        fb, nb = _norm(b)
+        if fa != fb:
+            return False
+        return not na or not nb or na == nb
+
+    q_family, _q_num = _norm(q)
+
+    cm = (chunk_model or "").strip().lower()
+    if cm:
+        if _compatible(cm, q):
+            return True
+        # Tagged with a model that is not compatible -> same-vendor/wrong-model. Reject.
+        return False
+
+    body = (chunk_text or "").lower()
+    if not body:
+        return False
+
+    # Match the query model itself, and any alias that maps to the same family, using
+    # the resolver's boundary rule rather than a bare substring.
+    candidates = {q} | {a for a, fam in FAMILY_FROM_ALIAS.items() if _compatible(fam, q)}
+    for cand in candidates:
+        if re.search(_alias_pattern(cand), body):
+            return True
+    # Bare numeric tail ("525" for "PowerFlex 525") only alongside the family word.
+    tail = _q_num
+    if tail and q_family and q_family.split()[0] in body and re.search(_alias_pattern(tail), body):
+        return True
+    return False
