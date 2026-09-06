@@ -19,21 +19,24 @@
   --fl-workspace-accent-hover: var(--fl-accent-hover);
   --fl-workspace-accent-tint: var(--fl-accent-tint);
   --fl-workspace-accent-ink: var(--fl-accent-ink);
-  --fl-workspace-accent-line: var(--fl-line-strong);
+  --fl-workspace-accent-line: var(--fl-accent);
 
   --fl-workspace-ok: var(--fl-ok);
   --fl-workspace-ok-tint: var(--fl-ok-bg);
-  --fl-workspace-ok-line: var(--fl-line-strong);
+  --fl-workspace-ok-line: var(--fl-ok);
   --fl-workspace-ok-ink: var(--fl-ok-ink);
   --fl-workspace-warn: var(--fl-warn);
   --fl-workspace-warn-tint: var(--fl-warn-bg);
-  --fl-workspace-warn-line: var(--fl-line-strong);
+  --fl-workspace-warn-line: var(--fl-warn);
+  --fl-workspace-warn-ink: var(--fl-warn);
   --fl-workspace-fault: var(--fl-fault);
   --fl-workspace-fault-tint: var(--fl-fault-bg);
-  --fl-workspace-fault-line: var(--fl-line-strong);
+  --fl-workspace-fault-line: var(--fl-fault);
+  --fl-workspace-fault-ink: var(--fl-fault);
   --fl-workspace-off: var(--fl-off);
   --fl-workspace-off-tint: var(--fl-bg);
-  --fl-workspace-off-line: var(--fl-line-strong);
+  --fl-workspace-off-line: var(--fl-off);
+  --fl-workspace-off-ink: var(--fl-off);
 
   --fl-workspace-font: var(--fl-font);
   --fl-workspace-mono: var(--fl-mono);
@@ -87,12 +90,15 @@
   --fl-workspace-warn: var(--fl-dark-warn);
   --fl-workspace-warn-tint: var(--fl-dark-warn-tint);
   --fl-workspace-warn-line: var(--fl-dark-warn-line);
+  --fl-workspace-warn-ink: var(--fl-dark-warn);
   --fl-workspace-fault: var(--fl-dark-fault);
   --fl-workspace-fault-tint: var(--fl-dark-fault-tint);
   --fl-workspace-fault-line: var(--fl-dark-fault-line);
+  --fl-workspace-fault-ink: var(--fl-dark-fault);
   --fl-workspace-off: var(--fl-dark-faint);
   --fl-workspace-off-tint: var(--fl-dark-surface-hi);
   --fl-workspace-off-line: var(--fl-dark-line-hi);
+  --fl-workspace-off-ink: var(--fl-dark-faint);
 
   --fl-workspace-font: var(--fl-dark-font);
   --fl-workspace-mono: var(--fl-dark-mono);

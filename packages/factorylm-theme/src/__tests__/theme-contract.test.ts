@@ -4,6 +4,36 @@ import { THEME_NAMES } from "@factorylm/theme";
 
 const PACKAGE_ROOT = new URL("../../", import.meta.url);
 const WORKSPACE_CSS = new URL("../workspace.css", import.meta.url);
+const requiredRoles = [
+  "bg", "surface", "surface-hi", "header", "header-ink", "header-muted",
+  "ink", "muted", "faint", "line", "line-strong", "accent", "accent-hover",
+  "accent-tint", "accent-ink", "accent-line", "ok", "ok-tint", "ok-line",
+  "ok-ink", "warn", "warn-tint", "warn-line", "warn-ink", "fault", "fault-tint",
+  "fault-line", "fault-ink", "off", "off-tint", "off-line", "off-ink", "font", "mono",
+  "fs", "fs-sm", "fs-xs", "fs-body", "fs-title", "radius", "radius-sm", "radius-card",
+  "radius-pill", "gap", "pad", "space-1", "space-2", "space-3", "space-4", "space-6",
+  "space-8", "shadow", "shadow-pop",
+] as const;
+
+function declarationsFor(css: string, selector: string): ReadonlyMap<string, string> {
+  const match = css.match(new RegExp(`${selector}\\s*\\{([^}]*)\\}`));
+  expect(match).not.toBeNull();
+
+  return new Map(
+    match![1]
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const [name, value] = declaration.split(":").map((part) => part.trim());
+        return [name, value] as const;
+      }),
+  );
+}
+
+function canonicalVariables(css: string): ReadonlySet<string> {
+  return new Set([...css.matchAll(/(--fl-[a-z0-9-]+)\s*:/gi)].map((match) => match[1]));
+}
 
 describe("FactoryLM theme package contract", () => {
   it("keeps the package token copy byte-identical to the canonical source", () => {
@@ -17,24 +47,24 @@ describe("FactoryLM theme package contract", () => {
 
   it("defines semantic workspace aliases for both themes without color literals", () => {
     const css = readFileSync(WORKSPACE_CSS, "utf8");
-    const requiredRoles = [
-      "bg", "surface", "surface-hi", "header", "header-ink", "header-muted",
-      "ink", "muted", "faint", "line", "line-strong", "accent", "accent-hover",
-      "accent-tint", "accent-ink", "accent-line", "ok", "ok-tint", "ok-line",
-      "ok-ink", "warn", "warn-tint", "warn-line", "fault", "fault-tint",
-      "fault-line", "off", "font", "mono", "fs", "fs-sm", "fs-xs", "fs-body",
-      "fs-title", "radius", "radius-sm", "radius-card", "radius-pill", "gap", "pad",
-      "space-1", "space-2", "space-3", "space-4", "space-6", "space-8", "shadow",
-      "shadow-pop",
-    ];
+    const uncommented = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const canonical = canonicalVariables(readFileSync(new URL("../tokens.css", import.meta.url), "utf8"));
+    const expectedNames = requiredRoles.map((role) => `--fl-workspace-${role}`).sort();
 
-    for (const role of requiredRoles) {
-      expect(css).toContain(`--fl-workspace-${role}`);
+    for (const declarations of [
+      declarationsFor(uncommented, ":root"),
+      declarationsFor(uncommented, '\\[data-theme="dark"\\]'),
+    ]) {
+      expect([...declarations.keys()].sort()).toEqual(expectedNames);
+      for (const value of declarations.values()) {
+        expect(value).toMatch(/^var\(--fl-[a-z0-9-]+\)$/);
+        expect(canonical.has(value.slice(4, -1))).toBe(true);
+      }
     }
-    expect(css).toContain(":root");
-    expect(css).toContain('[data-theme="dark"]');
     expect(css).toContain('@import "./tokens.css"');
-    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    expect(uncommented).not.toMatch(
+      /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\(|\bcolor\(/i,
+    );
   });
 
   it("exposes only the TypeScript and stylesheet package entrypoints", () => {
