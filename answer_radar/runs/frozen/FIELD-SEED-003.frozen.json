@@ -1,0 +1,50 @@
+{
+  "frozen_at": "2026-09-05T04:31:58+00:00",
+  "license_class": "public-eval-only",
+  "lineage_key": "auma/ac-01-2/public-forum",
+  "question": {
+    "answerability_score": 45,
+    "dedupe_hash": "b69e92b2719dd4cfc21702199eb2b87dfbbc35b6b82777e7640e46130f7bd358",
+    "discovered_at": null,
+    "equipment_type": "actuator controller",
+    "error_code": "",
+    "external_post_id": null,
+    "firmware_or_revision": "",
+    "intent_tags": [
+      "bootloader",
+      "firmware",
+      "recovery"
+    ],
+    "lead_score": 80,
+    "license_class": "public-eval-only",
+    "lineage_key": "auma/ac-01-2/public-forum",
+    "manufacturer": "AUMA",
+    "model": "AC 01.2",
+    "normalized_question": "An AUMA AC 01.2 actuator controller lost power during a firmware update and is now stuck in bootloader mode. How do I recover it?",
+    "posted_at": null,
+    "product_family": "AC 01.2",
+    "protocol": "",
+    "public_author_handle": null,
+    "question_id": "FIELD-SEED-003",
+    "raw_text": null,
+    "rights": {
+      "cross_tenant_reuse_allowed": false,
+      "derivatives_retained": false,
+      "evaluation_allowed": true,
+      "public_export_allowed": false,
+      "rights_resolved": true,
+      "training_allowed": false
+    },
+    "safety_class": "restricted",
+    "source_platform": "public-forum",
+    "source_url": null,
+    "split_assignment": "fresh",
+    "symptom": "stuck in bootloader after interrupted firmware update"
+  },
+  "question_id": "FIELD-SEED-003",
+  "safety_class": "restricted",
+  "snapshot_hash": "77dca1e6a55ade90454f988f90f9073e5b1d527fc7049b25e5ba9e45cffb15e8",
+  "split_assignment": "fresh",
+  "stage": "answer_radar.question_freeze",
+  "version": "v1"
+}

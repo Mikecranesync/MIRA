@@ -29,6 +29,22 @@ and is not secret — that is what lets a phone reject a bundle signed by anyone
 
 ---
 
+## Publish (operator) — via `ota-release.yml` (2026-09-06)
+
+The commands below are what the workflow runs. Do NOT run them from a session:
+`tools/hooks/prod-guard.sh` hard-denies scp/rsync to prod, and the release host is
+the prod nginx box. Dispatch **Actions → OTA release** instead:
+
+1. `mode=provision` — once. Needs the A record `updates.factorylm.com → 165.245.138.91`
+   first (Namecheap dashboard; the Namecheap API is not enabled on this account). Installs
+   the vhost, gets TLS via certbot webroot, creates `/srv/factorylm/ota`, syncs
+   `deployment/well-known/assetlinks.json`. Idempotent.
+2. `mode=publish`, `channel=canary`, `version=<x.y.z>`, `apk_base_sha=<commit the installed
+   APK was built from>` — runs the OTA guard against that base (fail-closed), builds + signs
+   with `OTA_SIGNING_PRIVATE_KEY` from Doppler prd, uploads artifacts then the manifest.
+3. `mode=promote`, `promote_to=<version>/<hash>.zip` — repoints `production` at an artifact
+   that already exists on the host. Promotion and rollback are the same operation.
+
 ## Publish (operator)
 
 ```bash
