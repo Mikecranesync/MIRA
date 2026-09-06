@@ -43,7 +43,12 @@ if [ "$DRY_RUN" = 1 ]; then
   exit 0
 fi
 
-command -v adb >/dev/null 2>&1 || { echo "✗ adb not found on PATH (install Android platform-tools)." >&2; exit 1; }
+if ! command -v adb >/dev/null 2>&1; then
+  for cand in "$HOME/Library/Android/sdk/platform-tools" "$LOCALAPPDATA/Android/Sdk/platform-tools" "/c/Users/$USER/AppData/Local/Android/Sdk/platform-tools"; do
+    [ -x "$cand/adb" ] || [ -x "$cand/adb.exe" ] && { export PATH="$cand:$PATH"; break; }
+  done
+fi
+command -v adb >/dev/null 2>&1 || { echo "✗ adb not found on PATH (install Android platform-tools, or prepend <SDK>/platform-tools)." >&2; exit 1; }
 DEVICES=$(adb devices | awk 'NR>1 && $2=="device" {print $1}')
 if [ -z "$DEVICES" ]; then
   echo "✗ no device in 'device' state. Plug the phone in, unlock it, accept the USB debugging prompt, then re-run." >&2

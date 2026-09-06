@@ -17,7 +17,11 @@ bash tools/android/install-latest.sh                                          # 
 
 It downloads the latest signed APK from updates.factorylm.com, verifies the sha256 that
 `latest.json` declares, installs with `adb install -r` (keeps your data), and launches the
-app. Or open **https://updates.factorylm.com/download** on the phone and tap Download →
+app. On the PLC laptop `adb` is not on the default PATH — a bare `adb devices` says
+"command not found" and reads like the phone is missing when it isn't. Prepend the SDK
+platform-tools first (Git Bash: `export PATH="/c/Users/hharp/AppData/Local/Android/Sdk/platform-tools:$PATH"`;
+PowerShell: `$env:Path = "$env:LOCALAPPDATA\Android\Sdk\platform-tools;$env:Path"`).
+No checkout needed: `curl -fsSL https://raw.githubusercontent.com/Mikecranesync/MIRA/main/tools/android/install-latest.sh -o /tmp/install-latest.sh && bash /tmp/install-latest.sh`. Or open **https://updates.factorylm.com/download** on the phone and tap Download →
 Install (allow installs from Chrome once). You need versionCode **10** (1.1.0) or later.
 
 ## 2. Sign in, then switch the update channel
