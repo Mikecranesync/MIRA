@@ -25,7 +25,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash, createSign } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nativeFingerprint } from "./native-fingerprint.mjs";
@@ -80,10 +80,20 @@ rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 const zipTmp = join(staging, "bundle.zip");
 console.log("packaging…");
+// Determinism: both archivers record each file's mtime, and every `vite build`
+// stamps fresh ones — so identical dist/ bytes produced different zips (first
+// two canary publishes: 2d33f125… then 1a5ebd19… for the same source), which
+// silently voids the "same content → same path" promise above. Pin every
+// entry to a fixed instant (2000-01-01T00:00:00Z, safely past zip's 1980
+// floor) so the artifact hash is a function of content alone.
+const FIXED_MTIME = new Date("2000-01-01T00:00:00Z");
+for (const rel of readdirSync(join(root, "dist"), { recursive: true })) {
+  utimesSync(join(root, "dist", rel), FIXED_MTIME, FIXED_MTIME);
+}
 // Portable: the publish runs from a Windows laptop (PowerShell) AND from the
 // ota-release.yml Linux runner (Info-ZIP `zip`). Both are invoked from INSIDE
 // dist/ so the archive root is index.html, never dist/index.html. `-X` drops
-// platform extra fields so identical dist bytes yield identical zips.
+// platform extra fields (uid/gid, extended timestamps) for the same reason.
 if (process.platform === "win32") {
   sh("powershell", [
     "-NoProfile",
