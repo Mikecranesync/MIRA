@@ -1,0 +1,33 @@
+{
+  "name": "factorylm-ui-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "verify": "bun run test && bunx tsc --noEmit && bun run build"
+  },
+  "dependencies": {
+    "@factorylm/interaction": "file:../../packages/factorylm-interaction",
+    "@factorylm/theme": "file:../../packages/factorylm-theme",
+    "@factorylm/ui": "file:../../packages/factorylm-ui",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "30.0.1",
+    "playwright": "1.59.1",
+    "typescript": "5.7.2",
+    "vite": "6.0.7",
+    "vitest": "4.1.10"
+  }
+}
