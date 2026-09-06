@@ -53,6 +53,11 @@ export interface ChatTurn {
    *  frame was silently dropped, which erased the safety identity of the
    *  turn on every surface. Absent = no safety stop. */
   safetyTrigger?: string;
+  /** 086 §3: the server withheld the notebook's bound machine for this turn
+   *  (the client's asset claim did not match the confirmed binding). Read off
+   *  the `evidence` frame's `identityDisputed` field; absent = not disputed,
+   *  never inferred. */
+  identityDisputed?: true;
   /** Frames whose `kind` this parser version does not know (PRD §9.2
    *  unknown-part rule): preserved for inspection, never a crash, never
    *  rendered as content. `usage` is known-and-ignored, not unknown. */
@@ -138,6 +143,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let machineEvidence: MachineEvidenceEntry[] | undefined;
   let visualEvidence: VisualObservationEntry[] | undefined;
   let safetyTrigger: string | undefined;
+  let identityDisputed: true | undefined;
   let unknownFrames: unknown[] | undefined;
   let sawStatus = false;
   let buffer = "";
@@ -180,6 +186,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         if (entries.length) machineEvidence = entries;
         const visual = visualObservationEntries(carried);
         if (visual.length) visualEvidence = visual;
+        if (frame.identityDisputed === true) identityDisputed = true;
       } else if (frame.kind === "safety") {
         safetyTrigger = String(frame.trigger ?? "");
       } else if (frame.kind !== "usage") {
@@ -202,6 +209,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     ...(machineEvidence ? { machineEvidence } : {}),
     ...(visualEvidence ? { visualEvidence } : {}),
     ...(safetyTrigger !== undefined ? { safetyTrigger } : {}),
+    ...(identityDisputed ? { identityDisputed } : {}),
     ...(unknownFrames ? { unknownFrames } : {}),
     // Present ONLY when the authoritative terminal frame never arrived.
     ...(sawStatus ? {} : { sawStatus: false as const }),
