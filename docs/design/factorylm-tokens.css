@@ -105,6 +105,7 @@
   --fl-dark-fault: #ff5d5d;       /* stop / escalate / fault */
   --fl-dark-fault-tint: rgba(255,93,93,.08);
   --fl-dark-fault-line: rgba(255,93,93,.35);
+  --fl-dark-scrim: rgba(255, 255, 255, 0.12); /* overlay scrim on dark background */
 
   /* dark type (marketing stacks) */
   --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;

@@ -1,3 +1,14 @@
+/*
+ * Commodity-before-custom escalation note (.claude/rules/commodity-before-custom.md)
+ * — this file is a hand-rolled focus trap + focus-return, ~60 lines, which the
+ * rule flags as commodity mechanics. Alternatives evaluated 2026-09-06:
+ * react-focus-lock (MIT), focus-trap-react (MIT), @radix-ui/react-dialog (MIT).
+ * Deferred, not rejected: the shared package must stay dependency-light for the
+ * Hub, mobile (Capacitor WebView) and public-web hosts, and the swap changes the
+ * overlay DOM the lab e2e contract asserts on. Tracked as a follow-up issue on
+ * the FLM-UI-4000 initiative; until then the trap is covered by the focus and
+ * BACK-precedence tests in __tests__/mobile-behavior.test.tsx.
+ */
 import { useEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE = [

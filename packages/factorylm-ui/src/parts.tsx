@@ -273,9 +273,10 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       const requested = state.retryTargetTurnId === turn.id;
       return <div className="fl-part fl-error" role="alert" data-part-type="error" data-error-code={error.code}>
         <p>{error.message}</p>
-        {error.retryable && turn.lifecycle === "failed" ? <button
+        {error.retryable && turn.lifecycle === "failed" && (hooks === undefined || hooks.onRetry) ? <button
           type="button"
           aria-pressed={requested}
+          disabled={Boolean(hooks?.busy)}
           onClick={() => (hooks?.onRetry ? hooks.onRetry(turn.id) : dispatch({ type: "retry", turnId: turn.id }))}
         >
           {requested ? "Retry requested" : "Retry"}

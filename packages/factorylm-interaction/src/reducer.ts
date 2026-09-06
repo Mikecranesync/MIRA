@@ -227,7 +227,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         ...(data.activeContext !== undefined ? { activeContext: data.activeContext } : {}),
         ...(data.offline !== undefined ? { offline: data.offline } : {}),
         ...(data.inspector !== undefined ? { inspector: data.inspector } : {}),
-        ...(threadChanged ? { mode: data.thread.mode, draft: "", retryTargetTurnId: null } : {}),
+        ...(threadChanged ? { mode: data.thread.mode, draft: "", retryTargetTurnId: null, attachmentMenuVisible: false } : {}),
         selectedSource,
         ...(data.activeContext?.projectId ? { selectedProjectId: data.activeContext.projectId } : {}),
         ...(data.activeContext?.folderId ? { selectedFolderId: data.activeContext.folderId } : {}),

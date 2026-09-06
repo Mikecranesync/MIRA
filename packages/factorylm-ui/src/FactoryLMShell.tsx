@@ -1,5 +1,5 @@
 import type { PlatformAdapter, ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, type Dispatch, type ReactNode } from "react";
+import { useEffect, useRef, type Dispatch, type ReactNode } from "react";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { Inspector } from "./Inspector";
@@ -58,23 +58,36 @@ export function closeLayerAction(layer: LayerName): ShellAction {
 export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, navigationFooter }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
-  const scrimLayer: LayerName | null = sourceOpen ? "source" : (mobile && state.navigationVisible ? "navigation" : null);
+  // One scrim, for the top-most page-covering layer, in closing-precedence order.
+  const scrimLayer: LayerName | null = sourceOpen
+    ? "source"
+    : state.attachmentMenuVisible
+      ? "attachment-menu"
+      : mobile && inspectorOpen(state)
+        ? "inspector"
+        : mobile && state.navigationVisible
+          ? "navigation"
+          : null;
 
   const closeTop = () => {
     const layer = topLayer(state);
     if (layer) dispatch(closeLayerAction(layer));
     else adapter.onBack();
   };
+  // The listeners subscribe once; they read the latest closeTop through a ref
+  // so re-renders never re-subscribe two document listeners.
+  const closeTopRef = useRef(closeTop);
+  closeTopRef.current = closeTop;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
-      closeTop();
+      closeTopRef.current();
     };
     const onBack = (event: Event) => {
       event.preventDefault();
-      closeTop();
+      closeTopRef.current();
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener(BACK_EVENT, onBack);
@@ -82,7 +95,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener(BACK_EVENT, onBack);
     };
-  });
+  }, []);
 
   return <div
     className="fl-shell"
@@ -101,7 +114,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
       <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
       <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
     </main>
-    <Overlay layer="inspector" active={inspectorOpen(state)} modal={false}>
+    <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile}>
       <Inspector state={state} />
     </Overlay>
     <Overlay layer="source" active={sourceOpen} modal>
