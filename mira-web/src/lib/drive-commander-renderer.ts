@@ -26,6 +26,7 @@
  */
 import type { DrivePackDisplay, FaultView, ParameterCard } from "./drive-pack-data.js";
 import {
+  getFaultEntry,
   getParametersForFault,
   getFaultsForParameter,
   listFaults,
@@ -227,8 +228,9 @@ function provBadge(pack: DrivePackDisplay): string {
 }
 
 function waitlistCTA(): string {
-  return `<a class="cta" href="${PRICING_HREF}"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $29/mo or $197/yr &rarr;</a>
-    <p class="price-note">Cancel anytime &middot; 30-day money-back guarantee</p>`;
+  // Lead price is $197/yr annual (locked 2026-09-05). Monthly is not the primary offer.
+  return `<a class="cta" href="${PRICING_HREF}" data-cta="dc-pro-annual"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $197/yr &rarr;</a>
+    <p class="price-note">Annual plan &middot; cancel anytime &middot; 30-day money-back guarantee</p>`;
 }
 
 // The Pro teaser. IMPORTANT: no real pack data (no value tables, no full param
@@ -278,7 +280,7 @@ function paramCardFree(p: ParameterCard, modelSlug: string): string {
 
 export function renderDriveLandingPage(
   pack: DrivePackDisplay,
-  opts?: { checkout?: string },
+  opts?: { checkout?: string; isPro?: boolean },
 ): string {
   const canonical = `${BASE_URL}/drive-commander/${pack.modelSlug}`;
   const product = productName(pack);
@@ -324,7 +326,10 @@ export function renderDriveLandingPage(
         ? `<div class="checkout-note" role="status">Checkout cancelled &mdash; no charge was made.
             The free cited lookups below stay free.</div>`
         : "";
-  const paid = opts?.checkout === "success";
+  // isPro=true when the entitlement cookie or Stripe session confirms drive_commander_pro tier.
+  // Fail-closed: any uncertainty defaults to false (free tier shown).
+  const isPro = opts?.isPro === true;
+  const paid = opts?.checkout === "success" || isPro;
 
   return `<!DOCTYPE html>
 <html lang="en"><head>${pageHead(title, description, canonical, jsonLd)}</head>
@@ -340,6 +345,14 @@ export function renderDriveLandingPage(
         pack.family.series,
       )} manual. No PDF hunting, no generic AI guesses.</p>
       <div style="margin-bottom:8px">${provBadge(pack)}</div>
+      <form class="fault-search" role="search" style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap"
+        onsubmit="event.preventDefault();var c=document.getElementById('dc-fault-input').value.trim();if(c)location.href='/drive-commander/${escAttr(pack.modelSlug)}/faults/'+encodeURIComponent(c);">
+        <input id="dc-fault-input" type="text" name="code" placeholder="e.g. F30001" aria-label="Fault code"
+          autocomplete="off" autocapitalize="characters" spellcheck="false"
+          style="padding:8px 12px;border:1px solid var(--fl-line);border-radius:6px;background:var(--fl-surface);color:var(--fl-text);font-size:1rem;flex:1;min-width:160px">
+        <button type="submit"
+          style="padding:8px 18px;border-radius:6px;background:var(--fl-accent);color:#fff;border:none;cursor:pointer;font-size:1rem;font-weight:600">Look up fault</button>
+      </form>
     </section>
 
     <section class="block">
@@ -397,14 +410,33 @@ export function renderFaultPage(pack: DrivePackDisplay, fault: FaultView): strin
     isPartOf: { "@type": "WebSite", name: "FactoryLM" },
   };
 
-  const free = params.length
+  const faultEntry = getFaultEntry(pack, fault.key);
+
+  // Cited meaning + remedy steps from the manual (shown before Pro gate, never invented).
+  const meaningBlock = faultEntry
+    ? `<div class="param-card" style="margin-bottom:18px">
+        <div class="p-name">What this fault means</div>
+        <div class="p-purpose">${escHtml(faultEntry.meaning)}</div>
+        <div class="cite"><div class="cite-src">${ICON_CITE} ${escHtml(faultEntry.source_citation.doc)}, p.${escHtml(faultEntry.source_citation.page)}</div>${faultEntry.source_citation.excerpt ? `<div class="cite-ex">&ldquo;${escHtml(faultEntry.source_citation.excerpt)}&rdquo;</div>` : ""}</div>
+      </div>
+      <h2 class="dc-h2">First checks (from manual)</h2>
+      <div class="param-card">
+        <ul style="margin:0 0 0 18px;padding:0">${faultEntry.remedy_steps.map((s: string) => `<li style="margin-bottom:6px">${escHtml(s)}</li>`).join("")}</ul>
+        <div class="cite"><div class="cite-src">${ICON_CITE} ${escHtml(faultEntry.source_citation.doc)}, p.${escHtml(faultEntry.source_citation.page)} &mdash; Remedy column</div></div>
+      </div>`
+    : "";
+
+  const paramsBlock = params.length
     ? `<h2 class="dc-h2">Parameters to check</h2>
        ${params.map((p) => paramCardFree(p, pack.modelSlug)).join("")}`
-    : `<div class="callout">This fault is decoded from the ${escHtml(
-        pack.manualDoc,
-      )} (manual-cited). Cited parameter-level troubleshooting for <strong>${escHtml(
-        fault.display,
-      )}</strong> isn't in the free pack yet &mdash; it's part of the Pro pack below. We never invent steps we can't cite.</div>`;
+    : "";
+
+  const fallbackCallout =
+    !faultEntry && !params.length
+      ? `<div class="callout">This fault is decoded from the ${escHtml(pack.manualDoc)} (manual-cited). Cited troubleshooting detail for <strong>${escHtml(fault.display)}</strong> isn't in the free pack yet &mdash; it's part of the Pro pack below. We never invent steps we can't cite.</div>`
+      : "";
+
+  const free = `${meaningBlock}${paramsBlock}${fallbackCallout}`;
 
   return `<!DOCTYPE html>
 <html lang="en"><head>${pageHead(title, description, canonical, jsonLd)}</head>
