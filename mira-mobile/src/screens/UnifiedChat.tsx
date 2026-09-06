@@ -18,8 +18,12 @@ import {
   PROFILES,
   createShellState,
   shellReducer,
+  type Machine,
+  type Project,
+  type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
+import type { ReactNode } from "react";
 import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
@@ -37,6 +41,15 @@ import {
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
 
+/** What the unified ROOT supplies when the shell owns the whole app: the
+ *  notebook/machine tree, item opening, and host-owned navigation controls. */
+export interface UnifiedShellHost {
+  readonly projects: readonly Project[];
+  readonly machines: readonly Machine[];
+  readonly onOpenItem: (item: ProjectItem) => void;
+  readonly navigationFooter?: ReactNode;
+}
+
 export interface UnifiedChatProps {
   readonly turns: NotebookServerTurn[];
   readonly liveTurns: { q: string; a: ChatTurn }[];
@@ -46,33 +59,38 @@ export interface UnifiedChatProps {
   readonly canRetry: boolean;
   readonly handlers: ChatV2Handlers;
   readonly meta: Omit<UnifiedNotebookMeta, "capturedAt">;
+  readonly host?: UnifiedShellHost;
 }
 
-function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta): ShellState {
-  const created = createShellState(liveFixture(messages, meta), PROFILES.mobile);
+function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
+  const fixture = liveFixture(messages, meta);
+  const created = createShellState(
+    host ? { ...fixture, projects: host.projects, machines: host.machines } : fixture,
+    PROFILES.mobile,
+  );
   // The fixture contract opens the drawer at mount for review; a live screen
   // starts on the conversation.
   return shellReducer(created, { type: "set-navigation-visible", visible: false });
 }
 
-export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry, handlers, meta }: UnifiedChatProps) {
+export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry, handlers, meta, host }: UnifiedChatProps) {
   const capturedAt = useRef(new Date().toISOString());
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
-  const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta));
+  const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
 
   useEffect(() => {
     dispatch({
       type: "hydrate",
       data: {
         thread: toThread(messages, fullMeta),
-        projects: projectsFor(fullMeta),
-        machines: machinesFor(fullMeta),
+        projects: host ? host.projects : projectsFor(fullMeta),
+        machines: host ? host.machines : machinesFor(fullMeta),
         activeContext: contextFor(fullMeta, messages.some((m) => m.parts.some((p) => p.type === "identity_dispute"))),
       },
     });
-  }, [messages, fullMeta]);
+  }, [messages, fullMeta, host]);
 
   // Open shell layers join the app's one BACK stack (lib/transient-layer.ts):
   // hardware BACK closes the top layer before any tab navigation happens.
@@ -104,6 +122,13 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
   };
 
   return <div className="unified-host" data-testid="unified-chat">
-    <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+    <FactoryLMShell
+      state={state}
+      dispatch={dispatch}
+      adapter={adapter}
+      hooks={hooks}
+      onOpenItem={host?.onOpenItem}
+      navigationFooter={host?.navigationFooter}
+    />
   </div>;
 }

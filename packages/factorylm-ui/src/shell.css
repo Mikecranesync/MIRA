@@ -51,6 +51,10 @@
 .fl-tree__folder,
 .fl-tree__machine { display: flex; align-items: center; gap: var(--fl-workspace-space-1); }
 .fl-tree__chevron { inline-size: 1rem; block-size: 1rem; }
+.fl-tree__item-button { color: var(--fl-workspace-ink); }
+.fl-shell__nav-footer { margin-block-start: auto; padding-block-start: var(--fl-workspace-space-4); border-block-start: 1px solid var(--fl-workspace-line); display: grid; gap: var(--fl-workspace-space-2); }
+.fl-shell__nav-footer button { border-color: var(--fl-workspace-line); padding-inline: var(--fl-workspace-space-3); }
+.fl-shell__sidebar { display: flex; flex-direction: column; }
 .fl-tree__item,
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 

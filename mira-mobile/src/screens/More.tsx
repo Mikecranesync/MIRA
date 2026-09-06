@@ -16,11 +16,14 @@ import {
 export function MoreTab({
   me,
   chatV2Available,
+  onChatUiChange,
   onSignOut,
   backRef,
 }: {
   me: Me;
   chatV2Available: boolean;
+  /** Unified root (FLM-UI-4000): the app re-roots when the choice changes. */
+  onChatUiChange?: (choice: ChatUiChoice) => void;
   onSignOut: () => Promise<void>;
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
