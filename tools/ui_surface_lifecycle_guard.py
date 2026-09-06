@@ -64,7 +64,51 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".claude/workflows/flm-ui-slice.js",
     ".claude/workflows/flm-ui-verify.js",
     ".github/workflows/ui-lifecycle-guard.yml",
+    ".github/pull_request_template.md",
 )
+
+# ---------------------------------------------------------------------------
+# Public-static sibling-bypass fix (charter §2.2 addendum).
+#
+# `mira-web/public/**` is served statically by mira-web — a new .html/.css/.js
+# file dropped there is a new presentation surface exactly like a new file
+# under `mira-web/src/views/`, NOT an inert asset. This classifier is
+# code-owned (like CONTROL_PATTERNS) so it applies regardless of what the
+# registry's `guarded_paths` say for this prefix: passive data/asset suffixes
+# are unguarded, two exact named infrastructure files are exempt, and
+# everything else — including unknown suffixes and extensionless names —
+# fails closed (guarded).
+# ---------------------------------------------------------------------------
+PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = ("mira-web/public/",)
+
+PUBLIC_STATIC_PASSIVE_SUFFIXES: frozenset[str] = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".gif",
+        ".avif",
+        ".ico",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".pdf",
+        ".map",
+        ".json",
+        ".txt",
+    }
+)
+
+PUBLIC_STATIC_EXEMPT_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/public/sw.js",
+        "mira-web/public/posthog-init.js",
+    }
+)
+
+MAX_EXPECTED_CHANGE_COUNT = 3000
 
 _TERMINAL_GLOB = "/**"
 _LEGACY_LABEL = "legacy-ui-exception"
@@ -259,7 +303,29 @@ def _matches_pattern(path: str, pattern: str) -> bool:
     return path == pattern
 
 
+def _is_public_static_guarded(path: str) -> bool:
+    """Deterministic classifier for `mira-web/public/**` paths.
+
+    Guards everything EXCEPT: (a) passive data/asset suffixes that cannot
+    execute or render a UI on their own, and (b) two exact, named,
+    pre-existing infrastructure files. Unknown suffixes and extensionless
+    names fail closed (guarded) — this is the "sibling bypass" fix: a new
+    file under mira-web/public/ is a new presentation surface by default.
+    """
+    normalized = path.strip("/")
+    if normalized in PUBLIC_STATIC_EXEMPT_PATHS:
+        return False
+    name = normalized.rsplit("/", 1)[-1]
+    suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if suffix in PUBLIC_STATIC_PASSIVE_SUFFIXES:
+        return False
+    return True
+
+
 def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
+    for root in PUBLIC_STATIC_GUARDED_ROOTS:
+        if path.startswith(root):
+            return _is_public_static_guarded(path)
     return any(_matches_pattern(path, pattern) for pattern in policy.guarded_paths)
 
 
@@ -312,10 +378,52 @@ def changed_files_between(root: Path, base: str, head: str) -> tuple[ChangedFile
     return tuple(out)
 
 
-def load_changed_files(path: Path) -> tuple[ChangedFile, ...]:
+def validate_expected_change_count(count: int) -> None:
+    """Fail closed on a count that cannot be trusted.
+
+    Negative counts are malformed. A count over MAX_EXPECTED_CHANGE_COUNT
+    means the PR's diff cannot be safely enumerated at all: GitHub's
+    `pulls/{n}/files` endpoint silently stops paginating around 3000 entries
+    (the truncation this whole check exists to catch), so a PR that big is
+    refused rather than evaluated against a possibly-incomplete file list.
+    """
+    if count < 0:
+        raise GuardPolicyError(f"expected change count is negative: {count}")
+    if count > MAX_EXPECTED_CHANGE_COUNT:
+        raise GuardPolicyError(
+            f"expected change count {count} exceeds {MAX_EXPECTED_CHANGE_COUNT} — the "
+            "GitHub pull-files endpoint cannot be safely enumerated past this size "
+            "(pagination truncates silently); refusing to evaluate an unverifiable diff"
+        )
+
+
+def read_expected_change_count(path: Path) -> int:
+    """Read and validate the PR's own authoritative `changed_files` count."""
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise GuardPolicyError(f"cannot read expected-change-count file {path}: {exc}") from exc
+    try:
+        count = int(text)
+    except ValueError as exc:
+        raise GuardPolicyError(
+            f"expected-change-count file {path} is not an integer: {text!r}"
+        ) from exc
+    validate_expected_change_count(count)
+    return count
+
+
+def load_changed_files(
+    path: Path, *, expected_count: Optional[int] = None
+) -> tuple[ChangedFile, ...]:
     """Parse normalized GitHub pull-files JSON-lines (one `{filename, status,
     previous_filename}` object per line) from a data-only file. Rejects
-    unknown or missing fields rather than silently dropping a record."""
+    unknown or missing fields, duplicate filename records, and — when
+    `expected_count` is given (the PR's own authoritative `changed_files`
+    field) — a record count that doesn't match it, which is exactly the
+    signature of silent pull-files pagination truncation.
+    """
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8")
@@ -323,6 +431,7 @@ def load_changed_files(path: Path) -> tuple[ChangedFile, ...]:
         raise GuardPolicyError(f"cannot read changed-files file {path}: {exc}") from exc
 
     out: list[ChangedFile] = []
+    seen_filenames: set[str] = set()
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line:
@@ -344,6 +453,11 @@ def load_changed_files(path: Path) -> tuple[ChangedFile, ...]:
         filename = record.get("filename")
         if not isinstance(filename, str) or not filename:
             raise GuardPolicyError(f"changed-files line {lineno}: missing/invalid filename")
+        if filename in seen_filenames:
+            raise GuardPolicyError(
+                f"changed-files line {lineno}: duplicate filename record {filename!r}"
+            )
+        seen_filenames.add(filename)
 
         if normalized == "renamed":
             previous = record.get("previous_filename")
@@ -354,6 +468,13 @@ def load_changed_files(path: Path) -> tuple[ChangedFile, ...]:
             out.append(ChangedFile(status="renamed", path=filename, previous_path=previous))
         else:
             out.append(ChangedFile(status=normalized, path=filename))
+
+    if expected_count is not None and len(out) != expected_count:
+        raise GuardPolicyError(
+            f"changed-files record count {len(out)} does not match the PR's "
+            f"authoritative changed_files count {expected_count} — possible pull-files "
+            "pagination truncation; refusing to evaluate an incomplete diff"
+        )
     return tuple(out)
 
 
@@ -523,6 +644,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="GitHub pull-files JSON-lines ({filename, status, previous_filename}).",
     )
+    p.add_argument(
+        "--expected-change-count-file",
+        type=Path,
+        default=None,
+        help=(
+            "Required with --changes-json-file: a file containing the PR's own "
+            "authoritative `changed_files` integer, so a pull-files pagination "
+            "truncation (silent past ~3000 files) is caught rather than silently "
+            "evaluated against an incomplete diff."
+        ),
+    )
     p.add_argument("--base", default=None, help="Base git ref/SHA (paired with --head).")
     p.add_argument("--head", default=None, help="Head git ref/SHA (paired with --base).")
     return p
@@ -542,11 +674,19 @@ def main(argv: Optional[list] = None) -> int:
     if has_basehead and not (args.base and args.head):
         print("error: --base and --head must both be provided", file=sys.stderr)
         return 2
+    if has_json and args.expected_change_count_file is None:
+        print(
+            "error: --changes-json-file requires --expected-change-count-file "
+            "(pull-files pagination truncation defense)",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         policy = load_guard_policy(args.registry)
         if has_json:
-            changes = load_changed_files(args.changes_json_file)
+            expected_count = read_expected_change_count(args.expected_change_count_file)
+            changes = load_changed_files(args.changes_json_file, expected_count=expected_count)
         else:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
         labels = _read_labels(args.labels_file)

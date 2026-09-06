@@ -41,15 +41,21 @@ sys.modules.setdefault("ui_surface_lifecycle_guard", _guard)
 _SPEC.loader.exec_module(_guard)
 
 CONTROL_PATTERNS = _guard.CONTROL_PATTERNS
+MAX_EXPECTED_CHANGE_COUNT = _guard.MAX_EXPECTED_CHANGE_COUNT
+PUBLIC_STATIC_GUARDED_ROOTS = _guard.PUBLIC_STATIC_GUARDED_ROOTS
 ChangedFile = _guard.ChangedFile
 GuardPolicy = _guard.GuardPolicy
 GuardPolicyError = _guard.GuardPolicyError
 GuardResult = _guard.GuardResult
+_build_arg_parser = _guard._build_arg_parser
 changed_files_between = _guard.changed_files_between
 evaluate = _guard.evaluate
 load_changed_files = _guard.load_changed_files
 load_guard_policy = _guard.load_guard_policy
+main = _guard.main
 path_is_guarded = _guard.path_is_guarded
+read_expected_change_count = _guard.read_expected_change_count
+validate_expected_change_count = _guard.validate_expected_change_count
 
 
 def _policy(*guarded_paths: str) -> GuardPolicy:
@@ -587,8 +593,7 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
     policy = load_guard_policy(REAL_REGISTRY)
     expected = {
         "mira-web/src/views/**",
-        "mira-web/public/mira-chat.js",
-        "mira-web/public/mira-chat.css",
+        "mira-web/public/**",
         "mira-hub/src/app/(hub)/**",
         "mira-hub/src/components/layout/**",
         "mira-hub/src/components/equipment/**",
@@ -597,3 +602,278 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-mobile/src/screens/**",
     }
     assert expected <= set(policy.guarded_paths)
+
+
+# ---------------------------------------------------------------------------
+# Public-static sibling bypass fix — every file under mira-web/public/ is
+# served statically by mira-web, so a new .html/.css/.js dropped there is a
+# new presentation surface, not an inert asset. The classifier is code-owned
+# (like CONTROL_PATTERNS) so it cannot be loosened by editing the registry.
+# ---------------------------------------------------------------------------
+
+
+def test_public_static_guarded_root_is_exposed_as_a_constant():
+    assert "mira-web/public/" in PUBLIC_STATIC_GUARDED_ROOTS
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/public/index.html",
+        "mira-web/public/legacy.htm",
+        "mira-web/public/app.css",
+        "mira-web/public/bundle.js",
+        "mira-web/public/module.mjs",
+        "mira-web/public/icon.svg",
+        "mira-web/public/assets/nested/deep/widget.js",
+        "mira-web/public/FOO.JS",
+        "mira-web/public/data.unknownext",
+        "mira-web/public/no_extension_at_all",
+    ],
+)
+def test_public_static_presentation_capable_additions_are_guarded(path):
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    assert path_is_guarded(path, real_policy), f"expected {path} to be guarded"
+    result = evaluate(
+        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=real_policy
+    )
+    assert result.allowed is False
+
+
+def test_public_static_active_deletion_is_guarded():
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    result = evaluate(
+        [ChangedFile(status="removed", path="mira-web/public/app.js")],
+        labels=set(),
+        pr_body="",
+        policy=real_policy,
+    )
+    assert result.allowed is False
+
+
+def test_public_static_both_rename_directions_are_guarded():
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    rename_in = evaluate(
+        [
+            ChangedFile(
+                status="renamed",
+                path="mira-web/public/renamed-in.js",
+                previous_path="scripts/build-only.js",
+            )
+        ],
+        labels=set(),
+        pr_body="",
+        policy=real_policy,
+    )
+    assert rename_in.allowed is False
+
+    rename_out = evaluate(
+        [
+            ChangedFile(
+                status="renamed",
+                path="scripts/build-only.js",
+                previous_path="mira-web/public/renamed-out.js",
+            )
+        ],
+        labels=set(),
+        pr_body="",
+        policy=real_policy,
+    )
+    assert rename_out.allowed is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/public/logo.png",
+        "mira-web/public/photo.JPG",
+        "mira-web/public/photo.jpeg",
+        "mira-web/public/hero.webp",
+        "mira-web/public/anim.gif",
+        "mira-web/public/hero.avif",
+        "mira-web/public/favicon.ico",
+        "mira-web/public/font.woff",
+        "mira-web/public/font.woff2",
+        "mira-web/public/font.ttf",
+        "mira-web/public/font.otf",
+        "mira-web/public/manual.pdf",
+        "mira-web/public/bundle.js.map",
+        "mira-web/public/manifest.json",
+        "mira-web/public/robots.txt",
+    ],
+)
+def test_public_static_passive_asset_suffixes_are_unguarded(path):
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, real_policy), (
+        f"expected {path} to be unguarded (passive asset)"
+    )
+    result = evaluate(
+        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=real_policy
+    )
+    assert result.allowed is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["mira-web/public/sw.js", "mira-web/public/posthog-init.js"],
+)
+def test_public_static_exact_infrastructure_exemptions_are_unguarded(path):
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, real_policy), f"expected {path} to be exempt infrastructure"
+    result = evaluate(
+        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=real_policy
+    )
+    assert result.allowed is True
+
+
+def test_public_static_unknown_suffix_fails_closed():
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    assert path_is_guarded("mira-web/public/thing.zzz", real_policy)
+    assert path_is_guarded("mira-web/public/thing", real_policy)
+
+
+# ---------------------------------------------------------------------------
+# GitHub pull-files truncation fix — the files endpoint silently caps out
+# around 3000 entries; the guard must be told the PR's own authoritative
+# `changed_files` count and refuse to evaluate an unverifiable diff.
+# ---------------------------------------------------------------------------
+
+
+def test_max_expected_change_count_constant_is_3000():
+    assert MAX_EXPECTED_CHANGE_COUNT == 3000
+
+
+def _write_changes_jsonl(tmp_path: Path, records: list[str]) -> Path:
+    p = tmp_path / "changes.jsonl"
+    p.write_text("\n".join(records))
+    return p
+
+
+def test_load_changed_files_with_matching_expected_count_passes(tmp_path):
+    p = _write_changes_jsonl(
+        tmp_path,
+        [
+            '{"filename": "a.ts", "status": "added"}',
+            '{"filename": "b.ts", "status": "modified"}',
+        ],
+    )
+    changes = load_changed_files(p, expected_count=2)
+    assert len(changes) == 2
+
+
+def test_load_changed_files_with_low_expected_count_mismatch_raises(tmp_path):
+    p = _write_changes_jsonl(
+        tmp_path,
+        [
+            '{"filename": "a.ts", "status": "added"}',
+            '{"filename": "b.ts", "status": "modified"}',
+        ],
+    )
+    with pytest.raises(GuardPolicyError):
+        load_changed_files(p, expected_count=1)
+
+
+def test_load_changed_files_with_high_expected_count_mismatch_raises(tmp_path):
+    p = _write_changes_jsonl(
+        tmp_path,
+        [
+            '{"filename": "a.ts", "status": "added"}',
+        ],
+    )
+    with pytest.raises(GuardPolicyError):
+        load_changed_files(p, expected_count=2)
+
+
+def test_load_changed_files_rejects_duplicate_filename_records(tmp_path):
+    p = _write_changes_jsonl(
+        tmp_path,
+        [
+            '{"filename": "a.ts", "status": "added"}',
+            '{"filename": "a.ts", "status": "modified"}',
+        ],
+    )
+    with pytest.raises(GuardPolicyError):
+        load_changed_files(p, expected_count=2)
+
+
+@pytest.mark.parametrize("bad_count", [-1, 3001, 999999])
+def test_validate_expected_change_count_rejects_out_of_range(bad_count):
+    with pytest.raises(GuardPolicyError):
+        validate_expected_change_count(bad_count)
+
+
+def test_validate_expected_change_count_accepts_the_boundary():
+    validate_expected_change_count(0)
+    validate_expected_change_count(3000)
+
+
+@pytest.mark.parametrize("bad_text", ["not-a-number", "", "1.5", "-1", "3001"])
+def test_read_expected_change_count_rejects_malformed_or_out_of_range(tmp_path, bad_text):
+    p = tmp_path / "count.txt"
+    p.write_text(bad_text)
+    with pytest.raises(GuardPolicyError):
+        read_expected_change_count(p)
+
+
+def test_read_expected_change_count_accepts_a_valid_integer(tmp_path):
+    p = tmp_path / "count.txt"
+    p.write_text("42\n")
+    assert read_expected_change_count(p) == 42
+
+
+def test_cli_requires_expected_change_count_file_with_changes_json_file(tmp_path):
+    changes = _write_changes_jsonl(tmp_path, ['{"filename": "a.ts", "status": "added"}'])
+    exit_code = main(["--changes-json-file", str(changes)])
+    assert exit_code == 2
+
+
+def test_cli_accepts_changes_json_file_with_expected_change_count_file(tmp_path):
+    changes = _write_changes_jsonl(tmp_path, ['{"filename": "a.ts", "status": "added"}'])
+    count_file = tmp_path / "count.txt"
+    count_file.write_text("1")
+    exit_code = main(
+        [
+            "--changes-json-file",
+            str(changes),
+            "--expected-change-count-file",
+            str(count_file),
+        ]
+    )
+    assert exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# --labels-file is the ONLY labels input the CLI accepts — no bare --labels.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_has_no_bare_labels_flag():
+    parser = _build_arg_parser()
+    option_strings = {opt for action in parser._actions for opt in action.option_strings}
+    assert "--labels-file" in option_strings
+    assert "--labels" not in option_strings
+
+
+# ---------------------------------------------------------------------------
+# .github/pull_request_template.md is a control-plane file — editing it (or
+# its own exception-section scaffold) is guarded exactly like the registry,
+# the charter, the guard, its tests, the Claude rule, the three workflow
+# files, and the trusted GitHub workflow itself.
+# ---------------------------------------------------------------------------
+
+
+def test_pull_request_template_is_a_control_pattern():
+    assert ".github/pull_request_template.md" in CONTROL_PATTERNS
+
+
+@pytest.mark.parametrize("control_path", CONTROL_PATTERNS)
+def test_every_control_pattern_is_guarded_without_exception(control_path):
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    assert path_is_guarded(control_path, real_policy)
+    result = evaluate(
+        [ChangedFile(status="modified", path=control_path)],
+        labels=set(),
+        pr_body="",
+        policy=real_policy,
+    )
+    assert result.allowed is False

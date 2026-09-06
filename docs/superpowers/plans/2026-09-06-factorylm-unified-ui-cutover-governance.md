@@ -182,7 +182,37 @@ tests/test_ui_surface_lifecycle_guard.py
 .claude/workflows/flm-ui-slice.js
 .claude/workflows/flm-ui-verify.js
 .github/workflows/ui-lifecycle-guard.yml
+.github/pull_request_template.md
 ```
+
+> **Hardening amendment (post-Task-2 adversarial review, four fail-closed
+> fixes — see the retrofit commit before Task 3):**
+> 1. **Public-static sibling bypass.** `mira-web/public/**` is served
+>    statically — every file there is a candidate presentation surface, not
+>    just the two originally-listed `mira-chat.js`/`.css`. `path_is_guarded()`
+>    special-cases any path under `mira-web/public/` (code-owned, like
+>    `CONTROL_PATTERNS` — not sourced from the registry) via a deterministic
+>    classifier: passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif
+>    .ico .woff .woff2 .ttf .otf .pdf .map .json .txt`) are unguarded; exactly
+>    `mira-web/public/sw.js` and `mira-web/public/posthog-init.js` are exempt
+>    infrastructure; everything else — html/htm/css/js/mjs/svg, unknown
+>    suffixes, extensionless names — is guarded. `REGISTRY.yaml`'s
+>    `mira-web-legacy-ui` entry now lists `mira-web/public/**` for
+>    documentation; the classifier, not the glob, is the actual enforcement.
+> 2. **GitHub pull-files pagination truncation.** The `pulls/{n}/files`
+>    endpoint silently stops paginating around 3000 entries. The workflow now
+>    also fetches `pulls/{n}.changed_files` to a count file, and
+>    `load_changed_files()` takes a keyword-only `expected_count` the CLI's new
+>    required (with `--changes-json-file`) `--expected-change-count-file`
+>    supplies. Fails closed on: malformed/negative count, count > `
+>    MAX_EXPECTED_CHANGE_COUNT = 3000`, duplicate filename records, or any
+>    parsed-record-count vs. expected-count mismatch.
+> 3. **`--labels-file` only.** The CLI never had a working bare `--labels`
+>    flag (that was this doc's prose, not the implementation) — every
+>    reference below is corrected to `--labels-file`.
+> 4. **`.github/pull_request_template.md` is a control pattern** (added to
+>    `CONTROL_PATTERNS` above) — it documents the exact exception-section
+>    shape the guard parses, so editing it is a control-plane change.
 
 The exception parser strips fenced code blocks and HTML comments, requires
 exactly one level-two `## Legacy UI exception` section, and requires
@@ -220,8 +250,12 @@ def changed_files_between(
     """Parse NUL-delimited name-status output without losing rename origins."""
 
 
-def load_changed_files(path: Path) -> tuple[ChangedFile, ...]:
-    """Parse normalized GitHub pull-files JSON-lines from a data-only file."""
+def load_changed_files(
+    path: Path, *, expected_count: int | None = None
+) -> tuple[ChangedFile, ...]:
+    """Parse normalized GitHub pull-files JSON-lines from a data-only file.
+    Rejects duplicate filenames and, when expected_count is given (the PR's
+    own `changed_files` field), a mismatched record count."""
 
 
 def evaluate(
@@ -234,11 +268,12 @@ def evaluate(
 ```
 
 For a rename, evaluate both `previous_path` and `path`. The CLI accepts
-`--registry`, `--labels`, `--pr-body-file`, and exactly one source of changes:
-either `--changes-json-file` or the pair `--base`/`--head`. It prints GitHub
-error annotations for violations and fails closed on policy, diff, input, or
-exception parsing errors. It performs no network access and never reads a GitHub
-token.
+`--registry`, `--labels-file`, `--pr-body-file`, and exactly one source of
+changes: either `--changes-json-file` (which additionally REQUIRES
+`--expected-change-count-file` — the pagination-truncation defense above) or
+the pair `--base`/`--head`. It prints GitHub error annotations for violations
+and fails closed on policy, diff, input, or exception parsing errors. It
+performs no network access and never reads a GitHub token.
 
 - [ ] **Step 4: Run GREEN and regression tests**
 
@@ -297,6 +332,8 @@ The workflow must:
 The metadata command shape is:
 
 ```bash
+gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files' \
+  > "$RUNNER_TEMP/expected-change-count.txt"
 gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
   --jq '.[] | {filename, status, previous_filename}' \
   > "$RUNNER_TEMP/changed-files.jsonl"
@@ -306,9 +343,16 @@ gh api "/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --jq '.[].name' \
   > "$RUNNER_TEMP/labels.txt"
 python tools/ui_surface_lifecycle_guard.py \
   --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
+  --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
   --labels-file "$RUNNER_TEMP/labels.txt" \
   --pr-body-file "$RUNNER_TEMP/pr-body.md"
 ```
+
+`expected-change-count.txt` is fetched from the PR OBJECT (`.changed_files`),
+not the files endpoint — it is the count that endpoint cannot be trusted to
+honor past ~3000 entries, which is exactly the failure mode the guard's
+`--expected-change-count-file` requirement exists to catch (see the hardening
+amendment above Step 3).
 
 Do not pass `GH_TOKEN` to the Python step. Pin third-party actions according to
 the repository's existing workflow convention and run `actionlint`.
@@ -319,9 +363,11 @@ Extend `tests/test_ui_surface_lifecycle_guard.py` to assert that the committed
 workflow uses `pull_request_target`, lists every metadata-sensitive event,
 checks out only `base.sha`, disables credential persistence, never references
 `head.sha` in checkout, separates the token-bearing metadata step from the
-Python step, and publishes the exact status context. These tests protect the
-trusted boundary from accidental drift; the base workflow remains the runtime
-authority.
+Python step, publishes the exact status context, fetches `.changed_files` into
+an expected-change-count file, passes `--expected-change-count-file` to the
+guard CLI, and uses `--labels-file` (never a bare `--labels`). These tests
+protect the trusted boundary from accidental drift; the base workflow remains
+the runtime authority.
 
 - [ ] **Step 3: Document the optional exception section**
 

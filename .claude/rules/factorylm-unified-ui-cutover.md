@@ -32,7 +32,7 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 
 | Surface | Guarded paths |
 |---|---|
-| Public | `mira-web/src/views/**`, `mira-web/public/mira-chat.js`, `mira-web/public/mira-chat.css` |
+| Public | `mira-web/src/views/**`, `mira-web/public/**` (classified — see below) |
 | Hub | `mira-hub/src/app/(hub)/**`, `mira-hub/src/components/layout/**`, `mira-hub/src/components/equipment/**` |
 | Mobile | `mira-mobile/src/App.tsx`, `mira-mobile/src/nav.ts`, `mira-mobile/src/screens/**` |
 
@@ -43,6 +43,15 @@ Enforced by `tools/ui_surface_lifecycle_guard.py` via the
 `Legacy UI Lifecycle Guard` required check on `main`
 (`.github/workflows/ui-lifecycle-guard.yml`). Addition, modification,
 deletion, rename-in, and rename-out of a guarded path fail CI by default.
+
+**`mira-web/public/**` is classified, not blanket-guarded** (code-owned in
+the guard, not the registry — same reasoning as `CONTROL_PATTERNS` below):
+passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif .ico .woff .woff2
+.ttf .otf .pdf .map .json .txt`) are unguarded; exactly `mira-web/public/sw.js`
+and `mira-web/public/posthog-init.js` are exempt infrastructure; everything
+else (html/css/js/mjs/svg, unknown suffixes, extensionless names) is guarded.
+A new static file dropped in `mira-web/public/` is a new presentation surface,
+not an inert asset, by default.
 
 ## The exception policy
 

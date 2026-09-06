@@ -59,13 +59,36 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/**`; `mira-web/public/mira-chat.js`; `mira-web/public/mira-chat.css` | Old public-page tree, product-demo shell, and standalone chat renderer |
+| Public | `mira-web/src/views/**`; `mira-web/public/**` (classified — see below) | Old public-page tree, product-demo shell, and every statically-served public asset |
 | Hub | `mira-hub/src/app/(hub)/**`; `mira-hub/src/components/layout/**`; `mira-hub/src/components/equipment/**` | Dashboard-first route tree, navigation, and duplicate Equipment Notebook presentation |
 | Mobile | `mira-mobile/src/App.tsx`; `mira-mobile/src/nav.ts`; `mira-mobile/src/screens/**` | Separate mobile shell, screen tree, navigation, and duplicate chat presentation |
 
 The parent modules remain `CANONICAL`/deployed in `MODULES.md`. Marking an
 entire module legacy would incorrectly deprecate its live API and capability
 seams.
+
+**`mira-web/public/**` is classified, not blanket-guarded, and the classifier
+is code-owned** (`tools/ui_surface_lifecycle_guard.py`), not sourced from the
+registry — the same self-protection reasoning as `CONTROL_PATTERNS` (§3.1).
+Every file mira-web serves statically from `mira-web/public/` is a candidate
+presentation surface: a new `.html`/`.css`/`.js` dropped there is exactly as
+much a new UI as a new file under `mira-web/src/views/` — an earlier version
+of this charter guarded only the two known files (`mira-chat.js`,
+`mira-chat.css`), which left every OTHER file in that directory as an
+unguarded sibling-bypass. The classifier now guards everything under
+`mira-web/public/` EXCEPT:
+
+- **Passive asset suffixes** (cannot execute or render a UI on their own):
+  `.png` `.jpg` `.jpeg` `.webp` `.gif` `.avif` `.ico` `.woff` `.woff2` `.ttf`
+  `.otf` `.pdf` `.map` `.json` `.txt`.
+- **Two exact, named infrastructure files**: `mira-web/public/sw.js` and
+  `mira-web/public/posthog-init.js`.
+
+Unknown suffixes and extensionless names fail closed (guarded). The
+classifier applies to additions, modifications, deletions, and both rename
+directions — a rename that lands a passive asset inside `mira-web/public/`
+under a guarded name, or moves a guarded file to safety, is still evaluated
+on its own path.
 
 New bounded presentation adapters live outside those trees under
 `mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
@@ -133,12 +156,32 @@ modifications, deletions, and both sides of renames against the base registry.
 
 The base guard also protects its own control files: the registry, charter,
 guard implementation and tests, focused Claude rule, three UI workflow files,
-and trusted GitHub workflow. Editing those files requires the same audited
-exception. The workflow reruns on head changes, body edits, label changes,
-draft-to-ready transitions, reopen, and open. It posts the uniquely named
-status to the PR head SHA. After bootstrap, that status is a strict required
-check on protected `main`, including for administrators; direct pushes cannot
-bypass it.
+trusted GitHub workflow, and **the PR template that documents the exception
+scaffold** (`.github/pull_request_template.md`) — editing the template is
+itself a control-plane change, since it is where a future exception author
+reads the exact three-field shape the guard requires. Editing any of these
+files requires the same audited exception. The workflow reruns on head
+changes, body edits, label changes, draft-to-ready transitions, reopen, and
+open. It posts the uniquely named status to the PR head SHA. After bootstrap,
+that status is a strict required check on protected `main`, including for
+administrators; direct pushes cannot bypass it.
+
+**Pull-files pagination truncation defense.** GitHub's
+`pulls/{n}/files` endpoint silently stops paginating past roughly 3000 changed
+files — a huge PR could hide a guarded-path change among files the guard never
+sees. The metadata step therefore fetches the PR's own authoritative
+`changed_files` count (`gh api pulls/{n} --jq '.changed_files'`) into a
+separate file, and the guard CLI **requires** `--expected-change-count-file`
+whenever `--changes-json-file` is used. It fails closed on a malformed or
+negative count, a count over 3000 (the diff cannot be safely enumerated at
+all), a duplicate filename record, or any mismatch between the parsed record
+count and the expected count. `--base`/`--head` mode (used for local/manual
+runs against a real git checkout) has no such truncation risk and needs no
+count file.
+
+**Labels input is `--labels-file` only.** The guard CLI never accepts a bare
+`--labels` value — labels are always read from a file, matching the same
+data-only-step discipline as `--pr-body-file` and `--changes-json-file`.
 
 Known transition collision at approval time: PR #3592 modifies
 `mira-web/src/views/home.ts`. It must merge before the freeze, close, or use the
