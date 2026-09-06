@@ -32,6 +32,7 @@ import { visualCardTitle } from "../lib/sensor";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { SourceThumb } from "./FilePreview";
 import { SafetyNotice } from "./SafetyNotice";
+import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 import { Sheet } from "./Sheet";
 
 /** Callbacks the screen owns; ChatV2 never fetches, uploads, or persists. */
@@ -174,6 +175,11 @@ const BasisPart: DataMessagePartComponent = ({ data }) => {
  *  two surfaces cannot drift apart — see FLEET-003. */
 const SafetyNoticePart: DataMessagePartComponent = () => <SafetyNotice />;
 
+/** 086 §3: withheld machine attribution, explained (shared notice, see
+ *  IdentityDisputeNotice.tsx). Before this registration the persisted entry
+ *  fell to the unknown-part fallback after reload. */
+const IdentityDisputePart: DataMessagePartComponent = () => <IdentityDisputeNotice />;
+
 /** STRM-2 terminal semantics, rendered from the typed part — never inferred
  *  by scraping the answer text. */
 const ErrorPart: DataMessagePartComponent = ({ data }) => {
@@ -224,6 +230,7 @@ const partComponents = {
       "machine-evidence": MachineEvidencePart,
       basis: BasisPart,
       "safety-notice": SafetyNoticePart,
+      "identity-dispute": IdentityDisputePart,
       error: ErrorPart,
       followups: FollowupsPart,
       unknown: UnknownPart,

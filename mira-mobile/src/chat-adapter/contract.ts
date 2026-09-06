@@ -71,6 +71,16 @@ export type FollowupsPart = {
   suggestions: string[];
 };
 
+/** The server WITHHELD the notebook's bound machine for this turn: the
+ *  client's asset claim did not match the confirmed binding (086 §3), so no
+ *  machine history was used and nothing machine-specific is stated as fact.
+ *  Live: `identityDisputed: true` on the evidence frame; persisted:
+ *  `{kind:"identity_dispute"}` in evidence[]. Presence-only — the ids stay
+ *  server-side audit data, never rendered. */
+export type IdentityDisputePart = {
+  type: "identity_dispute";
+};
+
 /** A frame/evidence entry this contract version doesn't know. Preserved
  *  for inspection, rendered as nothing — never a crash (PRD §9.2). */
 export type UnknownPart = {
@@ -87,6 +97,7 @@ export type MessagePart =
   | BasisPart
   | ErrorPart
   | FollowupsPart
+  | IdentityDisputePart
   | UnknownPart;
 
 /** Lifecycle (PRD §9.3). `running` exists only on the live in-flight
