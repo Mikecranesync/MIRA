@@ -659,3 +659,73 @@ describe("thread assembly + library conversion", () => {
     });
   });
 });
+
+// F1 (fleet-001-review, 2026-09-06) — FAILING REGRESSION TEST.
+//
+// A provider-failure row rehydrates wearing an answered turn's success chrome.
+// `isStoppedTurn` is `answerStatus === "error" && !!answerText?.trim()`, so a
+// provider failure — which persists `answerText: null` — MISSES the stopped
+// branch (which correctly zeroes citations/machine/visual/basis) and falls into
+// the failed branch, which passes all four straight through:
+//
+//     citations: normalizeCitations(t.evidence),
+//     machine:   machineEvidenceEntries(t.evidence ?? []),
+//     visual:    visualObservationEntries(t.evidence ?? []),
+//     basis:     t.basis,
+//     lifecycle: failed ? "failed" : "completed",
+//
+// Because `sources` arrives BEFORE `status` on the wire, a turn that errors
+// after its sources landed persists exactly this row — and reloads with
+// citation chips, a basis badge and machine/visual cards on a turn that failed.
+//
+// The pre-existing "provider-failure row" test above uses `evidence: []`, so it
+// cannot catch this. Same invariant the truncation and stopped paths already
+// hold (ADR-0040 §4: citations/basis/follow-ups are eligible only on a
+// completed turn).
+describe("F1 — a persisted FAILED turn must not carry success chrome", () => {
+  const FAILED_WITH_EVIDENCE: NotebookServerTurn = {
+    id: "t-failed",
+    question: "What does fault F005 mean?",
+    answerStatus: "error",
+    answerText: null, // provider failure — NOT a client stop
+    evidence: [...CITATIONS, MACHINE, VISUAL],
+    basis: "oem_documentation",
+  };
+
+  it("is classified failed, not stopped (guards the branch this lands in)", () => {
+    const a = hydrateMessages([FAILED_WITH_EVIDENCE])[1];
+    expect(a.lifecycle).toBe("failed");
+    expect(a.parts.some((p) => p.type === "error" && p.reason === "provider_failure")).toBe(true);
+  });
+
+  it("drops citations", () => {
+    const a = hydrateMessages([FAILED_WITH_EVIDENCE])[1];
+    expect(citationsOf(a)).toEqual([]);
+  });
+
+  it("drops machine-evidence and visual-observation cards", () => {
+    const a = hydrateMessages([FAILED_WITH_EVIDENCE])[1];
+    expect(a.parts.some((p) => p.type === "machine_evidence")).toBe(false);
+    expect(a.parts.some((p) => p.type === "observation")).toBe(false);
+  });
+
+  it("drops the basis badge", () => {
+    const a = hydrateMessages([FAILED_WITH_EVIDENCE])[1];
+    expect(a.parts.some((p) => p.type === "basis")).toBe(false);
+  });
+
+  it("matches how the already-hardened stopped path treats the same evidence", () => {
+    const stopped = hydrateMessages([
+      { ...FAILED_WITH_EVIDENCE, id: "t-stopped", answerText: "partial answer" },
+    ])[1];
+    const failed = hydrateMessages([FAILED_WITH_EVIDENCE])[1];
+    const chrome = (m: AdapterMessage) => ({
+      citations: citationsOf(m).length,
+      machine: m.parts.filter((p) => p.type === "machine_evidence").length,
+      visual: m.parts.filter((p) => p.type === "observation").length,
+      basis: m.parts.filter((p) => p.type === "basis").length,
+    });
+    expect(stopped.lifecycle).toBe("stopped");
+    expect(chrome(failed)).toEqual(chrome(stopped)); // neither turn completed
+  });
+});
