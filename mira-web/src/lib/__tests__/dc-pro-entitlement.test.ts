@@ -2,12 +2,15 @@
  * Hermetic unit tests for Drive Commander Pro entitlement flow.
  *
  * Covers:
- *  1. Webhook sets tier=drive_commander_pro on a paid checkout.session.completed
- *  2. Webhook does NOT activate CMMS/Atlas/Hub for DC Pro (separate product path)
- *  3. verifyDCProSession returns null for non-DC-pro sessions (fail-closed)
- *  4. verifyDCProSession returns null for unpaid sessions (fail-closed)
- *  5. Free-tier rendering does not expose Pro DOM content
- *  6. isPro=true rendering omits the pro-lock gate
+ *  1. ensureDCProTenant (webhook helper): sets tier=drive_commander_pro for new user
+ *  2. ensureDCProTenant: does NOT call finalizeActivation / CMMS / Hub — only
+ *     findTenantByEmail, createTenant, findTenantById, updateTenantStripe,
+ *     updateTenantTier, recordAuditEvent queries appear; no Atlas/Hub SQL.
+ *  3. ensureDCProTenant: existing tenant gets tier updated, not recreated
+ *  4. verifyDCProSession returns null for non-DC-pro sessions (fail-closed)
+ *  5. verifyDCProSession returns null for unpaid sessions (fail-closed)
+ *  6. Free-tier rendering does not expose Pro DOM content
+ *  7. isPro=true rendering omits the pro-lock DOM gate (CSS class may still exist)
  */
 
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
@@ -112,60 +115,112 @@ describe("verifyDCProSession", () => {
   });
 });
 
-// ── Test: webhook grants drive_commander_pro tier ─────────────────────────
+// ── Test: ensureDCProTenant — real hermetic coverage of the DC Pro activation path ──
 
-describe("webhook checkout.session.completed → drive_commander_pro", () => {
-  test("sets tier=drive_commander_pro and does NOT call finalizeActivation (no CMMS)", async () => {
-    // Simulate: new customer, no existing tenant, DC Pro session
-    const event = {
-      type: "checkout.session.completed",
-      id: "evt_dc_001",
-      data: {
-        object: {
-          metadata: { product: "drive-commander-pro" },
-          customer_details: { email: "newtech@plant.com" },
-          customer: "cus_new",
-          subscription: "sub_new",
-        },
-      },
-    };
-
-    // DB responses: findTenantByEmail → null (new user), createTenant → ok,
-    // findTenantById → the new tenant, updateTenantStripe → ok, updateTenantTier → ok
+describe("ensureDCProTenant (DC Pro webhook/redirect helper)", () => {
+  test("new customer: creates tenant with tier=drive_commander_pro", async () => {
+    // Query sequence inside ensureDCProTenant for a new user:
+    //   1. findTenantByEmail → [] (not found)
+    //   2. generateUniqueInboxSlug SELECT → [] (slug is unique)
+    //   3. createTenant INSERT → []
+    //   4. findTenantById → [new tenant row]
+    //   5. updateTenantStripe UPDATE → []
+    //   6. (no updateTenantTier — tier already drive_commander_pro from createTenant)
+    //   7. recordAuditEvent INSERT → []
     scriptedReturns = [
-      [],                                                        // findTenantByEmail → not found
-      [{ id: "new-uuid-1" }],                                    // createTenant → ok
+      [],                                                                              // findTenantByEmail → null
+      [],                                                                              // generateUniqueInboxSlug SELECT → unique
+      [],                                                                              // createTenant INSERT
       [{ id: "new-uuid-1", email: "newtech@plant.com", tier: "drive_commander_pro" }], // findTenantById
-      [{ updated: 1 }],                                          // updateTenantStripe
-      [{ updated: 1 }],                                          // updateTenantTier
-      [],                                                        // recordAuditEvent
+      [],                                                                              // updateTenantStripe
+      [],                                                                              // recordAuditEvent
     ];
 
-    // We test that the route handler processes the event without touching
-    // finalizeActivation. The key invariant: tier=drive_commander_pro and
-    // no Atlas/Hub provisioning queries are emitted.
-    const tierUpdateQuery = capturedQueries.find(
-      (q) => q.sql.includes("drive_commander_pro"),
-    );
-    // Before the handler runs there are no queries
-    expect(capturedQueries).toHaveLength(0);
+    const { ensureDCProTenant } = await import("../dc-pro-activation.js");
+    const result = await ensureDCProTenant({
+      email: "newtech@plant.com",
+      customerId: "cus_new",
+      subscriptionId: "sub_new",
+    });
 
-    // Verify the event payload would route to the DC Pro branch
-    expect(event.data.object.metadata.product).toBe("drive-commander-pro");
+    expect(result).not.toBeNull();
+    expect(result?.tier).toBe("drive_commander_pro");
+
+    // tier=drive_commander_pro must appear in DB queries (the createTenant INSERT)
+    const tierQuery = capturedQueries.find((q) =>
+      q.sql.includes("drive_commander_pro") || q.values.includes("drive_commander_pro"),
+    );
+    expect(tierQuery).toBeDefined();
+
+    // Hub provisioning queue must NOT be touched — that is the CMMS path.
+    const hubQueue = capturedQueries.find((q) =>
+      q.sql.includes("plg_pending_hub_provisioning") || q.sql.includes("hub_users"),
+    );
+    expect(hubQueue).toBeUndefined();
   });
 
-  test("webhook DC Pro branch does NOT set tier=active (no CMMS activation)", () => {
-    // Invariant: the DC Pro branch in the webhook must NOT call updateTenantTier("active")
-    // and must NOT call finalizeActivation (which triggers Atlas + Hub provisioning).
-    // This is enforced by the separate metadata.product === "drive-commander-pro" branch
-    // in server.ts that breaks before reaching the CMMS activation code.
-    const event = {
-      type: "checkout.session.completed",
-      data: { object: { metadata: { product: "drive-commander-pro" } } },
-    };
-    // Structural assertion: the event routes to DC Pro path, not the CMMS path
-    expect(event.data.object.metadata.product).toBe("drive-commander-pro");
-    expect(event.data.object.metadata.product).not.toBe("cmms-team");
+  test("existing pending tenant: tier updated to drive_commander_pro, NOT active", async () => {
+    scriptedReturns = [
+      // findTenantByEmail → existing pending tenant
+      [{ id: "exist-uuid-2", email: "returning@plant.com", tier: "pending" }],
+      [],  // updateTenantStripe
+      [],  // updateTenantTier
+      [],  // recordAuditEvent
+    ];
+
+    const { ensureDCProTenant } = await import("../dc-pro-activation.js");
+    const result = await ensureDCProTenant({
+      email: "returning@plant.com",
+      customerId: "cus_exist",
+      subscriptionId: "sub_exist",
+    });
+
+    expect(result).not.toBeNull();
+
+    // updateTenantTier must have been called with drive_commander_pro (not "active")
+    const tierUpdate = capturedQueries.find(
+      (q) => q.sql.includes("SET tier") && q.values.includes("drive_commander_pro"),
+    );
+    expect(tierUpdate).toBeDefined();
+
+    // Must NOT update to "active" (that is the CMMS path)
+    const activeUpdate = capturedQueries.find(
+      (q) => q.sql.includes("SET tier") && q.values.includes("active"),
+    );
+    expect(activeUpdate).toBeUndefined();
+  });
+
+  test("existing active CMMS subscriber: tier preserved as active (not downgraded)", async () => {
+    scriptedReturns = [
+      [{ id: "cmms-uuid-3", email: "team@plant.com", tier: "active" }],
+      [],  // updateTenantStripe
+      [],  // recordAuditEvent (no updateTenantTier call expected)
+    ];
+
+    const { ensureDCProTenant } = await import("../dc-pro-activation.js");
+    const result = await ensureDCProTenant({
+      email: "team@plant.com",
+      customerId: "cus_cmms",
+      subscriptionId: "sub_cmms",
+    });
+
+    expect(result).not.toBeNull();
+
+    // updateTenantTier must NOT be called — preserving the active CMMS tier
+    const anyTierUpdate = capturedQueries.find((q) => q.sql.includes("SET tier"));
+    expect(anyTierUpdate).toBeUndefined();
+  });
+
+  test("empty email returns null without touching DB", async () => {
+    const { ensureDCProTenant } = await import("../dc-pro-activation.js");
+    const result = await ensureDCProTenant({
+      email: "",
+      customerId: "cus_x",
+      subscriptionId: "sub_x",
+    });
+
+    expect(result).toBeNull();
+    expect(capturedQueries).toHaveLength(0);
   });
 });
 
@@ -186,7 +241,7 @@ describe("renderDriveLandingPage entitlement gate", () => {
     expect(html).not.toContain("value-table");
   });
 
-  test("isPro=true omits the pro-lock gate", async () => {
+  test("isPro=true omits the pro-lock DOM gate (CSS class definition is still present)", async () => {
     const { renderDriveLandingPage } = await import("../drive-commander-renderer.js");
     const { getPack } = await import("../drive-pack-data.js");
     const pack = getPack("siemens-g120");
@@ -194,8 +249,8 @@ describe("renderDriveLandingPage entitlement gate", () => {
     if (!pack) return;
 
     const html = renderDriveLandingPage(pack, { isPro: true });
-    // Pro user should see the unlocked state, not the lock gate
-    expect(html).not.toContain("pro-lock");
+    // The CSS always defines .pro-lock; the DOM element must not appear for Pro users.
+    expect(html).not.toContain('class="pro-lock"');
   });
 
   test("CTA copy leads with $197/yr (annual is lead SKU)", async () => {
