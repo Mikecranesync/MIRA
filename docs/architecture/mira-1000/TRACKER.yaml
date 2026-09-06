@@ -1,0 +1,192 @@
+schema_version: 1
+architecture_id: MIRA-1000
+name: "MIRA CLOUD GOLD — The Divergence"
+created: "2026-08-19"
+last_updated: "2026-08-20"
+baseline:
+  branch: main
+  sha: "5dfcbb8940bc2e724cf2b9b111f1837182f20688"
+
+decision:
+  cloud_gold:
+    inference: "OpenAI Responses API"
+    connectivity: "online"
+    role: "reference intelligence / behavioral gold"
+  on_prem:
+    inference: "local inference stack"
+    connectivity: "no cloud inference required"
+    role: "privacy/offline deployment line converging toward Gold"
+  divergence_boundary: "InferenceProvider"
+  product_surfaces:
+    factorylm_hub:
+      role: "desktop configuration, governance, knowledge, integrations, permissions, telemetry, evals, and control plane"
+      primary_technician_chat: false
+    mira_native:
+      codebase: "mira-mobile"
+      role: "primary technician-facing MIRA interface"
+      target_ux: "minimal conversation-first ChatGPT/Claude-style shell"
+      disposition: "reuse and refactor; do not create a third native/chat client"
+    notebook:
+      role: "persistent machine/incident/research context primitive"
+      mandatory_for_general_mira_chat: false
+    alternate_clients:
+      - telegram
+      - slack
+      - ignition
+      - future_channels
+  shared_contracts:
+    - identity_and_scope
+    - conversation
+    - context
+    - approved_retrieval
+    - knowledge_graph
+    - evidence_and_citations
+    - asset_context
+    - live_machine_state
+    - deterministic_validation
+    - cmms_and_work_orders
+    - tool_registry
+    - tool_policy
+    - approvals
+    - action_audit
+    - client_normalization
+    - evals
+
+rules:
+  - "Converge before creating parallel infrastructure."
+  - "FactoryLM remains canonical for truth, authority, evidence, tools, and audit."
+  - "Prompt files are immutable once issued; supersede with a new prompt ID."
+  - "Every child PR updates this tracker and HISTORY.md."
+  - "No generic autonomous OT write tool under MIRA-1000."
+  - "Gold quality is established before model-cost routing."
+  - "On-Prem gaps are measured against the same behavioral contract."
+  - "FactoryLM Hub is the control plane; MIRA is the technician product."
+  - "Reuse mira-mobile for the primary MIRA interface; do not create a third client merely for a new shell."
+  - "Conversation is the primary technician interaction; existing browse/workflow screens become secondary surfaces and tools where appropriate."
+
+active_prompt: P0003
+
+prompts:
+  P0000:
+    title: "Master operating prompt"
+    state: CONTROL
+    file: "prompts/P0000-master-operating-prompt.md"
+    owner: null
+    child_pr: null
+    result: null
+
+  P0001:
+    title: "Discovery and convergence map"
+    state: REVIEW
+    file: "prompts/P0001-discovery-convergence.md"
+    owner: null
+    child_pr: 3340
+    result:
+      artifact: "CURRENT_TO_TARGET_MAP.md"
+      code_changed: false
+      summary: "Shared runtime/tools already exist; gaps are provider/tool/streaming contracts, telemetry, and adoption/convergence."
+
+  P0002:
+    title: "Provider seam and Cloud Gold doctrine carve-out"
+    state: REVIEW
+    file: null
+    prompt_source_pr: 3340
+    owner: null
+    child_pr: 3341
+    closure:
+      built: true
+      tested: true
+      enabled: true
+      connected: false
+      proven: false
+      observable: false
+      state: PARTIAL
+    result:
+      seam: "InferenceProvider above InferenceRouter"
+      default_provider: "CascadeProvider"
+      adr: "ADR-0037"
+
+  P0003:
+    title: "First connected caller, cost telemetry, and conversation event contract"
+    state: ACTIVE
+    file: "prompts/P0003-first-caller-telemetry-conversation-contract.md"
+    owner: null
+    child_pr: null
+    depends_on:
+      - 3340
+      - 3341
+    acceptance:
+      - "A real MIRA runtime request flows through InferenceProvider using the existing Cascade provider."
+      - "Durable tenant/user/conversation/request/provider/model/token/cost/route/status telemetry exists or a canonical existing ledger is extended."
+      - "Provider-independent conversation/event contract supports future text deltas, citations, tools, approvals, attachments, usage, final/error events."
+      - "Current Cascade behavior and security invariants are preserved."
+      - "No paid OpenAI runtime traffic and no broad UI rewrite in this slice."
+
+  P0004:
+    title: "Conversation-first native MIRA shell convergence"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    intent: "Refactor existing mira-mobile shell; preserve native foundations and move Chat/MIRA to the root experience."
+
+  P0005:
+    title: "Deterministic FactoryLM tools in conversational runtime"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0006:
+    title: "Delegated business tools and approvals"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0007:
+    title: "Gold conversational and industrial parity evals"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0008:
+    title: "Prompt caching, Flex/Batch, and model routing"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+  P0009:
+    title: "On-Prem provider parity"
+    state: PLANNED
+    file: null
+    owner: null
+    child_pr: null
+    result: null
+
+cost_architecture:
+  verified: "2026-08-19"
+  interactive:
+    service_tier: standard
+    optimization:
+      - prompt_caching
+      - eval_backed_model_routing
+  background_low_priority:
+    service_tier: flex
+  grouped_async:
+    service_tier: batch
+  guardrail: "Optimize cost per successful trustworthy outcome, never by bypassing FactoryLM evidence/policy."
+
+history:
+  - H0001
+  - H0002
+  - H0003
+  - H0004
+  - H0005
+  - H0006
