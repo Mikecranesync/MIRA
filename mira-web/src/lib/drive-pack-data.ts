@@ -41,6 +41,13 @@ export interface ParameterCard {
   source_citation?: Citation;
 }
 
+export interface FaultEntry {
+  fault_code: string; // bare key matching faultCodes, e.g. "30001"
+  meaning: string; // one-sentence cause text, verbatim from manual
+  remedy_steps: string[]; // verbatim remedy lines from the manual's Remedy column
+  source_citation: Citation; // page where both cause and remedy are printed
+}
+
 export interface DriveFamily {
   manufacturer: string;
   series: string;
@@ -52,6 +59,7 @@ export interface DrivePackDisplay {
   packId: string; // pack id, e.g. "powerflex_525"
   family: DriveFamily;
   faultCodes: Record<string, string>; // { "7": "Motor Overload" }
+  faultEntries: FaultEntry[]; // cited meaning + remedy steps for faults that lack parameter cards
   parameters: ParameterCard[];
   manualDoc: string; // canonical source document (from the citations)
   provenanceLabel: string; // "manual-cited" — honest provenance shown on every page
@@ -107,6 +115,17 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
   const allManualCited =
     Object.values(items).length > 0 && Object.values(items).every((v) => v === "manual_cited");
 
+  const faultEntries: FaultEntry[] = (raw.fault_entries ?? []).map((e: any) => ({
+    fault_code: String(e.fault_code),
+    meaning: e.meaning ?? "",
+    remedy_steps: Array.isArray(e.remedy_steps) ? e.remedy_steps : [],
+    source_citation: {
+      doc: e.source_citation?.doc ?? "",
+      page: String(e.source_citation?.page ?? ""),
+      excerpt: e.source_citation?.excerpt,
+    },
+  }));
+
   return {
     modelSlug,
     packId: raw.pack_id,
@@ -116,6 +135,7 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
       aliases: raw.family?.aliases ?? [],
     },
     faultCodes: raw.live_decode?.fault_codes ?? {},
+    faultEntries,
     parameters,
     manualDoc,
     provenanceLabel: allManualCited ? "manual-cited" : "mixed provenance",
@@ -147,6 +167,12 @@ export function getFault(pack: DrivePackDisplay, code: string): FaultView | null
     name: pack.faultCodes[key],
     hasDetail: getParametersForFault(pack, key).length > 0,
   };
+}
+
+/** Fault entry (cited meaning + remedy steps) for a fault code, or null if none in this pack. */
+export function getFaultEntry(pack: DrivePackDisplay, key: string): FaultEntry | null {
+  const want = faultNum(key);
+  return pack.faultEntries.find((e) => faultNum(e.fault_code) === want) ?? null;
 }
 
 /** Parameters whose cited card links to this fault (normalised: "7" == "F7" == "F007"). */
