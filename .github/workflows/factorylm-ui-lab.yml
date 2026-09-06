@@ -170,3 +170,15 @@ jobs:
           name: shared-ui-verify-log
           path: /tmp/shared-ui-verify.log
           if-no-files-found: warn
+
+      # The static lab bundle, so a reviewer or a device-proof session can serve
+      # dist/ without a local toolchain (Windows cannot `bun install` this lab
+      # without Developer Mode, because Bun symlinks inside `file:` mirrors).
+      - name: Upload built lab (dist/)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-lab-dist
+          path: apps/factorylm-ui-lab/dist
+          if-no-files-found: error
+          retention-days: 14

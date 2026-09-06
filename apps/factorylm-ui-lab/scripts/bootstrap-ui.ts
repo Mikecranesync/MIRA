@@ -3,6 +3,9 @@ import { resolve } from "node:path";
 
 // 1. Install the UI package's own pinned toolchain (frozen lockfile).
 const labRoot = resolve(import.meta.dir, "..");
+// Directory links: a symlink needs Developer Mode or elevation on Windows; a
+// junction does not. Both resolve to the real path, which is all we need.
+const LINK_TYPE = process.platform === "win32" ? "junction" : "dir";
 const uiPackageRoot = resolve(labRoot, "../../packages/factorylm-ui");
 const install = Bun.spawn([process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"], {
   cwd: uiPackageRoot,
@@ -25,7 +28,7 @@ const relink = (nodeModules: string, name: string) => {
   const target = resolve(packagesRoot, `factorylm-${name}`);
   if (!existsSync(target)) return;
   if (lstatSync(mirror, { throwIfNoEntry: false })) rmSync(mirror, { recursive: true, force: true });
-  symlinkSync(target, mirror, "dir");
+  symlinkSync(target, mirror, LINK_TYPE);
 };
 for (const name of ["theme", "interaction", "ui"]) relink(resolve(labRoot, "node_modules"), name);
 for (const name of ["theme", "interaction"]) relink(resolve(uiPackageRoot, "node_modules"), name);
@@ -50,5 +53,5 @@ for (const name of ["react", "react-dom", "scheduler"]) {
     process.exit(1);
   }
   if (existsSync(packageCopy) || lstatSync(packageCopy, { throwIfNoEntry: false })) rmSync(packageCopy, { recursive: true, force: true });
-  symlinkSync(labCopy, packageCopy, "dir");
+  symlinkSync(labCopy, packageCopy, LINK_TYPE);
 }
