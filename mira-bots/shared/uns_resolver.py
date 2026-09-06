@@ -1176,3 +1176,27 @@ def chunk_matches_model(
     if tail and q_family and q_family.split()[0] in body and re.search(_alias_pattern(tail), body):
         return True
     return False
+
+
+def vendor_named_in(text: str | None, vendor: str | None) -> bool:
+    """Is `vendor` actually named in `text`, alias-aware and boundary-safe?
+
+    A raw `vendor.lower() in text.lower()` is wrong in BOTH directions, which is why
+    this exists rather than the one-liner:
+
+      * too loose — "abb" fires inside "grabbed" and "ab" inside "cable", inventing a
+        vendor from ordinary English (the failure `_alias_pattern` documents);
+      * too strict — the resolver canonicalises "Allen-Bradley" to "Rockwell
+        Automation", so a passage that legitimately says "Allen-Bradley" would not
+        match its own canonical vendor name.
+
+    So: match the canonical name AND every alias that canonicalises to the same OEM,
+    each through `_alias_pattern`'s boundary rule.
+    """
+    if not text or not vendor:
+        return False
+    body = text.lower()
+    target = canonical_vendor(vendor) or vendor
+    names = {vendor.lower(), target.lower()}
+    names |= {a for a, canon in VENDOR_ALIASES.items() if canon == target}
+    return any(re.search(_alias_pattern(n), body) for n in names if n)

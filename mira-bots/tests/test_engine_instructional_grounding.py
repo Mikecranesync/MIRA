@@ -244,11 +244,23 @@ def test_a_malformed_chunk_falls_back_instead_of_aborting_the_turn(sup) -> None:
 
 
 def test_a_raising_label_formatter_falls_back(sup) -> None:
+    st = _state()
+    st["_instructional_vendor"] = "Allen-Bradley"
+    st["_instructional_model"] = "PowerFlex 525"
     with (
-        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "body"}]),
+        patch(
+            "shared.neon_recall.recall_knowledge",
+            return_value=[
+                {
+                    "content": "body",
+                    "manufacturer": "Allen-Bradley",
+                    "model_number": "PowerFlex 525",
+                }
+            ],
+        ),
         patch("shared.workers.rag_worker.format_source_label", side_effect=RuntimeError("boom")),
     ):
-        assert sup._instructional_kb_context("q", _state(), [], tenant_id="t") == ""
+        assert sup._instructional_kb_context("q", st, [], tenant_id="t") == ""
 
 
 def test_retrieval_failure_falls_back(sup) -> None:
@@ -290,11 +302,23 @@ def test_context_uses_the_canonical_label_helper(sup) -> None:
 def test_chunk_bodies_are_capped(sup) -> None:
     """Prompt growth stays bounded, so documentation cannot crowd out the
     numbered-steps instruction."""
+    st = _state()
+    st["_instructional_vendor"] = "Allen-Bradley"
+    st["_instructional_model"] = "PowerFlex 525"
     with (
-        patch("shared.neon_recall.recall_knowledge", return_value=[{"content": "x" * 5000}]),
+        patch(
+            "shared.neon_recall.recall_knowledge",
+            return_value=[
+                {
+                    "content": "x" * 5000,
+                    "manufacturer": "Allen-Bradley",
+                    "model_number": "PowerFlex 525",
+                }
+            ],
+        ),
         patch("shared.workers.rag_worker.format_source_label", return_value=""),
     ):
-        assert len(sup._instructional_kb_context("q", _state(), [], tenant_id="t")) <= 1200
+        assert len(sup._instructional_kb_context("q", st, [], tenant_id="t")) <= 1200
 
 
 # ── Relevance gate (#3605) — vendor coverage is not evidence ──────────────────
@@ -494,3 +518,34 @@ def test_followup_keeps_the_prior_turn_model(sup) -> None:
     ):
         assert sup._instructional_kb_coverage("and the accel time?", st, [], tenant_id="t") is True
     assert st["_instructional_model"] == "PowerFlex 525", "prior-turn model was discarded"
+
+
+# ── Round 4: the positive tie must be alias-aware, never a raw substring ──────
+
+
+def test_passing_vendor_substring_does_not_ground(sup) -> None:
+    """`"abb" in "grabbed"` is True. A raw substring invents a vendor from ordinary
+    English — the failure `_alias_pattern` exists to prevent."""
+    st = _state()
+    st["_instructional_vendor"] = "ABB"
+    st["_instructional_model"] = ""
+    with patch(
+        "shared.neon_recall.recall_knowledge",
+        return_value=[{"content": "The technician grabbed the cable and left."}],
+    ):
+        assert sup._instructional_kb_context("how do I reset it?", st, [], tenant_id="t") == ""
+
+
+def test_canonicalised_vendor_still_matches_its_own_brand_name(sup) -> None:
+    """`canonical_vendor("Allen-Bradley")` is "Rockwell Automation", so a raw substring
+    check REJECTS a passage that legitimately says "Allen-Bradley". Over-rejection is a
+    failure too."""
+    st = _state()
+    st["_instructional_vendor"] = "Rockwell Automation"
+    st["_instructional_model"] = ""
+    with patch(
+        "shared.neon_recall.recall_knowledge",
+        return_value=[{"content": "On the Allen-Bradley unit, press ESC to exit."}],
+    ):
+        out = sup._instructional_kb_context("how do I reset it?", st, [], tenant_id="t")
+    assert "press ESC" in out

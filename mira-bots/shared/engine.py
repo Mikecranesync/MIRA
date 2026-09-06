@@ -7363,7 +7363,12 @@ class Supervisor:
         """
         try:
             from .neon_recall import recall_knowledge  # noqa: PLC0415
-            from .uns_resolver import chunk_matches_model  # noqa: PLC0415
+            from .uns_resolver import (  # noqa: PLC0415
+                chunk_matches_model,
+            )
+            from .uns_resolver import (
+                vendor_named_in as _vendor_named_in,
+            )
             from .workers.rag_worker import (  # noqa: PLC0415
                 chunk_matches_vendor,
                 format_source_label,
@@ -7401,22 +7406,32 @@ class Supervisor:
                 #
                 # Both canonical filters are permissive by design: `chunk_matches_vendor`
                 # keeps untagged chunks (generic fault tables are legitimately useful to
-                # the RAG path), and `chunk_matches_model` keeps everything when the
-                # query resolved no model. Individually correct; together they mean an
-                # untagged, unrelated chunk sails through a vendor-only question — no
-                # contradiction, and no evidence either. Grounding on that is exactly
-                # the failure this gate exists to stop.
+                # the RAG path), and `chunk_matches_model` keeps everything when the query
+                # resolved no model. Individually correct; together they mean an untagged,
+                # unrelated chunk sails through a vendor-only question — no contradiction,
+                # and no evidence either.
                 #
-                # So absence of contradiction is not enough: something must actually tie
-                # the chunk to the equipment.
+                # Matching here is ALIAS-AWARE and canonical, never a raw substring. A
+                # bare `want_vendor.lower() in body` is wrong in both directions at once:
+                # "abb" fires inside "grabbed" (invents a vendor from ordinary English),
+                # and `canonical_vendor("Allen-Bradley")` is "Rockwell Automation", so a
+                # passage that legitimately says "Allen-Bradley" would be rejected. Both
+                # are why `_alias_pattern` and `canonical_vendor` exist; reuse them.
+                #
+                # SCOPE (#3605 -> #3602). This establishes that a chunk is about the right
+                # EQUIPMENT. It deliberately does NOT establish that the chunk answers the
+                # QUESTION — a correctly-tagged PowerFlex 525 page about mounting
+                # dimensions still passes a question about accel time. Metadata cannot
+                # decide topical relevance; that is a retrieval-quality problem and is
+                # tracked on #3602. What this gate buys is narrow and real: wrong-equipment
+                # documentation can no longer ground an answer or emit a citation.
                 tagged_mfr = (ch.get("manufacturer") or "").strip()
                 tagged_model = (ch.get("model_number") or "").strip()
-                low_body = body.lower()
                 positive = bool(
                     (tagged_mfr and chunk_matches_vendor(tagged_mfr, want_vendor))
                     or (tagged_model and want_model)
-                    or (want_vendor and want_vendor.lower() in low_body)
-                    or (want_model and want_model.lower() in low_body)
+                    or (want_vendor and _vendor_named_in(body, want_vendor))
+                    or (want_model and chunk_matches_model(None, body, want_model))
                 )
                 if not positive:
                     continue
