@@ -161,7 +161,8 @@ capabilities:
     promotion_criteria:
       - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
       - "Record an owner."
-    review_by: "2026-09-05"
+      - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
+    review_by: "2026-10-05"
 
   # =========================================================================
   - id: technician_context_contract
