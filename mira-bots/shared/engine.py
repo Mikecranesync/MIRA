@@ -7335,9 +7335,7 @@ class Supervisor:
             # vendor. Without it a follow-up ("and the accel time?") resolves no model and
             # the model gate goes vacuous — the filter silently stops filtering exactly
             # when a conversation gets going.
-            state["_instructional_model"] = (
-                resolution.primary.model or prior_uns.get("model") or ""
-            )
+            state["_instructional_model"] = resolution.primary.model or prior_uns.get("model") or ""
             return True
         except Exception as exc:  # noqa: BLE001 - never fail a turn over a coverage probe
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
