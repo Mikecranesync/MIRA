@@ -397,7 +397,114 @@ def test_complete_block_inside_fenced_code_block_fails():
 def test_exactly_one_live_section_with_substantive_values_passes():
     result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=_VALID_BODY, policy=_POLICY)
     assert result.allowed is True
-    assert result.missing_fields == ()
+
+
+# ---------------------------------------------------------------------------
+# Codex remediation finding #2 — harden exception-body parsing:
+#   * fenced-code stripping must handle UNCLOSED fences (drop to EOF) and
+#     tilde (~~~) fences, not just closed exactly-3-backtick fences;
+#   * HTML-comment stripping must handle an UNCLOSED `<!--` (drop to EOF);
+#   * placeholder detection must catch phrase VARIANTS ("TODO fill later",
+#     "TBD later", "N/A because...", "placeholder") anchored at the START of
+#     the value, and punctuation-only values, WITHOUT rejecting a substantive
+#     value that merely mentions one of those words mid-sentence;
+#   * a duplicated field label within one section is ambiguous and must fail
+#     closed rather than silently using the first match.
+# ---------------------------------------------------------------------------
+def test_unclosed_fenced_code_block_swallows_everything_after_it():
+    # An unclosed ``` fence run through EOF must drop the real exception
+    # section that follows it — never leave it scannable, but also never
+    # leave it silently un-stripped as literal ``` text in the visible body.
+    body = "```markdown\nsome pasted diff\n" + _VALID_BODY
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+    assert any("Legacy UI exception section" in f for f in result.missing_fields)
+
+
+def test_tilde_fenced_code_block_is_stripped_like_backticks():
+    body = "~~~markdown\n" + _VALID_BODY + "\n~~~\n"
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+
+
+def test_unclosed_html_comment_swallows_everything_after_it():
+    body = "<!-- pasted context, never closed\n" + _VALID_BODY
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+    assert any("Legacy UI exception section" in f for f in result.missing_fields)
+
+
+@pytest.mark.parametrize(
+    "placeholder_value",
+    [
+        "TODO fill later",
+        "TBD later",
+        "N/A because this is a rollback",
+        "placeholder",
+        "fill in later",
+    ],
+)
+def test_placeholder_phrase_variants_fail(placeholder_value):
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: {placeholder_value}
+        Canonical replacement impact: something real happens here
+        Rollback: revert the commit
+        """
+    )
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+    assert any("Reason" in f for f in result.missing_fields)
+
+
+@pytest.mark.parametrize("punctuation_value", ["...", "---", "***", "___"])
+def test_punctuation_only_values_fail(punctuation_value):
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: {punctuation_value}
+        Canonical replacement impact: something real happens here
+        Rollback: revert the commit
+        """
+    )
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+    assert any("Reason" in f for f in result.missing_fields)
+
+
+def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
+    # A real, substantive value must not be rejected just because it CONTAINS
+    # a placeholder-vocabulary word away from the start of the value.
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: the TODO comment in home.ts was hiding a null deref
+        Canonical replacement impact: none, this only touches the recovery route
+        Rollback: revert this commit; the legacy route is otherwise untouched
+        """
+    )
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is True
+
+
+def test_duplicate_field_label_within_one_section_is_ambiguous_and_fails():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: a real reason for this exception
+        Reason: a second, contradicting reason
+        Canonical replacement impact: something real happens here
+        Rollback: revert the commit
+        """
+    )
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    assert result.allowed is False
+    assert any("Reason" in f for f in result.missing_fields)
 
 
 # ---------------------------------------------------------------------------
@@ -718,13 +825,19 @@ def test_public_static_passive_asset_suffixes_are_unguarded(path):
     "path",
     ["mira-web/public/sw.js", "mira-web/public/posthog-init.js"],
 )
-def test_public_static_exact_infrastructure_exemptions_are_unguarded(path):
+def test_public_static_executable_infrastructure_files_are_guarded(path):
+    """Codex remediation finding #1: sw.js/posthog-init.js are executable
+    JavaScript served to every visitor — they are a presentation surface like
+    any other .js file under mira-web/public/, not inert infrastructure. The
+    prior exact-path exemption left a live self-service bypass: dropping new
+    logic into either file skipped the guard entirely. No exemption exists
+    for these paths (or any other executable suffix) anymore."""
     real_policy = load_guard_policy(REAL_REGISTRY)
-    assert not path_is_guarded(path, real_policy), f"expected {path} to be exempt infrastructure"
+    assert path_is_guarded(path, real_policy), f"expected {path} to be guarded (executable JS)"
     result = evaluate(
         [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=real_policy
     )
-    assert result.allowed is True
+    assert result.allowed is False
 
 
 def test_public_static_unknown_suffix_fails_closed():

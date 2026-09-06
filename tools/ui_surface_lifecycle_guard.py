@@ -75,9 +75,17 @@ CONTROL_PATTERNS: tuple[str, ...] = (
 # under `mira-web/src/views/`, NOT an inert asset. This classifier is
 # code-owned (like CONTROL_PATTERNS) so it applies regardless of what the
 # registry's `guarded_paths` say for this prefix: passive data/asset suffixes
-# are unguarded, two exact named infrastructure files are exempt, and
-# everything else — including unknown suffixes and extensionless names —
-# fails closed (guarded).
+# are unguarded, and everything else — including unknown suffixes,
+# extensionless names, and any executable script (`sw.js`, `posthog-init.js`,
+# or any other `.js`/`.mjs`) — fails closed (guarded).
+#
+# Codex remediation finding #1 (2026-09-06): the original design carried a
+# named exact-path exemption for `mira-web/public/sw.js` and
+# `mira-web/public/posthog-init.js` as "infrastructure". That was itself a
+# live self-service bypass — both are executable JavaScript served to every
+# visitor, indistinguishable in kind from any other guarded `.js` file under
+# this tree. No exemption exists for these paths (or for any executable
+# suffix) anymore; only the passive-asset-suffix carve-out below remains.
 # ---------------------------------------------------------------------------
 PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = ("mira-web/public/",)
 
@@ -101,13 +109,6 @@ PUBLIC_STATIC_PASSIVE_SUFFIXES: frozenset[str] = frozenset(
     }
 )
 
-PUBLIC_STATIC_EXEMPT_PATHS: frozenset[str] = frozenset(
-    {
-        "mira-web/public/sw.js",
-        "mira-web/public/posthog-init.js",
-    }
-)
-
 MAX_EXPECTED_CHANGE_COUNT = 3000
 
 _TERMINAL_GLOB = "/**"
@@ -117,10 +118,36 @@ _FIELD_LABELS: tuple[str, ...] = (
     "Canonical replacement impact:",
     "Rollback:",
 )
-_PLACEHOLDER_VALUES = {"n/a", "na", "none", "not applicable", "tbd", "todo"}
+# Values that are ONLY a placeholder if they match EXACTLY (whole value,
+# case-insensitive) — these are common real English words/phrases that can
+# legitimately open a substantive sentence ("none, this only touches the
+# recovery route" is real content, not a placeholder), so they must not be
+# treated as prefixes.
+_PLACEHOLDER_EXACT_VALUES: frozenset[str] = frozenset({"none", "not applicable"})
+# Placeholder-phrase prefixes. Matched against the START of a (lowercased,
+# stripped) field value only — never as a substring — so a substantive value
+# that merely mentions one of these words mid-sentence ("the TODO comment in
+# home.ts was hiding a null deref") is never rejected. A prefix match only
+# counts if the next character is not alphanumeric (word-boundary check), so
+# "na" doesn't false-positive against "native app rewrite ...". These are
+# phrases that are placeholder-shaped even WITH trailing text ("N/A because
+# this is a rollback" is still a non-answer), unlike `_PLACEHOLDER_EXACT_VALUES`.
+_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
+    "n/a",
+    "na",
+    "tbd",
+    "todo",
+    "tba",
+    "placeholder",
+    "fill later",
+    "fill in later",
+)
 _ANGLE_PLACEHOLDER_RE = re.compile(r"^<.*>$", re.DOTALL)
 _EXCEPTION_HEADER_RE = re.compile(r"^##\s+Legacy UI exception\s*$")
 _ANY_H2_RE = re.compile(r"^##\s+")
+# A "fence" opener: 3+ backticks or 3+ tildes, optionally followed by a
+# language tag (```python, ~~~markdown, ...).
+_FENCE_OPEN_RE = re.compile(r"^(`{3,}|~{3,})")
 
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
@@ -306,15 +333,15 @@ def _matches_pattern(path: str, pattern: str) -> bool:
 def _is_public_static_guarded(path: str) -> bool:
     """Deterministic classifier for `mira-web/public/**` paths.
 
-    Guards everything EXCEPT: (a) passive data/asset suffixes that cannot
-    execute or render a UI on their own, and (b) two exact, named,
-    pre-existing infrastructure files. Unknown suffixes and extensionless
-    names fail closed (guarded) — this is the "sibling bypass" fix: a new
-    file under mira-web/public/ is a new presentation surface by default.
+    Guards everything EXCEPT passive data/asset suffixes that cannot execute
+    or render a UI on their own. Unknown suffixes, extensionless names, and
+    every executable suffix (`.js`, `.mjs`, `.html`, ...) fail closed
+    (guarded) — this is the "sibling bypass" fix: a new file under
+    mira-web/public/ is a new presentation surface by default. No named
+    exact-path exemption exists (Codex remediation finding #1 — see the
+    module-level comment above `PUBLIC_STATIC_GUARDED_ROOTS`).
     """
     normalized = path.strip("/")
-    if normalized in PUBLIC_STATIC_EXEMPT_PATHS:
-        return False
     name = normalized.rsplit("/", 1)[-1]
     suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
     if suffix in PUBLIC_STATIC_PASSIVE_SUFFIXES:
@@ -485,11 +512,42 @@ def load_changed_files(
 # three labeled fields present and substantive.
 # ---------------------------------------------------------------------------
 def _strip_fenced_code_blocks(text: str) -> str:
-    return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    """Drop fenced code-block content — backtick OR tilde fences, length >=3,
+    CLOSED or UNCLOSED. An unclosed fence drops everything through EOF (never
+    left un-stripped and scannable, never left as a way to smuggle a fake
+    exception section past the guard by simply never closing the fence)."""
+    lines = (text or "").splitlines(keepends=True)
+    out: list[str] = []
+    in_fence = False
+    fence_char = ""
+    fence_len = 0
+    for line in lines:
+        stripped = line.strip()
+        if not in_fence:
+            m = _FENCE_OPEN_RE.match(stripped)
+            if m:
+                fence_char = m.group(1)[0]
+                fence_len = len(m.group(1))
+                in_fence = True
+                continue
+            out.append(line)
+            continue
+        close_re = re.compile(r"^" + re.escape(fence_char) + "{" + str(fence_len) + r",}$")
+        if close_re.match(stripped):
+            in_fence = False
+        # else: still inside the fence (or this line is the unclosed-to-EOF
+        # tail) — drop it either way.
+    return "".join(out)
 
 
 def _strip_html_comments(text: str) -> str:
-    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    """Drop HTML comments — CLOSED (`<!-- ... -->`) first, then any remaining
+    UNCLOSED `<!--` through EOF, so an opened-but-never-closed comment cannot
+    leave the rest of the body (potentially including a real exception
+    section) unstripped."""
+    text = re.sub(r"<!--.*?-->", "", text or "", flags=re.DOTALL)
+    text = re.sub(r"<!--[\s\S]*$", "", text)
+    return text
 
 
 def _find_exception_sections(pr_body: str) -> list[str]:
@@ -510,12 +568,38 @@ def _find_exception_sections(pr_body: str) -> list[str]:
     return sections
 
 
-def _extract_field(body: str, label: str) -> Optional[str]:
+def _extract_field(body: str, label: str) -> tuple[Optional[str], bool]:
+    """Return `(value, ambiguous)`. A field label appearing more than once in
+    the section body is ambiguous — fail closed rather than silently take the
+    first match (a duplicated `Reason:` line could otherwise hide a
+    contradicting or placeholder second value behind a substantive first
+    one)."""
     pattern = re.compile(r"^" + re.escape(label) + r"[ \t]*(.*)$", re.MULTILINE)
-    m = pattern.search(body)
-    if not m:
-        return None
-    return m.group(1).strip()
+    matches = list(pattern.finditer(body))
+    if not matches:
+        return None, False
+    if len(matches) > 1:
+        return None, True
+    return matches[0].group(1).strip(), False
+
+
+def _starts_with_placeholder_phrase(value_lower: str) -> bool:
+    """True if `value_lower` (already `.strip().lower()`d) starts with a
+    placeholder-vocabulary phrase at a word boundary — anchored at the START
+    of the value only, never a substring match, so a substantive value that
+    merely mentions "todo" or "n/a" mid-sentence is never rejected."""
+    for prefix in _PLACEHOLDER_PREFIXES:
+        if value_lower == prefix:
+            return True
+        if value_lower.startswith(prefix):
+            next_char = value_lower[len(prefix)]
+            if not next_char.isalnum():
+                return True
+    return False
+
+
+def _is_punctuation_only(value: str) -> bool:
+    return bool(value) and not any(c.isalnum() for c in value)
 
 
 def _is_substantive(value: Optional[str]) -> bool:
@@ -524,9 +608,13 @@ def _is_substantive(value: Optional[str]) -> bool:
     v = value.strip()
     if not v:
         return False
-    if v.lower() in _PLACEHOLDER_VALUES:
-        return False
     if _ANGLE_PLACEHOLDER_RE.match(v):
+        return False
+    if _is_punctuation_only(v):
+        return False
+    if v.lower() in _PLACEHOLDER_EXACT_VALUES:
+        return False
+    if _starts_with_placeholder_phrase(v.lower()):
         return False
     return True
 
@@ -542,8 +630,10 @@ def _exception_missing_fields(pr_body: str) -> list[str]:
     body = sections[0]
     missing = []
     for label in _FIELD_LABELS:
-        value = _extract_field(body, label)
-        if not _is_substantive(value):
+        value, ambiguous = _extract_field(body, label)
+        if ambiguous:
+            missing.append(f"body:{label} (duplicate field — ambiguous)")
+        elif not _is_substantive(value):
             missing.append(f"body:{label}")
     return missing
 
