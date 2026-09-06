@@ -1,3 +1,65 @@
+# Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 Codex remediation (findings #1-5, #15-18 fixed; local, not pushed)
+
+**Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination
+[Mikecranesync/MIRA#3626](https://github.com/Mikecranesync/MIRA/issues/3626). Same branch as
+below: `codex/factorylm-unified-ui-cutover-001`. **No PR opened yet.**
+
+An independent Codex adversarial review of exact HEAD `1ecb9baef` (the entry below this one)
+found 18 numbered blocking defects across security/guard (1-5), dynamic-workflow (6-14), and
+registry/docs (15-18) categories. This entry records the security+workflow-structure+docs
+remediation landed so far, in three task-sized commits on top of `1ecb9baef`:
+
+- `9bf47dcaa` — **fix(ci):** finding #1 (removed the `mira-web/public/sw.js` +
+  `posthog-init.js` exact-path exemption entirely — both are executable JS and are now guarded
+  like any other `.js` file; the old exemption test was INVERTED, not deleted, preserving the
+  regression proof) + finding #2 (hardened `## Legacy UI exception` PR-body parsing: fenced-code
+  stripping now handles unclosed backtick/tilde fences via a line scanner, HTML-comment stripping
+  now handles an unclosed `<!--`, placeholder detection now catches phrase variants anchored at
+  the START of a value only — never mid-sentence — plus punctuation-only values, and a duplicate
+  field label within one section is now ambiguous/fail-closed instead of silently taking the
+  first match). Tests-first throughout; 137/137 guard tests green.
+- `739cceaac` — **ci(ui):** findings #3-#4 — split the single `guard:` job into three
+  (`pending` -> `guard` -> `final-status`), each with its OWN minimal `permissions:` (the job that
+  runs checked-out base code never holds `statuses: write`), added `branches: [main]` to the
+  trigger plus an explicit in-job runtime assertion of `base.ref == 'main'` (fails the job
+  otherwise), moved the metadata fetch to before checkout/dependency-install, and replaced
+  substring-only workflow tests with structural (parsed-YAML) assertions across every job. Also
+  ran `actionlint` — genuinely clean (confirmed via the repo's own `.githooks/pre-commit` gate at
+  commit time, since the local binary was outside this session's sandboxed worktree for a direct
+  invocation). 145/145 guard tests green.
+- `f5fe1d274` — **docs(ui):** findings #5, #15, #16, #18 — corrected the charter/rule/registry
+  overclaim that the `Legacy UI Lifecycle Guard` status was already "a strict required check on
+  protected main" (no branch-protection change has been made or is within this governance
+  implementation's authority; charter §3.1 now documents the intended FUTURE `app_id`-pinned
+  `required_status_checks.checks` binding as a not-yet-performed administrator action); fixed the
+  plan's Task 1 Step 1 example that still showed the obsolete two-file
+  `mira-web/public/mira-chat.js`/`.css` boundary; rescoped `CAPABILITY_CLOSURE.yaml`'s
+  `unified_ui_shell` purpose off the unmerged conversation/composer deliverable (draft PR #3628,
+  a different session's active claim) to describe only what is merged on `main` today; corrected
+  the promotion-state semantics so wiring CI alone (with zero consumers) does not read as
+  advancing past `implemented_unconnected` — a real consumer must exist first.
+
+Findings #6-14 (the three `.claude/workflows/*.js` dynamic-workflow files: mission/issue/lane
+hardcoding, canonical claim-URL validation, `allowedPaths`/branch validation, independent
+head-proof/recheck agents, a genuine synthesis agent in `flm-ui-verify`, non-code-writing
+"reporter" agents, worktree-cleanup instructions, and contradiction-handling fixes) are **NOT YET
+remediated** as of this entry — tracked as the next slice, not silently dropped.
+
+Corrections to the entry below: its "draft PR
+[#3628](https://github.com/Mikecranesync/MIRA/issues/3628)" link was wrong — a PR is not an
+`/issues/` URL even though issue and PR numbers share one sequence on GitHub; the correct link is
+[#3628](https://github.com/Mikecranesync/MIRA/pull/3628). Its local-HEAD statement (`f235b1ef5`)
+was a pre-continuity implementation checkpoint, superseded within the same commit sequence by
+`1ecb9baef` (which described itself) and now by the remediation commits above.
+
+**No production change of any kind was made or attempted** in this remediation slice either: no
+merge, no deploy, no branch-protection change, no label creation, no push.
+`packages/factorylm-theme/**`, `packages/factorylm-interaction/**`, `packages/factorylm-ui/**`,
+and `apps/factorylm-ui-lab/**` remain untouched — still Claude 5.1 on CHARLIE's lane
+([draft PR #3628](https://github.com/Mikecranesync/MIRA/pull/3628)).
+
+---
+
 # Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 governance Tasks 1-4 + PR-template exception scaffold done (local, not pushed)
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001` — freeze the legacy public/Hub/mobile presentation
