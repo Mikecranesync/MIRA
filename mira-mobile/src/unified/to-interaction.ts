@@ -133,7 +133,8 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
     case "observation":
       return {
         type: "visual_observation",
-        observation: { fileId: part.entry.fileId, capturedAt: part.entry.capturedAt, provenance: "phone_photo", verified: true },
+        // The mobile ObservationPart carries no verification signal; never claim one.
+        observation: { fileId: part.entry.fileId, capturedAt: part.entry.capturedAt, provenance: "phone_photo", verified: false },
       };
     case "safety_notice":
       return {
@@ -141,8 +142,11 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
         notice: { severity: "stop", message: SAFETY_STOP_MESSAGE, ...(part.trigger ? { trigger: part.trigger } : {}) },
       };
     case "basis": {
+      // `authorized` is server-owned truth. The mobile BasisPart carries only the
+      // basis string and a caption, so it is never asserted here — the kind is a
+      // display grouping from keywords and must not be read as authorization.
       const kind = basisKind(part.basis);
-      return { type: "evidence_basis", basis: { kind, label: part.label ?? part.basis, authorized: kind !== "general_reasoning" } };
+      return { type: "evidence_basis", basis: { kind, label: part.label ?? part.basis, authorized: false } };
     }
     case "error":
       return {

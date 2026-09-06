@@ -46,7 +46,9 @@ describe("toInteractionPart", () => {
       "evidence_basis", "text", "source", "machine_evidence", "visual_observation",
       "safety_notice", "error", "followups", "identity_dispute", "unknown",
     ]);
-    expect(mapped[0]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Cited from the manual", authorized: true } });
+    // Display grouping only: authorization is server-owned and never asserted from a basis string.
+    expect(mapped[0]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Cited from the manual", authorized: false } });
+    expect(mapped[4]).toMatchObject({ type: "visual_observation", observation: { verified: false } });
     expect(mapped[2]).toEqual({ type: "source", source: { id: "c1", title: "G120 Operating Instructions", kind: "oem_documentation", locator: "p. 418" } });
     expect(mapped[3]).toMatchObject({ type: "machine_evidence", evidence: { preSeconds: 120, postSeconds: 120, rowCount: 23, freshness: "stale", source: "recorded" } });
     expect(mapped[5]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "bypass the interlock" } });
