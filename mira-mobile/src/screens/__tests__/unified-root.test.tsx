@@ -22,6 +22,22 @@ vi.mock("../NotebookScreen", () => ({
     </div>
   ),
 }));
+// preferencesStore is the real @capacitor/preferences web path; under some
+// jsdom builds localStorage is not a full Storage and the root's load() throws,
+// which the catch turns into the error state. Mock it like everything else.
+vi.mock("../../lib/offline-queue", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/offline-queue")>("../../lib/offline-queue");
+  const mem = new Map<string, string>();
+  return {
+    ...actual,
+    preferencesStore: {
+      get: async (k: string) => mem.get(k) ?? null,
+      set: async (k: string, v: string) => { mem.set(k, v); },
+      remove: async (k: string) => { mem.delete(k); },
+      keys: async () => Array.from(mem.keys()),
+    },
+  };
+});
 vi.mock("../AboutUpdates", () => ({ AboutUpdates: (p: { onBack: () => void }) => <div data-testid="about"><button onClick={p.onBack}>back</button></div> }));
 
 import { UnifiedRoot } from "../UnifiedRoot";
