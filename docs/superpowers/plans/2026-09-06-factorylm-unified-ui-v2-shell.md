@@ -290,6 +290,7 @@ git commit -m "feat(ui): package FactoryLM workspace theme"
 - Modify: `packages/factorylm-ui/package.json`
 - Create: `apps/factorylm-ui-lab/bunfig.toml`
 - Create: `apps/factorylm-ui-lab/src/test-setup.ts`
+- Create: `apps/factorylm-ui-lab/scripts/bootstrap-ui.ts`
 - Modify: `apps/factorylm-ui-lab/package.json`
 - Modify: `apps/factorylm-ui-lab/bun.lock`
 - Modify: `apps/factorylm-ui-lab/scripts/check-dependency-licenses.ts`
