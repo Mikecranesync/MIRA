@@ -16,7 +16,7 @@ function render(...args: Parameters<typeof renderHarness>): HarnessView {
 
 function composer(view: HarnessView): { form: HTMLFormElement; textarea: HTMLTextAreaElement } {
   const form = view.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]');
-  const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]') ?? null;
+  const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]') ?? null;
   if (!form || !textarea) throw new Error("the universal composer must render a labelled message field");
   return { form, textarea };
 }

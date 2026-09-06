@@ -148,7 +148,7 @@ describe("focus trap and return", () => {
     const drawer = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "drawer");
 
     expect(drawer.contains(document.activeElement)).toBe(false);
-    const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]'), "message");
+    const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "message");
     act(() => textarea.focus());
     expect(document.activeElement).toBe(textarea);
   });
@@ -165,7 +165,7 @@ describe("composer keyboard contract", () => {
 
   it("sends on Enter, keeps Shift+Enter and IME Enter as text, and ignores an empty draft", () => {
     const view = render({ surface: "mobile", fixture: "general-ask" });
-    const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]'), "message");
+    const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "message");
 
     key(textarea, "Enter");
     expect(view.outputs().turnCount).toBe(2);

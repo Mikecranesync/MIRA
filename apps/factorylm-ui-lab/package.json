@@ -6,12 +6,12 @@
   "packageManager": "bun@1.4.0",
   "scripts": {
     "bootstrap:ui": "\"$npm_execpath\" scripts/bootstrap-ui.ts",
-    "dev": "\"$npm_execpath\" --watch src/main.tsx",
-    "build": "\"$npm_execpath\" x tsc --noEmit",
-    "preview": "\"$npm_execpath\" src/main.tsx",
-    "test": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages",
+    "dev": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" ./index.html",
+    "build": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" x tsc --noEmit && \"$npm_execpath\" scripts/build.ts",
+    "preview": "\"$npm_execpath\" scripts/preview.ts",
+    "test": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages src",
     "test:shell": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx",
-    "test:watch": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test --watch ../../packages",
+    "test:watch": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" test --watch ../../packages src",
     "test:e2e": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" x playwright test",
     "licenses": "\"$npm_execpath\" run bootstrap:ui && \"$npm_execpath\" scripts/check-dependency-licenses.ts",
     "verify": "\"$npm_execpath\" run test && \"$npm_execpath\" run build && \"$npm_execpath\" run licenses"

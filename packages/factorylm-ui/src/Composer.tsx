@@ -152,7 +152,7 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
         ＋
       </button>
       <textarea
-        aria-label="Message"
+        aria-label="Ask MIRA"
         placeholder={machine ? "Ask MIRA about this machine…" : "Ask MIRA…"}
         rows={1}
         value={state.draft}
