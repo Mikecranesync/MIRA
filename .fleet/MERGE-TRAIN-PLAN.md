@@ -9,10 +9,10 @@ Serial, one PR at a time. Same protocol that ran nine PRs cleanly overnight.
 
 | what | value |
 |---|---|
-| main before the train | **`5307e922d8b8e68cd372652f082e91db47851303`** |
-| short | `5307e922d` |
-| last rollback tag | `rollback/2026-09-01-v3.314.2` |
-| prod verified healthy at | `5307e922d` (deploy SHA == main, 200/200/401) |
+| main before the train | **`1306ce989dca9dac3d6acf1732bd80c5afe5257f`** |
+| short | `1306ce989` |
+| last rollback tag | `rollback/2026-09-06-v3.327.3` |
+| prod verified healthy at | `1306ce989` (app 200, re-verified 2026-09-06) |
 
 **Rollback command (either PR, before or after deploy):**
 
@@ -22,7 +22,7 @@ git fetch origin main
 git checkout -b revert/<pr> origin/main
 git revert -m 1 <merge-sha>
 git push -u origin revert/<pr>
-gh pr create --base main --title "revert: <pr> — <reason>" --body "Rollback of <merge-sha>. Prod was healthy at 5307e922d."
+gh pr create --base main --title "revert: <pr> — <reason>" --body "Rollback of <merge-sha>. Prod was healthy at 1306ce989."
 # 2. merge that revert PR through the normal gate; deploy-vps redeploys automatically
 ```
 
@@ -30,6 +30,13 @@ gh pr create --base main --title "revert: <pr> — <reason>" --body "Rollback of
 than hand-editing the VPS —
 `gh workflow run deploy-vps.yml -f services="mira-hub"` from the revert branch once merged.
 Do **not** `git reset` main. Do **not** touch the VPS directly.
+
+
+> **Refreshed 2026-09-06.** Anchors above were re-derived; the originals pointed at `5307e922d`,
+> which is 76 commits behind. Both HELD branches are stale by that many commits **but rebase
+> cleanly** — verified by trial rebase, not assumed. None of the 76 commits touched
+> `notebook-chat-utils.ts`, `AssetChat.tsx` or `NodeChat.tsx`, so the blast radius for these two
+> PRs is zero despite the distance. Re-run the trial before trusting this line again.
 
 ---
 
@@ -43,12 +50,12 @@ and it changes failure-path transcript behaviour on two surfaces.
 ### Step 0 — gate
 
 - [ ] Pixel baseline PASS recorded (screenshots in `~/pixel-acceptance/<ts>`)
-- [ ] `git fetch origin && git rev-parse origin/main` still `5307e922d` (if main moved, re-verify both branches)
+- [ ] `git fetch origin && git rev-parse origin/main` still `1306ce989` — **main moves fast on this repo (76 commits in 5 days); if it moved again, re-derive these anchors before starting**
 - [ ] prod healthy: `curl -sL -o /dev/null -w "%{http_code}" https://app.factorylm.com/`
 
 ### Step 1 — `#3521` (safety-stop excluded from LLM history)
 
-Branch `fleet/chatui-slice-03` @ `9395f8911`
+Branch `fleet/chatui-slice-03` @ `9395f8911` — **trial-rebased onto `1306ce989` on 2026-09-06: CLEAN, 2 commits**
 
 ```bash
 gh pr view 3521 --json mergeable,mergeStateStatus     # expect MERGEABLE (rebase if BEHIND)
@@ -68,7 +75,7 @@ gh pr merge 3521 --squash --delete-branch
 
 ### Step 2 — `#3531` (Retry + duplicate-turn fix)
 
-Branch `fleet/chatui-slice-13` @ `22ae52e2d`
+Branch `fleet/chatui-slice-13` @ `22ae52e2d` — **trial-rebased onto `1306ce989` on 2026-09-06: CLEAN, 3 commits**
 
 ```bash
 gh pr view 3531 --json mergeable,mergeStateStatus     # will be BEHIND after step 1 — rebase:

@@ -1,6 +1,11 @@
 # Physical Pixel acceptance — run this, think as little as possible
 
-**Baseline under test:** `main` @ `5307e922d` (nine chat PRs landed overnight, deployed and verified).
+**Baseline under test:** `main` @ `1306ce989` (re-derived 2026-09-06; prod app 200).
+
+> ⚠️ **Confirm which surface you are accepting.** This script exercises the **Hub chat surfaces**
+> (AssetChat / NodeChat / Notebook chat). If the session is meant to accept the **mobile unified
+> shell** (FLM-UI-4000, UnifiedRoot/UnifiedChat), that is a different build and a different
+> script — ask the mobile lane for theirs. Accepting the wrong surface proves nothing.
 **Rule for today:** this script runs BEFORE any further merge. A clean baseline is the whole point.
 **Nothing here merges anything.** Merging is the separate runbook: `.fleet/MERGE-TRAIN-PLAN.md`.
 
@@ -32,7 +37,7 @@ shot() { adb exec-out screencap -p > "$PX/$1.png" && echo "  captured $1.png"; }
 ```
 
 **Confirm the build under test is current main.** In the app: Settings → About (or the build
-banner). It must correspond to `5307e922d`. If it doesn't, install the current build first and
+banner). It must correspond to `1306ce989`. If it doesn't, install the current build first and
 re-check — accepting a stale build proves nothing.
 
 ```bash
@@ -118,7 +123,7 @@ Restore connectivity:
 adb shell svc wifi enable && adb shell svc data enable
 ```
 
-> **Note:** on `5307e922d` there is **no Retry button yet** — that is `#3531`, still HELD.
+> **Note:** on `1306ce989` there is **no Retry button yet** — that is `#3531`, still HELD.
 > Steps 5 and 6 are the *post-merge* checks. If you are running this baseline pass, skip to §7
 > and come back to 5–6 after `#3531` lands.
 
