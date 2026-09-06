@@ -86,7 +86,30 @@ function setFutureContext(state: ShellState, activeContext: ContextSnapshot, sel
     && state.selectedProjectId === selectedProjectId
     && state.selectedFolderId === selectedFolderId
   ) return state;
-  return freezeState({ ...state, activeContext, selectedProjectId, selectedFolderId });
+  return freezeState({
+    ...state,
+    activeContext,
+    thread: threadForContext(state.thread, activeContext, state.machines),
+    selectedProjectId,
+    selectedFolderId,
+  });
+}
+
+function threadForContext(
+  thread: InteractionThread,
+  context: ContextSnapshot,
+  machines: readonly Machine[],
+): InteractionThread {
+  const { projectId: _projectId, folderId: _folderId, primaryAssetId: _primaryAssetId, ...rest } = thread;
+  const machine = context.machineId
+    ? machines.find((candidate) => candidate.id === context.machineId)
+    : undefined;
+  return {
+    ...rest,
+    ...(context.projectId ? { projectId: context.projectId } : {}),
+    ...(context.folderId ? { folderId: context.folderId } : {}),
+    ...(machine ? { primaryAssetId: machine.canonicalAssetId } : {}),
+  };
 }
 
 function findFolder(projects: readonly Project[], folderId: string): { projectId: string; folder: ProjectFolder } | undefined {
@@ -105,6 +128,24 @@ function findFolder(projects: readonly Project[], folderId: string): { projectId
     if (folder) return { projectId: project.id, folder };
   }
   return undefined;
+}
+
+function hasMachineLink(nodes: readonly ProjectNode[], machineId: string): boolean {
+  return nodes.some((node) => {
+    if (node.kind === "machine-link") return node.machineId === machineId;
+    return node.kind === "folder" && hasMachineLink(node.children, machineId);
+  });
+}
+
+function machineIsInActiveScope(state: ShellState, machineId: string): boolean {
+  if (state.activeContext.folderId) {
+    const folder = findFolder(state.projects, state.activeContext.folderId);
+    if (!folder || folder.projectId !== state.activeContext.projectId) return false;
+    return hasMachineLink(folder.folder.children, machineId);
+  }
+  if (!state.activeContext.projectId) return false;
+  const project = state.projects.find((candidate) => candidate.id === state.activeContext.projectId);
+  return Boolean(project && hasMachineLink(project.children, machineId));
 }
 
 function findSource(thread: InteractionThread, sourceId: string): SourceReference | undefined {
@@ -148,8 +189,10 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
-    case "load-fixture":
-      return createShellState(action.fixture, action.profile ?? state.profile);
+    case "load-fixture": {
+      const loaded = createShellState(action.fixture, action.profile ?? state.profile);
+      return freezeState({ ...loaded, theme: state.theme });
+    }
 
     case "set-mode":
       if (state.mode === action.mode && state.thread.mode === action.mode) return state;
@@ -187,6 +230,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
 
     case "select-machine": {
       if (!state.machines.some((machine) => machine.id === action.machineId)) return state;
+      if (!machineIsInActiveScope(state, action.machineId)) return state;
       if (state.activeContext.machineId === action.machineId) return state;
       return setFutureContext(state, {
         ...state.activeContext,
@@ -235,6 +279,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         context: copyValue(state.activeContext),
         createdAt: state.thread.updatedAt,
         updatedAt: state.thread.updatedAt,
+        ...(state.run ? { runId: state.run.id } : {}),
       };
       return freezeState({
         ...state,

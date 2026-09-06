@@ -28,6 +28,39 @@ describe("shared shell reducer", () => {
     expect(fixture).toEqual(fixtureSnapshot);
   });
 
+  it("preserves theme and profile across fixture loads unless explicitly overridden", () => {
+    const sourceSelected = shellReducer(
+      createShellState(getFixture("grounded-answer"), PROFILES.web),
+      { type: "select-source", sourceId: "source-f30001-manual" },
+    );
+    const before = shellReducer(
+      shellReducer(
+        shellReducer(
+          shellReducer(sourceSelected, { type: "set-theme", theme: "dark" }),
+          { type: "set-navigation-visible", visible: false },
+        ),
+        { type: "set-inspector-visible", visible: true },
+      ),
+      { type: "set-attachment-menu-visible", visible: true },
+    );
+    const implicit = shellReducer(before, { type: "load-fixture", fixture: getFixture("general-ask") });
+    const explicit = shellReducer(implicit, {
+      type: "load-fixture",
+      fixture: getFixture("work-run"),
+      profile: PROFILES.hub,
+    });
+
+    expect(implicit.theme).toBe("dark");
+    expect(implicit.profile).toEqual(PROFILES.web);
+    expect(implicit.draft).toBe("");
+    expect(implicit.selectedSource).toBeNull();
+    expect(implicit.navigationVisible).toBe(true);
+    expect(implicit.inspectorVisible).toBe(false);
+    expect(implicit.attachmentMenuVisible).toBe(false);
+    expect(explicit.theme).toBe("dark");
+    expect(explicit.profile).toEqual(PROFILES.hub);
+  });
+
   it("switches Ask and Work without replacing the thread", () => {
     const before = createShellState(getFixture("general-ask"), PROFILES.mobile);
     const after = shellReducer(before, { type: "set-mode", mode: "work" });
@@ -38,7 +71,7 @@ describe("shared shell reducer", () => {
     expect(before.thread.mode).toBe("ask");
   });
 
-  it("selects known projects and folders only for future context", () => {
+  it("keeps the current thread binding aligned with project and folder future context", () => {
     const before = createShellState(getFixture("machine-ask"), PROFILES.web);
     const project = shellReducer(before, { type: "select-project", projectId: "project-brake-system" });
     const folder = shellReducer(project, { type: "select-folder", folderId: "folder-brake-history" });
@@ -49,18 +82,26 @@ describe("shared shell reducer", () => {
       evidenceAuthorization: "not_applicable",
     });
     expect(project.activeContext.machineId).toBeUndefined();
+    expect(project.thread).toMatchObject({ projectId: "project-brake-system" });
+    expect(project.thread.folderId).toBeUndefined();
+    expect(project.thread.primaryAssetId).toBeUndefined();
     expect(folder.activeContext).toMatchObject({
       projectId: "project-brake-system",
       folderId: "folder-brake-history",
       machineIdentity: "not_applicable",
       evidenceAuthorization: "not_applicable",
     });
+    expect(folder.thread).toMatchObject({
+      projectId: "project-brake-system",
+      folderId: "folder-brake-history",
+    });
+    expect(folder.thread.primaryAssetId).toBeUndefined();
     expect(before.thread.turns[0]?.context.machineId).toBe("machine-drive-a");
     expect(shellReducer(before, { type: "select-project", projectId: "missing-project" })).toBe(before);
     expect(shellReducer(before, { type: "select-folder", folderId: "missing-folder" })).toBe(before);
   });
 
-  it("changes known machines only for future turns and fails closed", () => {
+  it("changes in-scope known machines only for future turns and updates the current binding", () => {
     const fixture = getFixture("machine-ask");
     const fixtureSnapshot = structuredClone(fixture);
     const before = createShellState(fixture, PROFILES.web);
@@ -72,10 +113,37 @@ describe("shared shell reducer", () => {
       machineIdentity: "unconfirmed",
       evidenceAuthorization: "not_authorized",
     });
+    expect(after.thread).toMatchObject({
+      projectId: "project-launch-2",
+      folderId: "folder-drive-system",
+      primaryAssetId: "asset-launch-2-drive-b",
+    });
     expect(after.thread.turns).toEqual(before.thread.turns);
     expect(before).toEqual(beforeSnapshot);
     expect(fixture).toEqual(fixtureSnapshot);
     expect(shellReducer(before, { type: "select-machine", machineId: "missing-machine" })).toBe(before);
+  });
+
+  it("rejects globally known machines outside the active project or folder subtree", () => {
+    const initial = createShellState(getFixture("machine-ask"), PROFILES.web);
+    const brakeProject = shellReducer(initial, { type: "select-project", projectId: "project-brake-system" });
+    const rejectedByProject = shellReducer(brakeProject, { type: "select-machine", machineId: "machine-drive-b" });
+    const brakeFolder = shellReducer(brakeProject, { type: "select-folder", folderId: "folder-brake-history" });
+    const rejectedByFolder = shellReducer(brakeFolder, { type: "select-machine", machineId: "machine-drive-b" });
+    const accepted = shellReducer(brakeFolder, { type: "select-machine", machineId: "machine-drive-a" });
+
+    expect(rejectedByProject).toBe(brakeProject);
+    expect(rejectedByFolder).toBe(brakeFolder);
+    expect(accepted.activeContext).toMatchObject({
+      machineId: "machine-drive-a",
+      machineIdentity: "unconfirmed",
+      evidenceAuthorization: "not_authorized",
+    });
+    expect(accepted.thread).toMatchObject({
+      projectId: "project-brake-system",
+      folderId: "folder-brake-history",
+      primaryAssetId: "asset-launch-2-drive-a",
+    });
   });
 
   it("keeps navigation, inspector, and attachment visibility independent", () => {
@@ -131,6 +199,20 @@ describe("shared shell reducer", () => {
     );
   });
 
+  it("binds mock sends to an active Work run but not an Ask thread", () => {
+    const work = shellReducer(
+      createShellState(getFixture("work-run"), PROFILES.web),
+      { type: "set-draft", draft: "Record supply voltage." },
+    );
+    const ask = shellReducer(
+      createShellState(getFixture("general-ask"), PROFILES.web),
+      { type: "set-draft", draft: "What is preload?" },
+    );
+
+    expect(shellReducer(work, { type: "mock-send" }).thread.turns.at(-1)?.runId).toBe("run-drive-a-f30001");
+    expect(shellReducer(ask, { type: "mock-send" }).thread.turns.at(-1)?.runId).toBeUndefined();
+  });
+
   it("identifies only existing retryable failed turns without changing lifecycle", () => {
     const before = createShellState(getFixture("error-retry"), PROFILES.web);
     const retryableTurnId = before.thread.turns[0]?.id;
@@ -160,18 +242,31 @@ describe("shared shell reducer", () => {
     expect(after.activeContext).toEqual(before.activeContext);
   });
 
-  it("exposes the injected platform boundary without calling it", () => {
-    const calls = { photo: 0, file: 0, scan: 0, share: 0, back: 0 };
+  it("defines the complete injected platform capability boundary", async () => {
+    const attachment = {
+      id: "attachment-nameplate",
+      name: "nameplate.jpg",
+      mediaType: "image/jpeg",
+      kind: "photo" as const,
+      status: "ready" as const,
+    };
     const adapter: PlatformAdapter = {
-      attachPhoto: async () => (calls.photo++, null),
-      attachFile: async () => (calls.file++, null),
-      scanMachine: async () => (calls.scan++, null),
-      shareArtifact: async () => (calls.share++, "cancelled"),
-      onBack: () => (calls.back++, "pass"),
+      attachPhoto: async () => attachment,
+      attachFile: async () => null,
+      scanMachine: async () => "machine-drive-a",
+      shareArtifact: async () => "cancelled",
+      onBack: () => "pass",
     };
 
-    shellReducer(createShellState(getFixture("attachments"), PROFILES.mobile), { type: "mock-send" });
-    expect(adapter).toBeDefined();
-    expect(calls).toEqual({ photo: 0, file: 0, scan: 0, share: 0, back: 0 });
+    expect(Object.keys(adapter).sort()).toEqual([
+      "attachFile",
+      "attachPhoto",
+      "onBack",
+      "scanMachine",
+      "shareArtifact",
+    ]);
+    expect(await adapter.attachPhoto()).toEqual(attachment);
+    expect(await adapter.shareArtifact("artifact-handoff")).toBe("cancelled");
+    expect(adapter.onBack()).toBe("pass");
   });
 });
