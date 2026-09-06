@@ -145,7 +145,7 @@ git commit -m "feat(ui): add unified interaction fixture contract"
 - Modify: `packages/factorylm-interaction/src/index.ts`
 
 **Interfaces:**
-- Consumes: `ShellFixture`, `InteractionThread`, `ContextSnapshot`, `SurfaceProfile`.
+- Consumes: `ShellFixture`, `InteractionThread`, `ContextSnapshot`, `SurfaceProfile`, and the existing `Attachment` contract.
 - Produces: `ShellState`, `ShellAction`, `createShellState(fixture, profile)`, `shellReducer(state, action)`, and `PlatformAdapter`.
 
 - [ ] **Step 1: Write failing reducer tests for shared shell behavior and historical-context immutability**
@@ -163,6 +163,17 @@ it("switches Ask and Work without replacing the shell", () => {
   const state = createShellState(getFixture("general-ask"), PROFILES.mobile);
   expect(shellReducer(state, { type: "set-mode", mode: "work" }).mode).toBe("work");
 });
+
+it("mock-sends into the same thread without I/O or wall-clock state", () => {
+  const before = shellReducer(
+    createShellState(getFixture("general-ask"), PROFILES.web),
+    { type: "set-draft", draft: "  Check preload  " },
+  );
+  const after = shellReducer(before, { type: "mock-send" });
+  expect(after.thread.id).toBe(before.thread.id);
+  expect(after.thread.turns.at(-1)?.parts).toEqual([{ type: "text", text: "Check preload" }]);
+  expect(after.draft).toBe("");
+});
 ```
 
 - [ ] **Step 2: Run the reducer tests and confirm RED**
@@ -175,15 +186,15 @@ Expected: FAIL because the reducer and adapter interfaces do not exist.
 
 ```ts
 export interface PlatformAdapter {
-  attachPhoto(): Promise<FixtureAttachment | null>;
-  attachFile(): Promise<FixtureAttachment | null>;
+  attachPhoto(): Promise<Attachment | null>;
+  attachFile(): Promise<Attachment | null>;
   scanMachine(): Promise<string | null>;
   shareArtifact(artifactId: string): Promise<"shared" | "cancelled">;
   onBack(): "handled" | "pass";
 }
 ```
 
-Reducer actions cover fixture selection, Ask/Work, project/folder/machine selection, sidebar/inspector/sheet state, source selection, draft text, mock send, retry, theme, and surface profile. No action invokes I/O.
+`ShellState` keeps one thread/run/project/machine model plus active future-turn context, profile, theme, draft, selected source, retry target, and independent navigation/inspector/attachment visibility flags. Reducer actions cover fixture loading, Ask/Work, project/folder/machine selection, sidebar/inspector/attachment state, source selection, draft text, mock send, retry, theme, and surface profile. No action invokes the adapter, browser APIs, network, storage, random values, or the wall clock. Mock sends use a deterministic sequence derived from state, ignore blank drafts, append to the same thread, capture a copied active context, and never mutate historical turns. Unknown machine selections fail closed without changing context. Retry state may identify a retryable failed turn but may not claim tool/provider success.
 
 - [ ] **Step 4: Run focused and full interaction tests**
 
