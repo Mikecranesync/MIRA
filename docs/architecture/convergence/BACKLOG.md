@@ -98,3 +98,10 @@
 ## Sequencing logic
 
 `CU-P1` proves the full gate machinery on a real, small drift. `CU-02` makes the docs stop lying. `CU-06` turns discovered rules into CI fences. `CU-03` closes the standing security-adjacent write gaps behind those fences. `CU-04/08` de-risk the estate without deleting anything. `CU-07` measures the agents. Only then does `CU-05` — the one that makes the §3 product-spine invariant true — begin, with the strongest tooling and evidence culture already in place.
+
+## CU-NB — Notebook private-turns follow-ups (queued 2026-09-06, owner decision)
+- **Context:** shipped in **v3.320.0** (PR #3597, migration 086) with production proof `docs/proofs/2026-09-05-notebook-private-turns-production-proof.md`; capability `private_notebook_turns` is `production_enabled` in `CAPABILITY_CLOSURE.yaml`.
+- **#3601 (P1) — Hub renders the persisted `identity_dispute` marker.** **Prioritize as soon as the HELD `notebook-chat-utils.ts` collision (#3521/#3542) clears** — it closes the visible Mobile/Web parity gap (Mobile renders the dispute live + on reload; Hub does not). Fold in the four stale "wire order" headline comments (one lives in the HELD file).
+- **#3606 (P2) — Stop before the first content byte hydrates as a provider failure** (pre-existing on main, verified at the #3597 merge-base by independent review).
+- **#3607 (P2) — Provider failure streams a basis persistence nulls** (pre-existing on main, same verification).
+- **Gates:** each is a narrow Hub/Mobile change; behavior-lock tests → adversarial review (High) → human GO. **Risk:** low. **Effort:** small each.
