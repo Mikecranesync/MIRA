@@ -113,7 +113,7 @@ jobs:
 
           SE=/etc/nginx/sites-enabled
           # Expected vhosts. Anything else in the directory is an offender.
-          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm"
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm updates.factorylm.com"
 
           # chat.factorylm.com is deliberately NOT probed: it has NO DNS record
           # at all (verified 2026-08-10, `dig +short` empty), so it cannot serve

@@ -32,7 +32,7 @@ _DEPLOY = _ROOT / ".github" / "workflows" / "deploy-vps.yml"
 # Live vhosts read off the prod box 2026-08-10. Two are regular files, not
 # symlinks — that is the whole reason the guard cannot key on symlink-ness.
 _REAL_VHOSTS_NOT_SYMLINKS = ("cmms.factorylm.com", "factorylm-landing")
-_REAL_VHOST_SYMLINKS = ("factorylm", "factorylm-paths", "mira", "plane", "preview", "remoteme")
+_REAL_VHOST_SYMLINKS = ("factorylm", "factorylm-paths", "mira", "plane", "preview", "remoteme", "updates.factorylm.com")
 
 _KNOWN_BAKS = (
     "factorylm-landing.bak.2026-05-13-csp",
