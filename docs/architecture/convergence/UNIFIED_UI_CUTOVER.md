@@ -48,7 +48,7 @@ abandoned service during migration.
 | `apps/factorylm-ui-lab/**` | Disconnected fixture lab and cross-surface verification harness |
 
 These paths have one writer at a time. Hub, mobile, and public-web agents do not
-change the shared contract while building adapters unless their work packet
+change the shared contract while building adapters unless their work claim
 explicitly assigns shared-core ownership.
 
 ### 2.2 Guarded legacy presentation
@@ -59,13 +59,20 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/home.ts`; `mira-web/public/mira-chat.js`; `mira-web/public/mira-chat.css` | Old homepage/product-demo shell and standalone chat renderer |
-| Hub | `mira-hub/src/app/(hub)/layout.tsx`; `mira-hub/src/app/(hub)/command-center/page.tsx`; `mira-hub/src/components/layout/sidebar.tsx`; `bottom-tabs.tsx`; `mobile-drawer.tsx`; `mobile-topbar.tsx`; `mira-hub/src/components/equipment/NotebookChat.tsx` | Dashboard-first navigation and duplicate Notebook presentation |
-| Mobile | `mira-mobile/src/App.tsx`; `mira-mobile/src/nav.ts`; `mira-mobile/src/screens/ChatV2.tsx`; `mira-mobile/src/screens/NotebookScreen.tsx` | Separate mobile shell/navigation and duplicate chat presentation |
+| Public | `mira-web/src/views/**`; `mira-web/public/mira-chat.js`; `mira-web/public/mira-chat.css` | Old public-page tree, product-demo shell, and standalone chat renderer |
+| Hub | `mira-hub/src/app/(hub)/**`; `mira-hub/src/components/layout/**`; `mira-hub/src/components/equipment/**` | Dashboard-first route tree, navigation, and duplicate Equipment Notebook presentation |
+| Mobile | `mira-mobile/src/App.tsx`; `mira-mobile/src/nav.ts`; `mira-mobile/src/screens/**` | Separate mobile shell, screen tree, navigation, and duplicate chat presentation |
 
 The parent modules remain `CANONICAL`/deployed in `MODULES.md`. Marking an
 entire module legacy would incorrectly deprecate its live API and capability
 seams.
+
+New bounded presentation adapters live outside those trees under
+`mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
+`mira-mobile/src/factorylm-ui/**`. Mobile transport conversion continues to
+reuse `mira-mobile/src/chat-adapter/**`. Mounting an adapter in an existing
+guarded route is an audited exception; creating a sibling legacy route or
+component is not a bypass.
 
 ### 2.3 Preserved capability seams
 
@@ -86,15 +93,18 @@ These are adapter inputs, not rewrite targets:
 
 ## 3. Legacy exception policy
 
-Deletion of a guarded legacy path is allowed. Addition, modification, or rename
-into a guarded path fails CI by default.
+Addition, modification, deletion, rename into, or rename out of a guarded
+legacy path fails CI by default. The old runtime is rollback-critical until
+Gate 8, so `deletion_safe: false` is enforced rather than documentary.
 
 A maintainer may apply `legacy-ui-exception` only for:
 
 - a security or severity-0/severity-1 production repair;
 - rollback-path correctness;
 - parity work that cannot yet live in an adapter;
-- the controlled adapter mount or cutover itself.
+- the controlled adapter mount or cutover itself;
+- an explicit repair or evolution of the lifecycle guard and its trusted
+  control plane.
 
 The live pull-request body must contain:
 
@@ -106,8 +116,29 @@ Canonical replacement impact: <what is added, unblocked, or intentionally unchan
 Rollback: <how this exact change is reversed safely>
 ```
 
-The label is human approval, not a convenience switch. The guard reads the
-label and body live from GitHub so a rerun does not require an empty commit.
+The label is human approval, not a convenience switch. Exactly one real
+`## Legacy UI exception` section is accepted. Its three values must be
+substantive text; blank values, `N/A`, template placeholders, HTML comments,
+and text inside fenced code blocks fail closed. The guard reads the label and
+body live from GitHub so a rerun does not require an empty commit.
+
+### 3.1 Trusted enforcement boundary
+
+The authoritative `Legacy UI Lifecycle Guard` runs from the default branch on
+`pull_request_target`. It checks out only the trusted base revision with Git
+credentials disabled, obtains PR filenames/statuses, labels, and body through a
+least-privilege metadata step, and never checks out or executes pull-request
+code. The enforcement step has no token. It evaluates additions,
+modifications, deletions, and both sides of renames against the base registry.
+
+The base guard also protects its own control files: the registry, charter,
+guard implementation and tests, focused Claude rule, three UI workflow files,
+and trusted GitHub workflow. Editing those files requires the same audited
+exception. The workflow reruns on head changes, body edits, label changes,
+draft-to-ready transitions, reopen, and open. It posts the uniquely named
+status to the PR head SHA. After bootstrap, that status is a strict required
+check on protected `main`, including for administrators; direct pushes cannot
+bypass it.
 
 Known transition collision at approval time: PR #3592 modifies
 `mira-web/src/views/home.ts`. It must merge before the freeze, close, or use the
@@ -131,7 +162,7 @@ record it advances or adds one when no record exists.
 | 7 | Enterprise context and inspection | Hub namespace, signals, integrations, team, usage, audit | Capability-gated inspector routes | Ordinary thread unchanged; unauthorized controls absent and server-denied |
 | 8 | Public demo to account continuity | Fixture lab plus existing auth/activation | Public profile and sign-in handoff | Original question/context restored after sign-in; no production provider in demo |
 
-Connection-state language in work packets is:
+Connection-state language inside work claims is:
 
 `mapped -> adapter_contract -> fixture_proven -> connected -> cross_surface_parity -> default_on -> legacy_retired`
 
@@ -148,7 +179,8 @@ Every CPU starts from the same immutable inputs:
 1. Repository: `https://github.com/Mikecranesync/MIRA`
 2. Mission issue: `https://github.com/Mikecranesync/MIRA/issues/3626`
 3. This charter on `main`.
-4. An exact base SHA and one GitHub work claim.
+4. An exact base SHA and one GitHub work claim using the repository-wide
+   `[WORK-CLAIM]` marker.
 5. One worktree, branch, bounded path set, verification command, and draft PR.
 
 Do not coordinate only through terminal history. Claims, decisions, findings,
@@ -176,6 +208,9 @@ shared interaction and component contracts are frozen at an exact SHA.
 - One writer owns a file. Parallel agents may review the same diff read-only.
 - Each PR is one capability slice, opens draft, and includes the work claim,
   exact base/head SHAs, test evidence, rollback, and capability-closure update.
+- Claim acquisition follows `.claude/rules/multi-session-protocol.md`: post the
+  claim, reread the complete claim namespace, and start a writer only when the
+  claim is the earliest overlapping `ACTIVE` record.
 - No worker merges, deploys, edits production state, or weakens a gate.
 - The integrator merges serially, then gives remaining lanes the new base SHA.
 - A green check on an older SHA is stale evidence.
@@ -189,7 +224,8 @@ the workflow runtime has no mid-run human input.
 ### `/flm-ui-map`
 
 Read-only fan-out across public, Hub, mobile, shared core, and capability
-closure. It cross-checks path ownership and emits proposed GitHub work packets.
+closure. It cross-checks path ownership and emits proposed GitHub work claims.
+These are claim drafts using the repository marker, not authority to edit.
 It never edits, claims, or opens PRs. It fails before dispatch unless structured
 arguments include `mission`, `issue`, and a full 40-character `baseSha`.
 
@@ -201,14 +237,15 @@ Run /flm-ui-map with mission FACTORYLM-UNIFIED-UI-CUTOVER-001 and baseSha <sha>.
 
 ### `/flm-ui-slice`
 
-Runs one writer for one approved packet, followed by parallel read-only
+Runs one writer for one approved claim, followed by parallel read-only
 contract, safety, and test reviews. Required structured input includes
-`mission`, `issue`, `baseSha`, `lane`, `branch`, `allowedPaths`, and
-`verificationCommand`. The writer must use an isolated worktree and may open a
-draft PR; it may not merge or deploy. The writer must return structured output
-containing the full committed `headSha`. The workflow validates that SHA before
-passing it verbatim to every reviewer; missing or malformed output stops the
-workflow.
+`mission`, `issue`, `claimUrl`, `baseSha`, `lane`, `branch`, `allowedPaths`,
+and `verificationCommand`. Its read-only preflight rereads the claim namespace
+and must return a structured `WON` verdict before the writer can run. The writer
+must use an isolated worktree and may open a draft PR; it may not merge or
+deploy. The writer must return structured output containing the full committed
+`headSha`. The workflow validates that SHA before passing it verbatim to every
+reviewer; missing or malformed output stops the workflow.
 
 ### `/flm-ui-verify`
 
@@ -223,20 +260,27 @@ Use Claude Code cross-session messaging to pass landed SHAs and decisions to
 sessions on other machines. Messaging supplements GitHub; it does not replace
 the durable issue/PR record.
 
-## 7. Work packet contract
+## 7. Work claim contract
 
-Copy this into each issue or draft PR:
+Use the repository-wide marker below in each issue or draft PR. The first
+fields and status vocabulary come from
+`.claude/rules/multi-session-protocol.md`; the remaining fields make a UI slice
+executable without private machine context.
 
 ```text
-[WORK-PACKET]
-Mission: FACTORYLM-UNIFIED-UI-CUTOVER-001
-Parent issue: #3626
-Capability:
-Lane: shared-core | hub | mobile | public | verification
+[WORK-CLAIM]
+Slice:
+Convergence unit: FACTORYLM-UNIFIED-UI-CUTOVER-001
 Owner/session:
-Base SHA:
 Branch:
 Worktree:
+Base SHA:
+Expected files/systems:
+Status: ACTIVE | BLOCKED | RELEASED | COMPLETE
+Last updated:
+Mission issue: #3626
+Capability:
+Lane: shared-core | hub | mobile | public | verification
 Allowed paths:
 Forbidden paths:
 Consumes:
@@ -244,17 +288,22 @@ Produces:
 Verification command:
 Capability-closure record:
 Rollback:
-Status: PROPOSED | CLAIMED | IMPLEMENTED | REVIEWED | MERGED | RELEASED
 ```
+
+After posting, reread open issues, pull requests, and `[WORK-CLAIM]` markers for
+the slice. The earliest overlapping `ACTIVE` claim wins. Record the winning
+claim URL in `/flm-ui-slice` input; a proposal that is not yet `ACTIVE` is not
+authority to edit.
 
 Minimum prompt for a new agent:
 
 ```text
-Work from Mikecranesync/MIRA issue #3626. Read
+Work from Mikecranesync/MIRA issue #3626 and the assigned `[WORK-CLAIM]`. Read
 docs/architecture/convergence/UNIFIED_UI_CUTOVER.md and the linked plan before
-editing. Claim exactly one unclaimed work packet, create an isolated worktree
-at the supplied base SHA, touch only its allowed paths, and open a draft PR.
-Do not merge, deploy, or add features to guarded legacy presentation paths.
+editing. Reread the claim namespace and proceed only if the assigned claim is
+the earliest overlapping `ACTIVE` record. Create an isolated worktree at the
+supplied base SHA, touch only its allowed paths, and open a draft PR. Do not
+merge, deploy, or add features to guarded legacy presentation paths.
 ```
 
 ## 8. Cutover gates
