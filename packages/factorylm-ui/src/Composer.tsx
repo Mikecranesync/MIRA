@@ -1,12 +1,13 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
 import { breadcrumb } from "./Conversation";
-import { machineName } from "./parts";
+import { machineName, type HostHooks } from "./parts";
 
 export interface ComposerProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
+  readonly hooks?: HostHooks;
 }
 
 export interface ComposerKeyEvent {
@@ -41,7 +42,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -80,9 +81,20 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
     if (machineId) dispatch({ type: "select-machine", machineId });
   });
 
+  const send = () => {
+    const text = state.draft.trim();
+    if (!text) return;
+    if (hooks?.onSend) {
+      hooks.onSend(text);
+      dispatch({ type: "set-draft", draft: "" });
+    } else {
+      dispatch({ type: "mock-send" });
+    }
+  };
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    dispatch({ type: "mock-send" });
+    send();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -94,7 +106,7 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
     });
     if (action !== "send") return;
     event.preventDefault();
-    if (canSend) dispatch({ type: "mock-send" });
+    send();
   };
 
   return <form className="fl-composer" aria-label="Composer" onSubmit={onSubmit}>
@@ -182,7 +194,9 @@ export function Composer({ state, dispatch, adapter }: ComposerProps) {
       >
         ◉
       </button>
-      <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend}>↑</button>
+      {hooks?.busy && hooks.onStop
+        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>
+        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}>↑</button>}
     </div>
   </form>;
 }

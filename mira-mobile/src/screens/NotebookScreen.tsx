@@ -60,7 +60,8 @@ import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
 import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
-import { useChatV2Enabled } from "../lib/chat-ui-pref";
+import { useChatUiChoice } from "../lib/chat-ui-pref";
+import { UnifiedChat } from "./UnifiedChat";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -200,7 +201,8 @@ export function NotebookScreen({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
-  const chatV2 = useChatV2Enabled(chatV2Available);
+  const chatSurface = useChatUiChoice(chatV2Available);
+  const chatV2 = chatSurface === null ? null : chatSurface === "v2";
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
@@ -706,7 +708,39 @@ export function NotebookScreen({
           }}
         />
       )}
-      {panel === "chat" && chatV2 === false && (
+      {/* Unified FactoryLM shell (FLM-UI-4000 Phase 2, mobile lane): the same
+          send path, scope, riders, uploads and citation viewer as ChatV2 — only
+          the shell changes. Device-local choice under the same capability. */}
+      {panel === "chat" && chatSurface === "unified" && (
+        <UnifiedChat
+          turns={turns}
+          liveTurns={liveTurns}
+          pending={pending}
+          busy={busy}
+          canStop={canStopGeneration}
+          canRetry={Boolean(failedSend) && !busy}
+          handlers={{
+            onSend: (text) => void sendQuestion(text),
+            onStop: stopGeneration,
+            onCitation: setViewCitation,
+            onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachFile: () => void attachPdfSource(),
+            onRetry: () => failedSend && void sendQuestion("", failedSend),
+          }}
+          meta={{
+            notebookId: notebook.id,
+            title: notebook.displayName,
+            asset: notebook.asset
+              ? {
+                  id: notebook.asset.entityId,
+                  name: [notebook.manufacturer, notebook.model].filter(Boolean).join(" ") || notebook.displayName,
+                }
+              : null,
+            identityConfirmed: notebook.identityStatus === "user_confirmed",
+          }}
+        />
+      )}
+      {panel === "chat" && chatSurface === "legacy" && (
         <>
           <div className="content" style={{ paddingTop: 0 }} ref={scrollRef}>
             {turns.length === 0 && liveTurns.length === 0 && (

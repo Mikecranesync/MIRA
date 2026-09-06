@@ -6,8 +6,22 @@ import type {
   PlatformAdapter,
   ShellAction,
   ShellState,
+  SourceReference,
 } from "@factorylm/interaction";
 import { useState, type Dispatch, type ReactNode } from "react";
+
+/** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
+export interface HostHooks {
+  /** The host's real send path; the shell clears its draft after calling it. */
+  readonly onSend?: (text: string) => void;
+  /** Stop the in-flight answer; shown only while `busy`. */
+  readonly onStop?: () => void;
+  /** Retry the host's failed send instead of the reducer's mock retry. */
+  readonly onRetry?: (turnId: string) => void;
+  /** Open the host's own citation viewer instead of the built-in source viewer. */
+  readonly onSource?: (source: SourceReference) => void;
+  readonly busy?: boolean;
+}
 
 export interface PartRendererProps {
   readonly part: InteractionPart;
@@ -15,6 +29,7 @@ export interface PartRendererProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
+  readonly hooks?: HostHooks;
 }
 
 export function assertNever(value: never): never {
@@ -87,7 +102,7 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
   </Card>;
 }
 
-export function PartRenderer({ part, turn, state, dispatch, adapter }: PartRendererProps) {
+export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
   switch (part.type) {
     case "text":
       return <p className="fl-part fl-part--text" data-part-type="text">{part.text}</p>;
@@ -109,7 +124,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter }: PartRende
         data-part-type="source"
         data-source-id={source.id}
         aria-pressed={state.selectedSource?.id === source.id}
-        onClick={() => dispatch({ type: "select-source", sourceId: source.id })}
+        onClick={() => (hooks?.onSource ? hooks.onSource(source) : dispatch({ type: "select-source", sourceId: source.id }))}
       >
         <span className="fl-source__kind">{SOURCE_KIND_LABEL[source.kind]}</span>
         <span>{source.title}</span>
@@ -261,7 +276,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter }: PartRende
         {error.retryable && turn.lifecycle === "failed" ? <button
           type="button"
           aria-pressed={requested}
-          onClick={() => dispatch({ type: "retry", turnId: turn.id })}
+          onClick={() => (hooks?.onRetry ? hooks.onRetry(turn.id) : dispatch({ type: "retry", turnId: turn.id }))}
         >
           {requested ? "Retry requested" : "Retry"}
         </button> : null}
@@ -274,6 +289,12 @@ export function PartRenderer({ part, turn, state, dispatch, adapter }: PartRende
           <button type="button" onClick={() => dispatch({ type: "set-draft", draft: suggestion })}>{suggestion}</button>
         </li>)}
       </ul>;
+
+    case "identity_dispute":
+      return <p className="fl-part fl-identity-dispute" role="status" data-part-type="identity_dispute">
+        Machine identity not confirmed for this turn: the asset claimed did not match the notebook's confirmed
+        binding, so no machine history was used and nothing here is stated as machine-specific fact.
+      </p>;
 
     case "unknown":
       return <details className="fl-part fl-unknown" data-part-type="unknown">

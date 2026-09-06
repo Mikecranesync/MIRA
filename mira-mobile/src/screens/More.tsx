@@ -129,17 +129,19 @@ export function MoreTab({
         <div className="meta" style={{ marginBottom: 8 }}>
           {chatUi === "v2"
             ? "New conversation (streaming, attachments, cited answers)."
-            : "Classic chat screen."}
+            : chatUi === "unified"
+              ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+              : "Classic chat screen."}
         </div>
         <button
           data-testid="chat-style-toggle"
           onClick={() => {
-            const next: ChatUiChoice = chatUi === "v2" ? "legacy" : "v2";
+            const next: ChatUiChoice = chatUi === "v2" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
             setChatUi(next);
             void writeChatUiChoice(next);
           }}
         >
-          {chatUi === "v2" ? "Use classic chat" : "Use new conversation"}
+          {chatUi === "v2" ? "Try the unified interface (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
         </button>
       </div>}
 

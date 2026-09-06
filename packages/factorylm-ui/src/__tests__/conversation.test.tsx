@@ -205,6 +205,30 @@ describe("Ask and Work share one shell", () => {
     expect(adapter.calls).toEqual(["shareArtifact:artifact-handoff", "shareArtifact:artifact-handoff"]);
   });
 
+  it("hydrates live thread data without resetting the shell's UI state", () => {
+    const view = render({ fixture: "grounded-answer", surface: "mobile" });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    if (!shell) throw new Error("shell is required");
+    view.click(view.buttonNamed("Close navigation") ?? new Error("Close navigation is required") as never);
+    view.type(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]') ?? new Error("Ask MIRA is required") as never, "keep me");
+    const base = getFixture("grounded-answer").thread;
+    const live = {
+      ...base,
+      turns: [...base.turns, { ...base.turns[0], id: "turn-live-2", parts: [{ type: "identity_dispute" as const }, { type: "text" as const, text: "Live answer." }] }],
+    };
+
+    view.dispatch({ type: "hydrate", data: { thread: live } });
+    expect(view.container.querySelectorAll("[data-turn-id]")).toHaveLength(2);
+    expect(view.container.querySelector('[data-part-type="identity_dispute"]')?.getAttribute("role")).toBe("status");
+    expect(view.container.querySelector('[data-part-type="identity_dispute"]')?.textContent).toMatch(/identity not confirmed/i);
+    expect(view.outputs().draft).toBe("keep me");
+    expect(shell.dataset.navigationVisible).toBe("false");
+
+    view.dispatch({ type: "hydrate", data: { thread: { ...live, id: "thread-other", turns: [] } } });
+    expect(view.outputs().draft).toBe("");
+    expect(view.container.querySelectorAll("[data-turn-id]")).toHaveLength(0);
+  });
+
   it("uses theme tokens only in the conversation stylesheet", () => {
     const css = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
 

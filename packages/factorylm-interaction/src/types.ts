@@ -204,6 +204,10 @@ export type InteractionPart =
   | { readonly type: "usage"; readonly usage: Usage }
   | { readonly type: "error"; readonly error: InteractionError }
   | { readonly type: "followups"; readonly suggestions: readonly string[] }
+  /** The server withheld the bound machine for this turn: the client's asset claim did not
+   *  match the confirmed binding, so no machine history was used. Presence-only; ids stay
+   *  server-side. Mirrors the mobile chat-adapter's `identity_dispute`. */
+  | { readonly type: "identity_dispute" }
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {

@@ -7,12 +7,13 @@ import type {
   ShellState,
 } from "@factorylm/interaction";
 import type { Dispatch } from "react";
-import { PartRenderer, describeContext, lifecycleLabel, machineName } from "./parts";
+import { PartRenderer, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
+  readonly hooks?: HostHooks;
 }
 
 const ROLE_LABEL = { user: "You", assistant: "MIRA", system: "System" } as const;
@@ -62,7 +63,7 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
   </section>;
 }
 
-function Turn({ turn, state, dispatch, adapter }: ConversationProps & { readonly turn: InteractionTurn }) {
+function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { readonly turn: InteractionTurn }) {
   const machine = machineName(state, turn.context.machineId);
   return <li
     className="fl-turn"
@@ -83,12 +84,13 @@ function Turn({ turn, state, dispatch, adapter }: ConversationProps & { readonly
         state={state}
         dispatch={dispatch}
         adapter={adapter}
+        hooks={hooks}
       />)}
     </div>
   </li>;
 }
 
-export function Conversation({ state, dispatch, adapter }: ConversationProps) {
+export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
   const crumbs = breadcrumb(state);
   const machine = machineName(state, state.activeContext.machineId);
 
@@ -118,7 +120,7 @@ export function Conversation({ state, dispatch, adapter }: ConversationProps) {
     {state.thread.turns.length === 0
       ? <p className="fl-conversation__empty">No turns yet.</p>
       : <ol className="fl-conversation__log" aria-label="Turns">
-        {state.thread.turns.map((turn) => <Turn key={turn.id} turn={turn} state={state} dispatch={dispatch} adapter={adapter} />)}
+        {state.thread.turns.map((turn) => <Turn key={turn.id} turn={turn} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />)}
       </ol>}
   </section>;
 }

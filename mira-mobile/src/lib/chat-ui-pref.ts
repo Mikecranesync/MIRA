@@ -10,11 +10,12 @@ import { useEffect, useState } from "react";
 
 export const CHAT_UI_KEY = "flm.chatui.v1";
 
-/** "v2" (default) or "legacy". Unknown/absent values read as v2. */
-export type ChatUiChoice = "v2" | "legacy";
+/** "v2" (default), "legacy", or "unified" (the shared FactoryLM shell,
+ *  FLM-UI-4000 Phase 2). Unknown/absent values read as v2. */
+export type ChatUiChoice = "v2" | "legacy" | "unified";
 
 export function parseChoice(raw: string | null | undefined): ChatUiChoice {
-  return raw === "legacy" ? "legacy" : "v2";
+  return raw === "legacy" ? "legacy" : raw === "unified" ? "unified" : "v2";
 }
 
 export async function readChatUiChoice(): Promise<ChatUiChoice> {
@@ -31,6 +32,24 @@ export async function writeChatUiChoice(choice: ChatUiChoice): Promise<void> {
   } catch {
     /* a preference that won't persist must never break the conversation */
   }
+}
+
+/** Which surface to render. Null while the preference loads (render nothing,
+ *  never a flash of the other surface). Without the server capability every
+ *  choice collapses to "legacy" — the flag reveals, it never grants. */
+export function useChatUiChoice(available: boolean): ChatUiChoice | null {
+  const [choice, setChoice] = useState<ChatUiChoice | null>(null);
+  useEffect(() => {
+    let live = true;
+    void readChatUiChoice().then((c) => {
+      if (live) setChoice(c);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!available) return "legacy";
+  return choice;
 }
 
 /** Null while the preference is still loading, so the screen renders one

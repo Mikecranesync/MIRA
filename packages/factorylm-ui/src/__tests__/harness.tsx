@@ -14,11 +14,13 @@ import {
 } from "@factorylm/interaction";
 import type { Dispatch, MutableRefObject } from "react";
 import { FactoryLMShell } from "../FactoryLMShell";
+import type { HostHooks } from "../parts";
 
 export interface HarnessProps {
   readonly surface: SurfaceKind;
   readonly fixture: FixtureId;
   readonly adapter?: PlatformAdapter;
+  readonly hooks?: HostHooks;
   readonly dispatchRef?: MutableRefObject<Dispatch<ShellAction> | null>;
 }
 
@@ -68,7 +70,7 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
   };
 }
 
-export function Harness({ surface, fixture, adapter = fakeAdapter(), dispatchRef }: HarnessProps) {
+export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, dispatchRef }: HarnessProps) {
   const [state, dispatch] = useReducer(
     shellReducer,
     createShellState(getFixture(fixture), PROFILES[surface]),
@@ -77,7 +79,7 @@ export function Harness({ surface, fixture, adapter = fakeAdapter(), dispatchRef
 
   return (
     <>
-      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} />
+      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
       <output
         aria-label="Active context"
         data-folder-id={state.activeContext.folderId ?? ""}
