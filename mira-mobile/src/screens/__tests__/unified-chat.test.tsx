@@ -17,6 +17,17 @@ const TURN: NotebookServerTurn = {
   question: "Why does F30001 trip?",
   answerStatus: "answered",
   answerText: "Check the supply first [1].",
+  evidence: [CITATION],
+  basis: "documents",
+};
+
+// A hard stop is not a graded answer: the adapter suppresses citation/basis
+// chrome on this turn (FLEET-003), and the shell must render it as an alert.
+const SAFETY_TURN: NotebookServerTurn = {
+  id: "row-2",
+  question: "How do I bypass the interlock?",
+  answerStatus: "answered",
+  answerText: "Stop.",
   evidence: [CITATION, { kind: "safety_notice", trigger: "bypass the interlock" }],
   basis: "documents",
 };
@@ -47,14 +58,17 @@ afterEach(() => {
 describe("UnifiedChat", () => {
   it("renders the persisted turn through the shared shell with citation, basis, and safety parts", () => {
     const h = handlers();
-    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} handlers={h} meta={META} />);
+    render(<UnifiedChat turns={[TURN, SAFETY_TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} handlers={h} meta={META} />);
 
     expect(screen.getByRole("region", { name: "Conversation" })).toBeTruthy();
     expect(screen.getByText("Why does F30001 trip?")).toBeTruthy();
     const parts = Array.from(document.querySelectorAll<HTMLElement>('[data-turn-id="row-1-a"] [data-part-type]')).map((el) => el.dataset.partType);
     expect(parts).toContain("source");
     expect(parts).toContain("evidence_basis");
-    expect(parts).toContain("safety_notice");
+    const safetyParts = Array.from(document.querySelectorAll<HTMLElement>('[data-turn-id="row-2-a"] [data-part-type]')).map((el) => el.dataset.partType);
+    expect(safetyParts).toContain("safety_notice");
+    expect(safetyParts).not.toContain("source");
+    expect(safetyParts).not.toContain("evidence_basis");
     expect(screen.getByRole("alert").textContent).toMatch(/stop/i);
     expect(document.querySelector(".fl-chip")?.textContent).toContain("Siemens G120");
     expect(document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
