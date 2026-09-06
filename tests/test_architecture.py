@@ -1525,10 +1525,19 @@ def test_ingest_url_contract_cannot_be_satisfied_by_prose():
 # Doctrine section 6 defines the architecture tag taxonomy (type:*, domain:*).
 # CU-06 adopts it in docs/architecture/convergence/REGISTRY.yaml as an inline
 # `tags: [...]` line per module entry. This contract validates the vocabulary
-# by REGEX OVER RAW TEXT, deliberately not yaml.safe_load: the registry has 5
-# duplicate top-level keys (docs/infra/scripts/tests/tools appear for both the
-# MIRA and factorylm repos) which a YAML parser silently last-wins-shadows —
-# recorded as a CU-06 discovery finding; renaming keys is out of scope here.
+# by REGEX OVER RAW TEXT, deliberately not yaml.safe_load, to stay independent
+# of strict-parse changes elsewhere in the registry's lifecycle.
+#
+# The registry USED TO have 5 duplicate top-level keys (docs/infra/scripts/
+# tests/tools appeared for both the MIRA and factorylm repos), which a YAML
+# parser would silently last-wins-shadow — recorded as a CU-06 discovery
+# finding. FACTORYLM-UNIFIED-UI-CUTOVER-001 (Task 1) renamed the five
+# factorylm-repo copies to factorylm-docs/factorylm-infra/factorylm-scripts/
+# factorylm-tests/factorylm-tools so the registry now has unique top-level
+# keys and yaml.safe_load succeeds (required by
+# tools/ui_surface_lifecycle_guard.py, which strict-parses this file). This
+# scanner keeps working on raw text either way — unique keys just mean a
+# strict parse is now also safe to layer on top.
 # Vocabulary = the section-6 advisory sets plus two CU-06 extensions the real
 # module population needs (the doctrine list is "such as", i.e. extensible):
 #   type:docs   — documentation/knowledge dirs (wiki/, docs/, prompts)

@@ -1124,7 +1124,7 @@ services:
     - "diagnosis/telegram_bot/llm-router are frozen 2026-03 predecessors of mira-bots; plc-modbus dormant. Per-component statuses now live in services-diagnosis / services-telegram-bot / services-llm-router / services-plc-modbus (CU-04)"
     - "CU-04 FINDING — the wholesale LEGACY status on this directory is WRONG: services/ contains two LIVE CHARLIE services. `com.factorylm.brain-ingest` runs `uvicorn services.brain.ingest:app --host 0.0.0.0 --port 8500` (PID 1497, up since 2026-07-28) and `com.factorylm.brain-mcp` runs `python3 -m services.mcp.brain_server`. Recorded, not silently repaired — needs its own unit."
 
-docs:
+factorylm-docs:
   repo: factorylm
   path: docs/
   tags: ["type:docs", "domain:platform"]
@@ -1245,7 +1245,7 @@ kb:
     - analytics
   known_drift: []   # filled by Gate 0 discovery
 
-scripts:
+factorylm-scripts:
   repo: factorylm
   path: scripts/
   tags: ["type:infra", "domain:platform"]
@@ -1265,7 +1265,7 @@ scripts:
     - plc
   known_drift: []   # filled by Gate 0 discovery
 
-tools:
+factorylm-tools:
   repo: factorylm
   path: tools/
   tags: ["type:infra", "domain:platform"]
@@ -1285,7 +1285,7 @@ tools:
     - brain
   known_drift: []   # filled by Gate 0 discovery
 
-tests:
+factorylm-tests:
   repo: factorylm
   path: tests/
   tags: ["type:test", "domain:platform"]
@@ -1582,7 +1582,7 @@ data:
     - "learner/knowledge.json"
   known_drift: []   # filled by Gate 0 discovery
 
-infra:
+factorylm-infra:
   repo: factorylm
   path: infra/
   tags: ["type:infra", "domain:platform"]
@@ -1621,3 +1621,127 @@ antfarm:
     - apps
     - agents
   known_drift: []   # filled by Gate 0 discovery
+
+# ── FACTORYLM-UNIFIED-UI-CUTOVER-001: canonical shared shell + guarded legacy
+# presentation trees. Charter: docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
+# Capability-closure record: unified_ui_shell (CAPABILITY_CLOSURE.yaml). The
+# legacy entries below guard specific presentation subtrees, NOT the whole
+# parent module — mira-web/mira-hub/mira-mobile stay CANONICAL/deployed for
+# their capability seams (auth, persistence, evidence, safety, native APIs).
+
+factorylm-theme:
+  repo: MIRA
+  path: packages/factorylm-theme/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared FactoryLM tokens and semantic workspace theme for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Foundation merged via PR #3625 (FACTORYLM-UNIFIED-UI-CUTOVER-001). implemented_unconnected — see CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/tokens.css"
+    - "src/workspace.css"
+    - "src/__tests__/theme-contract.test.ts"
+  dependencies: []
+  known_drift: []
+
+factorylm-interaction:
+  repo: MIRA
+  path: packages/factorylm-interaction/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared interaction types, fixtures, reducer, and platform-adapter contract for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Foundation merged via PR #3625 (FACTORYLM-UNIFIED-UI-CUTOVER-001). implemented_unconnected — see CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/reducer.ts"
+    - "src/fixtures.ts"
+    - "src/adapters.ts"
+  dependencies: []
+  known_drift: []
+
+factorylm-ui:
+  repo: MIRA
+  path: packages/factorylm-ui/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared shell, conversation parts, composer, navigation, inspector, and source viewer for the unified UI."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Foundation merged via PR #3625 (FACTORYLM-UNIFIED-UI-CUTOVER-001). implemented_unconnected — see CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/FactoryLMShell.tsx"
+    - "src/Sidebar.tsx"
+    - "src/Inspector.tsx"
+    - "src/ThreadHeader.tsx"
+    - "src/ProjectTree.tsx"
+  dependencies:
+    - factorylm-theme
+    - factorylm-interaction
+  known_drift: []
+
+factorylm-ui-lab:
+  repo: MIRA
+  path: apps/factorylm-ui-lab/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Disconnected fixture lab and cross-surface verification harness for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Foundation merged via PR #3625 (FACTORYLM-UNIFIED-UI-CUTOVER-001). implemented_unconnected — see CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "scripts/bootstrap-ui.ts"
+    - "scripts/check-dependency-licenses.ts"
+    - "src/test-setup.ts"
+  dependencies:
+    - factorylm-ui
+  known_drift: []
+
+mira-web-legacy-ui:
+  repo: MIRA
+  path: mira-web/src/views/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Legacy public-web page tree, product-demo shell, and standalone chat renderer — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - mira-web/src/views/**
+    - mira-web/public/mira-chat.js
+    - mira-web/public/mira-chat.css
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md). Parent module mira-web stays CANONICAL/deployed; only this presentation tree is guarded. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
+  known_drift:
+    - "PR #3592 (open at charter approval) edits mira-web/src/views/home.ts inside this guarded tree — must merge, close, or use legacy-ui-exception at/around the freeze landing; this entry does not decide that PR."
+
+mira-hub-legacy-ui:
+  repo: MIRA
+  path: "mira-hub/src/app/(hub)/"
+  tags: ["type:presentation", "domain:assets"]
+  purpose: "Legacy dashboard-first Hub route tree, navigation, and duplicate Equipment Notebook presentation — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - "mira-hub/src/app/(hub)/**"
+    - mira-hub/src/components/layout/**
+    - mira-hub/src/components/equipment/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-hub stays CANONICAL/deployed; session, tenant, authorization, Notebook persistence, and typed SSE seams are preserved server-side per charter §2.3 and are not guarded here. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
+  known_drift: []
+
+mira-mobile-legacy-ui:
+  repo: MIRA
+  path: mira-mobile/src/
+  tags: ["type:presentation", "domain:mobile"]
+  purpose: "Legacy mobile shell, screen tree, navigation, and duplicate chat presentation — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - mira-mobile/src/App.tsx
+    - mira-mobile/src/nav.ts
+    - mira-mobile/src/screens/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-mobile stays CANONICAL/deployed; mira-mobile/src/chat-adapter/** transport conversion, native camera/QR/offline behavior are preserved per charter §2.3 and are not guarded here. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
+  known_drift: []

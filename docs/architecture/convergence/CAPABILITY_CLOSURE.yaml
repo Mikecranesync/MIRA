@@ -486,6 +486,68 @@ capabilities:
     notes: >-
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
 
+  # =========================================================================
+  - id: unified_ui_shell
+    purpose: >-
+      Shared FactoryLM presentation shell (theme, interaction contract,
+      conversation/composer components, disconnected fixture lab) that
+      replaces the separate public/Hub/mobile presentation trees over time.
+      FACTORYLM-UNIFIED-UI-CUTOVER-001 charter:
+      docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
+    customer_outcome: >-
+      Not yet customer-facing. Foundation only: one visual/interaction system
+      for a future single Ask/Work surface across web, Hub, and mobile.
+    feature_flag: null
+    entrypoints:
+      - "packages/factorylm-theme/src/                    # tokens, workspace theme"
+      - "packages/factorylm-interaction/src/               # types, reducer, fixtures, adapter contract"
+      - "packages/factorylm-ui/src/FactoryLMShell.tsx      # shared shell, Sidebar, Inspector, ThreadHeader, ProjectTree"
+      - "apps/factorylm-ui-lab/                             # disconnected fixture lab + cross-surface harness"
+    consumers: []
+    schema: []
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: implemented_unconnected
+    owner: null
+    owner_missing: >-
+      Multi-CPU program coordinated through the mission issue, not a single
+      named owner yet. See docs/architecture/convergence/UNIFIED_UI_CUTOVER.md
+      §5 (ownership lanes) and the [WORK-CLAIM] record on
+      https://github.com/Mikecranesync/MIRA/issues/3626.
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - path: packages/factorylm-theme/src/__tests__/theme-contract.test.ts
+        note: "Theme token contract test from the foundation merge (PR #3625)."
+      - path: packages/factorylm-interaction/src/__tests__/reducer.test.ts
+        note: "Shared interaction reducer unit tests from the foundation merge (PR #3625)."
+      - path: packages/factorylm-interaction/src/__tests__/fixtures.test.ts
+        note: "Shared fixture contract tests from the foundation merge (PR #3625)."
+      - path: packages/factorylm-ui/src/__tests__/shell.test.tsx
+        note: "Shared shell component tests from the foundation merge (PR #3625)."
+    rollback: >-
+      Nothing to roll back — implemented_unconnected, not mounted in any
+      deployed surface, and not built or referenced by any consumer.
+    reason: >-
+      This is the disconnected foundation slice of the unified UI cutover
+      (charter Gate 1). No production route, database, provider, or deployment
+      change accompanies it. Do NOT claim connection, staging, or production
+      state until the Golden Conversation gate (charter §8, Gate 3) passes on a
+      real adapter.
+    promotion_criteria:
+      - "Golden Conversation connected on at least one surface (Hub, mobile, or public) per charter §8 Gate 3: sign in, open/create thread, ask, attach evidence, cited answer, save/reload, open the same thread on another surface."
+      - "A named CI job runs the packages/factorylm-* and apps/factorylm-ui-lab test suites (currently run ad hoc, not enumerated in .github/workflows/ci.yml) — move to connected_ci_missing or better once wired."
+      - "At least one bounded platform adapter (charter §2.2 'new bounded presentation adapters') mounts the shell behind an instant rollback switch (charter §8 Gate 4) before any staging_enabled claim."
+    review_by: "2026-09-20"
+    notes: >-
+      Do not create a second capability registry for UI cutover state — this
+      record is the ONE capability-closure entry for the unified shell
+      (charter §4). Legacy presentation freeze/enforcement state lives in
+      docs/architecture/convergence/REGISTRY.yaml (mira-web-legacy-ui,
+      mira-hub-legacy-ui, mira-mobile-legacy-ui), not here.
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface
