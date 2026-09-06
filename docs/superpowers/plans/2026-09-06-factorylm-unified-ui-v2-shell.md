@@ -1,0 +1,568 @@
+# FactoryLM Unified UI V2 Shell Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build the complete disconnected, fixture-driven React lab for one shared FactoryLM interaction shell across public, signed-in web, mobile, and enterprise Hub profiles.
+
+**Architecture:** Three framework-neutral packages own the design tokens, authoritative interaction/view model, and shared React components. A standalone Vite lab consumes those packages through local file dependencies, renders every required state from fixtures, and has no production transport, authentication, storage, or API code. The existing Equipment Notebook contract and shipped mobile ChatV2 remain the production authority; this lab converges their proven semantics without connecting to them.
+
+**Tech Stack:** TypeScript 5, React 19 lab runtime with React `>=18 <20` peer compatibility, Vite 6, Vitest 4, Testing Library 16, Playwright 1.59, plain CSS using FactoryLM tokens, Bun lock/install.
+
+**Spec:** `docs/initiatives/FLM-UI-4000.md`, indexed by `docs/prd/2026-09-06-factorylm-unified-interaction-v1.md`, at PR #3622 head `470aa1873f05da597b5304ead119aeb19ba3d9b9`.
+
+## Global Constraints
+
+- Phase 1 is disconnected and fixture-only: no auth, production API, database, provider, upload, CMMS write, deployment, or existing-default-UI change.
+- The same `FactoryLMShell` implementation renders `public`, `web`, `mobile`, and `hub`; profiles reveal capabilities but never replace the navigation, interaction contract, or core components.
+- Projects and folders contain links. A machine keeps one canonical asset ID even when linked into multiple projects.
+- Ordered turn parts preserve unknown future parts and distinguish safety, citations, live evidence, recorded evidence, plans, findings, artifacts, errors, and status.
+- The active machine is visible and correctable. Machine-specific claims require confirmed identity and authorized evidence in every relevant fixture.
+- Historical turns retain their captured context snapshot when the active future-turn context changes.
+- Ask and Work share one shell and composer; Work adds a structured run, never a second chat UI.
+- Shared UI code has no Next.js, Capacitor, router, provider, or transport dependency.
+- React packages declare `react: ">=18 <20"` as a peer dependency; the lab verifies React 19 while current merged mobile ChatV2 remains the React 18 reuse proof.
+- All external dependencies must be MIT or Apache-2.0 licensed. Do not add an axe-core dependency because its MPL license violates the repository allowlist.
+- UI values come from `@factorylm/theme`; component code contains no hard-coded colors.
+- The ordinary conversation route's compressed JavaScript budget is 300 KB.
+- Web controls have visible focus, keyboard operation, screen-reader labels, reduced-motion behavior, and at least 44 by 44 CSS-pixel targets on mobile.
+- The lab build must enforce `connect-src 'none'`; mock send/state changes are in-memory only.
+
+---
+
+### Task 1: Local workspace and authoritative fixture contract
+
+**Files:**
+- Create: `packages/factorylm-interaction/package.json`
+- Create: `packages/factorylm-interaction/src/types.ts`
+- Create: `packages/factorylm-interaction/src/fixtures.ts`
+- Create: `packages/factorylm-interaction/src/index.ts`
+- Create: `packages/factorylm-interaction/src/__tests__/fixtures.test.ts`
+- Create: `packages/factorylm-theme/package.json`
+- Create: `packages/factorylm-ui/package.json`
+- Create: `apps/factorylm-ui-lab/package.json`
+- Create: `apps/factorylm-ui-lab/tsconfig.json`
+- Create: `apps/factorylm-ui-lab/vite.config.ts`
+- Create: `apps/factorylm-ui-lab/vitest.config.ts`
+
+**Interfaces:**
+- Consumes: PRD objects `InteractionThread`, `InteractionRun`, `InteractionTurn`, ordered part types, and `SurfaceProfile`.
+- Produces: `SurfaceKind`, `SurfaceProfile`, `PROFILES`, `InteractionPart`, `InteractionTurn`, `InteractionThread`, `InteractionRun`, `ProjectNode`, `Machine`, `ShellFixture`, `FIXTURE_IDS`, `fixtures`, and `getFixture(id)`.
+
+- [ ] **Step 1: Add package manifests and a test runner, without adding runtime implementation**
+
+```json
+{
+  "name": "@factorylm/interaction",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}
+```
+
+The lab owns the test toolchain and references all three packages with `file:../../packages/<name>`. Pin the versions listed in the plan Tech Stack and add scripts `dev`, `build`, `preview`, `test`, `test:watch`, `test:e2e`, and `verify`.
+
+- [ ] **Step 2: Write the failing fixture-contract tests**
+
+```ts
+import { FIXTURE_IDS, fixtures, getFixture } from "@factorylm/interaction";
+
+it("covers every Phase 1 review state", () => {
+  expect(new Set(FIXTURE_IDS)).toEqual(new Set([
+    "empty", "general-ask", "machine-ask", "project-tree", "attachments",
+    "grounded-answer", "machine-evidence", "safety-stop", "work-run",
+    "error-retry", "offline-sync", "enterprise-inspector", "long-history",
+  ]));
+});
+
+it("links one canonical machine into multiple projects", () => {
+  const scenario = getFixture("project-tree");
+  const links = scenario.projects.flatMap((project) => project.children)
+    .flatMap((item) => item.kind === "folder" ? item.children : [item])
+    .filter((item) => item.kind === "machine-link");
+  expect(new Set(links.map((link) => link.machineId)).size).toBeLessThan(links.length);
+});
+```
+
+- [ ] **Step 3: Run the fixture tests and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bun install && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts`
+
+Expected: FAIL because `@factorylm/interaction` does not yet export the contract and fixtures.
+
+- [ ] **Step 4: Implement the minimal runtime-neutral contract and immutable fixtures**
+
+```ts
+export type InteractionPart =
+  | { type: "text"; text: string }
+  | { type: "attachment"; attachment: Attachment }
+  | { type: "source"; source: SourceReference }
+  | { type: "evidence_basis"; basis: EvidenceBasis }
+  | { type: "machine_evidence"; evidence: MachineEvidence }
+  | { type: "visual_observation"; observation: VisualObservation }
+  | { type: "safety_notice"; notice: SafetyNotice }
+  | { type: "tool_call"; tool: ToolState }
+  | { type: "tool_result"; tool: ToolState }
+  | { type: "approval_request"; approval: ApprovalRequest }
+  | { type: "plan"; plan: DiagnosticPlan }
+  | { type: "plan_step"; step: PlanStep }
+  | { type: "observation"; observation: RunObservation }
+  | { type: "hypothesis"; hypothesis: Hypothesis }
+  | { type: "finding"; finding: Finding }
+  | { type: "artifact"; artifact: Artifact }
+  | { type: "context_change"; change: ContextSnapshot }
+  | { type: "status"; status: Lifecycle }
+  | { type: "usage"; usage: Usage }
+  | { type: "error"; error: InteractionError }
+  | { type: "followups"; suggestions: readonly string[] }
+  | { type: "unknown"; raw: unknown };
+```
+
+Populate deterministic fixture data for the thirteen scenario IDs. Each scenario also declares supported viewport/theme combinations, so light/dark and desktop/tablet/mobile are dimensions rather than duplicate fixtures.
+
+- [ ] **Step 5: Run the fixture tests and type-check**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts && bunx tsc --noEmit`
+
+Expected: PASS with all fixture invariants and zero TypeScript errors.
+
+- [ ] **Step 6: Commit the foundation contract**
+
+```bash
+git add packages/factorylm-interaction packages/factorylm-theme/package.json packages/factorylm-ui/package.json apps/factorylm-ui-lab/package.json apps/factorylm-ui-lab/tsconfig.json apps/factorylm-ui-lab/vite.config.ts apps/factorylm-ui-lab/vitest.config.ts apps/factorylm-ui-lab/bun.lock
+git commit -m "feat(ui): add unified interaction fixture contract"
+```
+
+### Task 2: Reducer and platform-adapter boundary
+
+**Files:**
+- Create: `packages/factorylm-interaction/src/reducer.ts`
+- Create: `packages/factorylm-interaction/src/adapters.ts`
+- Create: `packages/factorylm-interaction/src/__tests__/reducer.test.ts`
+- Modify: `packages/factorylm-interaction/src/index.ts`
+
+**Interfaces:**
+- Consumes: `ShellFixture`, `InteractionThread`, `ContextSnapshot`, `SurfaceProfile`.
+- Produces: `ShellState`, `ShellAction`, `createShellState(fixture, profile)`, `shellReducer(state, action)`, and `PlatformAdapter`.
+
+- [ ] **Step 1: Write failing reducer tests for shared shell behavior and historical-context immutability**
+
+```ts
+it("changes context only for future turns", () => {
+  const before = createShellState(getFixture("machine-ask"), PROFILES.web);
+  const oldSnapshot = before.thread.turns[0].context;
+  const after = shellReducer(before, { type: "select-machine", machineId: "machine-drive-b" });
+  expect(after.activeContext.machineId).toBe("machine-drive-b");
+  expect(after.thread.turns[0].context).toEqual(oldSnapshot);
+});
+
+it("switches Ask and Work without replacing the shell", () => {
+  const state = createShellState(getFixture("general-ask"), PROFILES.mobile);
+  expect(shellReducer(state, { type: "set-mode", mode: "work" }).mode).toBe("work");
+});
+```
+
+- [ ] **Step 2: Run the reducer tests and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/reducer.test.ts`
+
+Expected: FAIL because the reducer and adapter interfaces do not exist.
+
+- [ ] **Step 3: Implement immutable state transitions and the injected adapter contract**
+
+```ts
+export interface PlatformAdapter {
+  attachPhoto(): Promise<FixtureAttachment | null>;
+  attachFile(): Promise<FixtureAttachment | null>;
+  scanMachine(): Promise<string | null>;
+  shareArtifact(artifactId: string): Promise<"shared" | "cancelled">;
+  onBack(): "handled" | "pass";
+}
+```
+
+Reducer actions cover fixture selection, Ask/Work, project/folder/machine selection, sidebar/inspector/sheet state, source selection, draft text, mock send, retry, theme, and surface profile. No action invokes I/O.
+
+- [ ] **Step 4: Run focused and full interaction tests**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src`
+
+Expected: PASS with immutable historical turns and one shared state model.
+
+- [ ] **Step 5: Commit the reducer boundary**
+
+```bash
+git add packages/factorylm-interaction
+git commit -m "feat(ui): add shared shell state reducer"
+```
+
+### Task 3: FactoryLM theme package
+
+**Files:**
+- Create: `packages/factorylm-theme/src/tokens.css`
+- Create: `packages/factorylm-theme/src/workspace.css`
+- Create: `packages/factorylm-theme/src/index.ts`
+- Create: `packages/factorylm-theme/src/__tests__/theme-contract.test.ts`
+- Modify: `packages/factorylm-theme/package.json`
+
+**Interfaces:**
+- Consumes: canonical values from `docs/design/factorylm-tokens.css` and the approved #3622 prototype.
+- Produces: package exports `@factorylm/theme/tokens.css`, `@factorylm/theme/workspace.css`, and `THEME_NAMES`.
+
+- [ ] **Step 1: Write a failing token-contract test**
+
+```ts
+it("uses FactoryLM-prefixed tokens for every semantic workspace role", () => {
+  const css = readFileSync(new URL("../workspace.css", import.meta.url), "utf8");
+  for (const token of ["--fl-bg", "--fl-surface", "--fl-ink", "--fl-line", "--fl-accent", "--fl-fault"]) {
+    expect(css).toContain(token);
+  }
+  expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+});
+```
+
+- [ ] **Step 2: Run and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-theme/src/__tests__/theme-contract.test.ts`
+
+Expected: FAIL because the theme files do not exist.
+
+- [ ] **Step 3: Add the canonical token copy and semantic workspace aliases**
+
+`tokens.css` is byte-identical to `docs/design/factorylm-tokens.css`. `workspace.css` imports it and defines only mappings through existing `var(--fl-*)` and `var(--fl-dark-*)` values for light/dark themes; it introduces no raw color.
+
+- [ ] **Step 4: Run theme tests and CSS hard-code scan**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-theme/src && ! rg -n '#[0-9a-fA-F]{3,8}|rgba?\(' ../../packages/factorylm-theme/src/workspace.css`
+
+Expected: PASS; no raw color in semantic workspace CSS.
+
+- [ ] **Step 5: Commit the theme package**
+
+```bash
+git add packages/factorylm-theme
+git commit -m "feat(ui): package FactoryLM workspace theme"
+```
+
+### Task 4: Shared responsive shell and project navigation
+
+**Files:**
+- Create: `packages/factorylm-ui/src/FactoryLMShell.tsx`
+- Create: `packages/factorylm-ui/src/Sidebar.tsx`
+- Create: `packages/factorylm-ui/src/ProjectTree.tsx`
+- Create: `packages/factorylm-ui/src/ThreadHeader.tsx`
+- Create: `packages/factorylm-ui/src/Inspector.tsx`
+- Create: `packages/factorylm-ui/src/icons.tsx`
+- Create: `packages/factorylm-ui/src/shell.css`
+- Create: `packages/factorylm-ui/src/index.ts`
+- Create: `packages/factorylm-ui/src/__tests__/harness.tsx`
+- Create: `packages/factorylm-ui/src/__tests__/shell.test.tsx`
+- Modify: `packages/factorylm-ui/package.json`
+
+**Interfaces:**
+- Consumes: `ShellState`, `ShellAction`, `ProjectNode`, and `SurfaceProfile` from `@factorylm/interaction`.
+- Produces: `FactoryLMShell({ state, dispatch, adapter })`, with the same landmarks and child components for every profile, plus a shared test `Harness` and `fakeAdapter()` used by later behavior suites.
+
+- [ ] **Step 1: Write failing shell parity and machine-link tests**
+
+```tsx
+for (const surface of ["public", "web", "mobile", "hub"] as const) {
+  it(`renders the canonical shell in ${surface}`, () => {
+    render(<Harness surface={surface} fixture="project-tree" />);
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /ask mira/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new chat/i })).toBeInTheDocument();
+  });
+}
+```
+
+- [ ] **Step 2: Run and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/shell.test.tsx`
+
+Expected: FAIL because the shell is not implemented.
+
+- [ ] **Step 3: Implement landmarks, responsive regions, and canonical link rendering**
+
+Use `<aside aria-label="FactoryLM navigation">`, `<main>`, a persistent `<header>`, and an optional inspector `<aside aria-label="Inspector">`. Mobile changes CSS presentation to drawer/sheet; it does not branch to a different shell component.
+
+The shared test harness owns state exactly like the lab:
+
+```tsx
+export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessProps) {
+  const [state, dispatch] = useReducer(
+    shellReducer,
+    createShellState(getFixture(fixture), PROFILES[surface]),
+  );
+  return <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} />;
+}
+```
+
+- [ ] **Step 4: Run shell tests and type-check**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/shell.test.tsx && bunx tsc --noEmit`
+
+Expected: PASS on all four profiles.
+
+- [ ] **Step 5: Commit the shared shell**
+
+```bash
+git add packages/factorylm-ui
+git commit -m "feat(ui): add shared FactoryLM shell"
+```
+
+### Task 5: Conversation parts, Ask/Work, and universal composer
+
+**Files:**
+- Create: `packages/factorylm-ui/src/Conversation.tsx`
+- Create: `packages/factorylm-ui/src/parts.tsx`
+- Create: `packages/factorylm-ui/src/Composer.tsx`
+- Create: `packages/factorylm-ui/src/SourceViewer.tsx`
+- Create: `packages/factorylm-ui/src/conversation.css`
+- Create: `packages/factorylm-ui/src/__tests__/conversation.test.tsx`
+- Create: `packages/factorylm-ui/src/__tests__/composer.test.tsx`
+- Modify: `packages/factorylm-ui/src/FactoryLMShell.tsx`
+- Modify: `packages/factorylm-ui/src/index.ts`
+
+**Interfaces:**
+- Consumes: `InteractionPart[]`, `InteractionRun`, `PlatformAdapter`, and reducer actions.
+- Produces: exhaustive `PartRenderer`, `Conversation`, `Composer`, and `SourceViewer` components.
+
+- [ ] **Step 1: Write failing tests for safety suppression, evidence labels, unknown parts, and shared Ask/Work shell**
+
+```tsx
+it("renders a safety stop without success chrome", () => {
+  render(<Harness fixture="safety-stop" surface="web" />);
+  expect(screen.getByRole("alert")).toHaveTextContent(/stop/i);
+  expect(screen.queryByText(/verified finding/i)).not.toBeInTheDocument();
+});
+
+it("labels live and recorded evidence distinctly", () => {
+  render(<Harness fixture="machine-evidence" surface="hub" />);
+  expect(screen.getByText("LIVE")).toBeInTheDocument();
+  expect(screen.getByText("RECORDED")).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: Run and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
+
+Expected: FAIL because the conversation and composer components do not exist.
+
+- [ ] **Step 3: Implement exhaustive ordered-part rendering and the one composer**
+
+`PartRenderer` uses a `switch (part.type)` and an `assertNever` guard. Unknown parts render an inspectable disclosure in lab mode. The composer exposes labelled text, attachment, machine, voice, and send controls; unavailable profile capabilities remain honest and disabled rather than simulated.
+
+- [ ] **Step 4: Run conversation/composer tests**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
+
+Expected: PASS for general Ask, machine Ask, Work plans/findings/artifacts, attachments, citations, safety, error/retry, and unknown parts.
+
+- [ ] **Step 5: Commit the interaction surface**
+
+```bash
+git add packages/factorylm-ui
+git commit -m "feat(ui): render Ask and Work interaction parts"
+```
+
+### Task 6: Mobile drawer, inspector sheet, keyboard, and Back behavior
+
+**Files:**
+- Create: `packages/factorylm-ui/src/Overlay.tsx`
+- Create: `packages/factorylm-ui/src/focus.ts`
+- Create: `packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
+- Modify: `packages/factorylm-ui/src/FactoryLMShell.tsx`
+- Modify: `packages/factorylm-ui/src/Composer.tsx`
+- Modify: `packages/factorylm-ui/src/shell.css`
+
+**Interfaces:**
+- Consumes: `PlatformAdapter.onBack`, sidebar/inspector/source/attachment-sheet reducer state.
+- Produces: `Overlay`, `useFocusReturn`, `composerKeyAction`, and deterministic layer-closing precedence.
+
+- [ ] **Step 1: Write failing tests for focus, Escape/Back, touch targets, Enter, Shift+Enter, and IME**
+
+```tsx
+it("closes the top mobile layer before passing Back to the host", async () => {
+  const adapter = fakeAdapter();
+  render(<Harness surface="mobile" fixture="enterprise-inspector" adapter={adapter} />);
+  await user.click(screen.getByRole("button", { name: /open inspector/i }));
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("complementary", { name: "Inspector" })).not.toBeInTheDocument();
+  expect(adapter.onBack).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 2: Run and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
+
+Expected: FAIL because overlay/focus/Back behavior is absent.
+
+- [ ] **Step 3: Implement one overlay stack and keyboard contract**
+
+Close order is source viewer, attachment menu, inspector sheet, navigation drawer, then `adapter.onBack()`. Trap focus while a modal sheet is open and restore it to the opening control. Composer sends on Enter only when `!shiftKey && !isComposing`.
+
+- [ ] **Step 4: Run mobile behavior tests**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
+
+Expected: PASS with no fake native capability.
+
+- [ ] **Step 5: Commit responsive behavior**
+
+```bash
+git add packages/factorylm-ui
+git commit -m "feat(ui): add mobile shell behavior"
+```
+
+### Task 7: Runnable disconnected lab and scenario controls
+
+**Files:**
+- Create: `apps/factorylm-ui-lab/index.html`
+- Create: `apps/factorylm-ui-lab/src/main.tsx`
+- Create: `apps/factorylm-ui-lab/src/App.tsx`
+- Create: `apps/factorylm-ui-lab/src/lab.css`
+- Create: `apps/factorylm-ui-lab/src/fake-adapter.ts`
+- Create: `apps/factorylm-ui-lab/src/__tests__/app.test.tsx`
+- Create: `apps/factorylm-ui-lab/README.md`
+
+**Interfaces:**
+- Consumes: all fixtures, reducer, `FactoryLMShell`, and `PlatformAdapter`.
+- Produces: a local-only lab with surface/scenario/theme/viewport controls and deterministic mock actions.
+
+- [ ] **Step 1: Write failing lab tests for controls and network prohibition**
+
+```tsx
+it("uses only in-memory actions", async () => {
+  const fetchSpy = vi.spyOn(globalThis, "fetch");
+  render(<App />);
+  await user.type(screen.getByRole("textbox", { name: /ask mira/i }), "What is bearing preload?");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 2: Run and confirm RED**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run src/__tests__/app.test.tsx`
+
+Expected: FAIL because the lab application does not exist.
+
+- [ ] **Step 3: Implement the lab and deny connections in the built document**
+
+`index.html` includes:
+
+```html
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+```
+
+The fake adapter resolves deterministic fixture attachments and never imports `fetch`, `XMLHttpRequest`, `EventSource`, WebSocket, auth, storage, or production endpoint constants.
+
+- [ ] **Step 4: Run unit tests and production build**
+
+Run: `cd apps/factorylm-ui-lab && bunx vitest run && bun run build`
+
+Expected: PASS and a static `dist/` build.
+
+- [ ] **Step 5: Commit the reviewable lab**
+
+```bash
+git add apps/factorylm-ui-lab
+git commit -m "feat(ui): add disconnected unified UI lab"
+```
+
+### Task 8: Browser matrix, accessibility, performance, and salvage record
+
+**Files:**
+- Create: `apps/factorylm-ui-lab/playwright.config.ts`
+- Create: `apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts`
+- Create: `apps/factorylm-ui-lab/e2e/keyboard-mobile.spec.ts`
+- Create: `apps/factorylm-ui-lab/scripts/check-build-budget.mjs`
+- Create: `apps/factorylm-ui-lab/docs/component-adapter-map.md`
+- Create: `apps/factorylm-ui-lab/docs/salvage-record.md`
+- Create: `docs/promo-screenshots/2026-09-06_flm-ui-v2-*.png`
+- Modify: `apps/factorylm-ui-lab/package.json`
+- Modify: `apps/factorylm-ui-lab/README.md`
+- Modify: `wiki/hot.md`
+
+**Interfaces:**
+- Consumes: built lab, thirteen fixtures, four profiles, two themes, and viewport set `390x844`, `412x915`, `768x1024`, `1440x900`, `1720x1000`.
+- Produces: screenshot evidence, zero-console/network assertions, keyboard/mobile behavior proof, compressed bundle budget result, component/adapter map, and exact reuse/non-reuse list.
+
+- [ ] **Step 1: Write the failing outside-in matrix**
+
+```ts
+for (const surface of ["public", "web", "mobile", "hub"] as const) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`${surface}-${theme}`, async ({ page }) => {
+      const external: string[] = [];
+      page.on("request", (request) => {
+        if (!request.url().startsWith("http://127.0.0.1:")) external.push(request.url());
+      });
+      await page.goto(`/?surface=${surface}&theme=${theme}&scenario=grounded-answer`);
+      await expect(page.getByRole("textbox", { name: /ask mira/i })).toBeVisible();
+      expect(external).toEqual([]);
+    });
+  }
+}
+
+for (const scenario of FIXTURE_IDS) {
+  test(`renders ${scenario} without console errors`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    await page.goto(`/?surface=web&theme=light&scenario=${scenario}`);
+    await expect(page.getByRole("main")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}
+```
+
+- [ ] **Step 2: Run and confirm RED for missing matrix behavior or configuration**
+
+Run: `cd apps/factorylm-ui-lab && bun run build && bunx playwright test`
+
+Expected: FAIL until URL-controlled lab state, viewport behavior, and screenshot paths are complete.
+
+- [ ] **Step 3: Complete URL state, screenshot capture, keyboard checks, and build budget**
+
+`check-build-budget.mjs` gzips every emitted ordinary-route JavaScript asset with `node:zlib`, sums byte lengths, prints the exact total, and exits non-zero above `300 * 1024` bytes.
+
+- [ ] **Step 4: Record exact salvage decisions**
+
+The record must name exact heads and dispositions:
+
+- #3515 `39c5424d29275414dbeccd8060ff0e4715a82b4d`: reuse ExternalStore/FactoryLM-owned adapter proof and terminal-status/unknown-part lessons; do not merge its stale Hub lab route or middleware bypass.
+- merged #3516: reuse current mobile `chat-adapter` vocabulary, safety suppression, identity-dispute, and live/hydrated parity semantics; do not move current production code in Phase 1.
+- #3514 `9cc9e366a53b5dc3ba9675582b34a39305f37454`: reuse proposed additive typed-event and adapter isolation decisions; do not create a second protocol.
+- #3587 `8e9e0e5cd1813b4bb93a8287f980584bfb415dba`: reuse MIRA-first mobile information architecture where consistent with #3622; do not merge its overlapping authority files.
+- #3595 `6f2c29b662c7a9ee91108d7936277cabb58bfb3b`: follow its authority/safety/tenant rules; do not duplicate its documentation stack.
+- #3596 `5ed5bf1d190536a28c2855cda16a077cb9a426d0`: reuse current canonical Notebook seam and convergence inventory; #3622 supersedes its earlier caution against a shared package for visual sameness.
+
+- [ ] **Step 5: Run full verification**
+
+Run:
+
+```bash
+cd apps/factorylm-ui-lab
+bun install --frozen-lockfile
+bun run verify
+bunx playwright test
+node scripts/check-build-budget.mjs
+cd ../..
+git diff --check origin/pr-3622...HEAD
+rg -n 'fetch\(|XMLHttpRequest|EventSource|WebSocket|https?://' packages/factorylm-* apps/factorylm-ui-lab/src
+```
+
+Expected: all unit/E2E/type/build checks pass; no production transport symbol or endpoint appears in source; the only URL text allowed is documentation/test localhost context.
+
+- [ ] **Step 6: Update continuity, commit, and prepare the draft implementation PR**
+
+```bash
+git add packages apps/factorylm-ui-lab docs/promo-screenshots wiki/hot.md
+git commit -m "test(ui): prove unified shell fixture matrix"
+```
+
+Before pushing, repeat the open-PR overlap check and re-read the work claim. The draft PR must target the #3622 design branch while stacked, link back to #3622, include exact base/head SHAs, commands/results, screenshot matrix, salvage record, unresolved product decisions, rollback, and a `PARTIAL` label until independent exact-SHA review and CI are complete. Do not merge or deploy.
