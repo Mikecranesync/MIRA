@@ -24,8 +24,9 @@ describe("shared FactoryLM shell", () => {
       expect(view.container.querySelector("header")).not.toBeNull();
       expect(view.buttonNamed("New chat")).not.toBeNull();
       expect(view.buttonNamed("New chat")?.disabled).toBe(true);
-      expect(view.container.querySelector('[aria-label="Conversation placeholder"]')).not.toBeNull();
-      expect(view.container.textContent).not.toContain("Ask MIRA");
+      expect(view.container.querySelector('[aria-label="Conversation placeholder"]')).toBeNull();
+      expect(view.container.querySelector('[aria-label="Conversation"]')).not.toBeNull();
+      expect(view.container.querySelector('form[aria-label="Composer"]')).not.toBeNull();
     });
   }
 
