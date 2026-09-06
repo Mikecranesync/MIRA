@@ -115,7 +115,9 @@ export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
       {state.offline.detail ? ` · ${state.offline.detail}` : ""}
     </p> : null}
 
-    <p className="fl-composer__context">Using: {using.length > 0 ? using.join(" / ") : "Workspace"}</p>
+    <p className="fl-composer__context" title={using.length > 0 ? using.join(" / ") : "Workspace"}>
+      Using: {using.length > 0 ? using[using.length - 1] : "Workspace"}
+    </p>
 
     {failure ? <p className="fl-composer__failure" role="alert" aria-label="Attachment error">{failure}</p> : null}
 

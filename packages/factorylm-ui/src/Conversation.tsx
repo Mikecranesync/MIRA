@@ -100,7 +100,6 @@ export function Conversation({ state, dispatch, adapter, hooks }: ConversationPr
         {crumbs.length > 0
           ? crumbs.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)
           : <span>Workspace</span>}
-        <span className="fl-card__meta"> / {state.thread.title}</span>
       </nav>
       <div className="fl-conversation__modes" role="group" aria-label="Mode">
         <button type="button" aria-pressed={state.mode === "ask"} onClick={() => dispatch({ type: "set-mode", mode: "ask" })}>Ask</button>
