@@ -489,9 +489,15 @@ capabilities:
   # =========================================================================
   - id: unified_ui_shell
     purpose: >-
-      Shared FactoryLM presentation shell (theme, interaction contract,
-      conversation/composer components, disconnected fixture lab) that
-      replaces the separate public/Hub/mobile presentation trees over time.
+      Shared FactoryLM presentation shell (design tokens, interaction
+      contract/reducer/fixtures, the shared shell component, and a
+      disconnected fixture lab) that replaces the separate public/Hub/mobile
+      presentation trees over time. This record describes ONLY what is
+      actually merged to `main` today (the foundation slice, PR #3625) — it
+      does not describe the conversation/composer deliverable, which is a
+      separate, unmerged, actively-owned draft PR (#3628, shared-shell Task
+      5) and must not be implied as part of this capability's current state
+      until it lands and this record is updated to match.
       FACTORYLM-UNIFIED-UI-CUTOVER-001 charter:
       docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
     customer_outcome: >-
@@ -538,7 +544,7 @@ capabilities:
       real adapter.
     promotion_criteria:
       - "Golden Conversation connected on at least one surface (Hub, mobile, or public) per charter §8 Gate 3: sign in, open/create thread, ask, attach evidence, cited answer, save/reload, open the same thread on another surface."
-      - "A named CI job runs the packages/factorylm-* and apps/factorylm-ui-lab test suites (currently run ad hoc, not enumerated in .github/workflows/ci.yml) — move to connected_ci_missing or better once wired."
+      - "State transitions are gated by CONSUMER existence, not CI existence: implemented_unconnected -> connected_ci_missing requires a real consumer (a bounded platform adapter actually mounting the shell) to exist WHILE a named CI job is still absent. Wiring a named CI job for packages/factorylm-*/apps/factorylm-ui-lab (currently run ad hoc, not enumerated in .github/workflows/ci.yml) while consumers remains [] does NOT advance the state past implemented_unconnected — it stays implemented_unconnected regardless of CI, because implemented_unconnected already implies zero consumers. Only once BOTH a real consumer exists AND a named CI job covers it does the record move past connected_ci_missing."
       - "At least one bounded platform adapter (charter §2.2 'new bounded presentation adapters') mounts the shell behind an instant rollback switch (charter §8 Gate 4) before any staging_enabled claim."
     review_by: "2026-09-20"
     notes: >-

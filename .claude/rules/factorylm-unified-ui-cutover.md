@@ -39,17 +39,23 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 These entries are machine-readable in `docs/architecture/convergence/REGISTRY.yaml`
 (`mira-web-legacy-ui`, `mira-hub-legacy-ui`, `mira-mobile-legacy-ui`) with
 `status: LEGACY`, `change_policy: exception_only`, `deletion_safe: false`.
-Enforced by `tools/ui_surface_lifecycle_guard.py` via the
-`Legacy UI Lifecycle Guard` required check on `main`
-(`.github/workflows/ui-lifecycle-guard.yml`). Addition, modification,
-deletion, rename-in, and rename-out of a guarded path fail CI by default.
+Enforced by `tools/ui_surface_lifecycle_guard.py`, whose `Legacy UI Lifecycle
+Guard` status posts on every PR (`.github/workflows/ui-lifecycle-guard.yml`).
+**Binding that status as a required check on `main`'s branch protection is a
+separate, not-yet-performed administrator action — this governance
+implementation has no authority over branch protection and has not modified
+it.** See charter §3.1 for the intended future binding (`app_id`-pinned,
+`enforce_admins: true`). Until that binding exists, the guard is visible on
+every PR but does not yet block a merge on its own. Addition, modification,
+deletion, rename-in, and rename-out of a guarded path fail the guard by
+default regardless.
 
 **`mira-web/public/**` is classified, not blanket-guarded** (code-owned in
 the guard, not the registry — same reasoning as `CONTROL_PATTERNS` below):
 passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif .ico .woff .woff2
-.ttf .otf .pdf .map .json .txt`) are unguarded; exactly `mira-web/public/sw.js`
-and `mira-web/public/posthog-init.js` are exempt infrastructure; everything
-else (html/css/js/mjs/svg, unknown suffixes, extensionless names) is guarded.
+.ttf .otf .pdf .map .json .txt`) are unguarded; everything else (html/css/js/
+mjs/svg, unknown suffixes, extensionless names — including `sw.js` and
+`posthog-init.js`, which are executable and carry no exemption) is guarded.
 A new static file dropped in `mira-web/public/` is a new presentation surface,
 not an inert asset, by default.
 

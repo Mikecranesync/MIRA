@@ -58,8 +58,11 @@ Use the charter's directory boundaries exactly:
 
 ```text
 mira-web/src/views/**
-mira-web/public/mira-chat.js
-mira-web/public/mira-chat.css
+mira-web/public/** (classified, not blanket-guarded — the actual guard/exempt
+  decision for every path under mira-web/public/ is the code-owned
+  public-static classifier in tools/ui_surface_lifecycle_guard.py, NOT this
+  glob; see the hardening amendment below. This registry entry documents
+  scope only.)
 mira-hub/src/app/(hub)/**
 mira-hub/src/components/layout/**
 mira-hub/src/components/equipment/**
@@ -67,6 +70,13 @@ mira-mobile/src/App.tsx
 mira-mobile/src/nav.ts
 mira-mobile/src/screens/**
 ```
+
+**Note (post-remediation, superseding the two-exact-file example above):**
+the original directory-boundary list shown when this Step 1 was first
+authored guarded only two named files under `mira-web/public/`
+(`mira-chat.js`/`.css`). That was superseded by the hardening amendment
+below BEFORE Task 3 began, and further hardened by the Codex remediation of
+`1ecb9baef` finding #1 (see below) — never implement the two-file form.
 
 Before relying on strict YAML parsing, rename the five known duplicate
 factorylm-repository keys to `factorylm-docs`, `factorylm-infra`,
@@ -193,12 +203,17 @@ tests/test_ui_surface_lifecycle_guard.py
 >    special-cases any path under `mira-web/public/` (code-owned, like
 >    `CONTROL_PATTERNS` — not sourced from the registry) via a deterministic
 >    classifier: passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif
->    .ico .woff .woff2 .ttf .otf .pdf .map .json .txt`) are unguarded; exactly
->    `mira-web/public/sw.js` and `mira-web/public/posthog-init.js` are exempt
->    infrastructure; everything else — html/htm/css/js/mjs/svg, unknown
->    suffixes, extensionless names — is guarded. `REGISTRY.yaml`'s
->    `mira-web-legacy-ui` entry now lists `mira-web/public/**` for
->    documentation; the classifier, not the glob, is the actual enforcement.
+>    .ico .woff .woff2 .ttf .otf .pdf .map .json .txt`) are unguarded;
+>    everything else — html/htm/css/js/mjs/svg, unknown suffixes,
+>    extensionless names — is guarded. `REGISTRY.yaml`'s `mira-web-legacy-ui`
+>    entry now lists `mira-web/public/**` for documentation; the classifier,
+>    not the glob, is the actual enforcement.
+>    **Codex remediation of `1ecb9baef` finding #1:** the original classifier
+>    (above) carved out `mira-web/public/sw.js` and
+>    `mira-web/public/posthog-init.js` as "exempt infrastructure" — that was
+>    itself a live self-service bypass, since both are executable JavaScript
+>    served to every visitor. No named exact-path exemption exists anymore;
+>    they are guarded like any other `.js` file.
 > 2. **GitHub pull-files pagination truncation.** The `pulls/{n}/files`
 >    endpoint silently stops paginating around 3000 entries. The workflow now
 >    also fetches `pulls/{n}.changed_files` to a count file, and

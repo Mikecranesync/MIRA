@@ -81,10 +81,15 @@ unguarded sibling-bypass. The classifier now guards everything under
 - **Passive asset suffixes** (cannot execute or render a UI on their own):
   `.png` `.jpg` `.jpeg` `.webp` `.gif` `.avif` `.ico` `.woff` `.woff2` `.ttf`
   `.otf` `.pdf` `.map` `.json` `.txt`.
-- **Two exact, named infrastructure files**: `mira-web/public/sw.js` and
-  `mira-web/public/posthog-init.js`.
 
-Unknown suffixes and extensionless names fail closed (guarded). The
+There is no named exact-path exemption for any executable file. An earlier
+draft of this classifier carved out `mira-web/public/sw.js` and
+`mira-web/public/posthog-init.js` as "exempt infrastructure" — that was
+itself a live self-service bypass (Codex adversarial review of `1ecb9baef`,
+finding #1): both are executable JavaScript served to every visitor,
+indistinguishable in kind from any other guarded `.js` file. They are now
+guarded like everything else under `mira-web/public/` that isn't a passive
+asset. Unknown suffixes and extensionless names fail closed (guarded). The
 classifier applies to additions, modifications, deletions, and both rename
 directions — a rename that lands a passive asset inside `mira-web/public/`
 under a guarded name, or moves a guarded file to safety, is still evaluated
@@ -162,9 +167,24 @@ itself a control-plane change, since it is where a future exception author
 reads the exact three-field shape the guard requires. Editing any of these
 files requires the same audited exception. The workflow reruns on head
 changes, body edits, label changes, draft-to-ready transitions, reopen, and
-open. It posts the uniquely named status to the PR head SHA. After bootstrap,
-that status is a strict required check on protected `main`, including for
-administrators; direct pushes cannot bypass it.
+open. It posts the uniquely named `Legacy UI Lifecycle Guard` status to the
+PR head SHA.
+
+**Branch-protection binding is a separate, not-yet-performed step — this
+governance implementation does not have authority to modify branch
+protection and has not done so.** Posting a commit status makes the check
+*visible*; it only *blocks a merge* once a repository administrator adds it
+to `main`'s branch protection rule. This charter documents that intended
+future binding, not a claim that it already exists. When an administrator
+performs that step: bind via `required_status_checks.checks` (the array
+form, not the deprecated bare `contexts` list), specifying **both**
+`context: "Legacy UI Lifecycle Guard"` **and** the pinned `app_id` of the
+GitHub Actions app that posts it. Binding by context name alone is
+insufficient — any actor or app with `statuses: write` on the repository can
+post a status under the same context string, so pinning `app_id` is what
+actually prevents a same-named status from a different source satisfying the
+requirement. `enforce_admins: true` is required for administrators to be
+bound by it as well; without it, admins can bypass the check entirely.
 
 **Pull-files pagination truncation defense.** GitHub's
 `pulls/{n}/files` endpoint silently stops paginating past roughly 3000 changed
