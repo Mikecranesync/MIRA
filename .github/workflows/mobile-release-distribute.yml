@@ -93,6 +93,8 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          # gradlew was committed without the executable bit; belt and braces.
+          chmod +x ./gradlew
           doppler run --project factorylm --config prd -- ./gradlew --no-daemon assembleRelease
 
       # Fail loudly if the APK came out unsigned. build.gradle deliberately
@@ -113,6 +115,30 @@ jobs:
       # The signed APK is what testers receive anyway; keeping it as a run
       # artifact lets a release be installed on an emulator/device for proof
       # even when Firebase distribution is off. The keystore is never uploaded.
+      # Play accepts only an App Bundle. Same keystore, same run — the APK is for
+      # testers/emulators, the AAB is what gets uploaded to Play Console.
+      - name: Build signed release AAB (Play)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        working-directory: mira-mobile/android
+        run: |
+          set -euo pipefail
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
+          doppler run --project factorylm --config prd -- ./gradlew --no-daemon bundleRelease
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify -verbose -certs "$AAB" | tee /tmp/aab-signing.txt | tail -3
+          grep -q "jar verified" /tmp/aab-signing.txt
+          grep -q "CN=FactoryLM" /tmp/aab-signing.txt
+          echo "AAB signed OK"
+
+      - name: Upload signed AAB artifact (upload this to Play Console → Internal testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab-${{ github.sha }}
+          path: mira-mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
