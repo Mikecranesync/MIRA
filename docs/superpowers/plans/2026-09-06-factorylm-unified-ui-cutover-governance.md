@@ -367,7 +367,9 @@ access, and keeps intermediate results in variables.
 
 Fan out read-only mapping agents across public, Hub, mobile, shared core, and
 capability closure. A cross-check agent rejects invented paths/symbols; a final
-agent emits proposed work packets. Return structured results; do not edit.
+agent emits proposed work packets. Validate that `args` is present and includes
+`mission`, `issue`, and a full 40-character `baseSha` before dispatch. Return
+structured results; do not edit.
 
 - [ ] **Step 3: Implement `/flm-ui-slice`**
 
@@ -375,14 +377,19 @@ Validate required arguments, run one read-only preflight agent, then one writer
 agent. The writer creates/enters an isolated worktree at `baseSha`, touches only
 `allowedPaths`, follows TDD, commits, pushes, and opens a draft PR without
 merging. After it returns, fan out read-only contract, safety, and test
-reviewers and synthesize their verdict for the exact head.
+reviewers and synthesize their verdict for the exact head. Require the writer
+to return structured JSON containing a full 40-character `headSha`; validate it
+in the workflow before review dispatch and include that exact value in every
+review and synthesis prompt.
 
 - [ ] **Step 4: Implement `/flm-ui-verify`**
 
 Fan out read-only reviewers for interaction parity, safety/identity/evidence,
 tenant authorization, mobile/accessibility, transport honesty, performance/
 licenses, and rollback. Synthesize `GREEN`, `PARTIAL`, or `BLOCKED`, naming the
-exact SHA and every unverified claim.
+exact SHA and every unverified claim. Validate that `args` is present and
+includes `mission`, `issue`, and a full 40-character `headSha` before dispatch;
+all reviewers receive that immutable SHA verbatim.
 
 - [ ] **Step 5: Validate saved scripts**
 

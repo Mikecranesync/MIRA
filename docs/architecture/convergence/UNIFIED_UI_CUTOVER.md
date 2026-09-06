@@ -190,7 +190,8 @@ the workflow runtime has no mid-run human input.
 
 Read-only fan-out across public, Hub, mobile, shared core, and capability
 closure. It cross-checks path ownership and emits proposed GitHub work packets.
-It never edits, claims, or opens PRs.
+It never edits, claims, or opens PRs. It fails before dispatch unless structured
+arguments include `mission`, `issue`, and a full 40-character `baseSha`.
 
 Example input:
 
@@ -204,7 +205,10 @@ Runs one writer for one approved packet, followed by parallel read-only
 contract, safety, and test reviews. Required structured input includes
 `mission`, `issue`, `baseSha`, `lane`, `branch`, `allowedPaths`, and
 `verificationCommand`. The writer must use an isolated worktree and may open a
-draft PR; it may not merge or deploy.
+draft PR; it may not merge or deploy. The writer must return structured output
+containing the full committed `headSha`. The workflow validates that SHA before
+passing it verbatim to every reviewer; missing or malformed output stops the
+workflow.
 
 ### `/flm-ui-verify`
 
@@ -212,6 +216,8 @@ Read-only exact-SHA fan-out across interaction parity, industrial safety,
 tenant/auth boundaries, accessibility/mobile behavior, transport honesty,
 licenses/performance, and rollback. One synthesis agent deduplicates findings
 and returns `GREEN`, `PARTIAL`, or `BLOCKED` for the reviewed SHA.
+It fails before dispatch unless structured arguments include `mission`,
+`issue`, and the full 40-character `headSha` to review.
 
 Use Claude Code cross-session messaging to pass landed SHAs and decisions to
 sessions on other machines. Messaging supplements GitHub; it does not replace
@@ -298,4 +304,3 @@ to delete.
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 - [Claude Code cross-session messaging](https://code.claude.com/docs/en/cross-session-messaging)
 - [Claude Code worktrees](https://code.claude.com/docs/en/worktrees)
-
