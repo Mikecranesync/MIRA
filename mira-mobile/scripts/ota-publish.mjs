@@ -80,11 +80,19 @@ rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 const zipTmp = join(staging, "bundle.zip");
 console.log("packaging…");
-sh("powershell", [
-  "-NoProfile",
-  "-Command",
-  `Compress-Archive -Path '${join(root, "dist")}\\*' -DestinationPath '${zipTmp}' -Force`,
-]);
+// Portable: the publish runs from a Windows laptop (PowerShell) AND from the
+// ota-release.yml Linux runner (Info-ZIP `zip`). Both are invoked from INSIDE
+// dist/ so the archive root is index.html, never dist/index.html. `-X` drops
+// platform extra fields so identical dist bytes yield identical zips.
+if (process.platform === "win32") {
+  sh("powershell", [
+    "-NoProfile",
+    "-Command",
+    `Compress-Archive -Path '${join(root, "dist")}\\*' -DestinationPath '${zipTmp}' -Force`,
+  ]);
+} else {
+  sh("zip", ["-r", "-X", "-q", zipTmp, "."], { cwd: join(root, "dist") });
+}
 
 const zipBytes = readFileSync(zipTmp);
 const sha256 = createHash("sha256").update(zipBytes).digest("hex");
