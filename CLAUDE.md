@@ -131,6 +131,7 @@ See local CLAUDE.md in each module for deep context.
 | mira-pipeline-saas | 127.0.0.1:9099 | mira-net |
 | mira-bot-telegram | — | mira-net |
 | mira-bot-slack | — | mira-net |
+| factorylm-foreman | — | mira-net |
 | mira-ask-saas | 100.68.120.99:8011 | mira-net |
 | mira-tika-saas | 127.0.0.1:9998 | mira-net |
 | mira-relay | 127.0.0.1:8765 | mira-net |

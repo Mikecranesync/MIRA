@@ -206,7 +206,7 @@ class LocalPipeline:
         Returns {"status": "unknown", "citations": []} if not yet available.
         """
         try:
-            return self._engine._supervisor.rag.kb_status
+            return self._engine.rag.kb_status
         except AttributeError:
             return {"status": "unknown", "citations": []}
 
@@ -215,9 +215,17 @@ class LocalPipeline:
 
         Used by cp_citation_groundedness to verify numeric specs are grounded
         in retrieved documentation rather than hallucinated from training data.
+
+        NOTE (2026-09-05): both accessors read `self._engine.rag`, not
+        `self._engine._supervisor.rag`. `_engine` IS the Supervisor — `__init__`
+        assigns `Supervisor(...)` to it — so the old `._supervisor` hop raised
+        `AttributeError` on every call and was swallowed by the `except` below.
+        Both accessors therefore returned empty forever, which made
+        `cp_citation_groundedness` **fail open**: it saw an empty chunk list on
+        every scenario, so it had nothing to contradict and could not fail.
         """
         try:
-            return list(self._engine._supervisor.rag._last_sources)
+            return list(self._engine.rag._last_sources)
         except AttributeError:
             return []
 

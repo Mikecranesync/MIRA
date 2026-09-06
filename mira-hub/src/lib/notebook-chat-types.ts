@@ -143,6 +143,36 @@ export type NotebookEvidenceFrame = {
   /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
    *  turn was asked with. Additive, same discipline as `machineEvidence`. */
   visualEvidence?: VisualObservationEntry;
+  /** 086 §3: the client asked about a DIFFERENT asset than this notebook's
+   *  confirmed binding, so the identity was treated as unconfirmed for this
+   *  turn (no machine evidence, no asset snapshot, no machine-specific facts).
+   *  Additive; older clients ignore it.
+   *
+   *  CONTRACT EXCEPTION — the marker-only frame. On a disputed turn the route
+   *  ALSO emits `{kind:"evidence", identityDisputed:true}` as the FIRST frame,
+   *  with NO `basis`/`label` (route.ts `IDENTITY_DISPUTE_FRAME`), so that a
+   *  Stop mid-answer has already seen the dispute and a live safety stop /
+   *  abstention projects the same basis (none) as its persisted row. Readers
+   *  must therefore treat `basis`/`label` as absent on an evidence frame that
+   *  carries `identityDisputed` and no `basis`; the answered path's final,
+   *  full evidence frame still follows. This is the only case in which more
+   *  than one evidence frame is emitted per turn. */
+  identityDisputed?: boolean;
+};
+
+/**
+ * Persisted record that a turn's asset identity was DISPUTED (086 §3): rides
+ * inside the turn's `evidence[]` next to citations, discriminated by `kind`
+ * like MachineEvidenceEntry / SafetyNoticeEntry, so reload can say WHY the
+ * asset snapshot is absent and a client cannot erase attribution silently.
+ */
+export type IdentityDisputeEntry = {
+  kind: "identity_dispute";
+  /** What the client claimed to be looking at (a request, never trusted). */
+  requestedAssetId: string;
+  /** The notebook's server-resolved, confirmed binding at the time. */
+  boundAssetId: string;
+  boundUnsPath: string;
 };
 
 /**

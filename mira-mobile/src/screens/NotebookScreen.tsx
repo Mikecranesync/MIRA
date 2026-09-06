@@ -56,9 +56,10 @@ import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { SensorSheet, type RememberedLook, type SensorAskEvidence } from "./SensorSheet";
 import { ChatV2 } from "./ChatV2";
 import { SafetyNotice } from "./SafetyNotice";
+import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
 import { useChatV2Enabled } from "../lib/chat-ui-pref";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
@@ -195,6 +196,8 @@ export function NotebookScreen({
   // React commits `deleting` and disables the button.
   const deleteGuard = useRef(createSubmitGuard());
   const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
+  // Overflow sheet: everything the one-row app bar no longer shows inline.
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
   const chatV2 = useChatV2Enabled(chatV2Available);
@@ -216,9 +219,17 @@ export function NotebookScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // `detail` belongs in these deps. Without it, opening a machine that already
+  // has history landed on the OLDEST turn: on mount the component is still in
+  // its `loading` branch so `scrollRef.current` is null and this is a no-op,
+  // and on the render where the thread finally appears none of the other deps
+  // changed, so it never ran again. Measured at 412x915: scrollTop 0 of 4635.
+  // ChatV2 sticks to the bottom, so this was also a surface-parity gap — and a
+  // safety hard-stop is normally the LAST turn, i.e. exactly the thing that was
+  // being hidden below the fold.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [liveTurns, busy, panel, pending]);
+  }, [detail, liveTurns, busy, panel, pending]);
 
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
@@ -386,51 +397,91 @@ export function NotebookScreen({
 
   return (
     <>
-      <div className="content" style={{ paddingBottom: 8, flex: "none" }}>
-        <button className="btn-link" onClick={onExit}>
-          ← Notebooks
+      {/* ONE-ROW HEADER (chrome pass). This used to be four stacked rows —
+          back link, title + two text buttons, a metadata line, and a 3-tab
+          segmented control — about 240 px of a 915 px screen before the first
+          message. A quarter of the viewport spent saying "you are in an app"
+          rather than showing the conversation.
+
+          Now: back · title · Sensor · overflow. Everything that was a tab
+          (Sources, Studio) or a rare action (Delete) moved into the overflow
+          sheet; the machine metadata moved to where it is actually useful —
+          the empty state, before any turns exist. Sensor keeps its place
+          because LOOK/READ/REPLAY is a working instrument for a technician,
+          not chrome, and it keeps its `aria-label` so the existing sensor
+          suites still find it. */}
+      <div className="nb-appbar">
+        <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
+          ‹
         </button>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <h3 style={{ margin: "4px 0 0", flex: 1, minWidth: 0 }}>{notebook.displayName}</h3>
-          {/* Compact Sensor door in the existing header row — no new chrome.
-              The same instrument is reachable from the Add-sources sheet. */}
-          <button
-            className="btn-link"
-            aria-label="Open Sensor"
-            onClick={() => setSensorOpen(true)}
-            style={{ flex: "none" }}
-          >
-            Sensor
-          </button>
-          <button
-            className="btn-link"
-            aria-label="Delete notebook"
-            onClick={() => {
-              setDeleteError(null);
-              setConfirmDelete(true);
-            }}
-            style={{ color: "var(--fl-danger, #dc2626)", flex: "none" }}
-          >
-            Delete
-          </button>
-        </div>
-        <div className="meta">
-          {sources.length} source{sources.length === 1 ? "" : "s"}
-          {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
-          {notebook.model ? ` ${notebook.model}` : ""}
-        </div>
-        <div className="panel-tabs">
-          {(["sources", "chat", "studio"] as const).map((p) => (
-            <button
-              key={p}
-              className={`panel-tab ${p === panel ? "panel-tab-active" : ""}`}
-              onClick={() => setPanel(p)}
-            >
-              {p === "sources" ? `Sources (${sources.length})` : p === "chat" ? "Chat" : "Studio"}
-            </button>
-          ))}
-        </div>
+        <h3 className="nb-appbar-title">{notebook.displayName}</h3>
+        <button
+          className="nb-appbar-icon"
+          aria-label="Open Sensor"
+          onClick={() => setSensorOpen(true)}
+        >
+          ⌕
+        </button>
+        <button
+          className="nb-appbar-icon"
+          aria-label="More options"
+          data-testid="nb-overflow"
+          onClick={() => setOverflowOpen(true)}
+        >
+          ⋯
+        </button>
       </div>
+
+      {/* Leaving Chat is now a deliberate trip, so the way back is explicit.
+          Chat is the default and the 95% case, and it stays at one row. */}
+      {panel !== "chat" && (
+        <button className="nb-panel-back" onClick={() => setPanel("chat")}>
+          ‹ Back to chat
+        </button>
+      )}
+
+      {overflowOpen && (
+        <Sheet label="Notebook options" onClose={() => setOverflowOpen(false)}>
+          <div className="v2-attach-menu" data-testid="nb-overflow-menu">
+            <h3>{notebook.displayName}</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {sources.length} source{sources.length === 1 ? "" : "s"}
+              {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
+              {notebook.model ? ` ${notebook.model}` : ""}
+            </div>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("sources");
+              }}
+            >
+              📄 Sources ({sources.length})
+            </button>
+            <button
+              className="v2-attach-item"
+              onClick={() => {
+                setOverflowOpen(false);
+                setPanel("studio");
+              }}
+            >
+              ✨ Studio
+            </button>
+            <button
+              className="v2-attach-item"
+              aria-label="Delete notebook"
+              style={{ color: "var(--fl-danger, #dc2626)" }}
+              onClick={() => {
+                setOverflowOpen(false);
+                setDeleteError(null);
+                setConfirmDelete(true);
+              }}
+            >
+              🗑 Delete notebook
+            </button>
+          </div>
+        </Sheet>
+      )}
 
       {confirmDelete && (
         <>
@@ -698,6 +749,7 @@ export function NotebookScreen({
                       diverge if that contract ever changes. */}
                   {safety && <SafetyNotice />}
                   <AnswerMarkdown text={t.answerText!} citations={[]} />
+                  {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                   <div className="meta answer-stopped">Stopped</div>
                 </div>
               ) : (
@@ -709,6 +761,10 @@ export function NotebookScreen({
                   citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
+                {/* 086 §3: read from the persisted row, like `basis` and the
+                    safety marker — never inferred. Not success chrome, so it
+                    is not gated on `safety`. */}
+                {hasIdentityDispute(t.evidence) && <IdentityDisputeNotice />}
                 {/* 084 (#3387): the basis survives reload because it is READ
                     from the persisted row — never inferred from zero
                     citations. Same rendering rule as the live turn below. */}
@@ -781,6 +837,7 @@ export function NotebookScreen({
                     onCitation={setViewCitation}
                   />
                 )}
+                {t.a.identityDisputed && <IdentityDisputeNotice />}
                 {/* Follow-up chips (CONV-4): server-derived, deterministic,
                     last turn only — tapping one sends it as the next turn.
                     Never on a safety turn: "ask me more" is success chrome. */}
@@ -840,6 +897,10 @@ export function NotebookScreen({
                     (wire order: content* → safety → status), so the in-flight
                     turn must be able to show the banner too. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
+                {/* 086 §3: the dispute marker is the FIRST frame on a disputed
+                    wire — it must show while the answer is still streaming,
+                    exactly as ChatV2's pendingMessages does. */}
+                {pending.a.identityDisputed && <IdentityDisputeNotice />}
                 {pending.a.answer ? (
                   <AnswerMarkdown text={pending.a.answer} citations={[]} />
                 ) : (

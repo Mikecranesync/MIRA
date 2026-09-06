@@ -19,6 +19,20 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 
 Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN` in Doppler `factorylm/prd` authenticate to the `FactoryLM` workspace (`T0AK2CU16T1`) as bot user `U0AM3EZBSNQ` / bot id `B0ALXRE4CDU`. `SLACK_EXPECTED_BOT_USER_ID=U0AM3EZBSNQ` is set in prod for drift detection. `SLACK_ALLOWED_CHANNELS` is currently unset; do not set it to only `C0AKBEL8C4T` while DM testing is required, because the Slack adapter currently applies the allowlist before distinguishing DMs from shared channels.
 
+FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **separate Slack bot identity**. Do not reuse product `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN`.
+
+| Var | Used By |
+|-----|---------|
+| `FOREMAN_BOT_SLACK_TOKEN` | factorylm-foreman — Slack bot token (`xoxb-…`). Doppler name; code also accepts `FOREMAN_SLACK_BOT_TOKEN`. |
+| `FOREMAN_SLACK_APP_TOKEN` | factorylm-foreman — Slack app-level token (`xapp-…`) for Socket Mode. |
+| `CURSOR_API_KEY` | factorylm-foreman — Cursor SDK key (`crsr_…`) for `Agent.create`. Code also accepts `CURSOR_API`. |
+| `FLEET_GATEWAY_MCP_URL` | factorylm-foreman — HTTPS Fleet Gateway MCP endpoint passed to `HttpMcpServerConfig`. |
+| `FLEET_GATEWAY_TOKEN` | factorylm-foreman — Bearer token for Fleet Gateway MCP. Code also accepts `FLEET_GATEWAY_BEARER`. |
+| `FOREMAN_GROK_MODEL` | factorylm-foreman — Cursor model id. Default `grok-4.6` (live-proven; not `cursor-grok-4.6-medium`). |
+| `FOREMAN_ALLOWED_CHANNEL` | factorylm-foreman — Slack channel ID allowlist. Default `C0BTXHXBKML` (`#factorylm-foreman`). |
+| `FOREMAN_REPO_URL` | factorylm-foreman — repo URL stamped on `CloudRepository`. Default `https://github.com/Mikecranesync/MIRA`. |
+| `FOREMAN_REPO_BRANCH` | factorylm-foreman — `CloudRepository.starting_ref`. Default `main`. |
+
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: openai/gpt-oss-120b |

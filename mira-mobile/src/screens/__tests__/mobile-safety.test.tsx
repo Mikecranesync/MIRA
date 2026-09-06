@@ -151,6 +151,29 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
     expect(screen.queryByTestId("visual-observation-card")).toBeNull();
   });
 
+  it("FLEET-003a: a MALFORMED persisted marker still renders as a safety stop", async () => {
+    // `kind` says safety_notice; `trigger` is the wrong type. The identity must
+    // survive — and the ordinary-answer chrome must still be suppressed, or the
+    // turn reads as a graded answer wearing a banner.
+    getNotebookDetail.mockResolvedValue(
+      detail([
+        {
+          id: "t-malformed",
+          question: "can I open it live?",
+          answerStatus: "answered",
+          answerText: "Do not work on this equipment while energized.",
+          evidence: [{ kind: "safety_notice", trigger: null }, CITATION],
+          basis: "general_reasoning",
+        },
+      ]),
+    );
+    mount(available);
+
+    expect(await screen.findByTestId("safety-notice")).toBeTruthy();
+    expect(screen.queryByText(/GS10 manual/)).toBeNull();
+    expect(screen.queryByText(/General guidance/i)).toBeNull();
+  });
+
   it("an ordinary grounded answer is UNAFFECTED (no false safety banner)", async () => {
     getNotebookDetail.mockResolvedValue(detail([PERSISTED_NORMAL]));
     mount(available);

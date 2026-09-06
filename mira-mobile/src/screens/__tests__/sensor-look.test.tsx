@@ -254,6 +254,10 @@ describe("Sensor LOOK (S2)", () => {
       ],
     });
     mount();
+    // Sources moved out of the header tab bar into the overflow sheet when the
+    // notebook header collapsed to one row (chrome pass). Same destination,
+    // one more tap — the assertion below is unchanged.
+    fireEvent.click(await screen.findByTestId("nb-overflow"));
     fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
     const group = await screen.findByTestId("notebook-photos");
     expect(group.textContent).toContain("Photos (1)");
@@ -270,6 +274,10 @@ describe("Sensor LOOK (S2)", () => {
 
   it("no linked photos → no Photos group at all (never an empty 'Photos (0)')", async () => {
     mount();
+    // Sources moved out of the header tab bar into the overflow sheet when the
+    // notebook header collapsed to one row (chrome pass). Same destination,
+    // one more tap — the assertion below is unchanged.
+    fireEvent.click(await screen.findByTestId("nb-overflow"));
     fireEvent.click(await screen.findByRole("button", { name: /Sources \(0\)/ }));
     expect(await screen.findByRole("button", { name: "+ Add sources" })).toBeTruthy();
     expect(screen.queryByTestId("notebook-photos")).toBeNull();

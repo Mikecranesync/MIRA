@@ -24,7 +24,7 @@ vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn(async () => ({ tenantId: T
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
-  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  resolveBoundAsset: vi.fn(async (): Promise<Record<string, unknown>> => ({ state: "unbound" })),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -102,6 +102,12 @@ function providerStream(text: string) {
 }
 
 beforeEach(() => {
+  // 086 / private conversations §3: machine history is served only for the
+  // notebook's server-resolved, technician-CONFIRMED binding that matches the
+  // request. These replay tests exercise the machine path, so their notebook
+  // is bound and confirmed to ASSET; an unbound/unconfirmed notebook is now
+  // covered by turn-ownership.test.ts (no fetch, no machine evidence).
+  nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: "2026-08-27T23:00:00.000Z" });
   vi.clearAllMocks();
   dbMock.handlers = [];
   dbMock.calls = [];
