@@ -1,13 +1,14 @@
-# Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 Codex remediation (findings #1-5, #15-18 fixed; local, not pushed)
+# Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 Codex remediation (14/18 findings fixed, 4 deferred; local, not pushed)
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination
 [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync/MIRA/issues/3626). Same branch as
-below: `codex/factorylm-unified-ui-cutover-001`. **No PR opened yet.**
+below: `codex/factorylm-unified-ui-cutover-001`, now at local HEAD `2e7bcbf1d`. **No PR opened
+yet.**
 
 An independent Codex adversarial review of exact HEAD `1ecb9baef` (the entry below this one)
 found 18 numbered blocking defects across security/guard (1-5), dynamic-workflow (6-14), and
-registry/docs (15-18) categories. This entry records the security+workflow-structure+docs
-remediation landed so far, in three task-sized commits on top of `1ecb9baef`:
+registry/docs (15-18) categories. This entry records the remediation landed so far, in four
+task-sized commits on top of `1ecb9baef`:
 
 - `9bf47dcaa` — **fix(ci):** finding #1 (removed the `mira-web/public/sw.js` +
   `posthog-init.js` exact-path exemption entirely — both are executable JS and are now guarded
@@ -38,12 +39,49 @@ remediation landed so far, in three task-sized commits on top of `1ecb9baef`:
   a different session's active claim) to describe only what is merged on `main` today; corrected
   the promotion-state semantics so wiring CI alone (with zero consumers) does not read as
   advancing past `implemented_unconnected` — a real consumer must exist first.
+- `2e7bcbf1d` — **feat(agents):** findings #6, #8, #10, #12, #13, #14 (+ the verdict-capping
+  half of #9) across the three `.claude/workflows/*.js` files: hardcoded `mission`/`issue` to
+  the exact literal values (finding #6); `flm-ui-slice.js`'s `lane` restricted to the 5 canonical
+  values, `branch` validated against a safe git branch-name shape, and `allowedPaths` validated
+  per-item against absolute/traversal/backslash/root-wide-glob/`.git`/control-plane/guarded-legacy
+  paths plus a lane-scoped bounded-adapter-root check (finding #8); writer schema's
+  `prUrl`/`worktreePath`/`filesChanged`/`testsRun` made required plus a new required
+  `cleanupOutcome` field and explicit worktree-cleanup-ownership prompt instructions (finding #12);
+  every reviewer/dimension result now must echo `reviewedSha`, checked by workflow code against
+  the real `headSha` — missing-or-mismatched always blocks, and PASS/GREEN additionally requires
+  empty findings/unverifiedClaims (finding #13 + the verdict-capping half of #9);
+  `flm-ui-map.js` claim-drafting now requires all 5 area agents present AND a CLEAN cross-check
+  AND both invented arrays empty, a self-contradictory CLEAN-with-invented-items report is treated
+  as FLAGGED (finding #9/#13); `flm-ui-verify.js` gained an "Identity preflight" phase (verifies a
+  supplied `prUrl`'s head commit matches `headSha` exactly, else returns an explicit
+  `shaProvenanceNote` about the unverified-SHA-provenance limitation) and the previously-missing
+  synthesis agent, whose verdict is MECHANICALLY CLAMPED to a plain-JS ceiling computed from the
+  raw dimension verdicts (finding #10). Finding #14: replaced the plan's broken
+  `bun build --target=bun --format=esm` validation recipe with the correct two-part one (literal
+  meta/static-contract + AsyncFunction-body parse checks, then `/reload-skills` + autocomplete
+  confirmation — explicitly not claimed to have run interactively in this non-interactive
+  session). Validated with throwaway Node harnesses (not committed): 12 argument-validation cases
+  for `flm-ui-slice.js` and 5 verdict-computation cases for `flm-ui-verify.js` (including
+  confirming a lying synthesis agent gets clamped), all passing; all three files re-verified to
+  parse as an `AsyncFunction` body (the runtime's actual execution shape) after every edit.
 
-Findings #6-14 (the three `.claude/workflows/*.js` dynamic-workflow files: mission/issue/lane
-hardcoding, canonical claim-URL validation, `allowedPaths`/branch validation, independent
-head-proof/recheck agents, a genuine synthesis agent in `flm-ui-verify`, non-code-writing
-"reporter" agents, worktree-cleanup instructions, and contradiction-handling fixes) are **NOT YET
-remediated** as of this entry — tracked as the next slice, not silently dropped.
+**Deferred, NOT silently dropped — the remaining 4 of 18 findings:**
+- **#7** (claim-URL canonicalization + preflight echo-identity cross-validation in
+  `flm-ui-slice.js`): the preflight agent's `matchedClaimUrl`/`earliestActiveClaimUrl` and echoed
+  `mission`/`issue`/`lane`/`baseSha`/`allowedPaths` are not yet cross-validated by workflow code
+  against the invocation's own values, and `claimUrl` is not yet restricted to a canonical
+  `github.com/Mikecranesync/MIRA` issue-3626/PR URL shape.
+- **#9 (remaining, non-verdict-cap portion)** and **#11**: the independent read-only head-proof
+  agent between Implement and Review in `flm-ui-slice.js` (repo/branch/base/head/draft-state/
+  changed-paths verification, run once before Review and again before Synthesize) and the
+  non-code-writing "reporter" agent posting the verdict as a durable PR/issue comment in both
+  `flm-ui-slice.js` and `flm-ui-verify.js` are not yet built.
+
+These four require either a companion charter/rule doc update in the same commit (finding #11's
+reporter agent changes the read-only contract) or non-trivial new agent phases — held for the next
+slice per the reviewing advisor's guidance to spend the verification-capable budget on findings
+1-4 and 6/8/10/12/13/14 first, since 6-14 in general land in files this session can only
+statically/behaviorally validate, not run through the guard's 145-test pytest suite.
 
 Corrections to the entry below: its "draft PR
 [#3628](https://github.com/Mikecranesync/MIRA/issues/3628)" link was wrong — a PR is not an
