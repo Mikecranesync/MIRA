@@ -6,7 +6,8 @@
   "packageManager": "bun@1.4.0",
   "exports": {
     ".": "./src/index.ts",
-    "./shell.css": "./src/shell.css"
+    "./shell.css": "./src/shell.css",
+    "./conversation.css": "./src/conversation.css"
   },
   "dependencies": {
     "@factorylm/interaction": "file:../factorylm-interaction",

@@ -97,7 +97,7 @@ function hero(): string {
     <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names — so generic AI guesses. We structure all of it into a Maintenance Intelligence Namespace — the AI-ready infrastructure <strong>MIRA</strong> runs on — then MIRA answers technicians with citations.</p>
     <div class="fl-hero-cta">
       ${btnPrimary("Book $500 Assessment", { href: "/buy", cta: "hero-assessment" })}
-      ${btnGhost("Try a sample MIRA answer", { href: "https://app.factorylm.com/quickstart", cta: "hero-demo" })}
+      ${btnGhost("See a sample answer ↓", { href: "#fl-compare-h", cta: "hero-demo" })}
     </div>
     <p class="fl-hero-cta-foot">Most plants start with the $500 on-site assessment — you leave with a written gap report and a namespace blueprint. Already a customer? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
     <div class="fl-hero-screenshot" aria-hidden="true">
