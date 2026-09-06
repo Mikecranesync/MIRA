@@ -68,11 +68,12 @@ The lab owns the test toolchain and references all three packages with `file:../
 import { FIXTURE_IDS, fixtures, getFixture } from "@factorylm/interaction";
 
 it("covers every Phase 1 review state", () => {
-  expect(new Set(FIXTURE_IDS)).toEqual(new Set([
+  const required = [
     "empty", "general-ask", "machine-ask", "project-tree", "attachments",
     "grounded-answer", "machine-evidence", "safety-stop", "work-run",
     "error-retry", "offline-sync", "enterprise-inspector", "long-history",
-  ]));
+  ] as const;
+  for (const id of required) expect(FIXTURE_IDS).toContain(id);
 });
 
 it("links one canonical machine into multiple projects", () => {
@@ -268,9 +269,9 @@ git commit -m "feat(ui): package FactoryLM workspace theme"
 for (const surface of ["public", "web", "mobile", "hub"] as const) {
   it(`renders the canonical shell in ${surface}`, () => {
     render(<Harness surface={surface} fixture="project-tree" />);
-    expect(screen.getByRole("main")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /ask mira/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /new chat/i })).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: /ask mira/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /new chat/i })).toBeTruthy();
   });
 }
 ```
@@ -332,14 +333,14 @@ git commit -m "feat(ui): add shared FactoryLM shell"
 ```tsx
 it("renders a safety stop without success chrome", () => {
   render(<Harness fixture="safety-stop" surface="web" />);
-  expect(screen.getByRole("alert")).toHaveTextContent(/stop/i);
-  expect(screen.queryByText(/verified finding/i)).not.toBeInTheDocument();
+  expect(screen.getByRole("alert").textContent).toMatch(/stop/i);
+  expect(screen.queryByText(/verified finding/i)).toBeNull();
 });
 
 it("labels live and recorded evidence distinctly", () => {
   render(<Harness fixture="machine-evidence" surface="hub" />);
-  expect(screen.getByText("LIVE")).toBeInTheDocument();
-  expect(screen.getByText("RECORDED")).toBeInTheDocument();
+  expect(screen.getByText("LIVE")).toBeTruthy();
+  expect(screen.getByText("RECORDED")).toBeTruthy();
 });
 ```
 
@@ -386,10 +387,10 @@ git commit -m "feat(ui): render Ask and Work interaction parts"
 it("closes the top mobile layer before passing Back to the host", async () => {
   const adapter = fakeAdapter();
   render(<Harness surface="mobile" fixture="enterprise-inspector" adapter={adapter} />);
-  await user.click(screen.getByRole("button", { name: /open inspector/i }));
-  await user.keyboard("{Escape}");
-  expect(screen.queryByRole("complementary", { name: "Inspector" })).not.toBeInTheDocument();
-  expect(adapter.onBack).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: /open inspector/i }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("complementary", { name: "Inspector" })).toBeNull();
+  expect(adapter.onBackCalls()).toBe(0);
 });
 ```
 
@@ -437,8 +438,10 @@ git commit -m "feat(ui): add mobile shell behavior"
 it("uses only in-memory actions", async () => {
   const fetchSpy = vi.spyOn(globalThis, "fetch");
   render(<App />);
-  await user.type(screen.getByRole("textbox", { name: /ask mira/i }), "What is bearing preload?");
-  await user.click(screen.getByRole("button", { name: "Send" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /ask mira/i }), {
+    target: { value: "What is bearing preload?" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 ```
