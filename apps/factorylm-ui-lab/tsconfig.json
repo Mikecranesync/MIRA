@@ -15,12 +15,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals"]
+    "types": ["bun"]
   },
   "include": [
     "src",
-    "vite.config.ts",
-    "vitest.config.ts",
+    "scripts",
     "../../packages/factorylm-interaction/src",
     "../../packages/factorylm-theme/src",
     "../../packages/factorylm-ui/src"

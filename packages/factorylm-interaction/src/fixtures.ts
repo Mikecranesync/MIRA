@@ -9,7 +9,7 @@ import type {
   ShellFixture,
 } from "./types";
 
-export const FIXTURE_IDS = [
+export const FIXTURE_IDS = Object.freeze([
   "empty",
   "general-ask",
   "machine-ask",
@@ -23,7 +23,7 @@ export const FIXTURE_IDS = [
   "offline-sync",
   "enterprise-inspector",
   "long-history",
-] as const;
+] as const);
 
 export type FixtureId = (typeof FIXTURE_IDS)[number];
 
@@ -135,6 +135,11 @@ const PROJECTS: readonly Project[] = [
   },
 ];
 
+function canonicalAssetIdFor(context: ContextSnapshot): string | undefined {
+  if (!context.machineId) return undefined;
+  return MACHINES.find((machine) => machine.id === context.machineId)?.canonicalAssetId;
+}
+
 function thread(
   id: string,
   title: string,
@@ -148,7 +153,7 @@ function thread(
     projectId: context.projectId,
     folderId: context.folderId,
     notebookId: "notebook-launch-2",
-    primaryAssetId: context.machineId,
+    primaryAssetId: canonicalAssetIdFor(context),
     title,
     mode,
     visibility: "demo",
