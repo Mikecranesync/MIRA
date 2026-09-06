@@ -286,11 +286,13 @@ git commit -m "feat(ui): package FactoryLM workspace theme"
 - Create: `packages/factorylm-ui/src/index.ts`
 - Create: `packages/factorylm-ui/src/__tests__/harness.tsx`
 - Create: `packages/factorylm-ui/src/__tests__/shell.test.tsx`
+- Create: `packages/factorylm-ui/bun.lock`
 - Modify: `packages/factorylm-ui/package.json`
 - Create: `apps/factorylm-ui-lab/bunfig.toml`
 - Create: `apps/factorylm-ui-lab/src/test-setup.ts`
 - Modify: `apps/factorylm-ui-lab/package.json`
 - Modify: `apps/factorylm-ui-lab/bun.lock`
+- Modify: `apps/factorylm-ui-lab/scripts/check-dependency-licenses.ts`
 
 **Interfaces:**
 - Consumes: `ShellState`, `ShellAction`, `ProjectNode`, and `SurfaceProfile` from `@factorylm/interaction`.
@@ -338,11 +340,15 @@ export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessPr
 
 The shell tests also click nested project, folder, and machine buttons and assert that the harness-visible active context changes through the real reducer. They verify that the Hub inspector is capability-gated, rather than creating separate public/web/mobile/Hub component trees.
 
+Because Bun resolves the TSX peer imports from the shared package's physical path, the UI package keeps its React/React DOM peer contract but also pins matching test-only development dependencies and its own lockfile. The lab exposes a checked-in `bootstrap:ui` script that runs a frozen, script-disabled install in `packages/factorylm-ui`; every runtime test or license-audit script invokes that bootstrap first. This makes a lab-only frozen install followed by `bun run test:shell` or `bun run verify` reproducible from a clean checkout. Both package manifests declare Bun 1.4.0 as the package manager because earlier Bun releases cannot parse these lockfiles.
+
+On narrow viewports, the shared header exposes an Open navigation control and the drawer exposes a Close navigation control. Project, folder, and machine selection closes the drawer while leaving the desktop sidebar visible through CSS. Task 6 still owns focus trapping, scrim behavior, Escape/hardware-Back ordering, and final overlay accessibility. The Task 4 test must scope the duplicate canonical-machine query to the selected Brake folder so it proves that exact nested link is rendered, then exercise the close/open navigation state through the real reducer.
+
 - [ ] **Step 4: Run shell tests and type-check**
 
-Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx && bunx tsc --noEmit && bun run licenses`
+Run: `cd apps/factorylm-ui-lab && bun install --frozen-lockfile && bun run test:shell && bunx tsc --noEmit && bun run licenses`
 
-Expected: PASS on all four profiles.
+Expected: PASS on all four profiles from a clean checkout with no pre-existing package-local `node_modules`.
 
 - [ ] **Step 5: Commit the shared shell**
 
