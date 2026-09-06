@@ -188,8 +188,8 @@ describe("touch target and motion contract", () => {
   it("keeps 44px targets, a scrim, and reduced-motion rules in the shell stylesheet", () => {
     const css = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
 
-    expect(css).toMatch(/\.fl-shell button\s*\{[^}]*min-block-size:\s*2\.75rem/s);
-    expect(css).toMatch(/\.fl-shell button\s*\{[^}]*min-inline-size:\s*2\.75rem/s);
+    expect(css).toMatch(/\.fl-shell button\s*\{[^}]*min-block-size:\s*max\(2\.75rem,\s*44px\)/s);
+    expect(css).toMatch(/\.fl-shell button\s*\{[^}]*min-inline-size:\s*max\(2\.75rem,\s*44px\)/s);
     expect(css).toMatch(/\.fl-scrim\s*\{[^}]*position:\s*fixed/s);
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);

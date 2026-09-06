@@ -28,8 +28,8 @@
 .fl-scrim[data-layer="source"] { z-index: 2; }
 
 .fl-shell button {
-  min-block-size: 2.75rem;
-  min-inline-size: 2.75rem;
+  min-block-size: max(2.75rem, 44px);
+  min-inline-size: max(2.75rem, 44px);
   border: 1px solid transparent;
   border-radius: var(--fl-workspace-radius-sm);
   background: transparent;
@@ -64,6 +64,7 @@
 .fl-shell__header p { margin: 0; }
 .fl-shell__header h1 { font-size: var(--fl-workspace-fs-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; }
 .fl-shell__eyebrow { color: var(--fl-workspace-header-muted); font-size: var(--fl-workspace-fs-xs); text-transform: uppercase; }
+.fl-shell__header-title { min-inline-size: 0; }
 .fl-shell__navigation-toggle,
 .fl-shell__drawer-close { display: none; }
 .fl-shell__inspector-toggle { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }

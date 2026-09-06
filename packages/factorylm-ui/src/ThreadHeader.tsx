@@ -19,7 +19,7 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
     >
       <HamburgerIcon />
     </button>
-    <div>
+    <div className="fl-shell__header-title">
       <p className="fl-shell__eyebrow">{state.profile.kind}</p>
       <h1>{state.thread.title}</h1>
     </div>
