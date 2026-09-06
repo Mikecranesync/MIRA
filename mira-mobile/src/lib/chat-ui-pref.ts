@@ -48,7 +48,9 @@ export function useChatUiChoice(available: boolean): ChatUiChoice | null {
       live = false;
     };
   }, []);
-  if (!available) return "legacy";
+  // The unified shell is a device-local BETA opt-in that uses the classic
+  // send path; it needs no server capability. v2 still requires `chat_v2`.
+  if (!available) return choice === null ? null : choice === "unified" ? "unified" : "legacy";
   return choice;
 }
 
