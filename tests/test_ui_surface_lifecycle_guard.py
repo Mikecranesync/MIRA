@@ -998,6 +998,25 @@ def test_every_control_pattern_is_guarded_without_exception(control_path):
 # ui-lifecycle-guard.yml` from accidental drift away from the security
 # properties the charter (§3.1) requires. The committed workflow is the
 # runtime authority; these are guard rails, not a reimplementation of it.
+#
+# Codex remediation findings #3-#4 (2026-09-06) hardened this from a single
+# `guard:` job with substring-only assertions to three jobs (`pending` ->
+# `guard` -> `final-status`) with STRUCTURAL (parsed-YAML) assertions:
+#   - trigger restricted to `branches: [main]` PLUS an explicit in-job
+#     runtime assertion of `base.ref == 'main'` (defense in depth — the
+#     trigger filter alone is a coarse net);
+#   - every checkout step, across every job, uses the EXACT expression
+#     `${{ github.event.pull_request.base.sha }}` as `ref`, never overrides
+#     `repository`, and sets `persist-credentials: false` as a real boolean;
+#   - permissions are scoped PER JOB, not once at the workflow level — the
+#     `guard` job (which runs checked-out/base code) carries no
+#     `statuses: write`; only `pending` and `final-status` do;
+#   - `guard` fetches PR metadata (token-bearing) BEFORE checking out any
+#     code or installing any dependency;
+#   - `final-status` runs on a fresh runner (a separate job), `needs` both
+#     `pending` and `guard`, is `if: always()`, and explicitly branches on
+#     `needs.guard.result` rather than trusting an in-job `job.status` that a
+#     multi-job split would otherwise no longer have visibility into.
 # ---------------------------------------------------------------------------
 
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ui-lifecycle-guard.yml"
@@ -1008,14 +1027,23 @@ def _workflow_text() -> str:
     return WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
+def _workflow_doc() -> dict:
+    return yaml.safe_load(_workflow_text())
+
+
 def test_workflow_uses_pull_request_target():
-    text = _workflow_text()
-    doc = yaml.safe_load(text)
+    doc = _workflow_doc()
     assert "pull_request_target" in doc.get(True, doc.get("on", {}))
 
 
+def test_workflow_restricts_trigger_to_main_branch():
+    doc = _workflow_doc()
+    on_block = doc.get(True, doc.get("on", {}))
+    assert on_block["pull_request_target"]["branches"] == ["main"]
+
+
 def test_workflow_lists_every_metadata_sensitive_event():
-    doc = yaml.safe_load(_workflow_text())
+    doc = _workflow_doc()
     on_block = doc.get(True, doc.get("on", {}))
     types = set(on_block["pull_request_target"]["types"])
     required = {
@@ -1030,23 +1058,77 @@ def test_workflow_lists_every_metadata_sensitive_event():
     assert required <= types
 
 
-def test_workflow_checks_out_only_base_sha_with_no_credential_persistence():
-    text = _workflow_text()
-    assert "github.event.pull_request.base.sha" in text
-    assert "persist-credentials: false" in text
+def test_workflow_has_three_jobs_wired_pending_then_guard_then_final_status():
+    doc = _workflow_doc()
+    jobs = doc["jobs"]
+    assert set(jobs) == {"pending", "guard", "final-status"}
+    assert jobs["guard"].get("needs") in ("pending", ["pending"])
+    assert set(
+        jobs["final-status"]["needs"]
+        if isinstance(jobs["final-status"]["needs"], list)
+        else [jobs["final-status"]["needs"]]
+    ) == {"pending", "guard"}
 
 
-def test_workflow_never_references_head_sha_in_checkout():
-    doc = yaml.safe_load(_workflow_text())
+def test_workflow_every_checkout_step_uses_exact_base_sha_and_no_repository_override():
+    doc = _workflow_doc()
+    found_checkout = False
+    for job_name, job in doc["jobs"].items():
+        for step in job.get("steps", []):
+            if step.get("uses", "").startswith("actions/checkout"):
+                found_checkout = True
+                with_block = step.get("with", {}) or {}
+                assert with_block.get("ref") == "${{ github.event.pull_request.base.sha }}", (
+                    f"job {job_name}: checkout ref must be the exact base.sha expression"
+                )
+                assert "repository" not in with_block, (
+                    f"job {job_name}: checkout must not override the repository"
+                )
+                assert with_block.get("persist-credentials") is False, (
+                    f"job {job_name}: persist-credentials must be the boolean false"
+                )
+    assert found_checkout, "expected at least one actions/checkout step across all jobs"
+
+
+def test_workflow_never_references_head_sha_in_any_checkout():
+    doc = _workflow_doc()
+    for job in doc["jobs"].values():
+        for step in job.get("steps", []):
+            if step.get("uses", "").startswith("actions/checkout"):
+                ref = step.get("with", {}).get("ref", "")
+                assert "head" not in ref, f"checkout step must not reference head: {step}"
+
+
+def test_workflow_asserts_base_ref_is_main_at_runtime():
+    doc = _workflow_doc()
+    guard_steps = doc["jobs"]["guard"]["steps"]
+    assertion_steps = [
+        s for s in guard_steps if "base.ref" in s.get("run", "") and "main" in s.get("run", "")
+    ]
+    assert assertion_steps, "expected an explicit runtime assertion that base.ref == main"
+    assert any("exit 1" in s["run"] for s in assertion_steps), (
+        "the base.ref assertion must actually fail the job on mismatch"
+    )
+
+
+def test_workflow_guard_job_fetches_metadata_before_checkout_and_dependency_install():
+    doc = _workflow_doc()
     steps = doc["jobs"]["guard"]["steps"]
-    for step in steps:
-        if step.get("uses", "").startswith("actions/checkout"):
-            ref = step.get("with", {}).get("ref", "")
-            assert "head" not in ref, f"checkout step must not reference head: {step}"
+    metadata_idx = next(
+        i
+        for i, s in enumerate(steps)
+        if "gh api" in s.get("run", "") and "pulls" in s.get("run", "")
+    )
+    checkout_idx = next(
+        i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout")
+    )
+    install_idx = next(i for i, s in enumerate(steps) if "pip install" in s.get("run", ""))
+    assert metadata_idx < checkout_idx, "metadata must be fetched before checking out base code"
+    assert metadata_idx < install_idx, "metadata must be fetched before installing dependencies"
 
 
 def test_workflow_separates_token_bearing_metadata_step_from_evaluation_step():
-    doc = yaml.safe_load(_workflow_text())
+    doc = _workflow_doc()
     steps = doc["jobs"]["guard"]["steps"]
     eval_steps = [s for s in steps if "tools/ui_surface_lifecycle_guard.py" in s.get("run", "")]
     assert len(eval_steps) == 1
@@ -1064,7 +1146,7 @@ def test_workflow_separates_token_bearing_metadata_step_from_evaluation_step():
 def test_workflow_publishes_the_exact_status_context():
     text = _workflow_text()
     assert "Legacy UI Lifecycle Guard" in text
-    doc = yaml.safe_load(text)
+    doc = _workflow_doc()
     assert doc["env"]["STATUS_CONTEXT"] == "Legacy UI Lifecycle Guard"
 
 
@@ -1081,10 +1163,39 @@ def test_workflow_uses_labels_file_never_bare_labels_flag():
     assert "--labels " not in text and not text.rstrip().endswith("--labels")
 
 
-def test_workflow_grants_only_the_minimal_permissions():
-    doc = yaml.safe_load(_workflow_text())
-    perms = doc["permissions"]
-    assert perms == {"contents": "read", "pull-requests": "read", "statuses": "write"}
+def test_workflow_top_level_permissions_are_empty():
+    doc = _workflow_doc()
+    assert doc["permissions"] == {}, "permissions must be scoped per-job, not at workflow level"
+
+
+def test_workflow_pending_job_has_only_statuses_write():
+    doc = _workflow_doc()
+    assert doc["jobs"]["pending"]["permissions"] == {"statuses": "write"}
+
+
+def test_workflow_guard_job_never_grants_statuses_write():
+    doc = _workflow_doc()
+    perms = doc["jobs"]["guard"]["permissions"]
+    assert "statuses" not in perms, (
+        "the job that runs checked-out code must not hold statuses:write"
+    )
+    assert perms.get("contents") == "read"
+
+
+def test_workflow_final_status_job_has_statuses_write():
+    doc = _workflow_doc()
+    assert doc["jobs"]["final-status"]["permissions"] == {"statuses": "write"}
+
+
+def test_workflow_final_status_job_is_always_and_checks_guard_result():
+    doc = _workflow_doc()
+    final_job = doc["jobs"]["final-status"]
+    assert final_job["if"] == "always()"
+    steps_text = " ".join(
+        s.get("run", "") + " " + " ".join(str(v) for v in (s.get("env") or {}).values())
+        for s in final_job.get("steps", [])
+    )
+    assert "needs.guard.result" in steps_text
 
 
 def test_workflow_posts_pending_then_a_final_success_or_failure_status():
