@@ -115,7 +115,7 @@ export interface PlatformAdapter {
 | `attachFile` | file input → canonical files + `workspace_file_links` | native picker → same upload path | resolve `null` | fake |
 | `scanMachine` | resolve `null`; Hub selects a machine by navigation, not by scanning | Capacitor Barcode/QR → the machine's UNS identifier | resolve `null` | fake |
 | `shareArtifact` | browser download / copy link | native share sheet | resolve `"cancelled"` | fake, records the call |
-| `onBack` | return `"pass"` — the browser owns history | hardware Back: close drawer or sheet first, else `"pass"` | `"pass"` | records the call |
+| `onBack` | return `"pass"` — the browser owns history | hardware Back: the shell closes an open drawer or sheet itself; the adapter only sees the pass-through case, so return `"handled"` if the host consumed it, else `"pass"` | `"pass"` | records the call, returns `"handled"` |
 
 **"Not yet built" is literal.** No host adapter exists in the repository today. The only
 implementation is the test fake in `packages/factorylm-ui/src/__tests__/harness.tsx`, and
@@ -125,11 +125,12 @@ of code.
 
 ### Two things a host author will otherwise trip over
 
-**`onBack` is declared but not yet consumed.** At `e90f86735` the only references outside
-the interface are the reducer test and the component test harness — no shipped component
-calls it. Drawer, sheet, and hardware-Back ordering is **Task 6**, which owns the focus
-trap, the scrim, and the Escape/Back precedence. A mobile adapter written today would have
-its `onBack` invoked by nothing.
+**`onBack` is consumed as of Task 6** (`b1ba39392`). `FactoryLMShell` calls `adapter.onBack()`
+only when no layer is open — an open drawer or sheet closes first and the adapter is not
+consulted. Hardware Back reaches the shell as a `factorylm:back` document event (`BACK_EVENT`),
+which is what a Capacitor host dispatches; the adapter's `"handled" | "pass"` return is how the
+host decides whether to let the platform continue. Before Task 6 this method was declared but
+invoked by nothing.
 
 **`scanMachine` returns a machine identifier, not a `Machine`.** The host resolves that
 identifier against canonical asset identity itself. The shell never resolves a machine —

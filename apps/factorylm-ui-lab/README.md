@@ -21,7 +21,9 @@ bun run dev        # Bun's HTML dev server on index.html
 bun run build      # tsc --noEmit, then a static bundle in dist/
 bun run preview    # serve the built dist/index.html
 bun run test       # package + lab unit tests (happy-dom)
-bun run verify     # test + build + dependency-licence audit
+bun run verify     # test + build + bundle budget + dependency-licence audit
+bun run test:e2e   # Playwright: network/console matrix, screenshots, keyboard/mobile
+bun run budget     # gzip every emitted JS asset in dist/ and enforce the 300 KB budget
 ```
 
 `bootstrap:ui` runs before every script. Besides installing the UI package's own
@@ -67,8 +69,35 @@ so `fetch`, XHR, EventSource, and WebSocket are blocked by the browser, not by
 convention. `src/__tests__/app.test.tsx` additionally proves a send performs no
 `fetch` call and that the adapter source contains no transport or storage symbol.
 
+## Browser proof (Task 8)
+
+`playwright.config.ts` starts the **static** preview of `dist/` on `127.0.0.1:4174`
+(run `bun run build` first) and runs two specs in Chromium:
+
+- `e2e/fixture-matrix.spec.ts` — for every surface × theme: the *Ask MIRA* textbox is
+  visible and **no request leaves the loopback and no console error or warning is
+  emitted**; for every one of the 13 scenarios: the main region and Conversation render
+  clean; a mock send performs no network request. Then the screenshot matrix: the
+  grounded answer at 4 surfaces × 2 themes × 5 viewports (390×844, 412×915, 768×1024,
+  1440×900, 1720×1000), plus every scenario at 1440×900 (web) and 412×915 (mobile). PNGs
+  land in `docs/promo-screenshots/2026-09-06_flm-ui-v2-*.png`.
+- `e2e/keyboard-mobile.spec.ts` — at 412×915: Escape and the `factorylm:back` event close
+  the drawer before reaching the host adapter; the drawer traps Tab and returns focus to its
+  opener; a citation opens the modal source viewer as a bottom sheet and Escape returns focus
+  to the citation; Enter sends while Shift+Enter keeps typing; every visible control is at
+  least 44×44 CSS px; the core flow is reachable by Tab alone.
+
+`scripts/check-build-budget.ts` gzips each emitted JS asset with `node:zlib` and fails
+above 300 KB total.
+
+Salvage and component maps: `docs/salvage-record.md` (exact heads and reuse/non-reuse
+decisions for #3514, #3515, #3516, #3587, #3595, #3596) and `docs/component-adapter-map.md`
+(every exported symbol, its consumers, and what each host must inject through
+`PlatformAdapter`).
+
 ## What is not here yet
 
-- Playwright screenshot matrix, accessibility checks, and the compressed-bundle
-  budget (`300 KB`): Task 8.
 - Any connection to the Equipment Notebook, cascade, or persistence: Phase 3.
+- `identity_dispute` as a first-class part (the merged mobile adapter emits it; the shared
+  vocabulary has no member for it, so it would degrade to `unknown`). A Task 1/2 contract
+  change, listed as a prerequisite for connection capability #3.
