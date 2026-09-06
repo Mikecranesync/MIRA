@@ -12,16 +12,22 @@ export const meta = {
 // baseSha (charter §6).
 
 const SHA_RE = /^[0-9a-f]{40}$/
+// Codex remediation finding #6: this workflow exists for exactly ONE mission
+// and ONE coordination issue. Hardcode both rather than trusting a caller-
+// supplied value -- a mismatched or spoofed mission/issue could otherwise
+// route a Map run's read-only findings toward the wrong governance record.
+const MISSION = 'FACTORYLM-UNIFIED-UI-CUTOVER-001'
+const ISSUE = 3626
 
 if (!args || typeof args !== 'object') {
   throw new Error('flm-ui-map requires structured args: { mission, issue, baseSha }')
 }
 const { mission, issue, baseSha } = args
-if (!mission || typeof mission !== 'string') {
-  throw new Error('flm-ui-map requires args.mission, e.g. "FACTORYLM-UNIFIED-UI-CUTOVER-001"')
+if (mission !== MISSION) {
+  throw new Error(`flm-ui-map requires args.mission === ${JSON.stringify(MISSION)} (got: ${JSON.stringify(mission)})`)
 }
-if (issue === undefined || issue === null || issue === '') {
-  throw new Error('flm-ui-map requires args.issue (the mission coordination issue number)')
+if (issue !== ISSUE) {
+  throw new Error(`flm-ui-map requires args.issue === ${ISSUE} (got: ${JSON.stringify(issue)})`)
 }
 if (typeof baseSha !== 'string' || !SHA_RE.test(baseSha)) {
   throw new Error('flm-ui-map requires args.baseSha as a full 40-character lowercase hex SHA')
@@ -122,6 +128,23 @@ const crossCheck = await agent(
   { label: 'cross-check', phase: 'Cross-check', schema: CROSS_CHECK_SCHEMA }
 )
 
+// Codex remediation findings #9/#13: drafting claims requires ALL of:
+//   - every one of the 5 area agents actually returned a result (a missing
+//     agent always blocks -- never silently drafted around);
+//   - the cross-check agent itself returned a result;
+//   - crossCheck.verdict === 'CLEAN' AND its invented_paths/invented_symbols
+//     arrays are BOTH empty -- a self-contradictory report (CLEAN verdict
+//     with nonempty invented arrays) is treated as FLAGGED, not trusted.
+const allAreasPresent = mappedResults.length === AREAS.length
+const crossCheckClean =
+  !!crossCheck &&
+  crossCheck.verdict === 'CLEAN' &&
+  Array.isArray(crossCheck.invented_paths) &&
+  crossCheck.invented_paths.length === 0 &&
+  Array.isArray(crossCheck.invented_symbols) &&
+  crossCheck.invented_symbols.length === 0
+const readyToDraft = allAreasPresent && crossCheckClean
+
 phase('Draft claims')
 const CLAIM_DRAFT_SCHEMA = {
   type: 'object',
@@ -144,9 +167,8 @@ const CLAIM_DRAFT_SCHEMA = {
   required: ['claims'],
 }
 
-const claimDrafts =
-  crossCheck && crossCheck.verdict === 'CLEAN'
-    ? await agent(
+const claimDrafts = readyToDraft
+  ? await agent(
         `Using ONLY the verified mapping report below (already fact-checked — do not add anything new) for ` +
           `${mission}, base SHA ${baseSha}, issue #${issue}, draft 1-3 candidate [WORK-CLAIM] blocks per ` +
           `${PROTOCOL} and charter §7 (${CHARTER}). These are PROPOSALS ONLY — never mark Status: ACTIVE, never ` +
@@ -164,8 +186,12 @@ return {
   areas: mappedResults,
   crossCheck,
   claimDrafts: claimDrafts ? claimDrafts.claims : [],
-  note:
-    crossCheck && crossCheck.verdict !== 'CLEAN'
-      ? 'Cross-check FLAGGED invented paths/symbols — claim drafting skipped. Review crossCheck.invented_paths/invented_symbols before trusting this map.'
-      : 'Read-only map complete. No edits made, no claims filed — claimDrafts are proposals only, not authority to edit.',
+  readyToDraft,
+  note: !allAreasPresent
+    ? `Missing area result(s) -- claim drafting skipped (need all ${AREAS.length}, got ${mappedResults.length}).`
+    : !crossCheck
+      ? 'Cross-check agent returned no result -- claim drafting skipped.'
+      : !crossCheckClean
+        ? 'Cross-check FLAGGED (or self-contradictory: CLEAN verdict with nonempty invented arrays) -- claim drafting skipped. Review crossCheck.invented_paths/invented_symbols before trusting this map.'
+        : 'Read-only map complete. No edits made, no claims filed -- claimDrafts are proposals only, not authority to edit.',
 }

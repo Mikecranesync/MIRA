@@ -467,20 +467,38 @@ all reviewers receive that immutable SHA verbatim.
 
 - [ ] **Step 5: Validate saved scripts**
 
-Run from Claude Code: `/reload-skills`, then confirm the three commands appear
-in slash-command autocomplete. Also parse all three files without executing
-agents:
+**Superseded 2026-09-06 (Codex remediation of `1ecb9baef` finding #14) — do
+not use `bun build` for this.** The `bun build --target=bun --format=esm`
+recipe originally in this step fails on all three files with "Top-level
+return cannot be used inside an ECMAScript module" — reproduced on a
+2-line minimal repro combining a top-level `export` with a top-level
+`return`, confirming this is inherent to ANY correctly-authored script that
+uses the documented `return`/`await` pattern, not a defect in these three
+files. The `/workflow-authoring` reference's own canonical examples use
+top-level `return`/`await`, which means the real Workflow runtime executes a
+saved script as an **async-function body**, not literal static ESM — `bun
+build`'s ESM parser is testing the wrong execution shape entirely.
 
-```bash
-WORKFLOW_OUT="$(mktemp -d)"
-bun build .claude/workflows/flm-ui-map.js \
-  .claude/workflows/flm-ui-slice.js \
-  .claude/workflows/flm-ui-verify.js \
-  --target=bun --format=esm --outdir "$WORKFLOW_OUT"
-rm -rf "$WORKFLOW_OUT"
-```
+The correct validation recipe has two parts:
 
-Expected: Bun reports three successful builds and Claude lists all three commands.
+1. **Literal `meta`/static-contract checks (non-interactive, scriptable):**
+   confirm each file starts with `export const meta = { ... }` as a pure
+   object literal (no computed values); confirm the body contains no
+   `import`/`require`/filesystem access/`Date.now()`/`Math.random()` (the
+   documented no-imports, no-nondeterminism contract for a saved workflow
+   script); confirm the body — with the leading `export` stripped to `const`
+   — parses cleanly when constructed as an `AsyncFunction` body (i.e.
+   `new (Object.getPrototypeOf(async function(){}).constructor)('args',
+   'agent', 'parallel', 'phase', 'log', body)` does not throw), which is the
+   actual shape the runtime executes it as.
+2. **`/reload-skills` + slash-command autocomplete confirmation (interactive,
+   Claude Code session only):** run `/reload-skills`, then confirm the three
+   commands appear in slash-command autocomplete.
+
+**Do not claim part 2 (or any interactive validation) was run unless it
+genuinely was.** A non-interactive Bash-tool session cannot invoke
+`/reload-skills` or observe slash-command autocomplete — if part 2 was not
+actually performed, say so explicitly rather than implying it passed.
 
 - [ ] **Step 6: Commit workflows**
 
