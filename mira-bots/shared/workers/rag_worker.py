@@ -920,7 +920,18 @@ class RAGWorker:
                     kg_context=local_kg_context,
                 )
             else:
-                no_kb = retrieval_attempted and not photo_b64
+                # A text turn that reaches the LLM with ZERO chunks must say so —
+                # whether recall ran and found nothing, OR could not run at all.
+                # This used to read `retrieval_attempted and not photo_b64`, and
+                # `retrieval_attempted` is just `bool(effective_tenant)`. So a turn
+                # with no tenant skipped the NeonDB block above AND skipped this
+                # honesty directive: MIRA answered from parametric knowledge with no
+                # chunks, no citations and no admission. Losing KB access entirely
+                # made the reply MORE confident than KB-returned-nothing, which is
+                # backwards on the one path that must fail closed. (Answer Radar
+                # #3584: 6/6 answered at 0% citation coverage, including an SLC 5/03
+                # DH-485 port confidently described as DH+.)
+                no_kb = not photo_b64
                 self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
@@ -966,6 +977,11 @@ class RAGWorker:
             # above skips this — a no-coverage turn correctly carries nothing.
             if isinstance(state, dict):
                 state["_rag_kb_status"] = local_kb_status
+                # Distinguishes "recall ran and returned nothing" from "recall was
+                # never attempted (no tenant)". Both yield zero chunks, so without
+                # this an eval cannot tell a real retrieval miss from a
+                # misconfigured run — which is exactly what made #3584 ambiguous.
+                state["_rag_retrieval_attempted"] = retrieval_attempted
                 state["_rag_sources"] = local_sources
                 state["_rag_last_chunks"] = local_neon_chunks
                 state["_rag_no_kb"] = self._last_no_kb
