@@ -2,7 +2,9 @@ import type {
   ContextSnapshot,
   InteractionRun,
   InteractionThread,
+  InspectorField,
   Machine,
+  OfflineState,
   Project,
   ProjectFolder,
   ProjectNode,
@@ -18,6 +20,8 @@ export interface ShellState {
   readonly run?: InteractionRun;
   readonly projects: readonly Project[];
   readonly machines: readonly Machine[];
+  readonly offline: OfflineState;
+  readonly inspector?: readonly InspectorField[];
   readonly activeContext: ContextSnapshot;
   readonly profile: SurfaceProfile;
   readonly theme: ThemeName;
@@ -172,6 +176,8 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
     ...(copy.run ? { run: copy.run } : {}),
     projects: copy.projects,
     machines: copy.machines,
+    offline: copy.offline,
+    ...(copy.inspector ? { inspector: copy.inspector } : {}),
     activeContext: copy.activeContext,
     profile: copyValue(profile),
     theme: "light",

@@ -28,6 +28,49 @@ describe("shared shell reducer", () => {
     expect(fixture).toEqual(fixtureSnapshot);
   });
 
+  it("preserves the complete offline fixture state as deeply frozen shell state", () => {
+    const fixture = getFixture("offline-sync");
+    const fixtureSnapshot = structuredClone(fixture);
+    const state = createShellState(fixture, PROFILES.mobile);
+
+    expect(state.offline).toEqual({
+      state: "offline",
+      pendingChanges: 1,
+      detail: "The field note is retained locally for sync.",
+    });
+    expect(state.offline).not.toBe(fixture.offline);
+    expect(Object.isFrozen(state)).toBe(true);
+    expect(Object.isFrozen(state.offline)).toBe(true);
+    expect(fixture).toEqual(fixtureSnapshot);
+  });
+
+  it("replaces fixture-owned inspector fields through an immutable fixture load", () => {
+    const offlineFixture = getFixture("offline-sync");
+    const inspectorFixture = getFixture("enterprise-inspector");
+    const offlineSnapshot = structuredClone(offlineFixture);
+    const inspectorSnapshot = structuredClone(inspectorFixture);
+    const before = shellReducer(
+      createShellState(offlineFixture, PROFILES.web),
+      { type: "set-theme", theme: "dark" },
+    );
+    const after = shellReducer(before, { type: "load-fixture", fixture: inspectorFixture });
+
+    expect(after.offline).toEqual({ state: "online", pendingChanges: 0 });
+    expect(after.inspector).toEqual([
+      { label: "Asset binding", value: "asset-launch-2-drive-a" },
+      { label: "Evidence authorization", value: "authorized" },
+      { label: "Source provenance", value: "workspace_file" },
+    ]);
+    expect(after.inspector).not.toBe(inspectorFixture.inspector);
+    expect(Object.isFrozen(after.offline)).toBe(true);
+    expect(Object.isFrozen(after.inspector)).toBe(true);
+    expect(Object.isFrozen(after.inspector?.[0])).toBe(true);
+    expect(after.theme).toBe("dark");
+    expect(after.profile).toEqual(PROFILES.web);
+    expect(offlineFixture).toEqual(offlineSnapshot);
+    expect(inspectorFixture).toEqual(inspectorSnapshot);
+  });
+
   it("preserves theme and profile across fixture loads unless explicitly overridden", () => {
     const sourceSelected = shellReducer(
       createShellState(getFixture("grounded-answer"), PROFILES.web),
