@@ -7317,6 +7317,44 @@ class Supervisor:
             logger.warning("INSTRUCTIONAL_KB_PROBE_FAILURE error=%s", exc)
             return False
 
+    def _instructional_kb_context(self, message: str, state: dict, history: list) -> str:
+        """Retrieved documentation for a procedural question, ready to inject (#3602).
+
+        Reuses the production recall path (`recall_knowledge`) and the canonical
+        citation-label helper (`format_source_label`) rather than a second copy, so
+        the tag a procedural answer emits is identical to the one the RAG worker
+        emits for the same chunk.
+
+        Returns "" on any failure. The caller then answers exactly as it did before
+        this fix — a grounding upgrade must never be able to make the reply worse
+        than the ungrounded original.
+        """
+        try:
+            from .neon_recall import recall_knowledge  # noqa: PLC0415
+            from .workers.rag_worker import format_source_label  # noqa: PLC0415
+
+            user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
+            combined = " ".join([*user_window, message]).strip()
+            chunks = (
+                recall_knowledge(None, state.get("tenant_id") or "", limit=4, query_text=combined)
+                or []
+            )
+        except Exception as exc:  # noqa: BLE001 - never fail a turn over retrieval
+            logger.warning("INSTRUCTIONAL_KB_CONTEXT_FAILURE error=%s", exc)
+            return ""
+
+        parts: list[str] = []
+        for ch in chunks:
+            body = (ch.get("content") or "").strip()
+            if not body:
+                continue
+            label = format_source_label(ch)
+            # Cap each chunk: a procedural answer needs the relevant passage, not the
+            # whole manual, and an over-long prompt crowds out the numbered-steps
+            # instruction the technician actually needs.
+            parts.append(f"[Source: {label}]\n{body[:1200]}" if label else body[:1200])
+        return "\n\n".join(parts)
+
     async def _handle_instructional_question(
         self,
         chat_id: str,
@@ -7366,21 +7404,25 @@ class Supervisor:
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
 
-        # Ground it if we can. Same extraction window and same coverage probe as
-        # _handle_general_question, so a procedural question about a documented
-        # asset gets the same cited answer a general one would.
+        # Ground it if we can — in place, keeping the procedural answer shape.
+        #
+        # An earlier revision delegated the whole turn to _handle_general_question.
+        # That grounded it, but measurably broke the answer for a technician: the
+        # general handler owns a doc-search decision tree, so "how do I set the accel
+        # time on a PowerFlex 525?" came back as "I don't have documentation for this
+        # equipment — type PROCEED" *while two chunks were retrieved*. Trading an
+        # ungrounded answer for a stall is not an improvement.
+        #
+        # So retrieval is injected here instead, and the procedural system prompt
+        # below is kept. Grounded, and still numbered steps a technician can work
+        # through on the floor.
+        kb_context = ""
         if self._instructional_kb_coverage(message, state, history):
+            kb_context = self._instructional_kb_context(message, state, history)
             logger.info(
-                "INSTRUCTIONAL_ROUTED_TO_KB chat_id=%s — KB has coverage, "
-                "answering from documentation instead of parametric memory (#3602)",
+                "INSTRUCTIONAL_GROUNDED chat_id=%s chunks=%d (#3602)",
                 chat_id,
-            )
-            return await self._handle_general_question(
-                chat_id,
-                message,
-                state,
-                trace_id,
-                tenant_id=state.get("tenant_id") or None,
+                kb_context.count("[Source:"),
             )
 
         system = (
@@ -7389,9 +7431,20 @@ class Supervisor:
             "Be concise and practical — they are on the shop floor. "
             "If the exact procedure varies by model, note what to check on the specific unit."
         )
+        if kb_context:
+            # The style requirement survives grounding: still numbered steps, still
+            # concise. The documentation constrains the CONTENT, not the shape.
+            system += (
+                " Base the steps on the documentation below, and cite it with the "
+                "[Source: ...] tag exactly as given. If the documentation does not cover "
+                "part of the question, say so for that part instead of inventing it — "
+                "never present an uncited guess as if it came from the manual."
+            )
         messages: list[dict] = [{"role": "system", "content": system}]
         messages.extend(history[-6:])
         user_content = f"Equipment: {asset}\n\n{message}" if asset else message
+        if kb_context:
+            user_content = f"{user_content}\n\nDocumentation:\n{kb_context}"
         messages.append({"role": "user", "content": user_content})
 
         raw, _usage = await self.router.complete(messages, max_tokens=600, session_id=chat_id)

@@ -57,6 +57,7 @@ def sup() -> Supervisor:
     s._infer_confidence = MagicMock(return_value="none")
     s._make_result = MagicMock(side_effect=lambda r, c, t, st: {"reply": r, "state": st})
     s._handle_general_question = AsyncMock(return_value={"reply": "grounded", "state": "IDLE"})
+    s._instructional_kb_context = MagicMock(return_value="")
     return s
 
 
@@ -117,16 +118,28 @@ def test_coverage_probe_uses_recent_user_turns_not_just_this_message(sup) -> Non
 # ── Routing ──────────────────────────────────────────────────────────────────
 
 
-def test_covered_question_is_routed_to_the_grounded_handler(sup) -> None:
-    with patch.object(sup, "_instructional_kb_coverage", return_value=True):
-        out = asyncio.run(sup._handle_instructional_question("c1", SEED_001, _state(), "t"))
+def test_covered_question_is_answered_from_documentation(sup) -> None:
+    """Grounded IN PLACE, not delegated.
 
-    sup._handle_general_question.assert_awaited_once()
-    (
-        sup.router.complete.assert_not_awaited(),
-        "must not answer from parametric memory when the KB covers it",
+    An earlier revision handed the whole turn to `_handle_general_question`. That
+    grounded it but broke the answer for a technician: the general handler owns a
+    doc-search decision tree, so "how do I set the accel time on a PowerFlex 525?"
+    came back as "I don't have documentation — type PROCEED" *while two chunks were
+    retrieved*. Trading an ungrounded answer for a stall is not an improvement.
+    """
+    sup._instructional_kb_context = MagicMock(
+        return_value="[Source: Allen-Bradley PowerFlex 525]\nAccel time is parameter P041."
     )
-    assert out["reply"] == "grounded"
+    with patch.object(sup, "_instructional_kb_coverage", return_value=True):
+        asyncio.run(sup._handle_instructional_question("c1", SEED_001, _state(), "t"))
+
+    assert not sup._handle_general_question.await_count, "must not delegate — that caused the stall"
+    sup.router.complete.assert_awaited_once()
+    msgs = sup.router.complete.await_args.args[0]
+    system, user = msgs[0]["content"], msgs[-1]["content"]
+    assert "numbered steps" in system, "the procedural shape must survive grounding"
+    assert "P041" in user, "retrieved documentation must reach the prompt"
+    assert "[Source:" in system, "the model must be told to cite what it was given"
 
 
 def test_uncovered_question_still_gets_a_direct_answer(sup) -> None:
@@ -139,8 +152,9 @@ def test_uncovered_question_still_gets_a_direct_answer(sup) -> None:
             )
         )
 
-    sup._handle_general_question.assert_not_awaited()
     sup.router.complete.assert_awaited_once()
+    msgs = sup.router.complete.await_args.args[0]
+    assert "Documentation:" not in msgs[-1]["content"], "no KB coverage means no injected context"
     assert out["reply"] == "direct llm answer"
 
 
@@ -152,7 +166,7 @@ def test_the_bypass_comment_cannot_quietly_return() -> None:
 
     src = Path("mira-bots/shared/engine.py").read_text(encoding="utf-8")
     start = src.index("async def _handle_instructional_question")
-    body = src[start : start + 4000]
+    body = src[start : start + 9000]  # the handler grew; must reach the LLM call
     # Strip comments and the docstring: this fix documents the old behaviour
     # verbatim so the regression stays legible, and a naive substring search would
     # match that prose instead of the code.
@@ -163,5 +177,9 @@ def test_the_bypass_comment_cannot_quietly_return() -> None:
     )
     assert "_instructional_kb_coverage" in code, "the coverage check is gone"
     assert code.index("_instructional_kb_coverage") < code.index("await self.router.complete("), (
-        "the KB check must run BEFORE the direct LLM call, or it grounds nothing"
+        "the KB check must run BEFORE the LLM call, or it grounds nothing"
+    )
+    assert "numbered steps" in code, (
+        "the procedural answer shape is a product requirement, not incidental — a "
+        "technician on the floor needs steps, not prose"
     )
