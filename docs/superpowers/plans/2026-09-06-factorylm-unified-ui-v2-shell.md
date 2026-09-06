@@ -4,9 +4,11 @@
 
 **Goal:** Build the complete disconnected, fixture-driven React lab for one shared FactoryLM interaction shell across public, signed-in web, mobile, and enterprise Hub profiles.
 
-**Architecture:** Three framework-neutral packages own the design tokens, authoritative interaction/view model, and shared React components. A standalone Vite lab consumes those packages through local file dependencies, renders every required state from fixtures, and has no production transport, authentication, storage, or API code. The existing Equipment Notebook contract and shipped mobile ChatV2 remain the production authority; this lab converges their proven semantics without connecting to them.
+**Architecture:** Three framework-neutral packages own the design tokens, authoritative interaction/view model, and shared React components. A standalone Bun-served static React lab consumes those packages through local file dependencies, renders every required state from fixtures, and has no production transport, authentication, storage, or API code. The existing Equipment Notebook contract and shipped mobile ChatV2 remain the production authority; this lab converges their proven semantics without connecting to them.
 
-**Tech Stack:** TypeScript 5, React 19 lab runtime with React `>=18 <20` peer compatibility, Vite 6, Vitest 4, Testing Library 16, Playwright 1.59, plain CSS using FactoryLM tokens, Bun lock/install.
+**Tech Stack:** TypeScript 5.7.2, React/React DOM 19.2.4 lab runtime with React `>=18 <20` peer compatibility, `@types/bun` 1.3.10, Bun's native HTML bundler/dev server/test runner, `@happy-dom/global-registrator` 18.0.1 for component tests, Playwright 1.59.1 for browser proof, plain CSS using FactoryLM tokens, and Bun lock/install.
+
+**Toolchain ruling (2026-09-06):** The initial Vite/Vitest/Testing Library draft was rejected during Task 1 review because its transitive closure introduced ISC, BSD, and CC-BY dependencies outside MIRA's MIT/Apache-2.0 allowlist. Bun already supplies the required HTML build, dev server, and test runner; component tests use native DOM queries so `@testing-library/dom` does not reintroduce the ISC dependency. Every newly introduced package is checked from the installed lock closure by `scripts/check-dependency-licenses.ts`.
 
 **Spec:** `docs/initiatives/FLM-UI-4000.md`, indexed by `docs/prd/2026-09-06-factorylm-unified-interaction-v1.md`, at PR #3622 head `470aa1873f05da597b5304ead119aeb19ba3d9b9`.
 
@@ -21,7 +23,7 @@
 - Ask and Work share one shell and composer; Work adds a structured run, never a second chat UI.
 - Shared UI code has no Next.js, Capacitor, router, provider, or transport dependency.
 - React packages declare `react: ">=18 <20"` as a peer dependency; the lab verifies React 19 while current merged mobile ChatV2 remains the React 18 reuse proof.
-- All external dependencies must be MIT or Apache-2.0 licensed. Do not add an axe-core dependency because its MPL license violates the repository allowlist.
+- The complete newly introduced dependency closure must be MIT or Apache-2.0 licensed. Do not add axe-core, jsdom, Vite, Vitest, or Testing Library to this lab because their current closures contain non-allowlisted licenses.
 - UI values come from `@factorylm/theme`; component code contains no hard-coded colors.
 - The ordinary conversation route's compressed JavaScript budget is 300 KB.
 - Web controls have visible focus, keyboard operation, screen-reader labels, reduced-motion behavior, and at least 44 by 44 CSS-pixel targets on mobile.
@@ -41,8 +43,7 @@
 - Create: `packages/factorylm-ui/package.json`
 - Create: `apps/factorylm-ui-lab/package.json`
 - Create: `apps/factorylm-ui-lab/tsconfig.json`
-- Create: `apps/factorylm-ui-lab/vite.config.ts`
-- Create: `apps/factorylm-ui-lab/vitest.config.ts`
+- Create: `apps/factorylm-ui-lab/scripts/check-dependency-licenses.ts`
 
 **Interfaces:**
 - Consumes: PRD objects `InteractionThread`, `InteractionRun`, `InteractionTurn`, ordered part types, and `SurfaceProfile`.
@@ -60,11 +61,12 @@
 }
 ```
 
-The lab owns the test toolchain and references all three packages with `file:../../packages/<name>`. Pin the versions listed in the plan Tech Stack and add scripts `dev`, `build`, `preview`, `test`, `test:watch`, `test:e2e`, and `verify`.
+The lab owns the test toolchain and references all three packages with `file:../../packages/<name>`. Pin the versions listed in the plan Tech Stack and add scripts `dev`, `build`, `preview`, `test`, `test:watch`, `test:e2e`, `licenses`, and `verify`. Task 1's `build` boundary is type-check-only until Task 7 adds the HTML entrypoint. The license checker recursively reads every installed package manifest, resolves symlinks once, and fails on missing or non-MIT/Apache-2.0 licenses.
 
 - [ ] **Step 2: Write the failing fixture-contract tests**
 
 ```ts
+import { describe, expect, it } from "bun:test";
 import { FIXTURE_IDS, fixtures, getFixture } from "@factorylm/interaction";
 
 it("covers every Phase 1 review state", () => {
@@ -87,7 +89,7 @@ it("links one canonical machine into multiple projects", () => {
 
 - [ ] **Step 3: Run the fixture tests and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bun install && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts`
+Run: `cd apps/factorylm-ui-lab && bun install && bun test ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts`
 
 Expected: FAIL because `@factorylm/interaction` does not yet export the contract and fixtures.
 
@@ -123,14 +125,14 @@ Populate deterministic fixture data for the thirteen scenario IDs. Each scenario
 
 - [ ] **Step 5: Run the fixture tests and type-check**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts && bunx tsc --noEmit`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-interaction/src/__tests__/fixtures.test.ts && bunx tsc --noEmit && bun run licenses`
 
 Expected: PASS with all fixture invariants and zero TypeScript errors.
 
 - [ ] **Step 6: Commit the foundation contract**
 
 ```bash
-git add packages/factorylm-interaction packages/factorylm-theme/package.json packages/factorylm-ui/package.json apps/factorylm-ui-lab/package.json apps/factorylm-ui-lab/tsconfig.json apps/factorylm-ui-lab/vite.config.ts apps/factorylm-ui-lab/vitest.config.ts apps/factorylm-ui-lab/bun.lock
+git add packages/factorylm-interaction packages/factorylm-theme/package.json packages/factorylm-ui/package.json apps/factorylm-ui-lab/package.json apps/factorylm-ui-lab/tsconfig.json apps/factorylm-ui-lab/scripts/check-dependency-licenses.ts apps/factorylm-ui-lab/bun.lock
 git commit -m "feat(ui): add unified interaction fixture contract"
 ```
 
@@ -165,7 +167,7 @@ it("switches Ask and Work without replacing the shell", () => {
 
 - [ ] **Step 2: Run the reducer tests and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src/__tests__/reducer.test.ts`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-interaction/src/__tests__/reducer.test.ts`
 
 Expected: FAIL because the reducer and adapter interfaces do not exist.
 
@@ -185,7 +187,7 @@ Reducer actions cover fixture selection, Ask/Work, project/folder/machine select
 
 - [ ] **Step 4: Run focused and full interaction tests**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-interaction/src`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-interaction/src`
 
 Expected: PASS with immutable historical turns and one shared state model.
 
@@ -223,7 +225,7 @@ it("uses FactoryLM-prefixed tokens for every semantic workspace role", () => {
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-theme/src/__tests__/theme-contract.test.ts`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-theme/src/__tests__/theme-contract.test.ts`
 
 Expected: FAIL because the theme files do not exist.
 
@@ -233,7 +235,7 @@ Expected: FAIL because the theme files do not exist.
 
 - [ ] **Step 4: Run theme tests and CSS hard-code scan**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-theme/src && ! rg -n '#[0-9a-fA-F]{3,8}|rgba?\(' ../../packages/factorylm-theme/src/workspace.css`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-theme/src && ! rg -n '#[0-9a-fA-F]{3,8}|rgba?\(' ../../packages/factorylm-theme/src/workspace.css`
 
 Expected: PASS; no raw color in semantic workspace CSS.
 
@@ -258,27 +260,31 @@ git commit -m "feat(ui): package FactoryLM workspace theme"
 - Create: `packages/factorylm-ui/src/__tests__/harness.tsx`
 - Create: `packages/factorylm-ui/src/__tests__/shell.test.tsx`
 - Modify: `packages/factorylm-ui/package.json`
+- Create: `apps/factorylm-ui-lab/bunfig.toml`
+- Create: `apps/factorylm-ui-lab/src/test-setup.ts`
+- Modify: `apps/factorylm-ui-lab/package.json`
+- Modify: `apps/factorylm-ui-lab/bun.lock`
 
 **Interfaces:**
 - Consumes: `ShellState`, `ShellAction`, `ProjectNode`, and `SurfaceProfile` from `@factorylm/interaction`.
-- Produces: `FactoryLMShell({ state, dispatch, adapter })`, with the same landmarks and child components for every profile, plus a shared test `Harness` and `fakeAdapter()` used by later behavior suites.
+- Produces: `FactoryLMShell({ state, dispatch, adapter })`, with the same landmarks and child components for every profile, plus shared `Harness`, `renderHarness()`, and `fakeAdapter()` test utilities used by later behavior suites.
 
 - [ ] **Step 1: Write failing shell parity and machine-link tests**
 
 ```tsx
 for (const surface of ["public", "web", "mobile", "hub"] as const) {
   it(`renders the canonical shell in ${surface}`, () => {
-    render(<Harness surface={surface} fixture="project-tree" />);
-    expect(screen.getByRole("main")).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: /ask mira/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /new chat/i })).toBeTruthy();
+    const view = renderHarness({ surface, fixture: "project-tree" });
+    expect(view.container.querySelector("main")).not.toBeNull();
+    expect(view.container.querySelector('[aria-label="Ask MIRA"]')).not.toBeNull();
+    expect(view.buttonNamed("New chat")).not.toBeNull();
   });
 }
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/shell.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx`
 
 Expected: FAIL because the shell is not implemented.
 
@@ -286,7 +292,7 @@ Expected: FAIL because the shell is not implemented.
 
 Use `<aside aria-label="FactoryLM navigation">`, `<main>`, a persistent `<header>`, and an optional inspector `<aside aria-label="Inspector">`. Mobile changes CSS presentation to drawer/sheet; it does not branch to a different shell component.
 
-The shared test harness owns state exactly like the lab:
+Task 4 pins `@happy-dom/global-registrator` 18.0.1, registers it through Bun's test preload, and re-runs `bun run licenses`. The shared test harness owns state exactly like the lab and exposes small native-DOM query/event helpers; it does not recreate Testing Library:
 
 ```tsx
 export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessProps) {
@@ -300,14 +306,14 @@ export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessPr
 
 - [ ] **Step 4: Run shell tests and type-check**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/shell.test.tsx && bunx tsc --noEmit`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/shell.test.tsx && bunx tsc --noEmit && bun run licenses`
 
 Expected: PASS on all four profiles.
 
 - [ ] **Step 5: Commit the shared shell**
 
 ```bash
-git add packages/factorylm-ui
+git add packages/factorylm-ui apps/factorylm-ui-lab/bunfig.toml apps/factorylm-ui-lab/src/test-setup.ts apps/factorylm-ui-lab/package.json apps/factorylm-ui-lab/bun.lock
 git commit -m "feat(ui): add shared FactoryLM shell"
 ```
 
@@ -332,21 +338,21 @@ git commit -m "feat(ui): add shared FactoryLM shell"
 
 ```tsx
 it("renders a safety stop without success chrome", () => {
-  render(<Harness fixture="safety-stop" surface="web" />);
-  expect(screen.getByRole("alert").textContent).toMatch(/stop/i);
-  expect(screen.queryByText(/verified finding/i)).toBeNull();
+  const view = renderHarness({ fixture: "safety-stop", surface: "web" });
+  expect(view.container.querySelector('[role="alert"]')?.textContent).toMatch(/stop/i);
+  expect(view.container.textContent).not.toMatch(/verified finding/i);
 });
 
 it("labels live and recorded evidence distinctly", () => {
-  render(<Harness fixture="machine-evidence" surface="hub" />);
-  expect(screen.getByText("LIVE")).toBeTruthy();
-  expect(screen.getByText("RECORDED")).toBeTruthy();
+  const view = renderHarness({ fixture: "machine-evidence", surface: "hub" });
+  expect(view.container.textContent).toContain("LIVE");
+  expect(view.container.textContent).toContain("RECORDED");
 });
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
 
 Expected: FAIL because the conversation and composer components do not exist.
 
@@ -356,7 +362,7 @@ Expected: FAIL because the conversation and composer components do not exist.
 
 - [ ] **Step 4: Run conversation/composer tests**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/conversation.test.tsx ../../packages/factorylm-ui/src/__tests__/composer.test.tsx`
 
 Expected: PASS for general Ask, machine Ask, Work plans/findings/artifacts, attachments, citations, safety, error/retry, and unknown parts.
 
@@ -386,17 +392,17 @@ git commit -m "feat(ui): render Ask and Work interaction parts"
 ```tsx
 it("closes the top mobile layer before passing Back to the host", async () => {
   const adapter = fakeAdapter();
-  render(<Harness surface="mobile" fixture="enterprise-inspector" adapter={adapter} />);
-  fireEvent.click(screen.getByRole("button", { name: /open inspector/i }));
-  fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByRole("complementary", { name: "Inspector" })).toBeNull();
+  const view = renderHarness({ surface: "mobile", fixture: "enterprise-inspector", adapter });
+  view.buttonNamed("Open inspector")?.click();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  expect(view.container.querySelector('[aria-label="Inspector"]')).toBeNull();
   expect(adapter.onBackCalls()).toBe(0);
 });
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
 
 Expected: FAIL because overlay/focus/Back behavior is absent.
 
@@ -406,7 +412,7 @@ Close order is source viewer, attachment menu, inspector sheet, navigation drawe
 
 - [ ] **Step 4: Run mobile behavior tests**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/mobile-behavior.test.tsx`
 
 Expected: PASS with no fake native capability.
 
@@ -426,7 +432,9 @@ git commit -m "feat(ui): add mobile shell behavior"
 - Create: `apps/factorylm-ui-lab/src/lab.css`
 - Create: `apps/factorylm-ui-lab/src/fake-adapter.ts`
 - Create: `apps/factorylm-ui-lab/src/__tests__/app.test.tsx`
+- Create: `apps/factorylm-ui-lab/scripts/build.ts`
 - Create: `apps/factorylm-ui-lab/README.md`
+- Modify: `apps/factorylm-ui-lab/package.json`
 
 **Interfaces:**
 - Consumes: all fixtures, reducer, `FactoryLMShell`, and `PlatformAdapter`.
@@ -436,19 +444,24 @@ git commit -m "feat(ui): add mobile shell behavior"
 
 ```tsx
 it("uses only in-memory actions", async () => {
-  const fetchSpy = vi.spyOn(globalThis, "fetch");
-  render(<App />);
-  fireEvent.change(screen.getByRole("textbox", { name: /ask mira/i }), {
-    target: { value: "What is bearing preload?" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(fetchSpy).not.toHaveBeenCalled();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => { calls += 1; throw new Error("network forbidden"); }) as typeof fetch;
+  try {
+    const view = renderApp();
+    view.inputNamed("Ask MIRA").value = "What is bearing preload?";
+    view.inputNamed("Ask MIRA").dispatchEvent(new InputEvent("input", { bubbles: true }));
+    view.buttonNamed("Send")?.click();
+    expect(calls).toBe(0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run src/__tests__/app.test.tsx`
+Run: `cd apps/factorylm-ui-lab && bun test src/__tests__/app.test.tsx`
 
 Expected: FAIL because the lab application does not exist.
 
@@ -460,11 +473,11 @@ Expected: FAIL because the lab application does not exist.
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 ```
 
-The fake adapter resolves deterministic fixture attachments and never imports `fetch`, `XMLHttpRequest`, `EventSource`, WebSocket, auth, storage, or production endpoint constants.
+The fake adapter resolves deterministic fixture attachments and never imports `fetch`, `XMLHttpRequest`, `EventSource`, WebSocket, auth, storage, or production endpoint constants. Update the scripts so `dev` runs `bun ./index.html`, `build` type-checks then invokes a small `Bun.build()` wrapper with `index.html` as its entrypoint, and `preview` serves the built HTML. The build wrapper removes only the explicit local `dist/` directory before emitting the static bundle.
 
 - [ ] **Step 4: Run unit tests and production build**
 
-Run: `cd apps/factorylm-ui-lab && bunx vitest run && bun run build`
+Run: `cd apps/factorylm-ui-lab && bun test ../../packages src && bun run build`
 
 Expected: PASS and a static `dist/` build.
 
@@ -481,7 +494,7 @@ git commit -m "feat(ui): add disconnected unified UI lab"
 - Create: `apps/factorylm-ui-lab/playwright.config.ts`
 - Create: `apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts`
 - Create: `apps/factorylm-ui-lab/e2e/keyboard-mobile.spec.ts`
-- Create: `apps/factorylm-ui-lab/scripts/check-build-budget.mjs`
+- Create: `apps/factorylm-ui-lab/scripts/check-build-budget.ts`
 - Create: `apps/factorylm-ui-lab/docs/component-adapter-map.md`
 - Create: `apps/factorylm-ui-lab/docs/salvage-record.md`
 - Create: `docs/promo-screenshots/2026-09-06_flm-ui-v2-*.png`
@@ -525,13 +538,13 @@ for (const scenario of FIXTURE_IDS) {
 
 - [ ] **Step 2: Run and confirm RED for missing matrix behavior or configuration**
 
-Run: `cd apps/factorylm-ui-lab && bun run build && bunx playwright test`
+Run: `cd apps/factorylm-ui-lab && bun run build && bun run test:e2e`
 
 Expected: FAIL until URL-controlled lab state, viewport behavior, and screenshot paths are complete.
 
 - [ ] **Step 3: Complete URL state, screenshot capture, keyboard checks, and build budget**
 
-`check-build-budget.mjs` gzips every emitted ordinary-route JavaScript asset with `node:zlib`, sums byte lengths, prints the exact total, and exits non-zero above `300 * 1024` bytes.
+`check-build-budget.ts` gzips every emitted ordinary-route JavaScript asset with `node:zlib` under Bun, sums byte lengths, prints the exact total, and exits non-zero above `300 * 1024` bytes.
 
 - [ ] **Step 4: Record exact salvage decisions**
 
@@ -552,8 +565,8 @@ Run:
 cd apps/factorylm-ui-lab
 bun install --frozen-lockfile
 bun run verify
-bunx playwright test
-node scripts/check-build-budget.mjs
+bun run test:e2e
+bun scripts/check-build-budget.ts
 cd ../..
 git diff --check origin/pr-3622...HEAD
 rg -n 'fetch\(|XMLHttpRequest|EventSource|WebSocket|https?://' packages/factorylm-* apps/factorylm-ui-lab/src
