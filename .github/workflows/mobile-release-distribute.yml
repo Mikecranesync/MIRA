@@ -25,6 +25,12 @@ on:
         default: "no"
         type: choice
         options: ["no", "yes"]
+      publish_download:
+        description: "Publish the signed APK to https://updates.factorylm.com/download (direct install, no Play)?"
+        required: false
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
 
 permissions:
   contents: read
@@ -164,6 +170,43 @@ jobs:
             --release-notes "${{ inputs.release_notes }}"
           rm -f "$RUNNER_TEMP/fb.json"
 
+      - name: Publish direct-install download (updates.factorylm.com/download)
+        if: inputs.publish_download == 'yes'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          APK=mira-mobile/android/app/build/outputs/apk/release/app-release.apk
+          VN=$(grep -E '^\s*versionName ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionName "([^"]+)".*/\1/')
+          VC=$(grep -E '^\s*versionCode ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionCode ([0-9]+).*/\1/')
+          test -n "$VN" && test -n "$VC"
+          FILE="factorylm-${VN}-vc${VC}.apk"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "$APK")
+          STAGE="$RUNNER_TEMP/app"; mkdir -p "$STAGE"
+          cp "$APK" "$STAGE/$FILE"
+          cp "$APK" "$STAGE/latest.apk"
+          cp deployment/ota-download/index.html "$STAGE/index.html"
+          printf '{"versionName":"%s","versionCode":%s,"file":"%s","sha256":"%s","sizeBytes":%s,"builtAt":"%s","commit":"%s"}\n' \
+            "$VN" "$VC" "$FILE" "$SHA" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ github.sha }}" > "$STAGE/latest.json"
+          cat "$STAGE/latest.json"
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91"
+          $SSH 'mkdir -p /srv/factorylm/ota/app'
+          # Versioned APK first (immutable), then the pointers, so a reader never sees
+          # latest.json naming a file that is not there yet.
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/$FILE" "root@165.245.138.91:/srv/factorylm/ota/app/$FILE"
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/latest.apk" "$STAGE/latest.json" "$STAGE/index.html" root@165.245.138.91:/srv/factorylm/ota/app/
+          $SSH "cd /srv/factorylm/ota/app && echo '$SHA  $FILE' | sha256sum -c - && echo '$SHA  latest.apk' | sha256sum -c -"
+          echo "=== public probes ==="
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/download -> %{http_code} %{redirect_url}\n" https://updates.factorylm.com/download
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/ -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/
+          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/latest.json -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/latest.json
+          curl -sSI https://updates.factorylm.com/app/latest.apk | grep -i -E '^(HTTP|content-type|content-length)'
+          echo "download page: https://updates.factorylm.com/download ($FILE, sha256 $SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Report
         run: |
           {
