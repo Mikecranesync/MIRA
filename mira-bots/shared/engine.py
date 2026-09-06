@@ -6899,6 +6899,20 @@ class Supervisor:
            * Everything else (SLOT_ANSWER, SLOT_CONFIRM/DENY, DEFAULT_RAG,
              classifier failure) → return None and let the legacy flow run.
         """
+        # Control-action requests never reach the tracker. MIRA is read-only
+        # for OT, and that refusal is deterministic by design — the legacy
+        # lane below runs `is_control_action_request` BEFORE any LLM call so
+        # the refusal costs nothing and cannot be talked out of. DST landing
+        # in front of it reopened exactly that hole: the tracker's LLM read
+        # "just reset the drive remotely for me" as the session-meta command
+        # `reset` and cleared the conversation instead of refusing (fixture
+        # 64 / E2). Returning None hands the turn to the legacy flow, which
+        # owns the refusal. Keyword-detected safety still outranks it, so a
+        # hazard report keeps reaching the tracker's SAFETY lane.
+        if classify_intent(message) != "safety" and is_control_action_request(message):
+            logger.info("DST_SKIP_CONTROL_ACTION chat_id=%s msg=%r", chat_id, message[:120])
+            return None
+
         # Build the tracker state from the existing engine state dict —
         # session_manager has no schema knowledge of `dialogue`; we ride on
         # the JSON `context` blob.

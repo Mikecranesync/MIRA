@@ -1,0 +1,125 @@
+@import "./tokens.css";
+
+:root {
+  --fl-workspace-bg: var(--fl-bg);
+  --fl-workspace-surface: var(--fl-surface);
+  --fl-workspace-surface-hi: var(--fl-surface);
+  --fl-workspace-header: var(--fl-header);
+  --fl-workspace-header-ink: var(--fl-header-ink);
+  --fl-workspace-header-muted: var(--fl-header-muted);
+
+  --fl-workspace-ink: var(--fl-ink);
+  --fl-workspace-muted: var(--fl-muted);
+  --fl-workspace-faint: var(--fl-faint);
+
+  --fl-workspace-line: var(--fl-line);
+  --fl-workspace-line-strong: var(--fl-line-strong);
+
+  --fl-workspace-accent: var(--fl-accent);
+  --fl-workspace-accent-hover: var(--fl-accent-hover);
+  --fl-workspace-accent-tint: var(--fl-accent-tint);
+  --fl-workspace-accent-ink: var(--fl-accent-ink);
+  --fl-workspace-accent-line: var(--fl-accent);
+
+  --fl-workspace-ok: var(--fl-ok);
+  --fl-workspace-ok-tint: var(--fl-ok-bg);
+  --fl-workspace-ok-line: var(--fl-ok);
+  --fl-workspace-ok-ink: var(--fl-ok-ink);
+  --fl-workspace-warn: var(--fl-warn);
+  --fl-workspace-warn-tint: var(--fl-warn-bg);
+  --fl-workspace-warn-line: var(--fl-warn);
+  --fl-workspace-warn-ink: var(--fl-ink);
+  --fl-workspace-fault: var(--fl-fault);
+  --fl-workspace-fault-tint: var(--fl-fault-bg);
+  --fl-workspace-fault-line: var(--fl-fault);
+  --fl-workspace-fault-ink: var(--fl-ink);
+  --fl-workspace-off: var(--fl-off);
+  --fl-workspace-off-tint: var(--fl-bg);
+  --fl-workspace-off-line: var(--fl-off);
+  --fl-workspace-off-ink: var(--fl-ink);
+
+  --fl-workspace-font: var(--fl-font);
+  --fl-workspace-mono: var(--fl-mono);
+  --fl-workspace-fs: var(--fl-fs);
+  --fl-workspace-fs-sm: var(--fl-fs-sm);
+  --fl-workspace-fs-xs: var(--fl-fs-xs);
+  --fl-workspace-fs-body: var(--fl-fs-body);
+  --fl-workspace-fs-title: var(--fl-fs-title);
+
+  --fl-workspace-radius: var(--fl-radius);
+  --fl-workspace-radius-sm: var(--fl-radius-sm);
+  --fl-workspace-radius-card: var(--fl-radius-card);
+  --fl-workspace-radius-pill: var(--fl-radius-pill);
+  --fl-workspace-gap: var(--fl-gap);
+  --fl-workspace-pad: var(--fl-pad);
+  --fl-workspace-space-1: var(--fl-space-1);
+  --fl-workspace-space-2: var(--fl-space-2);
+  --fl-workspace-space-3: var(--fl-space-3);
+  --fl-workspace-space-4: var(--fl-space-4);
+  --fl-workspace-space-6: var(--fl-space-6);
+  --fl-workspace-space-8: var(--fl-space-8);
+  --fl-workspace-shadow: var(--fl-shadow);
+  --fl-workspace-shadow-pop: var(--fl-shadow-pop);
+}
+
+[data-theme="dark"] {
+  --fl-workspace-bg: var(--fl-dark-bg);
+  --fl-workspace-surface: var(--fl-dark-surface);
+  --fl-workspace-surface-hi: var(--fl-dark-surface-hi);
+  --fl-workspace-header: var(--fl-dark-surface-hi);
+  --fl-workspace-header-ink: var(--fl-dark-ink);
+  --fl-workspace-header-muted: var(--fl-dark-muted);
+
+  --fl-workspace-ink: var(--fl-dark-ink);
+  --fl-workspace-muted: var(--fl-dark-muted);
+  --fl-workspace-faint: var(--fl-dark-faint);
+
+  --fl-workspace-line: var(--fl-dark-line);
+  --fl-workspace-line-strong: var(--fl-dark-line-hi);
+
+  --fl-workspace-accent: var(--fl-dark-accent);
+  --fl-workspace-accent-hover: var(--fl-dark-accent-hover);
+  --fl-workspace-accent-tint: var(--fl-dark-accent-tint);
+  --fl-workspace-accent-ink: var(--fl-dark-accent);
+  --fl-workspace-accent-line: var(--fl-dark-accent-line);
+
+  --fl-workspace-ok: var(--fl-dark-ok);
+  --fl-workspace-ok-tint: var(--fl-dark-ok-tint);
+  --fl-workspace-ok-line: var(--fl-dark-ok-line);
+  --fl-workspace-ok-ink: var(--fl-dark-ok);
+  --fl-workspace-warn: var(--fl-dark-warn);
+  --fl-workspace-warn-tint: var(--fl-dark-warn-tint);
+  --fl-workspace-warn-line: var(--fl-dark-warn-line);
+  --fl-workspace-warn-ink: var(--fl-dark-warn);
+  --fl-workspace-fault: var(--fl-dark-fault);
+  --fl-workspace-fault-tint: var(--fl-dark-fault-tint);
+  --fl-workspace-fault-line: var(--fl-dark-fault-line);
+  --fl-workspace-fault-ink: var(--fl-dark-fault);
+  --fl-workspace-off: var(--fl-dark-faint);
+  --fl-workspace-off-tint: var(--fl-dark-surface-hi);
+  --fl-workspace-off-line: var(--fl-dark-line-hi);
+  --fl-workspace-off-ink: var(--fl-dark-muted);
+
+  --fl-workspace-font: var(--fl-dark-font);
+  --fl-workspace-mono: var(--fl-dark-mono);
+  --fl-workspace-fs: var(--fl-fs);
+  --fl-workspace-fs-sm: var(--fl-fs-sm);
+  --fl-workspace-fs-xs: var(--fl-fs-xs);
+  --fl-workspace-fs-body: var(--fl-fs-body);
+  --fl-workspace-fs-title: var(--fl-fs-title);
+
+  --fl-workspace-radius: var(--fl-radius);
+  --fl-workspace-radius-sm: var(--fl-radius-sm);
+  --fl-workspace-radius-card: var(--fl-radius-card);
+  --fl-workspace-radius-pill: var(--fl-radius-pill);
+  --fl-workspace-gap: var(--fl-gap);
+  --fl-workspace-pad: var(--fl-pad);
+  --fl-workspace-space-1: var(--fl-space-1);
+  --fl-workspace-space-2: var(--fl-space-2);
+  --fl-workspace-space-3: var(--fl-space-3);
+  --fl-workspace-space-4: var(--fl-space-4);
+  --fl-workspace-space-6: var(--fl-space-6);
+  --fl-workspace-space-8: var(--fl-space-8);
+  --fl-workspace-shadow: var(--fl-shadow);
+  --fl-workspace-shadow-pop: var(--fl-shadow-pop);
+}

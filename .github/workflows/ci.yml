@@ -495,6 +495,39 @@ jobs:
         # not exercised.
         run: pytest tests/test_gate7_review.py -v
 
+      - name: eval-fixer fragment helper (naming, host lock, publish)
+        # tools/eval_fixer_fragment.py: fragment naming + fail-closed worker id,
+        # the host+date lock, and — added after the fourth stranding incident —
+        # `--publish`, which pushes the nightly run's fragment to its own branch
+        # instead of committing it to protected `main` where it can never be
+        # pushed (#3134, #3255, #3473, #3574 each rescued a batch by hand).
+        #
+        # Named explicitly for the reason spelled out in the Ignition step below:
+        # `test-eval-offline` does sweep root `tests/`, so these already RAN — but
+        # that job is deliberately outside the `ci-gate` needs list, so a
+        # regression there could not fail a merge. A check that runs but cannot
+        # block is not a guard. This step is what makes them enforcing.
+        #
+        # Hermetic: git runs against throwaway repos under tmp_path; `gh` is not
+        # reachable and its failure is asserted to be non-fatal. No network, no
+        # tokens, no shared checkout touched.
+        run: pytest tests/test_eval_fixer_fragment_helper.py tests/test_eval_fixer_fragments.py -v
+      - name: Answer Radar benchmark (rubric, rights gate, leakage split)
+        # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
+        # explicitly because root `tests/` is not collected wholesale in this job, and
+        # because `test-eval-offline` — which does sweep it — sits outside the `ci-gate`
+        # needs list, so a regression there could not fail a merge.
+        #
+        # What these lock down is not "does it run" but the properties that make the
+        # number trustworthy: rights fail closed (a public post can never become training
+        # data by omission), a correct abstention counts as correct (so the metric never
+        # rewards confident guessing), an unsafe answer can never reach VCAD, and UNS-gate
+        # turns stay out of the correctness denominator.
+        #
+        # Hermetic: no engine, no NeonDB, no provider key — the MIRA runner is injectable
+        # and these exercise the rubric and schema only.
+        run: pytest tests/answer_radar/ -v
+
       - name: Codex adversarial-review scripts (behavior locks)
         # scripts/adversarial-review{,-loop}.sh + adversarial-review-ledger.mjs:
         # durable cross-restart 3-round budget, validated-record iteration (never

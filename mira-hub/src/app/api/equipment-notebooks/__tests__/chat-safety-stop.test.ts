@@ -31,7 +31,9 @@ const domainMock = vi.hoisted(() => ({
   // I3: the route resolves the notebook's bound asset; unbound keeps the
   // pre-081 behaviour these suites assert.
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
-  getNotebook: vi.fn(async () => null),
+  // 086: every zero-source turn proves tenant ownership first; this notebook
+  // is the caller's.
+  getNotebook: vi.fn(async () => ({ id: NB, displayName: "Conveyor 1" })),
   listSources: vi.fn(async () => []),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
