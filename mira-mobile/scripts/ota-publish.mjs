@@ -105,8 +105,12 @@ if (process.platform === "win32") {
 }
 
 const zipBytes = readFileSync(zipTmp);
+// The plugin parses `checksum` as a SHA-256 in HEX (capacitor-live-update
+// README, downloadBundle options); only `signature` is base64. Publishing the
+// checksum as base64 made every bundle fail the phone's integrity check
+// ("Refused — the update failed its integrity check") — proven on a Pixel 9a
+// against canary 1.1.2 on 2026-09-06, and equally true of 1.1.1.
 const sha256 = createHash("sha256").update(zipBytes).digest("hex");
-const checksumB64 = createHash("sha256").update(zipBytes).digest("base64");
 
 // 3. Immutable destination, keyed by content. Same bytes → same path.
 const relDir = join(OUT, "releases", version);
@@ -131,7 +135,7 @@ const manifest = {
   version,
   channel,
   downloadUrl: `${baseUrl}/releases/${version}/${artifactName}`,
-  checksum: checksumB64,
+  checksum: sha256,
   signature,
   // The compatibility gate: the shell refuses a bundle whose fingerprint is not
   // its own, so a bundle needing a plugin the installed APK lacks can never be
