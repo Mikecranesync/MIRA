@@ -143,6 +143,7 @@ export function MoreTab({
               const next: ChatUiChoice = chatUi === "v2" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
               setChatUi(next);
               void writeChatUiChoice(next);
+              onChatUiChange?.(next);
             }}
           >
             {chatUi === "v2" ? "Try the unified interface (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
@@ -164,6 +165,7 @@ export function MoreTab({
               const next: ChatUiChoice = chatUi === "unified" ? "legacy" : "unified";
               setChatUi(next);
               void writeChatUiChoice(next);
+              onChatUiChange?.(next);
             }}
           >
             {chatUi === "unified" ? "Use classic chat" : "Try the unified interface (beta)"}
