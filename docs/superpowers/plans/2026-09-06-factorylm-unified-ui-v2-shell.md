@@ -294,7 +294,7 @@ git commit -m "feat(ui): package FactoryLM workspace theme"
 
 **Interfaces:**
 - Consumes: `ShellState`, `ShellAction`, `ProjectNode`, and `SurfaceProfile` from `@factorylm/interaction`.
-- Produces: `FactoryLMShell({ state, dispatch, adapter })`, with the same landmarks and child components for every profile, plus shared `Harness`, `renderHarness()`, and `fakeAdapter()` test utilities used by later behavior suites.
+- Produces: `FactoryLMShell({ state, dispatch, adapter })`, with the same landmarks and child components for every profile, a deliberately inert conversation-region placeholder for Task 5, plus shared `Harness`, `renderHarness()`, and `fakeAdapter()` test utilities used by later behavior suites.
 
 - [ ] **Step 1: Write failing shell parity and machine-link tests**
 
@@ -303,7 +303,8 @@ for (const surface of ["public", "web", "mobile", "hub"] as const) {
   it(`renders the canonical shell in ${surface}`, () => {
     const view = renderHarness({ surface, fixture: "project-tree" });
     expect(view.container.querySelector("main")).not.toBeNull();
-    expect(view.container.querySelector('[aria-label="Ask MIRA"]')).not.toBeNull();
+    expect(view.container.querySelector('[aria-label="FactoryLM navigation"]')).not.toBeNull();
+    expect(view.container.querySelector("header")).not.toBeNull();
     expect(view.buttonNamed("New chat")).not.toBeNull();
   });
 }
@@ -319,6 +320,10 @@ Expected: FAIL because the shell is not implemented.
 
 Use `<aside aria-label="FactoryLM navigation">`, `<main>`, a persistent `<header>`, and an optional inspector `<aside aria-label="Inspector">`. Mobile changes CSS presentation to drawer/sheet; it does not branch to a different shell component.
 
+Task 4 does not implement the conversation renderer or composer and therefore must not assert or render an `Ask MIRA` textbox; Task 5 replaces the center placeholder with those components. The shared UI package must not import scenario fixtures or manufacture a new thread. Until the reducer gains an explicit new-thread action in a later approved contract, render `New chat` as an honest disabled control rather than a fake mutation.
+
+`@factorylm/ui` keeps React and React DOM as peer dependencies and declares the two local first-party packages it imports (`@factorylm/interaction` and `@factorylm/theme`) through package-local `file:` dependencies. It exports `.` and `./shell.css`; consumers import theme and shell CSS explicitly so Bun's native test runner does not need to evaluate CSS through the TypeScript entrypoint.
+
 Task 4 pins `@happy-dom/global-registrator` 18.0.1, registers it through Bun's test preload, and re-runs `bun run licenses`. The shared test harness owns state exactly like the lab and exposes small native-DOM query/event helpers; it does not recreate Testing Library:
 
 ```tsx
@@ -330,6 +335,8 @@ export function Harness({ surface, fixture, adapter = fakeAdapter() }: HarnessPr
   return <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} />;
 }
 ```
+
+The shell tests also click nested project, folder, and machine buttons and assert that the harness-visible active context changes through the real reducer. They verify that the Hub inspector is capability-gated, rather than creating separate public/web/mobile/Hub component trees.
 
 - [ ] **Step 4: Run shell tests and type-check**
 
