@@ -225,12 +225,28 @@ git commit -m "feat(ui): add shared shell state reducer"
 - [ ] **Step 1: Write a failing token-contract test**
 
 ```ts
+import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { THEME_NAMES } from "@factorylm/theme";
+
+it("keeps the package token copy byte-identical to the canonical source", () => {
+  const packaged = readFileSync(new URL("../tokens.css", import.meta.url));
+  const canonical = readFileSync(new URL("../../../../docs/design/factorylm-tokens.css", import.meta.url));
+  expect(packaged.equals(canonical)).toBe(true);
+});
+
 it("uses FactoryLM-prefixed tokens for every semantic workspace role", () => {
   const css = readFileSync(new URL("../workspace.css", import.meta.url), "utf8");
-  for (const token of ["--fl-bg", "--fl-surface", "--fl-ink", "--fl-line", "--fl-accent", "--fl-fault"]) {
+  for (const token of ["--fl-workspace-bg", "--fl-workspace-surface", "--fl-workspace-ink", "--fl-workspace-line", "--fl-workspace-accent", "--fl-workspace-fault"]) {
     expect(css).toContain(token);
   }
+  expect(css).toContain('[data-theme="dark"]');
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+});
+
+it("exports an immutable light/dark theme registry", () => {
+  expect(THEME_NAMES).toEqual(["light", "dark"]);
+  expect(Object.isFrozen(THEME_NAMES)).toBe(true);
 });
 ```
 
@@ -242,7 +258,7 @@ Expected: FAIL because the theme files do not exist.
 
 - [ ] **Step 3: Add the canonical token copy and semantic workspace aliases**
 
-`tokens.css` is byte-identical to `docs/design/factorylm-tokens.css`. `workspace.css` imports it and defines only mappings through existing `var(--fl-*)` and `var(--fl-dark-*)` values for light/dark themes; it introduces no raw color.
+`tokens.css` is byte-identical to `docs/design/factorylm-tokens.css`. `workspace.css` imports it and defines only semantic `--fl-workspace-*` mappings through existing `var(--fl-*)` and `var(--fl-dark-*)` values for explicit light/dark selectors; it introduces no raw color. Map surfaces, text, lines, accent states, operational states, typography, spacing, radius, and shadows so later component CSS needs no fallback literals. `package.json` exports `.`, `./tokens.css`, and `./workspace.css`; `THEME_NAMES` is frozen at runtime.
 
 - [ ] **Step 4: Run theme tests and CSS hard-code scan**
 
