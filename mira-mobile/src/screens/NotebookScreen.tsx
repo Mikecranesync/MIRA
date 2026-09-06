@@ -61,7 +61,7 @@ import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
 import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
-import { UnifiedChat } from "./UnifiedChat";
+import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../api/client";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -143,10 +143,17 @@ export function NotebookScreen({
   backRef,
   onExit,
   onOpenNotebook,
+  chromeless = false,
+  unifiedShell,
 }: {
   id: string;
   chatV2Available?: boolean;
   openAddSources?: boolean;
+  /** Unified root (FLM-UI-4000): the shared shell owns the app bar and
+   *  navigation, so this screen renders no chrome of its own. */
+  chromeless?: boolean;
+  /** Host tree/footer for the unified shell when it owns the whole app. */
+  unifiedShell?: UnifiedShellHost;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
   /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
@@ -412,6 +419,7 @@ export function NotebookScreen({
           because LOOK/READ/REPLAY is a working instrument for a technician,
           not chrome, and it keeps its `aria-label` so the existing sensor
           suites still find it. */}
+      {!chromeless && (
       <div className="nb-appbar">
         <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
           ‹
@@ -433,6 +441,7 @@ export function NotebookScreen({
           ⋯
         </button>
       </div>
+      )}
 
       {/* Leaving Chat is now a deliberate trip, so the way back is explicit.
           Chat is the default and the 95% case, and it stays at one row. */}
@@ -727,6 +736,7 @@ export function NotebookScreen({
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
           }}
+          host={unifiedShell}
           meta={{
             notebookId: notebook.id,
             title: notebook.displayName,
