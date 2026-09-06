@@ -656,6 +656,14 @@ def test_positive_metadata_cannot_hide_a_conflicting_body_model(sup, chunk_model
         "Supported by 7000.",
         "Applies exclusively to 4000.",
         "Applies exclusively to 7000.",
+        "F800 startup instructions.",
+        "A800 drive manual.",
+        "D700 configuration guide.",
+        "C2000 model setup.",
+        "H1000 startup procedure.",
+        "Use the U1000 for this application.",
+        "L1000 only.",
+        "Supported by T1000.",
     ],
 )
 def test_exact_metadata_cannot_hide_reordered_body_identity(sup, body) -> None:
@@ -734,7 +742,7 @@ def test_exact_pack_metadata_plus_shipped_manual_source_is_accepted(sup) -> None
         sup,
         [
             {
-                "content": "L190 sets Step Logic Time 0.",
+                "content": "Parameter L190 sets Step Logic Time 0.",
                 "manufacturer": "Rockwell Automation",
                 "model_number": "PowerFlex 525",
                 "source_url": "520-um001_-en-e.pdf",
@@ -1048,6 +1056,21 @@ def test_unknown_umbrella_series_member_is_not_inferred_from_its_prefix(sup) -> 
         "PowerFlex 60Hz operation uses P041 on model 525.",
         "PowerFlex 70A continuous output uses P041 on model 525.",
         "PowerFlex 525 output current is 70A. Use P041 for acceleration.",
+        "PowerFlex 525 DC bus reading is 753V. Use P041 for acceleration.",
+        "PowerFlex 525 rated voltage is 755V. Use P041 for acceleration.",
+        "PowerFlex 525 nameplate voltage is 753V. Use P041 for acceleration.",
+        "PowerFlex 525 nameplate current is 70A. Use P041 for acceleration.",
+        "PowerFlex 525 bus reading is 755V. Use P041 for acceleration.",
+        "PowerFlex 525 voltage reading is 753V. Use P041 for acceleration.",
+        "PowerFlex 525 current reading is 70A. Use P041 for acceleration.",
+        "PowerFlex 525 measured voltage is 755V. Use P041 for acceleration.",
+        "PowerFlex 525 measured current is 70A. Use P041 for acceleration.",
+        "PowerFlex 525 measurement is 40C. Use P041 for acceleration.",
+        "PowerFlex 525 nominal voltage is 753V. Use P041 for acceleration.",
+        "PowerFlex 525 operating voltage is 755V. Use P041 for acceleration.",
+        "PowerFlex 525 voltage equals 753V. Use P041 for acceleration.",
+        "PowerFlex 525 current equals 70A. Use P041 for acceleration.",
+        "PowerFlex 525 reading: 4000Hz. Use P041 for acceleration.",
         "PowerFlex 208-240VAC input uses P041 on model 525.",
         "PowerFlex 208-240 VAC input uses P041 on model 525.",
         "PowerFlex 208–240 VAC input uses P041 on model 525.",
@@ -1076,6 +1099,86 @@ def test_ratings_are_not_mistaken_for_conflicting_model_identity(sup, body) -> N
     assert "P041" in out
 
 
+@pytest.mark.parametrize("value", ["753V", "755V"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["rated voltage is", "DC bus reading is", "voltage equals", "reading:"],
+)
+@pytest.mark.parametrize(
+    "identity_suffix",
+    [
+        " VFD startup instructions.",
+        " inverter user manual.",
+        " frequency converter configuration.",
+        "-specific startup procedure.",
+        " startup instructions.",
+        " user manual.",
+        "'s acceleration parameter differs.",
+        " supports vector control.",
+    ],
+)
+def test_measurement_prefix_cannot_hide_a_compact_wrong_model_identity(
+    sup, value, prefix, identity_suffix
+) -> None:
+    """Identity grammar after a value outranks measurement grammar before it."""
+    body = f"PowerFlex 525 overview. {prefix} {value}{identity_suffix}"
+
+    assert chunk_matches_model(
+        "PowerFlex 525",
+        body,
+        "525",
+        query_family="PowerFlex",
+        chunk_source="520-um001_-en-e.pdf",
+    ) is False
+    assert _ctx(
+        sup,
+        [
+            {
+                "content": body,
+                "manufacturer": "Rockwell Automation",
+                "model_number": "PowerFlex 525",
+                "source_url": "520-um001_-en-e.pdf",
+            }
+        ],
+        family="PowerFlex",
+        model="525",
+    ) == ""
+
+
+@pytest.mark.parametrize("value", ["753V", "755V"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["rated voltage is", "DC bus reading is", "voltage equals", "reading:"],
+)
+@pytest.mark.parametrize("continuation", [".", ". Use P041 on model 525."])
+def test_measurement_prefix_keeps_a_compact_value_without_identity_prose(
+    sup, value, prefix, continuation
+) -> None:
+    """A sentence boundary prevents later text from changing a real rating into a model."""
+    body = f"PowerFlex 525 {prefix} {value}{continuation}"
+
+    assert chunk_matches_model(
+        "PowerFlex 525",
+        body,
+        "525",
+        query_family="PowerFlex",
+        chunk_source="520-um001_-en-e.pdf",
+    ) is True
+    assert "PowerFlex 525" in _ctx(
+        sup,
+        [
+            {
+                "content": body,
+                "manufacturer": "Rockwell Automation",
+                "model_number": "PowerFlex 525",
+                "source_url": "520-um001_-en-e.pdf",
+            }
+        ],
+        family="PowerFlex",
+        model="525",
+    )
+
+
 @pytest.mark.parametrize(
     "parameter",
     [
@@ -1100,7 +1203,7 @@ def test_ratings_are_not_mistaken_for_conflicting_model_identity(sup, body) -> N
     ],
 )
 def test_parameter_and_fault_ids_after_family_are_not_models(sup, parameter) -> None:
-    body = f"PowerFlex {parameter} procedure for model 525."
+    body = f"PowerFlex parameter code {parameter} procedure for model 525."
     out = _ctx(
         sup,
         [
@@ -1120,7 +1223,7 @@ def test_parameter_and_fault_ids_after_family_are_not_models(sup, parameter) -> 
 @pytest.mark.parametrize(
     "body",
     [
-        "PowerFlex b001 Drive Output Frequency for model 525.",
+        "PowerFlex parameter b001 — Drive Output Frequency for model 525.",
         "PowerFlex F064 Drive Overload 2 on model 525.",
         "PowerFlex P045 drive setting for model 525.",
         "FAULT CODE F064 — Drive Overload. Equipment: Rockwell PowerFlex 525.",
@@ -1340,6 +1443,57 @@ def test_explicit_model_marker_still_makes_parameter_shaped_token_an_identity(su
         [
             {
                 "content": "PowerFlex model b003 startup procedure.",
+                "manufacturer": "Rockwell Automation",
+                "model_number": "PowerFlex 525",
+                "source_url": "520-um001_-en-e.pdf",
+            }
+        ],
+        family="PowerFlex",
+        model="525",
+    )
+    assert out == ""
+
+
+@pytest.mark.parametrize("code", ["P041", "F106", "t093", "C124"])
+@pytest.mark.parametrize(
+    "identity_clause",
+    [
+        "{code} Quick Start Guide.",
+        "{code} user manual.",
+        "The {code} drive configuration.",
+        "Guide for {code}.",
+        "Applicable: {code}.",
+        "Designed for {code}.",
+        "{code}-specific startup.",
+        "Drive model {code}.",
+        "Drive number {code}.",
+        "Drive designation {code}.",
+        "{code} drive.",
+        "Configuration of {code}.",
+        "Reference manual {code}.",
+        "Use the {code}.",
+        "{code} only.",
+        "Startup guide: {code}.",
+        "Supported by {code}.",
+        "Applies exclusively to {code}.",
+        "Model {code}.",
+        "{code} model.",
+        "Product {code}.",
+        "Type {code}.",
+        "Applicable to {code} drives.",
+        "Designed for {code} drives.",
+        "Install unit {code}.",
+    ],
+)
+def test_explicit_identity_grammar_outranks_documented_code_allowlist(
+    sup, code, identity_clause
+) -> None:
+    body = f"PowerFlex 525 acceleration procedure. {identity_clause.format(code=code)}"
+    out = _ctx(
+        sup,
+        [
+            {
+                "content": body,
                 "manufacturer": "Rockwell Automation",
                 "model_number": "PowerFlex 525",
                 "source_url": "520-um001_-en-e.pdf",
@@ -1617,6 +1771,14 @@ def test_percent_encoded_wrong_model_source_is_rejected(sup, source) -> None:
         "PF525-vs-753V.pdf",
         "PowerFlex_525_753A.pdf",
         "PowerFlex-525-753HZ.pdf",
+        "F800-manual.pdf",
+        "A800-drive-guide.pdf",
+        "D700-startup.pdf",
+        "C2000-model.pdf",
+        "H1000-user-manual.pdf",
+        "U1000-installation.pdf",
+        "L1000-service-guide.pdf",
+        "T1000-configuration.pdf",
     ],
 )
 def test_four_digit_equipment_model_in_source_is_rejected(sup, source) -> None:

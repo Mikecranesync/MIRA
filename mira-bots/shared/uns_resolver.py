@@ -42,8 +42,8 @@ def _normalize_identity_words(value: str) -> str:
 @lru_cache(maxsize=128)
 def _drive_pack_identity_terms(
     model_identity: str,
-) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
-    """Return pack aliases, keywords, and explicitly documented family models.
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+    """Return pack aliases, keywords, models, and documented parameter/fault IDs.
 
     Pack lookup reads JSON from disk, so cache by the canonical query identity.
     The pack remains the single source of truth; this helper does not introduce a
@@ -54,9 +54,9 @@ def _drive_pack_identity_terms(
 
         pack = resolve_pack(model_identity)
     except Exception:  # noqa: BLE001 - drive packs are an optional refinement
-        return (), (), (), ""
+        return (), (), (), (), ""
     if not pack:
-        return (), (), (), ""
+        return (), (), (), (), ""
     aliases = tuple(
         dict.fromkeys(_normalize_identity_words(alias) for alias in pack.family.aliases if alias)
     )
@@ -108,7 +108,28 @@ def _drive_pack_identity_terms(
                 documented_models.add(candidate)
 
     documented_models.update(series_numbers)
-    return aliases, keywords, tuple(sorted(documented_models)), pack.pack_id
+    code_texts: list[str] = []
+    for parameter in pack.parameters:
+        code_texts.append(parameter.parameter_id)
+        code_texts.extend(parameter.related_parameters)
+        code_texts.append(parameter.source_citation.excerpt)
+    for provenance in pack.provenance.sources:
+        if isinstance(provenance, dict):
+            code_texts.append(str(provenance.get("excerpt") or ""))
+    documented_codes = {
+        token.casefold()
+        for value in code_texts
+        for token in re.findall(
+            r"(?<![a-z0-9])[a-z]{1,3}\d{1,4}[a-z]{0,3}(?![a-z0-9])", value, re.I
+        )
+    }
+    return (
+        aliases,
+        keywords,
+        tuple(sorted(documented_models)),
+        tuple(sorted(documented_codes)),
+        pack.pack_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1283,9 +1304,13 @@ def chunk_matches_model(
         q = f"{family_hint} {q}"
     query_model_tokens.add(re.sub(r"[^a-z0-9]", "", q.casefold()))
 
-    pack_aliases, pack_keywords, documented_pack_models, query_pack_id = _drive_pack_identity_terms(
-        q
-    )
+    (
+        pack_aliases,
+        pack_keywords,
+        documented_pack_models,
+        documented_pack_codes,
+        query_pack_id,
+    ) = _drive_pack_identity_terms(q)
     has_drive_pack = bool(pack_aliases or pack_keywords)
     declared_series_aliases = tuple(alias for alias in pack_aliases if " series " in f" {alias} ")
 
@@ -1535,12 +1560,19 @@ def chunk_matches_model(
             r"continuous[\W_]+output|(?:max[\W_]+)?ambient[\W_]+limit)(?![a-z])"
         )
         measurement_prefix = re.compile(
-            r"(?<![a-z])(?:rated(?:[\W_]+(?:nameplate|current|voltage|power))?|"
+            r"(?<![a-z])(?:rated(?:[\W_]+(?:nameplate|current|voltage|power))?"
+            r"(?:[\W_]+is)?|"
             r"rating(?:[\W_]+is)?|"
             r"ambient(?:[\W_]+temperature)?(?:[\W_]+limit)?(?:[\W_]+is)?|"
             r"continuous(?:[\W_]+output)?(?:[\W_]+is)?|"
+            r"(?:ac|dc)[\W_]+bus(?:[\W_]+(?:reading|voltage))?"
+            r"(?:[\W_]+(?:is|at))?|"
             r"(?:input|output)(?:[\W_]+(?:current|voltage|power))?"
-            r"(?:[\W_]+(?:is|at))?)[\W_]*$"
+            r"(?:[\W_]+(?:is|at))?|"
+            r"(?:nameplate|measured)[\W_]+(?:voltage|current)[\W_]+is|"
+            r"(?:bus|voltage|current)[\W_]+reading[\W_]+is|"
+            r"measurement[\W_]+is|(?:nominal|operating)[\W_]+voltage[\W_]+is|"
+            r"(?:voltage|current)[\W_]+equals|reading)[\W_]*$"
         )
         measurement_range = re.compile(
             r"[\W_]*(?:(?:-|–|—|/)|(?:to|through))[\W_]*\d{1,4}[\W_]*"
@@ -1560,6 +1592,34 @@ def chunk_matches_model(
             + family_qualifier
             + r")[\W_]+(?:code|value)[\W_]*$"
         )
+        documented_code_identity_before = re.compile(
+            r"(?<![a-z])(?:guide[\W_]+for|applicable(?:[\W_]+to)?|designed[\W_]+for|"
+            r"drive[\W_]+(?:model|number|designation)|configuration[\W_]+of|"
+            r"reference[\W_]+manual|use[\W_]+the|startup[\W_]+guide|"
+            r"supported[\W_]+by|applies[\W_]+exclusively[\W_]+to|"
+            r"(?:model|product|type|unit|series)"
+            r"(?:[\W_]+(?:code|value|number|designation))?)[\W_]*$"
+        )
+        documented_code_identity_after = re.compile(
+            r"[\W_]*(?:quick[\W_]+start[\W_]+guide|user[\W_]+manual|"
+            r"drive[\W_]+(?:configuration|manual|guide|model|unit|startup)|"
+            r"drive(?=[\W_]*(?:$|[.;,:)]))|specific|startup|manual|guide|"
+            r"procedure|model|product|type|unit|series|only)(?![a-z])"
+        )
+
+        def _documented_code_used_as_identity(candidate: str, start: int, end: int) -> bool:
+            if candidate not in documented_pack_codes:
+                return False
+            before = lowered[max(0, start - 64) : start]
+            after = lowered[end : end + 80]
+            if non_identity_prefix.search(before) and not explicit_identity_qualifier.search(
+                before
+            ):
+                return False
+            return bool(
+                documented_code_identity_before.search(before)
+                or documented_code_identity_after.match(after)
+            )
 
         def _conflicts(
             identity: re.Match[str], *, offset: int = 0, force_identity: bool = False
@@ -1586,10 +1646,8 @@ def chunk_matches_model(
             # family name in real manuals (P041, F081, C125, A442, b001, t001).
             # Keep this aligned with the canonical Notebook query vocabulary; they
             # are not equipment models unless an explicit identity marker says so.
-            if (
-                marker in {"", "drive"}
-                and re.fullmatch(r"[abcdfhlptu]\d{2,4}", candidate)
-                and candidate not in known_resolver_model_tokens
+            if candidate in documented_pack_codes and not _documented_code_used_as_identity(
+                candidate, start, end
             ):
                 return False
             compact_measurement = re.fullmatch(
@@ -1912,6 +1970,12 @@ def chunk_matches_model(
             r"uses?|has|requires?|provides?|supports?)"
             r"(?![a-z])"
         )
+        compact_identity_suffix = re.compile(
+            r"(?:[\t ]+(?:vfd|inverter|frequency[\W_]+converter|converter|"
+            r"specific|startup|operating[\W_]+instructions?|user[\W_]+manual|"
+            r"instructions?|procedure|wiring|manual|configuration|programming|supports?)"
+            r"(?![a-z])|[\t ]*[-–—][\t ]*specific(?![a-z])|[\t ]*['’]s(?![a-z]))"
+        )
         for token in re.finditer(rf"(?<![a-z0-9])(?P<model>{model_token})(?![a-z0-9])", lowered):
             candidate = _normalize_identity_words(token.group("model"))
             start, end = token.span("model")
@@ -1921,8 +1985,8 @@ def chunk_matches_model(
                 or _declared_sibling_is_shared(candidate, start, end)
                 or _overlaps_allowed(start, end)
                 or (
-                    re.fullmatch(r"[abcdfhlptu]\d{2,4}", candidate)
-                    and candidate not in known_resolver_model_tokens
+                    candidate in documented_pack_codes
+                    and not _documented_code_used_as_identity(candidate, start, end)
                 )
                 or re.fullmatch(r"(?:page|table|figure|section)\d{1,4}", candidate)
                 or re.fullmatch(r"(?:19|20)\d{2}", candidate)
@@ -1949,21 +2013,6 @@ def chunk_matches_model(
                 before
             ):
                 continue
-            # The global scan must mirror the decimal exemption in
-            # ``_conflicts``.  In real parameter tables, the fractional tail in
-            # ``0.00/Drive Rated Power`` otherwise looks like the model-first
-            # phrase ``00 Drive``.
-            if not source_mode and (
-                (start > 0 and lowered[start - 1] == ".")
-                or (
-                    end < len(lowered)
-                    and lowered[end] == "."
-                    and end + 1 < len(lowered)
-                    and lowered[end + 1].isdigit()
-                )
-                or (measurement_prefix.search(before) and nearby_measurement_unit)
-            ):
-                continue
             compact_value = re.fullmatch(
                 r"(?P<value>\d{1,4})(?:vac|vdc|mhz|khz|hz|ms|ma|kw|hp|rpm|pct|a|v|c|f)",
                 candidate,
@@ -1980,6 +2029,29 @@ def chunk_matches_model(
                 base in known_family_models
                 or (len(base) >= 3 and any(base.startswith(prefix) for prefix in family_prefixes))
             )
+            # Identity wording immediately after a compact token outranks
+            # measurement wording before it. Otherwise prose such as
+            # ``voltage equals 753V VFD`` can disguise a wrong model as a
+            # voltage reading. Keep separators sentence-local so a real rating
+            # ending in ``753V.`` cannot absorb identity prose from a later
+            # sentence.
+            if compact_value and model_like and compact_identity_suffix.match(after):
+                return True
+            # The global scan must mirror the decimal exemption in
+            # ``_conflicts``.  In real parameter tables, the fractional tail in
+            # ``0.00/Drive Rated Power`` otherwise looks like the model-first
+            # phrase ``00 Drive``.
+            if not source_mode and (
+                (start > 0 and lowered[start - 1] == ".")
+                or (
+                    end < len(lowered)
+                    and lowered[end] == "."
+                    and end + 1 < len(lowered)
+                    and lowered[end + 1].isdigit()
+                )
+                or (measurement_prefix.search(before) and nearby_measurement_unit)
+            ):
+                continue
             coordinated_with_query = bool(
                 re.search(rf"(?:{coordinator}|[,/&+|:()\-–—])[\W_]*$", before)
                 and _body_matches_query_identity(lowered[:start])
@@ -2092,7 +2164,7 @@ def chunk_matches_model(
     # wrong model evade the same parser that rejects its plain-text form.
     source = unquote((chunk_source or "").strip())
     if query_pack_id and source:
-        _source_aliases, _source_keywords, _source_models, source_pack_id = (
+        _source_aliases, _source_keywords, _source_models, _source_codes, source_pack_id = (
             _drive_pack_identity_terms(source)
         )
         if source_pack_id and source_pack_id != query_pack_id:
