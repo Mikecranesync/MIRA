@@ -337,11 +337,13 @@ def _is_exact_pointer_addition(diff_text: str) -> bool:
     post-#3647 transition to the pointer and forbids smuggling any other edit into a root file."""
     added, removed = _added_removed(diff_text)
     non_blank = [a for a in added if a.strip()]
+    # EVERY non-blank added line must reference the pointer (all, not any): a diff that adds the
+    # pointer line PLUS any other content is NOT the exact pointer stanza and must fail.
     return (
         not removed
         and bool(non_blank)
         and len(non_blank) <= 8
-        and any(POINTER in a for a in non_blank)
+        and all(POINTER in a for a in non_blank)
     )
 
 
@@ -668,6 +670,11 @@ def test_landed_root_pointer_transition_is_satisfiable_and_bounded() -> None:
     ]
     # landed but the addition does NOT reference the pointer → violation
     assert _violations(["CLAUDE.md"], "landed", lambda _p: "+unrelated\n+lines\n") == ["CLAUDE.md"]
+    # landed + the pointer line PLUS an unrelated added line → violation (must be ONLY the pointer,
+    # not pointer+anything — the exact form a careless author would type). all(), not any().
+    mixed = f"+> Read `{POINTER}`\n+import os  # smuggled\n"
+    assert _violations(["CLAUDE.md"], "landed", lambda _p: mixed) == ["CLAUDE.md"]
+    assert _is_exact_pointer_addition(mixed) is False
     # landed but the addition is larger than a stanza (smuggling) → violation
     big = "".join(f"+line {i} `{POINTER}`\n" for i in range(9))
     assert _violations(["CLAUDE.md"], "landed", lambda _p: big) == ["CLAUDE.md"]
