@@ -177,10 +177,17 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     expect(r).toMatchObject({ staged: null, reason: "verify_failed" });
   });
 
-  it("reuses a bundle already downloaded but not active, without re-downloading", async () => {
+  // getBundles() is deprecated as of plugin 7.4.0 in favour of
+  // getDownloadedBundles(); both mean "already downloaded". We ship 8.4.1, so the
+  // current name must be preferred and the old one must still work for a native
+  // shell that has not been rebuilt.
+  it.each([
+    ["getDownloadedBundles", "current API"],
+    ["getBundles", "deprecated API on an older shell"],
+  ])("reuses an already-downloaded bundle via %s (%s)", async (method) => {
     const { checkAndStage } = await import("../live-update");
     plugin.getCurrentBundle.mockResolvedValueOnce({ bundleId: "1.1.6-oldbundle" });
-    (plugin as Record<string, unknown>).getBundles = vi.fn(async () => ({
+    (plugin as Record<string, unknown>)[method] = vi.fn(async () => ({
       bundleIds: [validManifest.bundleId],
     }));
     serve(validManifest);
@@ -190,6 +197,23 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
     expect(plugin.setNextBundle).toHaveBeenCalledWith({ bundleId: validManifest.bundleId });
     expect(r).toMatchObject({ staged: validManifest.bundleId, reason: "reused_local" });
+    delete (plugin as Record<string, unknown>)[method];
+  });
+
+  it("prefers getDownloadedBundles over the deprecated getBundles", async () => {
+    const { checkAndStage } = await import("../live-update");
+    plugin.getCurrentBundle.mockResolvedValueOnce({ bundleId: "1.1.6-oldbundle" });
+    const current = vi.fn(async () => ({ bundleIds: [validManifest.bundleId] }));
+    const deprecated = vi.fn(async () => ({ bundleIds: [] as string[] }));
+    (plugin as Record<string, unknown>).getDownloadedBundles = current;
+    (plugin as Record<string, unknown>).getBundles = deprecated;
+    serve(validManifest);
+
+    await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(current).toHaveBeenCalled();
+    expect(deprecated).not.toHaveBeenCalled();
+    delete (plugin as Record<string, unknown>).getDownloadedBundles;
     delete (plugin as Record<string, unknown>).getBundles;
   });
 });

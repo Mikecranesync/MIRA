@@ -190,9 +190,16 @@ export async function checkAndStage(opts: {
   // hold instead of fetching it twice. Behind a capability check — if the plugin
   // cannot enumerate bundles we fall through to the download path, which is
   // exactly today's behaviour.
-  const enumerate = (LiveUpdate as unknown as {
+  // Both methods answer "which bundles are already downloaded". getBundles() is
+  // deprecated as of plugin 7.4.0 in favour of getDownloadedBundles(); we ship
+  // 8.4.1, so prefer the current name and keep the old one as a fallback for an
+  // older native shell that has not been rebuilt yet. Verified against the
+  // installed plugin's own type definitions, not assumed.
+  const api = LiveUpdate as unknown as {
+    getDownloadedBundles?: () => Promise<{ bundleIds?: string[] } | string[] | undefined>;
     getBundles?: () => Promise<{ bundleIds?: string[] } | string[] | undefined>;
-  }).getBundles;
+  };
+  const enumerate = api.getDownloadedBundles ?? api.getBundles;
   if (typeof enumerate === "function") {
     const held = await enumerate
       .call(LiveUpdate)
