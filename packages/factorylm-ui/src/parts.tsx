@@ -50,11 +50,14 @@ export function machineName(state: ShellState, machineId: string | undefined): s
 }
 
 /** A turn or run carries its own context line only when it differs from the current context
- *  (machine, identity, project or folder) — the chip at the top already says where we are. */
+ *  (machine, identity, evidence authorization, project or folder) — the chip at the top already
+ *  says where we are. Authorization is a scope change too: an answer recorded while evidence was
+ *  authorized must keep saying so after authorization is revoked (Codex P1, #3651). */
 export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): boolean {
   const now = state.activeContext;
   return snapshot.machineId !== now.machineId
     || snapshot.machineIdentity !== now.machineIdentity
+    || snapshot.evidenceAuthorization !== now.evidenceAuthorization
     || (snapshot.projectId ?? undefined) !== (now.projectId ?? undefined)
     || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
 }

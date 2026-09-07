@@ -47,9 +47,17 @@ describe("navigation order and sections", () => {
     const input = must(view.container.querySelector<HTMLInputElement>('input[aria-label="Search navigation"]'), "search");
     const setter = must(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set, "value setter");
     act(() => { setter.call(input, "brake"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    const labels = Array.from(view.container.querySelectorAll<HTMLElement>('[aria-label="Projects"] .fl-tree__label')).map((el) => el.textContent);
-    expect(labels.some((label) => /brake/i.test(label ?? ""))).toBe(true);
-    expect(labels.some((label) => /launch 2 reliability/i.test(label ?? ""))).toBe(false);
+    const rows = Array.from(view.container.querySelectorAll<HTMLElement>('[aria-label="Projects"] .fl-tree__row'));
+    const labels = rows.map((row) => row.querySelector(".fl-tree__label")?.textContent ?? "");
+    expect(labels.some((label) => /brake/i.test(label))).toBe(true);
+    // Non-matching rows disappear — unless they are the current row or on its path (P2):
+    // "Launch 2 Drive B" is neither, so it is gone; the Launch 2 ancestors of the current
+    // machine link remain, marked as the path, never as a match.
+    expect(labels.some((label) => /drive b/i.test(label))).toBe(false);
+    const byLabel = (re: RegExp) => rows.find((row) => re.test(row.querySelector(".fl-tree__label")?.textContent ?? ""));
+    expect(byLabel(/recurring findings/i)).toBeDefined();          // ancestor of a match stays
+    expect(byLabel(/launch 2 reliability/i)?.dataset.path).toBe("true"); // ancestor of the current row stays, as path
+    expect(byLabel(/^drive a$/i)).toBeUndefined();                  // neither match, path nor current: gone
   });
 });
 
@@ -88,6 +96,18 @@ describe("tree rows", () => {
     expect(pin.dataset.active).toBe("true");
   });
 
+  it("a search that does not match the current row keeps it rendered, so exactly one row stays current (P2)", () => {
+    const view = render({ surface: "web", fixture: "project-tree", onOpenItem: () => {} });
+    const tree = () => must(view.container.querySelector<HTMLElement>('[aria-label="Projects"]'), "tree");
+    const before = must(tree().querySelector<HTMLElement>('[aria-current="page"]'), "current before search");
+    const input = must(view.container.querySelector<HTMLInputElement>('input[aria-label="Search navigation"]'), "search");
+    const setter = must(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set, "value setter");
+    act(() => { setter.call(input, "brake"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const current = Array.from(tree().querySelectorAll<HTMLElement>('[aria-current="page"]'));
+    expect(current.length).toBe(1);
+    expect(current[0].textContent).toBe(before.textContent);
+  });
+
   it("selecting a folder moves the single current row to that folder", () => {
     const view = render({ surface: "web", fixture: "project-tree", onOpenItem: () => {} });
     const tree = must(view.container.querySelector<HTMLElement>('[aria-label="Projects"]'), "tree");
@@ -124,6 +144,17 @@ describe("context lines only when context differs", () => {
     const view = render({ surface: "web", fixture: "work-run" });
     expect(view.container.querySelector('[data-part-type="context_change"]')).toBeNull();
     expect(view.container.querySelector(".fl-conversation")?.textContent ?? "").not.toContain("Context:");
+  });
+
+  it("a turn whose evidence authorization differs from the current context still says so (P1)", () => {
+    const view = render({ surface: "web", fixture: "grounded-answer" });
+    expect(view.container.querySelector('[data-context-line="turn"]')).toBeNull();
+    const thread = getFixture("grounded-answer").thread;
+    const revoked = { ...thread, turns: thread.turns.map((turn) => ({ ...turn, context: { ...turn.context, evidenceAuthorization: "not_authorized" as const } })) };
+    act(() => { view.dispatch({ type: "hydrate", data: { thread: revoked } }); });
+    const turns = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
+    expect(turns.length).toBeGreaterThan(0);
+    expect(turns.every((turn) => turn.querySelector('[data-context-line="turn"]') !== null)).toBe(true);
   });
 
   it("a turn recorded against a different machine still says so", () => {

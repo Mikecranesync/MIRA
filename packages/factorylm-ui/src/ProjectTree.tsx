@@ -63,9 +63,14 @@ function matches(label: string, filter: string | undefined): boolean {
   return !filter || label.toLowerCase().includes(filter.toLowerCase());
 }
 
-function subtreeMatches(node: ProjectNode, filter: string | undefined): boolean {
-  if (matches(node.label, filter)) return true;
-  return node.kind === "folder" && node.children.some((child) => subtreeMatches(child, filter));
+/**
+ * A node renders under a filter when its label matches, when a descendant matches, or when it
+ * IS the current row / an ancestor of it — the selection never disappears from the tree, so the
+ * whole navigation keeps exactly one aria-current row while results exist (Codex P2, #3651).
+ */
+function subtreeMatches(node: ProjectNode, filter: string | undefined, keep: ReadonlySet<string>): boolean {
+  if (keep.has(node.id) || matches(node.label, filter)) return true;
+  return node.kind === "folder" && node.children.some((child) => subtreeMatches(child, filter, keep));
 }
 
 const ITEM_ICON = { thread: ChatIcon, run: RunIcon, file: DocumentIcon, finding: FindingIcon } as const;
@@ -102,7 +107,8 @@ export function ProjectTree({ projects, state, dispatch, onOpenItem, filter }: P
   if (projects.length === 0) return <p className="fl-shell__empty">No projects in this workspace.</p>;
   const current = currentTreeRowId(state, projects);
   const path = ancestorsOf(current, projects);
-  const visible = projects.filter((project) => matches(project.name, filter) || project.children.some((child) => subtreeMatches(child, filter)));
+  const keep = new Set<string>([...path, ...(current ? [current] : [])]);
+  const visible = projects.filter((project) => keep.has(project.id) || matches(project.name, filter) || project.children.some((child) => subtreeMatches(child, filter, keep)));
   if (visible.length === 0) return <p className="fl-shell__empty" role="status">No matches.</p>;
 
   return <ul className="fl-tree" aria-label="Projects">
@@ -119,18 +125,19 @@ export function ProjectTree({ projects, state, dispatch, onOpenItem, filter }: P
           label={project.name}
           onClick={() => selectAndCloseNavigation(dispatch, { type: "select-project", projectId: project.id })}
         />
-        <Nodes nodes={project.children} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} current={current} path={path} />
+        <Nodes nodes={project.children} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} current={current} path={path} keep={keep} />
       </li>
     ))}
   </ul>;
 }
 
-function Nodes({ nodes, state, dispatch, onOpenItem, filter, current, path }: Omit<ProjectTreeProps, "projects"> & {
+function Nodes({ nodes, state, dispatch, onOpenItem, filter, current, path, keep }: Omit<ProjectTreeProps, "projects"> & {
   readonly nodes: readonly ProjectNode[];
   readonly current: string | undefined;
   readonly path: ReadonlySet<string>;
+  readonly keep: ReadonlySet<string>;
 }) {
-  const shown = nodes.filter((node) => subtreeMatches(node, filter));
+  const shown = nodes.filter((node) => subtreeMatches(node, filter, keep));
   if (shown.length === 0) return null;
   return <ul className="fl-tree__children">
     {shown.map((node) => {
@@ -147,7 +154,7 @@ function Nodes({ nodes, state, dispatch, onOpenItem, filter, current, path }: Om
             label={node.label}
             onClick={() => selectAndCloseNavigation(dispatch, { type: "select-folder", folderId: node.id })}
           />
-          <Nodes nodes={node.children} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} current={current} path={path} />
+          <Nodes nodes={node.children} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} current={current} path={path} keep={keep} />
         </li>;
       }
       if (node.kind === "machine-link") {
