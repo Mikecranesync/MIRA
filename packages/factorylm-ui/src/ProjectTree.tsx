@@ -20,15 +20,21 @@ interface ProjectTreeProps {
  * row get data-path="true" — a quiet "you are inside this" treatment, not a
  * second selection.
  */
+/**
+ * The one open object: in Work mode with a run, the run — exclusively, its owning thread is
+ * not "open" while the user is inside the run; in Work without a run, and in Ask mode
+ * (a retained run is background), the thread. Sidebar reference lists and the tree both
+ * key on this, so the navigation can never mark two objects at once (Codex P1, #3651).
+ */
+export function openObjectId(state: ShellState): string {
+  return state.mode === "work" && state.run ? state.run.id : state.thread.id;
+}
+
 export function currentTreeRowId(state: ShellState, projects: readonly Project[]): string | undefined {
   const items = flatten(projects);
-  // In Work mode the open run is what the user is inside, so it outranks the thread; in Ask
-  // mode a retained run is background and the open thread (or machine) is current.
-  const openIds = (state.mode === "work" ? [state.run?.id, state.thread.id] : [state.thread.id]).filter((id): id is string => Boolean(id));
-  for (const id of openIds) {
-    const open = items.find((entry) => entry.node.kind !== "folder" && entry.node.kind !== "machine-link" && entry.node.id === id);
-    if (open) return open.node.id;
-  }
+  const openId = openObjectId(state);
+  const open = items.find((entry) => entry.node.kind !== "folder" && entry.node.kind !== "machine-link" && entry.node.id === openId);
+  if (open) return open.node.id;
   const machineId = state.activeContext.machineId;
   if (machineId) {
     const links = items.filter((entry) => entry.node.kind === "machine-link" && entry.node.machineId === machineId);

@@ -195,8 +195,8 @@ describe("context lines only when context differs", () => {
     expect(current()[0].dataset.itemKind).toBe("run");
     act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
     expect(current().length).toBe(1);
-    expect(current()[0].dataset.itemKind).not.toBe("run");
-    expect(current()[0].dataset.kind).toBe("machine"); // the open thread is not in the tree, so the active machine link
+    expect(current()[0].dataset.itemKind).toBe("thread"); // the run's owning thread, which the tree files the run under
+    expect(current()[0].dataset.itemId).toBe("thread-drive-a");
     act(() => { view.dispatch({ type: "set-mode", mode: "work" }); });
     expect(current()[0].dataset.itemKind).toBe("run");
   });
@@ -210,6 +210,26 @@ describe("context lines only when context differs", () => {
     act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
     expect(runRow().dataset.active).toBeUndefined();
     expect(must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "nav").querySelectorAll('[aria-current="page"]').length).toBe(1);
+  });
+
+  it("the open run is selected EXCLUSIVELY: its owning thread is inactive everywhere while the run is open (Codex P1)", () => {
+    // work-run: run-drive-a-f30001 belongs to thread-drive-a (fixtures.ts, project tree).
+    const view = render({ surface: "web", fixture: "work-run", onOpenItem: () => {} });
+    const nav = () => must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    // Recent rows only: the pinned machine's data-active reflects the active CONTEXT (a machine),
+    // which is a different reference from the open object and may be active alongside it.
+    const activeIds = () => Array.from(nav().querySelectorAll<HTMLElement>('[data-recent-id][data-active="true"]')).map((el) => must(el.dataset.recentId, "recent id"));
+    const threadTreeRow = () => must(nav().querySelector<HTMLElement>('[data-item-id="thread-drive-a"]'), "owning thread tree row");
+    // Work + run: the run is the only reference weight and the only current row; the thread carries neither.
+    expect(activeIds()).toEqual(["run-drive-a-f30001"]);
+    expect(threadTreeRow().getAttribute("aria-current")).toBeNull();
+    expect(threadTreeRow().dataset.active).toBeUndefined();
+    expect(nav().querySelector<HTMLElement>('[data-recent-id="thread-drive-a"]')?.dataset.active).toBeUndefined();
+    expect(Array.from(nav().querySelectorAll<HTMLElement>('[aria-current="page"]')).map((el) => el.dataset.itemId)).toEqual(["run-drive-a-f30001"]);
+    // Ask: the retained run is background; nothing marks the run, and at most one reference is active.
+    act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
+    expect(activeIds()).not.toContain("run-drive-a-f30001");
+    expect(activeIds().length).toBeLessThanOrEqual(1);
   });
 
   it("an inert current row matches the selection stylesheet selector (styled, not just semantic)", () => {

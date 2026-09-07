@@ -195,7 +195,7 @@ const F30001_SOURCE = {
 
 const WORK_RUN: InteractionRun = {
   id: "run-drive-a-f30001",
-  threadId: "thread-work-run",
+  threadId: "thread-drive-a",
   kind: "diagnostic",
   status: "running",
   goal: "Determine whether Drive A's F30001 is caused by supply or braking conditions.",
@@ -338,8 +338,8 @@ const fixtureData: Record<FixtureId, ShellFixture> = {
     id: "work-run",
     title: "Diagnostic Work run",
     review: REVIEW,
-    thread: thread("thread-work-run", "Drive A diagnostic", DRIVE_A_CONTEXT, [
-      turn("turn-work-start", "thread-work-run", "assistant", DRIVE_A_CONTEXT, [
+    thread: thread("thread-drive-a", "Drive A diagnostic", DRIVE_A_CONTEXT, [
+      turn("turn-work-start", "thread-drive-a", "assistant", DRIVE_A_CONTEXT, [
         { type: "context_change", change: DRIVE_A_CONTEXT },
         { type: "approval_request", approval: { id: "approval-plan", title: "Approve diagnostic plan", rationale: "The run records an evidence-bound investigation.", status: "approved" } },
         { type: "plan", plan: { id: "plan-drive-a", title: "F30001 investigation", goal: WORK_RUN.goal, status: "in_progress" } },

@@ -1,7 +1,7 @@
 import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factorylm/interaction";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, MachineIcon, RunIcon, SearchIcon } from "./icons";
-import { ProjectTree } from "./ProjectTree";
+import { ProjectTree, openObjectId } from "./ProjectTree";
 import type { HostHooks } from "./parts";
 
 interface SidebarProps {
@@ -39,10 +39,15 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pinned machines → host footer (settings / user menu). On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
-/** The open object for reference lists: in Work mode the open run, else the open thread. */
+/**
+ * The ONE open object for reference lists — the same object the tree marks current
+ * (`openObjectId`). Work with a run selects the run exclusively (its owning thread is
+ * not active); Work without a run and Ask select the thread. Codex P1 on #3651: the
+ * previous version let every non-run row fall through to the thread, so run and
+ * thread were both active at once.
+ */
 function isOpenItem(state: ShellState, itemId: string): boolean {
-  if (state.mode === "work" && state.run?.id === itemId) return true;
-  return state.thread.id === itemId;
+  return openObjectId(state) === itemId;
 }
 
 export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: SidebarProps) {
