@@ -524,3 +524,48 @@ def test_residual_unroled_text_matches_the_pinned_baseline():
         f"text nodes {sorted(new)} render text that nothing classifies. Either give "
         "them a role or add them to KNOWN_UNROLED with intent."
     )
+
+
+# --------------------------------------------------------------------------
+# Hard imports. No conditional-import skip anywhere in this suite, by design:
+# a governance suite that skips when a dependency is missing reports success
+# for a run in which it judged nothing.
+# --------------------------------------------------------------------------
+
+
+def test_every_detector_is_importable_and_callable():
+    """The floor. If this cannot run, the suite has no business reporting green."""
+    from ux_acceptance.detectors import (
+        detect_citation_identity,
+        detect_groundedness_signal,
+        detect_identifier_repetition,
+    )
+
+    for detector in (detect_citation_identity, detect_groundedness_signal,
+                     detect_identifier_repetition):
+        assert callable(detector), detector
+        assert hasattr(detector, "test_id"), f"{detector} declares no acceptance test id"
+
+    finding = detect_citation_identity(load("repaired_citation"))
+    assert finding.verdict in (Verdict.PASS, Verdict.FAIL, Verdict.UNKNOWN)
+
+
+def test_the_suite_contains_no_conditional_skips():
+    """Conditional-import skips and unconditional skip marks are banned here.
+
+    Grepping the source is cruder than inspecting collected items, but it
+    catches the decorator before it ever runs — and the conftest guard catches
+    anything that slips past at runtime. Two layers, because this is the exact
+    mechanism behind #3660.
+    """
+    source = Path(__file__).read_text()
+    # Built by concatenation so the literals do not appear in this file and trip
+    # the very check they define. `native-fingerprint-wiring.test.ts` solves the
+    # same self-reference problem by asserting on exact expressions and saying
+    # why in a comment; this is the Python form of that.
+    banned = ("import" + "orskip", "pytest." + "skip(", "@pytest.mark." + "skip")
+    for token in banned:
+        assert token not in source, (
+            f"{token!r} appears in this suite. A skipped governance test reports "
+            "success for a run in which it judged nothing."
+        )
