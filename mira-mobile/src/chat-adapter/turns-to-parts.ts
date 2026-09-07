@@ -26,6 +26,21 @@ import { answerBody } from "../lib/chat-copy";
 import { isStoppedTurn, type NotebookServerTurn } from "../api/resources";
 import type { AdapterMessage, MessagePart } from "./contract";
 
+/** A live turn whose transport failed (provider error or an HTTP status line). */
+export function isFailedLiveStatus(status: string): boolean {
+  return status === "error" || status.startsWith("http ");
+}
+
+/**
+ * A live turn that actually completed — the only kind that may feed the
+ * model's history (a stopped or failed attempt has no answer to stand behind
+ * and would present the question as already handled). Keyed on completion,
+ * not on enumerating the ways a turn can fail (ADR-0040 §4, F1/F4 lesson).
+ */
+export function isCompletedLiveTurn(t: { a: { status: string } }): boolean {
+  return t.a.status !== "stopped" && !isFailedLiveStatus(t.a.status);
+}
+
 /** Evidence-array entries that are neither citations nor known evidence
  *  kinds — preserved as inspectable unknown parts (PRD §9.2). */
 export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown[] {
@@ -265,7 +280,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
       },
     ];
   }
-  const failed = a.status === "error" || a.status.startsWith("http ");
+  const failed = isFailedLiveStatus(a.status);
   return [
     user,
     {

@@ -175,6 +175,24 @@ describe("F4 — a failed send must remain retryable on the unified surface", ()
     expect(second?.[1] ?? second?.[0]).toEqual(first?.[1] ?? first?.[0]);
   });
 
+  it("does not replay the failed attempt as unanswered history in the retried payload", async () => {
+    // The failed live turn is rendered (above) but must never reach the model
+    // as prior context: it has no answer, and on retry the same question would
+    // arrive twice — once as history, once as the new message. This is the
+    // payload-level twin of the transcript-level no-duplicate rule.
+    mount();
+    await ask("What does fault F005 mean?");
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(retryButton()).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(retryButton() as HTMLButtonElement);
+    });
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
+    const second = askNotebook.mock.calls[1];
+    const body = (second?.[1] ?? second?.[0]) as { history?: unknown };
+    expect(JSON.stringify(body?.history ?? [])).not.toContain("What does fault F005 mean?");
+  });
+
   it("does not silently lose the question altogether", async () => {
     // CORRECTION to the first F4 write-up: I reported that the unified surface
     // leaves "a restored draft and nothing else". That was wrong — it leaves

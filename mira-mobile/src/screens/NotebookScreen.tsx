@@ -59,7 +59,7 @@ import { SafetyNotice } from "./SafetyNotice";
 import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { hasIdentityDispute, safetyNoticeEntry, isCompletedLiveTurn } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../api/client";
@@ -279,7 +279,11 @@ export function NotebookScreen({
       // A stopped turn is not an answer: it never enters the thread memory.
       history: buildChatHistory(
         turns,
-        liveTurns.filter((t) => t.a.status !== "stopped"),
+        // Only completed attempts are history; a stopped or failed one would
+        // hand the model an unanswered question as prior context (and, on retry,
+        // the same question twice — the drop in sendQuestion has not committed
+        // when this closure runs). Status-keyed, so ordering cannot matter.
+        liveTurns.filter(isCompletedLiveTurn),
       ),
       // Sensor REPLAY (§4.4) / LOOK (S5 D3): the selected window and the
       // parked photo ride on the body so a Retry re-sends them byte-identically.
