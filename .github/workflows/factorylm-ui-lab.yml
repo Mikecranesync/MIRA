@@ -123,32 +123,11 @@ jobs:
           log=/tmp/shared-ui-verify.log
           missing=0
 
-          # Each shared-core contract suite must be named in the junit output.
-          # Keep this list equal to the suites under packages/*/src/__tests__:
-          # a guard that lives in an unlisted file can stop running and CI
-          # stays green (devops gate finding on #3643).
-          for suite in \
-            shell.test.tsx \
-            composer.test.tsx \
-            conversation.test.tsx \
-            mobile-behavior.test.tsx \
-            retry-capability.test.tsx \
-            attachment-sheet.test.tsx \
-            reducer.test.ts \
-            theme-contract.test.ts \
-            fixtures.test.ts
-          do
-            if grep -q -- "$suite" "$xml"; then
-              echo "ok   collected ${suite}"
-            else
-              echo "::error::${suite} never ran — the suite was not collected."
-              missing=1
-            fi
-          done
-
-          # Self-maintaining half of the proof: every *.test.* file on disk under
-          # packages/*/src/__tests__ must appear in the junit xml. The list above
-          # documents intent; this catches the tenth file nobody added to it.
+          # Every shared-core suite on disk (packages/*/src/__tests__/*.test.*)
+          # must appear in the junit xml. Derived from the tree rather than a
+          # hand-maintained list: a list is wrong whenever the tree differs from
+          # the moment someone typed it, and a suite added without a list edit
+          # would silently stop being proven. Any file that never ran is named.
           # (The .tsx suites need the file: deps that `verify` -> bootstrap:ui
           # installed in the previous step — reorder those and this fails loud.)
           find ../../packages -path '*/src/__tests__/*.test.*' -exec basename {} \; | sort > /tmp/suites-on-disk.txt
