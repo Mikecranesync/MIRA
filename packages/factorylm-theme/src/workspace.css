@@ -60,7 +60,7 @@
   --fl-workspace-space-8: var(--fl-space-8);
   --fl-workspace-shadow: var(--fl-shadow);
   --fl-workspace-shadow-pop: var(--fl-shadow-pop);
-  --fl-workspace-scrim: var(--fl-scrim);
+  --fl-workspace-scrim: var(--fl-modal-scrim);
 }
 
 [data-theme="dark"] {
@@ -78,11 +78,11 @@
   --fl-workspace-line: var(--fl-dark-line);
   --fl-workspace-line-strong: var(--fl-dark-line-hi);
 
-  --fl-workspace-accent: var(--fl-dark-accent);
-  --fl-workspace-accent-hover: var(--fl-dark-accent-hover);
-  --fl-workspace-accent-tint: var(--fl-dark-accent-tint);
-  --fl-workspace-accent-ink: var(--fl-dark-accent);
-  --fl-workspace-accent-line: var(--fl-dark-accent-line);
+  --fl-workspace-accent: var(--fl-dark-workspace-accent);
+  --fl-workspace-accent-hover: var(--fl-dark-workspace-accent-hover);
+  --fl-workspace-accent-tint: var(--fl-dark-workspace-accent-tint);
+  --fl-workspace-accent-ink: var(--fl-dark-workspace-accent);
+  --fl-workspace-accent-line: var(--fl-dark-workspace-accent-line);
 
   --fl-workspace-ok: var(--fl-dark-ok);
   --fl-workspace-ok-tint: var(--fl-dark-ok-tint);

@@ -51,7 +51,8 @@
 .fl-card__actions button { padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line); }
 
 .fl-pill { display: inline-flex; align-items: center; inline-size: fit-content; padding: var(--fl-workspace-space-1) var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-pill); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
-.fl-pill--primary { border-color: var(--fl-workspace-accent-line); background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); }
+/* "authorized" is a STATE (accepted/grounded), so it wears the ok tokens — the accent is for actions and selection only. */
+.fl-pill--primary { border-color: var(--fl-workspace-ok-line); background: var(--fl-workspace-ok-tint); color: var(--fl-workspace-ok-ink); }
 
 .fl-attachment,
 .fl-source { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: fit-content; padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); font-size: var(--fl-workspace-fs-sm); }
@@ -74,7 +75,7 @@
 
 .fl-step { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-2); font-size: var(--fl-workspace-fs-sm); }
 .fl-step__check { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; display: grid; place-items: center; border: 1px solid var(--fl-workspace-line); border-radius: 50%; }
-.fl-step[data-step-status="completed"] .fl-step__check { border-color: var(--fl-workspace-accent); background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); }
+.fl-step[data-step-status="completed"] .fl-step__check { border-color: var(--fl-workspace-ok-line); background: var(--fl-workspace-ok-line); color: var(--fl-workspace-surface); }
 .fl-step[data-step-status="blocked"] .fl-step__check { border-color: var(--fl-workspace-fault-line); }
 
 .fl-card[data-finding-status="verified"] { border-color: var(--fl-workspace-ok-line); }
@@ -97,7 +98,11 @@
 .fl-unknown { padding: var(--fl-workspace-space-2); border: 1px dashed var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 .fl-unknown pre { margin: var(--fl-workspace-space-2) 0 0; overflow: auto; font-family: var(--fl-workspace-mono); font-size: var(--fl-workspace-fs-xs); }
 
-.fl-run { margin-block-end: var(--fl-workspace-space-4); padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-accent-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); }
+/* A run's border says its STATE: running/completed = ok, blocked = fault, otherwise neutral — never the accent. */
+.fl-run { margin-block-end: var(--fl-workspace-space-4); padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); }
+.fl-run[data-run-status="running"],
+.fl-run[data-run-status="completed"] { border-color: var(--fl-workspace-ok-line); }
+.fl-run[data-run-status="blocked"] { border-color: var(--fl-workspace-fault-line); }
 .fl-run p { margin: 0; }
 .fl-run__head { display: flex; justify-content: space-between; gap: var(--fl-workspace-space-3); }
 .fl-run__goal { margin-block: var(--fl-workspace-space-1) !important; font-weight: 700; }

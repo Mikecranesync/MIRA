@@ -172,7 +172,7 @@ describe("safe areas and drawer scroll ownership (stylesheet contract)", () => {
   it("uses the workspace scrim token so dark theme remaps it", () => {
     expect(shell).toMatch(/\.fl-scrim\s*\{[^}]*var\(--fl-workspace-scrim/s);
     const workspace = readFileSync(new URL("../../../factorylm-theme/src/workspace.css", import.meta.url), "utf8");
-    expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-scrim\)/);
+    expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-modal-scrim\)/);
     expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-dark-scrim\)/);
   });
 });
