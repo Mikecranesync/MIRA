@@ -173,7 +173,9 @@ class TestEventPayloadBehaviour:
 
     def test_a_verdict_naming_no_sha_is_rejected(self) -> None:
         with pytest.raises(jsonschema.ValidationError):
-            self._validate(self._event("submit_verdict", {}))
+            # Complete except for the field under test: an empty payload would be rejected for the
+            # missing verdict even if the sha rule were gone (PLC verifier mutation, 2026-09-07).
+            self._validate(self._event("submit_verdict", {"verdict": "PASS"}))
 
     def test_a_verdict_with_a_short_sha_is_rejected(self) -> None:
         with pytest.raises(jsonschema.ValidationError):
