@@ -82,6 +82,30 @@ describe("attachment sheet layer", () => {
   });
 });
 
+describe("focus return respects the layer stack", () => {
+  it("returns focus into the still-open drawer, not to the composer behind its scrim, when the sheet closes", () => {
+    const view = render({ surface: "mobile", fixture: "machine-ask" });
+    // The mobile fixture opens the drawer at mount; open the sheet on top of it.
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("true");
+    const add = must(view.buttonNamed("Add attachment"), "Add attachment");
+    act(() => { add.focus(); });
+    view.click(add);
+    const dialog = must(sheet(view), "attachment sheet");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    key(document, "Escape");
+    expect(sheet(view)).toBeNull();
+    const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "drawer");
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("true");
+    expect(document.activeElement).not.toBe(add);
+    expect(nav.contains(document.activeElement)).toBe(true);
+
+    // With no layer left above it, the drawer still returns focus to its own opener.
+    key(document, "Escape");
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
+  });
+});
+
 describe("Tab trapping follows layer precedence", () => {
   it("traps Tab in the attachment sheet, not the drawer, when both are open", () => {
     const view = render({ surface: "mobile", fixture: "machine-ask" });

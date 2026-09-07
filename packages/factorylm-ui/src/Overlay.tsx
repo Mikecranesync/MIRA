@@ -1,7 +1,27 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { trapTab, useFocusReturn } from "./focus";
+import { focusableWithin, trapTab, useFocusReturn } from "./focus";
 
 export type LayerName = "source" | "attachment-menu" | "inspector" | "navigation";
+
+/** Closing precedence, top-most first (mirrors `topLayer` in FactoryLMShell). */
+const LAYER_ORDER: readonly LayerName[] = ["source", "attachment-menu", "inspector", "navigation"];
+
+/**
+ * When a layer closes while another modal layer is still open (the attachment
+ * sheet over the drawer), focus must land inside that layer, not on the opener
+ * behind its scrim. Returns the element to focus, or `null` to use the opener.
+ */
+function focusTargetBehind(opener: HTMLElement | null): HTMLElement | null {
+  for (const layer of LAYER_ORDER) {
+    const open = document.querySelector<HTMLElement>(
+      `.fl-overlay[data-layer="${layer}"][data-active="true"][data-modal="true"]`,
+    );
+    if (!open) continue;
+    if (opener && open.contains(opener)) return null;
+    return focusableWithin(open)[0] ?? null;
+  }
+  return null;
+}
 
 export interface OverlayProps {
   readonly layer: LayerName;
@@ -31,7 +51,7 @@ export interface OverlayProps {
 export function Overlay({ layer, active, modal, trapsTab, children }: OverlayProps) {
   const root = useRef<HTMLDivElement>(null);
   const trapping = active && modal;
-  useFocusReturn(trapping, root);
+  useFocusReturn(trapping, root, focusTargetBehind);
 
   const trapping_tab = trapping && (trapsTab ?? true);
   useEffect(() => {

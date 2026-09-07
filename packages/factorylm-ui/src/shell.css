@@ -64,7 +64,10 @@
 .fl-tree__item,
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
-.fl-shell__main { min-inline-size: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+/* An explicit minmax(0, 1fr) column: with the implicit `auto` column the main
+   area sized itself to the composer row's min-content (550px at a 412px viewport)
+   and the page scrolled sideways. */
+.fl-shell__main { min-inline-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .fl-shell__header { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-header); color: var(--fl-workspace-header-ink); }
 .fl-shell__header h1,
 .fl-shell__header p { margin: 0; }

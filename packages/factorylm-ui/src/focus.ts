@@ -56,7 +56,16 @@ export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
  * A layer that is already active at mount never steals focus: there is no
  * opening control to return to.
  */
-export function useFocusReturn(active: boolean, root: RefObject<HTMLElement | null>): void {
+export function useFocusReturn(
+  active: boolean,
+  root: RefObject<HTMLElement | null>,
+  /**
+   * Called on close with the remembered opener. Return a different element to
+   * focus instead (a modal layer that is still open above the opener), or
+   * `null` to restore the opener.
+   */
+  redirect?: (opener: HTMLElement | null) => HTMLElement | null,
+): void {
   const wasActive = useRef<boolean | null>(null);
   const opener = useRef<HTMLElement | null>(null);
 
@@ -74,9 +83,10 @@ export function useFocusReturn(active: boolean, root: RefObject<HTMLElement | nu
     }
 
     if (!active && previous) {
-      const target = opener.current;
+      const remembered = opener.current;
       opener.current = null;
+      const target = redirect?.(remembered) ?? remembered;
       if (target && target.isConnected) target.focus();
     }
-  }, [active, root]);
+  }, [active, root, redirect]);
 }
