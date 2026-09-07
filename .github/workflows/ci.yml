@@ -360,6 +360,9 @@ jobs:
           pip install -r mira-bots/foreman/requirements.txt
           pip install PyJWT cryptography
           pip install pytest pytest-asyncio pytest-cov pytest-xdist
+          # jsonschema: the peer-network hardening tests validate documents against the
+          # contract schemas with a HARD import — without it the step is red, not green-with-skips.
+          pip install jsonschema
 
       - name: Run ingest tests with coverage
         run: |

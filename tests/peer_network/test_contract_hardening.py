@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import jsonschema  # hard import: a missing validator must be a RED step, never a silent skip (devops gate, 2026-09-07)
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -155,7 +156,6 @@ class TestEventPayloadBehaviour:
 
     @staticmethod
     def _validate(instance: dict) -> None:
-        jsonschema = pytest.importorskip("jsonschema")
         jsonschema.validate(instance, _schema("event"))
 
     @staticmethod
@@ -171,17 +171,14 @@ class TestEventPayloadBehaviour:
         }
 
     def test_a_verdict_naming_no_sha_is_rejected(self) -> None:
-        jsonschema = pytest.importorskip("jsonschema")
         with pytest.raises(jsonschema.ValidationError):
             self._validate(self._event("submit_verdict", {}))
 
     def test_a_verdict_with_a_short_sha_is_rejected(self) -> None:
-        jsonschema = pytest.importorskip("jsonschema")
         with pytest.raises(jsonschema.ValidationError):
             self._validate(self._event("submit_verdict", {"sha": "844798ac2", "verdict": "PASS"}))
 
     def test_a_human_gate_naming_no_decider_is_rejected(self) -> None:
-        jsonschema = pytest.importorskip("jsonschema")
         with pytest.raises(jsonschema.ValidationError):
             self._validate(self._event("human_gate", {"gate": "merge"}))
 
