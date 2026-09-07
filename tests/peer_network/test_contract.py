@@ -337,11 +337,17 @@ GRANDFATHERED_FLEET = frozenset(
 )
 
 
-# Exact grandfather policy (Codex audit of 0859907d7): only these seven open PRs may touch
+# Exact grandfather policy (Codex audit of 0859907d7): only these grandfathered branches may touch
 # `.fleet/`, each ONLY at its own recorded paths (gh pr view --json files, 2026-09-07). Any other
 # branch may not add, modify, delete, rename or copy anything under `.fleet/`; a grandfathered
 # branch touching a path outside its allowance fails the same way. Keyed by head branch name —
 # the durable identity of a PR's line of work (GITHUB_HEAD_REF in CI).
+#
+# F4 (Codex HOLD): the executable table and the START_HERE §6 grandfather list must NAME THE SAME
+# branches. START_HERE grandfathers `docs/pixel-acceptance-and-merge-plan` (68ab32bc8: the
+# post-Pixel merge train + acceptance script), whose diff ADDs `.fleet/MERGE-TRAIN-PLAN.md` and
+# `.fleet/PIXEL-ACCEPTANCE.md` — so that branch+those paths are in the table too, or the doc and
+# the guard disagree (a grandfather the guard silently rejects).
 FLEET_ALLOWANCES: dict[str, frozenset[str]] = {
     "feat/fleet-gateway-mcp-v1": frozenset({".fleet/BOOTSTRAP-001-HANDOFF.md"}),  # #3533
     "fleet/FLEET-PRD-P1-PROTECTED-INVENTORY-001": frozenset(  # #3549
@@ -367,6 +373,9 @@ FLEET_ALLOWANCES: dict[str, frozenset[str]] = {
         }
     ),
     "fleet/FLEET-ALPHA-NODE-001": frozenset({".fleet/BOOTSTRAP-001-HANDOFF.md"}),  # #3558
+    "docs/pixel-acceptance-and-merge-plan": frozenset(  # grandfathered in START_HERE §6 (68ab32bc8)
+        {".fleet/MERGE-TRAIN-PLAN.md", ".fleet/PIXEL-ACCEPTANCE.md"}
+    ),
 }
 
 
@@ -446,6 +455,31 @@ def test_fleet_policy_is_exact_branch_plus_path_and_fails_closed_elsewhere() -> 
     )
     # paths outside .fleet are not this policy's business
     assert _fleet_policy_violations("feat/anything-else", [("M", "docs/x.md")]) == []
+    # F4: the pixel-acceptance branch (grandfathered in START_HERE §6) may touch EXACTLY its two
+    # recorded files and nothing else — the doc and the executable table now name the same branch.
+    pix = "docs/pixel-acceptance-and-merge-plan"
+    for pth in (".fleet/MERGE-TRAIN-PLAN.md", ".fleet/PIXEL-ACCEPTANCE.md"):
+        assert _fleet_policy_violations(pix, [("A", pth)]) == []
+    assert _fleet_policy_violations(pix, [("A", ".fleet/OTHER.md")]) == ["A .fleet/OTHER.md"]
+
+
+def test_start_here_grandfather_names_match_the_executable_allowlist() -> None:
+    """F4 (Codex HOLD): documentation and enforcement must not drift. Every branch/PR the
+    onboarding page grandfathers under `.fleet/` must have an entry in the executable
+    FLEET_ALLOWANCES table (and the pixel-acceptance branch, named by branch not PR#, is the one
+    that was documented but rejected)."""
+    text = (PEER / "START_HERE.md").read_text()
+    assert "docs/pixel-acceptance-and-merge-plan" in text  # documented …
+    assert "docs/pixel-acceptance-and-merge-plan" in FLEET_ALLOWANCES  # … and now enforced
+    # the fleet PRs START_HERE names by number must each have a table entry too
+    pr_to_branch = {
+        "#3533": "feat/fleet-gateway-mcp-v1",
+        "#3549": "fleet/FLEET-PRD-P1-PROTECTED-INVENTORY-001",
+        "#3558": "fleet/FLEET-ALPHA-NODE-001",
+    }
+    for pr, branch in pr_to_branch.items():
+        if pr in text:
+            assert branch in FLEET_ALLOWANCES, f"{pr} documented but {branch} not in the allowlist"
 
 
 def _fleet_violations(tracked_at_head: list[str], introduced: list[str]) -> list[str]:
