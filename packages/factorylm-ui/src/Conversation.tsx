@@ -1,5 +1,4 @@
 import type {
-  ContextSnapshot,
   InteractionRun,
   InteractionTurn,
   PlatformAdapter,
@@ -8,7 +7,7 @@ import type {
   ShellState,
 } from "@factorylm/interaction";
 import type { Dispatch } from "react";
-import { PartRenderer, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
+import { PartRenderer, contextDiffers, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
   readonly state: ShellState;
@@ -40,16 +39,6 @@ export function breadcrumb(state: ShellState): readonly string[] {
     }
   }
   return crumbs;
-}
-
-/** A turn or run carries its own context line only when it differs from the current context
- *  (machine, identity, project or folder) — the chip at the top already says where we are. */
-export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): boolean {
-  const now = state.activeContext;
-  return snapshot.machineId !== now.machineId
-    || snapshot.machineIdentity !== now.machineIdentity
-    || (snapshot.projectId ?? undefined) !== (now.projectId ?? undefined)
-    || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
 }
 
 function RunCard({ run, state }: { readonly run: InteractionRun; readonly state: ShellState }) {

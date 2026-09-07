@@ -78,7 +78,8 @@
 .fl-tree__label { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fl-tree__meta { flex: 0 0 auto; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-tree__project { font-weight: 700; }
-.fl-tree__row[data-path="true"] { font-weight: 600; }
+.fl-tree__row[data-path="true"],
+.fl-tree__row[data-active="true"] { font-weight: 600; }
 .fl-tree__row[aria-current="page"] .fl-tree__icon,
 .fl-tree__row[aria-current="page"] .fl-tree__meta { color: inherit; }
 .fl-tree__status { inline-size: 0.5rem; block-size: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--fl-workspace-off-line); }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { FIXTURE_IDS, getFixture } from "@factorylm/interaction";
+import { FIXTURE_IDS, getFixture   ContextSnapshot,
+} from "@factorylm/interaction";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -26,13 +27,18 @@ describe("conversation parts", () => {
     for (const fixture of FIXTURE_IDS) {
       for (const surface of ["public", "web", "mobile", "hub"] as const) {
         const view = render({ surface, fixture });
-        const expected = getFixture(fixture).thread.turns;
+        const data = getFixture(fixture);
+        const expected = data.thread.turns;
+        // A context_change equal to the fixture's current context renders nothing (Slice C):
+        // the chip already says it. Every other part renders, in order.
+        const visibleParts = (parts: readonly { type: string; change?: ContextSnapshot }[]) =>
+          parts.filter((part) => part.type !== "context_change" || !part.change || contextDiffers({ activeContext: data.activeContext } as never, part.change)).map((part) => part.type);
         const turns = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
 
         expect(turns.map((turn) => turn.dataset.turnId)).toEqual(expected.map((turn) => turn.id));
         turns.forEach((turn, index) => {
           const parts = Array.from(turn.querySelectorAll<HTMLElement>("[data-part-type]"));
-          expect(parts.map((part) => part.dataset.partType)).toEqual(expected[index].parts.map((part) => part.type));
+          expect(parts.map((part) => part.dataset.partType)).toEqual(visibleParts(expected[index].parts as never));
         });
         expect(view.container.querySelector('[aria-label="Conversation"]')).not.toBeNull();
       }

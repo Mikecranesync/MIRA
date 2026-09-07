@@ -78,6 +78,16 @@ describe("tree rows", () => {
     for (const row of path) expect(row.getAttribute("aria-current")).toBeNull();
   });
 
+  it("across the WHOLE navigation exactly one element is aria-current; pins and Recent are references", () => {
+    const view = render({ surface: "mobile", fixture: "project-tree", onOpenItem: () => {} });
+    const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    expect(nav.querySelectorAll('[aria-current="page"]').length).toBe(1);
+    // The active machine's pin points at the object the tree already selects: quiet, not selected.
+    const pin = must(nav.querySelector<HTMLElement>('[data-pinned-machine-id="machine-drive-a"]'), "pin");
+    expect(pin.getAttribute("aria-current")).toBeNull();
+    expect(pin.dataset.active).toBe("true");
+  });
+
   it("selecting a folder moves the single current row to that folder", () => {
     const view = render({ surface: "web", fixture: "project-tree", onOpenItem: () => {} });
     const tree = must(view.container.querySelector<HTMLElement>('[aria-label="Projects"]'), "tree");
@@ -110,6 +120,12 @@ describe("context lines only when context differs", () => {
     expect(view.container.querySelector('[data-context-line="run"]')).toBeNull();
   });
 
+  it("a context_change part equal to the current context renders nothing visible", () => {
+    const view = render({ surface: "web", fixture: "work-run" });
+    expect(view.container.querySelector('[data-part-type="context_change"]')).toBeNull();
+    expect(view.container.querySelector(".fl-conversation")?.textContent ?? "").not.toContain("Context:");
+  });
+
   it("a turn recorded against a different machine still says so", () => {
     const view = render({ surface: "web", fixture: "grounded-answer" });
     expect(view.container.querySelector('[data-context-line="turn"]')).toBeNull();
@@ -126,6 +142,9 @@ describe("context lines only when context differs", () => {
 describe("stylesheet contract", () => {
   const shell = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
   it("the drawer scroll belongs to the section stack, and the brand mark is a mobile-only header element", () => {
+    // The rule must bind to a rendered element, not just exist in the stylesheet.
+    const view = render({ surface: "mobile", fixture: "project-tree" });
+    expect(view.container.querySelector('[aria-label="FactoryLM navigation"] .fl-shell__nav-scroll')).not.toBeNull();
     const mobile = shell.slice(shell.indexOf("@media (max-width: 48rem)"));
     expect(mobile).toMatch(/\.fl-shell__nav-scroll\s*\{[^}]*overflow-y:\s*auto/s);
     expect(mobile).toMatch(/\.fl-shell__brand-mark\s*\{[^}]*display:\s*block/s);

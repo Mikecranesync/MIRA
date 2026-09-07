@@ -25,6 +25,11 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
 }
 
 /**
+ * Exactly ONE row in the whole navigation is aria-current — the tree row
+ * `currentTreeRowId` picks. Recent and Machines are references to objects
+ * the tree already shows; when they point at the current object they carry
+ * `data-active` (a quiet weight), never a second selection.
+ *
  * Left navigation, in the order the plan fixes for every surface
  * (part-2 §6.1): identity → New chat → Search → Recent → Projects →
  * pinned machines → host footer (settings / user menu). On mobile the same
@@ -80,14 +85,14 @@ export function Sidebar({ state, dispatch, onOpenItem, footer }: SidebarProps) {
                   className="fl-tree__row fl-tree__item-button"
                   data-kind={item.kind}
                   data-recent-id={item.id}
-                  aria-current={state.thread.id === item.id ? "page" : undefined}
+                  data-active={state.thread.id === item.id ? "true" : undefined}
                   onClick={() => { onOpenItem(item); dispatch({ type: "set-navigation-visible", visible: false }); }}
                 >
                   <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
                   <span className="fl-tree__label">{item.label}</span>
                 </button>
               </li>
-              : <li key={item.id} className="fl-tree__item fl-tree__row" data-kind={item.kind} data-recent-id={item.id} aria-current={state.thread.id === item.id ? "page" : undefined}>
+              : <li key={item.id} className="fl-tree__item fl-tree__row" data-kind={item.kind} data-recent-id={item.id} data-active={state.thread.id === item.id ? "true" : undefined}>
                 <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
                 <span className="fl-tree__label">{item.label}</span>
               </li>)}
@@ -111,7 +116,7 @@ export function Sidebar({ state, dispatch, onOpenItem, footer }: SidebarProps) {
                 data-kind="machine"
                 data-pinned-machine-id={machine.id}
                 data-machine-status={machine.status}
-                aria-current={state.activeContext.machineId === machine.id ? "page" : undefined}
+                data-active={state.activeContext.machineId === machine.id ? "true" : undefined}
                 onClick={() => { dispatch({ type: "select-machine", machineId: machine.id }); dispatch({ type: "set-navigation-visible", visible: false }); }}
               >
                 <span className="fl-tree__icon" aria-hidden="true"><MachineIcon /></span>

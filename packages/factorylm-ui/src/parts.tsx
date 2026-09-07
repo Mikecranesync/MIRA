@@ -49,6 +49,16 @@ export function machineName(state: ShellState, machineId: string | undefined): s
   return state.machines.find((machine) => machine.id === machineId)?.name ?? machineId;
 }
 
+/** A turn or run carries its own context line only when it differs from the current context
+ *  (machine, identity, project or folder) — the chip at the top already says where we are. */
+export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): boolean {
+  const now = state.activeContext;
+  return snapshot.machineId !== now.machineId
+    || snapshot.machineIdentity !== now.machineIdentity
+    || (snapshot.projectId ?? undefined) !== (now.projectId ?? undefined)
+    || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
+}
+
 export function describeContext(state: ShellState, context: ContextSnapshot): string {
   const machine = machineName(state, context.machineId);
   if (!machine) return "No machine";
@@ -258,7 +268,10 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       return <ArtifactPart part={part} adapter={adapter} />;
 
     case "context_change":
-      return <p className="fl-part fl-context-change" data-part-type="context_change">
+      // Same predicate as the turn/run lines: a change that equals the current
+      // context is not news — the chip already says it.
+      if (!contextDiffers(state, part.change)) return null;
+      return <p className="fl-part fl-context-change" data-part-type="context_change" data-context-line="part">
         Context: {describeContext(state, part.change)}
       </p>;
 
