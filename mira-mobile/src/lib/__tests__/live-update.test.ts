@@ -193,12 +193,16 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     expect(plugin.setNextBundle).not.toHaveBeenCalled();
   });
 
-  it("falls back to verify_failed for an unrecognised rejection", async () => {
+  it("falls back to unknown_error — NOT a trust failure — for an unrecognised rejection", async () => {
     const { checkAndStage } = await import("../live-update");
     serve(validManifest);
     plugin.downloadBundle.mockRejectedValueOnce(new Error("something nobody anticipated"));
     const r = await checkAndStage({ channel: "canary", isBusy: idle });
-    expect(r).toMatchObject({ staged: null, reason: "verify_failed" });
+    // This assertion used to expect verify_failed. That encoded the defect: an
+    // unrecognised message was reported as an integrity failure, so a wrapped,
+    // localised, or iOS-phrased transport error accused the bundle of being
+    // tampered with. A trust claim must require positive evidence.
+    expect(r).toMatchObject({ staged: null, reason: "unknown_error" });
   });
 
   // getBundles() is deprecated as of plugin 7.4.0 in favour of
@@ -371,5 +375,40 @@ describe("classifyDownloadFailure — against the plugin's real messages", () =>
     const TRUST = ["checksum_mismatch", "signature_invalid", "unsigned_bundle"];
     expect(TRUST).not.toContain(classifyDownloadFailure(new Error("Bundle could not be downloaded.")));
     expect(TRUST).not.toContain(classifyDownloadFailure(new Error("Request timed out.")));
+  });
+});
+
+describe("review findings from 45bdb8047", () => {
+  it("an UNRECOGNISED failure is never reported as a trust failure", async () => {
+    const { classifyDownloadFailure } = await import("../live-update");
+    // A wrapped, localised, or future plugin message matches no rule. The default
+    // must not accuse the bundle of failing verification — that is the same defect
+    // this function exists to prevent, one layer deeper.
+    const TRUST = ["checksum_mismatch", "signature_invalid", "unsigned_bundle", "verify_failed"];
+    for (const msg of [
+      "Le paquet n'a pas pu être téléchargé.", // localised
+      "LiveUpdateError: something the table has never seen",
+      "",
+      "undefined",
+    ]) {
+      expect(TRUST).not.toContain(classifyDownloadFailure(new Error(msg)));
+      expect(classifyDownloadFailure(new Error(msg))).toBe("unknown_error");
+    }
+  });
+
+  it("the probe checks the SAME path the client requests", async () => {
+    // The probe duplicates MANIFEST_PATH by necessity — it is a plain node script
+    // and cannot import the TS module. A comment saying "must match" is not a
+    // guard; this is. The whole reason the probe exists is that we verified the
+    // wrong URL for two releases.
+    const { readFileSync } = await import("node:fs");
+    const { MANIFEST_PATH } = await import("../live-update");
+    const probe = readFileSync(
+      new URL("../../../scripts/ota-readiness-probe.mjs", import.meta.url),
+      "utf8",
+    );
+    const m = probe.match(/const MANIFEST_PATH = "([^"]+)"/);
+    expect(m).not.toBeNull();
+    expect(m?.[1]).toBe(MANIFEST_PATH);
   });
 });

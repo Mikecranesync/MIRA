@@ -172,7 +172,15 @@ export function classifyDownloadFailure(e: unknown): string {
   for (const [pattern, reason] of DOWNLOAD_FAILURE_RULES) {
     if (pattern.test(msg)) return reason;
   }
-  return "verify_failed";
+  // The default must NOT assert a trust failure. A message this table does not
+  // recognise — a wrapped or localised string, an iOS phrasing, a message the
+  // plugin adds later — would otherwise be reported as an integrity problem, which
+  // is the exact defect this function exists to prevent, one layer deeper than the
+  // version that mishandled "Bundle could not be downloaded.".
+  //
+  // A trust claim requires positive evidence. Defaulting to unknown_error makes the
+  // table's completeness a quality-of-message question rather than a safety one.
+  return "unknown_error";
 }
 
 export async function checkAndStage(opts: {
