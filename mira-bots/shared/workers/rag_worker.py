@@ -338,6 +338,18 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
         return None
     if attempted_codes and asset_identified and vendor_name_from_text(asset_identified):
         return None
+    # ...and a named PRODUCT is also information the user just provided, with or
+    # without an extractable code. "GS10 overcurrent fault" names the machine and
+    # the symptom; asking "which manufacturer and model?" is the same re-ask this
+    # short-circuit exists to prevent.
+    #
+    # This clause used to be unnecessary BY ACCIDENT: `GS10` was itself
+    # mis-extracted as a fault code (its shape is a valid one), so
+    # `attempted_codes` was non-empty and the vendor branch above fired. Fixing
+    # that over-extraction (#3334) removed the accident and exposed the real
+    # gap, which the docstring above had already described as the requirement.
+    if _neon_recall._extract_product_names(message):
+        return None
 
     parts: list[str] = []
 
