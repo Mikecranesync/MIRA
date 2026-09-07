@@ -412,6 +412,13 @@ jobs:
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
 
+      - name: Peer-network contract tests (FLEET-PEER-NETWORK-001)
+        # Static contract checks for docs/peer-network (schemas, laws, resource keys, the
+        # root-pointer status gate) and their hardening tests. Named here, inside the
+        # gated test-unit job, because the tests/ sweep in test-eval-offline is not in
+        # ci-gate's needs — a step there can go red and merge anyway.
+        run: pytest tests/peer_network/ -v
+
       - name: Materialized Evidence contract + document-receipt lane
         # `materialized_evidence/` and the batch-document receipt lane it feeds
         # (mira-crawler step 6) were covered by ~90 tests that NO workflow ran —

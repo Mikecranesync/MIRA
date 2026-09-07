@@ -1,8 +1,8 @@
 """Static contract checks for FLEET-PEER-NETWORK-001 Slice A.
 
-Run locally: ``pytest tests/peer_network -q``. (CI enumerates pytest paths by name in
-``.github/workflows/ci.yml``; adding this directory there is a control-plane change and is
-tracked on the mission record, not done in the UI-adjacent slice.)
+Run locally: ``pytest tests/peer_network -q``. In CI it runs as a named step inside the gated
+``test-unit`` job of ``.github/workflows/ci.yml`` (the ``tests/`` sweep in ``test-eval-offline``
+is advisory: that job is not in ``ci-gate``'s ``needs:``, so a failure there cannot block a merge).
 """
 
 from __future__ import annotations
@@ -119,6 +119,11 @@ def test_start_here_names_every_operation_schema_and_law() -> None:
         assert re.search(rf"^{n}\. ", text, re.M), f"law {n} missing"
     assert "Do not add new files under `.fleet/`" in text
     assert "Available is not equipped" in text
+    assert "not a permission" in text  # P4
+    assert "earliest `claimed_at`" in text and "60 seconds" in text  # P2
+    for exempt in ("#3549", "#3558", "#3533", "docs/pixel-acceptance-and-merge-plan"):  # P5
+        assert exempt in text, exempt
+    assert "needs a pattern or an enum" in text  # authority-field rule
 
 
 def test_network_yml_represents_all_five_computers_without_changing_the_existing_three() -> None:
@@ -169,3 +174,19 @@ def test_mission_directory_convention() -> None:
         assert (mission / f).exists(), f
     readme = (ROOT / "docs" / "missions" / "README.md").read_text()
     assert "Do not add new files under `.fleet/`" in readme
+
+
+def test_ci_runs_this_suite_inside_the_gated_unit_job() -> None:
+    """A check that runs but cannot fail the merge is not a guard (ci.yml:453). The suite must be a
+    named step in `test-unit`, which IS in `ci-gate`'s needs list."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    unit_start = ci.index("\n  test-unit:")
+    unit_end = ci.index("\n  ", unit_start + 1)
+    # find the next top-level job after test-unit
+    m = re.search(r"\n  [a-z][a-z0-9-]*:\n", ci[unit_start + 1 :])
+    unit_end = unit_start + 1 + m.start() if m else len(ci)
+    unit_job = ci[unit_start:unit_end]
+    assert "pytest tests/peer_network" in unit_job, "peer-network suite is not a step in test-unit"
+    gate = ci[ci.index("\n  ci-gate:") :]
+    needs = gate[: gate.index("steps:")]
+    assert "test-unit" in needs

@@ -11,12 +11,12 @@
 `docs/missions/FLEET-PEER-NETWORK-001/{MISSION,HANDOFF,CLAIMS}.md`, `tests/peer_network/{__init__,test_contract}.py`.
 
 ## Tests
-`pytest tests/peer_network -q` — 7 static contract checks (schemas/laws/resource keys/START_HERE/network.yml/pointer gate/missions convention). Not yet in CI (`ci.yml` names pytest paths; adding it is a control-plane change — tracked on #3648).
+`pytest tests/peer_network -q` — 8 contract checks + 15 hardening checks (fleet-001-review-e9, cherry-picked). Runs in CI as a named step in the gated `test-unit` job (the `tests/` sweep in `test-eval-offline` is advisory).
 
 ## Remaining work for this slice
 1. **After #3647 merges:** rebase this branch onto main, add the two short root pointers (`CLAUDE.md`, `AGENTS.md` → `docs/peer-network/START_HERE.md`), flip `docs/peer-network/pointers.status` to `landed`, re-run the contract test (it fails until both files carry the pointer), send the new 40-char SHA to Codex for the exact-head review and to the PLC laptop for verification.
 2. Devops acceptance-#11 path gate on the final head (no product paths, no `.fleet/` files, no root files while pending).
-3. Add `tests/peer_network` to `ci.yml` in a separately claimed CI PR.
+3. ~~Add `tests/peer_network` to `ci.yml`~~ — done in this PR (gated `test-unit` step); proof = the step line in that job's log on the head under review.
 
 ## Resume
 ```

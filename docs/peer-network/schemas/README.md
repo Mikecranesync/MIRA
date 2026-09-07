@@ -1,4 +1,4 @@
-# Peer-network schemas — version 1.0.0
+# Peer-network schemas — version 1.1.0 (claim, event) / 1.0.0 (others)
 
 Machine-readable shape of the seven durable records in
 `docs/prd/2026-09-07-fleet-peer-network-001.md` §7 (JSON Schema 2020-12). They are the
@@ -11,8 +11,8 @@ and keep the previous file next to it — a session on an older Foreman must sti
 | node | `node.schema.json` | Foreman (from `join_network` / heartbeat) |
 | session | `session.schema.json` | Foreman (from `join_network` / heartbeat / handoff) |
 | work_item | `work_item.schema.json` | Foreman + humans (authorization) |
-| claim | `claim.schema.json` | Foreman (`claim_work` acquires every `resource_keys` entry atomically or none) |
-| event | `event.schema.json` | Foreman, append-only, idempotent on `idempotency_key` |
+| claim | `claim.schema.json` | Foreman (`claim_work` acquires every `resource_keys` entry atomically or none); carries `status` (ACTIVE / LEASE_AT_RISK / RELEASED / COMPLETE) and `claimed_at`, the race's ordering key |
+| event | `event.schema.json` | Foreman, append-only, idempotent on `idempotency_key`; per-kind payload proofs (sha-bearing kinds need a 40-hex `sha`, `submit_verdict` a verdict, `human_gate` a gate + decider, `accept_handoff` a generation) |
 | artifact | `artifact.schema.json` | Foreman (from `submit_result` / `submit_verdict`) — binds to one 40-char SHA |
 | human_gate | `human_gate.schema.json` | Humans decide; Foreman records |
 

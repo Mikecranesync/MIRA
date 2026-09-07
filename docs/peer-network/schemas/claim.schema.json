@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/claim.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/claim.schema.json",
   "title": "peer-network claim",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,7 +13,9 @@
     "worktree",
     "resource_keys",
     "lease_expires_at",
-    "generation"
+    "generation",
+    "status",
+    "claimed_at"
   ],
   "properties": {
     "mission_id": {
@@ -48,6 +50,21 @@
     "generation": {
       "type": "integer",
       "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "LEASE_AT_RISK",
+        "RELEASED",
+        "COMPLETE"
+      ],
+      "description": "Lifecycle of the lease. ACTIVE = held; LEASE_AT_RISK = renewal missed, stop before the next edit/push; RELEASED = given up (lost the race, handed back, stale takeover); COMPLETE = work delivered and claims released (law 5)."
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the claim was made. 'Earliest ACTIVE claim wins' orders by THIS field; the GitHub comment timestamp is only a tiebreak, because editing a comment keeps its creation time."
     }
   }
 }

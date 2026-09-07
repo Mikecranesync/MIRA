@@ -18,7 +18,7 @@ colliding with another session.
 - The five computers are execution peers. **Nodes are computers, never personas.** A worker is
   named by provider, session number and node: `Claude Session 2 on Travel`.
 
-| Node | Default role | Allowed work | Must actually hold |
+| Node | Default role (not a permission) | Typical work | Must actually hold |
 |---|---|---|---|
 | VPS / Foreman | mission controller | queue, policy, state, Slack, scheduling | — (no product edits) |
 | Alpha | integration | shared contracts, integration branches, combined gates, RC prep | bash, git, gh, write |
@@ -26,6 +26,11 @@ colliding with another session.
 | Charlie | adversarial review | read-only Codex review of an exact SHA; dev-environment checks | codex-cli; gates need bash, git, gh |
 | Travel laptop | secondary implementation | disjoint infra, UI-supporting tooling, docs, test harness | bash, git, gh, write |
 | PLC laptop | industrial verifier | PLC, Ignition, Factory I/O, hardware acceptance | plc, ignition, factory-io |
+
+**A default role is a routing hint, not a permission.** Law 10 decides who implements and who
+reviews (Claude implements and remediates; Codex reviews read-only); a node's sessions may take any
+lane their tools cover — a Claude session on Charlie can implement, a Codex session on Bravo can
+review — as long as reviewer and verifier stay independent of the implementer.
 
 **Available is not equipped.** A session that lacks Bash, git, gh or file-write tools cannot own
 an implementation slice, however idle it is. Say so when dispatched to; the dispatcher falls back
@@ -64,9 +69,12 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
 
 **Claim** (`claim_work`)
 4. Post a `[WORK-CLAIM]` block (`.claude/rules/multi-session-protocol.md` §2) on the canonical
-   issue/PR with `Status: ACTIVE`, the base SHA, branch, worktree and the **resource keys** you
-   need (`schemas/claim.schema.json`). **Re-read the thread after posting**: the earliest
-   ACTIVE claim overlapping your keys wins; if you lost, set yours to `RELEASED` and make no edits.
+   issue/PR with `Status: ACTIVE`, **`Claimed at: <UTC ISO-8601>`**, the base SHA, branch, worktree
+   and the **resource keys** you need (`schemas/claim.schema.json`). **Wait at least 60 seconds,
+   then re-read the whole thread** (a settling interval, so two near-simultaneous posts both see
+   each other). The ACTIVE claim with the earliest `claimed_at` overlapping your keys wins; the
+   comment's own creation time is only a tiebreak — never the ordering key, because editing a
+   comment keeps its creation timestamp. If you lost, set yours to `RELEASED` and make no edits.
 5. Only then create the worktree (detached from `origin/main`, never holding `main`) and the
    branch. Publish the branch early.
 
@@ -92,6 +100,11 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
 9. Set the claim to `COMPLETE` or `RELEASED`, remove your worktree, post the session closeout
    (protocol §9).
 
+**Rule for every record:** a field that carries an authority claim — a SHA, a verdict, a gate
+decision, a lease state — needs a pattern or an enum, never prose. `claim.base_sha`,
+`artifact.sha`, `claim.status` and the per-kind `event.payload` proofs are the examples; a verdict
+that names no 40-character SHA is invalid by schema, not merely discouraged.
+
 ## 4. Resource keys
 
 Claims name explicit canonical keys and acquire all of them or none:
@@ -110,9 +123,12 @@ Whenever a required gate is incomplete, report **PARTIAL** or **BLOCKED** — ne
 
 New missions keep their files under `docs/missions/<MISSION-ID>/` (`../missions/README.md`).
 The global `.fleet/TASK.md` and `.fleet/HANDOFF.md` are **deprecated for new missions**: they were
-overwritten by unrelated missions. **Do not add new files under `.fleet/`.** Missions that are
-still writing there today (the FLEET-PRD-P1 set, BOOTSTRAP-001) keep doing so until they close;
-nothing is moved.
+overwritten by unrelated missions. **Do not add new files under `.fleet/` from a branch created
+after this page merges.** Exempt: every branch that already had `.fleet/` files in flight before
+that merge — the FLEET-PRD-P1 set (#3549–#3554, #3558), BOOTSTRAP-001 (#3533) and
+`docs/pixel-acceptance-and-merge-plan` — which keep theirs until they close; nothing is moved.
+For new branches the rule is enforced by the devops path gate (check 4a: no added files under
+`.fleet/`), not remembered.
 
 ## 7. Root pointers — status gate
 
@@ -121,7 +137,9 @@ session discovers the contract (PRD §8 step 1). Those two files are inside an a
 (#3626, five open PRs), so the pointers land **only after #3647 merges**, on a rebase of this
 branch. `pointers.status` holds the state: `pending:#3647` now, `landed` afterwards.
 `tests/peer_network/test_contract.py` fails if the pointers appear while pending **and** if they
-are missing once landed — the dependency is enforced, not remembered.
+are missing once landed — the dependency is enforced, not remembered. The suite runs inside the
+gated `test-unit` job of `ci.yml` (the `tests/` sweep in `test-eval-offline` is advisory — it is
+not in `ci-gate`'s `needs:` — so a step there could go red and merge anyway).
 
 ## 8. Feature flag and rollback
 
