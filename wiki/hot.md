@@ -22,31 +22,27 @@ Current delivery ledger:
   defer until that mount seam exists.
 - [PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647), branch
   `codex/factorylm-unified-ui-cutover-001`, is still draft. Its published head
-  `8313f49885319956dc18ccfd0b2446362d1ffd32` has green CI but is behind current
-  `main`. Local remediation closes the prior lifecycle-guard HOLD: broad legacy
-  presentation coverage, workflow-owned slice scopes and branches, exact
-  head/body-bound exception approval with verified maintainer authority,
-  immutable action pins, and hash-locked dependencies. The focused suite is
-  green (`307` targeted tests plus capability/action checks), and an
-  independent adversarial audit reports no Critical or Important finding.
-  Formatter cleanup and the final exact-state rerun are complete; commit,
-  rebase, push, and a fresh exact-head review remain. No newer #3647 SHA has a
-  verdict.
+  `8cf5924a77cf2cda4ca127efad467dfa71cb29f2` has green CI and a pinned Codex
+  HOLD. Local, uncommitted remediation now guards every workflow file, removes
+  direct writer-filename injection into proof/reporter prompts, records the
+  shipped mobile canary and its real CI/rollback state, and classifies the
+  existing `UnifiedRoot`/`UnifiedChat`/`src/unified/**` mounts as canonical new
+  UI rather than legacy. It also corrects the earlier status-provenance
+  overclaim: the guard remains advisory until issue #3657 proves a
+  non-spoofable required-workflow or dedicated-App binding. Local verification,
+  commit/push, and a fresh exact-head review remain; no remediation SHA has a
+  verdict yet.
 - [PR #3651](https://github.com/Mikecranesync/MIRA/pull/3651) is draft Slice C,
   implementing navigation hierarchy and visual-review findings only in the
   canonical shared package plus its isolated lab/tests. Head
-  `5657df2c3f544feaecf4d80e8c9250a71562ae56` fixed the first Codex HOLD by
-  rendering authorization-only historical context changes. The completed
-  adversarial review still found that a retained current tree item can expose
-  zero `aria-current` rows, project/folder context changes are detected but not
-  named, explicit retry-state cleanup from issue #3649 was deferred, and the
-  1440x900 desktop navigation footer falls below the initial viewport. Claude
-  has all four reproductions/acceptance checks. Keep it draft; the head must
-  move, then pass a fresh exact-head product/code/visual review after #3647
-  advances `main`.
+  `246e50b206ee1429b6a04425a35fb043fdfec7ba` has green CI and fixes the prior
+  inert-current-row, mode-priority, Recent-marker, and stale-evidence findings.
+  A fresh exact-head Codex product/code/visual review is active; keep it draft
+  until that verdict, then rebase after #3647 advances `main` and review the
+  resulting SHA again.
 - [PR #3652](https://github.com/Mikecranesync/MIRA/pull/3652) is draft Slice D,
   stacked on Slice C at last observed head
-  `ce0d2c7844548bbc3c3161b5897c4e87d9ec83c0`. Claude reports its ten-capture
+  `028cd5965686e11ae7ece15de8825de3105aa4e5`. Claude reports its ten-capture
   412x915 look-vs-plan review PASS for the unchanged Slice D delta, but this
   does not replace independent Codex exact-head review. Do not advance it until
   #3647 and then #3651 merge in order; rebase and review the resulting head.
@@ -55,17 +51,17 @@ Separate mission `FLEET-PEER-NETWORK-001` is coordinated in
 [issue #3648](https://github.com/Mikecranesync/MIRA/issues/3648) and branch
 `docs/fleet-peer-network-001-prd`. It must not contaminate #3647 or any active
 FLM-UI slice. Draft [PR #3653](https://github.com/Mikecranesync/MIRA/pull/3653)
-continues to move under mutation-test review; GitHub showed
-`cbacc99da1885da24e2da8c2e78f86318a239d43` at this ledger update, but the live
-PR head is authoritative. Every previous review target is superseded, CI is
-still settling, and Claude has not declared a head frozen. Wait for the explicit
-freeze and `23 passed, 0 skipped` proof before starting a new exact-head review.
-Rebase only after #3647 and keep any root agent pointers inside this separate
-PR.
+is frozen remotely at `cbacc99da1885da24e2da8c2e78f86318a239d43` with green
+CI and an exact-head Codex HOLD covering claim exclusivity, always-run contract
+enforcement, `.fleet` protection, session authority, fail-closed events,
+server-stamped lease ordering, and evidence/dependency drift. Claude has local,
+unpushed remediation through the audited `9ecdffdc904da3964727e675fb14e516b45b969e`;
+the pre-push Codex audit remains HOLD with its durable acceptance list in the PR.
+Rebase only after #3647 and keep root pointers inside this separate PR.
 
 No local governance hardening has changed a production route, deployment,
 feature flag, database, provider, auth flow, or customer-data state. Next:
-finish and verify #3647, rebase it on `f5f994a...`, push one reviewable exact
+finish and verify #3647, push one reviewable exact
 head, obtain independent PASS plus green CI, and merge it. Then fix/rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;
 #3652 follows. The CHARLIE peer channel is an active notification path; GitHub
@@ -106,8 +102,10 @@ task-sized commits on top of `1ecb9baef`:
 - `f5fe1d274` — **docs(ui):** findings #5, #15, #16, #18 — corrected the charter/rule/registry
   overclaim that the `Legacy UI Lifecycle Guard` status was already "a strict required check on
   protected main" (no branch-protection change has been made or is within this governance
-  implementation's authority; charter §3.1 now documents the intended FUTURE `app_id`-pinned
-  `required_status_checks.checks` binding as a not-yet-performed administrator action); fixed the
+  implementation's authority; that then-intended GitHub Actions `app_id` binding was later proven
+  insufficient because the App ID does not identify a workflow file — current charter §3.1 guards
+  all workflow files as defense-in-depth and tracks required-workflow or separate-App closure in
+  #3657); fixed the
   plan's Task 1 Step 1 example that still showed the obsolete two-file
   `mira-web/public/mira-chat.js`/`.css` boundary; rescoped `CAPABILITY_CLOSURE.yaml`'s
   `unified_ui_shell` purpose off the unmerged conversation/composer deliverable (draft PR #3628,

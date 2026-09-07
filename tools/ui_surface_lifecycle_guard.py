@@ -55,8 +55,8 @@ DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 # These paths are guarded UNCONDITIONALLY, regardless of what the registry
 # file (loaded from the base revision) says. A PR that edits its own guard
 # implementation, its own tests, the registry, the charter, the focused
-# Claude rule, the three UI workflow files, or the trusted GitHub workflow
-# itself is a self-protection case — it must go through the same audited
+# Claude rule, the three UI workflow files, or any GitHub workflow is a
+# self-protection case — it must go through the same audited
 # exception as any guarded legacy path, so the enforcement layer can never be
 # quietly loosened in the same PR that would benefit from the loosening.
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".claude/workflows/flm-ui-map.js",
     ".claude/workflows/flm-ui-slice.js",
     ".claude/workflows/flm-ui-verify.js",
-    ".github/workflows/ui-lifecycle-guard.yml",
+    ".github/workflows/**",
     ".github/pull_request_template.md",
     "requirements/ui-lifecycle-guard.txt",
 )
@@ -103,6 +103,20 @@ CANONICAL_ADAPTER_ROOTS: tuple[str, ...] = (
     "mira-web/src/factorylm-ui/",
     "mira-hub/src/factorylm-ui/",
     "mira-mobile/src/factorylm-ui/",
+    # The connected mobile adapter predates the standardized factorylm-ui
+    # directory name. Treat the complete live adapter root as canonical: its
+    # CSS and any future React siblings are the new UI, not legacy presentation.
+    "mira-mobile/src/unified/",
+)
+
+CANONICAL_ADAPTER_FILES: frozenset[str] = frozenset(
+    {
+        # Exact connected mobile shell hosts. The surrounding screens directory
+        # remains legacy-by-default; only these already-merged new-UI wrappers
+        # are exempt until a later mechanical move into factorylm-ui/.
+        "mira-mobile/src/screens/UnifiedChat.tsx",
+        "mira-mobile/src/screens/UnifiedRoot.tsx",
+    }
 )
 
 _PRESENTATION_SUFFIXES: tuple[str, ...] = (
@@ -488,17 +502,15 @@ def _classify_mobile_source(path: str) -> bool:
         return path.lower().endswith(_PRESENTATION_SUFFIXES)
     if path.startswith("mira-mobile/src/lib/"):
         return path not in _MOBILE_PRESERVED_LIB_PATHS
-    if path.startswith("mira-mobile/src/unified/"):
-        # Preserve the pure adapter transforms, but freeze the old CSS/React
-        # presentation that happened to share this historical directory.
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
     if path == "mira-mobile/src/nav.ts":
         return True
     return path.lower().endswith(_PRESENTATION_SUFFIXES)
 
 
 def _classify_source_path(path: str) -> Optional[bool]:
-    if any(path.startswith(root) for root in CANONICAL_ADAPTER_ROOTS):
+    if path in CANONICAL_ADAPTER_FILES or any(
+        path.startswith(root) for root in CANONICAL_ADAPTER_ROOTS
+    ):
         return False
     if path.startswith("mira-web/src/"):
         return _classify_web_source(path)

@@ -116,6 +116,13 @@ Add `unified_ui_shell` to `CAPABILITY_CLOSURE.yaml` with state
 entrypoints, owner, existing test evidence, reason, review date, and promotion
 criteria through Golden Conversation connection. Do not claim deployment.
 
+> **Current-state correction (2026-09-06):** this was the original implementation
+> target before the mobile adapter slices merged. The authoritative record is now
+> `canary_enabled`: `mira-mobile` consumes the shell on the opt-in signed canary,
+> the shared and mobile CI jobs are named, and staging, production, and the
+> production-default surface remain unset pending physical Golden Conversation
+> proof. Follow `CAPABILITY_CLOSURE.yaml`, not this historical target.
+
 - [ ] **Step 3: Add concise agent entrypoints**
 
 Add one pointer in root `AGENTS.md`, one pointer in root `CLAUDE.md`, one module
@@ -347,7 +354,17 @@ git add tests/test_ui_surface_lifecycle_guard.py tools/ui_surface_lifecycle_guar
 git commit -m "feat(ci): guard legacy FactoryLM presentation paths"
 ```
 
-### Task 3: Run the guard from trusted base and bind it to protected main
+### Task 3: Run the guard from trusted base and track protected-main binding
+
+> **Security correction (2026-09-06):** the original plan below assumed a
+> required status bound to the ordinary GitHub Actions `app_id` would identify
+> this workflow. It does not: every Actions workflow shares that App identity.
+> This PR may publish an advisory status and guard every workflow file as
+> defense-in-depth, but non-spoofable merge enforcement is deferred to issue
+> #3657. Closure requires an organization/enterprise required-workflow rule, or
+> a separate GitHub App/status service whose credential is unavailable to
+> PR-head workflows. Do not implement or claim the obsolete shared-App-ID
+> binding described by the historical task language.
 
 **Files:**
 - Create: `.github/workflows/ui-lifecycle-guard.yml`
@@ -358,7 +375,8 @@ git commit -m "feat(ci): guard legacy FactoryLM presentation paths"
   live GitHub PR-file/label/body metadata, the raw event snapshot, and a
   separately fetched current pull-request snapshot.
 - Produces: a `Legacy UI Lifecycle Guard` commit status on the PR head SHA,
-  later registered as a strict required `main` status check.
+  plus explicit evidence that it remains advisory until issue #3657 supplies a
+  non-spoofable source identity and protected-`main` binding.
 
 - [ ] **Step 1: Add the trusted-base workflow**
 
@@ -447,7 +465,9 @@ git diff --check
 
 Expected: tests and actionlint pass. This bootstrap PR cannot run a workflow
 that does not yet exist on the default branch; local/adversarial proof covers
-bootstrap, and the required status is enabled only after merge.
+bootstrap. The published status remains advisory after merge until issue #3657
+proves and installs a source-authentic required-workflow or dedicated-App
+binding.
 
 - [ ] **Step 5: Commit CI wiring**
 
@@ -657,9 +677,10 @@ originating Codex task, but private task state is not a merge prerequisite.
 Merge serially and verify the resulting `main` SHA. Serial merging remains an
 integration rule and never permits a second active shared-core author. Do not
 change repository settings or branch protection in this implementation lane.
-Record creation of the `legacy-ui-exception` label and the app-id-pinned
-`Legacy UI Lifecycle Guard` required-check binding as explicit administrator
-prerequisites per charter §3.1; posting the status alone is not enforcement.
+Record creation of the `legacy-ui-exception` label and issue #3657's
+source-authentic `Legacy UI Lifecycle Guard` binding as explicit administrator
+prerequisites per charter §3.1; the ordinary Actions App ID and posting the
+status alone are not enforcement.
 Update the governance claim on issue #3626 to `COMPLETE`; leave the mission
 issue open while the active shared-core claim and later adapter slices
 continue.

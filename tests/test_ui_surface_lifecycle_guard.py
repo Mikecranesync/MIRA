@@ -252,7 +252,24 @@ def test_control_patterns_are_hardcoded_constants_not_from_the_registry():
     assert ".claude/workflows/flm-ui-map.js" in CONTROL_PATTERNS
     assert ".claude/workflows/flm-ui-slice.js" in CONTROL_PATTERNS
     assert ".claude/workflows/flm-ui-verify.js" in CONTROL_PATTERNS
-    assert ".github/workflows/ui-lifecycle-guard.yml" in CONTROL_PATTERNS
+    assert ".github/workflows/**" in CONTROL_PATTERNS
+
+
+def test_arbitrary_github_workflow_is_guarded_without_exception():
+    """A PR-head workflow cannot be allowed to spoof a trusted status name."""
+    real_policy = load_guard_policy(REAL_REGISTRY)
+    spoof = ".github/workflows/spoof-legacy-ui-status.yml"
+
+    assert path_is_guarded(spoof, real_policy)
+    result = evaluate(
+        [ChangedFile(status="added", path=spoof)],
+        labels=set(),
+        pr_body="",
+        policy=real_policy,
+    )
+
+    assert result.allowed is False
+    assert spoof in result.guarded_paths
 
 
 def test_control_patterns_stay_guarded_even_if_registry_has_no_legacy_entries(tmp_path):
@@ -932,7 +949,6 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-mobile/src/main.tsx",
         "mira-mobile/src/LegacyAppV2.tsx",
         "mira-mobile/src/app.css",
-        "mira-mobile/src/unified/unified.css",
         "mira-mobile/src/api/NewLegacyPanel.tsx",
         "mira-mobile/src/chat-adapter/NewLegacyPanel.tsx",
         "mira-mobile/src/lib/NewLegacyPanel.tsx",
@@ -990,6 +1006,10 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "mira-mobile/src/lib/sse.ts",
         "mira-mobile/src/lib/tags.ts",
         "mira-mobile/src/unified/to-interaction.ts",
+        "mira-mobile/src/unified/unified.css",
+        "mira-mobile/src/unified/NewCanonicalPanel.tsx",
+        "mira-mobile/src/screens/UnifiedChat.tsx",
+        "mira-mobile/src/screens/UnifiedRoot.tsx",
         "mira-mobile/src/factorylm-ui/NewAdapter.tsx",
     ],
 )
@@ -1412,6 +1432,21 @@ def test_workflow_publishes_the_exact_status_context():
     assert doc["env"]["STATUS_CONTEXT"] == "Legacy UI Lifecycle Guard"
 
 
+def test_charter_does_not_claim_github_actions_app_id_identifies_a_workflow():
+    charter = (
+        REPO_ROOT / "docs" / "architecture" / "convergence" / "UNIFIED_UI_CUTOVER.md"
+    ).read_text(encoding="utf-8")
+    focused_rule = (REPO_ROOT / ".claude" / "rules" / "factorylm-unified-ui-cutover.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (charter, focused_rule):
+        assert "does not identify a workflow file" in text
+        assert "separate GitHub App" in text
+        assert "required-workflow" in text
+        assert "app_id` is what actually prevents" not in text
+
+
 def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():
     text = _workflow_text()
     assert ".changed_files" in text
@@ -1470,6 +1505,12 @@ def test_workflow_installs_hash_locked_guard_dependencies():
     for package in ("pyyaml", "pytest", "iniconfig", "packaging", "pluggy", "pygments"):
         assert re.search(rf"(?im)^{package}==[^\s]+", requirement_text), package
     assert requirement_text.count("--hash=sha256:") >= 6
+
+
+def test_pull_request_template_names_full_guard_control_plane():
+    text = (REPO_ROOT / ".github" / "pull_request_template.md").read_text()
+    assert re.search(r"every GitHub Actions\s+workflow", text)
+    assert "requirements/ui-lifecycle-guard.txt" in text
 
 
 def test_workflow_uses_labels_file_never_bare_labels_flag():

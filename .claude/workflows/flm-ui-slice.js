@@ -651,9 +651,9 @@ async function proveHead(stage) {
       `files endpoint through every page. Record the PR's authoritative changed_files count, the number of ` +
       `file records you enumerated, how many pages you fetched, and whether pagination completed. For every ` +
       `file return filename and status; for every rename also return GitHub's previous_filename as ` +
-      `previousFilename. The complete current-filename set must be exactly ${JSON.stringify(
-        writerChangedPaths
-      )} and every current or previous filename must remain inside ${JSON.stringify(
+      `previousFilename. Enumerate the complete current-filename set independently; do not ask another ` +
+      `agent for an expected list and do not accept filenames supplied by another agent. Every current or ` +
+      `previous filename must remain inside ${JSON.stringify(
         normalizedAllowedPaths
       )}. Return stage=${JSON.stringify(stage)}, repository, prUrl, state, isDraft, baseRef, prBaseSha, ` +
       `baseSha, headRefName, headSha, baseIsAncestor, changedFilesCount, enumeratedFilesCount, ` +
@@ -931,7 +931,6 @@ const reportPayload = {
   baseSha,
   headSha,
   prUrl: writer.prUrl,
-  changedPaths: writerChangedPaths,
   headProofs: {
     beforeReviewVerified,
     beforeReviewErrors: beforeReviewProofErrors,

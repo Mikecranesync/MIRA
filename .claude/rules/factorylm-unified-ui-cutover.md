@@ -25,6 +25,11 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
   `mira-mobile/src/factorylm-ui/**`. Mounting an adapter in an existing
   guarded route is an audited exception; a new sibling legacy route or
   component is not.
+- **Already-connected mobile new UI:** the historical
+  `mira-mobile/src/unified/**` adapter root and exact hosts
+  `mira-mobile/src/screens/UnifiedChat.tsx` and `UnifiedRoot.tsx` are canonical,
+  unguarded new-UI paths. Keep new adapters under `src/factorylm-ui/**` unless
+  extending that existing adapter. Nearby classic screens remain frozen.
 - Capability record: `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`
   → `unified_ui_shell`. Do not create a second capability registry.
 
@@ -41,20 +46,25 @@ These entries are machine-readable in `docs/architecture/convergence/REGISTRY.ya
 `status: LEGACY`, `change_policy: exception_only`, `deletion_safe: false`.
 Enforced by `tools/ui_surface_lifecycle_guard.py`, whose `Legacy UI Lifecycle
 Guard` status posts on every PR (`.github/workflows/ui-lifecycle-guard.yml`).
-**Binding that status as a required check on `main`'s branch protection is a
-separate, not-yet-performed administrator action — this governance
-implementation has no authority over branch protection and has not modified
-it.** See charter §3.1 for the intended future binding (`app_id`-pinned,
-`enforce_admins: true`). Until that binding exists, the guard is visible on
-every PR but does not yet block a merge on its own. Addition, modification,
-deletion, rename-in, and rename-out of a guarded path fail the guard by
-default regardless.
+**Binding that status to a non-spoofable source is a separate,
+not-yet-performed administrator action — this governance implementation has no
+authority over branch protection and has not modified it.** The ordinary
+GitHub Actions `app_id` does not identify a workflow file, so context plus that
+shared App ID is insufficient. See charter §3.1 and issue #3657: use an
+organization/enterprise required-workflow ruleset bound to the exact workflow,
+or a separate GitHub App/status service whose credential PR-head workflows
+cannot access, and retain `enforce_admins: true`. Until then the guard is
+visible/advisory, not independently merge-blocking. Every
+`.github/workflows/**` file is also guarded as defense-in-depth, but that does
+not replace source-authentic binding. Addition, modification, deletion,
+rename-in, and rename-out of a guarded path fail the guard by default.
 
 The broad registry roots are refined by code-owned classifiers in the guard.
 They preserve explicit Hub API route handlers and server/domain libraries,
 the existing public-web JSON/API routes and backend libraries, non-presentational
 files under its seed/capability roots, the exact mobile API/transport/native
-allowlist, and all three `src/factorylm-ui/**` adapter roots. The mobile
+allowlist, all three `src/factorylm-ui/**` adapter roots, the existing mobile
+`src/unified/**` adapter, and its two exact new-shell screen hosts. The mobile
 `src/lib/**` bucket is mixed rather than trusted wholesale: helpers that own
 visible copy, rendering, or legacy interaction transitions are guarded.
 Unknown production siblings fail closed. Every file under
@@ -84,9 +94,10 @@ reapply the label.
 - ❌ Create a second chat store, stream parser, safety system, evidence
   system, provider router, asset identity system, or capability registry —
   reuse the seams in charter §2.3.
-- ❌ Claim `unified_ui_shell` is connected, staging-enabled, or
-  production-enabled before the Golden Conversation gate (charter §8, Gate 3)
-  passes on a real adapter.
+- ❌ Claim `unified_ui_shell` is staging-enabled, production-enabled, or the
+  production-default surface before the Golden Conversation gate (charter §8,
+  Gate 3) passes on a physical device. The current record is connected,
+  CI-covered, and `canary_enabled` only.
 - ❌ Edit, stage, or pre-build in any of `packages/factorylm-theme/**`,
   `packages/factorylm-interaction/**`, `packages/factorylm-ui/**`, or
   `apps/factorylm-ui-lab/**` while another shared-core writer is active. Those

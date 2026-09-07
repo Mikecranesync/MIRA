@@ -30,8 +30,8 @@ Anything else: write a spec first, then come back.
 OPTIONAL. Fill this in ONLY if this PR adds, modifies, deletes, or renames a
 guarded legacy FactoryLM presentation path or a lifecycle-guard control-plane
 file (docs/architecture/convergence/REGISTRY.yaml, the charter, the guard and
-its tests, the Claude rule, the three UI workflow files, the trusted GitHub
-workflow, or this template) — see
+its tests, the Claude rule, the three UI workflow files, every GitHub Actions
+workflow, `requirements/ui-lifecycle-guard.txt`, or this template) — see
 docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 and
 .claude/rules/factorylm-unified-ui-cutover.md. If none of the above apply,
 leave this whole section out of the PR body (don't fill placeholder text into

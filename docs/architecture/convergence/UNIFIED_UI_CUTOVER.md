@@ -83,8 +83,10 @@ presentation-shaped:
   React/style files in those roots, every other route, the mixed `server.ts`
   mount, page renderers/content, and unknown production siblings fail closed.
 - Mobile non-presentational `src/api/**`, the three existing
-  `src/chat-adapter/**` transport files, pure TypeScript transforms under
-  `src/unified/**`, and an exact low-level operational allowlist remain open:
+  `src/chat-adapter/**` transport files, the complete connected new-UI adapter
+  under `src/unified/**`, the exact new-shell hosts
+  `src/screens/UnifiedChat.tsx` and `src/screens/UnifiedRoot.tsx`, and an exact
+  low-level operational allowlist remain open:
   `live-update.ts`, `native-pick.ts`, `offline-queue.ts`, `open-with.ts`,
   `resume-guard.ts`, `sse.ts`, and `tags.ts`. The historical `src/lib/**`
   bucket is not itself a capability boundary: its other files contain visible
@@ -102,10 +104,14 @@ modifications, deletions, and both rename directions.
 
 New bounded presentation adapters live outside those trees under
 `mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
-`mira-mobile/src/factorylm-ui/**`. Mobile transport conversion continues to
-reuse `mira-mobile/src/chat-adapter/**`. Mounting an adapter in an existing
-guarded route is an audited exception; creating a sibling legacy route or
-component is not a bypass.
+`mira-mobile/src/factorylm-ui/**`. The already-merged mobile adapter predates
+that directory convention, so `mira-mobile/src/unified/**` and its two exact
+screen hosts (`UnifiedChat.tsx`, `UnifiedRoot.tsx`) are also code-owned
+canonical exclusions. New mobile adapter files should use `src/factorylm-ui/**`
+unless they extend the existing `src/unified/**` adapter. Mobile transport
+conversion continues to reuse `mira-mobile/src/chat-adapter/**`. Mounting an
+adapter in another existing guarded route is an audited exception; creating a
+sibling legacy route or component is not a bypass.
 
 ### 2.3 Preserved capability seams
 
@@ -184,7 +190,7 @@ modifications, deletions, and both sides of renames against the base registry.
 
 The base guard also protects its own control files: the registry, charter,
 guard implementation and tests, focused Claude rule, three UI workflow files,
-trusted GitHub workflow, **its hash-locked dependency file**
+every file under `.github/workflows/**`, **its hash-locked dependency file**
 (`requirements/ui-lifecycle-guard.txt`), and **the PR template that documents
 the exception scaffold** (`.github/pull_request_template.md`) — editing any of
 these is a control-plane change. The workflow pins checkout/setup actions to
@@ -201,16 +207,29 @@ governance implementation does not have authority to modify branch
 protection and has not done so.** Posting a commit status makes the check
 *visible*; it only *blocks a merge* once a repository administrator adds it
 to `main`'s branch protection rule. This charter documents that intended
-future binding, not a claim that it already exists. When an administrator
-performs that step: bind via `required_status_checks.checks` (the array
-form, not the deprecated bare `contexts` list), specifying **both**
-`context: "Legacy UI Lifecycle Guard"` **and** the pinned `app_id` of the
-GitHub Actions app that posts it. Binding by context name alone is
-insufficient — any actor or app with `statuses: write` on the repository can
-post a status under the same context string, so pinning `app_id` is what
-actually prevents a same-named status from a different source satisfying the
-requirement. `enforce_admins: true` is required for administrators to be
-bound by it as well; without it, admins can bypass the check entirely.
+future binding, not a claim that it already exists. A normal GitHub Actions
+`app_id` does not identify a workflow file: every Actions workflow in this
+repository reports as the same GitHub Actions App, and GitHub says required
+status checks do not distinguish workflow, matrix, or event. Therefore
+`context + app_id` using the ordinary Actions App is **not** a source-authentic
+binding. Guarding every workflow file is necessary defense-in-depth, but a
+PR-head workflow with status-write authority could still emit the same context
+after the trusted guard fails.
+
+The administrator closure is tracked in
+[issue #3657](https://github.com/Mikecranesync/MIRA/issues/3657). Use either an
+organization/enterprise **required-workflow** ruleset bound to the exact trusted
+workflow source, branch, and file, or a separate GitHub App/status service whose
+credential is unavailable to PR-head workflows and bind the context to that
+distinct App ID. This repository is currently personal-user-owned, so the
+organization/enterprise required-workflow option is not presently available
+without an ownership/plan change. A repository secret alone is not an isolation
+boundary for same-repository PRs. Keep `enforce_admins: true`, document every
+bypass actor, and continue to call this status visible/advisory rather than
+merge-blocking until #3657 proves a non-spoofable source binding. GitHub's
+[ruleset troubleshooting](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules)
+and [required-workflow rule](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-workflows-to-pass-before-merging)
+document those platform boundaries.
 
 **Pull-files pagination truncation defense.** GitHub's
 `pulls/{n}/files` endpoint silently stops paginating past roughly 3000 changed
@@ -257,7 +276,9 @@ Connection-state language inside work claims is:
 
 These are delivery checkpoints, not new values for the capability-closure
 registry. The registry continues to use its validated states such as
-`implemented_unconnected`, `staging_enabled`, and `production_enabled`.
+`implemented_unconnected`, `canary_enabled`, `staging_enabled`, and
+`production_enabled`. `canary_enabled` is the pre-Golden, opt-in tester
+channel; it is not a claim of staging or production-default activation.
 
 ## 5. Multi-CPU execution model
 
