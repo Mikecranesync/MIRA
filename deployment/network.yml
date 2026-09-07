@@ -16,6 +16,12 @@ nodes:
     subnet: 192.168.4.0/24
     ssh_key_fingerprint: "SHA256:V7RlFNOQbo6Rq7Ky3/QDEhrRIy4IH/CsuCx9GBvMBQA"
     doppler_key_name: SSH_ALPHA_PRIVATE_KEY
+    peer_network:
+      node_id: alpha
+      os: macos
+      capabilities: [bash, git, gh, write, worktree, docker]
+      availability: offline
+      role: integration
     notes: "Different subnet from Bravo/Charlie — Tailscale only for cross-node"
 
   bravo:
@@ -29,6 +35,12 @@ nodes:
     subnet: 192.168.1.0/24
     ssh_key_fingerprint: "SHA256:Mfl3AcJv/7TFuft6nQ8JUCK0mtacx1xIlK+vnFf1NLc"
     doppler_key_name: SSH_BRAVO_PRIVATE_KEY
+    peer_network:
+      node_id: bravo
+      os: macos
+      capabilities: [bash, git, gh, write, worktree, docker]
+      availability: online
+      role: primary-implementation
     notes: "LAN reachable from Charlie only. Ollama models: qwen2.5vl, nomic-embed-text, mira, glm-ocr"
 
   charlie:
@@ -42,7 +54,44 @@ nodes:
     subnet: 192.168.1.0/24
     ssh_key_fingerprint: "SHA256:9QDfp5OukFjZhXId3Muy+gxU1HFrRcXY165MBuJeWGY"
     doppler_key_name: SSH_CHARLIE_PRIVATE_KEY
+    peer_network:
+      node_id: charlie
+      os: macos
+      capabilities: [bash, git, gh, write, worktree, codex-cli, adb, bun, docker]
+      availability: online
+      role: adversarial-review
     notes: "Primary MIRA host. LAN reachable from Bravo only."
+
+  # --- FLEET-PEER-NETWORK-001 Slice A: metadata only. No networking change. ---
+  # `peer_network` keys follow docs/peer-network/schemas/node.schema.json.
+  travel:
+    hostname: unknown            # mobile entry point; confirm on first join
+    role: secondary-implementation
+    user: unknown
+    services: []
+    addresses:
+      tailscale: unknown         # Tailscale only, no LAN membership
+    notes: "Travel laptop (CLUSTER.md TRAVEL). Unreachable as a session on 2026-09-07 — dispatch fell back per PRD §14."
+    peer_network:
+      node_id: travel
+      os: windows
+      capabilities: [bash, git, gh, write, worktree]
+      availability: unknown
+
+  plc:
+    hostname: LAPTOP-0KA3C70H
+    role: industrial-verifier
+    user: unknown
+    services: [ignition-gateway, factory-io]
+    addresses:
+      lan: 192.168.1.20
+    subnet: 192.168.1.0/24
+    notes: "PLC laptop (FLM-PLC-01). Micro820 is point-to-point to this laptop; CHARLIE has HTTP-only reach to the Ignition gateway. Verifier for FLEET-PEER-NETWORK-001 (ACKed 2026-09-07)."
+    peer_network:
+      node_id: plc
+      os: windows
+      capabilities: [plc, ignition, factory-io, read-only]
+      availability: online
 
 connectivity:
   - from: alpha

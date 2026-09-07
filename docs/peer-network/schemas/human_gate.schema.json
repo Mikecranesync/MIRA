@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/human_gate.schema.json",
+  "title": "peer-network human_gate",
+  "version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gate_id",
+    "kind",
+    "mission_id",
+    "state",
+    "requested_at"
+  ],
+  "properties": {
+    "gate_id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "merge",
+        "deploy_production",
+        "architecture",
+        "secret",
+        "protected_infrastructure",
+        "physical_test"
+      ]
+    },
+    "mission_id": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "open",
+        "approved",
+        "denied",
+        "withdrawn"
+      ]
+    },
+    "decided_by": {
+      "type": "string"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "note": {
+      "type": "string"
+    }
+  }
+}

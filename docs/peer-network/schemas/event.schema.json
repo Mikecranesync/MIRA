@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/event.schema.json",
+  "title": "peer-network event",
+  "version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "idempotency_key",
+    "ts",
+    "kind",
+    "mission_id",
+    "session_uuid",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "join_network",
+        "heartbeat",
+        "fleet_status",
+        "request_work",
+        "claim_work",
+        "renew_claim",
+        "release_claim",
+        "submit_checkpoint",
+        "request_handoff",
+        "accept_handoff",
+        "submit_result",
+        "request_review",
+        "submit_verdict",
+        "leave_network",
+        "human_gate",
+        "commit",
+        "release"
+      ]
+    },
+    "mission_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_uuid": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
