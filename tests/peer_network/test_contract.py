@@ -265,9 +265,14 @@ def test_human_gate_rejects_blank_or_freetext_mission_id() -> None:
     )  # positive control
 
 
-FORBIDDEN_FOR_THIS_SLICE = re.compile(
-    r"^(packages/factorylm-|apps/factorylm-ui-lab/|mira-mobile/|mira-hub/|mira-web/|CLAUDE\.md$|AGENTS\.md$)"
+# Product paths Slice A must never touch, in ANY change type (add/modify/delete/rename/copy).
+FORBIDDEN_PRODUCT = re.compile(
+    r"^(packages/factorylm-|apps/factorylm-ui-lab/|mira-mobile/|mira-hub/|mira-web/)"
 )
+# The two root files carry the join pointer and are owned by the #3626 claim. They are OFF-LIMITS
+# while pointers.status is pending; once landed, Slice A may add the pointer — but ONLY the pointer
+# (F2: an unconditional ban here made the required `landed` transition unsatisfiable).
+POINTER_FILES = ("CLAUDE.md", "AGENTS.md")
 
 
 def _merge_base() -> str:
@@ -311,8 +316,65 @@ def _changed_files(diff_filter: str) -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def _violations(files: list[str]) -> list[str]:
-    return [f for f in files if FORBIDDEN_FOR_THIS_SLICE.match(f) or f.startswith(".fleet/")]
+def _pointer_status() -> str:
+    """`landed` (the exact pointer stanza is allowed in root files) or `pending` (off-limits)."""
+    return "landed" if (PEER / "pointers.status").read_text().strip() == "landed" else "pending"
+
+
+def _added_removed(diff_text: str) -> tuple[list[str], list[str]]:
+    added = [
+        ln[1:] for ln in diff_text.splitlines() if ln.startswith("+") and not ln.startswith("+++")
+    ]
+    removed = [
+        ln[1:] for ln in diff_text.splitlines() if ln.startswith("-") and not ln.startswith("---")
+    ]
+    return added, removed
+
+
+def _is_exact_pointer_addition(diff_text: str) -> bool:
+    """F2: under status=landed a root file may change ONLY as the pointer stanza — purely ADDITIVE
+    (no existing line removed or rewritten), REFERENCING START_HERE, and SMALL. This bounds the
+    post-#3647 transition to the pointer and forbids smuggling any other edit into a root file."""
+    added, removed = _added_removed(diff_text)
+    non_blank = [a for a in added if a.strip()]
+    return (
+        not removed
+        and bool(non_blank)
+        and len(non_blank) <= 8
+        and any(POINTER in a for a in non_blank)
+    )
+
+
+def _root_file_diff(path: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "diff", "--unified=0", f"{_merge_base()}...HEAD", "--", path],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def _violations(files: list[str], status: str = "pending", root_diff=None) -> list[str]:
+    """Acceptance #11, status-aware (F2). Product paths and `.fleet/` are ALWAYS violations. The two
+    root pointer files are violations while `pending`; once `landed` they are allowed ONLY if the
+    change to them is the exact additive pointer stanza (`_is_exact_pointer_addition`) — any other
+    edit to them is still a violation. Default (pending, no diff) preserves pre-landed behaviour."""
+    out: list[str] = []
+    for f in files:
+        if f.startswith(".fleet/") or FORBIDDEN_PRODUCT.match(f):
+            out.append(f)
+        elif f in POINTER_FILES:
+            if (
+                status == "landed"
+                and root_diff is not None
+                and _is_exact_pointer_addition(root_diff(f))
+            ):
+                continue  # the authorized exact pointer addition
+            out.append(f)
+    return out
 
 
 # The `.fleet/` files tracked at the mission's base SHA f5f994a78d (13). START_HERE grandfathers
@@ -512,11 +574,20 @@ def test_this_branch_touches_no_product_root_or_fleet_paths() -> None:
     the SAME matcher so a clean result cannot come from a broken one.
 
     F3 (Codex HOLD): the filter is ACMRD, not ACMR — including D, so DELETING a protected product
-    file is a violation too (Slice A must not touch product paths in any way, removal included)."""
+    file is a violation too (Slice A must not touch product paths in any way, removal included).
+
+    F2 (Codex HOLD): the check is status-aware — the two root pointer files are judged against
+    `pointers.status` and their real diff, so this stays satisfiable through the `landed`
+    transition (see test_landed_root_pointer_transition_is_satisfiable_and_bounded)."""
+    status = _pointer_status()
     added_or_changed = _changed_files("ACMRD")
     assert added_or_changed, "no changed files — the diff base is wrong"
-    assert _violations(added_or_changed) == [], _violations(added_or_changed)
-    assert _violations([".fleet/NEW.md", "packages/factorylm-ui/src/x.ts", "CLAUDE.md"]) == [
+    real = _violations(added_or_changed, status, _root_file_diff)
+    assert real == [], real
+    # positive control (pending) through the SAME matcher: product + fleet + a root-file change flag
+    assert _violations(
+        [".fleet/NEW.md", "packages/factorylm-ui/src/x.ts", "CLAUDE.md"], "pending"
+    ) == [
         ".fleet/NEW.md",
         "packages/factorylm-ui/src/x.ts",
         "CLAUDE.md",
@@ -573,6 +644,41 @@ def test_product_deletion_is_caught_by_the_acceptance_11_filter(tmp_path) -> Non
     assert "mira-mobile/app.ts" in changed("ACMRD")  # fixed filter surfaces the deletion
     assert "mira-mobile/app.ts" not in changed("ACMR")  # old filter missed it — mutation lands
     assert _violations(changed("ACMRD")) == ["mira-mobile/app.ts"]  # and the matcher flags it
+
+
+def test_landed_root_pointer_transition_is_satisfiable_and_bounded() -> None:
+    """F2 (Codex HOLD): the guard used to forbid CLAUDE.md/AGENTS.md UNCONDITIONALLY, so the
+    post-#3647 `landed` state — which test_root_pointers_follow_the_status_gate_both_ways REQUIRES
+    to add the pointer to both root files — could never pass acceptance #11: an unsatisfiable gate.
+
+    The rule is now status-aware. Proven with synthetic diffs (the real repo is `pending`, so the
+    landed branch can't be exercised against it): landed permits the exact additive pointer stanza
+    and NOTHING else; pending forbids any root-file change; a rewrite, an unrelated addition, an
+    oversized addition, and product paths all remain violations. The bans are paired with the one
+    permitted case so 'allowed' cannot come from a dead check."""
+    exact = f"+\n+> New here? Read `{POINTER}` to join the peer-network protocol.\n"
+
+    # landed + exact additive pointer stanza → PERMITTED (the transition is satisfiable)
+    assert _violations(["CLAUDE.md"], "landed", lambda _p: exact) == []
+    # pending + the very same change → violation (the #3626 claim owns the root files until #3647)
+    assert _violations(["CLAUDE.md"], "pending", lambda _p: exact) == ["CLAUDE.md"]
+    # landed but the diff REWRITES existing content (a removal) → violation
+    assert _violations(["AGENTS.md"], "landed", lambda _p: f"-old\n+> `{POINTER}`\n") == [
+        "AGENTS.md"
+    ]
+    # landed but the addition does NOT reference the pointer → violation
+    assert _violations(["CLAUDE.md"], "landed", lambda _p: "+unrelated\n+lines\n") == ["CLAUDE.md"]
+    # landed but the addition is larger than a stanza (smuggling) → violation
+    big = "".join(f"+line {i} `{POINTER}`\n" for i in range(9))
+    assert _violations(["CLAUDE.md"], "landed", lambda _p: big) == ["CLAUDE.md"]
+    # a product path is a violation regardless of status / diff
+    assert _violations(["mira-hub/x.ts"], "landed", lambda _p: exact) == ["mira-hub/x.ts"]
+
+    # direct helper controls
+    assert _is_exact_pointer_addition(exact) is True
+    assert _is_exact_pointer_addition(f"-old\n+> `{POINTER}`\n") is False
+    assert _is_exact_pointer_addition("+unrelated\n+lines\n") is False
+    assert _is_exact_pointer_addition(big) is False
 
 
 def test_mission_directory_convention() -> None:
