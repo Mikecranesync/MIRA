@@ -132,6 +132,10 @@ jobs:
           # installed in the previous step — reorder those and this fails loud.)
           find ../../packages -path '*/src/__tests__/*.test.*' -exec basename {} \; | sort > /tmp/suites-on-disk.txt
           grep -oE '[A-Za-z0-9._-]+\.test\.tsx?' "$xml" | sort -u > /tmp/suites-in-junit.txt
+          if [ ! -s /tmp/suites-on-disk.txt ]; then
+            echo "::error::found no suite files on disk — the derived check would pass vacuously."
+            missing=1
+          fi
           uncollected=$(comm -23 /tmp/suites-on-disk.txt /tmp/suites-in-junit.txt)
           if [ -n "$uncollected" ]; then
             echo "::error::suite file(s) on disk never ran: $(echo "$uncollected" | tr '\n' ' ')"
