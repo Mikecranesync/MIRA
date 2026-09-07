@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/human_gate.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/human_gate.schema.json",
   "title": "peer-network human_gate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -40,7 +40,8 @@
       ]
     },
     "decided_by": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "requested_at": {
       "type": "string",
@@ -53,5 +54,29 @@
     "note": {
       "type": "string"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "approved",
+              "denied"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "decided_by",
+          "decided_at"
+        ]
+      }
+    }
+  ],
+  "description": "A human decision on a merge / production deploy / architecture / secret / protected-infrastructure / physical-test gate. A gate in state approved or denied MUST name decided_by and decided_at \u2014 an approval with no human and no time is not a decision (law 12)."
 }
