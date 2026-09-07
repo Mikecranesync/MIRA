@@ -1,4 +1,4 @@
-# Peer-network schemas — version 1.2.0 (claim, event) / 1.1.0 (session, artifact) / 1.0.0 (others)
+# Peer-network schemas — claim 1.3.0 · event 1.3.0 · human_gate 1.2.0 · artifact 1.2.0 · session 1.1.1 · work_item 1.1.0 · node 1.0.1 · others 1.0.0
 
 Machine-readable shape of the seven durable records in
 `docs/prd/2026-09-07-fleet-peer-network-001.md` §7 (JSON Schema 2020-12). They are the

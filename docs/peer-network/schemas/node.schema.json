@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/node.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.1/node.schema.json",
   "title": "peer-network node",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,7 +27,8 @@
       ]
     },
     "hostname": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
     },
     "os": {
       "type": "string",

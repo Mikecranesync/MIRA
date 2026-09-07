@@ -231,7 +231,13 @@ def test_a_decided_human_gate_names_its_decider_and_time() -> None:
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**base, "state": "denied", "decided_by": "mike"}, schema)
     jsonschema.validate(
-        {**base, "state": "approved", "decided_by": "mike", "decided_at": "2026-09-07T02:05:00Z"},
+        {
+            **base,
+            "state": "approved",
+            "decided_by": "mike",
+            "decided_at": "2026-09-07T02:05:00Z",
+            "decision_ref": "https://github.com/Mikecranesync/MIRA/pull/3653#issuecomment-1",
+        },
         schema,
     )
 
@@ -306,6 +312,117 @@ GRANDFATHERED_FLEET = frozenset(
         ".fleet/TASK.md",
     }
 )
+
+
+# Exact grandfather policy (Codex audit of 0859907d7): only these seven open PRs may touch
+# `.fleet/`, each ONLY at its own recorded paths (gh pr view --json files, 2026-09-07). Any other
+# branch may not add, modify, delete, rename or copy anything under `.fleet/`; a grandfathered
+# branch touching a path outside its allowance fails the same way. Keyed by head branch name —
+# the durable identity of a PR's line of work (GITHUB_HEAD_REF in CI).
+FLEET_ALLOWANCES: dict[str, frozenset[str]] = {
+    "feat/fleet-gateway-mcp-v1": frozenset({".fleet/BOOTSTRAP-001-HANDOFF.md"}),  # #3533
+    "fleet/FLEET-PRD-P1-PROTECTED-INVENTORY-001": frozenset(  # #3549
+        {
+            ".fleet/FLEET-PRD-P1-PROTECTED-INVENTORY-001.CHARLIE-REVIEW.md",
+            ".fleet/FLEET-PRD-P1-PROTECTED-INVENTORY-001.md",
+        }
+    ),
+    "fleet/FLEET-PRD-P1-CLAUDE-PROTECTED-001": frozenset(
+        {".fleet/FLEET-PRD-P1-CLAUDE-PROTECTED-001.md"}
+    ),  # #3550
+    "fleet/FLEET-PRD-P1-FAILCLOSED-REFUSE-STOP-001": frozenset(
+        {".fleet/BOOTSTRAP-001-HANDOFF.md"}
+    ),  # #3551
+    "fleet/FLEET-PRD-P1-CHARLIE-ROUTING-001": frozenset(
+        {".fleet/FLEET-PRD-P1-CHARLIE-ROUTING-001.md"}
+    ),  # #3552
+    "review/FLEET-PRD-P1-MULTI-NODE-ROUTING-001": frozenset(  # #3554
+        {
+            ".fleet/BOOTSTRAP-001-HANDOFF.md",
+            ".fleet/FLEET-PRD-P1-MULTI-NODE-ROUTING-001.REVIEW.md",
+            ".fleet/FLEET-PRD-P1-MULTI-NODE-ROUTING-001.md",
+        }
+    ),
+    "fleet/FLEET-ALPHA-NODE-001": frozenset({".fleet/BOOTSTRAP-001-HANDOFF.md"}),  # #3558
+}
+
+
+def _head_branch() -> str:
+    import os
+    import subprocess
+
+    if os.environ.get("GITHUB_HEAD_REF"):
+        return os.environ["GITHUB_HEAD_REF"]
+    return subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _fleet_changes() -> list[tuple[str, str]]:
+    """(status, path) for every change under .fleet/, base...HEAD; a rename/copy yields both the
+    old path (as D) and the new path (as R/C) so neither side can slip past."""
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "diff", "--name-status", "-M", "-C", f"{_merge_base()}...HEAD", "--", ".fleet"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    changes: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        status = parts[0][0]
+        if status in ("R", "C"):
+            changes.append(("D" if status == "R" else "M", parts[1]))
+            changes.append((status, parts[2]))
+        else:
+            changes.append((status, parts[1]))
+    return changes
+
+
+def _fleet_policy_violations(branch: str, changes: list[tuple[str, str]]) -> list[str]:
+    allowed = FLEET_ALLOWANCES.get(branch, frozenset())
+    return sorted(
+        {
+            f"{status} {path}"
+            for status, path in changes
+            if path.startswith(".fleet/") and path not in allowed
+        }
+    )
+
+
+def test_fleet_policy_is_exact_branch_plus_path_and_fails_closed_elsewhere() -> None:
+    assert _fleet_policy_violations(_head_branch(), _fleet_changes()) == []
+    p = ".fleet/BOOTSTRAP-001-HANDOFF.md"
+    ok_branch = "fleet/FLEET-ALPHA-NODE-001"
+    # allowed branch, its exact path, every change type: permitted
+    for status in ("A", "M", "D", "R", "C"):
+        assert _fleet_policy_violations(ok_branch, [(status, p)]) == []
+    # allowed branch, an extra path (even a grandfathered filename): violation
+    assert _fleet_policy_violations(ok_branch, [("M", ".fleet/TASK.md")]) == ["M .fleet/TASK.md"]
+    assert _fleet_policy_violations(ok_branch, [("A", ".fleet/NEW.md")]) == ["A .fleet/NEW.md"]
+    # wrong branch (another grandfathered PR's path): violation
+    assert _fleet_policy_violations("fleet/FLEET-PRD-P1-CLAUDE-PROTECTED-001", [("M", p)]) == [
+        f"M {p}"
+    ]
+    # any non-grandfathered branch: modification, add, delete, rename, copy all fail
+    for status in ("A", "M", "D", "R", "C"):
+        assert _fleet_policy_violations("feat/anything-else", [(status, ".fleet/TASK.md")]) == [
+            f"{status} .fleet/TASK.md"
+        ]
+    # this very branch is not grandfathered
+    assert (
+        _fleet_policy_violations("feat/fleet-peer-network-001a-contract", [("M", ".fleet/TASK.md")])
+        != []
+    )
+    # paths outside .fleet are not this policy's business
+    assert _fleet_policy_violations("feat/anything-else", [("M", "docs/x.md")]) == []
 
 
 def _fleet_violations(tracked_at_head: list[str], introduced: list[str]) -> list[str]:
@@ -383,6 +500,20 @@ def test_ci_contract_job_always_runs_with_full_history_and_gates_the_merge() -> 
     assert "tests/peer_network" not in unit, (
         "the suite must not ALSO live behind the changes filter"
     )
+
+
+def test_ci_gate_reads_the_contract_result_and_fails_closed_on_it() -> None:
+    """ci-gate is `if: always()`: a job in `needs` only makes the gate WAIT. The gate reads each
+    result through env + require_success; without both, peer-contract can be red while CI Gate
+    is green (Codex audit of 0859907d7 — the exact trap ci.yml documents for capability-closure)."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    gate = _job(ci, "ci-gate")
+    assert re.search(
+        r"^\s+PEER_CONTRACT_RESULT:\s*\$\{\{\s*needs\.peer-contract\.result\s*\}\}$", gate, re.M
+    ), "ci-gate does not export needs.peer-contract.result"
+    assert re.search(
+        r"^\s+require_success\s+peer-contract\s+\"\$PEER_CONTRACT_RESULT\"", gate, re.M
+    ), "ci-gate never calls require_success on PEER_CONTRACT_RESULT"
 
 
 def test_suite_dependencies_are_pinned_exactly() -> None:

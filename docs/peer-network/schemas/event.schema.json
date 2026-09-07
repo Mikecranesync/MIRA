@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/event.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.3.0/event.schema.json",
   "title": "peer-network event",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -115,7 +115,8 @@
             "type": "object",
             "required": [
               "sha",
-              "verdict"
+              "verdict",
+              "reviewer"
             ],
             "properties": {
               "sha": {
@@ -130,6 +131,11 @@
                   "HOLD",
                   "UNDECIDABLE"
                 ]
+              },
+              "reviewer": {
+                "type": "string",
+                "pattern": "^\\S(?:.*\\S)?$",
+                "description": "Reviewer provenance."
               }
             }
           }
@@ -152,12 +158,17 @@
           "payload": {
             "type": "object",
             "required": [
-              "sha"
+              "sha",
+              "generation"
             ],
             "properties": {
               "sha": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{40}$"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
               }
             },
             "not": {
@@ -187,7 +198,10 @@
             "type": "object",
             "required": [
               "gate",
-              "decided_by"
+              "decided_by",
+              "outcome",
+              "decided_at",
+              "decision_ref"
             ],
             "properties": {
               "gate": {
@@ -203,7 +217,22 @@
               },
               "decided_by": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^\\S(?:.*\\S)?$"
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "denied"
+                ]
+              },
+              "decided_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "decision_ref": {
+                "type": "string",
+                "pattern": "^\\S(?:.*\\S)?$"
               }
             }
           }
@@ -415,7 +444,8 @@
             "required": [
               "resource_keys",
               "base_sha",
-              "branch"
+              "branch",
+              "generation"
             ],
             "properties": {
               "resource_keys": {
@@ -423,7 +453,7 @@
                 "minItems": 1,
                 "items": {
                   "type": "string",
-                  "pattern": "^(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
+                  "pattern": "^(?!.*//)(?!.*/$)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tools/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
                 }
               },
               "base_sha": {
@@ -432,7 +462,11 @@
               },
               "branch": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }
@@ -488,7 +522,8 @@
           "payload": {
             "type": "object",
             "required": [
-              "status"
+              "status",
+              "generation"
             ],
             "properties": {
               "status": {
@@ -497,6 +532,10 @@
                   "RELEASED",
                   "COMPLETE"
                 ]
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }
@@ -519,12 +558,17 @@
           "payload": {
             "type": "object",
             "required": [
-              "sha"
+              "sha",
+              "generation"
             ],
             "properties": {
               "sha": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{40}$"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }
@@ -547,12 +591,17 @@
           "payload": {
             "type": "object",
             "required": [
-              "handoff_ref"
+              "handoff_ref",
+              "generation"
             ],
             "properties": {
               "handoff_ref": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^\\S(?:.*\\S)?$"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }
@@ -580,7 +629,7 @@
             "properties": {
               "reason": {
                 "type": "string",
-                "minLength": 1
+                "pattern": "^\\S(?:.*\\S)?$"
               }
             }
           }
@@ -618,6 +667,40 @@
             }
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "claim_work",
+              "renew_claim",
+              "release_claim",
+              "submit_checkpoint",
+              "request_handoff",
+              "accept_handoff",
+              "submit_result",
+              "request_review",
+              "submit_verdict",
+              "human_gate",
+              "commit",
+              "release"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "mission_id": {
+            "type": "string",
+            "pattern": "^[A-Z0-9-]+$"
+          }
+        },
+        "description": "Mission-bound kinds: mission_id must be a non-null patterned string. Null is legal only for join_network, heartbeat, fleet_status, request_work, leave_network."
       }
     }
   ]

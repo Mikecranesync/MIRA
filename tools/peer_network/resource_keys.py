@@ -55,6 +55,21 @@ def overlaps(a: str, b: str) -> bool:
     return longer[: len(shorter)] == shorter
 
 
+def covers(held: str, wanted: str) -> bool:
+    """`held` covers `wanted` when they are equal, or when `wanted` DESCENDS from `held` in a
+    path family. Asymmetric on purpose: a claim on `docs/peer-network/schemas` does not cover
+    `docs/peer-network` (a child never covers its parent), while `docs/peer-network` covers
+    `docs/peer-network/schemas/x.json`. Overlap (symmetric) decides the race; coverage
+    (asymmetric) decides whether a key needs a new claim."""
+    ch, cw = canonicalize(held), canonicalize(wanted)
+    if ch == cw:
+        return True
+    if not (ch.startswith(_PATH_PREFIXES) and cw.startswith(_PATH_PREFIXES)):
+        return False
+    sh, sw = _segments(ch), _segments(cw)
+    return len(sw) > len(sh) and sw[: len(sh)] == sh
+
+
 def keys_conflict(mine: list[str], theirs: list[str]) -> list[tuple[str, str]]:
     """Every (mine, theirs) pair that overlaps — empty means the two claims may run at once."""
     return [(m, t) for m in mine for t in theirs if overlaps(m, t)]

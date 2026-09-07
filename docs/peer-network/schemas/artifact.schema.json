@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/artifact.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/artifact.schema.json",
   "title": "peer-network artifact",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -36,7 +36,8 @@
       "description": "Reviews and verdicts bind to one immutable 40-character SHA (law 8)."
     },
     "ref": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
     },
     "verdict": {
       "type": "string",
@@ -50,6 +51,31 @@
     "recorded_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "reviewer": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "Provenance of a verdict: the reviewing session/human."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "verdict"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "verdict",
+          "reviewer"
+        ]
+      }
+    }
+  ]
 }

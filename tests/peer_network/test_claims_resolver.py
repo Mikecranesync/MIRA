@@ -48,6 +48,7 @@ resolve_race = _claims.resolve_race
 scope_expansion = _claims.scope_expansion
 InvalidResourceKey = _keys.InvalidResourceKey
 canonicalize = _keys.canonicalize
+covers = _keys.covers
 keys_conflict = _keys.keys_conflict
 overlaps = _keys.overlaps
 
@@ -157,21 +158,22 @@ def test_race_is_won_by_server_creation_time_not_by_backdated_claimed_at() -> No
     backdater = _claim(
         "s-backdater", "2026-09-07T01:00:30Z", 101, claimed_at="2026-09-01T00:00:00Z"
     )
-    assert resolve_race([backdater, honest]).session_uuid == "s-honest"
+    assert resolve_race(backdater, [honest]).session_uuid == "s-honest"
+    assert resolve_race(honest, [backdater]).session_uuid == "s-honest"
 
 
 def test_race_tie_on_creation_time_breaks_on_server_event_id() -> None:
     a = _claim("s-a", "2026-09-07T01:00:00Z", 200)
     b = _claim("s-b", "2026-09-07T01:00:00Z", 199)
-    assert resolve_race([a, b]).session_uuid == "s-b"
+    assert resolve_race(a, [b]).session_uuid == "s-b"
 
 
 def test_race_ignores_claims_that_no_longer_hold_a_lease() -> None:
     released = _claim("s-early", "2026-09-07T00:00:00Z", 1, status="RELEASED")
     at_risk = _claim("s-risk", "2026-09-07T00:00:01Z", 2, status="LEASE_AT_RISK")
     live = _claim("s-live", "2026-09-07T00:00:02Z", 3)
-    assert resolve_race([released, at_risk, live]).session_uuid == "s-live"
-    assert resolve_race([released, at_risk]) is None
+    assert resolve_race(live, [released, at_risk]).session_uuid == "s-live"
+    assert resolve_race(released, [live]) is None  # a dead lease has no race to win
 
 
 @pytest.mark.parametrize(
@@ -222,7 +224,34 @@ def test_resume_from_a_blocked_lease_keeps_the_claim_and_the_block() -> None:
     )
     assert may_edit(resumed) and not may_push(resumed)
     later = _claim("s-later", "2026-09-07T01:00:01Z", 8)
-    assert resolve_race([later, resumed]).session_uuid == "s-new"
+    assert resolve_race(later, [resumed]).session_uuid == "s-new"
+
+
+def test_disjoint_claims_are_not_in_the_same_race_so_both_win() -> None:
+    a = _claim("s-a", "2026-09-07T01:00:00Z", 1, keys=("docs/peer-network",))
+    b = _claim("s-b", "2026-09-07T01:00:05Z", 2, keys=("mira-mobile",))
+    assert resolve_race(a, [b]).session_uuid == "s-a"
+    assert (
+        resolve_race(b, [a]).session_uuid == "s-b"
+    )  # later, but disjoint: still wins its own race
+
+
+def test_overlapping_claims_share_one_race_even_across_parent_and_child_keys() -> None:
+    parent = _claim("s-parent", "2026-09-07T01:00:00Z", 1, keys=("docs/peer-network",))
+    child = _claim("s-child", "2026-09-07T01:00:05Z", 2, keys=("docs/peer-network/schemas/x.json",))
+    assert resolve_race(child, [parent]).session_uuid == "s-parent"
+    assert resolve_race(parent, [child]).session_uuid == "s-parent"
+
+
+def test_child_after_parent_is_covered_but_parent_after_child_needs_a_new_claim() -> None:
+    holds_parent = _claim("s", "2026-09-07T01:00:00Z", 1, keys=("docs/peer-network",))
+    assert scope_expansion(holds_parent, ["docs/peer-network/schemas/x.json"]) == []
+    holds_child = _claim("s", "2026-09-07T01:00:00Z", 1, keys=("docs/peer-network/schemas",))
+    assert scope_expansion(holds_child, ["docs/peer-network"]) == ["docs/peer-network"]
+    assert scope_expansion(holds_child, ["docs/peer-network/schemas"]) == []  # equal is covered
+    assert covers("docs/peer-network", "docs/peer-network/x") and not covers(
+        "docs/peer-network/x", "docs/peer-network"
+    )
 
 
 def test_scope_expansion_names_only_the_keys_a_new_claim_must_cover() -> None:
@@ -337,6 +366,8 @@ def test_every_event_kind_has_a_fail_closed_payload_proof() -> None:
     covered: set[str] = set()
     for clause in schema["allOf"]:
         k = clause["if"]["properties"]["kind"]
+        if "payload" not in clause["then"]["properties"]:
+            continue  # the mission-bound clause constrains mission_id, not the payload
         covered |= set(k.get("enum", [k["const"]] if "const" in k else []))
         payload = clause["then"]["properties"]["payload"]
         assert payload.get("required"), f"{k}: a payload proof must REQUIRE something"
@@ -352,11 +383,23 @@ def test_every_event_kind_has_a_fail_closed_payload_proof() -> None:
 @pytest.mark.parametrize(
     ("kind", "payload"),
     [
-        ("claim_work", {"resource_keys": [], "base_sha": "f" * 40, "branch": "b"}),
-        ("claim_work", {"resource_keys": ["free text"], "base_sha": "f" * 40, "branch": "b"}),
+        ("claim_work", {"resource_keys": [], "base_sha": "f" * 40, "branch": "b", "generation": 1}),
         (
             "claim_work",
-            {"resource_keys": ["docs/peer-network"], "base_sha": "short", "branch": "b"},
+            {"resource_keys": ["free text"], "base_sha": "f" * 40, "branch": "b", "generation": 1},
+        ),
+        (
+            "claim_work",
+            {
+                "resource_keys": ["docs/peer-network"],
+                "base_sha": "short",
+                "branch": "b",
+                "generation": 1,
+            },
+        ),
+        (
+            "claim_work",
+            {"resource_keys": ["docs/peer-network"], "base_sha": "f" * 40, "branch": "b"},
         ),
         ("renew_claim", {"lease_expires_at": "2026-09-07T01:30:00Z", "generation": 0}),
         ("release_claim", {"status": "ACTIVE"}),

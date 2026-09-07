@@ -12,7 +12,7 @@ docs/missions/<MISSION-ID>/
 - `<MISSION-ID>` is the durable mission id (`FLEET-PEER-NETWORK-001`, `FLM-UI-4000-SLICE-D`), one
   per substantial task, matching the canonical issue or draft PR.
 - **`.fleet/TASK.md` and `.fleet/HANDOFF.md` are deprecated for new missions** — they are global
-  files and were overwritten by unrelated missions. Do not add new files under `.fleet/`. Missions
+  files and were overwritten by unrelated missions. Do not add new files under `.fleet/` — the gate is an exact branch + path policy (`tests/peer_network/test_contract.py::FLEET_ALLOWANCES`): only the seven grandfathered branches may touch `.fleet/`, each only its own recorded paths; every other branch may not add, modify, delete, rename or copy anything there. Do not add new files under `.fleet/`. Missions
   still writing there keep doing so until they close; nothing is relocated.
 - A handoff is a mission-specific file, written before context degrades (~70 %, 200 turns, a hard
   blocker or a human gate), and the replacement session resumes from it under the same claim.

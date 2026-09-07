@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/session.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.1/session.schema.json",
   "title": "peer-network session",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -28,7 +28,15 @@
       ]
     },
     "node_id": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "alpha",
+        "bravo",
+        "charlie",
+        "travel",
+        "plc",
+        "vps"
+      ]
     },
     "mission_id": {
       "type": [

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/work_item.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/work_item.schema.json",
   "title": "peer-network work_item",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,7 +20,8 @@
       "pattern": "^[A-Z0-9-]+$"
     },
     "goal": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
     },
     "priority": {
       "type": "integer",
@@ -62,7 +63,9 @@
           "type": "boolean"
         },
         "granted_by": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^\\S(?:.*\\S)?$",
+          "description": "Who granted the authorization. Nonblank; a standing authorization with a blank grantor is no authorization."
         },
         "note": {
           "type": "string"
