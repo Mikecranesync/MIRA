@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,6 +101,24 @@ def test_resource_key_pattern_accepts_canonical_keys_and_rejects_free_text() -> 
         assert pattern.fullmatch(key), key
     for bad in ["the UI", "packages/", "environment:qa", "root:README.md", "mira_mobile"]:
         assert not pattern.fullmatch(bad), bad
+    # A path-shaped key cannot traverse out of its root (Codex review: docs/../packages).
+    for traversal in [
+        "docs/../packages/x",
+        "docs/./x",
+        "docs/a/../b",
+        "deployment/../mira-mobile",
+        "docs/..",
+    ]:
+        assert not pattern.fullmatch(traversal), traversal
+    # The keys THIS slice edits must be nameable by its own claim.
+    for own in [
+        "tests/peer_network",
+        "tests/peer_network/test_contract.py",
+        ".github/workflows/ci.yml",
+        "docs/peer-network",
+        "deployment/network.yml",
+    ]:
+        assert pattern.fullmatch(own), own
 
 
 def test_start_here_names_every_operation_schema_and_law() -> None:
@@ -120,7 +139,10 @@ def test_start_here_names_every_operation_schema_and_law() -> None:
     assert "Do not add new files under `.fleet/`" in text
     assert "Available is not equipped" in text
     assert "not a permission" in text  # P4
-    assert "earliest `claimed_at`" in text and "60 seconds" in text  # P2
+    assert (
+        "earliest GitHub creation time" in text and "60 seconds" in text
+    )  # race: server-controlled key
+    assert "never** the tiebreak" in text and "back-date" in text  # claimed_at is not the key
     for exempt in ("#3549", "#3558", "#3533", "docs/pixel-acceptance-and-merge-plan"):  # P5
         assert exempt in text, exempt
     assert "needs a pattern or an enum" in text  # authority-field rule
@@ -152,6 +174,18 @@ def test_network_yml_represents_all_five_computers_without_changing_the_existing
     assert "read-only" in nodes["plc"]["peer_network"]["capabilities"]
 
 
+def test_every_peer_network_block_is_a_valid_node_record() -> None:
+    """The metadata in network.yml must BE the node record the schema defines, not a lookalike
+    (Codex review: five objects violated node.schema — no hostname / last_heartbeat / role)."""
+    import jsonschema  # hard import: a missing validator is a red step, never a silent skip
+
+    schema = _schema("node")
+    nodes = yaml.safe_load((ROOT / "deployment" / "network.yml").read_text())["nodes"]
+    for name, node in nodes.items():
+        jsonschema.validate(node["peer_network"], schema)
+        assert node["peer_network"]["hostname"] == node["hostname"], name
+
+
 def test_root_pointers_follow_the_status_gate_both_ways() -> None:
     """The pointer lands only after #3647 merges. Enforced in both directions:
     pending → the pointer must be ABSENT (it would collide with the #3626 claim);
@@ -171,12 +205,103 @@ def test_root_pointers_follow_the_status_gate_both_ways() -> None:
         raise AssertionError(f"unknown pointers.status: {status!r}")
 
 
+def test_a_decided_human_gate_names_its_decider_and_time() -> None:
+    """An approved merge gate with no decided_by / decided_at validated (devops execution at
+    cbacc99da1): the record that exists to prove a human decided could record no human."""
+    import jsonschema
+
+    schema = _schema("human_gate")
+    base = {
+        "gate_id": "g1",
+        "kind": "merge",
+        "mission_id": "FLEET-PEER-NETWORK-001",
+        "requested_at": "2026-09-07T02:00:00Z",
+    }
+    jsonschema.validate({**base, "state": "open"}, schema)  # an open gate has no decider yet
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**base, "state": "approved"}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**base, "state": "denied", "decided_by": "mike"}, schema)
+    jsonschema.validate(
+        {**base, "state": "approved", "decided_by": "mike", "decided_at": "2026-09-07T02:05:00Z"},
+        schema,
+    )
+
+
+FORBIDDEN_FOR_THIS_SLICE = re.compile(
+    r"^(packages/factorylm-|apps/factorylm-ui-lab/|mira-mobile/|mira-hub/|mira-web/|CLAUDE\.md$|AGENTS\.md$)"
+)
+
+
+def _changed_files(diff_filter: str) -> list[str]:
+    """Executable changed-path enforcement. Needs `origin/main`; a checkout without it is a
+    RED test, never a skip (fetch it in CI — see the ci.yml step)."""
+    import subprocess
+
+    base = subprocess.run(
+        ["git", "merge-base", "HEAD", "origin/main"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    out = subprocess.run(
+        ["git", "diff", "--name-only", f"--diff-filter={diff_filter}", f"{base}...HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return [line for line in out.splitlines() if line]
+
+
+def _violations(files: list[str]) -> list[str]:
+    return [f for f in files if FORBIDDEN_FOR_THIS_SLICE.match(f) or f.startswith(".fleet/")]
+
+
+def test_this_branch_touches_no_product_root_or_fleet_paths() -> None:
+    """Acceptance #11 as an executable check on the real diff, with a positive control through
+    the SAME matcher so a clean result cannot come from a broken one."""
+    added_or_changed = _changed_files("ACMR")
+    assert added_or_changed, "no changed files — the diff base is wrong"
+    assert _violations(added_or_changed) == [], _violations(added_or_changed)
+    assert _violations([".fleet/NEW.md", "packages/factorylm-ui/src/x.ts", "CLAUDE.md"]) == [
+        ".fleet/NEW.md",
+        "packages/factorylm-ui/src/x.ts",
+        "CLAUDE.md",
+    ]
+
+
 def test_mission_directory_convention() -> None:
     mission = ROOT / "docs" / "missions" / "FLEET-PEER-NETWORK-001"
     for f in ("MISSION.md", "HANDOFF.md", "CLAIMS.md"):
         assert (mission / f).exists(), f
     readme = (ROOT / "docs" / "missions" / "README.md").read_text()
     assert "Do not add new files under `.fleet/`" in readme
+
+
+def test_ci_treats_the_contract_directory_as_code() -> None:
+    """A docs-only edit to docs/peer-network must NOT skip test-unit: the `changes` filter negates
+    docs/** and a skipped job reports Success (ci.yml header). The contract directory and its
+    suite are re-included AFTER the negations (Codex review of cbacc99da1)."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    block = ci[ci.index("            code:") :]
+    lines = []
+    for raw in block.splitlines()[1:]:
+        line = raw.strip()
+        if line.startswith("- "):
+            lines.append(line)
+        elif line and not line.startswith("#"):
+            break
+    assert "- '!docs/**'" in lines
+    for included in ("- 'docs/peer-network/**'", "- 'tests/peer_network/**'"):
+        assert included in lines, included
+        assert lines.index(included) > lines.index("- '!docs/**'"), (
+            f"{included} must come after the docs negation"
+        )
+        assert lines.index(included) > lines.index("- '!**/*.md'"), (
+            f"{included} must come after the markdown negation"
+        )
 
 
 def test_ci_runs_this_suite_inside_the_gated_unit_job() -> None:

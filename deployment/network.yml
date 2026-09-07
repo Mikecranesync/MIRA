@@ -18,6 +18,8 @@ nodes:
     doppler_key_name: SSH_ALPHA_PRIVATE_KEY
     peer_network:
       node_id: alpha
+      hostname: Michaels-Mac-mini-2.local
+      last_heartbeat: "2026-08-16T00:00:00Z"   # last observed contact (alpha: retired 2026-08-16; travel: dispatch attempt, no reply)
       os: macos
       capabilities: [bash, git, gh, write, worktree, docker]
       availability: offline
@@ -37,6 +39,8 @@ nodes:
     doppler_key_name: SSH_BRAVO_PRIVATE_KEY
     peer_network:
       node_id: bravo
+      hostname: FactoryLM-Bravo.local
+      last_heartbeat: "2026-09-07T01:29:00Z"   # last observed contact (alpha: retired 2026-08-16; travel: dispatch attempt, no reply)
       os: macos
       capabilities: [bash, git, gh, write, worktree, docker]
       availability: online
@@ -56,6 +60,8 @@ nodes:
     doppler_key_name: SSH_CHARLIE_PRIVATE_KEY
     peer_network:
       node_id: charlie
+      hostname: CharlieNodes-Mac-mini.local
+      last_heartbeat: "2026-09-07T04:20:00Z"   # last observed contact (alpha: retired 2026-08-16; travel: dispatch attempt, no reply)
       os: macos
       capabilities: [bash, git, gh, write, worktree, codex-cli, adb, bun, docker]
       availability: online
@@ -74,6 +80,9 @@ nodes:
     notes: "Travel laptop (CLUSTER.md TRAVEL). Unreachable as a session on 2026-09-07 — dispatch fell back per PRD §14."
     peer_network:
       node_id: travel
+      hostname: unknown
+      role: secondary-implementation
+      last_heartbeat: "2026-09-07T01:31:00Z"   # last observed contact (alpha: retired 2026-08-16; travel: dispatch attempt, no reply)
       os: windows
       capabilities: [bash, git, gh, write, worktree]
       availability: unknown
@@ -89,6 +98,9 @@ nodes:
     notes: "PLC laptop (FLM-PLC-01). Micro820 is point-to-point to this laptop; CHARLIE has HTTP-only reach to the Ignition gateway. Verifier for FLEET-PEER-NETWORK-001 (ACKed 2026-09-07)."
     peer_network:
       node_id: plc
+      hostname: LAPTOP-0KA3C70H
+      role: industrial-verifier
+      last_heartbeat: "2026-09-07T01:43:00Z"   # last observed contact (alpha: retired 2026-08-16; travel: dispatch attempt, no reply)
       os: windows
       capabilities: [plc, ignition, factory-io, read-only]
       availability: online

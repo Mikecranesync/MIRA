@@ -61,6 +61,12 @@ jobs:
               - '!wiki/**'
               - '!**/*.md'
               - '!.claude/**'
+              # Re-include AFTER the negations: docs/peer-network is the peer-network CONTRACT
+              # (schemas, laws, the root-pointer gate) and tests/peer_network guards it. A
+              # docs-only edit there must run test-unit, not skip the suite that checks it
+              # (FLEET-PEER-NETWORK-001, Codex review of cbacc99da1).
+              - 'docs/peer-network/**'
+              - 'tests/peer_network/**'
               - '!**/*.webp'
               - '!**/*.png'
               - '!**/*.jpg'
@@ -420,7 +426,11 @@ jobs:
         # root-pointer status gate) and their hardening tests. Named here, inside the
         # gated test-unit job, because the tests/ sweep in test-eval-offline is not in
         # ci-gate's needs — a step there can go red and merge anyway.
-        run: pytest tests/peer_network/ -v
+        run: |
+          # The changed-path test diffs against origin/main; a shallow checkout has no such
+          # ref and the test is RED (not skipped) without it.
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main 2>/dev/null || git fetch --no-tags origin main
+          pytest tests/peer_network/ -v
 
       - name: Materialized Evidence contract + document-receipt lane
         # `materialized_evidence/` and the batch-document receipt lane it feeds

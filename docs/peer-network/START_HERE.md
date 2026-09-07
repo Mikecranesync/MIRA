@@ -72,11 +72,14 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
    issue/PR with `Status: ACTIVE`, **`Claimed at: <UTC ISO-8601>`**, the base SHA, branch, worktree
    and the **resource keys** you need (`schemas/claim.schema.json`). Claim states: `ACTIVE` (held, working), `BLOCKED` (held, waiting on a human gate or
    dependency), `LEASE_AT_RISK` (renewal missed — stop before the next edit or push), `RELEASED`,
-   `COMPLETE`. **Wait at least 60 seconds,
-   then re-read the whole thread** (a settling interval, so two near-simultaneous posts both see
-   each other). The ACTIVE claim with the earliest `claimed_at` overlapping your keys wins; the
-   comment's own creation time is only a tiebreak — never the ordering key, because editing a
-   comment keeps its creation timestamp. If you lost, set yours to `RELEASED` and make no edits.
+   `COMPLETE`. **Wait at least 60 seconds, then re-read the whole
+   thread** (a settling interval, so two near-simultaneous posts both see each other). The
+   ordering key is the same as `.claude/rules/multi-session-protocol.md` §2: the ACTIVE claim with
+   the **earliest GitHub creation time / event id** overlapping your keys wins — a server-issued
+   value no session can back-date. `claimed_at` is recorded for the ledger (Foreman will use it
+   as the lease's start) but is self-reported and is **never** the tiebreak. A claim inserted by
+   editing an older comment does not count: only a comment created after the mission record
+   existed is a claim. If you lost, set yours to `RELEASED` and make no edits.
 5. Only then create the worktree (detached from `origin/main`, never holding `main`) and the
    branch. Publish the branch early.
 
