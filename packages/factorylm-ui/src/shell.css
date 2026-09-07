@@ -60,7 +60,9 @@
 
 .fl-shell button:not(:disabled) { cursor: pointer; }
 .fl-shell button:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
-.fl-shell button[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); }
+/* The one current row is styled whether it is a button (host opener) or an inert <li>. */
+.fl-shell button[aria-current="page"],
+.fl-tree__row[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); font-weight: 600; }
 .fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); }
 .fl-shell__new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 
@@ -92,6 +94,7 @@
 .fl-shell__sidebar { position: sticky; inset-block-start: 0; display: flex; flex-direction: column; block-size: 100dvh; max-block-size: 100dvh; overflow: hidden; }
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 .fl-tree__item { min-block-size: max(2.75rem, 44px); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
+.fl-tree__item[aria-current="page"] { color: var(--fl-workspace-accent-ink); }
 
 /* An explicit minmax(0, 1fr) column: with the implicit `auto` column the main
    area sized itself to the composer row's min-content (550px at a 412px viewport)

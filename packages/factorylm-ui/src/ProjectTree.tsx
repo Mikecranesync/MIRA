@@ -14,7 +14,7 @@ interface ProjectTreeProps {
 
 /**
  * The single "current" row. Exactly one row carries aria-current="page":
- * the open run, else the open thread, if it is in the tree, else the active machine's link
+ * in Work mode the open run, else the open thread (Ask mode ignores a retained run), if it is in the tree, else the active machine's link
  * (the one under the selected folder when the machine appears twice), else
  * the selected folder, else the selected project. Ancestors of the current
  * row get data-path="true" — a quiet "you are inside this" treatment, not a
@@ -22,8 +22,9 @@ interface ProjectTreeProps {
  */
 export function currentTreeRowId(state: ShellState, projects: readonly Project[]): string | undefined {
   const items = flatten(projects);
-  // The open run outranks its thread: in Work mode the run is what the user is inside.
-  const openIds = [state.run?.id, state.thread.id].filter((id): id is string => Boolean(id));
+  // In Work mode the open run is what the user is inside, so it outranks the thread; in Ask
+  // mode a retained run is background and the open thread (or machine) is current.
+  const openIds = (state.mode === "work" ? [state.run?.id, state.thread.id] : [state.thread.id]).filter((id): id is string => Boolean(id));
   for (const id of openIds) {
     const open = items.find((entry) => entry.node.kind !== "folder" && entry.node.kind !== "machine-link" && entry.node.id === id);
     if (open) return open.node.id;

@@ -10,9 +10,9 @@
  * is SESSION state that is null after a reload.
  *
  * So a persisted failed turn, reopened on a fresh session, still renders a
- * Retry button. Clicking it falls through to `dispatch({ type: "retry" })`,
- * which only sets `retryTargetTurnId` — read nowhere outside this package
- * (parts.tsx:273, harness.tsx:93) — so the label flips to "Retry requested"
+ * Retry button. Clicking it fell through to the reducer's mock retry action
+ * (since removed with its state field in Slice C), which was read nowhere
+ * outside this package — so the label flipped to "Retry requested"
  * and NO request is ever sent. A dead control that reports success, on a real
  * failure.
  *
@@ -20,8 +20,8 @@
  * function, so retry is a host-owned capability rather than a render-time
  * guess. Covers hooks omitted entirely as well as hooks without onRetry — the
  * omitted case is what a bare `<FactoryLMShell>` mount (the lab before it
- * supplied a host hook) produced: an enabled Retry that only set
- * `retryTargetTurnId` (Codex review, 2026-09-07).
+ * supplied a host hook) produced: an enabled Retry that only set the reducer's
+ * mock retry marker (Codex review, 2026-09-07).
  *
  * Run: cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/retry-capability.test.tsx
  */

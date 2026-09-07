@@ -188,6 +188,27 @@ describe("context lines only when context differs", () => {
     expect(current[0].dataset.itemId).toBe("run-drive-a-f30001");
   });
 
+  it("switching Work → Ask with a retained run moves the current row off the run (mode-aware priority)", () => {
+    const view = render({ surface: "web", fixture: "work-run", onOpenItem: () => {} });
+    const nav = () => must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    const current = () => Array.from(nav().querySelectorAll<HTMLElement>('[aria-current="page"]'));
+    expect(current()[0].dataset.itemKind).toBe("run");
+    act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
+    expect(current().length).toBe(1);
+    expect(current()[0].dataset.itemKind).not.toBe("run");
+    expect(current()[0].dataset.kind).toBe("machine"); // the open thread is not in the tree, so the active machine link
+    act(() => { view.dispatch({ type: "set-mode", mode: "work" }); });
+    expect(current()[0].dataset.itemKind).toBe("run");
+  });
+
+  it("an inert current row matches the selection stylesheet selector (styled, not just semantic)", () => {
+    const view = render({ surface: "web", fixture: "work-run" });
+    const li = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"] li[aria-current="page"]'), "inert current li");
+    expect(li.matches('.fl-tree__row[aria-current="page"]')).toBe(true);
+    const shellCss = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
+    expect(shellCss).toMatch(/\.fl-tree__row\[aria-current="page"\]\s*\{[^}]*--fl-workspace-accent-tint/s);
+  });
+
   it("New chat is an enabled primary action when the host can start a thread, and it closes the drawer", () => {
     const calls: string[] = [];
     const view = render({ surface: "mobile", fixture: "project-tree", hooks: { onNewChat: () => calls.push("newChat") } });
