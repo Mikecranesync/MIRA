@@ -257,6 +257,34 @@ def test_control_patterns_are_hardcoded_constants_not_from_the_registry():
     assert ".github/workflows/**" in CONTROL_PATTERNS
 
 
+@pytest.mark.parametrize(
+    "control_path",
+    [
+        "conftest.py",
+        "tests/conftest.py",
+        "pyproject.toml",
+        "pytest.ini",
+        "setup.cfg",
+        "tox.ini",
+        "tools/yaml.py",
+        "tools/markdown_it.py",
+    ],
+)
+def test_transitive_trusted_base_inputs_are_control_patterns(control_path):
+    """A precursor PR cannot plant code/config that a later guard executes."""
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert control_path in CONTROL_PATTERNS
+    assert path_is_guarded(control_path, policy)
+    result = evaluate(
+        [ChangedFile(status="added", path=control_path)],
+        labels=set(),
+        pr_body="",
+        policy=policy,
+    )
+    assert result.allowed is False
+
+
 def test_arbitrary_github_workflow_is_guarded_without_exception():
     """A PR-head workflow cannot be allowed to spoof a trusted status name."""
     real_policy = load_guard_policy(REAL_REGISTRY)
@@ -1502,7 +1530,15 @@ def test_duplicate_field_label_within_one_section_is_ambiguous_and_fails():
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    # Exercise the parser after the approval gate has been satisfied so this
+    # cannot pass merely because the approval precondition failed first.
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
@@ -1752,8 +1788,20 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/lib/visual/viewport.ts",
         "mira-hub/src/lib/connections.ts",
         "mira-hub/src/lib/utils.ts",
+        "mira-hub/src/lib/gs10-display.ts",
+        "mira-hub/src/lib/health-score.ts",
+        "mira-hub/src/lib/document-readiness.ts",
+        "mira-hub/src/lib/notebook-followups.ts",
         "mira-hub/src/lib/arbitrary-name.ts",
         "mira-hub/src/capabilities/NewLegacyPanel.tsx",
+        "mira-hub/src/capabilities/nested/legacy-dashboard.html",
+        "mira-hub/src/capabilities/nested/legacy-dashboard.js",
+        "mira-hub/src/capabilities/nested/legacy-dashboard.svg",
+        "mira-hub/src/capabilities/nested/LegacyDashboard.vue",
+        "mira-hub/src/widgets/nested/legacy-navigation.ts",
+        "mira-hub/src/widgets/nested/legacy-dashboard.html",
+        "mira-hub/src/widgets/nested/legacy-dashboard.js",
+        "mira-hub/src/widgets/nested/legacy-dashboard.svg",
         "mira-hub/src/lib/nested/NewLegacyPanel.tsx",
         "mira-hub/src/lib/nested/new-dashboard.css",
         "mira-web/src/lib/feature-renderer.ts",
@@ -1766,22 +1814,34 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-web/src/lib/nested/new-dashboard.css",
         "mira-web/src/lib/blog-db.ts",
         "mira-web/src/lib/hub-handoff.ts",
-        "mira-web/src/lib/mira-chat.ts",
-        "mira-web/src/lib/qr-generate.ts",
         "mira-web/src/lib/qr-pdf.ts",
         "mira-web/src/lib/sitemap.ts",
         "mira-web/src/lib/trailing-slash.ts",
         "mira-web/src/lib/arbitrary-name.ts",
         "mira-web/src/capabilities/NewLegacyPanel.tsx",
+        "mira-web/src/capabilities/nested/legacy-dashboard.html",
+        "mira-web/src/capabilities/nested/legacy-dashboard.js",
+        "mira-web/src/capabilities/nested/legacy-dashboard.svg",
+        "mira-web/src/capabilities/nested/LegacyDashboard.vue",
         "mira-web/src/seed/NewLegacyPanel.tsx",
+        "mira-web/src/seed/legacy-dashboard.html",
+        "mira-web/src/seed/legacy-dashboard.js",
+        "mira-web/src/seed/legacy-dashboard.svg",
         "mira-web/src/routes/printsense.ts",
         "mira-web/src/routes/new-old-site.ts",
+        "mira-web/src/routes/m.ts",
         "mira-web/src/server.ts",
         "mira-mobile/index.html",
         "mira-mobile/src/main.tsx",
         "mira-mobile/src/LegacyAppV2.tsx",
         "mira-mobile/src/app.css",
         "mira-mobile/src/api/NewLegacyPanel.tsx",
+        "mira-mobile/src/api/legacy-dashboard.html",
+        "mira-mobile/src/api/legacy-dashboard.js",
+        "mira-mobile/src/api/legacy-dashboard.svg",
+        "mira-mobile/src/api/LegacyDashboard.vue",
+        "mira-mobile/src/chat-adapter/runtime.tsx",
+        "mira-mobile/src/chat-adapter/turns-to-parts.ts",
         "mira-mobile/src/chat-adapter/NewLegacyPanel.tsx",
         "mira-mobile/src/lib/NewLegacyPanel.tsx",
         "mira-mobile/src/lib/attach-selection.ts",
@@ -1800,6 +1860,10 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-mobile/src/lib/transient-layer.ts",
         "mira-mobile/src/lib/new-transport-helper.ts",
         "mira-mobile/src/widgets/NewLegacyPanel.tsx",
+        "mira-mobile/src/widgets/legacy-navigation.ts",
+        "mira-mobile/src/widgets/legacy-dashboard.html",
+        "mira-mobile/src/widgets/legacy-dashboard.js",
+        "mira-mobile/src/widgets/legacy-dashboard.svg",
         "mira-mobile/src/styles/new-shell.css",
     ],
 )
@@ -1824,14 +1888,15 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "mira-hub/src/lib/display-registration.ts",
         "mira-hub/src/lib/drive-pack-suggestion.ts",
         "mira-hub/src/lib/drive-packs/loader.ts",
-        "mira-hub/src/lib/gs10-display.ts",
         "mira-hub/src/lib/review-queue.ts",
         "mira-hub/src/lib/tenant-context.ts",
+        "mira-hub/src/auth.ts",
+        "mira-hub/src/middleware.ts",
         "mira-hub/src/capabilities/new-service.ts",
+        "mira-hub/src/capabilities/schema.json",
         "mira-web/src/routes/inbox.ts",
         "mira-web/src/routes/mfa.ts",
         "mira-web/src/routes/probe-state.ts",
-        "mira-web/src/routes/m.ts",
         "mira-web/src/lib/account-deletion.ts",
         "mira-web/src/lib/activation.ts",
         "mira-web/src/lib/atlas.ts",
@@ -1852,9 +1917,13 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "mira-web/src/lib/qr-tracker.ts",
         "mira-web/src/lib/quota.ts",
         "mira-web/src/lib/stripe.ts",
+        "mira-web/src/lib/mira-chat.ts",
+        "mira-web/src/lib/qr-generate.ts",
         "mira-web/src/capabilities/new-service.ts",
+        "mira-web/src/capabilities/schema.json",
         "mira-mobile/src/api/client.ts",
-        "mira-mobile/src/chat-adapter/runtime.tsx",
+        "mira-mobile/src/api/schema.json",
+        "mira-mobile/src/chat-adapter/contract.ts",
         "mira-mobile/src/lib/live-update.ts",
         "mira-mobile/src/lib/native-pick.ts",
         "mira-mobile/src/lib/offline-queue.ts",
@@ -2315,6 +2384,27 @@ def test_workflow_guard_job_fetches_metadata_before_checkout_and_dependency_inst
     install_idx = next(i for i, s in enumerate(steps) if "pip install" in s.get("run", ""))
     assert metadata_idx < checkout_idx, "metadata must be fetched before checking out base code"
     assert metadata_idx < install_idx, "metadata must be fetched before installing dependencies"
+
+
+def test_workflow_evaluates_before_tests_and_isolates_python_from_repo_hooks():
+    doc = _workflow_doc()
+    steps = doc["jobs"]["guard"]["steps"]
+    eval_idx = next(
+        i for i, step in enumerate(steps) if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
+    )
+    test_idx = next(
+        i for i, step in enumerate(steps) if "pytest" in step.get("run", "")
+    )
+    eval_step = steps[eval_idx]
+    test_step = steps[test_idx]
+
+    assert eval_idx < test_idx, "repository tests must not mutate the artifact before evaluation"
+    assert "python3 -I tools/ui_surface_lifecycle_guard.py" in eval_step["run"]
+    assert "python3 -I -m pytest" in test_step["run"]
+    assert "-c /dev/null" in test_step["run"]
+    assert "--noconftest" in test_step["run"]
+    assert "--import-mode=importlib" in test_step["run"]
+    assert test_step.get("env", {}).get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") == "1"
 
 
 def test_workflow_separates_token_bearing_metadata_step_from_evaluation_step():

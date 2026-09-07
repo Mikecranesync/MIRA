@@ -25,9 +25,14 @@ Current delivery ledger:
   `codex/factorylm-unified-ui-cutover-001`, remains draft. Its exact immutable
   head is recorded in the PR body rather than self-referenced here. The branch
   guards every workflow file, fails closed on unknown historical Web/Hub
-  library additions outside exact audited capability allowlists, freezes every
-  production Hub component/provider helper, and directs new backend modules to
-  explicit `src/capabilities/**` roots. It also removes writer-controlled
+  library additions outside exact audited capability allowlists, unknown Hub/
+  mobile source siblings, non-TypeScript/JSON files inside explicit capability
+  roots, the mixed public `m.ts` routing journey, mobile chat render transforms,
+  and every production Hub component/provider helper. Pure chat transport,
+  QR generation, exact auth/native seams, and typed backend capabilities remain
+  reusable. The workflow evaluates in isolated Python before running a focused
+  hook-disabled self-test; all transitive pytest/import inputs are themselves
+  control patterns. It also removes writer-controlled
   filenames from proof/reporter prompts, records the shipped mobile canary
   truth, and treats `src/unified/**` plus exact `UnifiedRoot`/`UnifiedChat`
   hosts as canonical new UI. The status remains advisory until issue #3657
@@ -64,10 +69,10 @@ Bravo writer may publish the completed candidate, followed by a fresh
 exact-head Codex review. Rebase only after #3647 and keep root pointers inside
 this separate PR.
 
-No governance hardening has changed a production route, deployment,
+No governance hardening has changed production behavior, deployment,
 feature flag, database, provider, auth flow, or customer-data state. Next:
-commit #3647's final classifier/renderer/license correction, obtain independent
-immutable-head PASS plus green CI and the maintainer's fresh
+commit #3647's final classifier/workflow-isolation correction, obtain
+independent immutable-head PASS plus green CI and the maintainer's fresh
 `legacy-ui-exception` attestation, then merge it. Rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;
 #3652 follows. The CHARLIE peer channel is an active notification path; GitHub

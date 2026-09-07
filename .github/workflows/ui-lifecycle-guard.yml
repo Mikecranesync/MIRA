@@ -161,18 +161,14 @@ jobs:
             --only-binary=:all: --require-hashes \
             -r requirements/ui-lifecycle-guard.txt
 
-      # Runs the guard's OWN test suite from the trusted base checkout — this
-      # is the base revision's guard code proving itself, not a claim about
-      # the PR under review.
-      - name: Run trusted-base guard tests
-        run: python3 -m pytest tests/test_ui_surface_lifecycle_guard.py -q
-
       # No token. The guard module itself makes no network calls (the runner
-      # is not network-isolated); this is pure policy + text evaluation of the
-      # trusted-base registry against metadata fetched before checkout.
+      # is not network-isolated); isolated mode prevents a same-directory
+      # yaml.py/markdown_it.py from shadowing the locked packages. Evaluate
+      # before executing any repository test module so test hooks cannot
+      # mutate the artifact that makes the policy decision.
       - name: Evaluate the legacy UI lifecycle guard
         run: |
-          python3 tools/ui_surface_lifecycle_guard.py \
+          python3 -I tools/ui_surface_lifecycle_guard.py \
             --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
             --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
             --labels-file "$RUNNER_TEMP/labels.txt" \
@@ -180,6 +176,18 @@ jobs:
             --event-json-file "$GITHUB_EVENT_PATH" \
             --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
             --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"
+
+      # Runs the guard's OWN test suite only after the policy decision. Isolated
+      # mode, null config, disabled conftest loading, disabled third-party
+      # plugin autoload, and importlib collection keep repository-level pytest
+      # hooks/configuration out of this trusted-base self-test.
+      - name: Run trusted-base guard tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: >-
+          python3 -I -m pytest -c /dev/null --noconftest
+          --import-mode=importlib --rootdir=. -p no:cacheprovider
+          tests/test_ui_surface_lifecycle_guard.py -q
 
   final-status:
     name: Post final status

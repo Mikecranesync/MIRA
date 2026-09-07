@@ -61,7 +61,7 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every HTML route mount/renderer and visible-output helper, and every statically served public asset |
+| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every customer-routing or HTML route mount/renderer and visible-output helper, and every statically served public asset |
 | Hub | `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, and public asset; API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
 | Mobile | `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application mount, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
@@ -75,34 +75,42 @@ The broad registry roots are refined by **code-owned classifiers** in
 presentation-shaped:
 
 - Hub Next `route.ts` handlers below an explicit `api` segment, the exact
-  code-owned allowlist of audited existing `src/lib/**` auth/API/transport/
-  domain modules, and non-presentational files under the explicit future
-  `src/capabilities/**` root remain open capability seams. Every production
+  code-owned allowlists of audited existing root auth/middleware and
+  `src/lib/**` auth/API/transport/domain modules, and TypeScript/JSON files
+  under the explicit future `src/capabilities/**` root remain open capability
+  seams. Every other suffix in that root and every unknown production source
+  sibling fail closed. Every production
   file under historical `src/components/**` and `src/providers/**` is guarded,
   including plain TypeScript helpers that own copy, navigation, composer state,
   redirects, identity presentation, or mock view data. Every non-allowlisted
   `src/lib/**` file is guarded by default, including framework-free view/data/
-  title/card helpers and exact mixed presentation modules. New backend modules
+  title/card helpers and exact mixed presentation modules, including display,
+  readiness, health-score, and notebook-follow-up copy. New backend modules
   belong under `src/capabilities/**`; `src/messages/**` is rendered product copy
   and is guarded.
-- Public-web JSON/API routes `inbox.ts`, `m.ts`, `mfa.ts`, and
-  `probe-state.ts`, the exact code-owned allowlist of audited existing backend
-  libraries, and non-presentational files in `src/seed/**` and the explicit
-  future `src/capabilities/**` root remain open. React/style files in those
-  roots, every other route, the mixed `server.ts` mount, every non-allowlisted
-  `src/lib/**` file, page content, and unknown production siblings fail closed.
+- Public-web JSON/API routes `inbox.ts`, `mfa.ts`, and `probe-state.ts`, the
+  exact code-owned allowlist of audited existing backend libraries (including
+  typed chat transport and QR generation), and TypeScript/JSON files in
+  `src/seed/**` and the explicit future `src/capabilities/**` root remain open.
+  The mixed `m.ts` customer redirect journey is guarded. Every other suffix in
+  the capability/seed roots, every other route, the mixed `server.ts` mount,
+  every non-allowlisted `src/lib/**` file, page content, and unknown production
+  siblings fail closed.
   New backend modules belong under `src/capabilities/**`; an arbitrary filename
   under the mixed historical `src/lib/**` root is guarded by default.
-- Mobile non-presentational `src/api/**`, the three existing
-  `src/chat-adapter/**` transport files, the complete connected new-UI adapter
-  under `src/unified/**`, the exact new-shell hosts
+- Mobile TypeScript/JSON files under `src/api/**`, the pure
+  `src/chat-adapter/contract.ts` transport contract, the complete connected
+  new-UI adapter under `src/unified/**`, the exact new-shell hosts
   `src/screens/UnifiedChat.tsx` and `src/screens/UnifiedRoot.tsx`, and an exact
   low-level operational allowlist remain open:
   `live-update.ts`, `native-pick.ts`, `offline-queue.ts`, `open-with.ts`,
-  `resume-guard.ts`, `sse.ts`, and `tags.ts`. The historical `src/lib/**`
+  `resume-guard.ts`, `sse.ts`, and `tags.ts`. The chat-adapter runtime and
+  turn-to-part transforms are guarded because they own rendered answer,
+  citation, safety, follow-up, and error parts. The historical `src/lib/**`
   bucket is not itself a capability boundary: its other files contain visible
   copy, render transforms, view models, route transitions, or legacy
-  interaction behavior and therefore fail closed. Extract new reusable
+  interaction behavior and therefore fail closed. Unknown production siblings
+  and non-TypeScript/JSON API files also fail closed. Extract new reusable
   capability logic into an API/adapter/shared-package seam instead of growing
   those mixed legacy helpers.
 

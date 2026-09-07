@@ -61,18 +61,21 @@ rename-in, and rename-out of a guarded path fail the guard by default.
 
 The broad registry roots are refined by code-owned classifiers in the guard.
 They preserve explicit Hub API route handlers, exact audited allowlists of
-existing Hub/public-web capability and server libraries, the existing
-public-web JSON/API routes, non-presentational files under explicit future
-`src/capabilities/**` roots, public-web seed files, the exact mobile
-API/transport/native allowlist, all three `src/factorylm-ui/**` adapter roots,
-the existing mobile `src/unified/**` adapter, and its two exact new-shell screen
-hosts. New backend modules belong under `mira-web/src/capabilities/**` or
+existing Hub/public-web capability and server libraries, three exact
+public-web JSON/API routes, and TypeScript/JSON files under explicit future
+`src/capabilities/**`, public-web seed, and mobile API roots. They also preserve
+the pure mobile chat-adapter contract, the exact mobile native/transport
+allowlist, all three `src/factorylm-ui/**` adapter roots, the existing mobile
+`src/unified/**` adapter, and its two exact new-shell screen hosts. New backend
+modules belong under `mira-web/src/capabilities/**` or
 `mira-hub/src/capabilities/**`; arbitrary additions to either historical
 `src/lib/**` bucket fail closed. Every production Hub component/provider file
-is guarded, including plain TypeScript helpers. The mobile `src/lib/**` bucket
-is likewise mixed rather than trusted wholesale: helpers that own visible
-copy, rendering, or legacy interaction transitions are guarded. Unknown
-production siblings fail closed. Every file under
+is guarded, including plain TypeScript helpers. The mixed public `m.ts` routing
+journey, mobile chat runtime/turn render transforms, non-TypeScript/JSON files
+inside capability roots, and unknown production siblings are guarded. The
+mobile `src/lib/**` bucket is likewise mixed rather than trusted wholesale:
+helpers that own visible copy, rendering, or legacy interaction transitions
+are guarded. Every file under
 `mira-web/public/**` and `mira-hub/public/**` is guarded: images, fonts, PDFs,
 manifests, and other non-executable assets still change the shipped legacy
 experience.

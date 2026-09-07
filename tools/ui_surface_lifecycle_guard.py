@@ -56,16 +56,24 @@ DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 #
 # These paths are guarded UNCONDITIONALLY, regardless of what the registry
 # file (loaded from the base revision) says. A PR that edits its own guard
-# implementation, its own tests, the registry, the charter, the focused
-# Claude rule, the three UI workflow files, or any GitHub workflow is a
-# self-protection case — it must go through the same audited
+# implementation, its tests and transitive pytest/import inputs, the registry,
+# the charter, the focused Claude rule, the three UI workflow files, or any
+# GitHub workflow is a self-protection case — it must go through the same audited
 # exception as any guarded legacy path, so the enforcement layer can never be
 # quietly loosened in the same PR that would benefit from the loosening.
 # ---------------------------------------------------------------------------
 CONTROL_PATTERNS: tuple[str, ...] = (
+    "conftest.py",
     "docs/architecture/convergence/REGISTRY.yaml",
     "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
+    "pyproject.toml",
+    "pytest.ini",
+    "setup.cfg",
+    "tests/conftest.py",
     "tools/ui_surface_lifecycle_guard.py",
+    "tools/markdown_it.py",
+    "tools/yaml.py",
+    "tox.ini",
     "tests/test_ui_surface_lifecycle_guard.py",
     ".claude/rules/factorylm-unified-ui-cutover.md",
     ".claude/workflows/flm-ui-map.js",
@@ -130,6 +138,17 @@ _PRESENTATION_SUFFIXES: tuple[str, ...] = (
     ".less",
 )
 
+# Explicit capability roots are not blanket filename bypasses. Only source and
+# machine-readable data shapes that cannot directly ship a presentation remain
+# open; HTML, JavaScript, SVG, Vue, Markdown, styles, and unknown formats fail
+# closed even when placed below a capability/seed/API directory.
+_NONPRESENTATIONAL_CAPABILITY_SUFFIXES: tuple[str, ...] = (
+    ".ts",
+    ".mts",
+    ".cts",
+    ".json",
+)
+
 # Existing mira-web route modules that are data/API capability seams rather
 # than HTML page mounts. Every other current or future production route file
 # is guarded by default. New backend work has a durable unambiguous home under
@@ -137,7 +156,6 @@ _PRESENTATION_SUFFIXES: tuple[str, ...] = (
 _WEB_PRESERVED_ROUTE_PATHS: frozenset[str] = frozenset(
     {
         "mira-web/src/routes/inbox.ts",
-        "mira-web/src/routes/m.ts",
         "mira-web/src/routes/mfa.ts",
         "mira-web/src/routes/probe-state.ts",
     }
@@ -175,7 +193,9 @@ _WEB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-web/src/lib/magic-link.ts",
         "mira-web/src/lib/mailer.ts",
         "mira-web/src/lib/mfa.ts",
+        "mira-web/src/lib/mira-chat.ts",
         "mira-web/src/lib/posthog-server.ts",
+        "mira-web/src/lib/qr-generate.ts",
         "mira-web/src/lib/qr-tracker.ts",
         "mira-web/src/lib/quota.ts",
         "mira-web/src/lib/stripe.ts",
@@ -242,7 +262,6 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-hub/src/lib/db.ts",
         "mira-hub/src/lib/demo-auth.ts",
         "mira-hub/src/lib/display-registration.ts",
-        "mira-hub/src/lib/document-readiness.ts",
         "mira-hub/src/lib/drive-pack-suggestion.ts",
         "mira-hub/src/lib/drive-packs/gs10-pack.json",
         "mira-hub/src/lib/drive-packs/loader.ts",
@@ -250,8 +269,6 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-hub/src/lib/equipment-type.ts",
         "mira-hub/src/lib/fetch-adapters.ts",
         "mira-hub/src/lib/gateway-probe.ts",
-        "mira-hub/src/lib/gs10-display.ts",
-        "mira-hub/src/lib/health-score.ts",
         "mira-hub/src/lib/hub/status.ts",
         "mira-hub/src/lib/i3x/approval.ts",
         "mira-hub/src/lib/i3x/auth.ts",
@@ -315,7 +332,6 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-hub/src/lib/node-knowledge-ingest.ts",
         "mira-hub/src/lib/normalize-tag-path.ts",
         "mira-hub/src/lib/notebook-chat-types.ts",
-        "mira-hub/src/lib/notebook-followups.ts",
         "mira-hub/src/lib/notebook-query.ts",
         "mira-hub/src/lib/oauth-state.ts",
         "mira-hub/src/lib/pg-unique-retry.ts",
@@ -362,6 +378,16 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
     }
 )
 
+# Root-level Hub authentication/middleware files are existing capability and
+# authorization seams. Preserve only these audited exact paths; any new source
+# root or sibling filename still fails closed.
+_HUB_PRESERVED_SOURCE_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-hub/src/auth.ts",
+        "mira-hub/src/middleware.ts",
+    }
+)
+
 # These are operational/native/transport seams already consumed by the mobile
 # application. Everything else under the historical `src/lib/**` bucket fails
 # closed: that bucket also contains visible copy, view models, composer
@@ -383,8 +409,6 @@ _MOBILE_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
 _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS: frozenset[str] = frozenset(
     {
         "mira-mobile/src/chat-adapter/contract.ts",
-        "mira-mobile/src/chat-adapter/runtime.tsx",
-        "mira-mobile/src/chat-adapter/turns-to-parts.ts",
     }
 )
 
@@ -632,6 +656,10 @@ def _is_test_path(path: str) -> bool:
     return "__tests__" in parts or ".test." in name or ".spec." in name
 
 
+def _is_nonpresentational_capability_path(path: str) -> bool:
+    return path.lower().endswith(_NONPRESENTATIONAL_CAPABILITY_SUFFIXES)
+
+
 def _is_hub_api_route(path: str) -> bool:
     """True only for Next route-handler files below an explicit `api` segment.
 
@@ -656,9 +684,9 @@ def _classify_web_source(path: str) -> bool:
     if _is_test_path(path):
         return False
     if path.startswith("mira-web/src/capabilities/"):
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        return not _is_nonpresentational_capability_path(path)
     if path.startswith("mira-web/src/seed/"):
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        return not _is_nonpresentational_capability_path(path)
     if path in _WEB_PRESERVED_ROUTE_PATHS:
         return False
     if path.startswith("mira-web/src/routes/"):
@@ -686,7 +714,7 @@ def _classify_hub_source(path: str) -> bool:
     if _is_hub_api_route(path):
         return False
     if path.startswith("mira-hub/src/capabilities/"):
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        return not _is_nonpresentational_capability_path(path)
     if path.startswith("mira-hub/src/messages/"):
         # Locale catalogs are rendered product copy, not inert backend data.
         return True
@@ -712,9 +740,11 @@ def _classify_hub_source(path: str) -> bool:
         if name.endswith(_HUB_PRESENTATION_LIB_SUFFIXES) or name.endswith(_PRESENTATION_SUFFIXES):
             return True
         return path not in _HUB_PRESERVED_LIB_PATHS
-    # A React/style sibling outside today's conventional directories is still
-    # a presentation surface. Plain `.ts` domain/service modules remain open.
-    return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path in _HUB_PRESERVED_SOURCE_PATHS:
+        return False
+    # Unknown production roots are not a new old-site presentation escape.
+    # Existing root authorization seams above are deliberately exact.
+    return True
 
 
 def _classify_mobile_source(path: str) -> bool:
@@ -724,12 +754,14 @@ def _classify_mobile_source(path: str) -> bool:
     if path.startswith("mira-mobile/src/chat-adapter/"):
         return path not in _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS
     if path.startswith("mira-mobile/src/api/"):
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        return not _is_nonpresentational_capability_path(path)
     if path.startswith("mira-mobile/src/lib/"):
         return path not in _MOBILE_PRESERVED_LIB_PATHS
     if path == "mira-mobile/src/nav.ts":
         return True
-    return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    # Every unknown production sibling fails closed. New reusable behavior
+    # belongs in the API seam or a canonical FactoryLM adapter/package.
+    return True
 
 
 def _classify_source_path(path: str) -> Optional[bool]:

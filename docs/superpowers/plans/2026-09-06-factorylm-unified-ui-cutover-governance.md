@@ -216,9 +216,17 @@ non-empty `canonical_replacement`, and a validated non-empty list of normalized
 `CONTROL_PATTERNS` is code-owned trusted-base policy and includes:
 
 ```text
+conftest.py
 docs/architecture/convergence/REGISTRY.yaml
 docs/architecture/convergence/UNIFIED_UI_CUTOVER.md
+pyproject.toml
+pytest.ini
+setup.cfg
+tests/conftest.py
 tools/ui_surface_lifecycle_guard.py
+tools/markdown_it.py
+tools/yaml.py
+tox.ini
 tests/test_ui_surface_lifecycle_guard.py
 .claude/rules/factorylm-unified-ui-cutover.md
 .claude/workflows/flm-ui-map.js
@@ -233,13 +241,15 @@ requirements/ui-lifecycle-guard.txt
 > fixes — see the retrofit commit before Task 3):**
 > 1. **Complete presentation classifiers.** `path_is_guarded()` applies
 >    code-owned classifiers before the broad registry globs. Hub API
->    `route.ts` handlers, public-web JSON/API routes and backend libraries,
->    exact mobile transport/API/native helpers, and canonical adapter roots remain
+>    `route.ts` handlers, three exact public-web JSON/API routes, audited backend
+>    library/root allowlists, TypeScript/JSON capability/API/seed files, the pure
+>    mobile chat contract, exact native helpers, and canonical adapter roots remain
 >    open. Actual Hub pages/components/providers/locale catalogs and every
 >    `src/lib/**` file outside an exact audited capability allowlist, public-web route
 >    mounts and every `src/lib/**` file outside an exact audited capability allowlist,
->    mobile React/style mounts and mixed visible-copy/view-model
->    helpers, and unknown production siblings
+>    the mixed public `m.ts` customer journey, mobile React/style mounts and mixed
+>    visible-copy/view-model/chat-part helpers, non-TypeScript/JSON files inside
+>    explicit capability roots, and unknown production siblings
 >    fail closed. Both `mira-web/public/**` and `mira-hub/public/**` are blanket
 >    guarded, including images, fonts, PDFs, manifests, and scripts.
 > 2. **GitHub pull-files pagination truncation.** The `pulls/{n}/files`
@@ -269,6 +279,13 @@ requirements/ui-lifecycle-guard.txt
 >    workflow-owned lane/package scopes and the deterministic branch
 >    `codex/flm-ui-<lane>-<numeric-claim-id>`. A caller-controlled descendant
 >    path or branch name cannot carry semantic instructions into agent prompts.
+> 8. **Transitive trusted-base isolation.** Pytest configuration/conftest paths
+>    and local dependency-shadow filenames are control patterns. The workflow
+>    runs `python3 -I tools/ui_surface_lifecycle_guard.py` before any repository
+>    test, then runs only the focused suite with isolated Python, null pytest
+>    configuration, no conftest loading, importlib collection, and plugin
+>    autoload disabled. Test code can no longer mutate the artifact before the
+>    policy decision.
 
 The exception parser consumes pinned CommonMark tokens with GitHub table and
 double-tilde strikethrough rules, requires exactly one top-level ATX
@@ -413,15 +430,19 @@ The workflow must:
    `github.event.pull_request.base.sha` only, with
    `persist-credentials: false`. Never check out the head or merge ref.
 3. Install the exact wheel-only dependencies from
-   `requirements/ui-lifecycle-guard.txt` with `--require-hashes`, then run the
-   trusted-base guard tests. Pin checkout/setup actions to full commit SHAs.
+   `requirements/ui-lifecycle-guard.txt` with `--require-hashes`, evaluate the
+   policy in Python isolated mode, then run the focused trusted-base tests with
+   repository pytest hooks/config disabled. Pin checkout/setup actions to full
+   commit SHAs.
 4. In the guard job's sole metadata-only step carrying `GH_TOKEN`, fetch all
    changed-file pages plus the complete current PR JSON, labels, body, and the
    label actor's current repository permission into `$RUNNER_TEMP`. Treat
    these values and `$GITHUB_EVENT_PATH` only as data; never interpolate them
    into executable script text.
 5. In a separate step with no token, execute the checked-out base guard against
-   those files.
+   those files before executing any repository test module. Run it as
+   `python3 -I tools/ui_surface_lifecycle_guard.py` so a repository-local module
+   cannot shadow a locked dependency.
 6. In the separate `final-status` job with `if: always()`, branch only on
    `needs.guard.result`: post `success` when the guard job succeeded and
    `failure` otherwise. This fresh job never executes checked-out code.
@@ -449,7 +470,7 @@ else
   jq '{permission: "none", user: {login: .sender.login}}' \
     "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
 fi
-python tools/ui_surface_lifecycle_guard.py \
+python3 -I tools/ui_surface_lifecycle_guard.py \
   --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
   --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
   --labels-file "$RUNNER_TEMP/labels.txt" \
@@ -466,7 +487,14 @@ honor past ~3000 entries, which is exactly the failure mode the guard's
 amendment above Step 3).
 
 Do not pass `GH_TOKEN` to the Python step. Pin third-party actions according to
-the repository's existing workflow convention and run `actionlint`.
+the repository's existing workflow convention and run `actionlint`. After the
+evaluation step, run the focused self-test as:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -I -m pytest \
+  -c /dev/null --noconftest --import-mode=importlib --rootdir=. \
+  -p no:cacheprovider tests/test_ui_surface_lifecycle_guard.py -q
+```
 
 - [ ] **Step 2: Add structural workflow tests**
 
