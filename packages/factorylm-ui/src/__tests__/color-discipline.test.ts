@@ -74,3 +74,32 @@ describe("density and typesetting (Slice D-2)", () => {
     expect(conversation).toMatch(/\.fl-attachment-menu__close\s*\{/);
   });
 });
+
+describe("Slice D re-review fixes", () => {
+  it("tree metadata is a fixed column so a selected row truncates identically in both themes", () => {
+    expect(rule(shell, ".fl-tree__meta")).toMatch(/inline-size:\s*3\.75rem/);
+  });
+
+  it("the citation kind label is not monospaced", () => {
+    expect(rule(conversation, ".fl-source__kind")).not.toMatch(/--fl-workspace-mono/);
+  });
+
+  it("the run lifecycle label reads in state colour", () => {
+    expect(conversation).toMatch(/\.fl-run\[data-run-status="running"\] \.fl-run__status,\s*\.fl-run\[data-run-status="completed"\] \.fl-run__status\s*\{[^}]*--fl-workspace-ok-ink/s);
+    expect(conversation).toMatch(/\.fl-run\[data-run-status="blocked"\] \.fl-run__status\s*\{[^}]*--fl-workspace-fault-ink/s);
+  });
+
+  it("the mobile header title uses the header ink explicitly", () => {
+    const mobile = shell.slice(shell.indexOf("@media (max-width: 48rem)"));
+    expect(mobile).toMatch(/\.fl-shell__header h1\s*\{[^}]*color:\s*var\(--fl-workspace-header-ink\)/s);
+  });
+});
+
+describe("ui-style rule 1 — never hardcode a colour outside the token files", () => {
+  it("shell.css, conversation.css and workspace.css contain no raw hex/rgb/hsl literals", () => {
+    for (const [name, css] of [["shell.css", shell], ["conversation.css", conversation], ["workspace.css", workspace]] as const) {
+      const literals = css.replace(/\/\*[\s\S]*?\*\//g, "").match(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/gi) ?? [];
+      expect(literals, `${name}: ${literals.join(", ")}`).toEqual([]);
+    }
+  });
+});

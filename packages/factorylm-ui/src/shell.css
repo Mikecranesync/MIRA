@@ -79,7 +79,9 @@
 .fl-tree__icon { display: grid; place-items: center; inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; color: var(--fl-workspace-muted); }
 .fl-tree__icon svg { inline-size: 1rem; block-size: 1rem; }
 .fl-tree__label { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fl-tree__meta { flex: 0 0 auto; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+/* Fixed metadata column: the label gets the same width in both themes and at any weight, so
+   a selected row truncates identically in light and dark (Codex D review). */
+.fl-tree__meta { flex: 0 0 3.75rem; inline-size: 3.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: end; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-tree__project { font-weight: 700; }
 .fl-tree__row[data-path="true"],
 .fl-tree__row[data-context="true"],
@@ -146,7 +148,7 @@
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
   .fl-shell__brand-mark { display: block; }
-  .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 600; }
+  .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 700; color: var(--fl-workspace-header-ink); }
   .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }
   .fl-shell__inspector {
     position: fixed;

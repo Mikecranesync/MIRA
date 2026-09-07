@@ -60,7 +60,7 @@
 .fl-source { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--fl-workspace-space-2); row-gap: 2px; align-items: baseline; inline-size: fit-content; max-inline-size: 100%; padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); font-size: var(--fl-workspace-fs); text-align: start; }
 .fl-source__title { grid-column: 2; min-inline-size: 0; }
 .fl-attachment__kind,
-.fl-source__kind { color: var(--fl-workspace-muted); font-family: var(--fl-workspace-mono); font-size: var(--fl-workspace-fs-xs); }
+.fl-source__kind { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .fl-attachment__status { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-attachment[data-attachment-status="queued"] { border-color: var(--fl-workspace-warn-line); }
 .fl-attachment[data-attachment-status="failed"] { border-color: var(--fl-workspace-fault-line); }
@@ -106,6 +106,10 @@
 .fl-run { margin-block-end: var(--fl-workspace-space-4); padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); }
 .fl-run[data-run-status="running"],
 .fl-run[data-run-status="completed"] { border-color: var(--fl-workspace-ok-line); }
+/* The lifecycle/progress label reads in state colour too, so "Running · 1/2 steps" is legible in three seconds. */
+.fl-run[data-run-status="running"] .fl-run__status,
+.fl-run[data-run-status="completed"] .fl-run__status { color: var(--fl-workspace-ok-ink); font-weight: 600; }
+.fl-run[data-run-status="blocked"] .fl-run__status { color: var(--fl-workspace-fault-ink); font-weight: 600; }
 .fl-run[data-run-status="blocked"] { border-color: var(--fl-workspace-fault-line); }
 .fl-run p { margin: 0; }
 .fl-run__head { display: flex; justify-content: space-between; gap: var(--fl-workspace-space-3); }
