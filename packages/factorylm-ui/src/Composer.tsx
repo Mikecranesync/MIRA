@@ -4,6 +4,7 @@ import { AttachmentMenu } from "./AttachmentMenu";
 import { breadcrumb } from "./Conversation";
 import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
+import { MicIcon } from "./icons";
 
 export interface ComposerProps {
   readonly state: ShellState;
@@ -145,6 +146,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onFile={() => attach("file", adapter.attachFile)}
         onCamera={() => attach("photo", adapter.attachPhoto)}
         onScan={scan}
+        onClose={() => dispatch({ type: "set-attachment-menu-visible", visible: false })}
       /> : null}
     </Overlay>
 
@@ -161,7 +163,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       </button>
       <textarea
         aria-label="Ask MIRA"
-        placeholder={machine ? "Ask MIRA about this machine…" : "Ask MIRA…"}
+        // The prototype's full prompt on web; at phone width it wrapped to three lines
+        // beside four controls, so the mobile profile keeps the short form.
+        placeholder={state.profile.kind === "mobile" ? "Ask MIRA" : (machine ? "Ask MIRA about this machine…" : "Ask MIRA…")}
         rows={1}
         value={state.draft}
         onChange={(event) => dispatch({ type: "set-draft", draft: event.currentTarget.value })}
@@ -188,7 +192,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         disabled
         title="Voice input is not available in this lab"
       >
-        ◉
+        <MicIcon />
       </button>
       {hooks?.busy && hooks.onStop
         ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>

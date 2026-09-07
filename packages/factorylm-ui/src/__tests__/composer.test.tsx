@@ -62,6 +62,8 @@ describe("universal composer", () => {
     expect(machine.container.querySelector('[aria-label="Machine"]')?.textContent).toMatch(/confirmed/i);
     expect(composer(general).textarea.placeholder).toBe("Ask MIRA…");
     expect(general.container.querySelector('[aria-label="Machine"]')?.textContent).toMatch(/no machine/i);
+    // Phone width: the short form, so the placeholder never wraps beside the four controls (Slice D).
+    expect(composer(render({ surface: "mobile", fixture: "machine-ask" })).textarea.placeholder).toBe("Ask MIRA");
   });
 
   it("opens the attachment menu through the reducer and routes photo/file to the adapter", async () => {

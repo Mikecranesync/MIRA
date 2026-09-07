@@ -23,13 +23,13 @@
 .fl-shell__nav-icon { inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; }
 .fl-shell__hint { margin: 0 0 var(--fl-workspace-space-3); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-shell__search { display: flex; align-items: center; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-muted); }
-.fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
+.fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; font-size: var(--fl-workspace-fs); border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
 .fl-shell__search input:focus-visible { outline: none; }
 .fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
 /* Explicit column: an implicit `auto` grid track sizes to the widest row (the 550px main-column bug, again). */
-.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--fl-workspace-space-1); min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
+.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
 .fl-shell__nav-section { min-inline-size: 0; }
-.fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-2) 0 0; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-3) 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
 .fl-overlay { display: contents; }
 
@@ -63,16 +63,17 @@
 /* The one current row is styled whether it is a button (host opener) or an inert <li>. */
 .fl-shell button[aria-current="page"],
 .fl-tree__row[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); font-weight: 600; }
-.fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); }
+.fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); }
 .fl-shell__new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 
 .fl-tree,
 .fl-tree__children { margin: 0; padding: 0; list-style: none; }
-.fl-tree__children { padding-inline-start: var(--fl-workspace-space-3); }
+.fl-tree__children { padding-inline-start: var(--fl-workspace-space-2); }
 .fl-tree--flat .fl-tree__row { padding-inline-start: var(--fl-workspace-space-2); }
 /* One row pattern for every object type: disclosure column, type icon, label, muted metadata.
    Exactly one row is aria-current; ancestors carry data-path (quiet, not a second selection). */
-.fl-tree__row { display: flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-ink); text-align: start; }
+/* Base scale (14px) for navigation rows; the 44px hit floor stays, the visual weight drops. */
+.fl-tree__row { display: flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); text-align: start; }
 .fl-tree__disclosure { display: grid; place-items: center; inline-size: 1rem; flex: 0 0 auto; }
 .fl-tree__chevron { inline-size: 1rem; block-size: 1rem; }
 .fl-tree__icon { display: grid; place-items: center; inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; color: var(--fl-workspace-muted); }

@@ -54,3 +54,23 @@ describe("scrim depth and dark accent", () => {
     expect(rule(shell, ".fl-shell__hint")).not.toMatch(/calc\(-1/);
   });
 });
+
+describe("density and typesetting (Slice D-2)", () => {
+  it("navigation rows use the base scale with a tighter indent", () => {
+    expect(shell).toMatch(/\n\.fl-tree__row\s*\{[^}]*font-size:\s*var\(--fl-workspace-fs\)/);
+    expect(shell).toMatch(/\n\.fl-tree__children\s*\{\s*padding-inline-start:\s*var\(--fl-workspace-space-2\)/);
+  });
+
+  it("a citation is a two-line card with the locator as small metadata and mono only for its code", () => {
+    expect(rule(conversation, ".fl-source")).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/);
+    expect(rule(conversation, ".fl-source__locator")).toMatch(/font-size:\s*var\(--fl-workspace-fs-xs\)/);
+    expect(rule(conversation, ".fl-source__locator")).not.toMatch(/--fl-workspace-mono/);
+    expect(rule(conversation, ".fl-source__locator code")).toMatch(/--fl-workspace-mono/);
+  });
+
+  it("the attachment sheet has a mobile handle and a close control", () => {
+    const mobile = conversation.slice(conversation.indexOf("@media (max-width: 48rem)"));
+    expect(mobile).toMatch(/\.fl-attachment-menu__handle\s*\{[^}]*display:\s*block/s);
+    expect(conversation).toMatch(/\.fl-attachment-menu__close\s*\{/);
+  });
+});

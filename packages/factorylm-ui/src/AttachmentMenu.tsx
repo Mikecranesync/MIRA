@@ -1,4 +1,4 @@
-import { CameraIcon, DocumentIcon, GalleryIcon, QRIcon } from "./icons";
+import { CameraIcon, CloseIcon, DocumentIcon, GalleryIcon, QRIcon } from "./icons";
 
 export interface AttachmentMenuProps {
   /** The host runs on a device with a camera / scanner (mobile profile). */
@@ -9,6 +9,8 @@ export interface AttachmentMenuProps {
   readonly onFile: () => void;
   readonly onCamera: () => void;
   readonly onScan: () => void;
+  /** Explicit dismissal: the scrim and BACK also close it, but a sheet must show its own way out. */
+  readonly onClose: () => void;
 }
 
 /**
@@ -17,9 +19,13 @@ export interface AttachmentMenuProps {
  * this inside the shared `Overlay` for the `attachment-menu` layer — a bottom
  * sheet on the mobile profile, an anchored popover on the web profile.
  */
-export function AttachmentMenu({ native, busy, onPhoto, onFile, onCamera, onScan }: AttachmentMenuProps) {
+export function AttachmentMenu({ native, busy, onPhoto, onFile, onCamera, onScan, onClose }: AttachmentMenuProps) {
   return <div className="fl-attachment-menu" role="dialog" aria-modal="true" aria-label="Attachment menu">
-    <p className="fl-attachment-menu__title">Add to message</p>
+    <span className="fl-attachment-menu__handle" aria-hidden="true" />
+    <div className="fl-attachment-menu__head">
+      <p className="fl-attachment-menu__title">Add to message</p>
+      <button type="button" className="fl-attachment-menu__close" aria-label="Close attachment menu" onClick={onClose}><CloseIcon /></button>
+    </div>
     <div className="fl-attachment-menu__items">
       <button type="button" className="fl-attachment-menu__item" disabled={busy} onClick={onPhoto}>
         <GalleryIcon className="fl-attachment-menu__icon" /><span>Photo</span>
