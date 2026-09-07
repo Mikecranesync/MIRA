@@ -2,8 +2,18 @@
  * Slice D (#3650) — colour = state, accent = action (.claude/rules/ui-style.md).
  * Stylesheet + theme contracts from the Codex look-vs-plan review of 1.1.7 / Slice C.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { renderHarness, type HarnessView } from "./harness";
+
+const views: HarnessView[] = [];
+function render(...args: Parameters<typeof renderHarness>): HarnessView {
+  const view = renderHarness(...args);
+  views.push(view);
+  return view;
+}
+
+afterEach(() => { views.splice(0).forEach((view) => view.cleanup()); });
 
 const conversation = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
@@ -82,6 +92,14 @@ describe("Slice D re-review fixes", () => {
 
   it("the citation kind label is not monospaced", () => {
     expect(rule(conversation, ".fl-source__kind")).not.toMatch(/--fl-workspace-mono/);
+  });
+
+  it("the run lifecycle label carries the status class in the rendered DOM", () => {
+    // The CSS rule alone is not proof the markup binds to it (devops note on the C revert).
+    const view = render({ surface: "web", fixture: "work-run" });
+    const label = view.container.querySelector('[aria-label="Diagnostic Run"] .fl-run__status');
+    expect(label).not.toBeNull();
+    expect(label?.textContent).toMatch(/steps/);
   });
 
   it("the run lifecycle label reads in state colour", () => {
