@@ -14,8 +14,22 @@
 }
 
 .fl-shell__sidebar { border-inline-end: 1px solid var(--fl-workspace-line); }
+/* Rows are inline-size: 100% plus padding; without border-box they overflow the drawer by their padding (304px in a 288px drawer). */
+.fl-shell__sidebar,
+.fl-shell__sidebar * { box-sizing: border-box; }
 .fl-shell__inspector { inline-size: 18rem; border-inline-start: 1px solid var(--fl-workspace-line); }
-.fl-shell__brand { margin-block-end: var(--fl-workspace-space-4); font-size: var(--fl-workspace-fs-title); font-weight: 700; }
+.fl-shell__nav-head { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-3); }
+.fl-shell__brand { font-size: var(--fl-workspace-fs-title); font-weight: 700; }
+.fl-shell__nav-icon { inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; }
+.fl-shell__hint { margin: calc(-1 * var(--fl-workspace-space-2)) 0 var(--fl-workspace-space-3); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-shell__search { display: flex; align-items: center; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-muted); }
+.fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
+.fl-shell__search input:focus-visible { outline: none; }
+.fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
+/* Explicit column: an implicit `auto` grid track sizes to the widest row (the 550px main-column bug, again). */
+.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--fl-workspace-space-1); min-inline-size: 0; }
+.fl-shell__nav-section { min-inline-size: 0; }
+.fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-2) 0 0; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
 .fl-overlay { display: contents; }
 
@@ -47,22 +61,34 @@
 .fl-shell button:not(:disabled) { cursor: pointer; }
 .fl-shell button:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 .fl-shell button[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); }
-.fl-shell__new-chat { inline-size: 100%; margin-block-end: var(--fl-workspace-space-4); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-off-ink) !important; }
+.fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); }
+.fl-shell__new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 
 .fl-tree,
 .fl-tree__children { margin: 0; padding: 0; list-style: none; }
 .fl-tree__children { padding-inline-start: var(--fl-workspace-space-3); }
-.fl-tree button { inline-size: 100%; padding-inline: var(--fl-workspace-space-2); }
-.fl-tree__project { font-weight: 700; }
-.fl-tree__folder,
-.fl-tree__machine { display: flex; align-items: center; gap: var(--fl-workspace-space-1); }
+.fl-tree--flat .fl-tree__row { padding-inline-start: var(--fl-workspace-space-2); }
+/* One row pattern for every object type: disclosure column, type icon, label, muted metadata.
+   Exactly one row is aria-current; ancestors carry data-path (quiet, not a second selection). */
+.fl-tree__row { display: flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-ink); text-align: start; }
+.fl-tree__disclosure { display: grid; place-items: center; inline-size: 1rem; flex: 0 0 auto; }
 .fl-tree__chevron { inline-size: 1rem; block-size: 1rem; }
-.fl-tree__item-button { color: var(--fl-workspace-ink); }
+.fl-tree__icon { display: grid; place-items: center; inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; color: var(--fl-workspace-muted); }
+.fl-tree__icon svg { inline-size: 1rem; block-size: 1rem; }
+.fl-tree__label { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-tree__meta { flex: 0 0 auto; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-tree__project { font-weight: 700; }
+.fl-tree__row[data-path="true"] { font-weight: 600; }
+.fl-tree__row[aria-current="page"] .fl-tree__icon,
+.fl-tree__row[aria-current="page"] .fl-tree__meta { color: inherit; }
+.fl-tree__status { inline-size: 0.5rem; block-size: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--fl-workspace-off-line); }
+.fl-tree__status[data-status="normal"] { background: var(--fl-workspace-ok-line); }
+.fl-tree__status[data-status="attention"] { background: var(--fl-workspace-warn-line); }
 .fl-shell__nav-footer { margin-block-start: auto; padding-block-start: var(--fl-workspace-space-4); border-block-start: 1px solid var(--fl-workspace-line); display: grid; gap: var(--fl-workspace-space-2); }
 .fl-shell__nav-footer button { border-color: var(--fl-workspace-line); padding-inline: var(--fl-workspace-space-3); }
 .fl-shell__sidebar { display: flex; flex-direction: column; }
-.fl-tree__item,
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
+.fl-tree__item { min-block-size: max(2.75rem, 44px); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
 /* An explicit minmax(0, 1fr) column: with the implicit `auto` column the main
    area sized itself to the composer row's min-content (550px at a 412px viewport)
@@ -72,7 +98,7 @@
 .fl-shell__header h1,
 .fl-shell__header p { margin: 0; }
 .fl-shell__header h1 { font-size: var(--fl-workspace-fs-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; }
-.fl-shell__eyebrow { color: var(--fl-workspace-header-muted); font-size: var(--fl-workspace-fs-xs); text-transform: uppercase; }
+.fl-shell__brand-mark { display: none; margin: 0; font-size: var(--fl-workspace-fs-xs); font-weight: 700; letter-spacing: 0.02em; color: var(--fl-workspace-header-muted); }
 .fl-shell__header-title { min-inline-size: 0; }
 .fl-shell__navigation-toggle,
 .fl-shell__drawer-close { display: none; }
@@ -108,7 +134,9 @@
   .fl-shell__navigation-toggle,
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
-  .fl-tree { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; }
+  .fl-shell__nav-scroll { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
+  .fl-shell__brand-mark { display: block; }
+  .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 600; }
   .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }
   .fl-shell__inspector {
     position: fixed;

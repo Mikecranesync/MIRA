@@ -20,7 +20,9 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
       <HamburgerIcon />
     </button>
     <div className="fl-shell__header-title">
-      <p className="fl-shell__eyebrow">{state.profile.kind}</p>
+      {/* The product mark, not the surface profile: `profile.kind` is lab metadata and
+          never belongs in the technician's viewport. */}
+      <p className="fl-shell__brand-mark">FactoryLM</p>
       <h1>{state.thread.title}</h1>
     </div>
     {canInspect ? <button

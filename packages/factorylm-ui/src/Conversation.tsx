@@ -1,4 +1,5 @@
 import type {
+  ContextSnapshot,
   InteractionRun,
   InteractionTurn,
   PlatformAdapter,
@@ -41,6 +42,16 @@ export function breadcrumb(state: ShellState): readonly string[] {
   return crumbs;
 }
 
+/** A turn or run carries its own context line only when it differs from the current context
+ *  (machine, identity, project or folder) — the chip at the top already says where we are. */
+export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): boolean {
+  const now = state.activeContext;
+  return snapshot.machineId !== now.machineId
+    || snapshot.machineIdentity !== now.machineIdentity
+    || (snapshot.projectId ?? undefined) !== (now.projectId ?? undefined)
+    || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
+}
+
 function RunCard({ run, state }: { readonly run: InteractionRun; readonly state: ShellState }) {
   const completed = run.plan.filter((step) => step.status === "completed").length;
   return <section className="fl-run" aria-label="Diagnostic Run" data-run-status={run.status}>
@@ -49,7 +60,9 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
       <p className="fl-card__meta">{lifecycleLabel(run.status)} · {completed}/{run.plan.length} steps</p>
     </div>
     <p className="fl-run__goal">{run.goal}</p>
-    <p className="fl-card__meta">Context: {describeContext(state, run.contextSnapshot)}</p>
+    {contextDiffers(state, run.contextSnapshot)
+      ? <p className="fl-card__meta" data-context-line="run">Context: {describeContext(state, run.contextSnapshot)}</p>
+      : null}
     <ol className="fl-run__steps" aria-label="Plan steps">
       {run.plan.map((step) => <li key={step.id} className="fl-step" data-step-status={step.status}>
         <span className="fl-step__check" aria-hidden="true">{step.status === "completed" ? "✓" : ""}</span>
@@ -74,7 +87,9 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
   >
     <div className="fl-turn__head">
       <span className="fl-turn__role">{ROLE_LABEL[turn.role]}</span>
-      <span className="fl-card__meta">{machine ? `${machine} · ${turn.context.machineIdentity.replace("_", " ")}` : "No machine context"}</span>
+      {contextDiffers(state, turn.context)
+        ? <span className="fl-card__meta" data-context-line="turn">{machine ? `${machine} · ${turn.context.machineIdentity.replace("_", " ")}` : "No machine context"}</span>
+        : null}
     </div>
     <div className="fl-turn__parts">
       {turn.parts.map((part, index) => <PartRenderer

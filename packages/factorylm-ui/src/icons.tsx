@@ -33,3 +33,37 @@ export function HamburgerIcon(props: IconProps) {
 export function CloseIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false" {...props}><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
+
+const STROKE = { fill: "none", stroke: "currentColor", strokeWidth: 1.25, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+export function FolderIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" {...STROKE} /></svg>;
+}
+
+export function MachineIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="2" y="4" width="12" height="8" rx="1" {...STROKE} /><path d="M5 12v2M11 12v2M2 8h12" {...STROKE} /></svg>;
+}
+
+export function ChatIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M2 3h12v8H6l-3 3v-3H2z" {...STROKE} /></svg>;
+}
+
+export function RunIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><circle cx="8" cy="8" r="6" {...STROKE} /><path d="m6.5 5.5 4 2.5-4 2.5z" fill="currentColor" stroke="none" /></svg>;
+}
+
+export function FindingIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M8 2.5 14 13H2z" {...STROKE} /><path d="M8 6.5v3M8 11.5v.5" {...STROKE} /></svg>;
+}
+
+export function SearchIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><circle cx="7" cy="7" r="4.5" {...STROKE} /><path d="m10.5 10.5 3.5 3.5" {...STROKE} /></svg>;
+}
+
+export function ComposeIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M3 13h10M3 10.5 10.5 3l2.5 2.5L5.5 13H3z" {...STROKE} /></svg>;
+}
+
+export function ClockIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><circle cx="8" cy="8" r="6" {...STROKE} /><path d="M8 4.5V8l2.5 1.5" {...STROKE} /></svg>;
+}
