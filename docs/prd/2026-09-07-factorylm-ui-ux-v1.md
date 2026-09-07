@@ -132,9 +132,16 @@ the commercial claim:
    a safety problem. Today mobile spends that badge saying **"No machine"** and repeats
    **"No machine context"** four times on one screen: the affordance exists and is inverted.
 
-⚠️ **Reconcile before building:** the grammar's summary says *"Fourteen deliberate departures"* and
-then lists **nineteen**. A differentiator list is a scope commitment, so the count must be settled
-before it is used to justify work.
+⚠️ **Two counts in the source bundle do not match themselves. Both verified.**
+
+1. The grammar's summary says *"Fourteen deliberate departures"* and then lists **nineteen**. A
+   differentiator list is a scope commitment, so the count must be settled before it justifies work.
+2. `FACTORYLM_UX_ACCEPTANCE.md` reports *"28 P0 / 38 P1 / 8 P2 — 74 tests total"*. The file actually
+   enumerates **27 P0 / 37 P1 / 7 P2 = 71**, plus the untagged Z-1 = **72**. The discrepancy is
+   exactly one per bucket because the legend line (`[P0]` blocks release · `[P1]` blocks the demo ·
+   `[P2]` next iteration) carries one of each tag and was counted as a test. The "74 tests / 28 P0"
+   figure has already propagated into #3666 and into an earlier revision of this PRD; the correct
+   figure is 71 + Z-1.
 
 ### 4.3 The three defects with mechanical detectors — build these first
 
@@ -155,7 +162,7 @@ Three layers, from #3665, now consuming the recon's tests rather than inventing 
 | Layer | Content | Blocking |
 |---|---|---|
 | **Z-1 stranger walk** | the recon's five-minute test, on a real device | **human-gated; sits in front of CI** |
-| **Outside-in acceptance** | the recon's **28 P0** tests, judged from what is on screen | blocks merge |
+| **Outside-in acceptance** | the recon's **27 P0** tests, judged from what is on screen | blocks merge |
 | **Presentation** | 12 capture points + the three mechanical detectors above; judged score advisory | mechanical floor blocks; judged advisory |
 
 **Green retrieval plus failed Z-1 is exactly the false "MET / PASSING" we shipped.** The CI gate
