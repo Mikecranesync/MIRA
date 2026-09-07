@@ -46,7 +46,13 @@ def test_the_headline_lane_rejects_a_skip() -> None:
 
 
 def test_the_headline_lane_captures_pytest_status_without_a_pipe() -> None:
-    """`| tee` would make GATE_RC the exit status of tee, which is the same class of defect."""
+    """Redirect, not pipe — so the captured status cannot depend on `pipefail` staying set.
+
+    The step does set `pipefail` today (beta-gate.yml:126), so a pipe would in fact propagate
+    pytest's status; an earlier version of this docstring claimed otherwise and was wrong. The
+    point is the dependency: drop `pipefail` in a later edit and a piped version silently begins
+    capturing tee's status (always 0) while looking identical. A redirect is correct either way.
+    """
     lane = _main_lane()
     pytest_line = next(ln for ln in lane.splitlines() if "-m pytest" in ln)
     assert "| tee" not in pytest_line and "|tee" not in pytest_line, (
@@ -74,9 +80,21 @@ PASSED_OUTPUT = (
 NO_TESTS_OUTPUT = "collected 0 items\n\n=== no tests ran in 0.01s ===\n"
 
 
+PASS_AND_SKIP_OUTPUT = "collected 2 items\n\nx::a PASSED\nx::b SKIPPED (BETA_GATE_URL unset)\n\n=== 1 passed, 1 skipped in 3.20s ===\n"
+REAL_FAIL_OUTPUT = "collected 1 item\n\nx::test_gate FAILED\n\n=== 1 failed in 9.10s ===\n"
+
+
 @pytest.mark.parametrize(
     ("output", "expect_fail"),
-    [(SKIPPED_OUTPUT, True), (NO_TESTS_OUTPUT, True), (PASSED_OUTPUT, False)],
+    [
+        (SKIPPED_OUTPUT, True),
+        (NO_TESTS_OUTPUT, True),
+        (REAL_FAIL_OUTPUT, True),
+        # A partially-skipped gate is not a proven gate: deliberate, and documented in the
+        # workflow so a later author does not "fix" it by gating the skip check on the pass check.
+        (PASS_AND_SKIP_OUTPUT, True),
+        (PASSED_OUTPUT, False),
+    ],
 )
 def test_the_guard_logic_distinguishes_a_skip_from_a_pass(
     tmp_path: Path, output: str, expect_fail: bool

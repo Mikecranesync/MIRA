@@ -174,8 +174,18 @@ jobs:
           #     This is the idiom already used for the preflight lane below; the headline lane
           #     simply never got it. Set GATE_RC rather than exiting here, so the cleanup sweep
           #     in step 6 still runs — cleanup is proof, and must not be skipped by an early exit.
-          #     NOTE: output is redirected, not piped — `| tee` would make GATE_RC the status of
-          #     tee, which is the failure this whole change is about.
+          #     NOTE: output is redirected, not piped. This step sets `pipefail` (line 126), so
+          #     `pytest | tee` WOULD have propagated pytest's status correctly — an earlier draft
+          #     of this comment claimed otherwise and was wrong. The reason to redirect is that it
+          #     does not DEPEND on pipefail: if a future edit drops it from this step, a piped
+          #     version silently starts capturing tee's status (always 0) while looking unchanged,
+          #     which is this defect again by another route. A redirect is correct either way.
+          #
+          #     A run reporting BOTH "1 passed" and "1 skipped" is DENIED — the skip check fires
+          #     regardless of the pass. That is deliberate: a partially-skipped gate is not a
+          #     proven gate. If a second case is added to that file this will look like a false
+          #     positive; the fix is to prove both cases ran, NOT to make the skip check
+          #     conditional on the pass check.
           if grep -qiE "skipped|no tests ran" /tmp/beta-gate.out; then
             echo "::error::beta gate SKIPPED — the run proved nothing about upload -> retrieval -> citation. Check BETA_GATE_* provisioning (Doppler scope, staging Neon reachability, provision-beta-gate.ts output)."
             GATE_RC=1
