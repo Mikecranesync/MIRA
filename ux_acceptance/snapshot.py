@@ -97,6 +97,19 @@ class Snapshot:
     `build_sha` is not decoration. A presentation verdict about an
     unidentifiable build is worse than no verdict, so it is required and
     validated — see docs/specs/chatgpt-class-ux-acceptance.md §2.4.
+
+    ⚠️ VALIDATION IS NOT PROVENANCE, AND TODAY IT IS ONLY VALIDATION.
+    This class checks the SHAPE of the value (40-hex or raise). It cannot check
+    where the value came from. Until Increment 0 stamps the commit into the
+    bundle via vite `define`, a caller is free to supply `git rev-parse HEAD` —
+    which certifies the CHECKOUT, not the bytes that rendered. That is exactly
+    the trap that produced a green 95/95 e2e here against a build containing
+    none of the changes under review.
+
+    When the stamp lands: read the BARE identifier. Vite's `define` substitutes
+    a standalone identifier and silently does not rewrite
+    `globalThis.__X__`, which is why mira-mobile shipped "unset" for months
+    (mira-mobile/src/lib/live-update.ts:48-59).
     """
 
     build_sha: str

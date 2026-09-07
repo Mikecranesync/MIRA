@@ -15,6 +15,7 @@ docs/audits/2026-09-07-mobile-recon-companion.md and the mobile teardown.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -335,3 +336,111 @@ def test_parentage_is_not_a_product_attribute():
         assert "data-parent" not in node.get("attrs", {})
     snap = Snapshot.from_dict(raw)
     assert any(n.parent_id for n in snap.nodes), "fixture lost its parentage"
+
+
+# --------------------------------------------------------------------------
+# Coverage: product -> anchor. The direction DERIVE_ANCHORS cannot prove.
+#
+# The anchor guard proves nothing we key on is invented. It says nothing about
+# parts the product renders that we never mapped, and a missed site produces a
+# false PASS — strictly worse than the permanent UNKNOWN an invented anchor
+# caused, because it reads as a clean screen.
+#
+# Shape copied from tests/test_architecture.py Contract 5 (`_ONE_PIPELINE_ALLOWLIST`
+# at 167, honesty test at 279, checker self-test at 286) rather than invented:
+# default-deny scan, honest allowlist, self-test.
+# --------------------------------------------------------------------------
+
+INTERACTION_TYPES = ROOT / "packages" / "factorylm-interaction" / "src" / "types.ts"
+
+#: Pinned so a regex that silently degrades to 3-of-23 cannot report "all covered".
+EXPECTED_PART_COUNT = 23
+
+
+def _union_members() -> set[str]:
+    """Extract the `type` literals of the closed `InteractionPart` union."""
+    src = INTERACTION_TYPES.read_text()
+    start = src.index("export type InteractionPart")
+    body = src[start : src.index("\n\n", start)]
+    return set(re.findall(r'type:\s*"([a-z_]+)"', body))
+
+
+def test_the_union_extraction_is_not_blind():
+    """Three guards, because a derived expectation set is the classic vacuous pass."""
+    members = _union_members()
+    assert members, "extracted no part types — the scan is blind, not clean"
+    assert {"source", "evidence_basis"} <= members, "known members missing from the extraction"
+    assert len(members) == EXPECTED_PART_COUNT, (
+        f"extracted {len(members)} part types, expected {EXPECTED_PART_COUNT}. Either the "
+        "union changed (update the pin deliberately) or the regex degraded silently."
+    )
+
+
+def test_every_part_type_is_mapped_or_has_a_written_reason():
+    """Default-deny over the closed vocabulary. A new part type fails the day it lands."""
+    from ux_acceptance.derive import PART_OUT_OF_SCOPE, PART_ROLE
+
+    members = _union_members()
+    accounted = set(PART_ROLE) | set(PART_OUT_OF_SCOPE)
+    unaccounted = members - accounted
+    assert not unaccounted, (
+        f"part type(s) {sorted(unaccounted)} are rendered by the product and neither "
+        "mapped nor declared out of scope — a detector will silently not see them"
+    )
+
+
+def test_the_out_of_scope_list_is_honest():
+    """No entry may name a part type the union no longer has."""
+    from ux_acceptance.derive import PART_OUT_OF_SCOPE, PART_ROLE
+
+    members = _union_members()
+    stale = (set(PART_ROLE) | set(PART_OUT_OF_SCOPE)) - members
+    assert not stale, f"declared part type(s) {sorted(stale)} no longer exist in the union"
+    for part, reason in PART_OUT_OF_SCOPE.items():
+        assert len(reason) > 15, f"{part} has no real reason recorded: {reason!r}"
+
+
+def test_known_gaps_are_named_rather_than_silent():
+    """Five part types render titles that can carry a raw id, and one renders a
+    third context site. They are unmapped — recorded as GAPs so the limit is
+    stated, not discovered."""
+    from ux_acceptance.derive import PART_OUT_OF_SCOPE
+
+    gaps = {p for p, r in PART_OUT_OF_SCOPE.items() if r.startswith("GAP:")}
+    assert "artifact" in gaps, "the most likely second home of the E-1 UUID must stay named"
+    assert "context_change" in gaps, "the third context site must stay named"
+
+
+# --------------------------------------------------------------------------
+# Residual coverage: text the product renders that nothing classifies.
+#
+# Union coverage only covers PARTS. ThreadHeader, Sidebar, the composer and the
+# breadcrumb render text outside that union — and so does Conversation.tsx:52.
+# A list of sites goes stale silently; a residual set grows the moment the
+# product does.
+# --------------------------------------------------------------------------
+
+#: Node ids in the fixtures whose text derives no role. Pinned deliberately: new
+#: unroled text means a screen region nobody has classified, and this names it.
+KNOWN_UNROLED = {
+    "cite-1-kind", "cite-1-title", "cite-1-loc",  # chip internals, read via the chip
+    "header-title", "breadcrumb", "machine-pill", "composer-using", "scope-badge",
+    "b1", "b2",  # evidence_basis pills derive EVIDENCE_BASIS via attrs, not text
+}
+
+
+def test_residual_unroled_text_matches_the_pinned_baseline():
+    from ux_acceptance.derive import derive_role
+
+    unroled: set[str] = set()
+    for path in FIXTURES.glob("*.json"):
+        snap = Snapshot.from_dict(json.loads(path.read_text()))
+        for node in snap.rendered_nodes():
+            if node.text.strip() and derive_role(node, snap) is None:
+                unroled.add(node.id)
+
+    new = unroled - KNOWN_UNROLED
+    assert not new, (
+        f"text nodes {sorted(new)} render text that nothing classifies. Either give "
+        "them a role or add them to KNOWN_UNROLED with intent."
+    )

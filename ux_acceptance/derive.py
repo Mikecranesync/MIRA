@@ -148,3 +148,54 @@ def require(snapshot: Snapshot, role: str) -> list[Node]:
             "The detector cannot see its subject; this is UNKNOWN, not PASS."
         )
     return found
+
+
+# ---------------------------------------------------------------------------
+# Coverage over the closed part vocabulary.
+#
+# `DERIVE_ANCHORS` proves anchor -> product: nothing we key on is invented.
+# It proves nothing in the other direction. A part the product renders and this
+# module does not map produces a false PASS, which is strictly worse than the
+# permanent UNKNOWN an invented anchor caused, because a missed site reads as a
+# clean screen.
+#
+# `InteractionPart` (packages/factorylm-interaction/src/types.ts) is a CLOSED
+# union, so product -> anchor is decidable: every member is either mapped below
+# or carries a written reason for being out of scope. Default-deny, so a new
+# part type fails the day it lands rather than at the next audit.
+# ---------------------------------------------------------------------------
+
+#: Part types this module derives a role from.
+PART_ROLE: dict[str, str] = {
+    "source": CITATION_LABEL,
+    "evidence_basis": EVIDENCE_BASIS,
+}
+
+#: Part types deliberately unmapped, each with the reason. Being listed here is
+#: a decision, not an omission — that distinction is the whole point of the file.
+PART_OUT_OF_SCOPE: dict[str, str] = {
+    "text": "prose; carries no identifier a detector can judge",
+    "attachment": "filename display is C-4's subject, not a detector built here yet",
+    "safety_notice": "safety copy — reviewed by the safety lane, not by a UX detector",
+    "tool_call": "internal mechanics; not a technician-facing claim",
+    "tool_result": "internal mechanics; not a technician-facing claim",
+    "approval_request": "train-before-deploy surface, governed by its own rule",
+    "plan": "Work-mode structure; no citation or context claim",
+    "plan_step": "Work-mode structure; no citation or context claim",
+    "hypothesis": "reasoning display; carries no document or asset identifier",
+    "status": "renders a lifecycle enum, never a free-text identifier",
+    "usage": "token accounting; never technician-facing",
+    "error": "error copy is G-1..G-5's subject; no detector built here yet",
+    "followups": "model-authored suggestion strings; no identifier or citation claim",
+    "identity_dispute": "presence-only marker; renders no identifier",
+    "unknown": "the union's own fallback member",
+    # --- these render titles that CAN carry a raw id. Not yet mapped, and that
+    # --- is a gap with a name rather than an oversight. See #3669 discussion.
+    "machine_evidence": "GAP: renders a title that can carry a raw id — detector 1 cannot see it",
+    "visual_observation": "GAP: renders a title that can carry a raw id — detector 1 cannot see it",
+    "observation": "GAP: renders a title that can carry a raw id — detector 1 cannot see it",
+    "finding": "GAP: renders a title that can carry a raw id — detector 1 cannot see it",
+    "artifact": "GAP: renders artifact names — the most likely second home of the E-1 UUID",
+    "context_change": "GAP: renders describeContext (parts.tsx:258) — a third context site "
+                      "detector 2 cannot currently count",
+}
