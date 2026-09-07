@@ -290,6 +290,10 @@ export function NotebookScreen({
     abortRef.current = ctl;
     setQ("");
     setFailedSend(null);
+    // A retry (or a fresh send) supersedes the trailing failed attempt: the
+    // failed turn was never persisted, so leaving it would duplicate the user
+    // turn in the transcript on retry (ADR-0040 §3 — no duplicate user turn).
+    setLiveTurns((t) => (t.length > 0 && t[t.length - 1].a.status === "error" ? t.slice(0, -1) : t));
     setBusy(true);
     setChatError(null);
     setPending({ q: question, a: EMPTY_TURN });
@@ -311,6 +315,17 @@ export function NotebookScreen({
           { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
         ]);
       } else {
+        // The attempt is rendered as a FAILED turn, the mirror of the stopped
+        // branch above: the transcript shows the question and the shell's
+        // error part offers Retry through the host's onRetry (F4,
+        // fleet-001-review-e9 — on the unified surface nothing else restores
+        // the question, because the shell owns its own draft). The hydration
+        // rule (F1) keeps a failed turn free of citation/basis/evidence chrome.
+        const partial = pendingRef.current?.a ?? EMPTY_TURN;
+        setLiveTurns((t) => [
+          ...t,
+          { q: question, a: { ...partial, status: "error", citations: [], followups: undefined } },
+        ]);
         setQ(question);
         setFailedSend(body);
         setChatError(e);
