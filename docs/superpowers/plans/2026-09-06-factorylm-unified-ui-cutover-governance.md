@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the existing convergence and capability-closure registries, then enforce their legacy presentation paths with one deterministic CI guard. Repository-loaded Codex/Claude instructions point every agent to the same charter, and three project-scoped Claude workflows divide read-only mapping, claim-bound single-writer implementation, exact-SHA verification, deterministic verdict reporting, and independent fresh-comment/readback proof.
 
-**Tech Stack:** Markdown, YAML, Python 3.12, markdown-it-py 4, pytest, GitHub Actions, Claude Code dynamic workflow JavaScript.
+**Tech Stack:** Markdown, YAML, Python 3.12, markdown-it-py 4, pytest 8.2.2, GitHub Actions, Claude Code dynamic workflow JavaScript.
 
 **Spec:** `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`
 
@@ -235,8 +235,10 @@ requirements/ui-lifecycle-guard.txt
 >    code-owned classifiers before the broad registry globs. Hub API
 >    `route.ts` handlers, public-web JSON/API routes and backend libraries,
 >    exact mobile transport/API/native helpers, and canonical adapter roots remain
->    open. Actual Hub components/pages/providers/locale catalogs, public-web route mounts and
->    renderers, mobile React/style mounts and mixed visible-copy/view-model
+>    open. Actual Hub pages/components/providers/locale catalogs and every
+>    `src/lib/**` file outside an exact audited capability allowlist, public-web route
+>    mounts and every `src/lib/**` file outside an exact audited capability allowlist,
+>    mobile React/style mounts and mixed visible-copy/view-model
 >    helpers, and unknown production siblings
 >    fail closed. Both `mira-web/public/**` and `mira-hub/public/**` are blanket
 >    guarded, including images, fonts, PDFs, manifests, and scripts.
@@ -276,10 +278,10 @@ tags and on any malformed, unclosed, nested, or combined comment token anywhere
 in the PR body, because CommonMark token levels do not model surrounding HTML
 DOM containers and malformed-comment recovery differs across renderers. A
 strictly valid standalone comment remains allowed but cannot provide field
-text. GitHub footnote markers and any two dollar signs anywhere in an
-exception-bearing body also fail closed because those renderer extensions can relocate or hide
-otherwise substantive source text. Field values reject emoji aliases, GitHub's
-single-tilde deletion form, control/format characters, and invisible Unicode
+text. GitHub footnote markers, any two dollar signs, and any tilde anywhere in
+an exception-bearing body also fail closed because those renderer extensions
+can relocate or hide otherwise substantive source text. Field values reject
+emoji aliases, control/format characters, and invisible Unicode
 filler or combining overlay marks. Field and `[WORK-CLAIM]` boundaries use only
 the parser-normalized LF line ending, never Python's broader Unicode
 `splitlines()` set or a character reference decoded inside a text token. The

@@ -153,6 +153,215 @@ _WEB_PRESENTATION_LIB_PATHS: frozenset[str] = frozenset(
     }
 )
 
+# Existing public-web libraries audited as capability/server seams. Every
+# other current or future production file under the mixed historical lib root
+# is guarded by default. New backend modules have an unambiguous open home at
+# `mira-web/src/capabilities/**` instead of growing this allowlist casually.
+_WEB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/lib/account-deletion.ts",
+        "mira-web/src/lib/activation.ts",
+        "mira-web/src/lib/atlas.ts",
+        "mira-web/src/lib/audit.ts",
+        "mira-web/src/lib/auth.ts",
+        "mira-web/src/lib/connect.ts",
+        "mira-web/src/lib/cookie-session.ts",
+        "mira-web/src/lib/crypto.ts",
+        "mira-web/src/lib/csv-import.ts",
+        "mira-web/src/lib/dc-pro-activation.ts",
+        "mira-web/src/lib/drip.ts",
+        "mira-web/src/lib/hub-provisioning-queue.ts",
+        "mira-web/src/lib/hub-user-activation.ts",
+        "mira-web/src/lib/magic-link.ts",
+        "mira-web/src/lib/mailer.ts",
+        "mira-web/src/lib/mfa.ts",
+        "mira-web/src/lib/posthog-server.ts",
+        "mira-web/src/lib/qr-tracker.ts",
+        "mira-web/src/lib/quota.ts",
+        "mira-web/src/lib/stripe.ts",
+    }
+)
+
+_HUB_PRESENTATION_LIB_SUFFIXES: tuple[str, ...] = (
+    "-view.ts",
+    "-data.ts",
+    "-titles.ts",
+    "-card.ts",
+)
+
+_HUB_PRESENTATION_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-hub/src/lib/doc-chat-link.ts",
+        "mira-hub/src/lib/knowledge-graph/canonical-relationship-type.ts",
+        "mira-hub/src/lib/notebook-delete.ts",
+        "mira-hub/src/lib/onboarding-flow.ts",
+        "mira-hub/src/lib/visual/reducer.ts",
+        "mira-hub/src/lib/visual/viewport.ts",
+    }
+)
+
+# The historical Hub lib bucket mixes backend capabilities with old-page view
+# behavior. This is the audited snapshot of reusable capability/domain files.
+# Unknown additions fail closed; new backend modules belong in the explicit
+# `mira-hub/src/capabilities/**` seam instead of expanding this list casually.
+_HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-hub/src/lib/abort-helpers.ts",
+        "mira-hub/src/lib/agents/asset-intelligence.ts",
+        "mira-hub/src/lib/agents/morning-brief.ts",
+        "mira-hub/src/lib/agents/pm-escalation.ts",
+        "mira-hub/src/lib/agents/safety-alert.ts",
+        "mira-hub/src/lib/agents/wo-lifecycle.ts",
+        "mira-hub/src/lib/approved-context.ts",
+        "mira-hub/src/lib/asset-agent-transition.ts",
+        "mira-hub/src/lib/asset-tag.ts",
+        "mira-hub/src/lib/asset-uns-path.ts",
+        "mira-hub/src/lib/atlas/client.ts",
+        "mira-hub/src/lib/atlas/sync.ts",
+        "mira-hub/src/lib/auth/route-helpers.ts",
+        "mira-hub/src/lib/auth/session.ts",
+        "mira-hub/src/lib/bindings.ts",
+        "mira-hub/src/lib/capabilities.ts",
+        "mira-hub/src/lib/cmms/atlas-provider.ts",
+        "mira-hub/src/lib/cmms/deep-link.ts",
+        "mira-hub/src/lib/cmms/provider.ts",
+        "mira-hub/src/lib/cmms/registry.ts",
+        "mira-hub/src/lib/cmms/tenant-config.ts",
+        "mira-hub/src/lib/command-center-freshness.ts",
+        "mira-hub/src/lib/commissioning.ts",
+        "mira-hub/src/lib/config.ts",
+        "mira-hub/src/lib/contextualization/approval.ts",
+        "mira-hub/src/lib/contextualization/asset-matcher.ts",
+        "mira-hub/src/lib/contextualization/bundle-import.ts",
+        "mira-hub/src/lib/contextualization/intake-contract.schema.json",
+        "mira-hub/src/lib/contextualization/intake-contract.ts",
+        "mira-hub/src/lib/contextualization/parse-source.ts",
+        "mira-hub/src/lib/contextualization/unzip.ts",
+        "mira-hub/src/lib/csv-export.ts",
+        "mira-hub/src/lib/data-schema.ts",
+        "mira-hub/src/lib/db.ts",
+        "mira-hub/src/lib/demo-auth.ts",
+        "mira-hub/src/lib/display-registration.ts",
+        "mira-hub/src/lib/document-readiness.ts",
+        "mira-hub/src/lib/drive-pack-suggestion.ts",
+        "mira-hub/src/lib/drive-packs/gs10-pack.json",
+        "mira-hub/src/lib/drive-packs/loader.ts",
+        "mira-hub/src/lib/equipment-notebooks.ts",
+        "mira-hub/src/lib/equipment-type.ts",
+        "mira-hub/src/lib/fetch-adapters.ts",
+        "mira-hub/src/lib/gateway-probe.ts",
+        "mira-hub/src/lib/gs10-display.ts",
+        "mira-hub/src/lib/health-score.ts",
+        "mira-hub/src/lib/hub/status.ts",
+        "mira-hub/src/lib/i3x/approval.ts",
+        "mira-hub/src/lib/i3x/auth.ts",
+        "mira-hub/src/lib/i3x/data-access.ts",
+        "mira-hub/src/lib/i3x/index.ts",
+        "mira-hub/src/lib/i3x/namespaces.ts",
+        "mira-hub/src/lib/i3x/object-types.ts",
+        "mira-hub/src/lib/i3x/objects.ts",
+        "mira-hub/src/lib/i3x/quality.ts",
+        "mira-hub/src/lib/i3x/relationships.ts",
+        "mira-hub/src/lib/i3x/response.ts",
+        "mira-hub/src/lib/i3x/server-info.ts",
+        "mira-hub/src/lib/i3x/types.ts",
+        "mira-hub/src/lib/i3x/value.ts",
+        "mira-hub/src/lib/ics-export.ts",
+        "mira-hub/src/lib/inbox-node.ts",
+        "mira-hub/src/lib/inference/canonical-cascade.ts",
+        "mira-hub/src/lib/inference/persist-usage.ts",
+        "mira-hub/src/lib/ip-rate-limit.ts",
+        "mira-hub/src/lib/kb-gap.ts",
+        "mira-hub/src/lib/knowledge-graph/analysis.ts",
+        "mira-hub/src/lib/knowledge-graph/asset-bridge.ts",
+        "mira-hub/src/lib/knowledge-graph/cmms-sync.ts",
+        "mira-hub/src/lib/knowledge-graph/context-builder.ts",
+        "mira-hub/src/lib/knowledge-graph/extractor.ts",
+        "mira-hub/src/lib/knowledge-graph/hierarchy-backfill.ts",
+        "mira-hub/src/lib/knowledge-graph/inference.ts",
+        "mira-hub/src/lib/knowledge-graph/plan-vs-actual.ts",
+        "mira-hub/src/lib/knowledge-graph/proposals-writer.ts",
+        "mira-hub/src/lib/knowledge-graph/queries.ts",
+        "mira-hub/src/lib/knowledge-graph/relationship-extractor.ts",
+        "mira-hub/src/lib/knowledge-graph/trace.ts",
+        "mira-hub/src/lib/knowledge-graph/traversal.ts",
+        "mira-hub/src/lib/knowledge-graph/types.ts",
+        "mira-hub/src/lib/knowledge-graph/uns-backfill.ts",
+        "mira-hub/src/lib/llm/cascade.ts",
+        "mira-hub/src/lib/local-upload.ts",
+        "mira-hub/src/lib/machine-context-intelligence.ts",
+        "mira-hub/src/lib/machine-context-packet.ts",
+        "mira-hub/src/lib/machine-current-state.ts",
+        "mira-hub/src/lib/machine-history.ts",
+        "mira-hub/src/lib/machine-memory-response.ts",
+        "mira-hub/src/lib/machine-memory-sanitize.ts",
+        "mira-hub/src/lib/machine-memory.ts",
+        "mira-hub/src/lib/manual-applicability.ts",
+        "mira-hub/src/lib/manual-discovery.ts",
+        "mira-hub/src/lib/manual-rag.ts",
+        "mira-hub/src/lib/manufacturer-aliases.json",
+        "mira-hub/src/lib/manufacturerNormalize.ts",
+        "mira-hub/src/lib/mira-ingest-client.ts",
+        "mira-hub/src/lib/nameplate/capture-quality.ts",
+        "mira-hub/src/lib/nameplate/detect.ts",
+        "mira-hub/src/lib/nameplate/evidence.ts",
+        "mira-hub/src/lib/nameplate/image-mime.ts",
+        "mira-hub/src/lib/nameplate/index.ts",
+        "mira-hub/src/lib/nameplate/oem-corroboration.ts",
+        "mira-hub/src/lib/nameplate/passes.ts",
+        "mira-hub/src/lib/nameplate/preprocess.ts",
+        "mira-hub/src/lib/nango.ts",
+        "mira-hub/src/lib/node-document-proposals.ts",
+        "mira-hub/src/lib/node-knowledge-ingest.ts",
+        "mira-hub/src/lib/normalize-tag-path.ts",
+        "mira-hub/src/lib/notebook-chat-types.ts",
+        "mira-hub/src/lib/notebook-followups.ts",
+        "mira-hub/src/lib/notebook-query.ts",
+        "mira-hub/src/lib/oauth-state.ts",
+        "mira-hub/src/lib/pg-unique-retry.ts",
+        "mira-hub/src/lib/photo-ocr.ts",
+        "mira-hub/src/lib/plc-import.ts",
+        "mira-hub/src/lib/plc-proposals.ts",
+        "mira-hub/src/lib/pm-interval.ts",
+        "mira-hub/src/lib/proposal-transition.ts",
+        "mira-hub/src/lib/qr-origin.ts",
+        "mira-hub/src/lib/quote-window.ts",
+        "mira-hub/src/lib/review-queue.ts",
+        "mira-hub/src/lib/role.ts",
+        "mira-hub/src/lib/safe-download.ts",
+        "mira-hub/src/lib/safety-classifier.ts",
+        "mira-hub/src/lib/safety-phrases.ts",
+        "mira-hub/src/lib/scan-target.ts",
+        "mira-hub/src/lib/session.ts",
+        "mira-hub/src/lib/signal-recorder.ts",
+        "mira-hub/src/lib/sniff-mime.ts",
+        "mira-hub/src/lib/ssrf-guard.ts",
+        "mira-hub/src/lib/suggestion-accept.ts",
+        "mira-hub/src/lib/tenant-context.ts",
+        "mira-hub/src/lib/token-crypto.ts",
+        "mira-hub/src/lib/token-refresh.ts",
+        "mira-hub/src/lib/uns/skeleton.ts",
+        "mira-hub/src/lib/uns.ts",
+        "mira-hub/src/lib/upload-buffer.ts",
+        "mira-hub/src/lib/upload-log.ts",
+        "mira-hub/src/lib/upload-pipeline.ts",
+        "mira-hub/src/lib/uploads.ts",
+        "mira-hub/src/lib/users.ts",
+        "mira-hub/src/lib/vendor-relevance.ts",
+        "mira-hub/src/lib/visual/canonical.ts",
+        "mira-hub/src/lib/visual/golden-vectors.json",
+        "mira-hub/src/lib/visual/image-dims.ts",
+        "mira-hub/src/lib/visual/index.ts",
+        "mira-hub/src/lib/visual/schema.ts",
+        "mira-hub/src/lib/visual/signed-url.ts",
+        "mira-hub/src/lib/wo-completion-validation.ts",
+        "mira-hub/src/lib/work-order-status.ts",
+        "mira-hub/src/lib/workflow-versions.ts",
+        "mira-hub/src/lib/workflow.ts",
+        "mira-hub/src/lib/workspace-files.ts",
+    }
+)
+
 # These are operational/native/transport seams already consumed by the mobile
 # application. Everything else under the historical `src/lib/**` bucket fails
 # closed: that bucket also contains visible copy, view models, composer
@@ -457,10 +666,11 @@ def _classify_web_source(path: str) -> bool:
     if path in _WEB_PRESENTATION_LIB_PATHS:
         return True
     if path.startswith("mira-web/src/lib/"):
-        # A new renderer is presentation even before its mount lands. Other
-        # established lib modules are capability seams; mounting one into the
-        # old product still requires a guarded server/route change.
-        return path.rsplit("/", 1)[-1].endswith("-renderer.ts")
+        # The historical lib root mixes capability code with renderers, route
+        # behavior, visible output, and old chat state. Preserve only the
+        # audited existing capability set; an arbitrary new filename is not an
+        # escape hatch from the presentation freeze.
+        return path not in _WEB_PRESERVED_LIB_PATHS
     if path.startswith("mira-web/src/views/") or path.startswith("mira-web/src/data/"):
         return True
     if path == "mira-web/src/server.ts":
@@ -475,18 +685,33 @@ def _classify_hub_source(path: str) -> bool:
         return False
     if _is_hub_api_route(path):
         return False
+    if path.startswith("mira-hub/src/capabilities/"):
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
     if path.startswith("mira-hub/src/messages/"):
         # Locale catalogs are rendered product copy, not inert backend data.
         return True
     if path.startswith("mira-hub/src/app/"):
         return True
     if path.startswith("mira-hub/src/components/"):
-        # React/style components are presentation. Plain TypeScript helpers
-        # such as notebook-chat-utils.ts and layout/sign-out-action.ts remain
-        # reusable capability seams.
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        # Client-side helpers here own copy, chat/composer state, navigation,
+        # and sign-out behavior even when their extension is plain `.ts`.
+        return True
     if path.startswith("mira-hub/src/providers/"):
-        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+        # Providers include the legacy navigation catalog, redirects, identity
+        # presentation, and mock view data. Keep the complete old UI boundary
+        # frozen; reusable server authorization lives under lib/capabilities.
+        return True
+    if path.startswith("mira-hub/src/lib/"):
+        # Framework-free does not imply capability-only. Guard all known
+        # presentation shapes and exact mixed helpers, preserve only the
+        # audited existing capability snapshot, and fail closed for every
+        # arbitrary new filename in this historical mixed bucket.
+        if path in _HUB_PRESENTATION_LIB_PATHS:
+            return True
+        name = path.rsplit("/", 1)[-1].lower()
+        if name.endswith(_HUB_PRESENTATION_LIB_SUFFIXES) or name.endswith(_PRESENTATION_SUFFIXES):
+            return True
+        return path not in _HUB_PRESERVED_LIB_PATHS
     # A React/style sibling outside today's conventional directories is still
     # a presentation surface. Plain `.ts` domain/service modules remain open.
     return path.lower().endswith(_PRESENTATION_SUFFIXES)
@@ -882,14 +1107,14 @@ def _has_renderer_specific_markup(source: str) -> bool:
     definitions away from their source position and renders paired dollar
     delimiters through a math component whose visible text can differ from the
     source (for example, ``\\phantom``). Exception PR bodies deliberately use a
-    narrow source subset: reject any footnote marker or any two dollar signs,
-    including inside code or comments, so parser token loss and future renderer
-    ordering cannot make this check fail open.
+    narrow source subset: reject any footnote marker, any two dollar signs, or
+    any tilde, including inside code or comments, so parser token loss and
+    future renderer ordering cannot make this check fail open.
     """
     # CommonMark can consume a ``[^name]: value`` line as an ordinary reference
     # definition and omit it from the token stream entirely. Inspect the raw
     # source for GitHub's unambiguous footnote marker before walking tokens.
-    return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2
+    return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2 or "~" in source
 
 
 def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:

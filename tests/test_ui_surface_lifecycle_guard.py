@@ -46,6 +46,8 @@ _SPEC.loader.exec_module(_guard)
 CONTROL_PATTERNS = _guard.CONTROL_PATTERNS
 MAX_EXPECTED_CHANGE_COUNT = _guard.MAX_EXPECTED_CHANGE_COUNT
 PUBLIC_STATIC_GUARDED_ROOTS = _guard.PUBLIC_STATIC_GUARDED_ROOTS
+HUB_PRESERVED_LIB_PATHS = _guard._HUB_PRESERVED_LIB_PATHS
+WEB_PRESERVED_LIB_PATHS = _guard._WEB_PRESERVED_LIB_PATHS
 ChangedFile = _guard.ChangedFile
 GuardPolicy = _guard.GuardPolicy
 GuardPolicyError = _guard.GuardPolicyError
@@ -783,7 +785,12 @@ def test_list_contained_fence_cannot_supply_exception_heading(body):
     )
 
     assert result.allowed is False
-    assert "body:## Legacy UI exception section" in result.missing_fields
+    expected = (
+        "body:renderer-specific markup invalidates Legacy UI exception"
+        if "~" in body
+        else "body:## Legacy UI exception section"
+    )
+    assert expected in result.missing_fields
 
 
 @pytest.mark.parametrize(
@@ -1067,7 +1074,9 @@ def test_struck_through_text_cannot_supply_exception_field_value():
     )
 
     assert result.allowed is False
-    assert "body:Reason:" in result.missing_fields
+    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
 
 
 def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
@@ -1090,11 +1099,36 @@ def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
     )
 
     assert result.allowed is False
-    assert set(result.missing_fields) == {
-        "body:Reason:",
-        "body:Canonical replacement impact:",
-        "body:Rollback:",
-    }
+    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        ~concealed attestation begins
+        Reason: severity one repair for a broken rollback path
+        Canonical replacement impact: canonical shell remains fully unaffected
+        Rollback: revert the emergency repair commit cleanly
+        concealed attestation ends~
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
 
 
 @pytest.mark.parametrize(
@@ -1688,17 +1722,56 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/components/namespace/NodeChat.tsx",
         "mira-hub/src/components/AssetChatV2.tsx",
         "mira-hub/src/components/chat/NewLegacyPanel.tsx",
+        "mira-hub/src/components/equipment/notebook-chat-utils.ts",
+        "mira-hub/src/components/layout/sign-out-action.ts",
+        "mira-hub/src/components/nested/arbitrary-name.ts",
         "mira-hub/src/app/layout.tsx",
         "mira-hub/src/app/globals.css",
         "mira-hub/src/app/login/page.tsx",
         "mira-hub/src/app/dashboard-copy/page.tsx",
         "mira-hub/src/providers/theme-provider.tsx",
+        "mira-hub/src/providers/access-control.ts",
+        "mira-hub/src/providers/auth-provider.ts",
+        "mira-hub/src/providers/data-provider.ts",
+        "mira-hub/src/providers/arbitrary-name.ts",
         "mira-hub/src/messages/en.json",
         "mira-hub/public/new-shell.js",
+        "mira-hub/src/lib/command-center-view.ts",
+        "mira-hub/src/lib/plc-import-view.ts",
+        "mira-hub/src/lib/knowledge-graph/graph-view.ts",
+        "mira-hub/src/lib/parts-data.ts",
+        "mira-hub/src/lib/documents-data.ts",
+        "mira-hub/src/lib/workorders-data.ts",
+        "mira-hub/src/lib/anomaly-titles.ts",
+        "mira-hub/src/lib/notebook-asset-card.ts",
+        "mira-hub/src/lib/notebook-delete.ts",
+        "mira-hub/src/lib/doc-chat-link.ts",
+        "mira-hub/src/lib/onboarding-flow.ts",
+        "mira-hub/src/lib/knowledge-graph/canonical-relationship-type.ts",
+        "mira-hub/src/lib/visual/reducer.ts",
+        "mira-hub/src/lib/visual/viewport.ts",
+        "mira-hub/src/lib/connections.ts",
+        "mira-hub/src/lib/utils.ts",
+        "mira-hub/src/lib/arbitrary-name.ts",
+        "mira-hub/src/capabilities/NewLegacyPanel.tsx",
+        "mira-hub/src/lib/nested/NewLegacyPanel.tsx",
+        "mira-hub/src/lib/nested/new-dashboard.css",
         "mira-web/src/lib/feature-renderer.ts",
         "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
+        "mira-web/src/lib/drive-pack-data.ts",
         "mira-web/src/lib/new-dashboard-renderer.ts",
+        "mira-web/src/lib/new-dashboard-data.ts",
+        "mira-web/src/lib/nested/NewLegacyPanel.tsx",
+        "mira-web/src/lib/nested/new-dashboard.css",
+        "mira-web/src/lib/blog-db.ts",
+        "mira-web/src/lib/hub-handoff.ts",
+        "mira-web/src/lib/mira-chat.ts",
+        "mira-web/src/lib/qr-generate.ts",
+        "mira-web/src/lib/qr-pdf.ts",
+        "mira-web/src/lib/sitemap.ts",
+        "mira-web/src/lib/trailing-slash.ts",
+        "mira-web/src/lib/arbitrary-name.ts",
         "mira-web/src/capabilities/NewLegacyPanel.tsx",
         "mira-web/src/seed/NewLegacyPanel.tsx",
         "mira-web/src/routes/printsense.ts",
@@ -1745,15 +1818,40 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
     [
         "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts",
         "mira-hub/src/app/(hub)/api/auth/magic-link/route.ts",
-        "mira-hub/src/components/equipment/notebook-chat-utils.ts",
         "mira-hub/src/lib/notebook-chat-types.ts",
-        "mira-hub/src/providers/auth-provider.ts",
+        "mira-hub/src/lib/capabilities.ts",
+        "mira-hub/src/lib/data-schema.ts",
+        "mira-hub/src/lib/display-registration.ts",
+        "mira-hub/src/lib/drive-pack-suggestion.ts",
+        "mira-hub/src/lib/drive-packs/loader.ts",
+        "mira-hub/src/lib/gs10-display.ts",
+        "mira-hub/src/lib/review-queue.ts",
+        "mira-hub/src/lib/tenant-context.ts",
+        "mira-hub/src/capabilities/new-service.ts",
         "mira-web/src/routes/inbox.ts",
         "mira-web/src/routes/mfa.ts",
         "mira-web/src/routes/probe-state.ts",
         "mira-web/src/routes/m.ts",
+        "mira-web/src/lib/account-deletion.ts",
+        "mira-web/src/lib/activation.ts",
+        "mira-web/src/lib/atlas.ts",
+        "mira-web/src/lib/audit.ts",
         "mira-web/src/lib/auth.ts",
-        "mira-web/src/lib/mira-chat.ts",
+        "mira-web/src/lib/connect.ts",
+        "mira-web/src/lib/cookie-session.ts",
+        "mira-web/src/lib/crypto.ts",
+        "mira-web/src/lib/csv-import.ts",
+        "mira-web/src/lib/dc-pro-activation.ts",
+        "mira-web/src/lib/drip.ts",
+        "mira-web/src/lib/hub-provisioning-queue.ts",
+        "mira-web/src/lib/hub-user-activation.ts",
+        "mira-web/src/lib/magic-link.ts",
+        "mira-web/src/lib/mailer.ts",
+        "mira-web/src/lib/mfa.ts",
+        "mira-web/src/lib/posthog-server.ts",
+        "mira-web/src/lib/qr-tracker.ts",
+        "mira-web/src/lib/quota.ts",
+        "mira-web/src/lib/stripe.ts",
         "mira-web/src/capabilities/new-service.ts",
         "mira-mobile/src/api/client.ts",
         "mira-mobile/src/chat-adapter/runtime.tsx",
@@ -1776,6 +1874,57 @@ def test_preserved_capability_and_canonical_adapter_paths_remain_unguarded(path)
     policy = load_guard_policy(REAL_REGISTRY)
 
     assert not path_is_guarded(path, policy), f"expected {path} to remain a capability seam"
+
+
+@pytest.mark.parametrize(
+    ("relative_root", "presentation_suffixes"),
+    [
+        ("mira-web/src/lib", ("-renderer.ts", "-view.ts", "-data.ts")),
+        ("mira-hub/src/lib", ("-view.ts", "-data.ts", "-titles.ts", "-card.ts")),
+    ],
+)
+def test_every_existing_presentation_shaped_lib_file_is_guarded_non_vacuously(
+    relative_root, presentation_suffixes
+):
+    policy = load_guard_policy(REAL_REGISTRY)
+    root = REPO_ROOT / relative_root
+    candidates = sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name.lower().endswith(presentation_suffixes)
+    )
+
+    assert candidates, f"expected presentation-shaped fixtures below {relative_root}"
+    assert all(path_is_guarded(path, policy) for path in candidates), candidates
+
+
+def test_audited_capability_allowlists_only_name_real_unguarded_files():
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    for paths in (WEB_PRESERVED_LIB_PATHS, HUB_PRESERVED_LIB_PATHS):
+        assert paths
+        for relative_path in paths:
+            assert (REPO_ROOT / relative_path).is_file(), relative_path
+            assert not path_is_guarded(relative_path, policy), relative_path
+
+
+def test_existing_production_lib_files_are_fully_partitioned():
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    for relative_root, preserved_paths in (
+        ("mira-web/src/lib", WEB_PRESERVED_LIB_PATHS),
+        ("mira-hub/src/lib", HUB_PRESERVED_LIB_PATHS),
+    ):
+        production_files = sorted(
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in (REPO_ROOT / relative_root).rglob("*")
+            if path.is_file() and not _guard._is_test_path(path.relative_to(REPO_ROOT).as_posix())
+        )
+
+        assert production_files, f"expected production files below {relative_root}"
+        assert all(
+            path in preserved_paths or path_is_guarded(path, policy) for path in production_files
+        ), production_files
 
 
 # ---------------------------------------------------------------------------
@@ -2287,7 +2436,7 @@ def test_workflow_installs_hash_locked_guard_dependencies():
     assert "requirements/ui-lifecycle-guard.txt" in text
     assert requirements.exists()
     requirement_text = requirements.read_text()
-    for package in (
+    approved_packages = {
         "markdown-it-py",
         "mdurl",
         "pyyaml",
@@ -2295,10 +2444,16 @@ def test_workflow_installs_hash_locked_guard_dependencies():
         "iniconfig",
         "packaging",
         "pluggy",
-        "pygments",
-    ):
+    }
+    locked_packages = {
+        package.lower() for package in re.findall(r"(?im)^([a-z0-9_-]+)==[^\s]+", requirement_text)
+    }
+    assert locked_packages == approved_packages
+    for package in approved_packages:
         assert re.search(rf"(?im)^{package}==[^\s]+", requirement_text), package
-    assert requirement_text.count("--hash=sha256:") >= 8
+    assert re.search(r"(?im)^pytest==8\.2\.2\s", requirement_text)
+    assert not re.search(r"(?im)^pygments==", requirement_text)
+    assert requirement_text.count("--hash=sha256:") == len(approved_packages)
 
 
 def test_pull_request_template_names_full_guard_control_plane():

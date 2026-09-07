@@ -24,13 +24,16 @@ Current delivery ledger:
 - [PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647), branch
   `codex/factorylm-unified-ui-cutover-001`, remains draft. Its exact immutable
   head is recorded in the PR body rather than self-referenced here. The branch
-  guards every workflow file, removes writer-controlled filenames from proof
-  and reporter prompts, records the shipped mobile canary truth, and treats
-  `src/unified/**` plus exact `UnifiedRoot`/`UnifiedChat` hosts as canonical new
-  UI. The status remains advisory until issue #3657 supplies a source-authentic
-  required-workflow or dedicated-App binding. The prior `92da48657` head had
-  fully green CI; final CommonMark-boundary, workflow-allowlist, plan, and
-  current-ledger corrections now require one fresh exact-head review and CI.
+  guards every workflow file, fails closed on unknown historical Web/Hub
+  library additions outside exact audited capability allowlists, freezes every
+  production Hub component/provider helper, and directs new backend modules to
+  explicit `src/capabilities/**` roots. It also removes writer-controlled
+  filenames from proof/reporter prompts, records the shipped mobile canary
+  truth, and treats `src/unified/**` plus exact `UnifiedRoot`/`UnifiedChat`
+  hosts as canonical new UI. The status remains advisory until issue #3657
+  supplies a source-authentic required-workflow or dedicated-App binding. Any
+  final correction requires one fresh immutable-head review and CI; prior-head
+  verdicts do not transfer.
 - [PR #3651](https://github.com/Mikecranesync/MIRA/pull/3651) is draft Slice C,
   implementing navigation hierarchy and visual-review findings only in the
   canonical shared package plus its isolated lab/tests. Head
@@ -50,20 +53,22 @@ Separate mission `FLEET-PEER-NETWORK-001` is coordinated in
 `docs/fleet-peer-network-001-prd`. It must not contaminate #3647 or any active
 FLM-UI slice. Draft [PR #3653](https://github.com/Mikecranesync/MIRA/pull/3653)
 is frozen remotely at `cbacc99da1885da24e2da8c2e78f86318a239d43` with green
-CI. Charlie's clean, unpushed candidate
-`c89648b9e766ccfecc5f3c8205cd1b5b930a52c7` remains on Codex HOLD for five P1
-contract gaps plus evidence cleanup; the complete verdict is on PR #3653.
-A verified 39 KiB thin bundle is ready to transfer the four local commits
-privately from remote prerequisite `cbacc99da...` without publishing a partial
-PR head. Bravo
-must verify the bundle checksum/tip, close every HOLD item, and obtain a fresh
-exact-head Codex PASS before any push. Rebase only after #3647 and keep root
-pointers inside this separate PR.
+CI. Charlie's clean candidate through
+`c89648b9e766ccfecc5f3c8205cd1b5b930a52c7` remains the source of the five P1
+contract-gap/evidence-cleanup HOLD findings recorded on PR #3653. The verified
+39 KiB thin bundle containing those four local commits was accepted by the
+generation-2 implementer on physical Bravo in session
+`bravo-fleet-peernet-001a`; its recorded baseline is 172 passing tests.
+Remediation continues there without moving the remote PR ref. Only the assigned
+Bravo writer may publish the completed candidate, followed by a fresh
+exact-head Codex review. Rebase only after #3647 and keep root pointers inside
+this separate PR.
 
 No governance hardening has changed a production route, deployment,
 feature flag, database, provider, auth flow, or customer-data state. Next:
-finish #3647's final correction, obtain independent PASS plus green CI and the
-maintainer's fresh `legacy-ui-exception` attestation, then merge it. Rebase
+commit #3647's final classifier/renderer/license correction, obtain independent
+immutable-head PASS plus green CI and the maintainer's fresh
+`legacy-ui-exception` attestation, then merge it. Rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;
 #3652 follows. The CHARLIE peer channel is an active notification path; GitHub
 issues, PR heads, checks, and review artifacts remain the durable authority.

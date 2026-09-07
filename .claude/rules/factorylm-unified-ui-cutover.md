@@ -37,8 +37,8 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 
 | Surface | Guarded paths |
 |---|---|
-| Public | page/content/render routes under `mira-web/src/**`, the mixed `server.ts` mount, and all `mira-web/public/**` |
-| Hub | presentation under `mira-hub/src/app/**`, React/style files under `components/**` and `providers/**`, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
+| Public | page/content/render routes under `mira-web/src/**`, the mixed `server.ts` mount, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, and all `mira-web/public/**` |
+| Hub | `mira-hub/src/app/**`, every production file under `components/**` and `providers/**`, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
 | Mobile | `mira-mobile/index.html` plus production React/style/navigation and mixed visible-copy/view-model helpers under `mira-mobile/src/**` |
 
 These entries are machine-readable in `docs/architecture/convergence/REGISTRY.yaml`
@@ -60,14 +60,19 @@ not replace source-authentic binding. Addition, modification, deletion,
 rename-in, and rename-out of a guarded path fail the guard by default.
 
 The broad registry roots are refined by code-owned classifiers in the guard.
-They preserve explicit Hub API route handlers and server/domain libraries,
-the existing public-web JSON/API routes and backend libraries, non-presentational
-files under its seed/capability roots, the exact mobile API/transport/native
-allowlist, all three `src/factorylm-ui/**` adapter roots, the existing mobile
-`src/unified/**` adapter, and its two exact new-shell screen hosts. The mobile
-`src/lib/**` bucket is mixed rather than trusted wholesale: helpers that own
-visible copy, rendering, or legacy interaction transitions are guarded.
-Unknown production siblings fail closed. Every file under
+They preserve explicit Hub API route handlers, exact audited allowlists of
+existing Hub/public-web capability and server libraries, the existing
+public-web JSON/API routes, non-presentational files under explicit future
+`src/capabilities/**` roots, public-web seed files, the exact mobile
+API/transport/native allowlist, all three `src/factorylm-ui/**` adapter roots,
+the existing mobile `src/unified/**` adapter, and its two exact new-shell screen
+hosts. New backend modules belong under `mira-web/src/capabilities/**` or
+`mira-hub/src/capabilities/**`; arbitrary additions to either historical
+`src/lib/**` bucket fail closed. Every production Hub component/provider file
+is guarded, including plain TypeScript helpers. The mobile `src/lib/**` bucket
+is likewise mixed rather than trusted wholesale: helpers that own visible
+copy, rendering, or legacy interaction transitions are guarded. Unknown
+production siblings fail closed. Every file under
 `mira-web/public/**` and `mira-hub/public/**` is guarded: images, fonts, PDFs,
 manifests, and other non-executable assets still change the shipped legacy
 experience.

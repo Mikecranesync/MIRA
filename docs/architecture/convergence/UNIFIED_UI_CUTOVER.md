@@ -61,8 +61,8 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; named `src/lib/*renderer.ts`/presentation helpers; `mira-web/public/**` | Old public-page/content tree, every HTML route mount/renderer, and every statically served public asset |
-| Hub | `mira-hub/src/app/**`; presentational files under `mira-hub/src/components/**` and `providers/**`; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/React component/provider, rendered locale catalog, and public asset; API route handlers and plain TypeScript helpers are classifier exclusions |
+| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every HTML route mount/renderer and visible-output helper, and every statically served public asset |
+| Hub | `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, and public asset; API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
 | Mobile | `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application mount, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
 The parent modules remain `CANONICAL`/deployed in `MODULES.md`. Marking an
@@ -74,14 +74,25 @@ The broad registry roots are refined by **code-owned classifiers** in
 `CONTROL_PATTERNS` (§3.1). The exclusions are capability-shaped, not
 presentation-shaped:
 
-- Hub Next `route.ts` handlers below an explicit `api` segment, `src/lib/**`,
-  and plain TypeScript auth/data providers remain open capability seams;
-  `src/messages/**` is rendered product copy and is guarded.
+- Hub Next `route.ts` handlers below an explicit `api` segment, the exact
+  code-owned allowlist of audited existing `src/lib/**` auth/API/transport/
+  domain modules, and non-presentational files under the explicit future
+  `src/capabilities/**` root remain open capability seams. Every production
+  file under historical `src/components/**` and `src/providers/**` is guarded,
+  including plain TypeScript helpers that own copy, navigation, composer state,
+  redirects, identity presentation, or mock view data. Every non-allowlisted
+  `src/lib/**` file is guarded by default, including framework-free view/data/
+  title/card helpers and exact mixed presentation modules. New backend modules
+  belong under `src/capabilities/**`; `src/messages/**` is rendered product copy
+  and is guarded.
 - Public-web JSON/API routes `inbox.ts`, `m.ts`, `mfa.ts`, and
-  `probe-state.ts`, existing backend libraries, and non-presentational files in
-  `src/seed/**` and the explicit future `src/capabilities/**` root remain open.
-  React/style files in those roots, every other route, the mixed `server.ts`
-  mount, page renderers/content, and unknown production siblings fail closed.
+  `probe-state.ts`, the exact code-owned allowlist of audited existing backend
+  libraries, and non-presentational files in `src/seed/**` and the explicit
+  future `src/capabilities/**` root remain open. React/style files in those
+  roots, every other route, the mixed `server.ts` mount, every non-allowlisted
+  `src/lib/**` file, page content, and unknown production siblings fail closed.
+  New backend modules belong under `src/capabilities/**`; an arbitrary filename
+  under the mixed historical `src/lib/**` root is guarded by default.
 - Mobile non-presentational `src/api/**`, the three existing
   `src/chat-adapter/**` transport files, the complete connected new-UI adapter
   under `src/unified/**`, the exact new-shell hosts
@@ -120,8 +131,11 @@ These are adapter inputs, not rewrite targets:
 - Hub session, tenant context, authorization, and capability checks.
 - `equipment_notebooks`, `equipment_notebook_turns`, and the existing Notebook
   route as the first durable thread/turn seam.
-- `mira-hub/src/components/equipment/notebook-chat-utils.ts` and
-  `mira-hub/src/lib/notebook-chat-types.ts` for current typed SSE behavior.
+- `mira-hub/src/lib/notebook-chat-types.ts` is the open typed SSE capability
+  seam. `mira-hub/src/components/equipment/notebook-chat-utils.ts` is a guarded
+  mixed legacy helper: canonical work may reuse it unchanged or extract its
+  capability-only logic into a bounded adapter, but must not extend it as new
+  product UI.
 - The exact mobile chat transport adapter, API client, tag/deep-link grammar,
   native picker/camera bridge, signed live-update path, offline queue, OS file
   handoff, resume guard, and SSE parser. QR/nameplate/replay interaction files
@@ -168,10 +182,10 @@ headings or fields inside fenced/indented code, raw HTML, comments, lists,
 blockquotes, tables, or struck text fail closed. Its three values
 must be substantive text; blank values, `N/A`, and template placeholders also
 fail closed. Exception-bearing bodies use a deliberately narrow rendered-text
-subset: any GitHub footnote marker or any two dollar signs anywhere in the body
-invalidate the exception because footnote/math extensions can relocate or
-visually hide source text.
-GitHub emoji aliases, single-tilde deletion syntax, control/format characters,
+subset: any GitHub footnote marker, any two dollar signs, or any tilde anywhere
+in the body invalidates the exception because footnote/math/strikethrough
+extensions can relocate or visually hide source text.
+GitHub emoji aliases, control/format characters,
 invisible Unicode filler, and combining overlay marks cannot supply a field
 value. Only parser-normalized LF boundaries may separate fields or terminate
 them at `[WORK-CLAIM]`; a character reference decoded inside a text token never
