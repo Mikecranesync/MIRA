@@ -70,7 +70,7 @@ CLAIM = {
     "session_uuid": "sess-7f3a9c2e",
     "base_sha": SHA,
     "branch": "feat/fleet-peer-network-001a-contract",
-    "worktree": "/Users/charlienode/MIRA-worktrees/fleet-peer-network-001a",
+    "worktree": ".worktrees/fleet-peer-network-001a",  # node-agnostic fixture; never a real machine path
     "resource_keys": ["docs/peer-network", "tests/peer_network"],
     "lease_expires_at": TS,
     "generation": 1,
