@@ -216,7 +216,11 @@ _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _EXCEPTION_HEADER_RE = re.compile(r"^##\s+Legacy UI exception\s*$")
-_ANY_H2_RE = re.compile(r"^##\s+")
+# A level-two Markdown section ends at the next H1/H2. The repository's
+# durable `[WORK-CLAIM]` record is also a top-level PR-body block even though
+# its protocol syntax deliberately is not a Markdown heading; fields in that
+# record (notably its own `Rollback:`) are not exception-attestation fields.
+_EXCEPTION_SECTION_BOUNDARY_RE = re.compile(r"^(?:#{1,2}\s+|\[WORK-CLAIM\]\s*$)")
 # A "fence" opener: 3+ backticks or 3+ tildes, optionally followed by a
 # language tag (```python, ~~~markdown, ...).
 _FENCE_OPEN_RE = re.compile(r"^(`{3,}|~{3,})")
@@ -855,7 +859,7 @@ def _find_exception_sections(pr_body: str) -> list[str]:
         if _EXCEPTION_HEADER_RE.match(lines[i]):
             i += 1
             body_lines: list[str] = []
-            while i < len(lines) and not _ANY_H2_RE.match(lines[i]):
+            while i < len(lines) and not _EXCEPTION_SECTION_BOUNDARY_RE.match(lines[i]):
                 body_lines.append(lines[i])
                 i += 1
             sections.append("\n".join(body_lines))

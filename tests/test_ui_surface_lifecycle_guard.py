@@ -427,6 +427,28 @@ def test_exactly_one_live_section_with_substantive_values_passes():
     assert result.allowed is True
 
 
+def test_exception_fields_ignore_later_work_claim_fields():
+    body = _VALID_BODY + textwrap.dedent(
+        """
+
+        [WORK-CLAIM]
+        Slice: unified UI cutover governance
+        Status: ACTIVE
+        Rollback: revert the work-claim implementation
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is True
+
+
 def test_valid_label_and_body_without_fresh_bound_approval_fail():
     result = evaluate(
         _TOUCH,
