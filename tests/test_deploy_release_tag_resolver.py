@@ -19,6 +19,16 @@ RESOLVER = REPO / ".github" / "scripts" / "resolve_release_tag.sh"
 DEPLOY_YML = REPO / ".github" / "workflows" / "deploy-vps.yml"
 SHA = "a" * 40  # a well-formed immutable commit hash
 
+_REMOTE_DEPLOY_CONTRACT = """\
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \\
+            root@165.245.138.91 "bash -s -- '$SERVICES_B64' '$DEPLOY_SHA' '$ALLOW_MOVING_FALLBACK'" << 'ENDSSH'
+
+          set -euo pipefail
+          SERVICES="$(printf '%s' "$1" | base64 -d)"
+          DEPLOY_SHA="$2"
+          ALLOW_MOVING_FALLBACK="$3"
+"""
+
 _FAKE_GIT = """#!/usr/bin/env bash
 # Fake `git` for the resolver tests. Only implements what the resolver calls.
 case "$1" in
@@ -56,6 +66,10 @@ def _run(tmp_path, *, sha=SHA, allow_fallback="0", tag_output="", tag_after="1",
     return subprocess.run(
         ["bash", str(RESOLVER)], env=env, capture_output=True, text=True, timeout=30
     )
+
+
+def _has_remote_deploy_contract(text: str) -> bool:
+    return _REMOTE_DEPLOY_CONTRACT in text
 
 
 # ── behavioral: positive paths ────────────────────────────────────────────────
@@ -123,11 +137,33 @@ def test_deploy_workflow_never_resets_to_moving_main():
 def test_deploy_workflow_anchors_on_deploy_sha_and_uses_resolver():
     text = DEPLOY_YML.read_text()
     assert "DEPLOY_SHA:" in text and "workflow_run.head_sha" in text
-    assert "DEPLOY_SHA='$DEPLOY_SHA'" in text, "DEPLOY_SHA must be passed into the VPS heredoc"
+    assert _has_remote_deploy_contract(text), (
+        "validated deploy inputs must enter the quoted remote heredoc as positional arguments"
+    )
+    assert "DEPLOY_SHA='$DEPLOY_SHA'" not in text, (
+        "do not interpolate the deploy SHA into an environment assignment"
+    )
     assert "resolve_release_tag.sh" in text, "deploy must invoke the resolver"
     assert 'git show "${DEPLOY_SHA}:.github/scripts/resolve_release_tag.sh"' in text, (
         "resolver must run from the object at the deployed SHA"
     )
+
+
+def test_deploy_remote_argument_contract_detects_security_regressions():
+    text = DEPLOY_YML.read_text()
+    assert text.count(_REMOTE_DEPLOY_CONTRACT) == 1
+    mutations = (
+        ("<< 'ENDSSH'", "<< ENDSSH"),
+        ('SERVICES="$(printf \'%s\' "$1" | base64 -d)"', 'SERVICES="$SERVICES"'),
+        ('DEPLOY_SHA="$2"', 'DEPLOY_SHA="$DEPLOY_SHA"'),
+        ('ALLOW_MOVING_FALLBACK="$3"', 'ALLOW_MOVING_FALLBACK="1"'),
+    )
+    for safe, unsafe in mutations:
+        mutated_contract = _REMOTE_DEPLOY_CONTRACT.replace(safe, unsafe)
+        mutated_workflow = text.replace(_REMOTE_DEPLOY_CONTRACT, mutated_contract, 1)
+        assert not _has_remote_deploy_contract(mutated_workflow), (
+            f"contract check missed mutation: {safe} -> {unsafe}"
+        )
 
 
 def test_deploy_workflow_fails_closed_on_missing_sha_or_script():
