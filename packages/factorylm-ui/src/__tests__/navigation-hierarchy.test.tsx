@@ -201,6 +201,17 @@ describe("context lines only when context differs", () => {
     expect(current()[0].dataset.itemKind).toBe("run");
   });
 
+  it("Recent marks the open run active in Work mode and drops it in Ask mode (reference, never a second selection)", () => {
+    const view = render({ surface: "web", fixture: "work-run" });
+    const recent = () => must(view.container.querySelector<HTMLElement>('[aria-label="Recent conversations"]'), "recent");
+    const runRow = () => must(recent().querySelector<HTMLElement>('[data-recent-id="run-drive-a-f30001"]'), "run row in Recent");
+    expect(runRow().dataset.active).toBe("true");
+    expect(runRow().getAttribute("aria-current")).toBeNull();
+    act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
+    expect(runRow().dataset.active).toBeUndefined();
+    expect(must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "nav").querySelectorAll('[aria-current="page"]').length).toBe(1);
+  });
+
   it("an inert current row matches the selection stylesheet selector (styled, not just semantic)", () => {
     const view = render({ surface: "web", fixture: "work-run" });
     const li = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"] li[aria-current="page"]'), "inert current li");

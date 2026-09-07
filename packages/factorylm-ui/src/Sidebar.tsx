@@ -39,6 +39,12 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pinned machines → host footer (settings / user menu). On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
+/** The open object for reference lists: in Work mode the open run, else the open thread. */
+function isOpenItem(state: ShellState, itemId: string): boolean {
+  if (state.mode === "work" && state.run?.id === itemId) return true;
+  return state.thread.id === itemId;
+}
+
 export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: SidebarProps) {
   const onNewChat = hooks?.onNewChat;
   const [query, setQuery] = useState("");
@@ -108,14 +114,14 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: S
                   className="fl-tree__row fl-tree__item-button"
                   data-kind={item.kind}
                   data-recent-id={item.id}
-                  data-active={state.thread.id === item.id ? "true" : undefined}
+                  data-active={isOpenItem(state, item.id) ? "true" : undefined}
                   onClick={() => { onOpenItem(item); dispatch({ type: "set-navigation-visible", visible: false }); }}
                 >
                   <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
                   <span className="fl-tree__label">{item.label}</span>
                 </button>
               </li>
-              : <li key={item.id} className="fl-tree__item fl-tree__row" data-kind={item.kind} data-recent-id={item.id} data-active={state.thread.id === item.id ? "true" : undefined}>
+              : <li key={item.id} className="fl-tree__item fl-tree__row" data-kind={item.kind} data-recent-id={item.id} data-active={isOpenItem(state, item.id) ? "true" : undefined}>
                 <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
                 <span className="fl-tree__label">{item.label}</span>
               </li>)}
