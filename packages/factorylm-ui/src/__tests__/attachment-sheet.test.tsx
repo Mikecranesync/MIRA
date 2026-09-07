@@ -148,6 +148,12 @@ describe("safe areas and drawer scroll ownership (stylesheet contract)", () => {
     expect(conversation).not.toMatch(/env\(safe-area-inset-[a-z]+\)(?!,)/);
   });
 
+  it("gives the main column an explicit minmax(0, 1fr) track so it can never size to the composer's min-content", () => {
+    // CI runs this suite but not the lab e2e; with the implicit `auto` track
+    // the main area measured 550px at a 412px viewport (Codex HOLD on 28b6137f3).
+    expect(shell).toMatch(/\.fl-shell__main\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  });
+
   it("gives the drawer's tree the scroll and keeps the footer out of it", () => {
     expect(mobileBlock).toMatch(/\.fl-shell__sidebar\s*\{[^}]*block-size:\s*100dvh/s);
     expect(mobileBlock).toMatch(/\.fl-tree\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-block-size:\s*0;[^}]*overflow-y:\s*auto/s);
