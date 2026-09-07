@@ -208,6 +208,23 @@ def test_handoff_keeps_mission_and_keys_and_increments_generation() -> None:
         accept_handoff(_claim("s", "2026-09-07T01:00:00Z", 1, status="RELEASED"), "s-new")
 
 
+def test_resume_from_a_blocked_lease_keeps_the_claim_and_the_block() -> None:
+    """BLOCKED holds the lease, so a handoff (context exhaustion mid-gate) resumes the SAME claim
+    in the same state: the new session inherits the block, it does not get a fresh ACTIVE lease
+    and it does not lose the queue position (created_at/event_id are unchanged)."""
+    blocked = _claim("s-old", "2026-09-07T01:00:00Z", 7, status="BLOCKED", generation=2)
+    resumed = accept_handoff(blocked, "s-new")
+    assert resumed.status == "BLOCKED"
+    assert (resumed.created_at, resumed.event_id, resumed.generation) == (
+        "2026-09-07T01:00:00Z",
+        7,
+        3,
+    )
+    assert may_edit(resumed) and not may_push(resumed)
+    later = _claim("s-later", "2026-09-07T01:00:01Z", 8)
+    assert resolve_race([later, resumed]).session_uuid == "s-new"
+
+
 def test_scope_expansion_names_only_the_keys_a_new_claim_must_cover() -> None:
     c = _claim("s", "2026-09-07T01:00:00Z", 1, keys=("docs/peer-network", "mira-mobile"))
     assert scope_expansion(
@@ -346,6 +363,9 @@ def test_every_event_kind_has_a_fail_closed_payload_proof() -> None:
         ("join_network", {"node_id": "mars", "capabilities": ["bash"]}),
         ("release", {"version": "latest", "sha": "f" * 40}),
         ("submit_checkpoint", {}),
+        ("submit_result", {}),
+        ("submit_result", {"sha": "deadbeef"}),
+        ("submit_result", {"sha": "f" * 40, "verdict": "PASS"}),  # a result is not a verdict
         ("heartbeat", {"lease_expires_at": "soon"}),
     ],
 )
