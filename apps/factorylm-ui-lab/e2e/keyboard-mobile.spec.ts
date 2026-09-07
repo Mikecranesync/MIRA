@@ -71,6 +71,33 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
     await expect(box).toHaveValue("");
   });
 
+  test("nothing scrolls sideways at 412px, with and without the attachment sheet", async ({ page }) => {
+    // The document and every scroll container must fit the viewport width. A
+    // breadcrumb clipped by its own ellipsis is fine; a main column sized to the
+    // composer's min-content (550px, the 28b6137f3 defect) is not.
+    const sideways = () => page.evaluate(() => {
+      const doc = document.documentElement;
+      const out: string[] = [];
+      if (doc.scrollWidth > doc.clientWidth) out.push(`document ${doc.scrollWidth}px > ${doc.clientWidth}px`);
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>(".fl-shell, .fl-shell *"))) {
+        const overflow = getComputedStyle(el).overflowX;
+        if ((overflow === "auto" || overflow === "scroll") && el.scrollWidth > el.clientWidth + 1) {
+          out.push(`${el.tagName.toLowerCase()}.${el.className} ${el.scrollWidth}px > ${el.clientWidth}px`);
+        }
+      }
+      return out;
+    });
+    for (const scenario of ["machine-ask", "grounded-answer", "work-run", "attachments"]) {
+      await page.goto(`/?surface=mobile&theme=light&scenario=${scenario}`);
+      await page.keyboard.press("Escape");
+      expect(await sideways(), scenario).toEqual([]);
+      await page.getByRole("button", { name: "Add attachment" }).click();
+      await expect(page.getByRole("dialog", { name: "Attachment menu" })).toBeVisible();
+      expect(await sideways(), `${scenario} + sheet`).toEqual([]);
+      await page.keyboard.press("Escape");
+    }
+  });
+
   test("every visible control is at least 44 by 44 CSS pixels", async ({ page }) => {
     for (const scenario of ["machine-ask", "work-run", "attachments"]) {
       await page.goto(`/?surface=mobile&theme=light&scenario=${scenario}`);

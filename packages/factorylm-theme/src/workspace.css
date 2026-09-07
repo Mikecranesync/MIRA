@@ -60,6 +60,7 @@
   --fl-workspace-space-8: var(--fl-space-8);
   --fl-workspace-shadow: var(--fl-shadow);
   --fl-workspace-shadow-pop: var(--fl-shadow-pop);
+  --fl-workspace-scrim: var(--fl-scrim);
 }
 
 [data-theme="dark"] {
@@ -122,4 +123,5 @@
   --fl-workspace-space-8: var(--fl-space-8);
   --fl-workspace-shadow: var(--fl-shadow);
   --fl-workspace-shadow-pop: var(--fl-shadow-pop);
+  --fl-workspace-scrim: var(--fl-dark-scrim);
 }

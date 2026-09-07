@@ -1,6 +1,8 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
+import { AttachmentMenu } from "./AttachmentMenu";
 import { breadcrumb } from "./Conversation";
+import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
 
 export interface ComposerProps {
@@ -8,6 +10,8 @@ export interface ComposerProps {
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
   readonly hooks?: HostHooks;
+  /** The attachment sheet is the top-most layer (FactoryLMShell decides via topLayer). */
+  readonly attachmentTrapsTab?: boolean;
 }
 
 export interface ComposerKeyEvent {
@@ -42,7 +46,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -109,8 +113,8 @@ export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
     send();
   };
 
-  return <form className="fl-composer" aria-label="Composer" onSubmit={onSubmit}>
-    {state.offline.state !== "online" ? <p className="fl-composer__sync" role="status" aria-label="Sync status" data-sync-state={state.offline.state}>
+  return <form className="fl-composer" aria-label="Composer" data-menu-open={state.attachmentMenuVisible} onSubmit={onSubmit}>
+    {state.offline.state !== "online" ? <p className="fl-composer__sync" role="status" aria-label="Sync status" aria-live="polite" aria-atomic="true" data-sync-state={state.offline.state}>
       {OFFLINE_LABEL[state.offline.state]} · {state.offline.pendingChanges} pending
       {state.offline.detail ? ` · ${state.offline.detail}` : ""}
     </p> : null}
@@ -131,26 +135,16 @@ export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
       </li>)}
     </ul> : null}
 
-    {state.attachmentMenuVisible ? <div className="fl-composer__menu" aria-label="Attachment menu">
-      <button type="button" disabled={busy !== null} onClick={() => attach("photo", adapter.attachPhoto)}>Photo</button>
-      <button type="button" disabled={busy !== null} onClick={() => attach("file", adapter.attachFile)}>File</button>
-      <button
-        type="button"
-        disabled={!native || busy !== null}
-        title={native ? "Capture a photo with the device camera" : "Camera requires a native device"}
-        onClick={() => attach("photo", adapter.attachPhoto)}
-      >
-        Camera
-      </button>
-      <button
-        type="button"
-        disabled={!native || busy !== null}
-        title={native ? "Scan a machine QR code" : "Scanning requires a native device"}
-        onClick={scan}
-      >
-        Scan machine
-      </button>
-    </div> : null}
+    <Overlay layer="attachment-menu" active={state.attachmentMenuVisible} modal trapsTab={attachmentTrapsTab}>
+      {state.attachmentMenuVisible ? <AttachmentMenu
+        native={native}
+        busy={busy !== null}
+        onPhoto={() => attach("photo", adapter.attachPhoto)}
+        onFile={() => attach("file", adapter.attachFile)}
+        onCamera={() => attach("photo", adapter.attachPhoto)}
+        onScan={scan}
+      /> : null}
+    </Overlay>
 
     <div className="fl-composer__row">
       <button

@@ -118,15 +118,18 @@ describe("conversation parts", () => {
     expect(view.container.querySelector('[aria-label="Sync status"]')?.textContent).toMatch(/syncing/i);
   });
 
-  it("offers retry only for a retryable failed turn and records it through the reducer", () => {
-    const view = render({ fixture: "error-retry", surface: "web" });
+  it("offers retry only for a retryable failed turn and hands it to the host, which owns the re-send", () => {
+    const calls: string[] = [];
+    const hooks = { onRetry: (turnId: string) => calls.push(turnId) };
+    const view = render({ fixture: "error-retry", surface: "web", hooks });
     const retry = view.buttonNamed("Retry");
     if (!retry) throw new Error("retryable error must offer Retry");
 
-    expect(view.outputs().retryTarget).toBe("");
     view.click(retry);
-    expect(view.outputs().retryTarget).toBe("turn-error-retry");
-    expect(render({ fixture: "safety-stop", surface: "web" }).buttonNamed("Retry")).toBeNull();
+    expect(calls).toEqual(["turn-error-retry"]);
+    // Host-owned: the shell does not also mark a mock "Retry requested" state.
+    expect(view.outputs().retryTarget).toBe("");
+    expect(render({ fixture: "safety-stop", surface: "web", hooks }).buttonNamed("Retry")).toBeNull();
   });
 
   it("shows the offline state honestly", () => {

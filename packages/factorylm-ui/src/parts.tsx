@@ -16,7 +16,11 @@ export interface HostHooks {
   readonly onSend?: (text: string) => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
-  /** Retry the host's failed send instead of the reducer's mock retry. */
+  /**
+   * Retry the host's failed send. Retry is OFFERED only when this is provided:
+   * without a host to re-send, a Retry button would flip to "Retry requested"
+   * and do nothing (product-honesty defect, Codex review of #3643).
+   */
   readonly onRetry?: (turnId: string) => void;
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
@@ -270,15 +274,15 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "error": {
       const { error } = part;
-      const requested = state.retryTargetTurnId === turn.id;
+      const onRetry = hooks?.onRetry;
       return <div className="fl-part fl-error" role="alert" data-part-type="error" data-error-code={error.code}>
         <p>{error.message}</p>
-        {error.retryable && turn.lifecycle === "failed" ? <button
+        {error.retryable && turn.lifecycle === "failed" && typeof onRetry === "function" ? <button
           type="button"
-          aria-pressed={requested}
-          onClick={() => (hooks?.onRetry ? hooks.onRetry(turn.id) : dispatch({ type: "retry", turnId: turn.id }))}
+          disabled={Boolean(hooks?.busy)}
+          onClick={() => onRetry(turn.id)}
         >
-          {requested ? "Retry requested" : "Retry"}
+          Retry
         </button> : null}
       </div>;
     }

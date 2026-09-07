@@ -12,6 +12,8 @@ export interface LabAdapterContext {
 export interface LabAdapter extends PlatformAdapter {
   /** Every adapter call in order — the lab shows it so mock actions are inspectable. */
   log(): readonly string[];
+  /** Host hooks the lab stands in for (retry has no adapter method; the HOST re-sends). */
+  note(entry: string): void;
 }
 
 const PHOTO = { name: "drive-a-nameplate.jpg", mediaType: "image/jpeg", kind: "photo" } as const;
@@ -42,6 +44,7 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
 
   return {
     log: () => log,
+    note: record,
     attachPhoto: async () => {
       record("attachPhoto");
       photos += 1;

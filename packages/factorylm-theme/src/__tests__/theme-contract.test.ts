@@ -12,7 +12,7 @@ const requiredRoles = [
   "fault-line", "fault-ink", "off", "off-tint", "off-line", "off-ink", "font", "mono",
   "fs", "fs-sm", "fs-xs", "fs-body", "fs-title", "radius", "radius-sm", "radius-card",
   "radius-pill", "gap", "pad", "space-1", "space-2", "space-3", "space-4", "space-6",
-  "space-8", "shadow", "shadow-pop",
+  "space-8", "shadow", "shadow-pop", "scrim",
 ] as const;
 
 function declarationsFor(css: string, selector: string): ReadonlyMap<string, string> {

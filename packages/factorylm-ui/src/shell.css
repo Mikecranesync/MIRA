@@ -22,14 +22,20 @@
 .fl-scrim {
   position: fixed;
   inset: 0;
-  background: var(--fl-scrim);
+  background: var(--fl-workspace-scrim, var(--fl-scrim));
 }
+/* Stacking, in closing-precedence order (see topLayer). Layers: navigation
+   drawer 1 < inspector sheet 2 < attachment sheet 3 (the composer's own stacking
+   context, conversation.css) < source viewer 5. Scrims sit one step below their
+   layer: 0 / 1 / 2 / 4. */
 .fl-scrim[data-layer="navigation"] { z-index: 0; }
-.fl-scrim[data-layer="source"] { z-index: 2; }
+.fl-scrim[data-layer="inspector"] { z-index: 1; }
+.fl-scrim[data-layer="attachment-menu"] { z-index: 2; }
+.fl-scrim[data-layer="source"] { z-index: 4; }
 
 .fl-shell button {
-  min-block-size: 2.75rem;
-  min-inline-size: 2.75rem;
+  min-block-size: max(2.75rem, 44px);
+  min-inline-size: max(2.75rem, 44px);
   border: 1px solid transparent;
   border-radius: var(--fl-workspace-radius-sm);
   background: transparent;
@@ -58,7 +64,10 @@
 .fl-tree__item,
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
-.fl-shell__main { min-inline-size: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+/* An explicit minmax(0, 1fr) column: with the implicit `auto` column the main
+   area sized itself to the composer row's min-content (550px at a 412px viewport)
+   and the page scrolled sideways. */
+.fl-shell__main { min-inline-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .fl-shell__header { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-header); color: var(--fl-workspace-header-ink); }
 .fl-shell__header h1,
 .fl-shell__header p { margin: 0; }
@@ -82,6 +91,11 @@
     inset-inline-start: 0;
     z-index: 1;
     inline-size: min(18rem, 88vw);
+    block-size: 100dvh;
+    padding-block-start: calc(var(--fl-workspace-space-4) + env(safe-area-inset-top, 0px));
+    padding-block-end: calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
     box-shadow: var(--fl-workspace-shadow-pop);
     transform: translateX(-110%);
     transition: transform 160ms ease;
@@ -90,6 +104,8 @@
   .fl-shell__navigation-toggle,
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
+  .fl-tree { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; }
+  .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }
   .fl-shell__inspector {
     position: fixed;
     inset-inline: 0;
