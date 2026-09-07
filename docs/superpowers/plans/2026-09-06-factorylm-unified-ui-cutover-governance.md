@@ -221,12 +221,16 @@ docs/architecture/convergence/REGISTRY.yaml
 docs/architecture/convergence/UNIFIED_UI_CUTOVER.md
 pyproject.toml
 pytest.ini
+pip.py
+pip/**
 setup.cfg
+sitecustomize.py
 tests/conftest.py
 tools/ui_surface_lifecycle_guard.py
 tools/markdown_it.py
 tools/yaml.py
 tox.ini
+usercustomize.py
 tests/test_ui_surface_lifecycle_guard.py
 .claude/rules/factorylm-unified-ui-cutover.md
 .claude/workflows/flm-ui-map.js
@@ -281,11 +285,25 @@ requirements/ui-lifecycle-guard.txt
 >    path or branch name cannot carry semantic instructions into agent prompts.
 > 8. **Transitive trusted-base isolation.** Pytest configuration/conftest paths
 >    and local dependency-shadow filenames are control patterns. The workflow
->    runs `python3 -I tools/ui_surface_lifecycle_guard.py` before any repository
->    test, then runs only the focused suite with isolated Python, null pytest
->    configuration, no conftest loading, importlib collection, and plugin
+>    runs both the locked dependency installer and
+>    `python3 -I tools/ui_surface_lifecycle_guard.py` in isolated mode before
+>    any repository test, then runs only the focused suite with isolated
+>    Python, null pytest configuration, no conftest loading, importlib
+>    collection, and plugin
 >    autoload disabled. Test code can no longer mutate the artifact before the
 >    policy decision.
+> 9. **Build/mount closure.** Direct production files at the three legacy
+>    module roots fail closed (with docs, review images, tests, and test tooling
+>    excluded), as do production mobile native wrappers, the Hub root landing
+>    selectors, deployable root nginx/redirect controls, automatic Compose
+>    selectors, mobile deep-link associations, Hub identity/capability and OTA
+>    response wrappers, and OTA verify/select/publish/deploy/rollback/fingerprint
+>    controls. Root Compose variants fail closed by filename family, and
+>    existing pre-build helpers that run with production credentials are
+>    guarded transitive inputs. Native tests run on a separate secret-free
+>    runner from signing.
+>    A new alternate entry point, package script, artifact root, WebView
+>    directory, or platform mount cannot bypass the source-tree freeze.
 
 The exception parser consumes pinned CommonMark tokens with GitHub table and
 double-tilde strikethrough rules, requires exactly one top-level ATX

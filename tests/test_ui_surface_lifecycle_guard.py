@@ -240,6 +240,142 @@ def test_git_derived_delete_and_renames_fail_without_exception(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Immutable tree evidence — path-only pull-file metadata cannot reveal a
+# symlink, chmod, gitlink, or file/directory substitution.  The guard must use
+# base/head tree entries and fail closed even when the changed pathname itself
+# would otherwise be an open capability/canonical seam.
+# ---------------------------------------------------------------------------
+
+
+def _init_empty_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init", "-q"], repo)
+    _run(["git", "config", "user.email", "test@example.com"], repo)
+    _run(["git", "config", "user.name", "Test"], repo)
+    _run(["git", "config", "core.fileMode", "true"], repo)
+    return repo
+
+
+def _commit_and_sha(repo: Path, message: str) -> str:
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-qm", message], repo)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def test_git_derived_open_path_symlink_into_frozen_tree_fails_closed(tmp_path):
+    repo = _init_empty_repo(tmp_path)
+    frozen = repo / "mira-web" / "src" / "views" / "home.ts"
+    frozen.parent.mkdir(parents=True)
+    frozen.write_text("export const frozen = true;\n")
+    base = _commit_and_sha(repo, "base frozen presentation")
+
+    link = repo / "mira-web" / "src" / "capabilities" / "view-data.ts"
+    link.parent.mkdir(parents=True)
+    link.symlink_to("../views/home.ts")
+    head = _commit_and_sha(repo, "add capability-shaped symlink")
+
+    policy = load_guard_policy(REAL_REGISTRY)
+    relative_link = "mira-web/src/capabilities/view-data.ts"
+    assert not path_is_guarded(relative_link, policy), "the path alone is an open capability seam"
+
+    changes = changed_files_between(repo, base, head)
+    change = next(change for change in changes if change.path == relative_link)
+    assert change.tree_evidence_complete is True
+    assert change.old_mode is None
+    assert change.new_mode == "120000"
+    assert change.new_type == "blob"
+
+    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    assert result.allowed is False
+    assert relative_link in result.guarded_paths
+
+
+def test_git_derived_chmod_on_otherwise_open_path_fails_closed(tmp_path):
+    repo = _init_empty_repo(tmp_path)
+    script = repo / "scripts" / "audit-helper.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/bin/sh\nexit 0\n")
+    script.chmod(0o644)
+    base = _commit_and_sha(repo, "base non-executable helper")
+
+    script.chmod(0o755)
+    head = _commit_and_sha(repo, "make helper executable")
+
+    path = "scripts/audit-helper.sh"
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, policy)
+    changes = changed_files_between(repo, base, head)
+    change = next(change for change in changes if change.path == path)
+    assert (change.old_mode, change.new_mode) == ("100644", "100755")
+
+    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    assert result.allowed is False
+    assert path in result.guarded_paths
+
+
+def test_git_derived_file_to_directory_substitution_fails_closed(tmp_path):
+    repo = _init_empty_repo(tmp_path)
+    substituted = repo / "scripts" / "audit-fixture"
+    substituted.parent.mkdir(parents=True)
+    substituted.write_text("ordinary file\n")
+    base = _commit_and_sha(repo, "base ordinary file")
+
+    substituted.unlink()
+    substituted.mkdir()
+    (substituted / "child.txt").write_text("replacement directory\n")
+    head = _commit_and_sha(repo, "substitute a directory")
+
+    path = "scripts/audit-fixture"
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, policy)
+    changes = changed_files_between(repo, base, head)
+    change = next(change for change in changes if change.path == path)
+    assert (change.old_mode, change.old_type) == ("100644", "blob")
+    assert (change.new_mode, change.new_type) == ("040000", "tree")
+
+    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    assert result.allowed is False
+    assert path in result.guarded_paths
+
+
+def test_git_tree_evidence_uses_three_dot_merge_base_not_base_branch_tip(tmp_path):
+    repo = _init_empty_repo(tmp_path)
+    script = repo / "scripts" / "audit-helper.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text("base\n")
+    script.chmod(0o644)
+    merge_base = _commit_and_sha(repo, "shared base")
+    base_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    _run(["git", "checkout", "-qb", "feature", merge_base], repo)
+    script.write_text("feature content\n")
+    head = _commit_and_sha(repo, "feature content change")
+
+    _run(["git", "checkout", "-q", base_branch], repo)
+    script.chmod(0o755)
+    base_tip = _commit_and_sha(repo, "unrelated base chmod")
+
+    changes = changed_files_between(repo, base_tip, head)
+    change = next(change for change in changes if change.path == "scripts/audit-helper.sh")
+    assert (change.old_mode, change.new_mode) == ("100644", "100644")
+    result = evaluate(changes, labels=set(), pr_body="", policy=load_guard_policy(REAL_REGISTRY))
+    assert result.allowed is True
+
+
+# ---------------------------------------------------------------------------
 # CONTROL_PATTERNS are guarded even if the head revision changed policy —
 # because they are code-owned constants, never sourced from the registry file.
 # ---------------------------------------------------------------------------
@@ -257,6 +393,20 @@ def test_control_patterns_are_hardcoded_constants_not_from_the_registry():
     assert ".github/workflows/**" in CONTROL_PATTERNS
 
 
+def test_ota_handset_evidence_validator_is_guarded_but_receipts_remain_open():
+    """Validation policy is trusted code; immutable handset facts are review input."""
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert "tools/ota_handset_evidence.py" in CONTROL_PATTERNS
+    assert path_is_guarded("tools/ota_handset_evidence.py", policy)
+    assert not path_is_guarded("tests/test_ota_handset_evidence.py", policy)
+    assert not path_is_guarded("docs/release/evidence/ota/README.md", policy)
+    assert not path_is_guarded(
+        "docs/release/evidence/ota/0123456789abcdef.json",
+        policy,
+    )
+
+
 @pytest.mark.parametrize(
     "control_path",
     [
@@ -268,6 +418,9 @@ def test_control_patterns_are_hardcoded_constants_not_from_the_registry():
         "tox.ini",
         "tools/yaml.py",
         "tools/markdown_it.py",
+        "pip.py",
+        "sitecustomize.py",
+        "usercustomize.py",
     ],
 )
 def test_transitive_trusted_base_inputs_are_control_patterns(control_path):
@@ -278,6 +431,22 @@ def test_transitive_trusted_base_inputs_are_control_patterns(control_path):
     assert path_is_guarded(control_path, policy)
     result = evaluate(
         [ChangedFile(status="added", path=control_path)],
+        labels=set(),
+        pr_body="",
+        policy=policy,
+    )
+    assert result.allowed is False
+
+
+def test_pip_package_shadow_is_a_control_pattern():
+    """The pre-evaluation installer cannot import a PR-controlled pip package."""
+    policy = load_guard_policy(REAL_REGISTRY)
+    shadow = "pip/__init__.py"
+
+    assert "pip/**" in CONTROL_PATTERNS
+    assert path_is_guarded(shadow, policy)
+    result = evaluate(
+        [ChangedFile(status="added", path=shadow)],
         labels=set(),
         pr_body="",
         policy=policy,
@@ -1739,14 +1908,38 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-web/src/views/**",
         "mira-web/src/routes/**",
         "mira-web/src/server.ts",
+        "compose.yaml",
+        "docker-compose.override.yml",
+        "nginx-oracle.conf",
+        "nginx-oracle-v2.conf",
+        "nginx-phase2-live.conf",
+        "oracle-bootstrap.sh",
+        "oracle-deploy.sh",
+        "scripts/apply-apex-login-redirects.sh",
+        "mira-web/package.json",
+        "mira-web/server.js",
         "mira-web/public/**",
         "mira-hub/src/app/**",
+        "mira-hub/next.config.ts",
+        "mira-hub/package.json",
         "mira-hub/src/components/**",
         "mira-hub/src/providers/**",
         "mira-hub/src/messages/**",
         "mira-hub/public/**",
         "mira-mobile/index.html",
+        "mira-mobile/android/**",
+        "mira-mobile/capacitor.config.ts",
+        "deployment/well-known/apple-app-site-association",
+        "deployment/well-known/assetlinks.json",
+        "mira-mobile/ios/**",
+        "mira-mobile/package.json",
+        "mira-mobile/scripts/native-fingerprint.mjs",
+        "mira-mobile/scripts/ota-package.mjs",
+        "mira-mobile/scripts/ota-provenance.mjs",
+        "tools/migration_drift.py",
+        "tools/migration-drift-requirements.txt",
         "mira-mobile/src/**",
+        "mira-mobile/vite.config.ts",
     }
     assert expected <= set(policy.guarded_paths)
 
@@ -1784,6 +1977,9 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/lib/doc-chat-link.ts",
         "mira-hub/src/lib/onboarding-flow.ts",
         "mira-hub/src/lib/knowledge-graph/canonical-relationship-type.ts",
+        "mira-hub/src/lib/commissioning.ts",
+        "mira-hub/src/lib/capabilities.ts",
+        "mira-hub/src/lib/hub/status.ts",
         "mira-hub/src/lib/visual/reducer.ts",
         "mira-hub/src/lib/visual/viewport.ts",
         "mira-hub/src/lib/connections.ts",
@@ -1793,6 +1989,10 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/lib/document-readiness.ts",
         "mira-hub/src/lib/notebook-followups.ts",
         "mira-hub/src/lib/arbitrary-name.ts",
+        "mira-hub/src/middleware.ts",
+        "mira-hub/src/auth.ts",
+        "mira-hub/src/app/api/me/route.ts",
+        "mira-hub/src/app/api/mobile/live-update/manifest/route.ts",
         "mira-hub/src/capabilities/NewLegacyPanel.tsx",
         "mira-hub/src/capabilities/nested/legacy-dashboard.html",
         "mira-hub/src/capabilities/nested/legacy-dashboard.js",
@@ -1805,6 +2005,7 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/lib/nested/NewLegacyPanel.tsx",
         "mira-hub/src/lib/nested/new-dashboard.css",
         "mira-web/src/lib/feature-renderer.ts",
+        "mira-web/src/lib/mailer.ts",
         "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
         "mira-web/src/lib/drive-pack-data.ts",
@@ -1840,6 +2041,11 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-mobile/src/api/legacy-dashboard.js",
         "mira-mobile/src/api/legacy-dashboard.svg",
         "mira-mobile/src/api/LegacyDashboard.vue",
+        "mira-mobile/src/lib/api-error-copy.ts",
+        "mira-mobile/src/lib/chat-transport-presentation.ts",
+        "mira-mobile/src/lib/resource-copy.ts",
+        "mira-mobile/src/lib/sse.ts",
+        "mira-mobile/src/lib/live-update.ts",
         "mira-mobile/src/chat-adapter/runtime.tsx",
         "mira-mobile/src/chat-adapter/turns-to-parts.ts",
         "mira-mobile/src/chat-adapter/NewLegacyPanel.tsx",
@@ -1880,18 +2086,234 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
 @pytest.mark.parametrize(
     "path",
     [
+        "mira-web/Dockerfile",
+        "mira-web/bun.lock",
+        "mira-web/docker-compose.yml",
+        "mira-web/package-lock.json",
+        "mira-web/package.json",
+        "mira-web/server.js",
+        "mira-web/tsconfig.json",
+        "mira-web/alternate-entry.ts",
+        "mira-web/emails/feature.html",
+        "mira-web/app/page.tsx",
+        "mira-hub/Dockerfile",
+        "mira-hub/bun.lock",
+        "mira-hub/next.config.ts",
+        "mira-hub/package-lock.json",
+        "mira-hub/package.json",
+        "mira-hub/postcss.config.mjs",
+        "mira-hub/tsconfig.json",
+        "mira-hub/alternate-entry.tsx",
+        "mira-hub/app/page.tsx",
+        "mira-hub/pages/index.tsx",
+        "mira-mobile/bun.lock",
+        "mira-mobile/capacitor.config.ts",
+        "mira-mobile/package-lock.json",
+        "mira-mobile/package.json",
+        "mira-mobile/tsconfig.json",
+        "mira-mobile/vite.config.ts",
+        "mira-mobile/alternate-entry.ts",
+        "mira-mobile/public/alternate-index.js",
+        "mira-mobile/scripts/ota-deploy.mjs",
+        "mira-mobile/scripts/ota-guard.mjs",
+        "mira-mobile/scripts/native-fingerprint.mjs",
+        "mira-mobile/scripts/ota-publish.mjs",
+        "mira-mobile/scripts/ota-rollback.mjs",
+        "mira-mobile/src/api/resources.ts",
+        "mira-mobile/android/app/src/main/AndroidManifest.xml",
+        "mira-mobile/android/app/src/main/java/com/factorylm/mira/MainActivity.java",
+        "mira-mobile/android/app/src/main/res/layout/activity_main.xml",
+        "mira-mobile/android/app/src/main/assets/help/README.md",
+        "mira-mobile/android/build.gradle",
+        "mira-mobile/ios/App/App/AppDelegate.swift",
+        "mira-mobile/ios/App/App/Info.plist",
+        "mira-mobile/ios/App/App/README.md",
+        "mira-mobile/ios/App/App/IDEWorkspaceChecks.plist",
+        "deployment/well-known/apple-app-site-association",
+        "deployment/well-known/assetlinks.json",
+        "docker-compose.hub.yml",
+        "docker-compose.saas.yml",
+        "docker-compose.staging-vps.yml",
+        "compose.yaml",
+        "compose.yml",
+        "compose.override.yaml",
+        "compose.override.yml",
+        "compose.production.yml",
+        "compose.canary.yaml",
+        "composecustomer.yml",
+        "docker-compose.yaml",
+        "docker-compose.yml",
+        "docker-compose.override.yaml",
+        "docker-compose.override.yml",
+        "docker-compose.production.yml",
+        "docker-compose.canary.yaml",
+        "docker-composecustomer.yaml",
+        "deployment/nginx-app-factorylm.conf",
+        "deployment/nginx-factorylm-marketing.conf",
+        "deployment/nginx-stg-factorylm.conf",
+        "deployment/nginx-updates-factorylm.conf",
+        "deployment/nginx-new-ui.conf",
+        "deployment/ota-download/index.html",
+        "deployment/new-ui/index.html",
+        "deployment/new-ui/index.mjs",
+        "deployment/new-ui/bootstrap.cjs",
+        "deployment/new-ui/App.vue",
+        "deployment/new-ui/manifest.json",
+        "deployment/new-ui/site.webmanifest",
+        "deployment/new-ui/assets/logo.png",
+        "deployment/new-ui/Dockerfile",
+        "deployment/new-ui/deploy.sh",
+        "nginx-new-ui.conf",
+        "app-nginx.conf",
+        "factorylm.conf",
+        "site.conf",
+        "nginx-oracle.conf",
+        "nginx-oracle-v2.conf",
+        "nginx-phase2-live.conf",
+        "oracle-deploy.sh",
+        "scripts/apply-apex-login-redirects.sh",
+        "scripts/apply-new-ui-redirects.sh",
+        "scripts/redirect-new-ui.sh",
+        "scripts/switch-ui-mount.sh",
+        "future-ui-deploy.sh",
+        "future-ui-mount.sh",
+        "scripts/host_perm_setup.sh",
+        "scripts/install_crons.sh",
+        "tools/predeploy_log_capture.sh",
+        "tools/agent-dashboard.html",
+        "docs/preview/pricing.html",
+        "agent-dashboard.html",
+        "preview/index.html",
+        "preview/pricing.html",
+        "well-known/assetlinks.json",
+        "well-known/apple-app-site-association",
+        "mira-mobile/store/play/screenshots/new.png",
+        ".github/scripts/resolve_release_tag.sh",
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        "tools/hooks/prod-guard.sh",
+        "tools/migration_drift.py",
+        "tools/migration-drift-requirements.txt",
+    ],
+)
+def test_legacy_surface_build_mount_and_alternate_entry_controls_fail_closed(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert path_is_guarded(path, policy), f"expected build/mount control {path} to be guarded"
+    result = evaluate(
+        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=policy
+    )
+    assert result.allowed is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/CHANGELOG.md",
+        "mira-hub/README.md",
+        "mira-hub/eslint.config.mjs",
+        "mira-hub/playwright.config.ts",
+        "mira-hub/vitest.config.ts",
+        "mira-hub/docs/new-ui-review.md",
+        "mira-hub/tests/e2e/new-ui.spec.ts",
+        "mira-hub/tools/capture-new-ui.ts",
+        "mira-mobile/README.md",
+        "mira-mobile/qa-e-live-citation.png",
+        "mira-mobile/android/.gitignore",
+        "mira-mobile/android/app/.gitignore",
+        "mira-mobile/android/app/src/test/java/com/factorylm/mira/ExampleUnitTest.java",
+        "mira-mobile/android/app/src/androidTest/java/com/factorylm/mira/ExampleInstrumentedTest.java",
+        "mira-mobile/android/app/src/testFixtures/java/com/factorylm/mira/TestFixture.java",
+        "mira-mobile/android/app/src/testDebug/java/com/factorylm/mira/DebugUnitTest.java",
+        "mira-mobile/android/app/src/androidTestRelease/java/com/factorylm/mira/ReleaseDeviceTest.java",
+        "mira-mobile/ios/App/CapApp-SPM/.gitignore",
+        "mira-mobile/ios/App/CapApp-SPM/README.md",
+        "mira-mobile/ios/App/AppTests/AppTests.swift",
+        "mira-mobile/ios/App/AppUITests/AppUITests.swift",
+        "mira-mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
+        "mira-mobile/ios/.gitignore",
+        "mira-web/scripts/verify-deployment.ts",
+        "mira-hub/db/migrations/086_notebook_turn_owner.sql",
+        "mira-hub/scripts/cmms-sync-worker.ts",
+        "mira-mobile/scripts/__tests__/ota-manifest-checksum.test.mjs",
+        "mira-mobile/tools/gen-android-assets.mjs",
+        "deployment/deploy.sh",
+        "deployment/well-known/README.md",
+    ],
+)
+def test_module_root_docs_test_configs_and_review_evidence_remain_unguarded(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert not path_is_guarded(path, policy), f"expected non-runtime artifact {path} to stay open"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/src/views/__tests__/runtime-imported.test.ts",
+        "mira-web/src/routes/runtime-imported.spec.ts",
+        "mira-hub/src/components/__tests__/RuntimeImported.test.tsx",
+        "mira-hub/src/app/runtime-imported.spec.tsx",
+        "mira-hub/src/lib/runtime-imported.test.ts",
+        "mira-mobile/src/screens/__tests__/RuntimeImported.test.tsx",
+        "mira-mobile/src/lib/runtime-imported.spec.ts",
+        "mira-mobile/src/runtime-imported.test.ts",
+    ],
+)
+def test_test_shaped_names_inside_legacy_source_cannot_escape_classification(path):
+    """Bundlers resolve imports by path, not by whether the name says test."""
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert path_is_guarded(path, policy), f"runtime-capable source path {path} must be guarded"
+    result = evaluate(
+        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=policy
+    )
+    assert result.allowed is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/tests/runtime-imported.test.ts",
+        "mira-hub/tests/runtime-imported.spec.ts",
+        "mira-mobile/tests/__tests__/runtime-imported.test.ts",
+        "mira-mobile/android/app/src/test/java/com/factorylm/mira/RuntimeImportedTest.java",
+        "mira-mobile/ios/App/AppTests/RuntimeImportedTests.swift",
+    ],
+)
+def test_only_explicit_out_of_source_or_native_test_roots_are_exempt(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert not path_is_guarded(path, policy), f"explicit non-production test root {path} stays open"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-mobile/android/.gitignore",
+        "mira-mobile/android/app/.gitignore",
+        "mira-mobile/ios/App/CapApp-SPM/.gitignore",
+        "mira-mobile/ios/App/CapApp-SPM/README.md",
+        "mira-mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
+        "mira-mobile/ios/.gitignore",
+    ],
+)
+def test_exact_native_nonruntime_exceptions_are_tracked_files(path):
+    assert (REPO_ROOT / path).is_file(), f"remove stale exact exception for {path}"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts",
         "mira-hub/src/app/(hub)/api/auth/magic-link/route.ts",
         "mira-hub/src/lib/notebook-chat-types.ts",
-        "mira-hub/src/lib/capabilities.ts",
         "mira-hub/src/lib/data-schema.ts",
         "mira-hub/src/lib/display-registration.ts",
         "mira-hub/src/lib/drive-pack-suggestion.ts",
         "mira-hub/src/lib/drive-packs/loader.ts",
         "mira-hub/src/lib/review-queue.ts",
         "mira-hub/src/lib/tenant-context.ts",
-        "mira-hub/src/auth.ts",
-        "mira-hub/src/middleware.ts",
         "mira-hub/src/capabilities/new-service.ts",
         "mira-hub/src/capabilities/schema.json",
         "mira-web/src/routes/inbox.ts",
@@ -1911,7 +2333,6 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "mira-web/src/lib/hub-provisioning-queue.ts",
         "mira-web/src/lib/hub-user-activation.ts",
         "mira-web/src/lib/magic-link.ts",
-        "mira-web/src/lib/mailer.ts",
         "mira-web/src/lib/mfa.ts",
         "mira-web/src/lib/posthog-server.ts",
         "mira-web/src/lib/qr-tracker.ts",
@@ -1924,12 +2345,10 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "mira-mobile/src/api/client.ts",
         "mira-mobile/src/api/schema.json",
         "mira-mobile/src/chat-adapter/contract.ts",
-        "mira-mobile/src/lib/live-update.ts",
         "mira-mobile/src/lib/native-pick.ts",
         "mira-mobile/src/lib/offline-queue.ts",
         "mira-mobile/src/lib/open-with.ts",
         "mira-mobile/src/lib/resume-guard.ts",
-        "mira-mobile/src/lib/sse.ts",
         "mira-mobile/src/lib/tags.ts",
         "mira-mobile/src/unified/to-interaction.ts",
         "mira-mobile/src/unified/unified.css",
@@ -1987,7 +2406,7 @@ def test_existing_production_lib_files_are_fully_partitioned():
         production_files = sorted(
             path.relative_to(REPO_ROOT).as_posix()
             for path in (REPO_ROOT / relative_root).rglob("*")
-            if path.is_file() and not _guard._is_test_path(path.relative_to(REPO_ROOT).as_posix())
+            if path.is_file()
         )
 
         assert production_files, f"expected production files below {relative_root}"
@@ -2121,6 +2540,26 @@ def _write_changes_jsonl(tmp_path: Path, records: list[str]) -> Path:
     return p
 
 
+def _write_git_tree(
+    tmp_path: Path,
+    name: str,
+    entries: list[dict[str, str]],
+    *,
+    truncated: bool = False,
+) -> Path:
+    path = tmp_path / f"{name}-tree.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sha": ("a" if name == "base" else "b") * 40,
+                "truncated": truncated,
+                "tree": entries,
+            }
+        )
+    )
+    return path
+
+
 def test_load_changed_files_with_matching_expected_count_passes(tmp_path):
     p = _write_changes_jsonl(
         tmp_path,
@@ -2131,6 +2570,90 @@ def test_load_changed_files_with_matching_expected_count_passes(tmp_path):
     )
     changes = load_changed_files(p, expected_count=2)
     assert len(changes) == 2
+
+
+def test_load_changed_files_attaches_immutable_github_tree_evidence(tmp_path):
+    changes_path = _write_changes_jsonl(
+        tmp_path,
+        ['{"filename": "mira-web/src/capabilities/view-data.ts", "status": "added"}'],
+    )
+    base_tree = _write_git_tree(tmp_path, "base", [])
+    head_tree = _write_git_tree(
+        tmp_path,
+        "head",
+        [
+            {
+                "path": "mira-web/src/capabilities/view-data.ts",
+                "mode": "120000",
+                "type": "blob",
+                "sha": "c" * 40,
+            }
+        ],
+    )
+
+    changes = load_changed_files(
+        changes_path,
+        expected_count=1,
+        base_tree_json_file=base_tree,
+        head_tree_json_file=head_tree,
+    )
+
+    assert changes == (
+        ChangedFile(
+            status="added",
+            path="mira-web/src/capabilities/view-data.ts",
+            old_mode=None,
+            old_type=None,
+            new_mode="120000",
+            new_type="blob",
+            tree_evidence_complete=True,
+        ),
+    )
+    result = evaluate(changes, labels=set(), pr_body="", policy=load_guard_policy(REAL_REGISTRY))
+    assert result.allowed is False
+
+
+def test_load_changed_files_rejects_truncated_github_tree_evidence(tmp_path):
+    changes_path = _write_changes_jsonl(
+        tmp_path,
+        ['{"filename": "mira-web/src/capabilities/data.ts", "status": "added"}'],
+    )
+    base_tree = _write_git_tree(tmp_path, "base", [], truncated=True)
+    head_tree = _write_git_tree(
+        tmp_path,
+        "head",
+        [
+            {
+                "path": "mira-web/src/capabilities/data.ts",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "c" * 40,
+            }
+        ],
+    )
+
+    with pytest.raises(GuardPolicyError, match="truncated"):
+        load_changed_files(
+            changes_path,
+            expected_count=1,
+            base_tree_json_file=base_tree,
+            head_tree_json_file=head_tree,
+        )
+
+
+def test_load_changed_files_requires_both_tree_snapshots_or_neither(tmp_path):
+    changes_path = _write_changes_jsonl(
+        tmp_path,
+        ['{"filename": "mira-web/src/capabilities/data.ts", "status": "added"}'],
+    )
+    base_tree = _write_git_tree(tmp_path, "base", [])
+
+    with pytest.raises(GuardPolicyError, match="base and head tree"):
+        load_changed_files(
+            changes_path,
+            expected_count=1,
+            base_tree_json_file=base_tree,
+        )
 
 
 def test_load_changed_files_with_low_expected_count_mismatch_raises(tmp_path):
@@ -2199,7 +2722,7 @@ def test_cli_requires_expected_change_count_file_with_changes_json_file(tmp_path
     assert exit_code == 2
 
 
-def test_cli_accepts_changes_json_file_with_expected_change_count_file(tmp_path):
+def test_cli_requires_immutable_base_and_head_trees_with_changes_json_file(tmp_path):
     changes = _write_changes_jsonl(tmp_path, ['{"filename": "a.ts", "status": "added"}'])
     count_file = tmp_path / "count.txt"
     count_file.write_text("1")
@@ -2209,6 +2732,31 @@ def test_cli_accepts_changes_json_file_with_expected_change_count_file(tmp_path)
             str(changes),
             "--expected-change-count-file",
             str(count_file),
+        ]
+    )
+    assert exit_code == 2
+
+
+def test_cli_accepts_changes_json_file_with_count_and_immutable_trees(tmp_path):
+    changes = _write_changes_jsonl(tmp_path, ['{"filename": "a.ts", "status": "added"}'])
+    count_file = tmp_path / "count.txt"
+    count_file.write_text("1")
+    base_tree = _write_git_tree(tmp_path, "base", [])
+    head_tree = _write_git_tree(
+        tmp_path,
+        "head",
+        [{"path": "a.ts", "mode": "100644", "type": "blob", "sha": "c" * 40}],
+    )
+    exit_code = main(
+        [
+            "--changes-json-file",
+            str(changes),
+            "--expected-change-count-file",
+            str(count_file),
+            "--base-tree-json-file",
+            str(base_tree),
+            "--head-tree-json-file",
+            str(head_tree),
         ]
     )
     assert exit_code == 0
@@ -2384,6 +2932,45 @@ def test_workflow_guard_job_fetches_metadata_before_checkout_and_dependency_inst
     install_idx = next(i for i, s in enumerate(steps) if "pip install" in s.get("run", ""))
     assert metadata_idx < checkout_idx, "metadata must be fetched before checking out base code"
     assert metadata_idx < install_idx, "metadata must be fetched before installing dependencies"
+
+
+def test_workflow_fetches_immutable_tree_evidence_without_changing_pull_files_contract():
+    doc = _workflow_doc()
+    steps = doc["jobs"]["guard"]["steps"]
+    metadata_step = next(
+        step
+        for step in steps
+        if "gh api" in step.get("run", "") and "pulls/$PR_NUMBER" in step.get("run", "")
+    )
+    metadata_run = metadata_step["run"]
+
+    assert (
+        'gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"'
+        in metadata_run
+    )
+    assert "--jq '.[] | {filename, status, previous_filename}'" in metadata_run
+    assert "compare/$BASE_SHA...$HEAD_SHA" in metadata_run
+    assert "merge_base_commit.sha" in metadata_run
+    assert "git/trees/$MERGE_BASE_SHA?recursive=1" in metadata_run
+    assert "git/trees/$HEAD_SHA?recursive=1" in metadata_run
+    assert 'jq -r \'.base.sha\' "$RUNNER_TEMP/current-pull.json"' in metadata_run
+    assert 'jq -r \'.head.sha\' "$RUNNER_TEMP/current-pull.json"' in metadata_run
+
+    eval_step = next(
+        step
+        for step in steps
+        if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
+    )
+    assert '--base-tree-json-file "$RUNNER_TEMP/base-tree.json"' in eval_step["run"]
+    assert '--head-tree-json-file "$RUNNER_TEMP/head-tree.json"' in eval_step["run"]
+
+
+def test_workflow_isolates_dependency_installer_from_repository_python_hooks():
+    doc = _workflow_doc()
+    steps = doc["jobs"]["guard"]["steps"]
+    install_step = next(step for step in steps if "pip install" in step.get("run", ""))
+
+    assert "python3 -I -m pip install" in install_step["run"]
 
 
 def test_workflow_evaluates_before_tests_and_isolates_python_from_repo_hooks():
@@ -2642,3 +3229,963 @@ def test_pr_template_exception_section_passes_once_filled_with_substantive_text(
         exception_approval_valid=True,
     )
     assert result.allowed is True
+
+
+def test_mobile_release_tests_are_isolated_from_production_signing_workspace():
+    """PR-controlled tests must never share a workspace with release secrets."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "mobile-release-distribute.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    verify_job = jobs["verify-mobile"]
+    build_job = jobs["build-unsigned-native"]
+    sign_job = jobs["sign-native"]
+    verify_text = json.dumps(verify_job)
+    build_text = json.dumps(build_job)
+    sign_text = json.dumps(sign_job)
+
+    assert "environment" not in verify_job
+    assert "${{ secrets." not in verify_text
+    assert "bun run test" in verify_text
+    assert "environment" not in build_job
+    assert "${{ secrets." not in build_text
+    assert build_job["needs"] == "verify-mobile"
+    assert "bun run test" not in build_text
+    assert sign_job["environment"] == "production"
+    assert sign_job["needs"] == "build-unsigned-native"
+    assert "bun run test" not in sign_text
+    assert "bun install" not in sign_text
+    assert "gradlew" not in sign_text
+
+    checkout = next(
+        step
+        for step in build_job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout@")
+        for step in sign_job["steps"]
+    )
+
+
+def test_ota_build_is_isolated_from_production_signing_workspace():
+    """Build, signing, and publication must use separate secret boundaries."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    build_job = jobs["build-ota"]
+    sign_job = jobs["sign-ota"]
+    publish_job = jobs["publish-canary"]
+    build_text = json.dumps(build_job)
+    sign_text = json.dumps(sign_job)
+    publish_text = json.dumps(publish_job)
+
+    assert "environment" not in build_job
+    assert "${{ secrets." not in build_text
+    assert "bun run build" in build_text
+    assert sign_job["environment"] == "ota-signing"
+    assert sign_job["needs"] == "build-ota"
+    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", sign_text)) == {
+        "OTA_SIGNING_DOPPLER_TOKEN"
+    }
+    assert "bun run build" not in sign_text
+    assert "bun install" not in sign_text
+    assert "actions/download-artifact@" in sign_text
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout@")
+        for step in sign_job["steps"]
+    )
+    assert "node scripts/" not in sign_text
+    assert "dopplerhq/cli-action@" not in sign_text
+    assert "doppler_3.76.5_linux_amd64.tar.gz" in sign_text
+    assert (
+        "1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154"
+        in sign_text
+    )
+    assert "sha256sum -c" in sign_text
+    assert "cli.doppler.com/install.sh" not in sign_text
+    assert "doppler run" not in sign_text
+    verify_builder = next(
+        step for step in sign_job["steps"] if step.get("name") == "Verify exact builder artifact"
+    )
+    assert verify_builder["env"]["EXPECTED_RELEASE_SHA"] == "${{ github.sha }}"
+
+    digest_index = next(
+        index
+        for index, step in enumerate(sign_job["steps"])
+        if step.get("name") == "Verify exact builder artifact"
+    )
+    secret_index = next(
+        index
+        for index, step in enumerate(sign_job["steps"])
+        if "OTA_SIGNING_DOPPLER_TOKEN" in json.dumps(step)
+    )
+    assert digest_index < secret_index
+    assert "bundle_sha256" in build_job["outputs"]
+    assert "sha256sum -c" in sign_job["steps"][digest_index]["run"]
+
+    assert publish_job["environment"] == "ota-canary"
+    assert publish_job["needs"] == "sign-ota"
+    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", publish_text)) == {
+        "OTA_CANARY_SSH_KEY"
+    }
+    assert "bun run build" not in publish_text
+    assert "bun install" not in publish_text
+    assert "actions/download-artifact@" in publish_text
+    assert "OTA_SIGNING_PRIVATE_KEY" not in publish_text
+    assert "doppler" not in publish_text.lower()
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout@")
+        for step in publish_job["steps"]
+    )
+    assert "node scripts/" not in publish_text
+
+
+def test_ota_secret_jobs_do_not_execute_release_head_repository_code():
+    """Signing and VPS credentials may meet only static workflow logic and data."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+
+    for job_name in (
+        "sign-ota",
+        "sign-pointer",
+        "publish-canary",
+        "stage-canary",
+        "promote-production",
+    ):
+        job = jobs[job_name]
+        text = json.dumps(job)
+        assert not any(
+            step.get("uses", "").startswith("actions/checkout@")
+            for step in job["steps"]
+        ), f"{job_name} must not check out release-head code"
+        assert "node scripts/" not in text
+        assert "mira-mobile/scripts/" not in text
+
+
+def test_ota_secret_jobs_have_one_non_root_channel_capability_each():
+    """A routine release credential must not cross a signing/channel boundary."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    expected = {
+        "sign-ota": ("ota-signing", {"OTA_SIGNING_DOPPLER_TOKEN"}),
+        "sign-pointer": ("ota-signing", {"OTA_SIGNING_DOPPLER_TOKEN"}),
+        "publish-canary": ("ota-canary", {"OTA_CANARY_SSH_KEY"}),
+        "stage-canary": ("ota-canary", {"OTA_CANARY_SSH_KEY"}),
+        "promote-production": ("ota-production", {"OTA_PRODUCTION_SSH_KEY"}),
+    }
+
+    for job_name, (environment, secrets) in expected.items():
+        job = jobs[job_name]
+        text = json.dumps(job)
+        assert job["environment"] == environment
+        assert set(re.findall(r"secrets\.([A-Z0-9_]+)", text)) == secrets
+        assert "User root" not in text
+        assert " root@" not in text
+
+    workflow_text = json.dumps(workflow)
+    assert "VPS_SSH_KEY" not in workflow_text
+    assert "secrets.DOPPLER_TOKEN" not in workflow_text
+    assert "inputs.mode == 'provision'" not in workflow_text
+    assert "--config ota_signing" in json.dumps(jobs["sign-ota"])
+    assert "--config ota_signing" in json.dumps(jobs["sign-pointer"])
+
+
+def test_ota_handoffs_and_remote_pointer_flips_are_digest_bound():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+
+    assert "signed_payload_sha256" in jobs["sign-ota"]["outputs"]
+    assert "pointer_payload_sha256" in jobs["sign-pointer"]["outputs"]
+    for job_name in ("publish-canary", "stage-canary", "promote-production"):
+        text = json.dumps(jobs[job_name])
+        assert "sha256sum -c" in text
+        assert "mv -f" in text
+        assert "flock" in text
+
+    publish_text = json.dumps(jobs["publish-canary"])
+    stage_text = json.dumps(jobs["stage-canary"])
+    promote_text = json.dumps(jobs["promote-production"])
+    assert ".ota-pointer.lock" in publish_text
+    assert ".ota-pointer.lock" in stage_text
+    assert ".ota-pointer.lock" in promote_text
+    assert "canary manifest changed under production lock" in promote_text
+    assert "manifest.production.json" in promote_text
+
+
+def test_ota_remote_pointer_flips_authenticate_monotonic_state_and_use_cas():
+    """Every public pointer update must bind preflight state to the locked flip."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+
+    for job_name in ("publish-canary", "stage-canary", "promote-production"):
+        text = json.dumps(jobs[job_name])
+        assert "LIVE_POINTER_HTTP_STATUS" in text
+        assert "EXPECTED_LIVE_POINTER_SHA256" in text
+        assert "invalid authenticated live pointer" in text
+        assert "pointer transition is not monotonic" in text
+        assert "live manifest changed after authenticated preflight" in text
+        assert "expected_live=" in text
+
+    promote_text = json.dumps(jobs["promote-production"])
+    assert "manifest.production.preflight.json" in promote_text
+    assert "manifest.canary.live.json" in promote_text
+
+
+def test_ota_release_rejects_stale_main_reruns_at_each_release_boundary():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+
+    for job_name in ("build-ota", "prepare-pointer", "verify-handset-evidence"):
+        text = "\n".join(step.get("run", "") for step in jobs[job_name]["steps"])
+        assert "refs/remotes/origin/main" in text
+        assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in text
+
+    for job_name in (
+        "sign-ota",
+        "publish-canary",
+        "sign-pointer",
+        "stage-canary",
+        "promote-production",
+    ):
+        text = "\n".join(step.get("run", "") for step in jobs[job_name]["steps"])
+        assert "git/ref/heads/main" in text
+        assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in text
+
+
+def test_ota_build_rechecks_native_inputs_and_fingerprints_immutable_head():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    build = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]["build-ota"]
+    build_text = json.dumps(build)
+
+    assert build_text.count("node scripts/ota-guard.mjs") >= 2
+    assert "git diff HEAD --quiet" in build_text
+    assert "git ls-files --others --exclude-standard" in build_text
+    assert "nativeFingerprintAtRef" in build_text
+
+
+def test_ota_pointer_source_and_signer_are_bound_to_reviewed_exact_outputs():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+    prepare_text = "\n".join(
+        step.get("run", "") for step in jobs["prepare-pointer"]["steps"]
+    )
+    signer = jobs["sign-pointer"]
+
+    assert "git merge-base --is-ancestor \"$RELEASE_SHA\" \"$GITHUB_SHA\"" in prepare_text
+    assert "metadata.bundleId" in prepare_text
+    assert "`${version}-${sha.slice(0, 8)}`" in prepare_text
+
+    expected_bindings = {
+        "EXPECTED_ARTIFACT_SHA256": "${{ needs.prepare-pointer.outputs.artifact_sha256 }}",
+        "EXPECTED_BUNDLE_ID": "${{ needs.prepare-pointer.outputs.bundle_id }}",
+        "EXPECTED_NATIVE_FINGERPRINT": "${{ needs.prepare-pointer.outputs.native_fingerprint }}",
+        "EXPECTED_RELEASE_SHA": "${{ needs.prepare-pointer.outputs.release_sha }}",
+        "EXPECTED_CANARY_MANIFEST_SHA256": "${{ needs.prepare-pointer.outputs.canary_manifest_sha256 }}",
+        "EXPECTED_POINTER_CHANGED_AT": "${{ needs.prepare-pointer.outputs.pointer_changed_at }}",
+    }
+    for step_name in (
+        "Verify exact pointer input",
+        "Fetch isolated key, drop token, and sign pointer",
+    ):
+        step = next(step for step in signer["steps"] if step.get("name") == step_name)
+        for name, expression in expected_bindings.items():
+            assert step["env"][name] == expression
+        step_text = json.dumps(step)
+        for name in expected_bindings:
+            assert name in step_text
+        assert "expectedHandoff" in step_text
+        assert "metadata mismatch" in step_text
+
+
+def test_ota_artifacts_survive_human_environment_review_window():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+
+    uploads = [
+        step
+        for job in jobs.values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+    ]
+    assert uploads
+    assert all(step["with"]["retention-days"] >= 7 for step in uploads)
+
+
+def test_ota_production_promotion_requires_protected_human_and_handset_evidence():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]
+    jobs = workflow["jobs"]
+
+    assert "evidence_commit_sha" in dispatch
+    authorize = jobs["verify-handset-evidence"]
+    authorize_text = json.dumps(authorize)
+    assert "docs/release/evidence/ota/" in authorize_text
+    assert "git merge-base --is-ancestor" in authorize_text
+    assert "/environments/ota-production" in authorize_text
+    assert "required_reviewers" in authorize_text
+    assert "prevent_self_review" in authorize_text
+    assert "can_admins_bypass" in authorize_text
+    assert "protected_branches" in authorize_text
+    for field in (
+        "artifactSha256",
+        "bundleId",
+        "nativeFingerprint",
+        "releaseSha",
+        "canaryManifestSha256",
+        "com.android.vending",
+        "playSigningCertSha256",
+        "updateReady",
+        "restartCompleted",
+        "aboutBundleIdVerified",
+    ):
+        assert field in authorize_text
+
+    assert jobs["sign-pointer"]["environment"] == "ota-signing"
+    assert set(jobs["sign-pointer"]["needs"]) == {
+        "prepare-pointer",
+        "verify-handset-evidence",
+    }
+    promote = jobs["promote-production"]
+    assert promote["environment"] == "ota-production"
+    assert set(promote["needs"]) == {"sign-pointer", "verify-handset-evidence"}
+
+
+def test_ota_artifact_id_downloads_extract_into_the_requested_directory():
+    """ID-based downloads must not introduce an unexpected artifact-name directory."""
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    downloads = [
+        (job_name, step)
+        for job_name, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith("actions/download-artifact@")
+        and "artifact-ids" in step.get("with", {})
+    ]
+
+    assert {job_name for job_name, _step in downloads} == {
+        "sign-ota",
+        "publish-canary",
+        "sign-pointer",
+        "stage-canary",
+        "promote-production",
+    }
+    for job_name, step in downloads:
+        assert step["with"].get("merge-multiple") is True, (
+            f"ota-release.yml:{job_name}:{step.get('name', '<unnamed>')} must "
+            "extract the selected artifact directly into its declared path"
+        )
+
+
+@pytest.mark.parametrize(
+    "workflow_name",
+    ["mobile-release-distribute.yml", "ota-release.yml"],
+)
+def test_mobile_release_shells_never_interpolate_dispatch_inputs(workflow_name):
+    workflow_path = REPO_ROOT / ".github" / "workflows" / workflow_name
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    for job_name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            assert "${{ inputs." not in step.get("run", ""), (
+                f"{workflow_name}:{job_name}:{step.get('name', '<unnamed>')} must pass dispatch "
+                "input through env instead of parsing it as shell source"
+            )
+
+
+@pytest.mark.parametrize(
+    ("workflow_name", "job_names"),
+    [
+        (
+            "mobile-release-distribute.yml",
+            (
+                "build-unsigned-native",
+                "sign-native",
+                "firebase-distribute",
+                "publish-download",
+                "report",
+            ),
+        ),
+        (
+            "ota-release.yml",
+            ("publish-canary", "stage-canary", "promote-production"),
+        ),
+    ],
+)
+def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_names):
+    workflow_path = REPO_ROOT / ".github" / "workflows" / workflow_name
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    for job_name in job_names:
+        condition = str(workflow["jobs"][job_name].get("if", ""))
+        assert "github.ref == 'refs/heads/main'" in condition
+
+
+@pytest.mark.parametrize(
+    "workflow_name",
+    [
+        "deploy-nginx-staging-passthrough.yml",
+        "deploy-nginx-stg.yml",
+        "deploy-staging.yml",
+        "deploy-vps.yml",
+        "mobile-release-distribute.yml",
+        "nginx-sites-enabled-hygiene.yml",
+        "ota-release.yml",
+        "printsense-production-activation.yml",
+        "printsense-staging-e2e.yml",
+        "vps-cleanup.yml",
+        "vps-install-amux.yml",
+    ],
+)
+def test_production_release_actions_are_pinned_to_full_commit_shas(workflow_name):
+    workflow_path = REPO_ROOT / ".github" / "workflows" / workflow_name
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    for job_name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            action = step.get("uses")
+            if action is None:
+                continue
+            assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), (
+                f"{workflow_name}:{job_name}:{step.get('name', '<unnamed>')} "
+                f"must pin {action!r} to a full commit SHA"
+            )
+
+
+def test_mobile_release_tool_versions_are_immutable():
+    for workflow_name in ("mobile-release-distribute.yml", "ota-release.yml"):
+        text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(
+            encoding="utf-8"
+        )
+        assert "bun-version: latest" not in text
+    mobile_release = (
+        REPO_ROOT / ".github" / "workflows" / "mobile-release-distribute.yml"
+    ).read_text(encoding="utf-8")
+    assert "https://firebase.tools/bin/linux/v15.29.0" in mobile_release
+    assert (
+        "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded"
+        in mobile_release
+    )
+    assert "sha256sum -c" in mobile_release
+    assert "npx --yes firebase-tools" not in mobile_release
+
+
+def test_production_deploy_manual_path_is_main_only_and_services_are_data():
+    path = REPO_ROOT / ".github" / "workflows" / "deploy-vps.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    deploy = workflow["jobs"]["deploy"]
+    condition = str(deploy.get("if", ""))
+    assert "github.ref == 'refs/heads/main'" in condition
+
+    deploy_step = next(step for step in deploy["steps"] if step.get("name") == "Deploy")
+    run = deploy_step["run"]
+    assert "SERVICES='$SERVICES'" not in run
+    assert "SERVICES_B64" in run
+    assert "ALLOWED_SERVICES" in run
+
+
+# ---------------------------------------------------------------------------
+# Native mobile release isolation. Release secrets live only on fresh runners
+# that consume immutable artifacts; repository build code never shares those
+# runners or credentials.
+# ---------------------------------------------------------------------------
+
+
+def _native_release_workflow() -> dict:
+    path = REPO_ROOT / ".github" / "workflows" / "mobile-release-distribute.yml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _native_job_commands(job: dict) -> str:
+    return "\n".join(step.get("run", "") for step in job.get("steps", []))
+
+
+def _native_job_secret_refs(job: dict) -> set[str]:
+    return set(
+        re.findall(
+            r"\$\{\{\s*secrets\.([A-Z0-9_]+)\s*}}",
+            json.dumps(job),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("workflow_name", "job_name"),
+    [
+        ("deploy-nginx-staging-passthrough.yml", "deploy-nginx"),
+        ("deploy-nginx-stg.yml", "deploy-nginx"),
+        ("nginx-sites-enabled-hygiene.yml", "hygiene"),
+        ("vps-cleanup.yml", "cleanup"),
+    ],
+)
+def test_main_controller_ssh_jobs_reject_stale_sources_before_credentials(
+    workflow_name, job_name
+):
+    path = REPO_ROOT / ".github" / "workflows" / workflow_name
+    job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job_name]
+    assert "github.ref == 'refs/heads/main'" in str(job.get("if", ""))
+
+    checkout = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+
+    source_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if step.get("name") == "Require the exact current main source"
+    )
+    commands = job["steps"][source_index]["run"]
+    assert "git fetch --no-tags origin main" in commands
+    assert 'CURRENT_MAIN="$(git rev-parse origin/main)"' in commands
+    assert 'CHECKED_OUT="$(git rev-parse HEAD)"' in commands
+    assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in commands
+    secret_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if _native_job_secret_refs({"step": step})
+    )
+    assert source_index < secret_index
+
+
+def test_native_unsigned_build_is_exact_sha_and_secret_free():
+    """A Bun/Capacitor/Gradle mutation must not reach a production credential."""
+    jobs = _native_release_workflow()["jobs"]
+    verify = jobs["verify-mobile"]
+    build = jobs["build-unsigned-native"]
+    build_text = json.dumps(build)
+
+    for job in (verify, build):
+        assert "environment" not in job
+        assert _native_job_secret_refs(job) == set()
+
+    assert build["needs"] == "verify-mobile"
+    assert "bun install --frozen-lockfile" in build_text
+    assert "bun run build" in build_text
+    assert "capacitor sync android" in build_text
+    assert "assembleRelease bundleRelease" in build_text
+    assert "app-release-unsigned.apk" in build_text
+    assert "app-release.aab" in build_text
+    assert "21.0.12+8.0" in build_text
+    assert "cmdline-tools-version\": \"12266719" in build_text
+    assert "build-tools;35.0.0" in build_text
+    assert "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172" in build_text
+    assert "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb" in build_text
+
+    checkout = next(
+        step
+        for step in build["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"] == {
+        "ref": "${{ github.sha }}",
+        "persist-credentials": False,
+    }
+
+    wrapper = (
+        REPO_ROOT
+        / "mira-mobile"
+        / "android"
+        / "gradle"
+        / "wrapper"
+        / "gradle-wrapper.properties"
+    ).read_text(encoding="utf-8")
+    expected_distribution_hash = (
+        "distributionSha256Sum="
+        "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb"
+    )
+    assert wrapper.splitlines().count(expected_distribution_hash) == 1
+    wrapper_step = next(
+        step
+        for step in build["steps"]
+        if step.get("name") == "Verify the pinned Gradle wrapper"
+    )
+    assert "distributionSha256Sum=" in wrapper_step["run"]
+    assert ">>" not in wrapper_step["run"]
+
+
+def test_native_secret_jobs_never_execute_repository_build_code():
+    """Signing, Firebase, and SSH credentials must never coexist with repo builds."""
+    jobs = _native_release_workflow()["jobs"]
+    expected_secrets = {
+        "sign-native": {"DOPPLER_TOKEN"},
+        "firebase-distribute": {"DOPPLER_TOKEN"},
+        "publish-download": {"VPS_SSH_KEY"},
+    }
+
+    for job_name, secret_names in expected_secrets.items():
+        job = jobs[job_name]
+        commands = _native_job_commands(job)
+        assert job["environment"] == "production"
+        assert _native_job_secret_refs(job) == secret_names
+        assert not re.search(r"(^|\s)(bun|npm|npx|node)(\s|$)", commands)
+        assert "gradlew" not in commands
+        assert "capacitor" not in commands.lower()
+        assert "vite" not in commands.lower()
+
+
+def test_native_release_rejects_stale_main_before_each_credential():
+    jobs = _native_release_workflow()["jobs"]
+    credential_steps = {
+        "sign-native": "Sign and verify native artifacts",
+        "firebase-distribute": "Distribute signed APK to Firebase testers",
+        "publish-download": "Publish direct-install download",
+    }
+
+    for job_name, credential_name in credential_steps.items():
+        steps = jobs[job_name]["steps"]
+        gate_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Require the exact current main source"
+        )
+        credential_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == credential_name
+        )
+        gate = steps[gate_index]
+
+        assert gate_index + 1 == credential_index
+        assert gate["env"] == {"GH_TOKEN": "${{ github.token }}"}
+        assert 'repos/$GITHUB_REPOSITORY/git/ref/heads/main' in gate["run"]
+        assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in gate["run"]
+        assert _native_job_secret_refs({"step": gate}) == set()
+
+
+def test_native_signing_runner_consumes_only_unsigned_artifacts_and_pins_cert():
+    """A release must be signed by the documented upload certificate, not any CN."""
+    job = _native_release_workflow()["jobs"]["sign-native"]
+    job_text = json.dumps(job)
+    commands = _native_job_commands(job)
+
+    assert job["needs"] == "build-unsigned-native"
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout@")
+        for step in job["steps"]
+    )
+    assert "actions/download-artifact@" in job_text
+    assert "native-unsigned-${{ github.sha }}" in job_text
+    assert "actions/setup-java@" in job_text
+    assert "android-actions/setup-android@" in job_text
+    for tool in ("zipalign", "apksigner", "jarsigner", "keytool"):
+        assert tool in commands
+    assert (
+        "2395b96050c510a5c787465b83256f381b1ff5e4833d2fa88db73579293f92a9"
+        in commands.lower()
+    )
+    assert "rm -rf \"$SIGNING_DIR\"" in commands
+
+
+def test_firebase_distribution_uses_verified_standalone_binary():
+    """A mutable npm/npx Firebase install must not execute beside its credential."""
+    job = _native_release_workflow()["jobs"]["firebase-distribute"]
+    job_text = json.dumps(job)
+    commands = _native_job_commands(job)
+
+    assert job["needs"] == "sign-native"
+    assert not any(
+        step.get("uses", "").startswith("actions/checkout@")
+        for step in job["steps"]
+    )
+    assert "app-release-apk-${{ github.sha }}" in job_text
+    assert "https://firebase.tools/bin/linux/v15.29.0" in commands
+    assert (
+        "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded"
+        in commands
+    )
+    assert "sha256sum -c" in commands
+    assert not re.search(r"(^|\s)(npm|npx)(\s|$)", commands)
+
+    validation_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if step.get("name") == "Validate distribution inputs"
+    )
+    secret_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if _native_job_secret_refs({"step": step})
+    )
+    assert validation_index < secret_index
+
+
+def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
+    """Production publication must not trust a live ssh-keyscan or disable checking."""
+    job = _native_release_workflow()["jobs"]["publish-download"]
+    job_text = json.dumps(job)
+    commands = _native_job_commands(job)
+
+    assert job["needs"] == "sign-native"
+    assert "app-release-apk-${{ github.sha }}" in job_text
+    checkout = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+    assert "deployment/ota-download/index.html" in json.dumps(checkout["with"])
+    assert "mira-mobile/android/app/build.gradle" in json.dumps(checkout["with"])
+    assert "deployment/known_hosts.factorylm-prod" in json.dumps(checkout["with"])
+    assert "deployment/known_hosts.factorylm-prod" in commands
+    assert "UserKnownHostsFile=" in commands
+    assert "StrictHostKeyChecking=yes" in commands
+    assert "ssh-keyscan" not in commands
+    assert "StrictHostKeyChecking=no" not in commands
+
+    payload_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if step.get("name") == "Prepare and validate release payload"
+    )
+    secret_index = next(
+        index
+        for index, step in enumerate(job["steps"])
+        if _native_job_secret_refs({"step": step})
+    )
+    assert payload_index < secret_index
+
+
+def test_direct_download_is_content_addressed_and_updates_pointers_atomically():
+    job = _native_release_workflow()["jobs"]["publish-download"]
+    prepare = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Prepare and validate release payload"
+    )["run"]
+    publish = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Publish direct-install download"
+    )["run"]
+
+    assert (
+        'FILE="factorylm-${VERSION_NAME}-vc${VERSION_CODE}-${APK_SHA256}.apk"'
+        in prepare
+    )
+    assert "flock" in publish
+    assert "install_immutable" in publish
+    assert 'mv -f "$incoming/latest.apk" "$root/latest.apk"' in publish
+    assert 'mv -f "$incoming/latest.json" "$root/latest.json"' in publish
+    assert publish.index('mv -f "$incoming/latest.apk" "$root/latest.apk"') < publish.index(
+        'mv -f "$incoming/latest.json" "$root/latest.json"'
+    )
+    assert '"$TARGET:/srv/factorylm/ota/app/$RELEASE_FILE"' not in publish
+
+
+def test_prod_migration_drift_isolated_from_vps_credentials_and_dependency_hooks():
+    """The DB gate gets only the DB URL; deploy SSH secrets stay in a fresh job."""
+    path = REPO_ROOT / ".github" / "workflows" / "deploy-vps.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    drift = jobs["migration-drift"]
+    deploy = jobs["deploy"]
+    drift_text = json.dumps(drift)
+    deploy_text = json.dumps(deploy)
+
+    assert drift["environment"] == "production"
+    assert deploy["needs"] == ["authorize-source", "migration-drift"]
+    assert "VPS_SSH_KEY" not in drift_text
+    assert "ssh " not in drift_text
+    assert "scp " not in drift_text
+    assert "migration_drift.py" not in deploy_text
+    assert "psycopg2" not in deploy_text
+
+    dependency_step = next(
+        step for step in drift["steps"] if "--require-hashes" in step.get("run", "")
+    )
+    assert "--only-binary=:all:" in dependency_step["run"]
+    assert "tools/migration-drift-requirements.txt" in dependency_step["run"]
+
+    fetch_step = next(
+        step for step in drift["steps"] if "DOPPLER_TOKEN" in step.get("env", {})
+    )
+    assert set(fetch_step["env"]) == {"DOPPLER_TOKEN"}
+    assert "migration_drift.py" not in fetch_step["run"]
+    assert "prod-db-url" in fetch_step["run"]
+
+    verify_step = next(
+        step for step in drift["steps"] if "migration_drift.py" in step.get("run", "")
+    )
+    assert "DOPPLER_TOKEN" not in json.dumps(verify_step)
+    assert "env -i" in verify_step["run"]
+    assert "python3 -I tools/migration_drift.py" in verify_step["run"]
+
+
+def test_prod_source_authorization_precedes_all_environment_credentials():
+    """No production environment job may start before source and gate authorization."""
+    path = REPO_ROOT / ".github" / "workflows" / "deploy-vps.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    authorize = jobs["authorize-source"]
+    authorize_text = json.dumps(authorize)
+    authorize_commands = _native_job_commands(authorize)
+
+    assert "environment" not in authorize
+    assert "DOPPLER_TOKEN" not in authorize_text
+    assert "VPS_SSH_KEY" not in authorize_text
+    assert "github.event.workflow_run.event == 'push'" in authorize["if"]
+    assert "github.event.workflow_run.head_branch == 'main'" in authorize["if"]
+    assert "github.event.workflow_run.head_repository.full_name == github.repository" in authorize["if"]
+    assert "git fetch --no-tags origin main" in authorize_commands
+    assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in authorize_commands
+    assert "skip_staging_gate=true requires a non-empty skip_reason" in authorize_commands
+    assert "skip_drift_check=true requires a non-empty skip_reason" in authorize_commands
+    assert "/commits/$DEPLOY_SHA/pulls" in authorize_commands
+    assert '--workflow "Staging Gate"' in authorize_commands
+    assert "completed:success" in authorize_commands
+
+    assert jobs["migration-drift"]["needs"] == "authorize-source"
+    assert jobs["deploy"]["needs"] == ["authorize-source", "migration-drift"]
+
+
+def test_prod_deploy_jobs_reject_stale_or_non_push_main_sources_before_credentials():
+    """A rerun of an old/manual Smoke Test must not deploy stale repository code."""
+    path = REPO_ROOT / ".github" / "workflows" / "deploy-vps.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    for job_name in ("migration-drift", "deploy"):
+        job = workflow["jobs"][job_name]
+        condition = job["if"]
+        assert "github.event.workflow_run.event == 'push'" in condition
+        assert "github.event.workflow_run.head_branch == 'main'" in condition
+        assert "github.event.workflow_run.head_repository.full_name == github.repository" in condition
+
+        steps = job["steps"]
+        source_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Require the exact current main source"
+        )
+        source_step = steps[source_index]
+        source_commands = source_step["run"]
+        assert "git fetch --no-tags origin main" in source_commands
+        assert 'CURRENT_MAIN="$(git rev-parse origin/main)"' in source_commands
+        assert 'CHECKED_OUT="$(git rev-parse HEAD)"' in source_commands
+        assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in source_commands
+
+        first_secret_index = next(
+            (
+                index
+                for index, step in enumerate(steps)
+                if _native_job_secret_refs({"step": step})
+            ),
+            len(steps),
+        )
+        assert source_index < first_secret_index
+
+
+def test_prod_migration_driver_is_exactly_pinned_and_hash_locked():
+    path = REPO_ROOT / "tools" / "migration-drift-requirements.txt"
+    lines = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert lines == [
+        "psycopg2-binary==2.9.12 "
+        "--hash=sha256:9fe06d93e72f1c048e731a2e3e7854a5bfaa58fc736068df90b352cefe66f03f"
+    ]
+
+
+@pytest.mark.parametrize(
+    "workflow_name",
+    [
+        "deploy-nginx-staging-passthrough.yml",
+        "deploy-nginx-stg.yml",
+        "deploy-staging.yml",
+        "deploy-vps.yml",
+        "mobile-release-distribute.yml",
+        "nginx-sites-enabled-hygiene.yml",
+        "ota-release.yml",
+        "printsense-production-activation.yml",
+        "printsense-staging-e2e.yml",
+        "vps-cleanup.yml",
+    ],
+)
+def test_production_ssh_uses_committed_host_identity(workflow_name):
+    text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(
+        encoding="utf-8"
+    )
+    assert "ssh-keyscan" not in text
+    assert "StrictHostKeyChecking=no" not in text
+    assert "StrictHostKeyChecking no" not in text
+    assert "deployment/known_hosts.factorylm-prod" in text
+    assert "StrictHostKeyChecking=yes" in text
+
+
+def test_factorylm_prod_host_identity_is_committed_and_guarded():
+    host_key = (
+        REPO_ROOT / "deployment" / "known_hosts.factorylm-prod"
+    ).read_text(encoding="utf-8")
+    assert host_key == (
+        "165.245.138.91 ssh-ed25519 "
+        "AAAAC3NzaC1lZDI1NTE5AAAAIOx9AwtJJMamqcrrAyrea9+7Hmqo4o9IO3QZHI50EUqR\n"
+    )
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert path_is_guarded("deployment/known_hosts.factorylm-prod", policy)
+    assert path_is_guarded("tools/migration_drift.py", policy)
+    assert path_is_guarded("tools/migration-drift-requirements.txt", policy)
+
+
+def test_canonical_mobile_updates_focus_uses_visible_accent_token():
+    css = (
+        REPO_ROOT / "mira-mobile" / "src" / "unified" / "unified.css"
+    ).read_text(encoding="utf-8")
+    assert (
+        ".unified-updates button:focus-visible { outline: 3px solid "
+        "var(--fl-workspace-accent); outline-offset: 2px; }"
+    ) in css
+    assert (
+        ".unified-updates button:focus-visible { outline: 3px solid "
+        "var(--fl-workspace-accent-tint)"
+    ) not in css
+
+
+def test_ota_secret_jobs_embed_the_exact_committed_host_identity():
+    import base64
+
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    embedded = base64.b64decode(workflow["env"]["OTA_KNOWN_HOSTS_B64"])
+    committed = (REPO_ROOT / "deployment" / "known_hosts.factorylm-prod").read_bytes()
+    assert embedded == committed
+
+
+def test_ota_workflow_enforces_canary_first_promotion():
+    path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]
+    assert dispatch["channel"]["options"] == ["canary"]
+    assert "stage-canary" in dispatch["mode"]["options"]
+
+    build = workflow["jobs"]["build-ota"]
+    input_step = next(step for step in build["steps"] if step.get("name") == "Inputs")
+    assert '"$CHANNEL_INPUT" = "canary"' in input_step["run"]
+
+    sign_pointer = workflow["jobs"]["sign-pointer"]
+    sign_pointer_text = json.dumps(sign_pointer)
+    assert "inputs.mode == 'stage-canary'" in str(sign_pointer["if"])
+    assert "inputs.mode == 'promote'" in str(sign_pointer["if"])
+    assert "manifest.canary.json" in sign_pointer_text
+
+    stage = workflow["jobs"]["stage-canary"]
+    assert "inputs.mode == 'stage-canary'" in str(stage["if"])
+    assert stage["needs"] == "sign-pointer"
+
+    promote = workflow["jobs"]["promote-production"]
+    promote_text = json.dumps(promote)
+    assert "inputs.mode == 'promote'" in str(promote["if"])
+    assert set(promote["needs"]) == {"sign-pointer", "verify-handset-evidence"}
+    assert "manifest.canary.json" in promote_text
+    assert "canary manifest changed" in promote_text.lower()
+    assert "canary" in promote_text

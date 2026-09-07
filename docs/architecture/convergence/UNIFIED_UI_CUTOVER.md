@@ -61,9 +61,9 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every customer-routing or HTML route mount/renderer and visible-output helper, and every statically served public asset |
-| Hub | `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, and public asset; API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
-| Mobile | `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application mount, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
+| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every customer-routing or HTML route mount/renderer and visible-output helper, every statically served public asset, and the files that select/package that entry point |
+| Hub | production module-root build/mount controls; root auth/middleware selectors; `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, public asset, root landing/capability/OTA selector, and the files that build/mount that surface; ordinary API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
+| Mobile | production module-root build/mount controls; production files under `mira-mobile/android/**` and `mira-mobile/ios/**`; app/universal-link associations; OTA verify/select/publish/deploy/rollback/fingerprint controls; `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application/native/deep-link/OTA mount and packaging controls, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
 The parent modules remain `CANONICAL`/deployed in `MODULES.md`. Marking an
 entire module legacy would incorrectly deprecate its live API and capability
@@ -74,8 +74,21 @@ The broad registry roots are refined by **code-owned classifiers** in
 `CONTROL_PATTERNS` (§3.1). The exclusions are capability-shaped, not
 presentation-shaped:
 
-- Hub Next `route.ts` handlers below an explicit `api` segment, the exact
-  code-owned allowlists of audited existing root auth/middleware and
+- Direct production files at each legacy module root fail closed so a new
+  alternate entry point cannot bypass the `src/**` freeze. Markdown docs,
+  screenshot/review evidence, top-level docs/tests/tooling, and exact test/lint
+  configs stay open. Mobile native production trees and OTA selection controls
+  are guarded, while native tests/docs stay open; changes that mount or publish
+  the canonical shell use the audited cutover exception. A validator whose
+  verdict authorizes production promotion is a guarded trusted control;
+  Git-tracked handset receipts and their screenshots/transcripts stay open as
+  review inputs and do not authorize themselves.
+  Root-level deployable nginx configs, automatic Compose selectors, redirect
+  scripts, and mobile deep-link associations are guarded too. The backend-only
+  `deployment/deploy.sh` remains outside the UI freeze.
+
+- Ordinary Hub Next `route.ts` handlers below an explicit `api` segment and the
+  exact code-owned allowlists of audited
   `src/lib/**` auth/API/transport/domain modules, and TypeScript/JSON files
   under the explicit future `src/capabilities/**` root remain open capability
   seams. Every other suffix in that root and every unknown production source
@@ -85,9 +98,16 @@ presentation-shaped:
   redirects, identity presentation, or mock view data. Every non-allowlisted
   `src/lib/**` file is guarded by default, including framework-free view/data/
   title/card helpers and exact mixed presentation modules, including display,
-  readiness, health-score, and notebook-follow-up copy. New backend modules
-  belong under `src/capabilities/**`; `src/messages/**` is rendered product copy
-  and is guarded.
+  readiness, health-score, commissioning/status, and notebook-follow-up copy.
+  The mixed `capabilities.ts` is guarded while it owns the `chat_v2` legacy
+  rollout flag; future authorization-only work must first move under
+  `src/capabilities/**`.
+  Root auth and middleware are also guarded because they select the sign-in and
+  authenticated landing surfaces. The `/api/me` wrapper and mobile live-update
+  manifest route are guarded because they can independently reintroduce the
+  legacy chat capability or choose a fleet bundle. New backend modules belong
+  under `src/capabilities/**`;
+  `src/messages/**` is rendered product copy and is guarded.
 - Public-web JSON/API routes `inbox.ts`, `mfa.ts`, and `probe-state.ts`, the
   exact code-owned allowlist of audited existing backend libraries (including
   typed chat transport and QR generation), and TypeScript/JSON files in
@@ -96,23 +116,42 @@ presentation-shaped:
   the capability/seed roots, every other route, the mixed `server.ts` mount,
   every non-allowlisted `src/lib/**` file, page content, and unknown production
   siblings fail closed.
+  The mixed mailer stays guarded because it owns sender/subject/body copy and
+  chooses the templates; reusable delivery transport should move to
+  `src/capabilities/**` before changing independently.
   New backend modules belong under `src/capabilities/**`; an arbitrary filename
   under the mixed historical `src/lib/**` root is guarded by default.
-- Mobile TypeScript/JSON files under `src/api/**`, the pure
+- Mobile TypeScript/JSON files under `src/api/**` that contain transport/data
+  behavior only, the pure
   `src/chat-adapter/contract.ts` transport contract, the complete connected
   new-UI adapter under `src/unified/**`, the exact new-shell hosts
   `src/screens/UnifiedChat.tsx` and `src/screens/UnifiedRoot.tsx`, and an exact
   low-level operational allowlist remain open:
-  `live-update.ts`, `native-pick.ts`, `offline-queue.ts`, `open-with.ts`,
-  `resume-guard.ts`, `sse.ts`, and `tags.ts`. The chat-adapter runtime and
+  `native-pick.ts`, `offline-queue.ts`, `open-with.ts`, `resume-guard.ts`, and
+  `tags.ts`. The mixed `sse.ts` interpretation seam remains guarded because it
+  owns safety, truncation, citation, and visible fallback semantics.
+  `api/resources.ts` remains guarded until its identity
+  and capability decoder is separated from the general resource client.
+  `live-update.ts` is guarded because it selects and
+  stages the next customer bundle. The chat-adapter runtime and
   turn-to-part transforms are guarded because they own rendered answer,
   citation, safety, follow-up, and error parts. The historical `src/lib/**`
   bucket is not itself a capability boundary: its other files contain visible
   copy, render transforms, view models, route transitions, or legacy
-  interaction behavior and therefore fail closed. Unknown production siblings
+  interaction behavior and therefore fail closed. Human-facing API error copy
+  lives in a guarded presentation helper while structured errors and transport
+  remain in the open client. Unknown production siblings
   and non-TypeScript/JSON API files also fail closed. Extract new reusable
   capability logic into an API/adapter/shared-package seam instead of growing
-  those mixed legacy helpers.
+  a mixed file. Release tests run in a separate secret-free job and disposable
+  workspace from native signing/distribution, preventing test code from
+  mutating the artifact later built with production credentials.
+
+Root Compose selection is guarded by filename family, not an exact snapshot:
+new root `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, and
+`docker-compose*.yaml` files fail closed. Existing repository helpers executed
+with production credentials or on the production host before UI build/deploy
+are also guarded as transitive trusted inputs.
 
 Every file under `mira-web/public/**` or `mira-hub/public/**` is blanket
 guarded. Images, icons, fonts, PDFs, source maps, text, and manifests can all
@@ -130,7 +169,12 @@ canonical exclusions. New mobile adapter files should use `src/factorylm-ui/**`
 unless they extend the existing `src/unified/**` adapter. Mobile transport
 conversion continues to reuse `mira-mobile/src/chat-adapter/**`. Mounting an
 adapter in another existing guarded route is an audited exception; creating a
-sibling legacy route or component is not a bypass.
+sibling legacy route or component is not a bypass. In particular,
+`src/unified/UnifiedAboutUpdates.tsx` may render a canonical update experience
+from injected non-presentational OTA state/actions, while
+`src/screens/AboutUpdates.tsx` remains guarded legacy presentation. A canonical
+wrapper that imports and renders the classic screen does not reclassify that
+screen as new UI.
 
 ### 2.3 Preserved capability seams
 
@@ -146,8 +190,9 @@ These are adapter inputs, not rewrite targets:
   product UI.
 - The exact mobile chat transport adapter, API client, tag/deep-link grammar,
   native picker/camera bridge, signed live-update path, offline queue, OS file
-  handoff, resume guard, and SSE parser. QR/nameplate/replay interaction files
-  that also own legacy copy or screen transitions are guarded mixed seams;
+  handoff, and resume guard. The SSE interpreter is a guarded mixed seam because
+  it owns safety, truncation, citation, and visible fallback semantics.
+  QR/nameplate/replay interaction files that also own legacy copy or screen transitions are guarded mixed seams;
   canonical work reuses them unchanged or extracts capability-only logic into
   a bounded adapter/shared package.
 - `workspace_file_links` and canonical file bytes for many-to-many attachments.

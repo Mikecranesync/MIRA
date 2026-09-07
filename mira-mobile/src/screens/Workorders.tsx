@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { App as CapApp } from "@capacitor/app";
 import { ApiError } from "../api/client";
+import { apiErrorCopy } from "../lib/api-error-copy";
 import {
   listWorkOrders,
   getWorkOrder,
@@ -24,6 +25,7 @@ import {
   loadQueue,
   drainQueue,
   preferencesStore,
+  withWorkOrderQueueProducer,
   type QueuedCreate,
 } from "../lib/offline-queue";
 import { can } from "../nav";
@@ -119,7 +121,7 @@ function List({
       if (!r) return;
       const parts: string[] = [];
       if (r.sent > 0) parts.push(`${r.sent} synced`);
-      for (const rej of r.rejected) parts.push(`rejected: ${rej.error}`);
+      for (const rej of r.rejected) parts.push(`rejected: ${apiErrorCopy(rej.error)}`);
       if (r.stopped && r.remaining > 0) parts.push(`${r.remaining} still waiting (offline?)`);
       setSyncNote(parts.join(" · "));
       await refreshQueue();
@@ -418,19 +420,32 @@ function Create({
                 client_key: clientKey,
               };
               try {
-                const r = await createWorkOrder(input);
-                setReplayNote(r.replayed);
-                onDone();
-              } catch (e) {
-                // Transport failure ⇒ queue it (Phase 4). The retained
-                // client_key makes the later drain a safe replay even if the
-                // original request half-landed.
-                if (e instanceof ApiError && e.kind === "network") {
-                  await enqueueCreate(preferencesStore, me.tenantId, input);
-                  onDone();
-                  return;
+                const admitted = await withWorkOrderQueueProducer(async () => {
+                  try {
+                    const r = await createWorkOrder(input);
+                    setReplayNote(r.replayed);
+                    onDone();
+                  } catch (e) {
+                    // Transport failure ⇒ queue it (Phase 4). The retained
+                    // client_key makes the later drain a safe replay even if the
+                    // original request half-landed.
+                    if (e instanceof ApiError && e.kind === "network") {
+                      await enqueueCreate(preferencesStore, me.tenantId, input);
+                      onDone();
+                      return;
+                    }
+                    setError(e); // key is retained — pressing again is a SAFE replay
+                  }
+                });
+                if (!admitted) {
+                  setError(
+                    new ApiError(
+                      "client",
+                      409,
+                      "Secure sign-out is in progress. Wait for it to finish before creating a work order.",
+                    ),
+                  );
                 }
-                setError(e); // key is retained — pressing again is a SAFE replay
               } finally {
                 setBusy(false);
               }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { signIn } from "../api/resources";
+import { signInFailureCopy } from "../lib/resource-copy";
 
 export function Login({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
   const [email, setEmail] = useState("");
@@ -35,7 +36,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
                 const r = await signIn(email, password);
                 setBusy(false);
                 if (r.ok) await onSignedIn();
-                else setError(r.error ?? "sign-in failed");
+                else setError(signInFailureCopy(r.reason));
               }}
             >
               {busy ? "Signing in…" : "Sign in"}

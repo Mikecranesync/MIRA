@@ -26,16 +26,24 @@ Current delivery ledger:
   head is recorded in the PR body rather than self-referenced here. The branch
   guards every workflow file, fails closed on unknown historical Web/Hub
   library additions outside exact audited capability allowlists, unknown Hub/
-  mobile source siblings, non-TypeScript/JSON files inside explicit capability
-  roots, the mixed public `m.ts` routing journey, mobile chat render transforms,
+  mobile source siblings, alternate module-root entry/build controls, the Hub
+  root landing selector, production mobile native wrappers, deep-link
+  associations, deployable root nginx/redirect and automatic Compose controls,
+  and OTA selection/publish/deploy/rollback/fingerprint controls. It also guards
+  non-TypeScript/JSON files inside explicit capability roots, the mixed public
+  `m.ts` routing journey, mobile chat render transforms,
   and every production Hub component/provider helper. Pure chat transport,
   QR generation, exact auth/native seams, and typed backend capabilities remain
-  reusable. The workflow evaluates in isolated Python before running a focused
+  reusable. Mobile API transport/data now carries structured values while
+  legacy human copy lives behind the guarded presentation boundary. The
+  workflow evaluates in isolated Python before running a focused
   hook-disabled self-test; all transitive pytest/import inputs are themselves
   control patterns. It also removes writer-controlled
   filenames from proof/reporter prompts, records the shipped mobile canary
   truth, and treats `src/unified/**` plus exact `UnifiedRoot`/`UnifiedChat`
-  hosts as canonical new UI. The status remains advisory until issue #3657
+  hosts as canonical new UI. Dependency installation and guard execution both
+  use isolated Python, while root/package pip shadows and Python site hooks are
+  guarded control-plane inputs. The status remains advisory until issue #3657
   supplies a source-authentic required-workflow or dedicated-App binding. Any
   final correction requires one fresh immutable-head review and CI; prior-head
   verdicts do not transfer.
@@ -52,26 +60,37 @@ Current delivery ledger:
   412x915 look-vs-plan review PASS for the unchanged Slice D delta, but this
   does not replace independent Codex exact-head review. Do not advance it until
   #3647 and then #3651 merge in order; rebase and review the resulting head.
+- [PR #3661](https://github.com/Mikecranesync/MIRA/pull/3661) remains Claude's
+  separate draft mobile-runtime lane. Its `1.1.8` canary was published from
+  source `5cd26f33a441229abe774b3265570dbdba5a9128` before an exact-head Codex
+  review and through a workflow that still used mutable action tags. Treat the
+  canary as quarantined release evidence, not as a governance-cleared or
+  production-promotable build. The public installed-client route also still
+  redirects to authentication, and no Play-signed physical handset has proven
+  Update ready -> Restart -> matching About `bundleId`. Keep implementation
+  ownership with the existing Claude session and use Codex only for independent
+  review and gate decisions.
 
 Separate mission `FLEET-PEER-NETWORK-001` is coordinated in
 [issue #3648](https://github.com/Mikecranesync/MIRA/issues/3648) and branch
 `docs/fleet-peer-network-001-prd`. It must not contaminate #3647 or any active
 FLM-UI slice. Draft [PR #3653](https://github.com/Mikecranesync/MIRA/pull/3653)
 is frozen remotely at `cbacc99da1885da24e2da8c2e78f86318a239d43` with green
-CI. Charlie's clean candidate through
-`c89648b9e766ccfecc5f3c8205cd1b5b930a52c7` remains the source of the five P1
-contract-gap/evidence-cleanup HOLD findings recorded on PR #3653. The verified
-39 KiB thin bundle containing those four local commits was accepted by the
-generation-2 implementer on physical Bravo in session
-`bravo-fleet-peernet-001a`; its recorded baseline is 172 passing tests.
+CI. Durable issue #3648 records the generation-2 candidate on physical Bravo at
+`cd61f4c26c3889cb99dd26fc287c276dd0de4b16`, with 183 tests passing and its
+bundle-only verification at 180 passed / 3 skipped. The remote ref must remain
+frozen until #3647 lands.
 Remediation continues there without moving the remote PR ref. Only the assigned
 Bravo writer may publish the completed candidate, followed by a fresh
 exact-head Codex review. Rebase only after #3647 and keep root pointers inside
 this separate PR.
 
-No governance hardening has changed production behavior, deployment,
-feature flag, database, provider, auth flow, or customer-data state. Next:
-commit #3647's final classifier/workflow-isolation correction, obtain
+No production deployment, promotion, feature-flag change, database mutation,
+provider change, or customer-data mutation was performed from #3647. Its local
+candidate does change runtime safety, auth/sign-out behavior, OTA verification,
+and release/deployment workflows, so those changes require the same exact-head
+review and exception gate as the lifecycle guard itself. Next: commit #3647's
+fully verified candidate, obtain
 independent immutable-head PASS plus green CI and the maintainer's fresh
 `legacy-ui-exception` attestation, then merge it. Rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;

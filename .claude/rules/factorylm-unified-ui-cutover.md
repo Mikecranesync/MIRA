@@ -29,7 +29,11 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
   `mira-mobile/src/unified/**` adapter root and exact hosts
   `mira-mobile/src/screens/UnifiedChat.tsx` and `UnifiedRoot.tsx` are canonical,
   unguarded new-UI paths. Keep new adapters under `src/factorylm-ui/**` unless
-  extending that existing adapter. Nearby classic screens remain frozen.
+  extending that existing adapter. `src/unified/UnifiedAboutUpdates.tsx` may own
+  the canonical update presentation and consume non-presentational OTA adapter
+  inputs. Nearby classic screens, including `src/screens/AboutUpdates.tsx`,
+  remain frozen; importing and rendering a classic screen from a canonical
+  wrapper does not make the classic presentation canonical.
 - Capability record: `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`
   → `unified_ui_shell`. Do not create a second capability registry.
 
@@ -37,9 +41,9 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 
 | Surface | Guarded paths |
 |---|---|
-| Public | page/content/render routes under `mira-web/src/**`, the mixed `server.ts` mount, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, and all `mira-web/public/**` |
-| Hub | `mira-hub/src/app/**`, every production file under `components/**` and `providers/**`, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
-| Mobile | `mira-mobile/index.html` plus production React/style/navigation and mixed visible-copy/view-model helpers under `mira-mobile/src/**` |
+| Public | production module-root and root-level nginx/deploy controls, page/content/render routes under `mira-web/src/**`, the mixed `server.ts` mount and mailer, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, and all `mira-web/public/**` |
+| Hub | production module-root build/mount controls, root auth/middleware selectors, the `/api/me` capability wrapper, the mobile live-update manifest selector, `mira-hub/src/app/**`, every production file under `components/**` and `providers/**`, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
+| Mobile | production module-root build/mount controls, production native Android/iOS wrappers, app/universal-link associations, OTA verify/select/publish/deploy/rollback/fingerprint controls, the mixed `api/resources.ts` capability decoder, `mira-mobile/index.html`, and production React/style/navigation and mixed visible-copy/view-model helpers under `mira-mobile/src/**` |
 
 These entries are machine-readable in `docs/architecture/convergence/REGISTRY.yaml`
 (`mira-web-legacy-ui`, `mira-hub-legacy-ui`, `mira-mobile-legacy-ui`) with
@@ -78,7 +82,18 @@ helpers that own visible copy, rendering, or legacy interaction transitions
 are guarded. Every file under
 `mira-web/public/**` and `mira-hub/public/**` is guarded: images, fonts, PDFs,
 manifests, and other non-executable assets still change the shipped legacy
-experience.
+experience. Direct production files at each legacy module root fail closed;
+docs, screenshot evidence, tests, and test-only configs/tooling stay open.
+Mobile native production trees and every OTA workflow control require the audited
+cutover exception; native tests and docs stay open. Root deployable nginx,
+automatic Compose, and redirect controls are guarded; backend-only deploy
+scripts remain open. Native release tests run in a separate secret-free job and
+workspace from the production signing/distribution job. Root Compose names are
+guarded as a filename family, and pre-build helpers executed with production
+credentials are trusted controls too. A production-promotion evidence validator
+is also a trusted control and must be guarded; Git-tracked handset receipts and
+their screenshots/transcripts remain open review inputs and never authorize
+themselves.
 
 ## The exception policy
 

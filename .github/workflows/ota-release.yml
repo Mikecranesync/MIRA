@@ -1,221 +1,1230 @@
-name: OTA release — provision host / publish bundle / promote
+name: OTA release — publish canary / promote proven handset build
 
-# The sanctioned path for docs/release/android/ota.md. Everything that touches the
-# prod nginx box or the release host goes through this workflow (production
-# environment + VPS_SSH_KEY), never a hand-run scp/rsync from a session
-# (tools/hooks/prod-guard.sh hard-denies those).
+# The routine release path is deliberately split into data-only trust domains:
 #
-#   mode=provision  one-time (idempotent): DNS precheck, nginx vhost, TLS via
-#                   certbot webroot, /srv/factorylm/ota, well-known sync.
-#                   Requires the A record updates.factorylm.com -> 165.245.138.91
-#                   to exist first (Namecheap dashboard — the API is not enabled).
-#   mode=publish    build + sign the web bundle (OTA_SIGNING_PRIVATE_KEY from
-#                   Doppler prd), refuse if the diff since apk_base_sha touched
-#                   anything native (scripts/ota-guard.mjs), upload artifacts then
-#                   the manifest for `channel`.
-#   mode=promote    repoint the production manifest at an artifact that already
-#                   exists (canary -> production), never a rebuild.
+#   build/prepare  repository code, no release secrets
+#   sign           static workflow logic, OTA signing token only
+#   canary         static workflow logic, restricted canary SSH key only
+#   production     static workflow logic, restricted production SSH key only
+#
+# Provisioning is intentionally absent. Host/user/environment provisioning is a
+# separately reviewed operator action; this workflow can only write the release
+# store through channel-specific, non-root deploy identities.
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "provision | publish | promote"
+        description: "publish | stage-canary | promote"
         required: true
         default: "publish"
         type: choice
-        options: ["provision", "publish", "promote"]
+        options: ["publish", "stage-canary", "promote"]
       channel:
-        description: "publish: canary | production (publish to canary first)"
+        description: "Publish channel (canary only; production requires promote)"
         required: false
         default: "canary"
         type: choice
-        options: ["canary", "production"]
+        options: ["canary"]
       version:
-        description: "publish: bundle version, e.g. 1.1.1 (must be > what phones on the channel run)"
+        description: "Publish: semantic bundle version, for example 1.2.0"
         required: false
         default: ""
         type: string
       apk_base_sha:
-        description: "publish: commit the INSTALLED APK was built from (ota-guard base). Fail-closed if omitted."
+        description: "Publish: exact commit of the installed Play APK"
         required: false
         default: ""
         type: string
       promote_to:
-        description: "promote: <version>/<hash>.zip from the canary manifest"
+        description: "Stage/promote: immutable <version>/<16-hex>.zip target"
+        required: false
+        default: ""
+        type: string
+      evidence_commit_sha:
+        description: "Promote: exact main-ancestor commit containing the handset receipt"
         required: false
         default: ""
         type: string
 
 permissions:
+  actions: read
   contents: read
+  deployments: write
 
 concurrency:
   group: ota-release
   cancel-in-progress: false
 
-jobs:
-  provision:
-    if: inputs.mode == 'provision'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-      - name: DNS precheck
-        run: |
-          set -euo pipefail
-          A="$(dig +short A updates.factorylm.com | tail -1)"
-          if [ "$A" != "165.245.138.91" ]; then
-            echo "::error::updates.factorylm.com resolves to '${A:-nothing}', expected 165.245.138.91. Add the A record in the Namecheap dashboard (Advanced DNS → A → host 'updates' → 165.245.138.91), wait for propagation, re-run."
-            exit 1
-          fi
-          echo "DNS ok: $A"
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Copy vhost + well-known files
-        run: |
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            deployment/nginx-updates-factorylm.conf root@165.245.138.91:/etc/nginx/sites-available/updates.factorylm.com.full
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 'mkdir -p /opt/mira/well-known'
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            deployment/well-known/assetlinks.json root@165.245.138.91:/opt/mira/well-known/assetlinks.json
-      - name: Provision (idempotent) — http stub → certbot webroot → full vhost
-        run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 'bash -s' << 'ENDSSH'
-          set -euo pipefail
-          mkdir -p /srv/factorylm/ota/releases /var/www/certbot
-          SITE=/etc/nginx/sites-available/updates.factorylm.com
-          LINK=/etc/nginx/sites-enabled/updates.factorylm.com
-          if [ ! -s /etc/letsencrypt/live/updates.factorylm.com/fullchain.pem ]; then
-            # TLS not issued yet: an http-only stub that can answer the ACME challenge.
-            cat > "$SITE" <<'STUB'
-          server {
-              listen 80;
-              listen [::]:80;
-              server_name updates.factorylm.com;
-              location /.well-known/acme-challenge/ { root /var/www/certbot; }
-              location / { return 404; }
-          }
-          STUB
-            ln -sf "$SITE" "$LINK"
-            nginx -t && systemctl reload nginx
-            EXTRA=""
-            [ -d /etc/letsencrypt/accounts ] && [ -n "$(ls -A /etc/letsencrypt/accounts 2>/dev/null)" ] || EXTRA="--register-unsafely-without-email"
-            certbot certonly --webroot -w /var/www/certbot -d updates.factorylm.com -n --agree-tos --keep-until-expiring $EXTRA
-          fi
-          # Full vhost (repo file is authoritative) now that the cert files exist.
-          cp "$SITE.full" "$SITE"
-          ln -sf "$SITE" "$LINK"
-          nginx -t && systemctl reload nginx
-          echo "=== probes ==="
-          curl -sS --max-time 10 -o /dev/null -w "https://updates.factorylm.com/healthz -> %{http_code}\n" https://updates.factorylm.com/healthz || true
-          curl -sS --max-time 10 -o /dev/null -w "https://app.factorylm.com/.well-known/assetlinks.json -> %{http_code}\n" https://app.factorylm.com/.well-known/assetlinks.json || true
-          ENDSSH
+env:
+  OTA_ORIGIN: https://updates.factorylm.com
+  OTA_HOST: 165.245.138.91
+  OTA_PUBLIC_SPKI_SHA256: 0d9b3215cbc6031a80f6b8235620efd522a3b15d35fcba348abe0bac0577df1f
+  OTA_PUBLIC_KEY_B64: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQ0lqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FnOEFNSUlDQ2dLQ0FnRUF1TFUzZWJYYmRmdTc2SnBmYzZyTENNVTBrT3NQRWNyVGovMGhRVXJFeVRodFhKQnNFaDdIcjJVcDA1OGliQXQxbFFraWtqZnQraWxmOENNZVEvSzRkWmVLU3V4eGlPVmtBaURWR0toMVBMcGxTSTZSUllUMm1LMVJ6RDNLZU1hTTJEZDQySUo0cWwvVlNFbkNndmhqcEVBeVR4WVFLcmVjZ0UzWUNMeGVPRklQMXEwNm1zcGRpcHNvZWd4M044em55Zld2ZGhhbXZ4SW9YS1YrUElRdjBBc1pkY3pHOHNOT1VxK3RhdVZ1aElvY2wwUlh5T1h3NjBNNUw3Tit1ODFoajF4ZkR0R0hHa2pkKzh0TytXM1NBNkVLWXFFTkU5WVVzNFp0aDJnRHFMbUc5Y21kcjRBb1JqbWlxKzUxYUhLaWh0L2c3b3RzL25JTGVlVVlubnl5YjFjNEdhMXdwaHpXckRTaTcxR0gxNitXUU9xZUEzbkwycjVUUkI0WEhGRlJBOVdvVDhkaUEwaFA2Z2wvcllWdlBGTmdIYVZYRC8xVUIxTXNWQzN4Wkxka2FWa1hmcWhGdk5iMTUvZS80YmxjRmMzTEpQdE5wbjh3OUt4QTFvNEJEcE9td0gyYU9XRWM0bXV4RVN5NmVrZ3pKOUdjYmhPeXorZjZLNnkrQ3dhVEFRcFgySEZ1VlpDeFkvWWdWVXQ0MTlrOSt2T1dxTG5iVjlyRzU2VWRFeTVKekErbGNGY084L3FWUFZnNmowV2JPUkRiWWt5d0RmeFJPNkdOSll0b21TQjFvdzZhVTFTQnR5N0VPTXpzbUN5UWhkNUs5R3cySjFzbCtSeWJuZVY2L1lxdkhrZDdnVEN5U09yTWpLQStnYVNjaW53Z2JLQWtTdDd2WEFUS3lSRUNBd0VBQVE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K
+  # Byte-for-byte base64 of deployment/known_hosts.factorylm-prod. The
+  # lifecycle suite pins this no-checkout secret-job copy to the committed file.
+  OTA_KNOWN_HOSTS_B64: MTY1LjI0NS4xMzguOTEgc3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSU94OUF3dEpKTWFtcWNyckF5cmVhOSs3SG1xbzRvOUlPM1FaSEk1MEVVcVIK
+  DOPPLER_CLI_URL: https://github.com/DopplerHQ/cli/releases/download/3.76.5/doppler_3.76.5_linux_amd64.tar.gz
+  DOPPLER_CLI_SHA256: 1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154
 
-  publish:
-    if: inputs.mode == 'publish'
+jobs:
+  build-ota:
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'publish'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: production
+    outputs:
+      unsigned_artifact_id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+      bundle_sha256: ${{ steps.package.outputs.bundle_sha256 }}
+      native_fingerprint: ${{ steps.package.outputs.native_fingerprint }}
+      release_sha: ${{ steps.package.outputs.release_sha }}
+      build_epoch: ${{ steps.package.outputs.build_epoch }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+          persist-credentials: false
+      - name: Require this run to be current main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          CURRENT_MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::refusing a stale main workflow run"; exit 1; }
       - name: Inputs
+        env:
+          CHANNEL_INPUT: ${{ inputs.channel }}
+          VERSION_INPUT: ${{ inputs.version }}
+          APK_BASE_SHA_INPUT: ${{ inputs.apk_base_sha }}
         run: |
           set -euo pipefail
-          [ -n "${{ inputs.version }}" ] || { echo "::error::version is required for publish"; exit 1; }
-          [ -n "${{ inputs.apk_base_sha }}" ] || { echo "::error::apk_base_sha is required (the commit the installed APK was built from); the OTA guard fails closed without it"; exit 1; }
-      - name: OTA guard — refuse if anything native changed since the installed APK
-        working-directory: mira-mobile
-        run: |
-          set -euo pipefail
-          git cat-file -e "${{ inputs.apk_base_sha }}^{commit}" || { echo "::error::apk_base_sha not found in history"; exit 1; }
-          node scripts/ota-guard.mjs "${{ inputs.apk_base_sha }}" HEAD
-      - name: Install mobile deps
-        working-directory: mira-mobile
-        run: bun install --frozen-lockfile
-      - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
-      - name: Build + sign the bundle
+          [ "$CHANNEL_INPUT" = "canary" ] || { echo "::error::publish is canary-only"; exit 1; }
+          [[ "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "::error::version must be semantic"; exit 1; }
+          [[ "$APK_BASE_SHA_INPUT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::apk_base_sha must be a lowercase full commit SHA"; exit 1; }
+      - name: Refuse native drift from the installed APK
         working-directory: mira-mobile
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          APK_BASE_SHA_INPUT: ${{ inputs.apk_base_sha }}
         run: |
           set -euo pipefail
-          doppler run --project factorylm --config prd -- \
-            node scripts/ota-publish.mjs --channel "${{ inputs.channel }}" --version "${{ inputs.version }}"
-          ls -la ota-out/releases/*/ ota-out/manifest.${{ inputs.channel }}.json
-      - name: Set up SSH (alias factorylm-prod used by ota-deploy.mjs)
+          git cat-file -e "${APK_BASE_SHA_INPUT}^{commit}"
+          git merge-base --is-ancestor "$APK_BASE_SHA_INPUT" HEAD
+          node scripts/ota-guard.mjs "$APK_BASE_SHA_INPUT" HEAD
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - name: Resolve server-issued packaged replay floor
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-          printf 'Host factorylm-prod\n  HostName 165.245.138.91\n  User root\n  IdentityFile ~/.ssh/vps_deploy_key\n  StrictHostKeyChecking no\n' > ~/.ssh/config
-      - name: Upload — artifacts first, manifest last
+          set -euo pipefail
+          RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT")"
+          FLM_PACKAGED_BUILD_MINIMUM_EPOCH="$(RUN_JSON="$RUN_JSON" node --input-type=module -e '
+            import { workflowAttemptBuildEpoch } from "./mira-mobile/scripts/native-fingerprint.mjs";
+            process.stdout.write(workflowAttemptBuildEpoch(JSON.parse(process.env.RUN_JSON ?? "null"), {
+              runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, headSha: process.env.GITHUB_SHA,
+            }));
+          ')"
+          [[ "$FLM_PACKAGED_BUILD_MINIMUM_EPOCH" =~ ^[0-9]+$ ]]
+          echo "FLM_PACKAGED_BUILD_MINIMUM_EPOCH=$FLM_PACKAGED_BUILD_MINIMUM_EPOCH" >> "$GITHUB_ENV"
+      - name: Install and build without release secrets
         working-directory: mira-mobile
+        env:
+          FLM_GOVERNED_RELEASE_BUILD: "1"
         run: |
           set -euo pipefail
-          node scripts/ota-deploy.mjs --channel "${{ inputs.channel }}"
-          node scripts/ota-deploy.mjs --channel "${{ inputs.channel }}" --confirm
-      - name: Verify the published pointer
+          bun install --frozen-lockfile
+          bun run build
+          node scripts/ota-package.mjs --out ota-unsigned/bundle.zip
+      - name: Revalidate immutable native inputs after build
+        working-directory: mira-mobile
+        env:
+          APK_BASE_SHA_INPUT: ${{ inputs.apk_base_sha }}
         run: |
           set -euo pipefail
-          curl -sS --max-time 15 "https://updates.factorylm.com/manifest.${{ inputs.channel }}.json" | tee /tmp/manifest.json
-          grep -q '"version"' /tmp/manifest.json
+          NATIVE_INPUTS=(
+            android ios capacitor.config.ts package.json bun.lock
+            scripts/native-fingerprint.mjs scripts/ota-guard.mjs
+          )
+          git diff HEAD --quiet -- "${NATIVE_INPUTS[@]}" || { echo "::error::build tooling changed native compatibility inputs"; exit 1; }
+          [ -z "$(git ls-files --others --exclude-standard -- "${NATIVE_INPUTS[@]}")" ] || { echo "::error::build tooling created native compatibility inputs"; exit 1; }
+          node scripts/ota-guard.mjs "$APK_BASE_SHA_INPUT" "$GITHUB_SHA"
+      - name: Bind exact build output
+        id: package
+        working-directory: mira-mobile
+        env:
+          CHANNEL_INPUT: ${{ inputs.channel }}
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          BUNDLE_SHA256="$(sha256sum ota-unsigned/bundle.zip | cut -d' ' -f1)"
+          NATIVE_FINGERPRINT="$(node --input-type=module -e 'import { nativeFingerprintAtRef } from "./scripts/native-fingerprint.mjs"; process.stdout.write(nativeFingerprintAtRef(process.env.GITHUB_SHA));')"
+          BUILD_EPOCH="$FLM_PACKAGED_BUILD_MINIMUM_EPOCH"
+          [[ "$BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$NATIVE_FINGERPRINT" =~ ^[0-9a-f]{16}$ ]]
+          [[ "$BUILD_EPOCH" =~ ^[0-9]+$ ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          export BUNDLE_SHA256 NATIVE_FINGERPRINT BUILD_EPOCH CHANNEL_INPUT VERSION_INPUT
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          const handoff = {
+            schemaVersion: 2,
+            mode: "publish",
+            channel: process.env.CHANNEL_INPUT,
+            version: process.env.VERSION_INPUT,
+            bundleSha256: process.env.BUNDLE_SHA256,
+            nativeFingerprint: process.env.NATIVE_FINGERPRINT,
+            releaseSha: process.env.GITHUB_SHA,
+            buildEpoch: process.env.BUILD_EPOCH,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          };
+          writeFileSync("ota-unsigned/handoff.json", `${JSON.stringify(handoff, null, 2)}\n`);
+          NODE
           {
-            echo "### OTA publish"
-            echo "- channel: \`${{ inputs.channel }}\` · version: \`${{ inputs.version }}\` · commit: \`${{ github.sha }}\`"
-            echo "- guard base (installed APK): \`${{ inputs.apk_base_sha }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  promote:
-    if: inputs.mode == 'promote'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+            echo "bundle_sha256=$BUNDLE_SHA256"
+            echo "native_fingerprint=$NATIVE_FINGERPRINT"
+            echo "release_sha=$GITHUB_SHA"
+            echo "build_epoch=$BUILD_EPOCH"
+          } >> "$GITHUB_OUTPUT"
+      - name: Upload immutable unsigned handoff
+        id: upload-unsigned
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          bun-version: latest
-      - name: Inputs
-        run: |
-          [ -n "${{ inputs.promote_to }}" ] || { echo "::error::promote_to is required, e.g. 1.1.1/<hash>.zip"; exit 1; }
-      - name: Install mobile deps
-        working-directory: mira-mobile
-        run: bun install --frozen-lockfile
-      - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-          printf 'Host factorylm-prod\n  HostName 165.245.138.91\n  User root\n  IdentityFile ~/.ssh/vps_deploy_key\n  StrictHostKeyChecking no\n' > ~/.ssh/config
-      - name: Fetch the current release store (artifacts are immutable; rollback/promote never rebuilds)
-        working-directory: mira-mobile
-        run: |
-          set -euo pipefail
-          mkdir -p ota-out
-          rsync -a factorylm-prod:/srv/factorylm/ota/ ota-out/
-      - name: Repoint production → promote_to, then upload
-        working-directory: mira-mobile
+          name: ota-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            mira-mobile/ota-unsigned/bundle.zip
+            mira-mobile/ota-unsigned/handoff.json
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-ota:
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'publish'
+    needs: build-ota
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ota-signing
+    outputs:
+      signed_artifact_id: ${{ steps.upload-signed.outputs.artifact-id }}
+      signed_payload_sha256: ${{ steps.seal.outputs.signed_payload_sha256 }}
+    steps:
+      - name: Download data-only unsigned handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.build-ota.outputs.unsigned_artifact_id }}
+          path: ${{ runner.temp }}/ota-unsigned
+          merge-multiple: true
+      - name: Verify exact builder artifact
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EXPECTED_BUNDLE_SHA256: ${{ needs.build-ota.outputs.bundle_sha256 }}
+          EXPECTED_NATIVE_FINGERPRINT: ${{ needs.build-ota.outputs.native_fingerprint }}
+          EXPECTED_RELEASE_SHA: ${{ github.sha }}
+          EXPECTED_BUILD_EPOCH: ${{ needs.build-ota.outputs.build_epoch }}
+          CHANNEL_INPUT: ${{ inputs.channel }}
+          VERSION_INPUT: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          doppler run --project factorylm --config prd -- \
-            node scripts/ota-rollback.mjs --channel production --to "${{ inputs.promote_to }}"
-          node scripts/ota-deploy.mjs --channel production --confirm
-          curl -sS --max-time 15 https://updates.factorylm.com/manifest.production.json
+          [ -z "$(find "$RUNNER_TEMP/ota-unsigned" -type l -print -quit)" ]
+          printf '%s\n' bundle.zip handoff.json > "$RUNNER_TEMP/expected-files"
+          find "$RUNNER_TEMP/ota-unsigned" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/actual-files"
+          diff -u "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/actual-files"
+          echo "$EXPECTED_BUNDLE_SHA256  $RUNNER_TEMP/ota-unsigned/bundle.zip" | sha256sum -c -
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const h = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/ota-unsigned/handoff.json`, "utf8"));
+          const expected = {
+            schemaVersion: 2,
+            mode: "publish",
+            channel: process.env.CHANNEL_INPUT,
+            version: process.env.VERSION_INPUT,
+            bundleSha256: process.env.EXPECTED_BUNDLE_SHA256,
+            nativeFingerprint: process.env.EXPECTED_NATIVE_FINGERPRINT,
+            releaseSha: process.env.EXPECTED_RELEASE_SHA,
+            buildEpoch: process.env.EXPECTED_BUILD_EPOCH,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          };
+          if (JSON.stringify(h) !== JSON.stringify(expected)) throw new Error("unsigned handoff does not match builder outputs");
+          NODE
+      - name: Reconfirm current main at signing boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::main advanced before signing"; exit 1; }
+      - name: Install checksum-pinned Doppler CLI
+        run: |
+          set -euo pipefail
+          curl --disable --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" "$DOPPLER_CLI_URL"
+          echo "1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154  $RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/doppler-bin"
+          tar -xzf "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" -C "$RUNNER_TEMP/doppler-bin"
+          test -x "$RUNNER_TEMP/doppler-bin/doppler"
+      - name: Fetch isolated key, drop token, and sign static data
+        id: seal
+        env:
+          OTA_SIGNING_DOPPLER_TOKEN: ${{ secrets.OTA_SIGNING_DOPPLER_TOKEN }}
+          EXPECTED_BUNDLE_SHA256: ${{ needs.build-ota.outputs.bundle_sha256 }}
+          EXPECTED_NATIVE_FINGERPRINT: ${{ needs.build-ota.outputs.native_fingerprint }}
+          EXPECTED_RELEASE_SHA: ${{ github.sha }}
+          EXPECTED_BUILD_EPOCH: ${{ needs.build-ota.outputs.build_epoch }}
+          CHANNEL_INPUT: ${{ inputs.channel }}
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [ -n "${OTA_SIGNING_DOPPLER_TOKEN:-}" ] || { echo "::error::isolated OTA signing token is missing"; exit 1; }
+          echo "$EXPECTED_BUNDLE_SHA256  $RUNNER_TEMP/ota-unsigned/bundle.zip" | sha256sum -c -
+          export DOPPLER_TOKEN="$OTA_SIGNING_DOPPLER_TOKEN"
+          OTA_SIGNING_PRIVATE_KEY="$("$RUNNER_TEMP/doppler-bin/doppler" secrets get OTA_SIGNING_PRIVATE_KEY --project factorylm --config ota_signing --plain)"
+          unset DOPPLER_TOKEN OTA_SIGNING_DOPPLER_TOKEN
+          rm -f "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" "$RUNNER_TEMP/doppler-bin/doppler"
+          [ -n "$OTA_SIGNING_PRIVATE_KEY" ] || { echo "::error::OTA signing key is empty"; exit 1; }
+          export OTA_SIGNING_PRIVATE_KEY
+          trap 'unset OTA_SIGNING_PRIVATE_KEY DOPPLER_TOKEN OTA_SIGNING_DOPPLER_TOKEN' EXIT
+          mkdir -p "$RUNNER_TEMP/ota-signed"
+          node --input-type=module <<'NODE'
+          import { createHash, createPrivateKey, createPublicKey, createSign, createVerify } from "node:crypto";
+          import { readFileSync, writeFileSync } from "node:fs";
+          const fail = (message) => { throw new Error(`OTA SIGNING FAILURE: ${message}`); };
+          const hex = (bytes) => createHash("sha256").update(bytes).digest("hex");
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const privateKey = process.env.OTA_SIGNING_PRIVATE_KEY;
+          const publicSpki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          const derivedSpki = createPublicKey(createPrivateKey(privateKey)).export({ type: "spki", format: "der" });
+          if (hex(publicSpki) !== process.env.OTA_PUBLIC_SPKI_SHA256 || !publicSpki.equals(derivedSpki)) fail("key identity mismatch");
+          const bundle = readFileSync(`${process.env.RUNNER_TEMP}/ota-unsigned/bundle.zip`);
+          if (hex(bundle) !== process.env.EXPECTED_BUNDLE_SHA256) fail("bundle changed after pre-secret verification");
+          const h = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/ota-unsigned/handoff.json`, "utf8"));
+          const expected = {
+            schemaVersion: 2, mode: "publish", channel: process.env.CHANNEL_INPUT,
+            version: process.env.VERSION_INPUT, bundleSha256: process.env.EXPECTED_BUNDLE_SHA256,
+            nativeFingerprint: process.env.EXPECTED_NATIVE_FINGERPRINT,
+            releaseSha: process.env.EXPECTED_RELEASE_SHA, buildEpoch: process.env.EXPECTED_BUILD_EPOCH,
+            workflowRunId: process.env.GITHUB_RUN_ID, workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          };
+          if (JSON.stringify(h) !== JSON.stringify(expected)) fail("handoff changed after pre-secret verification");
+          if (!/^[0-9a-f]{40}$/.test(h.releaseSha) || !/^[0-9a-f]{16}$/.test(h.nativeFingerprint)) fail("non-canonical identity");
+          if (!/^(?:0|[1-9][0-9]*)$/.test(h.buildEpoch)) fail("non-canonical build epoch");
+          if (!/^[1-9][0-9]*$/.test(h.workflowRunId) || !/^[1-9][0-9]*$/.test(h.workflowRunAttempt)) fail("non-canonical workflow identity");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, value) => `${[protocol, ...names.map((name) => {
+            const item = value[name];
+            if (typeof item !== "string" || !item || /[\r\n]/.test(item)) fail(`invalid signed field ${name}`);
+            return `${name}=${item}`;
+          })].join("\n")}\n`;
+          const sign = (value) => { const signer = createSign("RSA-SHA256"); signer.update(value); signer.end(); return signer.sign(privateKey, "base64"); };
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          const artifactSignature = sign(bundle);
+          if (!verify(bundle, artifactSignature)) fail("artifact signature did not verify");
+          const artifact = `${h.bundleSha256.slice(0, 16)}.zip`;
+          const metadata = {
+            bundleId: `${h.version}-${h.bundleSha256.slice(0, 8)}`,
+            version: h.version,
+            artifact,
+            checksum: h.bundleSha256,
+            signature: artifactSignature,
+            nativeFingerprint: h.nativeFingerprint,
+            releaseSha: h.releaseSha,
+            releasedAt: new Date(Number(h.buildEpoch) * 1000).toISOString(),
+            artifactSha256: h.bundleSha256,
+          };
+          metadata.provenanceSignature = sign(payload("factorylm-ota-provenance-v1", fields, metadata));
+          if (!verify(payload("factorylm-ota-provenance-v1", fields, metadata), metadata.provenanceSignature)) fail("provenance signature did not verify");
+          const pointerChangedAt = new Date().toISOString();
+          if (Date.parse(pointerChangedAt) < Date.parse(metadata.releasedAt)) fail("pointer predates governed build");
+          const manifest = {
+            ...metadata,
+            channel: "canary",
+            downloadUrl: `${process.env.OTA_ORIGIN}/releases/${h.version}/${artifact}`,
+            pointerChangedAt,
+          };
+          manifest.manifestSignature = sign(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest));
+          if (!verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest), manifest.manifestSignature)) fail("pointer signature did not verify");
+          const out = `${process.env.RUNNER_TEMP}/ota-signed`;
+          writeFileSync(`${out}/release.zip`, bundle);
+          writeFileSync(`${out}/metadata.json`, `${JSON.stringify(metadata, null, 2)}\n`);
+          writeFileSync(`${out}/manifest.target.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+          writeFileSync(`${out}/handoff.json`, `${JSON.stringify({ ...h, artifact, bundleId: metadata.bundleId }, null, 2)}\n`);
+          NODE
+          unset OTA_SIGNING_PRIVATE_KEY
+          tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
+            -cf "$RUNNER_TEMP/ota-signed.tar" -C "$RUNNER_TEMP/ota-signed" \
+            handoff.json manifest.target.json metadata.json release.zip
+          SIGNED_PAYLOAD_SHA256="$(sha256sum "$RUNNER_TEMP/ota-signed.tar" | cut -d' ' -f1)"
+          echo "signed_payload_sha256=$SIGNED_PAYLOAD_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Upload signed data-only release
+        id: upload-signed
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ota-signed-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ota-signed.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-canary:
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'publish'
+    needs: sign-ota
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ota-canary
+    steps:
+      - name: Download signed release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.sign-ota.outputs.signed_artifact_id }}
+          path: ${{ runner.temp }}/signed-download
+          merge-multiple: true
+      - name: Verify signed canary data before SSH
+        env:
+          EXPECTED_PAYLOAD_SHA256: ${{ needs.sign-ota.outputs.signed_payload_sha256 }}
+        run: |
+          set -euo pipefail
+          [ -z "$(find "$RUNNER_TEMP/signed-download" -type l -print -quit)" ]
+          printf '%s\n' ota-signed.tar > "$RUNNER_TEMP/expected-download-files"
+          find "$RUNNER_TEMP/signed-download" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/actual-download-files"
+          diff -u "$RUNNER_TEMP/expected-download-files" "$RUNNER_TEMP/actual-download-files"
+          echo "$EXPECTED_PAYLOAD_SHA256  $RUNNER_TEMP/signed-download/ota-signed.tar" | sha256sum -c -
+          printf '%s\n' handoff.json manifest.target.json metadata.json release.zip > "$RUNNER_TEMP/expected-tar-files"
+          tar -tf "$RUNNER_TEMP/signed-download/ota-signed.tar" | LC_ALL=C sort > "$RUNNER_TEMP/actual-tar-files"
+          diff -u "$RUNNER_TEMP/expected-tar-files" "$RUNNER_TEMP/actual-tar-files"
+          mkdir "$RUNNER_TEMP/release"
+          tar -xf "$RUNNER_TEMP/signed-download/ota-signed.tar" -C "$RUNNER_TEMP/release"
+          LIVE_POINTER_HTTP_STATUS="$(curl --disable --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.canary.preflight.json" --write-out '%{http_code}' \
+            --url "$OTA_ORIGIN/manifest.canary.json")"
+          case "$LIVE_POINTER_HTTP_STATUS" in
+            200) LIVE_POINTER_STATE=present ;;
+            404) LIVE_POINTER_STATE=missing; rm -f "$RUNNER_TEMP/manifest.canary.preflight.json" ;;
+            *) echo "::error::could not read the live canary pointer (HTTP $LIVE_POINTER_HTTP_STATUS)"; exit 1 ;;
+          esac
+          export LIVE_POINTER_STATE
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { createHash, createPublicKey, createVerify } from "node:crypto";
+          const fail = (m) => { throw new Error(`CANARY VALIDATION FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/release`;
+          const h = JSON.parse(readFileSync(`${dir}/handoff.json`, "utf8"));
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const manifest = JSON.parse(readFileSync(`${dir}/manifest.target.json`, "utf8"));
+          const bundle = readFileSync(`${dir}/release.zip`);
+          const sha = createHash("sha256").update(bundle).digest("hex");
+          if (h.mode !== "publish" || h.channel !== "canary" || manifest.channel !== "canary") fail("wrong mode or channel");
+          if (sha !== h.bundleSha256 || sha !== metadata.checksum || sha !== manifest.checksum || sha !== metadata.artifactSha256 || sha !== manifest.artifactSha256) fail("artifact digest mismatch");
+          if (manifest.version !== h.version || manifest.bundleId !== h.bundleId || manifest.bundleId !== `${manifest.version}-${sha.slice(0, 8)}` || manifest.releaseSha !== h.releaseSha || manifest.nativeFingerprint !== h.nativeFingerprint) fail("release identity mismatch");
+          if (manifest.downloadUrl !== `${process.env.OTA_ORIGIN}/releases/${manifest.version}/${manifest.artifact}`) fail("download path mismatch");
+          if (!/^[0-9a-f]{16}\.zip$/.test(manifest.artifact) || !manifest.artifact.startsWith(sha.slice(0, 16))) fail("artifact name mismatch");
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const spki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          if (createHash("sha256").update(spki).digest("hex") !== process.env.OTA_PUBLIC_SPKI_SHA256) fail("public key mismatch");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, v) => `${[protocol, ...names.map((n) => `${n}=${v[n]}`)].join("\n")}\n`;
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          if (!verify(bundle, manifest.signature) || !verify(payload("factorylm-ota-provenance-v1", fields, manifest), manifest.provenanceSignature) || !verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest), manifest.manifestSignature)) fail("signature failure");
+          for (const field of [...fields, "provenanceSignature"]) if (metadata[field] !== manifest[field]) fail(`metadata mismatch: ${field}`);
+          const canonicalTimestamp = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value ?? "") && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+          const authenticatedPointer = (value, channel) => value && value.channel === channel && /^[0-9a-f]{40}$/.test(value.releaseSha ?? "") && canonicalTimestamp(value.releasedAt) && canonicalTimestamp(value.pointerChangedAt) && Date.parse(value.pointerChangedAt) >= Date.parse(value.releasedAt) && verify(payload("factorylm-ota-provenance-v1", fields, value), value.provenanceSignature) && verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, value), value.manifestSignature);
+          if (!authenticatedPointer(manifest, "canary")) fail("invalid authenticated candidate pointer");
+          const candidateBytes = readFileSync(`${dir}/manifest.target.json`);
+          let expectedLiveSha256 = "missing";
+          if (process.env.LIVE_POINTER_STATE === "present") {
+            const liveBytes = readFileSync(`${process.env.RUNNER_TEMP}/manifest.canary.preflight.json`);
+            let live;
+            try { live = JSON.parse(liveBytes); } catch { fail("invalid authenticated live pointer"); }
+            if (!authenticatedPointer(live, "canary")) fail("invalid authenticated live pointer");
+            const liveMillis = Date.parse(live.pointerChangedAt);
+            const candidateMillis = Date.parse(manifest.pointerChangedAt);
+            if (!(candidateMillis > liveMillis || (candidateMillis === liveMillis && candidateBytes.equals(liveBytes)))) fail("pointer transition is not monotonic");
+            expectedLiveSha256 = createHash("sha256").update(liveBytes).digest("hex");
+          } else if (process.env.LIVE_POINTER_STATE !== "missing") {
+            fail("invalid live pointer preflight state");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `OTA_VERSION=${manifest.version}\nOTA_ARTIFACT=${manifest.artifact}\nOTA_ARTIFACT_SHA256=${sha}\nEXPECTED_LIVE_POINTER_SHA256=${expectedLiveSha256}\n`);
+          NODE
+      - name: Reconfirm current main before canary publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::main advanced before canary publication"; exit 1; }
+      - name: Set up restricted canary SSH
+        env:
+          OTA_CANARY_SSH_KEY: ${{ secrets.OTA_CANARY_SSH_KEY }}
+          OTA_SSH_USER: ${{ vars.OTA_CANARY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          [[ "$OTA_SSH_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$OTA_SSH_USER" != root ]
+          [ -n "$OTA_CANARY_SSH_KEY" ]
+          install -d -m 700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$OTA_CANARY_SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          chmod 600 "$RUNNER_TEMP/ssh/key"
+          printf '%s' "$OTA_KNOWN_HOSTS_B64" | base64 --decode > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh/known_hosts"
+          printf 'Host ota-canary\n  HostName %s\n  User %s\n  IdentityFile %s\n  IdentitiesOnly yes\n  StrictHostKeyChecking=yes\n  UserKnownHostsFile %s\n' \
+            "$OTA_HOST" "$OTA_SSH_USER" "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" > "$RUNNER_TEMP/ssh/config"
+      - name: Atomically publish canary under the channel lock
+        run: |
+          set -euo pipefail
+          INCOMING="/srv/factorylm/ota/.incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-publish"
+          SSH=(ssh -F "$RUNNER_TEMP/ssh/config" ota-canary)
+          SCP=(scp -F "$RUNNER_TEMP/ssh/config")
+          "${SSH[@]}" sh -s -- "$INCOMING" <<'REMOTE'
+          set -eu
+          mkdir -p "$1"
+          REMOTE
+          "${SCP[@]}" "$RUNNER_TEMP/release/release.zip" "ota-canary:${INCOMING}/release.zip"
+          "${SCP[@]}" "$RUNNER_TEMP/release/metadata.json" "ota-canary:${INCOMING}/metadata.json"
+          "${SCP[@]}" "$RUNNER_TEMP/release/manifest.target.json" "ota-canary:${INCOMING}/manifest.json"
+          METADATA_SHA256="$(sha256sum "$RUNNER_TEMP/release/metadata.json" | cut -d' ' -f1)"
+          MANIFEST_SHA256="$(sha256sum "$RUNNER_TEMP/release/manifest.target.json" | cut -d' ' -f1)"
+          "${SSH[@]}" sh -s -- "$INCOMING" "$OTA_VERSION" "$OTA_ARTIFACT" "$OTA_ARTIFACT_SHA256" "$METADATA_SHA256" "$MANIFEST_SHA256" "$EXPECTED_LIVE_POINTER_SHA256" <<'REMOTE'
+          set -eu
+          incoming=$1; version=$2; artifact=$3; artifact_sha=$4; metadata_sha=$5; manifest_sha=$6; expected_live=$7
+          root=/srv/factorylm/ota
+          trap 'rm -rf "$incoming"' EXIT
+          exec 9>"$root/.ota-pointer.lock"
+          flock 9
+          live_pointer="$root/manifest.canary.json"
+          if [ "$expected_live" = missing ]; then
+            [ ! -e "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          else
+            [ -f "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+            [ "$(sha256sum "$live_pointer" | cut -d' ' -f1)" = "$expected_live" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          fi
+          mkdir -p "$root/releases/$version"
+          install_immutable() {
+            source=$1; target=$2; expected=$3
+            actual=$(sha256sum "$source" | cut -d' ' -f1)
+            [ "$actual" = "$expected" ] || { echo "incoming immutable digest mismatch" >&2; exit 1; }
+            if [ -e "$target" ]; then
+              actual=$(sha256sum "$target" | cut -d' ' -f1)
+              [ "$actual" = "$expected" ] || { echo "immutable destination digest mismatch" >&2; exit 1; }
+              return
+            fi
+            chmod 0644 "$source"
+            ln "$source" "$target"
+          }
+          install_immutable "$incoming/release.zip" "$root/releases/$version/$artifact" "$artifact_sha"
+          install_immutable "$incoming/metadata.json" "$root/releases/$version/${artifact%.zip}.json" "$metadata_sha"
+          actual=$(sha256sum "$incoming/manifest.json" | cut -d' ' -f1)
+          [ "$actual" = "$manifest_sha" ]
+          chmod 0644 "$incoming/manifest.json"
+          mv -f "$incoming/manifest.json" "$root/manifest.canary.json"
+          [ "$(sha256sum "$root/manifest.canary.json" | cut -d' ' -f1)" = "$manifest_sha" ]
+          REMOTE
+          curl --disable --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.live.json" --url "$OTA_ORIGIN/manifest.canary.json"
+          cmp "$RUNNER_TEMP/release/manifest.target.json" "$RUNNER_TEMP/manifest.live.json"
+
+  prepare-pointer:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.mode == 'stage-canary' || inputs.mode == 'promote')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      pointer_input_artifact_id: ${{ steps.upload-input.outputs.artifact-id }}
+      pointer_input_sha256: ${{ steps.prepare.outputs.pointer_input_sha256 }}
+      artifact_sha256: ${{ steps.prepare.outputs.artifact_sha256 }}
+      bundle_id: ${{ steps.prepare.outputs.bundle_id }}
+      native_fingerprint: ${{ steps.prepare.outputs.native_fingerprint }}
+      release_sha: ${{ steps.prepare.outputs.release_sha }}
+      canary_manifest_sha256: ${{ steps.prepare.outputs.canary_manifest_sha256 }}
+      pointer_changed_at: ${{ steps.prepare.outputs.pointer_changed_at }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require this run to be current main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          CURRENT_MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::refusing a stale main workflow run"; exit 1; }
+      - name: Fetch and authenticate the immutable target
+        id: prepare
+        env:
+          MODE_INPUT: ${{ inputs.mode }}
+          PROMOTE_TO_INPUT: ${{ inputs.promote_to }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE_INPUT" =~ ^(stage-canary|promote)$ ]]
+          [[ "$PROMOTE_TO_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?/[0-9a-f]{16}\.zip$ ]] || { echo "::error::promote_to is not canonical"; exit 1; }
+          mkdir "$RUNNER_TEMP/pointer-input"
+          CURL=(curl --disable --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 30)
+          "${CURL[@]}" --output "$RUNNER_TEMP/pointer-input/release.zip" --url "$OTA_ORIGIN/releases/$PROMOTE_TO_INPUT"
+          "${CURL[@]}" --output "$RUNNER_TEMP/pointer-input/metadata.json" --url "$OTA_ORIGIN/releases/${PROMOTE_TO_INPUT%.zip}.json"
+          if [ "$MODE_INPUT" = promote ]; then
+            "${CURL[@]}" --output "$RUNNER_TEMP/pointer-input/manifest.canary.json" --url "$OTA_ORIGIN/manifest.canary.json"
+          fi
+          export MODE_INPUT PROMOTE_TO_INPUT
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+          import { nativeFingerprintAtRef } from "./mira-mobile/scripts/native-fingerprint.mjs";
+          import { PROVENANCE_FIELDS, validatePromotionSource, verifyArtifactSignature, verifyProvenance } from "./mira-mobile/scripts/ota-provenance.mjs";
+          const fail = (m) => { throw new Error(`POINTER PREPARATION FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/pointer-input`;
+          const bytes = readFileSync(`${dir}/release.zip`);
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const sha = createHash("sha256").update(bytes).digest("hex");
+          const target = process.env.PROMOTE_TO_INPUT;
+          const [version, artifact] = target.split("/");
+          if (metadata.version !== version || metadata.artifact !== artifact || artifact !== `${sha.slice(0, 16)}.zip` || metadata.checksum !== sha || metadata.artifactSha256 !== sha || metadata.bundleId !== `${version}-${sha.slice(0, 8)}`) fail("immutable target mismatch");
+          if (!/^[0-9a-f]{40}$/.test(metadata.releaseSha ?? "") || !verifyArtifactSignature(bytes, metadata.signature) || !verifyProvenance(metadata, metadata.provenanceSignature)) fail("release provenance is not authenticated");
+          if (metadata.nativeFingerprint !== nativeFingerprintAtRef(process.env.GITHUB_SHA)) fail("target does not match the current native shell");
+          let source = null;
+          let canaryManifestSha256 = "";
+          let pointerChangedAt = "";
+          if (process.env.MODE_INPUT === "promote") {
+            const sourceBytes = readFileSync(`${dir}/manifest.canary.json`);
+            source = JSON.parse(sourceBytes.toString("utf8"));
+            const check = validatePromotionSource(source, { sourceChannel: "canary", target });
+            if (!check.ok) fail(`invalid current canary: ${check.reason}`);
+            if (PROVENANCE_FIELDS.some((field) => source[field] !== metadata[field]) || source.provenanceSignature !== metadata.provenanceSignature) fail("canary provenance differs from immutable metadata");
+            canaryManifestSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+            pointerChangedAt = source.pointerChangedAt;
+          }
+          const handoff = {
+            schemaVersion: 1,
+            mode: process.env.MODE_INPUT,
+            target,
+            targetChannel: process.env.MODE_INPUT === "promote" ? "production" : "canary",
+            artifactSha256: sha,
+            bundleId: metadata.bundleId,
+            nativeFingerprint: metadata.nativeFingerprint,
+            releaseSha: metadata.releaseSha,
+            canaryManifestSha256,
+            pointerChangedAt,
+          };
+          writeFileSync(`${dir}/handoff.json`, `${JSON.stringify(handoff, null, 2)}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, [
+            `artifact_sha256=${sha}`,
+            `bundle_id=${metadata.bundleId}`,
+            `native_fingerprint=${metadata.nativeFingerprint}`,
+            `release_sha=${metadata.releaseSha}`,
+            `canary_manifest_sha256=${canaryManifestSha256}`,
+            `pointer_changed_at=${pointerChangedAt}`,
+          ].join("\n") + "\n");
+          NODE
+          RELEASE_SHA="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).releaseSha ?? "")' "$RUNNER_TEMP/pointer-input/metadata.json")"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" "$GITHUB_SHA" || { echo "::error::release artifact is not descended from protected main"; exit 1; }
+          if [ "$MODE_INPUT" = promote ]; then
+            POINTER_FILES=(handoff.json manifest.canary.json metadata.json release.zip)
+          else
+            POINTER_FILES=(handoff.json metadata.json release.zip)
+          fi
+          tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
+            -cf "$RUNNER_TEMP/pointer-input.tar" -C "$RUNNER_TEMP/pointer-input" "${POINTER_FILES[@]}"
+          POINTER_INPUT_SHA256="$(sha256sum "$RUNNER_TEMP/pointer-input.tar" | cut -d' ' -f1)"
+          echo "pointer_input_sha256=$POINTER_INPUT_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Upload authenticated pointer input
+        id: upload-input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ota-pointer-input-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pointer-input.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-handset-evidence:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.mode == 'stage-canary' || inputs.mode == 'promote')
+    needs: prepare-pointer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate exact evidence commit input
+        if: inputs.mode == 'promote'
+        env:
+          EVIDENCE_COMMIT_SHA: ${{ inputs.evidence_commit_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EVIDENCE_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::evidence_commit_sha must be a lowercase full commit SHA"; exit 1; }
+      - name: Check out trusted validator from the release head
+        if: inputs.mode == 'promote'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: policy
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the exact Git evidence commit
+        if: inputs.mode == 'promote'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.evidence_commit_sha }}
+          path: evidence
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require evidence to be durable on current main
+        if: inputs.mode == 'promote'
+        env:
+          EVIDENCE_COMMIT_SHA: ${{ inputs.evidence_commit_sha }}
+        run: |
+          set -euo pipefail
+          [ "$(git -C evidence rev-parse HEAD)" = "$EVIDENCE_COMMIT_SHA" ]
+          (
+            cd policy
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            CURRENT_MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+            [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::refusing evidence validation from stale main"; exit 1; }
+            git merge-base --is-ancestor "$EVIDENCE_COMMIT_SHA" "$CURRENT_MAIN_SHA"
+          )
+      - name: Require a real protected ota-production environment
+        if: inputs.mode == 'promote'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/environments/ota-production" > "$RUNNER_TEMP/ota-production.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/ota-production.json`, "utf8"));
+          const required_reviewers = (value.protection_rules ?? []).find((rule) => rule.type === "required_reviewers");
+          if (!required_reviewers || !Array.isArray(required_reviewers.reviewers) || required_reviewers.reviewers.length < 1) throw new Error("ota-production requires at least one required reviewer");
+          if (required_reviewers.prevent_self_review !== true) throw new Error("ota-production prevent_self_review must be true");
+          if (value.can_admins_bypass !== false) throw new Error("ota-production can_admins_bypass must be false");
+          if (value.deployment_branch_policy?.protected_branches !== true) throw new Error("ota-production protected_branches must be true");
+          NODE
+      - name: Validate exact physical Play handset receipt
+        if: inputs.mode == 'promote'
+        env:
+          ARTIFACT_SHA256: ${{ needs.prepare-pointer.outputs.artifact_sha256 }}
+          BUNDLE_ID: ${{ needs.prepare-pointer.outputs.bundle_id }}
+          NATIVE_FINGERPRINT: ${{ needs.prepare-pointer.outputs.native_fingerprint }}
+          RELEASE_SHA: ${{ needs.prepare-pointer.outputs.release_sha }}
+          CANARY_MANIFEST_SHA256: ${{ needs.prepare-pointer.outputs.canary_manifest_sha256 }}
+          POINTER_CHANGED_AT: ${{ needs.prepare-pointer.outputs.pointer_changed_at }}
+          PLAY_SIGNING_CERT_SHA256: ${{ vars.FACTORYLM_PLAY_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          # Receipt schema bindings checked by the pinned release-head validator:
+          # artifactSha256 bundleId nativeFingerprint releaseSha
+          # canaryManifestSha256 playSigningCertSha256 updateReady
+          # restartCompleted aboutBundleIdVerified and installerPackage=com.android.vending.
+          [[ "$PLAY_SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::FACTORYLM_PLAY_SIGNING_CERT_SHA256 must be configured from Play Console evidence"; exit 1; }
+          RECEIPT="evidence/docs/release/evidence/ota/${ARTIFACT_SHA256}.json"
+          test -f "$RECEIPT" && [ ! -L "$RECEIPT" ]
+          python policy/tools/ota_handset_evidence.py \
+            --evidence-json "$RECEIPT" \
+            --evidence-root "$GITHUB_WORKSPACE/evidence" \
+            --artifact-sha256 "$ARTIFACT_SHA256" \
+            --bundle-id "$BUNDLE_ID" \
+            --native-fingerprint "$NATIVE_FINGERPRINT" \
+            --release-sha "$RELEASE_SHA" \
+            --canary-manifest-sha256 "$CANARY_MANIFEST_SHA256" \
+            --pointer-changed-at "$POINTER_CHANGED_AT" \
+            --play-signing-cert-sha256 "$PLAY_SIGNING_CERT_SHA256"
+
+  sign-pointer:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.mode == 'stage-canary' || inputs.mode == 'promote')
+    needs: [prepare-pointer, verify-handset-evidence]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ota-signing
+    outputs:
+      pointer_artifact_id: ${{ steps.upload-pointer.outputs.artifact-id }}
+      pointer_payload_sha256: ${{ steps.seal-pointer.outputs.pointer_payload_sha256 }}
+    steps:
+      - name: Download authenticated pointer input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.prepare-pointer.outputs.pointer_input_artifact_id }}
+          path: ${{ runner.temp }}/pointer-download
+          merge-multiple: true
+      - name: Verify exact pointer input
+        env:
+          EXPECTED_INPUT_SHA256: ${{ needs.prepare-pointer.outputs.pointer_input_sha256 }}
+          EXPECTED_ARTIFACT_SHA256: ${{ needs.prepare-pointer.outputs.artifact_sha256 }}
+          EXPECTED_BUNDLE_ID: ${{ needs.prepare-pointer.outputs.bundle_id }}
+          EXPECTED_NATIVE_FINGERPRINT: ${{ needs.prepare-pointer.outputs.native_fingerprint }}
+          EXPECTED_RELEASE_SHA: ${{ needs.prepare-pointer.outputs.release_sha }}
+          EXPECTED_CANARY_MANIFEST_SHA256: ${{ needs.prepare-pointer.outputs.canary_manifest_sha256 }}
+          EXPECTED_POINTER_CHANGED_AT: ${{ needs.prepare-pointer.outputs.pointer_changed_at }}
+          MODE_INPUT: ${{ inputs.mode }}
+          PROMOTE_TO_INPUT: ${{ inputs.promote_to }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' pointer-input.tar > "$RUNNER_TEMP/expected-download-files"
+          find "$RUNNER_TEMP/pointer-download" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/actual-download-files"
+          diff -u "$RUNNER_TEMP/expected-download-files" "$RUNNER_TEMP/actual-download-files"
+          echo "$EXPECTED_INPUT_SHA256  $RUNNER_TEMP/pointer-download/pointer-input.tar" | sha256sum -c -
+          if [ "$MODE_INPUT" = promote ]; then
+            printf '%s\n' handoff.json manifest.canary.json metadata.json release.zip > "$RUNNER_TEMP/expected-tar-files"
+          else
+            printf '%s\n' handoff.json metadata.json release.zip > "$RUNNER_TEMP/expected-tar-files"
+          fi
+          tar -tf "$RUNNER_TEMP/pointer-download/pointer-input.tar" | LC_ALL=C sort > "$RUNNER_TEMP/actual-tar-files"
+          diff -u "$RUNNER_TEMP/expected-tar-files" "$RUNNER_TEMP/actual-tar-files"
+          mkdir "$RUNNER_TEMP/pointer-input"
+          tar -xf "$RUNNER_TEMP/pointer-download/pointer-input.tar" -C "$RUNNER_TEMP/pointer-input"
+          node --input-type=module <<'NODE'
+          import { createHash, createPublicKey, createVerify } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const fail = (m) => { throw new Error(`POINTER INPUT FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/pointer-input`;
+          const h = JSON.parse(readFileSync(`${dir}/handoff.json`, "utf8"));
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const bundle = readFileSync(`${dir}/release.zip`);
+          const sha = createHash("sha256").update(bundle).digest("hex");
+          const expectedHandoff = {
+            schemaVersion: 1,
+            mode: process.env.MODE_INPUT,
+            target: process.env.PROMOTE_TO_INPUT,
+            targetChannel: process.env.MODE_INPUT === "promote" ? "production" : "canary",
+            artifactSha256: process.env.EXPECTED_ARTIFACT_SHA256,
+            bundleId: process.env.EXPECTED_BUNDLE_ID,
+            nativeFingerprint: process.env.EXPECTED_NATIVE_FINGERPRINT,
+            releaseSha: process.env.EXPECTED_RELEASE_SHA,
+            canaryManifestSha256: process.env.EXPECTED_CANARY_MANIFEST_SHA256,
+            pointerChangedAt: process.env.EXPECTED_POINTER_CHANGED_AT,
+          };
+          if (JSON.stringify(h) !== JSON.stringify(expectedHandoff) || sha !== h.artifactSha256) fail("handoff mismatch");
+          const [version, artifact] = h.target.split("/");
+          if (metadata.version !== version || metadata.artifact !== artifact || artifact !== `${sha.slice(0, 16)}.zip` || metadata.checksum !== sha || metadata.artifactSha256 !== sha || metadata.bundleId !== `${version}-${sha.slice(0, 8)}` || metadata.bundleId !== h.bundleId || metadata.nativeFingerprint !== h.nativeFingerprint || metadata.releaseSha !== h.releaseSha) fail("metadata mismatch");
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const spki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          if (createHash("sha256").update(spki).digest("hex") !== process.env.OTA_PUBLIC_SPKI_SHA256) fail("public key mismatch");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, v) => `${[protocol, ...names.map((n) => `${n}=${v[n]}`)].join("\n")}\n`;
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          if (fields.some((f) => metadata[f] == null) || !verify(bundle, metadata.signature) || !verify(payload("factorylm-ota-provenance-v1", fields, metadata), metadata.provenanceSignature)) fail("release signature failure");
+          if (process.env.MODE_INPUT === "promote") {
+            const sourceBytes = readFileSync(`${dir}/manifest.canary.json`);
+            const source = JSON.parse(sourceBytes);
+            const sourceSha = createHash("sha256").update(sourceBytes).digest("hex");
+            if (sourceSha !== h.canaryManifestSha256 || source.pointerChangedAt !== h.pointerChangedAt || source.channel !== "canary" || `${source.version}/${source.artifact}` !== h.target) fail("canary source mismatch");
+            for (const field of [...fields, "provenanceSignature"]) if (source[field] !== metadata[field]) fail(`canary metadata mismatch: ${field}`);
+            if (!verify(payload("factorylm-ota-provenance-v1", fields, source), source.provenanceSignature) || !verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, source), source.manifestSignature)) fail("canary source signature failure");
+          }
+          NODE
+      - name: Reconfirm current main at signing boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::main advanced before pointer signing"; exit 1; }
+      - name: Install checksum-pinned Doppler CLI
+        run: |
+          set -euo pipefail
+          curl --disable --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" "$DOPPLER_CLI_URL"
+          echo "1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154  $RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/doppler-bin"
+          tar -xzf "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" -C "$RUNNER_TEMP/doppler-bin"
+          test -x "$RUNNER_TEMP/doppler-bin/doppler"
+      - name: Fetch isolated key, drop token, and sign pointer
+        id: seal-pointer
+        env:
+          OTA_SIGNING_DOPPLER_TOKEN: ${{ secrets.OTA_SIGNING_DOPPLER_TOKEN }}
+          EXPECTED_INPUT_SHA256: ${{ needs.prepare-pointer.outputs.pointer_input_sha256 }}
+          EXPECTED_ARTIFACT_SHA256: ${{ needs.prepare-pointer.outputs.artifact_sha256 }}
+          EXPECTED_BUNDLE_ID: ${{ needs.prepare-pointer.outputs.bundle_id }}
+          EXPECTED_NATIVE_FINGERPRINT: ${{ needs.prepare-pointer.outputs.native_fingerprint }}
+          EXPECTED_RELEASE_SHA: ${{ needs.prepare-pointer.outputs.release_sha }}
+          EXPECTED_CANARY_MANIFEST_SHA256: ${{ needs.prepare-pointer.outputs.canary_manifest_sha256 }}
+          EXPECTED_POINTER_CHANGED_AT: ${{ needs.prepare-pointer.outputs.pointer_changed_at }}
+          MODE_INPUT: ${{ inputs.mode }}
+          PROMOTE_TO_INPUT: ${{ inputs.promote_to }}
+        run: |
+          set -euo pipefail
+          [ -n "${OTA_SIGNING_DOPPLER_TOKEN:-}" ] || { echo "::error::isolated OTA signing token is missing"; exit 1; }
+          echo "$EXPECTED_INPUT_SHA256  $RUNNER_TEMP/pointer-download/pointer-input.tar" | sha256sum -c -
+          export DOPPLER_TOKEN="$OTA_SIGNING_DOPPLER_TOKEN"
+          OTA_SIGNING_PRIVATE_KEY="$("$RUNNER_TEMP/doppler-bin/doppler" secrets get OTA_SIGNING_PRIVATE_KEY --project factorylm --config ota_signing --plain)"
+          unset DOPPLER_TOKEN OTA_SIGNING_DOPPLER_TOKEN
+          rm -f "$RUNNER_TEMP/doppler_3.76.5_linux_amd64.tar.gz" "$RUNNER_TEMP/doppler-bin/doppler"
+          [ -n "$OTA_SIGNING_PRIVATE_KEY" ]
+          export OTA_SIGNING_PRIVATE_KEY
+          trap 'unset OTA_SIGNING_PRIVATE_KEY DOPPLER_TOKEN OTA_SIGNING_DOPPLER_TOKEN' EXIT
+          mkdir "$RUNNER_TEMP/pointer-signed"
+          node --input-type=module <<'NODE'
+          import { createHash, createPrivateKey, createPublicKey, createSign, createVerify } from "node:crypto";
+          import { readFileSync, writeFileSync } from "node:fs";
+          const fail = (m) => { throw new Error(`POINTER SIGNING FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/pointer-input`;
+          const out = `${process.env.RUNNER_TEMP}/pointer-signed`;
+          const h = JSON.parse(readFileSync(`${dir}/handoff.json`, "utf8"));
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const bundle = readFileSync(`${dir}/release.zip`);
+          const privateKey = process.env.OTA_SIGNING_PRIVATE_KEY;
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const hex = (v) => createHash("sha256").update(v).digest("hex");
+          const publicSpki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          const derivedSpki = createPublicKey(createPrivateKey(privateKey)).export({ type: "spki", format: "der" });
+          if (hex(publicSpki) !== process.env.OTA_PUBLIC_SPKI_SHA256 || !publicSpki.equals(derivedSpki)) fail("key identity mismatch");
+          const expectedHandoff = {
+            schemaVersion: 1,
+            mode: process.env.MODE_INPUT,
+            target: process.env.PROMOTE_TO_INPUT,
+            targetChannel: process.env.MODE_INPUT === "promote" ? "production" : "canary",
+            artifactSha256: process.env.EXPECTED_ARTIFACT_SHA256,
+            bundleId: process.env.EXPECTED_BUNDLE_ID,
+            nativeFingerprint: process.env.EXPECTED_NATIVE_FINGERPRINT,
+            releaseSha: process.env.EXPECTED_RELEASE_SHA,
+            canaryManifestSha256: process.env.EXPECTED_CANARY_MANIFEST_SHA256,
+            pointerChangedAt: process.env.EXPECTED_POINTER_CHANGED_AT,
+          };
+          if (JSON.stringify(h) !== JSON.stringify(expectedHandoff) || hex(bundle) !== h.artifactSha256) fail("input changed after verification");
+          const [version, artifact] = h.target.split("/");
+          if (metadata.version !== version || metadata.artifact !== artifact || artifact !== `${h.artifactSha256.slice(0, 16)}.zip` || metadata.checksum !== h.artifactSha256 || metadata.artifactSha256 !== h.artifactSha256 || metadata.bundleId !== `${version}-${h.artifactSha256.slice(0, 8)}` || metadata.bundleId !== h.bundleId || metadata.nativeFingerprint !== h.nativeFingerprint || metadata.releaseSha !== h.releaseSha) fail("metadata mismatch");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, v) => `${[protocol, ...names.map((n) => `${n}=${v[n]}`)].join("\n")}\n`;
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          const sign = (value) => { const signer = createSign("RSA-SHA256"); signer.update(value); signer.end(); return signer.sign(privateKey, "base64"); };
+          if (!verify(bundle, metadata.signature) || !verify(payload("factorylm-ota-provenance-v1", fields, metadata), metadata.provenanceSignature)) fail("release authentication failure");
+          if (h.mode === "promote") {
+            const sourceBytes = readFileSync(`${dir}/manifest.canary.json`);
+            const source = JSON.parse(sourceBytes.toString("utf8"));
+            if (hex(sourceBytes) !== h.canaryManifestSha256 || source.pointerChangedAt !== h.pointerChangedAt || source.channel !== "canary" || `${source.version}/${source.artifact}` !== h.target) fail("canary changed before signing");
+            for (const field of [...fields, "provenanceSignature"]) if (source[field] !== metadata[field]) fail(`canary metadata mismatch: ${field}`);
+            if (!verify(payload("factorylm-ota-provenance-v1", fields, source), source.provenanceSignature)) fail("canary provenance signature failure");
+            if (!verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, source), source.manifestSignature)) fail("canary pointer signature failure");
+          }
+          const canonicalTime = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && new Date(Date.parse(value)).toISOString() === value;
+          const pointerChangedAt = new Date().toISOString();
+          if (!canonicalTime(metadata.releasedAt) || Date.parse(pointerChangedAt) < Date.parse(metadata.releasedAt)) fail("pointer predates governed build");
+          const manifest = {
+            bundleId: metadata.bundleId,
+            version: metadata.version,
+            artifact: metadata.artifact,
+            checksum: metadata.checksum,
+            signature: metadata.signature,
+            nativeFingerprint: metadata.nativeFingerprint,
+            releaseSha: metadata.releaseSha,
+            releasedAt: metadata.releasedAt,
+            artifactSha256: metadata.artifactSha256,
+            provenanceSignature: metadata.provenanceSignature,
+            channel: h.targetChannel,
+            downloadUrl: `${process.env.OTA_ORIGIN}/releases/${h.target}`,
+            pointerChangedAt,
+            rolledBackTo: h.target,
+          };
+          manifest.manifestSignature = sign(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest));
+          if (!verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest), manifest.manifestSignature)) fail("new pointer signature failure");
+          writeFileSync(`${out}/release.zip`, bundle);
+          writeFileSync(`${out}/metadata.json`, `${JSON.stringify(metadata, null, 2)}\n`);
+          writeFileSync(`${out}/manifest.target.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+          writeFileSync(`${out}/handoff.json`, `${JSON.stringify(h, null, 2)}\n`);
+          if (h.mode === "promote") writeFileSync(`${out}/manifest.canary.json`, readFileSync(`${dir}/manifest.canary.json`));
+          NODE
+          unset OTA_SIGNING_PRIVATE_KEY
+          if [ "$MODE_INPUT" = promote ]; then
+            POINTER_FILES=(handoff.json manifest.canary.json manifest.target.json metadata.json release.zip)
+          else
+            POINTER_FILES=(handoff.json manifest.target.json metadata.json release.zip)
+          fi
+          tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
+            -cf "$RUNNER_TEMP/pointer-signed.tar" -C "$RUNNER_TEMP/pointer-signed" "${POINTER_FILES[@]}"
+          POINTER_PAYLOAD_SHA256="$(sha256sum "$RUNNER_TEMP/pointer-signed.tar" | cut -d' ' -f1)"
+          echo "pointer_payload_sha256=$POINTER_PAYLOAD_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Upload signed pointer and authenticated release
+        id: upload-pointer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ota-pointer-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pointer-signed.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  stage-canary:
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'stage-canary'
+    needs: sign-pointer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ota-canary
+    steps:
+      - name: Download signed canary pointer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.sign-pointer.outputs.pointer_artifact_id }}
+          path: ${{ runner.temp }}/pointer-download
+          merge-multiple: true
+      - name: Verify staged canary data before SSH
+        env:
+          EXPECTED_PAYLOAD_SHA256: ${{ needs.sign-pointer.outputs.pointer_payload_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "$EXPECTED_PAYLOAD_SHA256  $RUNNER_TEMP/pointer-download/pointer-signed.tar" | sha256sum -c -
+          printf '%s\n' handoff.json manifest.target.json metadata.json release.zip > "$RUNNER_TEMP/expected-tar-files"
+          tar -tf "$RUNNER_TEMP/pointer-download/pointer-signed.tar" | LC_ALL=C sort > "$RUNNER_TEMP/actual-tar-files"
+          diff -u "$RUNNER_TEMP/expected-tar-files" "$RUNNER_TEMP/actual-tar-files"
+          mkdir "$RUNNER_TEMP/release"
+          tar -xf "$RUNNER_TEMP/pointer-download/pointer-signed.tar" -C "$RUNNER_TEMP/release"
+          LIVE_POINTER_HTTP_STATUS="$(curl --disable --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.canary.preflight.json" --write-out '%{http_code}' \
+            --url "$OTA_ORIGIN/manifest.canary.json")"
+          case "$LIVE_POINTER_HTTP_STATUS" in
+            200) LIVE_POINTER_STATE=present ;;
+            404) LIVE_POINTER_STATE=missing; rm -f "$RUNNER_TEMP/manifest.canary.preflight.json" ;;
+            *) echo "::error::could not read the live canary pointer (HTTP $LIVE_POINTER_HTTP_STATUS)"; exit 1 ;;
+          esac
+          export LIVE_POINTER_STATE
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { createHash, createPublicKey, createVerify } from "node:crypto";
+          const fail = (m) => { throw new Error(`STAGE VALIDATION FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/release`;
+          const h = JSON.parse(readFileSync(`${dir}/handoff.json`, "utf8"));
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const manifest = JSON.parse(readFileSync(`${dir}/manifest.target.json`, "utf8"));
+          const bundle = readFileSync(`${dir}/release.zip`);
+          const sha = createHash("sha256").update(bundle).digest("hex");
+          if (h.mode !== "stage-canary" || manifest.channel !== "canary" || h.target !== `${manifest.version}/${manifest.artifact}` || sha !== h.artifactSha256) fail("identity mismatch");
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const spki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          if (createHash("sha256").update(spki).digest("hex") !== process.env.OTA_PUBLIC_SPKI_SHA256) fail("public key mismatch");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, v) => `${[protocol, ...names.map((n) => `${n}=${v[n]}`)].join("\n")}\n`;
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          if (!verify(bundle, manifest.signature) || !verify(payload("factorylm-ota-provenance-v1", fields, manifest), manifest.provenanceSignature) || !verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest), manifest.manifestSignature)) fail("signature failure");
+          for (const field of [...fields, "provenanceSignature"]) if (metadata[field] !== manifest[field]) fail(`metadata mismatch: ${field}`);
+          const canonicalTimestamp = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value ?? "") && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+          const authenticatedPointer = (value, channel) => value && value.channel === channel && /^[0-9a-f]{40}$/.test(value.releaseSha ?? "") && canonicalTimestamp(value.releasedAt) && canonicalTimestamp(value.pointerChangedAt) && Date.parse(value.pointerChangedAt) >= Date.parse(value.releasedAt) && verify(payload("factorylm-ota-provenance-v1", fields, value), value.provenanceSignature) && verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, value), value.manifestSignature);
+          if (!authenticatedPointer(manifest, "canary")) fail("invalid authenticated candidate pointer");
+          const candidateBytes = readFileSync(`${dir}/manifest.target.json`);
+          let expectedLiveSha256 = "missing";
+          if (process.env.LIVE_POINTER_STATE === "present") {
+            const liveBytes = readFileSync(`${process.env.RUNNER_TEMP}/manifest.canary.preflight.json`);
+            let live;
+            try { live = JSON.parse(liveBytes); } catch { fail("invalid authenticated live pointer"); }
+            if (!authenticatedPointer(live, "canary")) fail("invalid authenticated live pointer");
+            const liveMillis = Date.parse(live.pointerChangedAt);
+            const candidateMillis = Date.parse(manifest.pointerChangedAt);
+            if (!(candidateMillis > liveMillis || (candidateMillis === liveMillis && candidateBytes.equals(liveBytes)))) fail("pointer transition is not monotonic");
+            expectedLiveSha256 = createHash("sha256").update(liveBytes).digest("hex");
+          } else if (process.env.LIVE_POINTER_STATE !== "missing") {
+            fail("invalid live pointer preflight state");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `OTA_VERSION=${manifest.version}\nOTA_ARTIFACT=${manifest.artifact}\nOTA_ARTIFACT_SHA256=${sha}\nEXPECTED_LIVE_POINTER_SHA256=${expectedLiveSha256}\n`);
+          NODE
+      - name: Reconfirm current main before canary staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::main advanced before canary staging"; exit 1; }
+      - name: Set up restricted canary SSH
+        env:
+          OTA_CANARY_SSH_KEY: ${{ secrets.OTA_CANARY_SSH_KEY }}
+          OTA_SSH_USER: ${{ vars.OTA_CANARY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          [[ "$OTA_SSH_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$OTA_SSH_USER" != root ]
+          [ -n "$OTA_CANARY_SSH_KEY" ]
+          install -d -m 700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$OTA_CANARY_SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          chmod 600 "$RUNNER_TEMP/ssh/key"
+          printf '%s' "$OTA_KNOWN_HOSTS_B64" | base64 --decode > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh/known_hosts"
+          printf 'Host ota-canary\n  HostName %s\n  User %s\n  IdentityFile %s\n  IdentitiesOnly yes\n  StrictHostKeyChecking=yes\n  UserKnownHostsFile %s\n' \
+            "$OTA_HOST" "$OTA_SSH_USER" "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" > "$RUNNER_TEMP/ssh/config"
+      - name: Atomically stage canary under the channel lock
+        run: |
+          set -euo pipefail
+          INCOMING="/srv/factorylm/ota/.incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-stage"
+          SSH=(ssh -F "$RUNNER_TEMP/ssh/config" ota-canary)
+          SCP=(scp -F "$RUNNER_TEMP/ssh/config")
+          "${SSH[@]}" sh -s -- "$INCOMING" <<'REMOTE'
+          set -eu
+          mkdir -p "$1"
+          REMOTE
+          "${SCP[@]}" "$RUNNER_TEMP/release/release.zip" "ota-canary:${INCOMING}/release.zip"
+          "${SCP[@]}" "$RUNNER_TEMP/release/metadata.json" "ota-canary:${INCOMING}/metadata.json"
+          "${SCP[@]}" "$RUNNER_TEMP/release/manifest.target.json" "ota-canary:${INCOMING}/manifest.json"
+          METADATA_SHA256="$(sha256sum "$RUNNER_TEMP/release/metadata.json" | cut -d' ' -f1)"
+          MANIFEST_SHA256="$(sha256sum "$RUNNER_TEMP/release/manifest.target.json" | cut -d' ' -f1)"
+          "${SSH[@]}" sh -s -- "$INCOMING" "$OTA_VERSION" "$OTA_ARTIFACT" "$OTA_ARTIFACT_SHA256" "$METADATA_SHA256" "$MANIFEST_SHA256" "$EXPECTED_LIVE_POINTER_SHA256" <<'REMOTE'
+          set -eu
+          incoming=$1; version=$2; artifact=$3; artifact_sha=$4; metadata_sha=$5; manifest_sha=$6; expected_live=$7
+          root=/srv/factorylm/ota
+          trap 'rm -rf "$incoming"' EXIT
+          exec 9>"$root/.ota-pointer.lock"
+          flock 9
+          live_pointer="$root/manifest.canary.json"
+          if [ "$expected_live" = missing ]; then
+            [ ! -e "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          else
+            [ -f "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+            [ "$(sha256sum "$live_pointer" | cut -d' ' -f1)" = "$expected_live" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          fi
+          mkdir -p "$root/releases/$version"
+          install_immutable() {
+            source=$1; target=$2; expected=$3
+            actual=$(sha256sum "$source" | cut -d' ' -f1)
+            [ "$actual" = "$expected" ] || exit 1
+            if [ -e "$target" ]; then
+              [ "$(sha256sum "$target" | cut -d' ' -f1)" = "$expected" ] || exit 1
+              return
+            fi
+            chmod 0644 "$source"
+            ln "$source" "$target"
+          }
+          install_immutable "$incoming/release.zip" "$root/releases/$version/$artifact" "$artifact_sha"
+          install_immutable "$incoming/metadata.json" "$root/releases/$version/${artifact%.zip}.json" "$metadata_sha"
+          [ "$(sha256sum "$incoming/manifest.json" | cut -d' ' -f1)" = "$manifest_sha" ]
+          chmod 0644 "$incoming/manifest.json"
+          mv -f "$incoming/manifest.json" "$root/manifest.canary.json"
+          [ "$(sha256sum "$root/manifest.canary.json" | cut -d' ' -f1)" = "$manifest_sha" ]
+          REMOTE
+          curl --disable --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.live.json" --url "$OTA_ORIGIN/manifest.canary.json"
+          cmp "$RUNNER_TEMP/release/manifest.target.json" "$RUNNER_TEMP/manifest.live.json"
+
+  promote-production:
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'promote'
+    needs: [sign-pointer, verify-handset-evidence]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ota-production
+    steps:
+      - name: Download signed production pointer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.sign-pointer.outputs.pointer_artifact_id }}
+          path: ${{ runner.temp }}/pointer-download
+          merge-multiple: true
+      - name: Verify pointer and reconfirm exact live canary
+        env:
+          EXPECTED_PAYLOAD_SHA256: ${{ needs.sign-pointer.outputs.pointer_payload_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "$EXPECTED_PAYLOAD_SHA256  $RUNNER_TEMP/pointer-download/pointer-signed.tar" | sha256sum -c -
+          printf '%s\n' handoff.json manifest.canary.json manifest.target.json metadata.json release.zip > "$RUNNER_TEMP/expected-tar-files"
+          tar -tf "$RUNNER_TEMP/pointer-download/pointer-signed.tar" | LC_ALL=C sort > "$RUNNER_TEMP/actual-tar-files"
+          diff -u "$RUNNER_TEMP/expected-tar-files" "$RUNNER_TEMP/actual-tar-files"
+          mkdir "$RUNNER_TEMP/release"
+          tar -xf "$RUNNER_TEMP/pointer-download/pointer-signed.tar" -C "$RUNNER_TEMP/release"
+          curl --disable --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.canary.live.json" --url "$OTA_ORIGIN/manifest.canary.json"
+          cmp "$RUNNER_TEMP/release/manifest.canary.json" "$RUNNER_TEMP/manifest.canary.live.json" || {
+            echo "::error::canary manifest changed after handset evidence and pointer signing"
+            exit 1
+          }
+          LIVE_POINTER_HTTP_STATUS="$(curl --disable --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.production.preflight.json" --write-out '%{http_code}' \
+            --url "$OTA_ORIGIN/manifest.production.json")"
+          case "$LIVE_POINTER_HTTP_STATUS" in
+            200) LIVE_POINTER_STATE=present ;;
+            404) LIVE_POINTER_STATE=missing; rm -f "$RUNNER_TEMP/manifest.production.preflight.json" ;;
+            *) echo "::error::could not read the live production pointer (HTTP $LIVE_POINTER_HTTP_STATUS)"; exit 1 ;;
+          esac
+          export LIVE_POINTER_STATE
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { createHash, createPublicKey, createVerify } from "node:crypto";
+          const fail = (m) => { throw new Error(`PRODUCTION VALIDATION FAILURE: ${m}`); };
+          const dir = `${process.env.RUNNER_TEMP}/release`;
+          const h = JSON.parse(readFileSync(`${dir}/handoff.json`, "utf8"));
+          const metadata = JSON.parse(readFileSync(`${dir}/metadata.json`, "utf8"));
+          const manifest = JSON.parse(readFileSync(`${dir}/manifest.target.json`, "utf8"));
+          const sourceBytes = readFileSync(`${dir}/manifest.canary.json`);
+          const source = JSON.parse(sourceBytes);
+          const bundle = readFileSync(`${dir}/release.zip`);
+          const sha = createHash("sha256").update(bundle).digest("hex");
+          const sourceSha = createHash("sha256").update(sourceBytes).digest("hex");
+          if (h.mode !== "promote" || manifest.channel !== "production" || source.channel !== "canary" || h.target !== `${manifest.version}/${manifest.artifact}` || sha !== h.artifactSha256 || sourceSha !== h.canaryManifestSha256) fail("identity mismatch");
+          const publicKey = Buffer.from(process.env.OTA_PUBLIC_KEY_B64, "base64").toString("utf8");
+          const spki = createPublicKey(publicKey).export({ type: "spki", format: "der" });
+          if (createHash("sha256").update(spki).digest("hex") !== process.env.OTA_PUBLIC_SPKI_SHA256) fail("public key mismatch");
+          const fields = ["bundleId", "version", "artifact", "checksum", "signature", "nativeFingerprint", "releaseSha", "releasedAt", "artifactSha256"];
+          const pointerFields = [...fields, "provenanceSignature", "channel", "downloadUrl", "pointerChangedAt"];
+          const payload = (protocol, names, v) => `${[protocol, ...names.map((n) => `${n}=${v[n]}`)].join("\n")}\n`;
+          const verify = (value, signature) => { const verifier = createVerify("RSA-SHA256"); verifier.update(value); verifier.end(); return verifier.verify(publicKey, signature, "base64"); };
+          if (!verify(bundle, manifest.signature) || !verify(payload("factorylm-ota-provenance-v1", fields, manifest), manifest.provenanceSignature) || !verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, source), source.manifestSignature) || !verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, manifest), manifest.manifestSignature)) fail("signature failure");
+          for (const field of [...fields, "provenanceSignature"]) if (metadata[field] !== manifest[field] || source[field] !== manifest[field]) fail(`provenance mismatch: ${field}`);
+          const canonicalTimestamp = (value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value ?? "") && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+          const authenticatedPointer = (value, channel) => value && value.channel === channel && /^[0-9a-f]{40}$/.test(value.releaseSha ?? "") && canonicalTimestamp(value.releasedAt) && canonicalTimestamp(value.pointerChangedAt) && Date.parse(value.pointerChangedAt) >= Date.parse(value.releasedAt) && verify(payload("factorylm-ota-provenance-v1", fields, value), value.provenanceSignature) && verify(payload("factorylm-ota-manifest-pointer-v1", pointerFields, value), value.manifestSignature);
+          if (!authenticatedPointer(manifest, "production")) fail("invalid authenticated candidate pointer");
+          const candidateBytes = readFileSync(`${dir}/manifest.target.json`);
+          let expectedLiveSha256 = "missing";
+          if (process.env.LIVE_POINTER_STATE === "present") {
+            const liveBytes = readFileSync(`${process.env.RUNNER_TEMP}/manifest.production.preflight.json`);
+            let live;
+            try { live = JSON.parse(liveBytes); } catch { fail("invalid authenticated live pointer"); }
+            if (!authenticatedPointer(live, "production")) fail("invalid authenticated live pointer");
+            const liveMillis = Date.parse(live.pointerChangedAt);
+            const candidateMillis = Date.parse(manifest.pointerChangedAt);
+            if (!(candidateMillis > liveMillis || (candidateMillis === liveMillis && candidateBytes.equals(liveBytes)))) fail("pointer transition is not monotonic");
+            expectedLiveSha256 = createHash("sha256").update(liveBytes).digest("hex");
+          } else if (process.env.LIVE_POINTER_STATE !== "missing") {
+            fail("invalid live pointer preflight state");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `OTA_VERSION=${manifest.version}\nOTA_ARTIFACT=${manifest.artifact}\nOTA_ARTIFACT_SHA256=${sha}\nOTA_CANARY_MANIFEST_SHA256=${sourceSha}\nEXPECTED_LIVE_POINTER_SHA256=${expectedLiveSha256}\n`);
+          NODE
+      - name: Reconfirm current main before production promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || { echo "::error::main advanced before production promotion"; exit 1; }
+      - name: Set up restricted production SSH
+        env:
+          OTA_PRODUCTION_SSH_KEY: ${{ secrets.OTA_PRODUCTION_SSH_KEY }}
+          OTA_SSH_USER: ${{ vars.OTA_PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          [[ "$OTA_SSH_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && [ "$OTA_SSH_USER" != root ]
+          [ -n "$OTA_PRODUCTION_SSH_KEY" ]
+          install -d -m 700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$OTA_PRODUCTION_SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          chmod 600 "$RUNNER_TEMP/ssh/key"
+          printf '%s' "$OTA_KNOWN_HOSTS_B64" | base64 --decode > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh/known_hosts"
+          printf 'Host ota-production\n  HostName %s\n  User %s\n  IdentityFile %s\n  IdentitiesOnly yes\n  StrictHostKeyChecking=yes\n  UserKnownHostsFile %s\n' \
+            "$OTA_HOST" "$OTA_SSH_USER" "$RUNNER_TEMP/ssh/key" "$RUNNER_TEMP/ssh/known_hosts" > "$RUNNER_TEMP/ssh/config"
+      - name: Atomically promote only the still-current canary
+        run: |
+          set -euo pipefail
+          INCOMING="/srv/factorylm/ota/.incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-production"
+          SSH=(ssh -F "$RUNNER_TEMP/ssh/config" ota-production)
+          SCP=(scp -F "$RUNNER_TEMP/ssh/config")
+          "${SSH[@]}" sh -s -- "$INCOMING" <<'REMOTE'
+          set -eu
+          mkdir -p "$1"
+          REMOTE
+          "${SCP[@]}" "$RUNNER_TEMP/release/manifest.target.json" "ota-production:${INCOMING}/manifest.json"
+          MANIFEST_SHA256="$(sha256sum "$RUNNER_TEMP/release/manifest.target.json" | cut -d' ' -f1)"
+          METADATA_SHA256="$(sha256sum "$RUNNER_TEMP/release/metadata.json" | cut -d' ' -f1)"
+          "${SSH[@]}" sh -s -- "$INCOMING" "$OTA_VERSION" "$OTA_ARTIFACT" "$OTA_ARTIFACT_SHA256" "$METADATA_SHA256" "$OTA_CANARY_MANIFEST_SHA256" "$MANIFEST_SHA256" "$EXPECTED_LIVE_POINTER_SHA256" <<'REMOTE'
+          set -eu
+          incoming=$1; version=$2; artifact=$3; artifact_sha=$4; metadata_sha=$5; canary_sha=$6; manifest_sha=$7; expected_live=$8
+          root=/srv/factorylm/ota
+          trap 'rm -rf "$incoming"' EXIT
+          exec 9>"$root/.ota-pointer.lock"
+          flock 9
+          [ "$(sha256sum "$root/manifest.canary.json" | cut -d' ' -f1)" = "$canary_sha" ] || { echo "canary manifest changed under production lock" >&2; exit 1; }
+          live_pointer="$root/manifest.production.json"
+          if [ "$expected_live" = missing ]; then
+            [ ! -e "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          else
+            [ -f "$live_pointer" ] && [ ! -L "$live_pointer" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+            [ "$(sha256sum "$live_pointer" | cut -d' ' -f1)" = "$expected_live" ] || { echo "live manifest changed after authenticated preflight" >&2; exit 1; }
+          fi
+          [ "$(sha256sum "$root/releases/$version/$artifact" | cut -d' ' -f1)" = "$artifact_sha" ] || { echo "release artifact is missing or changed" >&2; exit 1; }
+          [ "$(sha256sum "$root/releases/$version/${artifact%.zip}.json" | cut -d' ' -f1)" = "$metadata_sha" ] || { echo "release provenance is missing or changed" >&2; exit 1; }
+          [ "$(sha256sum "$incoming/manifest.json" | cut -d' ' -f1)" = "$manifest_sha" ]
+          chmod 0644 "$incoming/manifest.json"
+          mv -f "$incoming/manifest.json" "$root/manifest.production.json"
+          [ "$(sha256sum "$root/manifest.production.json" | cut -d' ' -f1)" = "$manifest_sha" ]
+          REMOTE
+          curl --disable --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 15 \
+            --output "$RUNNER_TEMP/manifest.production.live.json" --url "$OTA_ORIGIN/manifest.production.json"
+          cmp "$RUNNER_TEMP/release/manifest.target.json" "$RUNNER_TEMP/manifest.production.live.json"

@@ -68,20 +68,29 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
     "pyproject.toml",
     "pytest.ini",
+    "pip.py",
+    "pip/**",
     "setup.cfg",
+    "sitecustomize.py",
     "tests/conftest.py",
     "tools/ui_surface_lifecycle_guard.py",
     "tools/markdown_it.py",
     "tools/yaml.py",
     "tox.ini",
+    "usercustomize.py",
     "tests/test_ui_surface_lifecycle_guard.py",
+    ".claude/settings.json",
+    ".claude/settings.local.json",
     ".claude/rules/factorylm-unified-ui-cutover.md",
     ".claude/workflows/flm-ui-map.js",
     ".claude/workflows/flm-ui-slice.js",
     ".claude/workflows/flm-ui-verify.js",
     ".github/workflows/**",
+    ".github/scripts/resolve_release_tag.sh",
     ".github/pull_request_template.md",
     "requirements/ui-lifecycle-guard.txt",
+    "tools/hooks/prod-guard.sh",
+    "tools/ota_handset_evidence.py",
 )
 
 # ---------------------------------------------------------------------------
@@ -101,6 +110,170 @@ CONTROL_PATTERNS: tuple[str, ...] = (
 PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = (
     "mira-web/public/",
     "mira-hub/public/",
+)
+
+# Production build, mount, native-wrapper, and release controls sit outside
+# `src/**` but can still select or replace the customer-visible entry point.
+# Direct files at each historical module root therefore fail closed unless they
+# are known documentation, review evidence, or test-only configuration. The
+# rule is intentionally future-safe: an arbitrary new `alternate-entry.ts` at
+# a module root is guarded without first extending an allowlist.
+LEGACY_SURFACE_CONTROL_ROOTS: tuple[str, ...] = (
+    "docs/preview/",
+    "deployment/ota-download/",
+    "mira-web/emails/",
+    "mira-mobile/android/",
+    "mira-mobile/ios/",
+    "mira-mobile/public/",
+    "preview/",
+    "well-known/",
+)
+
+LEGACY_SURFACE_MODULE_ROOTS: tuple[str, ...] = (
+    "mira-web/",
+    "mira-hub/",
+    "mira-mobile/",
+)
+
+LEGACY_SURFACE_EXACT_CONTROL_PATHS: frozenset[str] = frozenset(
+    {
+        # Selects, verifies, builds, and packages the signed web artifact
+        # shipped over the air. Every script executed in the production OTA
+        # workflow is trusted release control: even a verifier runs before
+        # later secret-bearing build and deploy steps in the same workspace.
+        "deployment/nginx-app-factorylm.conf",
+        "deployment/nginx-factorylm-marketing.conf",
+        "deployment/nginx-stg-factorylm.conf",
+        "deployment/nginx-updates-factorylm.conf",
+        "deployment/well-known/apple-app-site-association",
+        "deployment/well-known/assetlinks.json",
+        "agent-dashboard.html",
+        "compose.yaml",
+        "compose.yml",
+        "compose.override.yaml",
+        "compose.override.yml",
+        "docker-compose.hub.yml",
+        "docker-compose.yaml",
+        "docker-compose.saas.yml",
+        "docker-compose.staging-vps.yml",
+        "docker-compose.yml",
+        "docker-compose.override.yaml",
+        "docker-compose.override.yml",
+        "mira-mobile/scripts/ota-deploy.mjs",
+        "mira-mobile/scripts/ota-guard.mjs",
+        "mira-mobile/scripts/native-fingerprint.mjs",
+        "mira-mobile/scripts/ota-package.mjs",
+        "mira-mobile/scripts/ota-provenance.mjs",
+        "mira-mobile/scripts/ota-publish.mjs",
+        "mira-mobile/scripts/ota-rollback.mjs",
+        # These otherwise capability-shaped wrappers can independently
+        # re-enable the legacy chat flag or select a fleet OTA bundle.
+        "mira-hub/src/app/api/me/route.ts",
+        "mira-hub/src/app/api/mobile/live-update/manifest/route.ts",
+        "mira-mobile/src/api/resources.ts",
+        "nginx-oracle.conf",
+        "nginx-oracle-v2.conf",
+        "nginx-phase2-live.conf",
+        "oracle-bootstrap.sh",
+        "oracle-deploy.sh",
+        "scripts/apply-apex-login-redirects.sh",
+        # Existing trusted inputs executed with production credentials or on
+        # the production host before UI containers are built.
+        "scripts/host_perm_setup.sh",
+        "scripts/install_crons.sh",
+        "tools/migration_drift.py",
+        "tools/migration-drift-requirements.txt",
+        "tools/predeploy_log_capture.sh",
+        "tools/agent-dashboard.html",
+    }
+)
+
+_ROOT_COMPOSE_CONTROL_RE = re.compile(
+    r"^(?:docker-)?compose[^/]*\.ya?ml$", re.IGNORECASE
+)
+
+# A new root- or scripts-level shell helper must not be able to move the public
+# mount merely by choosing a filename outside the current exact inventory.
+# All redirect scripts are mount controls; the wider action+surface form catches
+# future `future-ui-deploy.sh` / `switch-site-mount.sh` style selectors without
+# freezing unrelated backend deployment helpers.
+_UI_CONTROL_SCRIPT_RE = re.compile(
+    r"^(?:scripts/)?(?:(?=[^/]*redirect)|(?=[^/]*(?:deploy|mount|switch|cutover|route))(?=[^/]*(?:ui|surface|frontend|site|web|app)))[^/]+\.sh$",
+    re.IGNORECASE,
+)
+
+_NONRUNTIME_MODULE_SUBTREES: tuple[str, ...] = (
+    "mira-web/scripts/",
+    "mira-web/tools/",
+    "mira-web/docs/",
+    "mira-web/tests/",
+    "mira-hub/benchmarks/",
+    "mira-hub/db/",
+    "mira-hub/docs/",
+    "mira-hub/scripts/",
+    "mira-hub/tests/",
+    "mira-hub/tools/",
+    "mira-mobile/docs/",
+    "mira-mobile/scripts/__tests__/",
+    "mira-mobile/tests/",
+    "mira-mobile/tools/",
+)
+
+_ANDROID_TEST_SOURCESET_RE = re.compile(
+    r"^mira-mobile/android/[^/]+/src/(?:test|androidTest|testFixtures)(?:[A-Z][^/]*)?/"
+)
+
+_NONRUNTIME_NATIVE_EXACT_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-mobile/android/.gitignore",
+        "mira-mobile/android/app/.gitignore",
+        "mira-mobile/ios/App/CapApp-SPM/.gitignore",
+        "mira-mobile/ios/App/CapApp-SPM/README.md",
+        "mira-mobile/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
+        "mira-mobile/ios/.gitignore",
+    }
+)
+
+_NONRUNTIME_DEPLOYMENT_PATHS: frozenset[str] = frozenset(
+    {
+        "deployment/admin_guide.md",
+        "deployment/customer_agreement.md",
+        "deployment/deploy.sh",
+        "deployment/network.yml",
+        "deployment/onboarding_guide.md",
+        "deployment/troubleshooting.md",
+        "deployment/well-known/README.md",
+    }
+)
+
+_ROOT_SERVER_CONFIG_CONTROL_RE = re.compile(r"^[^/]+\.conf$", re.IGNORECASE)
+
+_NONRUNTIME_MODULE_ROOT_SUFFIXES: tuple[str, ...] = (
+    ".md",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".webp",
+)
+
+_NONRUNTIME_MODULE_ROOT_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/.gitignore",
+        "mira-hub/.gitignore",
+        "mira-hub/components.json",
+        "mira-hub/Dockerfile.sync-worker",
+        "mira-hub/eslint.config.mjs",
+        "mira-hub/playwright.command-center.config.ts",
+        "mira-hub/playwright.config.ts",
+        "mira-hub/playwright.e2e-laptop-to-cloud.config.ts",
+        "mira-hub/playwright.onboarding-validate.config.ts",
+        "mira-hub/playwright.onboarding-walkthrough.config.ts",
+        "mira-hub/playwright.signup.config.ts",
+        "mira-hub/playwright.smoke.config.ts",
+        "mira-hub/vitest.config.ts",
+        "mira-hub/vitest.integration.config.ts",
+        "mira-mobile/.gitignore",
+    }
 )
 
 CLASSIFIED_SOURCE_ROOTS: tuple[str, ...] = (
@@ -191,7 +364,6 @@ _WEB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-web/src/lib/hub-provisioning-queue.ts",
         "mira-web/src/lib/hub-user-activation.ts",
         "mira-web/src/lib/magic-link.ts",
-        "mira-web/src/lib/mailer.ts",
         "mira-web/src/lib/mfa.ts",
         "mira-web/src/lib/mira-chat.ts",
         "mira-web/src/lib/posthog-server.ts",
@@ -241,14 +413,12 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-hub/src/lib/auth/route-helpers.ts",
         "mira-hub/src/lib/auth/session.ts",
         "mira-hub/src/lib/bindings.ts",
-        "mira-hub/src/lib/capabilities.ts",
         "mira-hub/src/lib/cmms/atlas-provider.ts",
         "mira-hub/src/lib/cmms/deep-link.ts",
         "mira-hub/src/lib/cmms/provider.ts",
         "mira-hub/src/lib/cmms/registry.ts",
         "mira-hub/src/lib/cmms/tenant-config.ts",
         "mira-hub/src/lib/command-center-freshness.ts",
-        "mira-hub/src/lib/commissioning.ts",
         "mira-hub/src/lib/config.ts",
         "mira-hub/src/lib/contextualization/approval.ts",
         "mira-hub/src/lib/contextualization/asset-matcher.ts",
@@ -269,7 +439,6 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
         "mira-hub/src/lib/equipment-type.ts",
         "mira-hub/src/lib/fetch-adapters.ts",
         "mira-hub/src/lib/gateway-probe.ts",
-        "mira-hub/src/lib/hub/status.ts",
         "mira-hub/src/lib/i3x/approval.ts",
         "mira-hub/src/lib/i3x/auth.ts",
         "mira-hub/src/lib/i3x/data-access.ts",
@@ -378,30 +547,20 @@ _HUB_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Root-level Hub authentication/middleware files are existing capability and
-# authorization seams. Preserve only these audited exact paths; any new source
-# root or sibling filename still fails closed.
-_HUB_PRESERVED_SOURCE_PATHS: frozenset[str] = frozenset(
-    {
-        "mira-hub/src/auth.ts",
-        "mira-hub/src/middleware.ts",
-    }
-)
-
-# These are operational/native/transport seams already consumed by the mobile
-# application. Everything else under the historical `src/lib/**` bucket fails
-# closed: that bucket also contains visible copy, view models, composer
-# behavior, citation rendering, and transient-layer behavior, so treating the
-# directory itself as a capability boundary is unsafe. New reusable capability
-# code belongs in the API/adapter roots or in the shared FactoryLM packages.
+# These are transport/native-call seams already consumed by the mobile
+# application. OTA selection is deliberately excluded: choosing and staging a
+# new web bundle is part of the customer-visible mount boundary. Everything
+# else under the historical `src/lib/**` bucket fails closed: that bucket also
+# contains visible copy, view models, composer behavior, citation rendering,
+# and transient-layer behavior, so treating the directory itself as a
+# capability boundary is unsafe. New reusable capability code belongs in the
+# API/adapter roots or in the shared FactoryLM packages.
 _MOBILE_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
     {
-        "mira-mobile/src/lib/live-update.ts",
         "mira-mobile/src/lib/native-pick.ts",
         "mira-mobile/src/lib/offline-queue.ts",
         "mira-mobile/src/lib/open-with.ts",
         "mira-mobile/src/lib/resume-guard.ts",
-        "mira-mobile/src/lib/sse.ts",
         "mira-mobile/src/lib/tags.ts",
     }
 )
@@ -466,6 +625,20 @@ _GITHUB_STATUS_MAP = {
 # --find-copies, which this module deliberately never passes).
 _GIT_STATUS_MAP = {"A": "added", "M": "modified", "D": "removed", "R": "renamed"}
 
+# Canonical entry shapes emitted by both `git ls-tree` and GitHub's immutable
+# Git Trees API. Anything else is malformed or a future object type this guard
+# has not audited, so it must fail closed during evidence loading.
+_GIT_TREE_ENTRY_KINDS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("040000", "tree"),
+        ("100644", "blob"),
+        ("100755", "blob"),
+        ("120000", "blob"),
+        ("160000", "commit"),
+    }
+)
+_REGULAR_FILE_MODES: frozenset[str] = frozenset({"100644", "100755"})
+
 
 class GuardPolicyError(Exception):
     """Registry, changed-files, or CLI input is malformed.
@@ -481,6 +654,17 @@ class ChangedFile:
     status: str
     path: str
     previous_path: Optional[str] = None
+    old_mode: Optional[str] = None
+    old_type: Optional[str] = None
+    new_mode: Optional[str] = None
+    new_type: Optional[str] = None
+    tree_evidence_complete: bool = False
+
+
+@dataclass(frozen=True)
+class GitTreeEntry:
+    mode: str
+    type: str
 
 
 @dataclass(frozen=True)
@@ -650,14 +834,63 @@ def _matches_pattern(path: str, pattern: str) -> bool:
     return path == pattern
 
 
-def _is_test_path(path: str) -> bool:
-    parts = path.split("/")
-    name = parts[-1]
-    return "__tests__" in parts or ".test." in name or ".spec." in name
-
-
 def _is_nonpresentational_capability_path(path: str) -> bool:
     return path.lower().endswith(_NONPRESENTATIONAL_CAPABILITY_SUFFIXES)
+
+
+def _classify_legacy_surface_control(path: str) -> Optional[bool]:
+    """Classify build/mount controls outside `src/**`; True means guarded."""
+    if path in LEGACY_SURFACE_EXACT_CONTROL_PATHS:
+        return True
+    # Compose accepts arbitrary root-level project/override filenames. Guard
+    # the naming family so a newly introduced selector cannot evade an exact
+    # list merely by choosing a fresh environment suffix.
+    if "/" not in path and _ROOT_COMPOSE_CONTROL_RE.fullmatch(path):
+        return True
+    if _ROOT_SERVER_CONFIG_CONTROL_RE.fullmatch(path):
+        return True
+    if any(path.startswith(root) for root in _NONRUNTIME_MODULE_SUBTREES):
+        return False
+    if _ANDROID_TEST_SOURCESET_RE.match(path):
+        return False
+    if path in _NONRUNTIME_NATIVE_EXACT_PATHS:
+        return False
+    if path.startswith(("mira-mobile/android/", "mira-mobile/ios/")):
+        native_parts = path.split("/")
+        if path.startswith("mira-mobile/ios/") and any(
+            part == "Tests" or part.endswith("Tests") for part in native_parts[3:-1]
+        ):
+            return False
+    # Deployment is an integration/mount boundary, so unknown future entries
+    # fail closed regardless of suffix. Only the current audited backend/docs
+    # snapshot stays open; adding a new capability deployment file requires an
+    # explicit classifier decision instead of becoming an accidental UI mount.
+    if path.startswith("deployment/"):
+        return path not in _NONRUNTIME_DEPLOYMENT_PATHS
+    if _UI_CONTROL_SCRIPT_RE.fullmatch(path):
+        return True
+    if any(path.startswith(root) for root in LEGACY_SURFACE_CONTROL_ROOTS):
+        return True
+    for root in LEGACY_SURFACE_MODULE_ROOTS:
+        if not path.startswith(root):
+            continue
+        relative = path[len(root) :]
+        if not relative:
+            return None
+        if relative.startswith("src/"):
+            return None
+        # Anything else nested under a deployed UI module is an alternate
+        # production tree unless it matched a known non-runtime subtree above.
+        # This catches Next's root `app/` / `pages/` precedence as well as new
+        # public or framework roots without enumerating future names.
+        if "/" in relative:
+            return True
+        if path in _NONRUNTIME_MODULE_ROOT_PATHS:
+            return False
+        if path.lower().endswith(_NONRUNTIME_MODULE_ROOT_SUFFIXES):
+            return False
+        return True
+    return None
 
 
 def _is_hub_api_route(path: str) -> bool:
@@ -681,8 +914,6 @@ def _classify_web_source(path: str) -> bool:
     explicit roots/paths, while route mounts, renderers, content data,
     `server.ts`, and every unknown production sibling fail closed.
     """
-    if _is_test_path(path):
-        return False
     if path.startswith("mira-web/src/capabilities/"):
         return not _is_nonpresentational_capability_path(path)
     if path.startswith("mira-web/src/seed/"):
@@ -709,8 +940,6 @@ def _classify_web_source(path: str) -> bool:
 
 def _classify_hub_source(path: str) -> bool:
     """Classify `mira-hub/src/**`; True means legacy presentation."""
-    if _is_test_path(path):
-        return False
     if _is_hub_api_route(path):
         return False
     if path.startswith("mira-hub/src/capabilities/"):
@@ -740,17 +969,14 @@ def _classify_hub_source(path: str) -> bool:
         if name.endswith(_HUB_PRESENTATION_LIB_SUFFIXES) or name.endswith(_PRESENTATION_SUFFIXES):
             return True
         return path not in _HUB_PRESERVED_LIB_PATHS
-    if path in _HUB_PRESERVED_SOURCE_PATHS:
-        return False
     # Unknown production roots are not a new old-site presentation escape.
-    # Existing root authorization seams above are deliberately exact.
+    # Root authentication and middleware both select customer entry routes and
+    # therefore stay inside the legacy mount boundary.
     return True
 
 
 def _classify_mobile_source(path: str) -> bool:
     """Classify `mira-mobile/src/**`; True means legacy presentation."""
-    if _is_test_path(path):
-        return False
     if path.startswith("mira-mobile/src/chat-adapter/"):
         return path not in _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS
     if path.startswith("mira-mobile/src/api/"):
@@ -779,6 +1005,9 @@ def _classify_source_path(path: str) -> Optional[bool]:
 
 
 def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
+    surface_control = _classify_legacy_surface_control(path)
+    if surface_control is not None:
+        return surface_control
     for root in PUBLIC_STATIC_GUARDED_ROOTS:
         if path.startswith(root):
             return True
@@ -789,11 +1018,146 @@ def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# git-derived changed files — NUL-delimited `git diff --name-status -z
-# --find-renames BASE...HEAD`. Records are `<status>\0<path>\0`, or for a
-# rename `<Rnnn>\0<old_path>\0<new_path>\0` (the similarity score suffix on
-# the status token is discarded — only the leading letter matters here).
+# Immutable Git tree evidence and git-derived changed files. Path-only diff
+# metadata cannot reveal symlinks, executable-bit flips, gitlinks, or a file
+# replaced by a directory. Every production CLI path therefore binds each
+# changed-file record to base/head tree entries before policy evaluation.
 # ---------------------------------------------------------------------------
+def _validated_tree_entry(*, path: object, mode: object, entry_type: object) -> GitTreeEntry:
+    if not isinstance(path, str) or not path:
+        raise GuardPolicyError(f"Git tree entry has missing/invalid path: {path!r}")
+    if path.startswith("/") or "\\" in path or ".." in path.split("/"):
+        raise GuardPolicyError(f"Git tree entry has unsafe path: {path!r}")
+    if not isinstance(mode, str) or not isinstance(entry_type, str):
+        raise GuardPolicyError(
+            f"Git tree entry {path!r} has invalid mode/type: {mode!r}/{entry_type!r}"
+        )
+    if (mode, entry_type) not in _GIT_TREE_ENTRY_KINDS:
+        raise GuardPolicyError(
+            f"Git tree entry {path!r} has unsupported mode/type: {mode!r}/{entry_type!r}"
+        )
+    return GitTreeEntry(mode=mode, type=entry_type)
+
+
+def _load_git_tree_entries(path: Path, *, description: str) -> dict[str, GitTreeEntry]:
+    """Load one complete recursive response from GitHub's Git Trees API."""
+    document = _load_json_object(path, description=description)
+    if document.get("truncated") is not False:
+        raise GuardPolicyError(
+            f"{description} is truncated or missing `truncated: false`; refusing incomplete "
+            "Git tree evidence"
+        )
+    raw_entries = document.get("tree")
+    if not isinstance(raw_entries, list):
+        raise GuardPolicyError(f"{description} must contain a `tree` list")
+
+    entries: dict[str, GitTreeEntry] = {}
+    for index, raw_entry in enumerate(raw_entries):
+        if not isinstance(raw_entry, dict):
+            raise GuardPolicyError(f"{description} tree entry {index} is not an object")
+        raw_path = raw_entry.get("path")
+        entry = _validated_tree_entry(
+            path=raw_path,
+            mode=raw_entry.get("mode"),
+            entry_type=raw_entry.get("type"),
+        )
+        assert isinstance(raw_path, str)  # established by _validated_tree_entry
+        if raw_path in entries:
+            raise GuardPolicyError(f"{description} has duplicate tree path {raw_path!r}")
+        entries[raw_path] = entry
+    return entries
+
+
+def _git_tree_entries(root: Path, revision: str) -> dict[str, GitTreeEntry]:
+    """Read a complete local tree, including directory and gitlink entries."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-tree", "-rz", "-t", "--full-tree", revision],
+            cwd=str(root),
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise GuardPolicyError(f"git ls-tree {revision} failed: {exc}") from exc
+
+    entries: dict[str, GitTreeEntry] = {}
+    for raw_record in proc.stdout.split(b"\0"):
+        if not raw_record:
+            continue
+        try:
+            raw_metadata, raw_path = raw_record.split(b"\t", 1)
+            mode_bytes, type_bytes, _sha_bytes = raw_metadata.split(b" ", 2)
+            path = raw_path.decode("utf-8")
+            mode = mode_bytes.decode("ascii")
+            entry_type = type_bytes.decode("ascii")
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise GuardPolicyError(
+                f"malformed git ls-tree record for {revision!r}: {raw_record!r}"
+            ) from exc
+        if path in entries:
+            raise GuardPolicyError(f"git ls-tree {revision!r} has duplicate path {path!r}")
+        entries[path] = _validated_tree_entry(path=path, mode=mode, entry_type=entry_type)
+    return entries
+
+
+def _git_merge_base(root: Path, base: str, head: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", base, head],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise GuardPolicyError(f"git merge-base {base} {head} failed: {exc}") from exc
+    merge_base = proc.stdout.strip()
+    if not _FULL_SHA_RE.fullmatch(merge_base):
+        raise GuardPolicyError(f"git merge-base returned an invalid SHA: {merge_base!r}")
+    return merge_base
+
+
+def _attach_tree_evidence(
+    changes: Iterable[ChangedFile],
+    base_entries: dict[str, GitTreeEntry],
+    head_entries: dict[str, GitTreeEntry],
+) -> tuple[ChangedFile, ...]:
+    enriched: list[ChangedFile] = []
+    for change in changes:
+        old_path = change.previous_path if change.status == "renamed" else change.path
+        old_entry = base_entries.get(old_path) if old_path else None
+        new_entry = head_entries.get(change.path)
+
+        if change.status in {"modified", "renamed"} and (
+            old_entry is None or new_entry is None
+        ):
+            raise GuardPolicyError(
+                f"{change.status} path {change.path!r} is missing immutable base/head tree evidence"
+            )
+        if change.status == "added" and new_entry is None:
+            raise GuardPolicyError(
+                f"added path {change.path!r} is missing immutable head tree evidence"
+            )
+        if change.status == "removed" and old_entry is None:
+            raise GuardPolicyError(
+                f"removed path {change.path!r} is missing immutable base tree evidence"
+            )
+
+        enriched.append(
+            ChangedFile(
+                status=change.status,
+                path=change.path,
+                previous_path=change.previous_path,
+                old_mode=old_entry.mode if old_entry else None,
+                old_type=old_entry.type if old_entry else None,
+                new_mode=new_entry.mode if new_entry else None,
+                new_type=new_entry.type if new_entry else None,
+                tree_evidence_complete=True,
+            )
+        )
+    return tuple(enriched)
+
+
 def changed_files_between(root: Path, base: str, head: str) -> tuple[ChangedFile, ...]:
     try:
         proc = subprocess.run(
@@ -834,7 +1198,10 @@ def changed_files_between(root: Path, base: str, head: str) -> tuple[ChangedFile
             path = tokens[i]
             i += 1
             out.append(ChangedFile(status=normalized, path=path))
-    return tuple(out)
+    merge_base = _git_merge_base(root, base, head)
+    base_entries = _git_tree_entries(root, merge_base)
+    head_entries = _git_tree_entries(root, head)
+    return _attach_tree_evidence(out, base_entries, head_entries)
 
 
 def validate_expected_change_count(count: int) -> None:
@@ -874,15 +1241,25 @@ def read_expected_change_count(path: Path) -> int:
 
 
 def load_changed_files(
-    path: Path, *, expected_count: Optional[int] = None
+    path: Path,
+    *,
+    expected_count: Optional[int] = None,
+    base_tree_json_file: Optional[Path] = None,
+    head_tree_json_file: Optional[Path] = None,
 ) -> tuple[ChangedFile, ...]:
     """Parse normalized GitHub pull-files JSON-lines (one `{filename, status,
     previous_filename}` object per line) from a data-only file. Rejects
     unknown or missing fields, duplicate filename records, and — when
     `expected_count` is given (the PR's own authoritative `changed_files`
     field) — a record count that doesn't match it, which is exactly the
-    signature of silent pull-files pagination truncation.
+    signature of silent pull-files pagination truncation. When tree files are
+    supplied, both are required and every record is bound to immutable
+    base/head Git Trees API evidence before it is returned.
     """
+    if (base_tree_json_file is None) != (head_tree_json_file is None):
+        raise GuardPolicyError(
+            "base and head tree JSON files must be provided together for immutable evidence"
+        )
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8")
@@ -934,7 +1311,12 @@ def load_changed_files(
             f"authoritative changed_files count {expected_count} — possible pull-files "
             "pagination truncation; refusing to evaluate an incomplete diff"
         )
-    return tuple(out)
+    changes = tuple(out)
+    if base_tree_json_file is None:
+        return changes
+    base_entries = _load_git_tree_entries(base_tree_json_file, description="base Git tree")
+    head_entries = _load_git_tree_entries(head_tree_json_file, description="head Git tree")
+    return _attach_tree_evidence(changes, base_entries, head_entries)
 
 
 def _load_json_object(path: Path, *, description: str) -> dict:
@@ -1314,6 +1696,52 @@ def _exception_missing_fields(pr_body: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # evaluate() — the guard decision
 # ---------------------------------------------------------------------------
+def _tree_evidence_requires_exception(change: ChangedFile) -> bool:
+    if not change.tree_evidence_complete:
+        return False
+
+    old_entry = (
+        GitTreeEntry(change.old_mode, change.old_type)
+        if change.old_mode is not None and change.old_type is not None
+        else None
+    )
+    new_entry = (
+        GitTreeEntry(change.new_mode, change.new_type)
+        if change.new_mode is not None and change.new_type is not None
+        else None
+    )
+
+    # Missing halves or status-inconsistent presence indicate incomplete or
+    # forged evidence. Treat it as guarded here even though the production
+    # loaders reject it earlier.
+    if (change.old_mode is None) != (change.old_type is None):
+        return True
+    if (change.new_mode is None) != (change.new_type is None):
+        return True
+    if change.status in {"modified", "renamed"} and (old_entry is None or new_entry is None):
+        return True
+    if change.status == "added" and new_entry is None:
+        return True
+    if change.status == "removed" and old_entry is None:
+        return True
+    if change.status not in {"added", "modified", "removed", "renamed"}:
+        return True
+
+    # A symlink is encoded as mode 120000/type blob. Trees and gitlinks are
+    # likewise non-regular objects. Any changed non-regular entry is guarded,
+    # and any mode/type transition (including 100644 <-> 100755) is guarded.
+    for entry in (old_entry, new_entry):
+        if entry is not None and (entry.type != "blob" or entry.mode not in _REGULAR_FILE_MODES):
+            return True
+    if old_entry is not None and new_entry is not None and old_entry != new_entry:
+        return True
+    if change.status == "added" and old_entry is not None:
+        return True
+    if change.status == "removed" and new_entry is not None:
+        return True
+    return False
+
+
 def evaluate(
     changes: Iterable[ChangedFile],
     labels: "set[str] | frozenset[str]",
@@ -1330,6 +1758,11 @@ def evaluate(
     touched: list[str] = []
     seen: set[str] = set()
     for change in changes:
+        if _tree_evidence_requires_exception(change):
+            for candidate in (change.path, change.previous_path):
+                if candidate and candidate not in seen:
+                    touched.append(candidate)
+                    seen.add(candidate)
         for candidate in (change.path, change.previous_path):
             if not candidate or candidate in seen:
                 continue
@@ -1440,6 +1873,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "evaluated against an incomplete diff."
         ),
     )
+    p.add_argument(
+        "--base-tree-json-file",
+        type=Path,
+        default=None,
+        help="Complete recursive Git Trees API response for the immutable PR base SHA.",
+    )
+    p.add_argument(
+        "--head-tree-json-file",
+        type=Path,
+        default=None,
+        help="Complete recursive Git Trees API response for the immutable PR head SHA.",
+    )
     p.add_argument("--base", default=None, help="Base git ref/SHA (paired with --head).")
     p.add_argument("--head", default=None, help="Head git ref/SHA (paired with --base).")
     return p
@@ -1466,6 +1911,21 @@ def main(argv: Optional[list] = None) -> int:
             file=sys.stderr,
         )
         return 2
+    tree_files = (args.base_tree_json_file, args.head_tree_json_file)
+    if has_json and not all(path is not None for path in tree_files):
+        print(
+            "error: --changes-json-file requires --base-tree-json-file and "
+            "--head-tree-json-file (immutable mode/type evidence)",
+            file=sys.stderr,
+        )
+        return 2
+    if not has_json and any(path is not None for path in tree_files):
+        print(
+            "error: --base-tree-json-file/--head-tree-json-file are only valid with "
+            "--changes-json-file",
+            file=sys.stderr,
+        )
+        return 2
     approval_files = (
         args.event_json_file,
         args.current_pull_json_file,
@@ -1485,7 +1945,12 @@ def main(argv: Optional[list] = None) -> int:
         policy = load_guard_policy(args.registry)
         if has_json:
             expected_count = read_expected_change_count(args.expected_change_count_file)
-            changes = load_changed_files(args.changes_json_file, expected_count=expected_count)
+            changes = load_changed_files(
+                args.changes_json_file,
+                expected_count=expected_count,
+                base_tree_json_file=args.base_tree_json_file,
+                head_tree_json_file=args.head_tree_json_file,
+            )
         else:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
         labels = _read_labels(args.labels_file)

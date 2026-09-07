@@ -14,11 +14,11 @@ name: Legacy UI Lifecycle Guard
 # author controls, even from a fork. It checks out ONLY `base.sha`, with
 # credential persistence disabled; it never checks out or executes the head
 # ref or any PR code. A separate, token-bearing metadata step fetches changed
-# files, one PR snapshot containing labels/body/head, and (only for an
-# exception-label event) the actor's current collaborator role as DATA ONLY
-# (never interpolated into executable script text — always written to a file
-# and read back by the guard). The guard-evaluation step itself carries no
-# token and makes no network call.
+# files, immutable merge-base/head Git trees, one PR snapshot containing
+# labels/body/head, and (only for an exception-label event) the actor's current
+# collaborator role as DATA ONLY (never interpolated into executable script
+# text — always written to a file and read back by the guard). The
+# guard-evaluation step itself carries no token and makes no network call.
 #
 # Job split (finding #4): `pending` (posts the pending status, holds
 # statuses:write ONLY) -> `guard` (needs: pending; fetches metadata, checks
@@ -128,6 +128,24 @@ jobs:
           gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
             --jq '.[] | {filename, status, previous_filename}' \
             > "$RUNNER_TEMP/changed-files.jsonl"
+          BASE_SHA="$(jq -r '.base.sha' "$RUNNER_TEMP/current-pull.json")"
+          HEAD_SHA="$(jq -r '.head.sha' "$RUNNER_TEMP/current-pull.json")"
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pull metadata did not contain immutable base/head SHAs"
+            exit 1
+          fi
+          gh api "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" \
+            > "$RUNNER_TEMP/compare.json"
+          MERGE_BASE_SHA="$(jq -r '.merge_base_commit.sha' "$RUNNER_TEMP/compare.json")"
+          if [[ ! "$MERGE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::compare metadata did not contain an immutable merge-base SHA"
+            exit 1
+          fi
+          gh api "repos/$REPO/git/trees/$MERGE_BASE_SHA?recursive=1" \
+            > "$RUNNER_TEMP/base-tree.json"
+          gh api "repos/$REPO/git/trees/$HEAD_SHA?recursive=1" \
+            > "$RUNNER_TEMP/head-tree.json"
           jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/pr-body.md"
           jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
@@ -157,7 +175,7 @@ jobs:
 
       - name: Install guard dependencies
         run: |
-          python3 -m pip install --quiet --disable-pip-version-check \
+          python3 -I -m pip install --quiet --disable-pip-version-check \
             --only-binary=:all: --require-hashes \
             -r requirements/ui-lifecycle-guard.txt
 
@@ -171,6 +189,8 @@ jobs:
           python3 -I tools/ui_surface_lifecycle_guard.py \
             --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
             --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
+            --base-tree-json-file "$RUNNER_TEMP/base-tree.json" \
+            --head-tree-json-file "$RUNNER_TEMP/head-tree.json" \
             --labels-file "$RUNNER_TEMP/labels.txt" \
             --pr-body-file "$RUNNER_TEMP/pr-body.md" \
             --event-json-file "$GITHUB_EVENT_PATH" \

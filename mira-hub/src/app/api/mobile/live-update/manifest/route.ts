@@ -18,20 +18,25 @@
  * the app has one origin to talk to. The device still fetches the zip straight
  * from the release host — the Hub is not a CDN and never proxies the artifact.
  *
- * WHAT THIS ROUTE DOES NOT DO: verify the signature. It cannot — the signature
- * covers the SHA-256 of the zip, and the zip never passes through here. That
- * check belongs on the device, where the plugin does it against the public key
- * baked into the APK. This route's job is to refuse to POINT at anything
- * obviously wrong; the device still verifies what it actually downloads.
+ * TWO SIGNATURES, TWO JOBS. The native plugin verifies the ZIP signature after
+ * download. This route verifies the detached provenance + manifest-pointer
+ * signatures before serving anything, so a compromised release store cannot
+ * rewrite an old signed ZIP's native fingerprint or promote canary to
+ * production. The same public key authenticates both layers.
  *
  * STATUS CODES ARE PART OF THE CONTRACT. The client turns any non-2xx into
  * `server_<status>`, which a technician reads as "broken". So every ordinary
  * outcome — nothing published, wrong fingerprint, release host down — is a 200
- * whose body simply has no `downloadUrl`, which the client reads as
- * "no_update". Only a malformed REQUEST gets a 4xx.
+ * whose body has no `downloadUrl` and carries a closed, code-owned reason. The
+ * client maps only that allowlist to actionable copy; unknown reason text
+ * remains a quiet "no_update". Only a malformed REQUEST gets a 4xx.
  */
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import {
+  isCanonicalPointerTimestamp,
+  verifyPublishedManifestProvenance,
+} from "@/capabilities/ota-provenance";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +94,11 @@ interface PublishedManifest {
   version?: unknown;
   releaseSha?: unknown;
   releasedAt?: unknown;
+  artifact?: unknown;
+  artifactSha256?: unknown;
+  provenanceSignature?: unknown;
+  manifestSignature?: unknown;
+  pointerChangedAt?: unknown;
 }
 
 const str = (v: unknown): string | null =>
@@ -141,16 +151,49 @@ export async function GET(req: Request) {
   const checksum = str(manifest?.checksum);
   const signature = str(manifest?.signature);
   const nativeFingerprint = str(manifest?.nativeFingerprint);
+  const artifact = str(manifest?.artifact);
+  const artifactSha256 = str(manifest?.artifactSha256);
+  const provenanceSignature = str(manifest?.provenanceSignature);
+  const manifestSignature = str(manifest?.manifestSignature);
+  const pointerChangedAt = str(manifest?.pointerChangedAt);
 
   // An unsigned or unchecksummed manifest must never reach the device: the
   // plugin would have nothing to verify the download against.
-  if (!bundleId || !downloadUrl || !checksum || !signature || !nativeFingerprint) {
+  if (
+    !bundleId ||
+    !downloadUrl ||
+    !checksum ||
+    !signature ||
+    !nativeFingerprint ||
+    !artifact ||
+    !artifactSha256 ||
+    !provenanceSignature ||
+    !manifestSignature ||
+    !pointerChangedAt
+  ) {
     return noUpdate("malformed_manifest");
   }
 
   if (str(manifest?.channel) !== channel) return noUpdate("channel_mismatch");
+  if (!isCanonicalPointerTimestamp(manifest.pointerChangedAt)) {
+    return noUpdate("invalid_pointer_timestamp");
+  }
+  if (!verifyPublishedManifestProvenance(manifest as Record<string, unknown>)) {
+    return noUpdate("invalid_provenance");
+  }
   if (nativeFingerprint.toLowerCase() !== fingerprint) return noUpdate("incompatible_native");
   if (!isOnReleaseHost(downloadUrl)) return noUpdate("bad_download_url");
+
+  const version = str(manifest?.version);
+  let pathMatches = false;
+  try {
+    pathMatches =
+      version !== null &&
+      new URL(downloadUrl).pathname === `/releases/${version}/${artifact}`;
+  } catch {
+    pathMatches = false;
+  }
+  if (!pathMatches || checksum !== artifactSha256) return noUpdate("artifact_mismatch");
 
   return json({
     bundleId,
@@ -159,8 +202,13 @@ export async function GET(req: Request) {
     signature,
     nativeFingerprint,
     channel,
-    version: str(manifest?.version) ?? undefined,
+    version: version ?? undefined,
     releaseSha: str(manifest?.releaseSha) ?? undefined,
     releasedAt: str(manifest?.releasedAt) ?? undefined,
+    artifact,
+    artifactSha256,
+    provenanceSignature,
+    manifestSignature,
+    pointerChangedAt,
   });
 }
