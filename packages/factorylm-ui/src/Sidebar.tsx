@@ -9,6 +9,8 @@ interface SidebarProps {
   readonly onOpenItem?: (item: ProjectItem) => void;
   /** Host-owned controls at the bottom of navigation (account, updates, sign out). */
   readonly footer?: ReactNode;
+  /** The drawer is closed on a layered (mobile) profile: out of the tab order immediately. */
+  readonly inert?: boolean;
 }
 
 /** Threads and runs anywhere in the workspace, in workspace order (the fixture/host order is the recency order). */
@@ -35,13 +37,15 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pinned machines → host footer (settings / user menu). On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
-export function Sidebar({ state, dispatch, onOpenItem, footer }: SidebarProps) {
+export function Sidebar({ state, dispatch, onOpenItem, footer, inert }: SidebarProps) {
   const [query, setQuery] = useState("");
   const filter = query.trim() || undefined;
   const recent = recentItems(state).filter((item) => !filter || item.label.toLowerCase().includes(filter.toLowerCase()));
   const machines = state.machines.filter((machine) => !filter || machine.name.toLowerCase().includes(filter.toLowerCase()));
 
-  return <aside className="fl-shell__sidebar" aria-label="FactoryLM navigation">
+  // `inert` removes the closed drawer from focus and the accessibility tree at once;
+  // the stylesheet's visibility flip is the belt for the slide animation.
+  return <aside className="fl-shell__sidebar" aria-label="FactoryLM navigation" inert={inert || undefined}>
     <div className="fl-shell__nav-head">
       <div className="fl-shell__brand">FactoryLM</div>
       <button

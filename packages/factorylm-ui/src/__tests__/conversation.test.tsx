@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { FIXTURE_IDS, getFixture   ContextSnapshot,
-} from "@factorylm/interaction";
+import { FIXTURE_IDS, getFixture, type ContextSnapshot } from "@factorylm/interaction";
+import { contextDiffers } from "../parts";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];

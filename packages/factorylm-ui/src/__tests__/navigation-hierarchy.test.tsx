@@ -139,6 +139,20 @@ describe("context lines only when context differs", () => {
   });
 });
 
+describe("closed drawer is inert", () => {
+  it("on mobile the closed drawer carries inert and drops it when opened; on web it never does", () => {
+    const view = render({ surface: "mobile", fixture: "machine-ask" });
+    const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    expect(nav.hasAttribute("inert")).toBe(false); // opens at mount on mobile
+    view.click(must(view.buttonNamed("Close navigation"), "Close navigation"));
+    expect(nav.hasAttribute("inert")).toBe(true);
+    view.click(must(view.buttonNamed("Open navigation"), "Open navigation"));
+    expect(nav.hasAttribute("inert")).toBe(false);
+    const web = render({ surface: "web", fixture: "machine-ask" });
+    expect(web.container.querySelector('[aria-label="FactoryLM navigation"]')?.hasAttribute("inert")).toBe(false);
+  });
+});
+
 describe("stylesheet contract", () => {
   const shell = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
   it("the drawer scroll belongs to the section stack, and the brand mark is a mobile-only header element", () => {
@@ -149,5 +163,12 @@ describe("stylesheet contract", () => {
     expect(mobile).toMatch(/\.fl-shell__nav-scroll\s*\{[^}]*overflow-y:\s*auto/s);
     expect(mobile).toMatch(/\.fl-shell__brand-mark\s*\{[^}]*display:\s*block/s);
     expect(shell).toMatch(/\.fl-shell__brand-mark\s*\{[^}]*display:\s*none/s);
+  });
+
+  it("a closed mobile drawer is out of the tab order (visibility hidden), visible again when open", () => {
+    // Keyboard users were tabbing through an invisible drawer (e2e "whole core flow" caught it).
+    const mobile = shell.slice(shell.indexOf("@media (max-width: 48rem)"));
+    expect(mobile).toMatch(/\.fl-shell__sidebar\s*\{[^}]*visibility:\s*hidden/s);
+    expect(mobile).toMatch(/\[data-navigation-visible="true"\] \.fl-shell__sidebar\s*\{[^}]*visibility:\s*visible/s);
   });
 });

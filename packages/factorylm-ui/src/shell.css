@@ -129,9 +129,12 @@
     flex-direction: column;
     box-shadow: var(--fl-workspace-shadow-pop);
     transform: translateX(-110%);
-    transition: transform 160ms ease;
+    /* A closed drawer is off-screen AND out of the tab order / accessibility tree:
+       visibility flips after the slide so the close animation still plays. */
+    visibility: hidden;
+    transition: transform 160ms ease, visibility 0s linear 160ms;
   }
-  .fl-shell[data-navigation-visible="true"] .fl-shell__sidebar { transform: translateX(0); }
+  .fl-shell[data-navigation-visible="true"] .fl-shell__sidebar { transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
   .fl-shell__navigation-toggle,
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
