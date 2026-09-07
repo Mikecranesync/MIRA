@@ -1475,6 +1475,7 @@ jobs:
           MODULE_SUITES_RESULT: ${{ needs.module-suites.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
           ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          PEER_CONTRACT_RESULT: ${{ needs.peer-contract.result }}
           PRECOMMIT_HOOK_RESULT: ${{ needs.precommit-hook-tests.result }}
           MIGRATION_RESULT: ${{ needs.migration-order-check.result }}
           SHARED_LINE_RESULT: ${{ needs.shared-line-guard.result }}
@@ -1510,6 +1511,10 @@ jobs:
             fi
           }
           require_success actionlint            "$ACTIONLINT_RESULT"
+          # peer-contract is always-run (no changes filter); being in `needs` only makes
+          # the gate WAIT for it — this line is what makes a red suite fail the merge
+          # (same trap as capability-closure below; Codex audit of 0859907d7).
+          require_success peer-contract         "$PEER_CONTRACT_RESULT"
           require_success precommit-hook-tests  "$PRECOMMIT_HOOK_RESULT"
           require_success migration-order-check "$MIGRATION_RESULT"
           require_success shared-line-guard     "$SHARED_LINE_RESULT"

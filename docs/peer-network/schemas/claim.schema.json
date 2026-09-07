@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/claim.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.3.0/claim.schema.json",
   "title": "peer-network claim",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,7 +15,9 @@
     "lease_expires_at",
     "generation",
     "status",
-    "claimed_at"
+    "claimed_at",
+    "created_at",
+    "event_id"
   ],
   "properties": {
     "mission_id": {
@@ -31,17 +33,22 @@
       "pattern": "^[0-9a-f]{40}$"
     },
     "branch": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$",
+      "description": "The published branch; blank/whitespace is rejected."
     },
     "worktree": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "Absolute path of the isolated worktree; blank/whitespace is rejected."
     },
     "resource_keys": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "string",
-        "pattern": "^(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tools/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
+        "pattern": "^(?!.*//)(?!.*/$)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tools/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$",
+        "description": "Canonical form is enforced by the pattern itself \u2014 duplicate slashes, a trailing slash, '.'/'..' segments and surrounding whitespace are rejected here, not only by the Python helper."
       },
       "description": "Canonical resource keys acquired atomically \u2014 all or none (PRD \u00a77). Path-shaped keys may not contain '.' or '..' segments (no traversal past the claimed root). Keys are canonical (tools/peer_network/resource_keys.py): trimmed, single slashes, no trailing slash, no '.'/'..' segments. Two keys overlap when equal or when one path is an ancestor of the other; a claim never widens silently (scope_expansion)."
     },
@@ -68,6 +75,16 @@
       "type": "string",
       "format": "date-time",
       "description": "When the claim was made, self-reported for the ledger (the lease's start). NOT the race's ordering key: the race is decided by the GitHub creation time / event id of the claim comment (protocol \u00a72), which no session can back-date."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-stamped (GitHub) creation time of the claim comment. THE ordering key of the race (tools/peer_network/claims.py); no session can set or back-date it."
+    },
+    "event_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Server-issued id of the claim comment/event \u2014 the tiebreak when created_at ties. Immutable."
     }
   }
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .resource_keys import canonicalize, keys_conflict
+from .resource_keys import canonicalize, covers, keys_conflict
 
 HOLDS_LEASE = frozenset({"ACTIVE", "BLOCKED"})
 """States in which the session holds the lease and may edit. BLOCKED = held, waiting on a human
@@ -27,17 +27,23 @@ class Claim:
     generation: int = 1
 
 
-def resolve_race(candidates: list[Claim]) -> Claim | None:
-    """The earliest-created ACTIVE claim wins among those whose keys overlap the first one.
+def resolve_race(contender: Claim, others: list[Claim]) -> Claim | None:
+    """The claim that wins `contender`'s race: the earliest-created lease-holding claim among
+    `contender` and every other lease-holding claim whose keys OVERLAP the contender's.
 
-    Ordering is (created_at, event_id) — both server-issued. A session cannot win by
-    back-dating `claimed_at`, and a comment edited to insert a claim keeps its old
-    `created_at`, so it cannot jump the queue either (that is the caller's job to exclude:
-    only comments created after the mission record count)."""
-    active = [c for c in candidates if c.status in HOLDS_LEASE]
-    if not active:
+    Disjoint claims are not in the same race — two sessions on unrelated keys both win.
+    Ordering is (created_at, event_id), both server-issued: a session cannot win by
+    back-dating `claimed_at`, and an older comment edited to insert a claim keeps its old
+    created_at (the caller excludes comments created before the mission record)."""
+    if contender.status not in HOLDS_LEASE:
         return None
-    return min(active, key=lambda c: (c.created_at, c.event_id))
+    field = [contender] + [
+        o
+        for o in others
+        if o.status in HOLDS_LEASE
+        and keys_conflict(list(contender.resource_keys), list(o.resource_keys))
+    ]
+    return min(field, key=lambda c: (c.created_at, c.event_id))
 
 
 def may_edit(claim: Claim) -> bool:
@@ -64,4 +70,6 @@ def scope_expansion(claim: Claim, wanted: list[str]) -> list[str]:
     A claim never widens silently: editing a path outside its keys is the same race as any
     other session's, and the winner is decided by the same server-stamped ordering."""
     held = [canonicalize(k) for k in claim.resource_keys]
-    return [canonicalize(w) for w in wanted if not keys_conflict([canonicalize(w)], held)]
+    # Coverage is ASYMMETRIC: a held parent covers a wanted child; a held child never covers
+    # its parent, even though the two overlap for race purposes.
+    return [canonicalize(w) for w in wanted if not any(covers(h, w) for h in held)]

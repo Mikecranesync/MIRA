@@ -190,7 +190,11 @@ class TestEventPayloadBehaviour:
         self._validate(
             self._event(
                 "submit_verdict",
-                {"sha": "844798ac230e4881c86f582b955bcff74cc3a357", "verdict": "PASS"},
+                {
+                    "sha": "844798ac230e4881c86f582b955bcff74cc3a357",
+                    "verdict": "PASS",
+                    "reviewer": "codex-ui-review",
+                },
             )
         )
 

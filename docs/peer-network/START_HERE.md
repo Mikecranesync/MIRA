@@ -34,7 +34,9 @@ review — as long as reviewer and verifier stay independent of the implementer.
 
 **Available is not equipped.** Every session record carries its own `capabilities`
 (`schemas/session.schema.json`) — what that session is actually equipped with, not what its node
-offers — and dispatch reads the session's list. A session that lacks Bash, git, gh or file-write tools cannot own
+offers — and dispatch reads the session's list, validated as a SUBSET of the node inventory in
+`deployment/network.yml` (`tools/peer_network/capabilities.py`: a travel session cannot claim `adb`).
+A session that lacks Bash, git, gh or file-write tools cannot own
 an implementation slice, however idle it is. Say so when dispatched to; the dispatcher falls back
 (PRD §14). Node metadata lives in `deployment/network.yml` (`peer_network` keys); the shape is
 `schemas/node.schema.json`.
@@ -80,7 +82,12 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
    slashes, no trailing slash, no `.`/`..` segments; two keys **overlap** when equal or when one
    path is an ancestor of the other (`docs/peer-network` covers `docs/peer-network/schemas/x`).
    A claim never widens silently — a key outside yours is a NEW claim in the same race
-   (`scope_expansion`). The race itself is executable: `tools/peer_network/claims.py`. **Wait at least 60 seconds, then re-read the whole
+   (`scope_expansion`). Coverage is asymmetric: a held parent covers a wanted child, a held
+   child never covers its parent. The race is scoped to OVERLAPPING keys — disjoint claims are not
+   in the same race — and its ordering fields (`created_at`, `event_id`) are part of the durable
+   claim record, server-issued. Every lease operation (`claim_work`, `renew_claim`,
+   `release_claim`, `submit_checkpoint`, `request_handoff`, `accept_handoff`, `submit_result`)
+   carries `generation`. The race itself is executable: `tools/peer_network/claims.py`. **Wait at least 60 seconds, then re-read the whole
    thread** (a settling interval, so two near-simultaneous posts both see each other). The
    ordering key is the same as `.claude/rules/multi-session-protocol.md` §2: the ACTIVE claim with
    the **earliest GitHub creation time / event id** overlapping your keys wins — a server-issued
