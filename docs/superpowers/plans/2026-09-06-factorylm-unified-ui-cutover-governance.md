@@ -23,8 +23,12 @@
 - Existing Equipment Notebook persistence, typed SSE, evidence, safety, identity, provider routing, and authorization remain server-owned.
 - Do not create a second capability registry; extend `CAPABILITY_CLOSURE.yaml`.
 - Every guarded touch fails closed: addition, modification, deletion, rename-in,
-  and rename-out. `legacy-ui-exception` requires a live maintainer label plus a
-  substantive reason, canonical impact, and rollback in the PR body.
+  and rename-out. `legacy-ui-exception` requires a substantive reason,
+  canonical impact, and rollback plus a fresh GitHub User label-application
+  event bound to the still-current head SHA and body snapshot. The actor's
+  current collaborator response must prove either legacy `permission: admin`
+  or `permission: write` with predefined `role_name: maintain`; custom/lower
+  roles fail closed.
 - Dynamic workflows treat all `packages/factorylm-*` roots plus
   `apps/factorylm-ui-lab/**` as one indivisible shared-core authorship lease:
   one active writer only, regardless of file overlap. Serial merging does not
@@ -78,25 +82,26 @@ Use the charter's directory boundaries exactly:
 
 ```text
 mira-web/src/views/**
-mira-web/public/** (classified, not blanket-guarded — the actual guard/exempt
-  decision for every path under mira-web/public/ is the code-owned
-  public-static classifier in tools/ui_surface_lifecycle_guard.py, NOT this
-  glob; see the hardening amendment below. This registry entry documents
-  scope only.)
-mira-hub/src/app/(hub)/**
-mira-hub/src/components/layout/**
-mira-hub/src/components/equipment/**
-mira-mobile/src/App.tsx
-mira-mobile/src/nav.ts
-mira-mobile/src/screens/**
+mira-web/src/routes/**
+mira-web/src/server.ts
+mira-web/src/lib/{blog,drive-commander,feature}-renderer.ts
+mira-web/src/lib/components.ts
+mira-web/src/lib/head.ts
+mira-web/public/**
+mira-hub/src/app/**
+mira-hub/src/components/**
+mira-hub/src/providers/**
+mira-hub/src/messages/**
+mira-hub/public/**
+mira-mobile/index.html
+mira-mobile/src/**
 ```
 
-**Note (post-remediation, superseding the two-exact-file example above):**
-the original directory-boundary list shown when this Step 1 was first
-authored guarded only two named files under `mira-web/public/`
-(`mira-chat.js`/`.css`). That was superseded by the hardening amendment
-below BEFORE Task 3 began, and further hardened by the Codex remediation of
-`1ecb9baef` finding #1 (see below) — never implement the two-file form.
+The registry's broad roots are refined by trusted-base code-owned classifiers:
+preserved API/transport/domain paths and all `src/factorylm-ui/**` adapter
+roots remain open, while every production presentation sibling fails closed.
+Public trees are blanket guarded; non-executable assets still change the old
+visible or installed experience.
 
 Before relying on strict YAML parsing, rename the five known duplicate
 factorylm-repository keys to `factorylm-docs`, `factorylm-infra`,
@@ -213,27 +218,20 @@ tests/test_ui_surface_lifecycle_guard.py
 .claude/workflows/flm-ui-verify.js
 .github/workflows/ui-lifecycle-guard.yml
 .github/pull_request_template.md
+requirements/ui-lifecycle-guard.txt
 ```
 
-> **Hardening amendment (post-Task-2 adversarial review, four fail-closed
+> **Hardening amendment (post-Task-2 adversarial review, fail-closed
 > fixes — see the retrofit commit before Task 3):**
-> 1. **Public-static sibling bypass.** `mira-web/public/**` is served
->    statically — every file there is a candidate presentation surface, not
->    just the two originally-listed `mira-chat.js`/`.css`. `path_is_guarded()`
->    special-cases any path under `mira-web/public/` (code-owned, like
->    `CONTROL_PATTERNS` — not sourced from the registry) via a deterministic
->    classifier: passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif
->    .ico .woff .woff2 .ttf .otf .pdf .map .json .txt`) are unguarded;
->    everything else — html/htm/css/js/mjs/svg, unknown suffixes,
->    extensionless names — is guarded. `REGISTRY.yaml`'s `mira-web-legacy-ui`
->    entry now lists `mira-web/public/**` for documentation; the classifier,
->    not the glob, is the actual enforcement.
->    **Codex remediation of `1ecb9baef` finding #1:** the original classifier
->    (above) carved out `mira-web/public/sw.js` and
->    `mira-web/public/posthog-init.js` as "exempt infrastructure" — that was
->    itself a live self-service bypass, since both are executable JavaScript
->    served to every visitor. No named exact-path exemption exists anymore;
->    they are guarded like any other `.js` file.
+> 1. **Complete presentation classifiers.** `path_is_guarded()` applies
+>    code-owned classifiers before the broad registry globs. Hub API
+>    `route.ts` handlers, public-web JSON/API routes and backend libraries,
+>    exact mobile transport/API/native helpers, and canonical adapter roots remain
+>    open. Actual Hub components/pages/providers/locale catalogs, public-web route mounts and
+>    renderers, mobile React/style mounts and mixed visible-copy/view-model
+>    helpers, and unknown production siblings
+>    fail closed. Both `mira-web/public/**` and `mira-hub/public/**` are blanket
+>    guarded, including images, fonts, PDFs, manifests, and scripts.
 > 2. **GitHub pull-files pagination truncation.** The `pulls/{n}/files`
 >    endpoint silently stops paginating around 3000 entries. The workflow now
 >    also fetches `pulls/{n}.changed_files` to a count file, and
@@ -248,6 +246,19 @@ tests/test_ui_surface_lifecycle_guard.py
 > 4. **`.github/pull_request_template.md` is a control pattern** (added to
 >    `CONTROL_PATTERNS` above) — it documents the exact exception-section
 >    shape the guard parses, so editing it is a control-plane change.
+> 5. **Fresh exception attestation.** A persistent label is insufficient. The
+>    guard accepts an exception only on the `labeled` event for the exact
+>    `legacy-ui-exception` label by a GitHub `User`, when event-time head/body
+>    still match a separately fetched current PR snapshot and the collaborator
+>    endpoint proves the actor is a predefined Maintainer or Admin. Pushes and
+>    body edits invalidate approval until the label is reviewed and reapplied.
+> 6. **Pinned enforcement TCB.** Checkout/setup actions use full commit SHAs,
+>    and Python dependencies are exact, wheel-only, and hash locked in
+>    `requirements/ui-lifecycle-guard.txt`.
+> 7. **Prompt-safe scopes and branches.** `/flm-ui-slice` accepts only fixed,
+>    workflow-owned lane/package scopes and the deterministic branch
+>    `codex/flm-ui-<lane>-<numeric-claim-id>`. A caller-controlled descendant
+>    path or branch name cannot carry semantic instructions into agent prompts.
 
 The exception parser strips fenced code blocks and HTML comments, requires
 exactly one level-two `## Legacy UI exception` section, and requires
@@ -260,8 +271,11 @@ Rollback:
 ```
 
 Reject case-insensitive `n/a`, `na`, `none`, `not applicable`, `tbd`, `todo`,
-and angle-bracket placeholders. Use this public shape so local tests and the
-trusted workflow call the same behavior:
+and angle-bracket placeholders. Each field also requires at least three
+alphanumeric tokens and twelve alphanumeric characters, rejecting one-letter
+or long single-token filler. Syntax alone never grants authority: require the
+fresh event/current-PR binding described above. Use this public shape so local
+tests and the trusted workflow call the same behavior:
 
 ```python
 @dataclass(frozen=True)
@@ -298,13 +312,16 @@ def evaluate(
     labels: AbstractSet[str],
     pr_body: str,
     policy: GuardPolicy,
+    *,
+    exception_approval_valid: bool = False,
 ) -> GuardResult:
     """Require an audited exception for any guarded or control-plane touch."""
 ```
 
 For a rename, evaluate both `previous_path` and `path`. The CLI accepts
-`--registry`, `--labels-file`, `--pr-body-file`, and exactly one source of
-changes: either `--changes-json-file` (which additionally REQUIRES
+`--registry`, `--labels-file`, `--pr-body-file`, the paired
+`--event-json-file`/`--current-pull-json-file` approval inputs, and exactly one
+source of changes: either `--changes-json-file` (which additionally REQUIRES
 `--expected-change-count-file` — the pagination-truncation defense above) or
 the pair `--base`/`--head`. It prints GitHub error annotations for violations
 and fails closed on policy, diff, input, or exception parsing errors. It
@@ -338,7 +355,8 @@ git commit -m "feat(ci): guard legacy FactoryLM presentation paths"
 
 **Interfaces:**
 - Consumes: the guard and registry from the default-branch base revision plus
-  live GitHub PR-file, label, and body metadata.
+  live GitHub PR-file/label/body metadata, the raw event snapshot, and a
+  separately fetched current pull-request snapshot.
 - Produces: a `Legacy UI Lifecycle Guard` commit status on the PR head SHA,
   later registered as a strict required `main` status check.
 
@@ -355,10 +373,13 @@ The workflow must:
    `Legacy UI Lifecycle Guard`.
 2. Check out `github.event.pull_request.base.sha` only, with
    `persist-credentials: false`. Never check out the head or merge ref.
-3. Install `pyyaml` and `pytest`, then run the trusted-base guard tests.
+3. Install the exact wheel-only dependencies from
+   `requirements/ui-lifecycle-guard.txt` with `--require-hashes`, then run the
+   trusted-base guard tests. Pin checkout/setup actions to full commit SHAs.
 4. In a metadata-only step carrying `GH_TOKEN`, fetch all changed-file pages as
-   JSON lines plus the current labels and body into `$RUNNER_TEMP`. Treat these
-   values only as data; never interpolate them into executable script text.
+   JSON lines plus the complete current PR JSON, current labels, and body into
+   `$RUNNER_TEMP`. Treat these values and `$GITHUB_EVENT_PATH` only as data;
+   never interpolate them into executable script text.
 5. In a separate step with no token, execute the checked-out base guard against
    those files.
 6. In an `if: always()` trusted step, post `success` only when every prior step
@@ -367,20 +388,24 @@ The workflow must:
 The metadata command shape is:
 
 ```bash
-gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files' \
+gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+  > "$RUNNER_TEMP/current-pull.json"
+jq -r '.changed_files' "$RUNNER_TEMP/current-pull.json" \
   > "$RUNNER_TEMP/expected-change-count.txt"
 gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
   --jq '.[] | {filename, status, previous_filename}' \
   > "$RUNNER_TEMP/changed-files.jsonl"
-gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' \
+jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
   > "$RUNNER_TEMP/pr-body.md"
-gh api "/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --jq '.[].name' \
+jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
   > "$RUNNER_TEMP/labels.txt"
 python tools/ui_surface_lifecycle_guard.py \
   --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
   --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
   --labels-file "$RUNNER_TEMP/labels.txt" \
-  --pr-body-file "$RUNNER_TEMP/pr-body.md"
+  --pr-body-file "$RUNNER_TEMP/pr-body.md" \
+  --event-json-file "$GITHUB_EVENT_PATH" \
+  --current-pull-json-file "$RUNNER_TEMP/current-pull.json"
 ```
 
 `expected-change-count.txt` is fetched from the PR OBJECT (`.changed_files`),
@@ -462,7 +487,8 @@ structured results; do not edit.
 - [ ] **Step 3: Implement `/flm-ui-slice`**
 
 Validate required arguments, including a canonical repository-owned claim URL,
-an approved feature-branch prefix, a live GitHub ruleset/protection check, and a lane-bound `verificationProfile`;
+the claim-derived workflow-owned branch, fixed lane/package scopes, a live
+GitHub ruleset/protection check, and a lane-bound `verificationProfile`;
 reject caller-supplied `verificationCommand` text;
 run one read-only preflight agent, then one writer
 agent. The writer creates/enters an isolated worktree at `baseSha`, touches only
@@ -629,10 +655,11 @@ The owner authorization must be recorded in issue #3626 or the pull request so
 it is available through GitHub alone. It may also be mirrored into the
 originating Codex task, but private task state is not a merge prerequisite.
 Merge serially and verify the resulting `main` SHA. Serial merging remains an
-integration rule and never permits a second active shared-core author. Create the
-`legacy-ui-exception` repository label if absent, add the unique
-`Legacy UI Lifecycle Guard` context to the existing strict `main` required
-status checks without removing any current contexts, and verify administrator
-enforcement remains enabled. Update the governance claim on issue #3626 to
-`COMPLETE`; leave the mission issue open while the active shared-core claim and
-later adapter slices continue.
+integration rule and never permits a second active shared-core author. Do not
+change repository settings or branch protection in this implementation lane.
+Record creation of the `legacy-ui-exception` label and the app-id-pinned
+`Legacy UI Lifecycle Guard` required-check binding as explicit administrator
+prerequisites per charter §3.1; posting the status alone is not enforcement.
+Update the governance claim on issue #3626 to `COMPLETE`; leave the mission
+issue open while the active shared-core claim and later adapter slices
+continue.

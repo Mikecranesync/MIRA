@@ -14,15 +14,16 @@ name: Legacy UI Lifecycle Guard
 # author controls, even from a fork. It checks out ONLY `base.sha`, with
 # credential persistence disabled; it never checks out or executes the head
 # ref or any PR code. A separate, token-bearing metadata step fetches changed
-# files, labels, and the PR body as DATA ONLY (never interpolated into
-# executable script text — always written to a file and read back by the
-# guard). The guard-evaluation step itself carries no token and makes no
-# network call.
+# files, one PR snapshot containing labels/body/head, and (only for an
+# exception-label event) the actor's current collaborator role as DATA ONLY
+# (never interpolated into executable script text — always written to a file
+# and read back by the guard). The guard-evaluation step itself carries no
+# token and makes no network call.
 #
 # Job split (finding #4): `pending` (posts the pending status, holds
 # statuses:write ONLY) -> `guard` (needs: pending; fetches metadata, checks
 # out trusted base, runs tests + evaluation; holds contents:read +
-# pull-requests:read + issues:read, NEVER statuses:write) -> `final-status`
+# pull-requests:read, NEVER statuses:write) -> `final-status`
 # (needs: [pending, guard]; if: always(); runs on a fresh runner; holds
 # statuses:write ONLY; branches on needs.guard.result rather than an in-job
 # job.status, since a separate job has no visibility into another job's
@@ -95,7 +96,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      issues: read
     steps:
       # Defense in depth alongside `on.pull_request_target.branches: [main]`
       # above — an explicit runtime check that fails the job outright rather
@@ -117,33 +117,47 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVER_LOGIN: ${{ github.event.sender.login }}
         run: |
-          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.changed_files' \
+          gh api "repos/$REPO/pulls/$PR_NUMBER" \
+            > "$RUNNER_TEMP/current-pull.json"
+          jq -r '.changed_files' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/expected-change-count.txt"
           gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
             --jq '.[] | {filename, status, previous_filename}' \
             > "$RUNNER_TEMP/changed-files.jsonl"
-          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' \
+          jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/pr-body.md"
-          gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' \
+          jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/labels.txt"
+          if jq -e '.action == "labeled" and .label.name == "legacy-ui-exception"' \
+            "$GITHUB_EVENT_PATH" > /dev/null; then
+            gh api "repos/$REPO/collaborators/$APPROVER_LOGIN/permission" \
+              > "$RUNNER_TEMP/approver-permission.json"
+          else
+            jq '{permission: "none", user: {login: .sender.login}}' \
+              "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
+          fi
 
       # Trusted base ONLY. Never the head ref, never a merge ref, never PR
       # code. persist-credentials: false so no later step in this job can use
       # a lingering git credential to push or fetch as the Actions bot.
       - name: Checkout trusted base revision
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install guard dependencies
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pytest
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r requirements/ui-lifecycle-guard.txt
 
       # Runs the guard's OWN test suite from the trusted base checkout — this
       # is the base revision's guard code proving itself, not a claim about
@@ -151,15 +165,19 @@ jobs:
       - name: Run trusted-base guard tests
         run: python3 -m pytest tests/test_ui_surface_lifecycle_guard.py -q
 
-      # No token, no network access. Pure policy + text evaluation of the
-      # trusted-base registry against the fetched metadata files.
+      # No token. The guard module itself makes no network calls (the runner
+      # is not network-isolated); this is pure policy + text evaluation of the
+      # trusted-base registry against metadata fetched before checkout.
       - name: Evaluate the legacy UI lifecycle guard
         run: |
           python3 tools/ui_surface_lifecycle_guard.py \
             --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
             --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
             --labels-file "$RUNNER_TEMP/labels.txt" \
-            --pr-body-file "$RUNNER_TEMP/pr-body.md"
+            --pr-body-file "$RUNNER_TEMP/pr-body.md" \
+            --event-json-file "$GITHUB_EVENT_PATH" \
+            --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
+            --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"
 
   final-status:
     name: Post final status

@@ -38,11 +38,16 @@ leave this whole section out of the PR body (don't fill placeholder text into
 it — the guard rejects blank/N/A/angle-bracket/HTML-comment values and fails
 closed without a substantive value on all three lines below).
 
-Reviewers: applying the `legacy-ui-exception` label is human approval, not a
-convenience switch — approve only for a security/severity-0/1 repair,
-rollback-path correctness, parity work that cannot yet live in an adapter, the
-controlled adapter mount/cutover itself, or a repair of the guard's own
-trusted control plane.
+Reviewers: applying the `legacy-ui-exception` label is a maintain/admin account
+attestation, not a convenience switch. Review the current exact head and body before applying it;
+any later push or body edit invalidates approval, so remove and reapply the
+label only after reviewing the new state. Approve only for a security/
+severity-0/1 repair, rollback-path correctness, parity work that cannot yet
+live in an adapter, the controlled adapter mount/cutover itself, or a repair
+of the guard's own trusted control plane.
+
+GitHub exposes the actor account and repository permission, not whether the
+account used the web UI or a CLI/token. Automation must never apply this label.
 -->
 
 Reason:

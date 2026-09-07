@@ -32,9 +32,9 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 
 | Surface | Guarded paths |
 |---|---|
-| Public | `mira-web/src/views/**`, `mira-web/public/**` (classified — see below) |
-| Hub | `mira-hub/src/app/(hub)/**`, `mira-hub/src/components/layout/**`, `mira-hub/src/components/equipment/**` |
-| Mobile | `mira-mobile/src/App.tsx`, `mira-mobile/src/nav.ts`, `mira-mobile/src/screens/**` |
+| Public | page/content/render routes under `mira-web/src/**`, the mixed `server.ts` mount, and all `mira-web/public/**` |
+| Hub | presentation under `mira-hub/src/app/**`, React/style files under `components/**` and `providers/**`, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
+| Mobile | `mira-mobile/index.html` plus production React/style/navigation and mixed visible-copy/view-model helpers under `mira-mobile/src/**` |
 
 These entries are machine-readable in `docs/architecture/convergence/REGISTRY.yaml`
 (`mira-web-legacy-ui`, `mira-hub-legacy-ui`, `mira-mobile-legacy-ui`) with
@@ -50,14 +50,17 @@ every PR but does not yet block a merge on its own. Addition, modification,
 deletion, rename-in, and rename-out of a guarded path fail the guard by
 default regardless.
 
-**`mira-web/public/**` is classified, not blanket-guarded** (code-owned in
-the guard, not the registry — same reasoning as `CONTROL_PATTERNS` below):
-passive asset suffixes (`.png .jpg .jpeg .webp .gif .avif .ico .woff .woff2
-.ttf .otf .pdf .map .json .txt`) are unguarded; everything else (html/css/js/
-mjs/svg, unknown suffixes, extensionless names — including `sw.js` and
-`posthog-init.js`, which are executable and carry no exemption) is guarded.
-A new static file dropped in `mira-web/public/` is a new presentation surface,
-not an inert asset, by default.
+The broad registry roots are refined by code-owned classifiers in the guard.
+They preserve explicit Hub API route handlers and server/domain libraries,
+the existing public-web JSON/API routes and backend libraries, non-presentational
+files under its seed/capability roots, the exact mobile API/transport/native
+allowlist, and all three `src/factorylm-ui/**` adapter roots. The mobile
+`src/lib/**` bucket is mixed rather than trusted wholesale: helpers that own
+visible copy, rendering, or legacy interaction transitions are guarded.
+Unknown production siblings fail closed. Every file under
+`mira-web/public/**` and `mira-hub/public/**` is guarded: images, fonts, PDFs,
+manifests, and other non-executable assets still change the shipped legacy
+experience.
 
 ## The exception policy
 
@@ -68,7 +71,11 @@ of the lifecycle guard's own trusted control plane. The PR body must contain
 a substantive `## Legacy UI exception` section with `Reason:`,
 `Canonical replacement impact:`, and `Rollback:` — see the charter §3 for the
 exact format and what the guard rejects (blank values, `N/A`, placeholders,
-fenced code blocks, HTML comments).
+fenced code blocks, HTML comments, or fewer than three alphanumeric tokens and
+twelve alphanumeric characters per field). Approval passes only on the fresh
+GitHub `User` label-application event whose head SHA and body still exactly
+match the current PR. A later push/body edit invalidates it; review and
+reapply the label.
 
 ## Do not
 
@@ -134,9 +141,9 @@ in a local transcript:
   lane-bound `verificationProfile`; workflow code owns the exact command.
 - The winning claim must echo the exact branch and verification profile as well
   as mission, issue, claim URL, lane, base SHA, and allowed paths.
-- Branches require an approved feature prefix (`codex/`, `feat/`, `fix/`,
-  `test/`, `docs/`, `refactor/`, or `chore/`); protected or unscoped branch
-  names are rejected before a writer starts. Claim preflight also reads current
+- The branch must equal `codex/flm-ui-<lane>-<numeric-claim-id>`, derived by the
+  workflow from the canonical claim URL. Caller-selected branch prose is never
+  sent to an agent. Claim preflight also reads current
   GitHub branch-protection/ruleset metadata; a protected match or unavailable
   protection evidence prevents dispatch.
 - The verification lane is confined to `tests/factorylm_ui/**` and
@@ -145,6 +152,12 @@ in a local transcript:
 - Its workflow-owned profile collects `tests/factorylm_ui/**` plus the protected
   workflow, lifecycle-guard, and capability-closure suites. Do not replace it
   with repository-wide pytest or caller-provided shell text.
+- Allowed paths must equal fixed workflow-owned lane/package scopes; arbitrary
+  descendant strings are rejected even when their characters look path-safe.
+  Returned file records also use a strict, whitespace-free portable alphabet.
+  Prompt-significant prose, controls, backticks, quotes, shell punctuation,
+  empty segments, and traversal fail before a writer or reviewer can be
+  dispatched.
 
 ## Codex exact-head merge gate
 

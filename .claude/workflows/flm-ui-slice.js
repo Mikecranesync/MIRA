@@ -39,8 +39,21 @@ const DECIMAL_ID_RE = /^(?:0|[1-9][0-9]*)$/
 // A safe git branch-name shape: no leading/trailing slash, no '..', no '//',
 // no trailing '.lock', no control/space characters (finding #8).
 const BRANCH_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$/
-const ALLOWED_BRANCH_PREFIXES = ['codex/', 'feat/', 'fix/', 'test/', 'docs/', 'refactor/', 'chore/']
+// Fail closed on prompt-significant or platform-ambiguous filename characters.
+// These workflows own only new FactoryLM UI roots, whose names are restricted
+// to this portable subset. `*` is allowed only in caller claim patterns, never
+// in authoritative file records returned after implementation.
+const SAFE_ALLOWED_PATH_RE = /^[A-Za-z0-9._/@+()[\]*-]+$/
+const SAFE_FILE_PATH_RE = /^[A-Za-z0-9._/@+()[\]-]+$/
 const REPORTING_ASSURANCE = 'fresh-comment-integrity-only'
+
+function claimBranchId(claimUrl) {
+  const comment = claimUrl.match(/#issuecomment-([1-9][0-9]*)$/)
+  if (comment) return comment[1]
+  const pull = claimUrl.match(/\/pull\/([1-9][0-9]*)(?:#|$)/)
+  if (pull) return pull[1]
+  throw new Error('flm-ui-slice could not derive a numeric branch id from args.claimUrl')
+}
 
 // Verification is selected from workflow-owned constants, never caller-owned
 // shell text. Each profile is bound to exactly one ownership lane and is also
@@ -108,22 +121,63 @@ const LANE_ALLOWED_ROOTS = {
   ],
 }
 
+// Only workflow-owned scopes may cross the prompt boundary. Merely restricting
+// characters and parent roots is insufficient: a syntactically valid filename
+// can itself be an instruction-shaped string. These fixed scopes keep caller
+// data useful for selecting a lane/package without ever interpolating an
+// attacker-chosen semantic path into an agent prompt.
+const LANE_ALLOWED_SCOPES = {
+  'shared-core': [
+    'packages/factorylm-theme/**',
+    'packages/factorylm-theme/src/**',
+    'packages/factorylm-interaction/**',
+    'packages/factorylm-interaction/src/**',
+    'packages/factorylm-ui/**',
+    'packages/factorylm-ui/src/**',
+    'apps/factorylm-ui-lab/**',
+    'apps/factorylm-ui-lab/src/**',
+  ],
+  hub: ['mira-hub/src/factorylm-ui/**'],
+  mobile: ['mira-mobile/src/factorylm-ui/**'],
+  public: ['mira-web/src/factorylm-ui/**'],
+  verification: [
+    'tests/factorylm_ui/**',
+    'docs/architecture/convergence/evidence/factorylm-ui/**',
+  ],
+}
+
 function validateAllowedPath(raw, lane, laneRoots) {
   if (typeof raw !== 'string' || raw.trim() === '') {
     throw new Error(`flm-ui-slice: allowedPaths entry is not a non-empty string: ${JSON.stringify(raw)}`)
   }
-  const p = raw.trim()
+  if (raw !== raw.trim() || !SAFE_ALLOWED_PATH_RE.test(raw)) {
+    throw new Error(
+      `flm-ui-slice: allowedPaths entry contains whitespace, control, or other unsafe characters: ${JSON.stringify(raw)}`
+    )
+  }
+  const p = raw
   if (p.startsWith('/')) {
     throw new Error(`flm-ui-slice: allowedPaths entry is absolute: ${JSON.stringify(raw)}`)
   }
   if (p.includes('\\')) {
     throw new Error(`flm-ui-slice: allowedPaths entry contains a backslash: ${JSON.stringify(raw)}`)
   }
-  if (p.split('/').includes('..')) {
-    throw new Error(`flm-ui-slice: allowedPaths entry contains a traversal segment: ${JSON.stringify(raw)}`)
+  const pathSegments = p.split('/')
+  if (
+    pathSegments.includes('.') ||
+    pathSegments.includes('..') ||
+    pathSegments.slice(0, -1).includes('')
+  ) {
+    throw new Error(`flm-ui-slice: allowedPaths entry contains an empty or traversal segment: ${JSON.stringify(raw)}`)
   }
   if (p === '**' || p === '*' || p === '.git' || p.startsWith('.git/')) {
     throw new Error(`flm-ui-slice: allowedPaths entry is a root-wide glob or a .git path: ${JSON.stringify(raw)}`)
+  }
+  if (!LANE_ALLOWED_SCOPES[lane].includes(p)) {
+    throw new Error(
+      `flm-ui-slice: allowedPaths entry ${JSON.stringify(raw)} is not a workflow-owned scope for ` +
+        `lane ${JSON.stringify(lane)} (${JSON.stringify(LANE_ALLOWED_SCOPES[lane])})`
+    )
   }
   for (const forbidden of FORBIDDEN_PATH_PREFIXES) {
     if (p === forbidden || p.startsWith(forbidden)) {
@@ -168,12 +222,17 @@ function normalizeChangedPaths(paths, allowedPatterns) {
   const normalized = []
   for (const rawPath of paths) {
     if (typeof rawPath !== 'string' || rawPath.trim() === '') return null
-    const filePath = rawPath.trim()
+    if (rawPath !== rawPath.trim() || !SAFE_FILE_PATH_RE.test(rawPath)) return null
+    const filePath = rawPath
+    const pathSegments = filePath.split('/')
     if (
       filePath.startsWith('/') ||
       filePath.includes('\\') ||
       filePath.includes('*') ||
-      filePath.split('/').includes('..') ||
+      filePath.endsWith('/') ||
+      pathSegments.includes('') ||
+      pathSegments.includes('.') ||
+      pathSegments.includes('..') ||
       filePath === '.git' ||
       filePath.startsWith('.git/') ||
       FORBIDDEN_PATH_PREFIXES.some(
@@ -284,6 +343,7 @@ if (typeof baseSha !== 'string' || !SHA_RE.test(baseSha)) {
 if (!CANONICAL_LANES.includes(lane)) {
   throw new Error(`flm-ui-slice requires args.lane to be one of ${JSON.stringify(CANONICAL_LANES)} (got: ${JSON.stringify(lane)})`)
 }
+const expectedBranch = `codex/flm-ui-${lane}-${claimBranchId(claimUrl)}`
 if (
   typeof branch !== 'string' ||
   !BRANCH_NAME_RE.test(branch) ||
@@ -293,9 +353,10 @@ if (
 ) {
   throw new Error(`flm-ui-slice requires args.branch to be a safe git branch name (got: ${JSON.stringify(branch)})`)
 }
-if (!ALLOWED_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix))) {
+if (branch !== expectedBranch) {
   throw new Error(
-    `flm-ui-slice rejects protected or unscoped branch ${JSON.stringify(branch)}; use one of ${JSON.stringify(ALLOWED_BRANCH_PREFIXES)}`
+    `flm-ui-slice requires the workflow-owned branch ${JSON.stringify(expectedBranch)} for this claim ` +
+      `(got: ${JSON.stringify(branch)})`
   )
 }
 if (!Array.isArray(allowedPaths) || allowedPaths.length === 0) {

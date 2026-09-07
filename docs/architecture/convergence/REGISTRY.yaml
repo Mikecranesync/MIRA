@@ -1706,8 +1706,15 @@ mira-web-legacy-ui:
   canonical_replacement: packages/factorylm-ui/
   guarded_paths:
     - mira-web/src/views/**
+    - mira-web/src/routes/**
+    - mira-web/src/server.ts
+    - mira-web/src/lib/blog-renderer.ts
+    - mira-web/src/lib/components.ts
+    - mira-web/src/lib/drive-commander-renderer.ts
+    - mira-web/src/lib/feature-renderer.ts
+    - mira-web/src/lib/head.ts
     - mira-web/public/**
-  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md). Parent module mira-web stays CANONICAL/deployed; only this presentation tree is guarded. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml (posts the Legacy UI Lifecycle Guard status on every PR; binding it as a required branch-protection check on main is a separate, not-yet-performed administrator action — see charter §3.1). `mira-web/public/**` documents scope only — the actual guard/exempt decision for every path under `mira-web/public/` is the code-owned public-static classifier in tools/ui_surface_lifecycle_guard.py (charter §2.2 addendum), NOT this glob: passive asset suffixes (.png/.jpg/.jpeg/.webp/.gif/.avif/.ico/.woff/.woff2/.ttf/.otf/.pdf/.map/.json/.txt) are unguarded, and everything else (html/htm/css/js/mjs/svg, unknown suffixes, extensionless names — including sw.js and posthog-init.js, which are executable and carry no exemption after Codex remediation of 1ecb9baef finding #1) is presentation-capable and guarded. This closes the 'new sibling static file bypasses the guard' gap the original two-exact-file list left open — every file under mira-web/public/ is served statically by mira-web, so a new .html/.js/.css dropped there is a new presentation surface exactly like a new file under mira-web/src/views/."
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md). Parent module mira-web stays CANONICAL/deployed; code-owned classification in tools/ui_surface_lifecycle_guard.py preserves the named JSON/API routes and backend library/capability roots while guarding all HTML route mounts, renderers, content data, server.ts, unknown production siblings, and every file under mira-web/public/**. Static images, fonts, PDFs, manifests, and scripts all change the shipped legacy experience and are therefore guarded. Enforced by .github/workflows/ui-lifecycle-guard.yml (posts the Legacy UI Lifecycle Guard status on every PR; binding it as a required branch-protection check on main is a separate, not-yet-performed administrator action — see charter §3.1)."
   known_drift:
     - "PR #3592 (open at charter approval) edits mira-web/src/views/home.ts inside this guarded tree — must merge, close, or use legacy-ui-exception at/around the freeze landing; this entry does not decide that PR."
 
@@ -1722,10 +1729,12 @@ mira-hub-legacy-ui:
   deletion_safe: false
   canonical_replacement: packages/factorylm-ui/
   guarded_paths:
-    - "mira-hub/src/app/(hub)/**"
-    - mira-hub/src/components/layout/**
-    - mira-hub/src/components/equipment/**
-  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-hub stays CANONICAL/deployed; session, tenant, authorization, Notebook persistence, and typed SSE seams are preserved server-side per charter §2.3 and are not guarded here. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
+    - mira-hub/src/app/**
+    - mira-hub/src/components/**
+    - mira-hub/src/providers/**
+    - mira-hub/src/messages/**
+    - mira-hub/public/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-hub stays CANONICAL/deployed. The code-owned classifier guards app presentation, React/style legacy components and providers, rendered locale catalogs, and public assets while excluding Next route-handler files under explicit api segments, plain TypeScript helpers/providers, src/lib/**, and the canonical src/factorylm-ui/** adapter root. Session, tenant, authorization, Notebook persistence, and typed SSE seams remain reusable per charter §2.3. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
   known_drift: []
 
 mira-mobile-legacy-ui:
@@ -1739,8 +1748,7 @@ mira-mobile-legacy-ui:
   deletion_safe: false
   canonical_replacement: packages/factorylm-ui/
   guarded_paths:
-    - mira-mobile/src/App.tsx
-    - mira-mobile/src/nav.ts
-    - mira-mobile/src/screens/**
-  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-mobile stays CANONICAL/deployed; mira-mobile/src/chat-adapter/** transport conversion, native camera/QR/offline behavior are preserved per charter §2.3 and are not guarded here. Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
+    - mira-mobile/index.html
+    - mira-mobile/src/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-mobile stays CANONICAL/deployed. The code-owned classifier guards index.html, navigation, production React/style files, and mixed src/lib helpers that own visible copy, render transforms, view models, or legacy interaction transitions. It preserves the canonical src/factorylm-ui/** adapter, non-presentational API files, three exact existing chat-adapter files, pure unified TypeScript transforms, and an exact operational/native allowlist (live update, native picker, offline queue, OS handoff, resume guard, SSE parser, tag/deep-link grammar). Enforced by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml."
   known_drift: []

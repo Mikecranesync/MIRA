@@ -17,6 +17,8 @@ Written test-first (RED before GREEN): at the moment this file is added,
 from __future__ import annotations
 
 import importlib.util
+import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -52,6 +54,7 @@ _build_arg_parser = _guard._build_arg_parser
 changed_files_between = _guard.changed_files_between
 evaluate = _guard.evaluate
 load_changed_files = _guard.load_changed_files
+load_exception_approval = _guard.load_exception_approval
 load_guard_policy = _guard.load_guard_policy
 main = _guard.main
 path_is_guarded = _guard.path_is_guarded
@@ -152,8 +155,10 @@ def test_sibling_file_newly_created_under_each_guarded_directory_is_caught():
     real_policy = load_guard_policy(REAL_REGISTRY)
     siblings = [
         "mira-web/src/views/__brand_new_sibling__.ts",
-        "mira-hub/src/components/equipment/__brand_new_sibling__.tsx",
-        "mira-mobile/src/screens/__brand_new_sibling__.tsx",
+        "mira-web/src/routes/__brand_new_sibling__.ts",
+        "mira-hub/src/components/__brand_new_sibling__.tsx",
+        "mira-hub/src/app/dashboard-copy/page.tsx",
+        "mira-mobile/src/widgets/__brand_new_sibling__.tsx",
     ]
     for sib in siblings:
         assert path_is_guarded(sib, real_policy), f"expected {sib} to be guarded"
@@ -395,8 +400,149 @@ def test_complete_block_inside_fenced_code_block_fails():
 
 
 def test_exactly_one_live_section_with_substantive_values_passes():
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=_VALID_BODY, policy=_POLICY)
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=_VALID_BODY,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
     assert result.allowed is True
+
+
+def test_valid_label_and_body_without_fresh_bound_approval_fail():
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=_VALID_BODY,
+        policy=_POLICY,
+    )
+
+    assert result.allowed is False
+    assert "approval:fresh legacy-ui-exception label bound to current head/body" in (
+        result.missing_fields
+    )
+
+
+def _write_exception_approval_files(
+    tmp_path: Path,
+    *,
+    event_body: str = _VALID_BODY,
+    current_body: str = _VALID_BODY,
+    event_head: str = "a" * 40,
+    current_head: str = "a" * 40,
+    action: str = "labeled",
+    event_label: str = "legacy-ui-exception",
+    sender_type: str = "User",
+    permission: str = "write",
+    role_name: str = "maintain",
+    permission_login: str = "maintainer",
+) -> tuple[Path, Path, Path]:
+    event = {
+        "action": action,
+        "number": 123,
+        "label": {"name": event_label},
+        "sender": {"login": "maintainer", "type": sender_type},
+        "repository": {"full_name": "Factory/MIRA"},
+        "pull_request": {
+            "number": 123,
+            "body": event_body,
+            "head": {"sha": event_head},
+        },
+    }
+    current = {
+        "number": 123,
+        "body": current_body,
+        "head": {"sha": current_head},
+        "base": {"repo": {"full_name": "Factory/MIRA"}},
+        "labels": [{"name": "legacy-ui-exception"}],
+    }
+    event_path = tmp_path / "event.json"
+    pull_path = tmp_path / "current-pr.json"
+    permission_path = tmp_path / "approver-permission.json"
+    event_path.write_text(json.dumps(event))
+    pull_path.write_text(json.dumps(current))
+    permission_path.write_text(
+        json.dumps(
+            {
+                "permission": permission,
+                "role_name": role_name,
+                "user": {"login": permission_login},
+            }
+        )
+    )
+    return event_path, pull_path, permission_path
+
+
+def test_fresh_user_label_event_bound_to_current_head_and_body_is_valid(tmp_path):
+    event_path, pull_path, permission_path = _write_exception_approval_files(tmp_path)
+
+    approval = load_exception_approval(event_path, pull_path, permission_path)
+
+    assert approval.valid is True
+    assert approval.approver == "maintainer"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"current_body": _VALID_BODY + "\nchanged after approval"},
+        {"current_head": "b" * 40},
+        {"action": "edited"},
+        {"event_label": "some-other-label"},
+        {"sender_type": "Bot"},
+    ],
+)
+def test_exception_approval_invalidates_on_body_head_event_or_actor_change(tmp_path, overrides):
+    event_path, pull_path, permission_path = _write_exception_approval_files(tmp_path, **overrides)
+
+    approval = load_exception_approval(event_path, pull_path, permission_path)
+
+    assert approval.valid is False
+
+
+@pytest.mark.parametrize(
+    ("permission", "role_name"),
+    [
+        ("write", "write"),
+        ("read", "triage"),
+        ("read", "read"),
+        ("none", "none"),
+        ("write", "custom-release-role"),
+    ],
+)
+def test_exception_approval_rejects_actor_without_maintain_or_admin_permission(
+    tmp_path, permission, role_name
+):
+    event_path, pull_path, permission_path = _write_exception_approval_files(
+        tmp_path, permission=permission, role_name=role_name
+    )
+
+    approval = load_exception_approval(event_path, pull_path, permission_path)
+
+    assert approval.valid is False
+    assert "maintain or admin" in approval.reason
+
+
+def test_exception_approval_accepts_admin_legacy_permission(tmp_path):
+    event_path, pull_path, permission_path = _write_exception_approval_files(
+        tmp_path, permission="admin", role_name="admin"
+    )
+
+    approval = load_exception_approval(event_path, pull_path, permission_path)
+
+    assert approval.valid is True
+
+
+def test_exception_approval_rejects_permission_record_for_different_actor(tmp_path):
+    event_path, pull_path, permission_path = _write_exception_approval_files(
+        tmp_path, permission_login="someone-else"
+    )
+
+    approval = load_exception_approval(event_path, pull_path, permission_path)
+
+    assert approval.valid is False
+    assert "permission record actor mismatches" in approval.reason
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +621,44 @@ def test_punctuation_only_values_fail(punctuation_value):
     assert any("Reason" in f for f in result.missing_fields)
 
 
+def test_one_character_exception_values_fail_as_non_substantive():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: x
+        Canonical replacement impact: x
+        Rollback: x
+        """
+    )
+
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+def test_long_single_token_exception_value_fails_as_non_substantive():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: xxxxxxxxxxxxxxxxxxxxxxxxx
+        Canonical replacement impact: something real happens here
+        Rollback: revert the commit
+        """
+    )
+
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+
+    assert result.allowed is False
+    assert any("Reason" in field for field in result.missing_fields)
+
+
 def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
     # A real, substantive value must not be rejected just because it CONTAINS
     # a placeholder-vocabulary word away from the start of the value.
@@ -487,7 +671,13 @@ def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
         Rollback: revert this commit; the legacy route is otherwise untouched
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
     assert result.allowed is True
 
 
@@ -701,27 +891,124 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
     policy = load_guard_policy(REAL_REGISTRY)
     expected = {
         "mira-web/src/views/**",
+        "mira-web/src/routes/**",
+        "mira-web/src/server.ts",
         "mira-web/public/**",
-        "mira-hub/src/app/(hub)/**",
-        "mira-hub/src/components/layout/**",
-        "mira-hub/src/components/equipment/**",
-        "mira-mobile/src/App.tsx",
-        "mira-mobile/src/nav.ts",
-        "mira-mobile/src/screens/**",
+        "mira-hub/src/app/**",
+        "mira-hub/src/components/**",
+        "mira-hub/src/providers/**",
+        "mira-hub/src/messages/**",
+        "mira-hub/public/**",
+        "mira-mobile/index.html",
+        "mira-mobile/src/**",
     }
     assert expected <= set(policy.guarded_paths)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-hub/src/components/AssetChat.tsx",
+        "mira-hub/src/components/namespace/NodeChat.tsx",
+        "mira-hub/src/components/AssetChatV2.tsx",
+        "mira-hub/src/components/chat/NewLegacyPanel.tsx",
+        "mira-hub/src/app/layout.tsx",
+        "mira-hub/src/app/globals.css",
+        "mira-hub/src/app/login/page.tsx",
+        "mira-hub/src/app/dashboard-copy/page.tsx",
+        "mira-hub/src/providers/theme-provider.tsx",
+        "mira-hub/src/messages/en.json",
+        "mira-hub/public/new-shell.js",
+        "mira-web/src/lib/feature-renderer.ts",
+        "mira-web/src/lib/blog-renderer.ts",
+        "mira-web/src/lib/drive-commander-renderer.ts",
+        "mira-web/src/lib/new-dashboard-renderer.ts",
+        "mira-web/src/capabilities/NewLegacyPanel.tsx",
+        "mira-web/src/seed/NewLegacyPanel.tsx",
+        "mira-web/src/routes/printsense.ts",
+        "mira-web/src/routes/new-old-site.ts",
+        "mira-web/src/server.ts",
+        "mira-mobile/index.html",
+        "mira-mobile/src/main.tsx",
+        "mira-mobile/src/LegacyAppV2.tsx",
+        "mira-mobile/src/app.css",
+        "mira-mobile/src/unified/unified.css",
+        "mira-mobile/src/api/NewLegacyPanel.tsx",
+        "mira-mobile/src/chat-adapter/NewLegacyPanel.tsx",
+        "mira-mobile/src/lib/NewLegacyPanel.tsx",
+        "mira-mobile/src/lib/attach-selection.ts",
+        "mira-mobile/src/lib/chat-copy.ts",
+        "mira-mobile/src/lib/chat-ui-pref.ts",
+        "mira-mobile/src/lib/citation-marks.ts",
+        "mira-mobile/src/lib/composer.ts",
+        "mira-mobile/src/lib/nameplate-flow.ts",
+        "mira-mobile/src/lib/notebook-asset-card.ts",
+        "mira-mobile/src/lib/notebook-delete.ts",
+        "mira-mobile/src/lib/remark-citation-marks.ts",
+        "mira-mobile/src/lib/replay.ts",
+        "mira-mobile/src/lib/scan-landing.ts",
+        "mira-mobile/src/lib/sensor-read.ts",
+        "mira-mobile/src/lib/sensor.ts",
+        "mira-mobile/src/lib/transient-layer.ts",
+        "mira-mobile/src/lib/new-transport-helper.ts",
+        "mira-mobile/src/widgets/NewLegacyPanel.tsx",
+        "mira-mobile/src/styles/new-shell.css",
+    ],
+)
+def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert path_is_guarded(path, policy), f"expected {path} to be guarded"
+    result = evaluate(
+        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=policy
+    )
+    assert result.allowed is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts",
+        "mira-hub/src/app/(hub)/api/auth/magic-link/route.ts",
+        "mira-hub/src/components/equipment/notebook-chat-utils.ts",
+        "mira-hub/src/lib/notebook-chat-types.ts",
+        "mira-hub/src/providers/auth-provider.ts",
+        "mira-web/src/routes/inbox.ts",
+        "mira-web/src/routes/mfa.ts",
+        "mira-web/src/routes/probe-state.ts",
+        "mira-web/src/routes/m.ts",
+        "mira-web/src/lib/auth.ts",
+        "mira-web/src/lib/mira-chat.ts",
+        "mira-web/src/capabilities/new-service.ts",
+        "mira-mobile/src/api/client.ts",
+        "mira-mobile/src/chat-adapter/runtime.tsx",
+        "mira-mobile/src/lib/live-update.ts",
+        "mira-mobile/src/lib/native-pick.ts",
+        "mira-mobile/src/lib/offline-queue.ts",
+        "mira-mobile/src/lib/open-with.ts",
+        "mira-mobile/src/lib/resume-guard.ts",
+        "mira-mobile/src/lib/sse.ts",
+        "mira-mobile/src/lib/tags.ts",
+        "mira-mobile/src/unified/to-interaction.ts",
+        "mira-mobile/src/factorylm-ui/NewAdapter.tsx",
+    ],
+)
+def test_preserved_capability_and_canonical_adapter_paths_remain_unguarded(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+
+    assert not path_is_guarded(path, policy), f"expected {path} to remain a capability seam"
+
+
 # ---------------------------------------------------------------------------
-# Public-static sibling bypass fix — every file under mira-web/public/ is
-# served statically by mira-web, so a new .html/.css/.js dropped there is a
-# new presentation surface, not an inert asset. The classifier is code-owned
-# (like CONTROL_PATTERNS) so it cannot be loosened by editing the registry.
+# Public-static sibling bypass fix — every file under a legacy public tree is
+# presentation material. Executable files, manifests, documents, images,
+# icons, and fonts all affect the shipped old experience and are guarded.
 # ---------------------------------------------------------------------------
 
 
 def test_public_static_guarded_root_is_exposed_as_a_constant():
     assert "mira-web/public/" in PUBLIC_STATIC_GUARDED_ROOTS
+    assert "mira-hub/public/" in PUBLIC_STATIC_GUARDED_ROOTS
 
 
 @pytest.mark.parametrize(
@@ -737,6 +1024,11 @@ def test_public_static_guarded_root_is_exposed_as_a_constant():
         "mira-web/public/FOO.JS",
         "mira-web/public/data.unknownext",
         "mira-web/public/no_extension_at_all",
+        "mira-web/public/logo.png",
+        "mira-web/public/manual.pdf",
+        "mira-web/public/manifest.json",
+        "mira-web/public/font.woff2",
+        "mira-hub/public/new-shell.css",
     ],
 )
 def test_public_static_presentation_capable_additions_are_guarded(path):
@@ -788,37 +1080,6 @@ def test_public_static_both_rename_directions_are_guarded():
         policy=real_policy,
     )
     assert rename_out.allowed is False
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "mira-web/public/logo.png",
-        "mira-web/public/photo.JPG",
-        "mira-web/public/photo.jpeg",
-        "mira-web/public/hero.webp",
-        "mira-web/public/anim.gif",
-        "mira-web/public/hero.avif",
-        "mira-web/public/favicon.ico",
-        "mira-web/public/font.woff",
-        "mira-web/public/font.woff2",
-        "mira-web/public/font.ttf",
-        "mira-web/public/font.otf",
-        "mira-web/public/manual.pdf",
-        "mira-web/public/bundle.js.map",
-        "mira-web/public/manifest.json",
-        "mira-web/public/robots.txt",
-    ],
-)
-def test_public_static_passive_asset_suffixes_are_unguarded(path):
-    real_policy = load_guard_policy(REAL_REGISTRY)
-    assert not path_is_guarded(path, real_policy), (
-        f"expected {path} to be unguarded (passive asset)"
-    )
-    result = evaluate(
-        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=real_policy
-    )
-    assert result.allowed is True
 
 
 @pytest.mark.parametrize(
@@ -978,6 +1239,7 @@ def test_cli_has_no_bare_labels_flag():
 
 def test_pull_request_template_is_a_control_pattern():
     assert ".github/pull_request_template.md" in CONTROL_PATTERNS
+    assert "requirements/ui-lifecycle-guard.txt" in CONTROL_PATTERNS
 
 
 @pytest.mark.parametrize("control_path", CONTROL_PATTERNS)
@@ -1157,6 +1419,59 @@ def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():
     assert "--expected-change-count-file" in text
 
 
+def test_workflow_binds_exception_to_event_and_current_pull_snapshot():
+    text = _workflow_text()
+
+    assert "current-pull.json" in text
+    assert '--event-json-file "$GITHUB_EVENT_PATH"' in text
+    assert '--current-pull-json-file "$RUNNER_TEMP/current-pull.json"' in text
+    assert "collaborators/$APPROVER_LOGIN/permission" in text
+    assert '--approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"' in text
+
+
+def test_workflow_derives_labels_from_the_same_current_pull_snapshot():
+    doc = _workflow_doc()
+    guard = doc["jobs"]["guard"]
+    metadata_step = next(
+        step
+        for step in guard["steps"]
+        if "current-pull.json" in step.get("run", "") and "gh api" in step.get("run", "")
+    )
+    run = metadata_step["run"]
+
+    assert "jq -r '.labels[].name' \"$RUNNER_TEMP/current-pull.json\"" in run
+    assert "/issues/" not in run
+    assert guard["permissions"] == {"contents": "read", "pull-requests": "read"}
+
+
+def test_workflow_actions_are_pinned_to_full_commit_shas():
+    doc = _workflow_doc()
+    action_uses = [
+        step["uses"]
+        for job in doc["jobs"].values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith(("actions/checkout@", "actions/setup-python@"))
+    ]
+
+    assert action_uses
+    for use in action_uses:
+        assert re.fullmatch(r"actions/(?:checkout|setup-python)@[0-9a-f]{40}", use), use
+
+
+def test_workflow_installs_hash_locked_guard_dependencies():
+    text = _workflow_text()
+    requirements = REPO_ROOT / "requirements" / "ui-lifecycle-guard.txt"
+
+    assert "pip install" in text
+    assert "--require-hashes" in text
+    assert "requirements/ui-lifecycle-guard.txt" in text
+    assert requirements.exists()
+    requirement_text = requirements.read_text()
+    for package in ("pyyaml", "pytest", "iniconfig", "packaging", "pluggy", "pygments"):
+        assert re.search(rf"(?im)^{package}==[^\s]+", requirement_text), package
+    assert requirement_text.count("--hash=sha256:") >= 6
+
+
 def test_workflow_uses_labels_file_never_bare_labels_flag():
     text = _workflow_text()
     assert "--labels-file" in text
@@ -1244,5 +1559,6 @@ def test_pr_template_exception_section_passes_once_filled_with_substantive_text(
         labels={"legacy-ui-exception"},
         pr_body=filled,
         policy=real_policy,
+        exception_approval_valid=True,
     )
     assert result.allowed is True

@@ -61,41 +61,44 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | `mira-web/src/views/**`; `mira-web/public/**` (classified — see below) | Old public-page tree, product-demo shell, and every statically-served public asset |
-| Hub | `mira-hub/src/app/(hub)/**`; `mira-hub/src/components/layout/**`; `mira-hub/src/components/equipment/**` | Dashboard-first route tree, navigation, and duplicate Equipment Notebook presentation |
-| Mobile | `mira-mobile/src/App.tsx`; `mira-mobile/src/nav.ts`; `mira-mobile/src/screens/**` | Separate mobile shell, screen tree, navigation, and duplicate chat presentation |
+| Public | `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; named `src/lib/*renderer.ts`/presentation helpers; `mira-web/public/**` | Old public-page/content tree, every HTML route mount/renderer, and every statically served public asset |
+| Hub | `mira-hub/src/app/**`; presentational files under `mira-hub/src/components/**` and `providers/**`; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/React component/provider, rendered locale catalog, and public asset; API route handlers and plain TypeScript helpers are classifier exclusions |
+| Mobile | `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application mount, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
 The parent modules remain `CANONICAL`/deployed in `MODULES.md`. Marking an
 entire module legacy would incorrectly deprecate its live API and capability
 seams.
 
-**`mira-web/public/**` is classified, not blanket-guarded, and the classifier
-is code-owned** (`tools/ui_surface_lifecycle_guard.py`), not sourced from the
-registry — the same self-protection reasoning as `CONTROL_PATTERNS` (§3.1).
-Every file mira-web serves statically from `mira-web/public/` is a candidate
-presentation surface: a new `.html`/`.css`/`.js` dropped there is exactly as
-much a new UI as a new file under `mira-web/src/views/` — an earlier version
-of this charter guarded only the two known files (`mira-chat.js`,
-`mira-chat.css`), which left every OTHER file in that directory as an
-unguarded sibling-bypass. The classifier now guards everything under
-`mira-web/public/` EXCEPT:
+The broad registry roots are refined by **code-owned classifiers** in
+`tools/ui_surface_lifecycle_guard.py`, using the same trusted-base reasoning as
+`CONTROL_PATTERNS` (§3.1). The exclusions are capability-shaped, not
+presentation-shaped:
 
-- **Passive asset suffixes** (cannot execute or render a UI on their own):
-  `.png` `.jpg` `.jpeg` `.webp` `.gif` `.avif` `.ico` `.woff` `.woff2` `.ttf`
-  `.otf` `.pdf` `.map` `.json` `.txt`.
+- Hub Next `route.ts` handlers below an explicit `api` segment, `src/lib/**`,
+  and plain TypeScript auth/data providers remain open capability seams;
+  `src/messages/**` is rendered product copy and is guarded.
+- Public-web JSON/API routes `inbox.ts`, `m.ts`, `mfa.ts`, and
+  `probe-state.ts`, existing backend libraries, and non-presentational files in
+  `src/seed/**` and the explicit future `src/capabilities/**` root remain open.
+  React/style files in those roots, every other route, the mixed `server.ts`
+  mount, page renderers/content, and unknown production siblings fail closed.
+- Mobile non-presentational `src/api/**`, the three existing
+  `src/chat-adapter/**` transport files, pure TypeScript transforms under
+  `src/unified/**`, and an exact low-level operational allowlist remain open:
+  `live-update.ts`, `native-pick.ts`, `offline-queue.ts`, `open-with.ts`,
+  `resume-guard.ts`, `sse.ts`, and `tags.ts`. The historical `src/lib/**`
+  bucket is not itself a capability boundary: its other files contain visible
+  copy, render transforms, view models, route transitions, or legacy
+  interaction behavior and therefore fail closed. Extract new reusable
+  capability logic into an API/adapter/shared-package seam instead of growing
+  those mixed legacy helpers.
 
-There is no named exact-path exemption for any executable file. An earlier
-draft of this classifier carved out `mira-web/public/sw.js` and
-`mira-web/public/posthog-init.js` as "exempt infrastructure" — that was
-itself a live self-service bypass (Codex adversarial review of `1ecb9baef`,
-finding #1): both are executable JavaScript served to every visitor,
-indistinguishable in kind from any other guarded `.js` file. They are now
-guarded like everything else under `mira-web/public/` that isn't a passive
-asset. Unknown suffixes and extensionless names fail closed (guarded). The
-classifier applies to additions, modifications, deletions, and both rename
-directions — a rename that lands a passive asset inside `mira-web/public/`
-under a guarded name, or moves a guarded file to safety, is still evaluated
-on its own path.
+Every file under `mira-web/public/**` or `mira-hub/public/**` is blanket
+guarded. Images, icons, fonts, PDFs, source maps, text, and manifests can all
+change the visible or installed legacy experience; "non-executable" is not
+the same as "non-presentational." New canonical assets belong with the shared
+shell or a bounded adapter. The classifiers apply to additions,
+modifications, deletions, and both rename directions.
 
 New bounded presentation adapters live outside those trees under
 `mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
@@ -113,8 +116,12 @@ These are adapter inputs, not rewrite targets:
   route as the first durable thread/turn seam.
 - `mira-hub/src/components/equipment/notebook-chat-utils.ts` and
   `mira-hub/src/lib/notebook-chat-types.ts` for current typed SSE behavior.
-- `mira-mobile/src/chat-adapter/**`, API client, deep links, native picker,
-  camera, QR, offline queue, resume guard, and secure storage behavior.
+- The exact mobile chat transport adapter, API client, tag/deep-link grammar,
+  native picker/camera bridge, signed live-update path, offline queue, OS file
+  handoff, resume guard, and SSE parser. QR/nameplate/replay interaction files
+  that also own legacy copy or screen transitions are guarded mixed seams;
+  canonical work reuses them unchanged or extracts capability-only logic into
+  a bounded adapter/shared package.
 - `workspace_file_links` and canonical file bytes for many-to-many attachments.
 - Server-owned retrieval, citations, evidence, safety, identity confirmation,
   lifecycle truth, provider routing, and tool outcomes.
@@ -146,28 +153,45 @@ Canonical replacement impact: <what is added, unblocked, or intentionally unchan
 Rollback: <how this exact change is reversed safely>
 ```
 
-The label is human approval, not a convenience switch. Exactly one real
+The label is a fresh maintainer attestation, not a persistent convenience
+switch. Exactly one real
 `## Legacy UI exception` section is accepted. Its three values must be
 substantive text; blank values, `N/A`, template placeholders, HTML comments,
-and text inside fenced code blocks fail closed. The guard reads the label and
-body live from GitHub so a rerun does not require an empty commit.
+and text inside fenced code blocks fail closed. Each value must contain at
+least three alphanumeric tokens and at least twelve alphanumeric characters;
+one-character or long single-token filler is not approval evidence. A passing
+exception run must be triggered by a GitHub `User` whose separately fetched
+collaborator record proves predefined Maintain (`permission: write`,
+`role_name: maintain`) or Admin (`permission: admin`) applying the exact
+`legacy-ui-exception` label, and the event-time head SHA and PR body must still
+match a separately fetched current PR snapshot byte for byte. Any later push,
+body edit, different-label event, bot label, permission mismatch, or lower role
+invalidates approval; remove and reapply the label only after reviewing the new
+exact head and text. GitHub identifies the authorized account but does not
+prove whether that account used the web UI or a CLI/token, so repository policy
+must prohibit automation from applying this label; the guard does not claim a
+physical human-input guarantee the platform cannot expose.
 
 ### 3.1 Trusted enforcement boundary
 
 The authoritative `Legacy UI Lifecycle Guard` runs from the default branch on
 `pull_request_target`. It checks out only the trusted base revision with Git
-credentials disabled, obtains PR filenames/statuses, labels, and body through a
-least-privilege metadata step, and never checks out or executes pull-request
-code. The enforcement step has no token. It evaluates additions,
+credentials disabled, obtains PR filenames/statuses plus one current PR
+snapshot containing labels, body, and head plus the exception actor's current
+repository permission through a least-privilege metadata step, and never checks
+out or executes pull-request code. The enforcement step has no token. It evaluates additions,
 modifications, deletions, and both sides of renames against the base registry.
 
 The base guard also protects its own control files: the registry, charter,
 guard implementation and tests, focused Claude rule, three UI workflow files,
-trusted GitHub workflow, and **the PR template that documents the exception
-scaffold** (`.github/pull_request_template.md`) — editing the template is
-itself a control-plane change, since it is where a future exception author
-reads the exact three-field shape the guard requires. Editing any of these
-files requires the same audited exception. The workflow reruns on head
+trusted GitHub workflow, **its hash-locked dependency file**
+(`requirements/ui-lifecycle-guard.txt`), and **the PR template that documents
+the exception scaffold** (`.github/pull_request_template.md`) — editing any of
+these is a control-plane change. The workflow pins checkout/setup actions to
+full commit SHAs and installs only exact, hash-locked binary dependencies.
+Its Python module makes no network calls; the GitHub-hosted runner itself is
+not claimed to be network-isolated. Editing any control file requires the
+same audited exception. The workflow reruns on head
 changes, body edits, label changes, draft-to-ready transitions, reopen, and
 open. It posts the uniquely named `Legacy UI Lifecycle Guard` status to the
 PR head SHA.
@@ -329,8 +353,11 @@ preflight treats every active shared-core claim as overlapping regardless of its
 listed `allowedPaths`, and dispatch requires the supplied claim to be the only
 active one. Required structured input includes
 `mission`, `issue`, `claimUrl`, `baseSha`, `lane`, `branch`, `allowedPaths`,
-and `verificationProfile`. The branch must use an approved feature prefix and
-cannot be `main` or another protected/unscoped name; preflight also queries the
+and `verificationProfile`. The branch is deterministic workflow-owned data:
+`codex/flm-ui-<lane>-<numeric-claim-id>`, derived from the canonical claim URL;
+any other caller value is rejected before dispatch. `allowedPaths` must be one
+of the workflow's fixed lane/package scopes, never an arbitrary descendant
+string. Preflight also queries the
 current GitHub branch-protection/ruleset metadata and rejects any matching
 protected pattern (unavailable protection metadata is `UNVERIFIABLE`). The profile is fixed by
 lane (`shared-core-ui`, `hub-adapter`, `mobile-adapter`, `public-adapter`, or

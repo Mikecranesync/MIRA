@@ -10,21 +10,27 @@ Task 2.
 Fails closed by default on ANY addition, modification, deletion, rename-in,
 or rename-out of a guarded legacy presentation path (from
 docs/architecture/convergence/REGISTRY.yaml) or a hardcoded CONTROL_PATTERNS
-control-plane file — unless the PR carries BOTH the `legacy-ui-exception`
-label AND a single, substantive `## Legacy UI exception` PR-body section
-(Reason / Canonical replacement impact / Rollback).
+control-plane file — unless the PR carries the `legacy-ui-exception` label, a
+single substantive `## Legacy UI exception` PR-body section (Reason /
+Canonical replacement impact / Rollback), and a fresh user label event bound
+to the current PR head/body snapshot.
 
 This module does no network access and reads no GitHub token — it is pure
 policy + text analysis, designed to run from the TRUSTED BASE revision of the
 repository (see `.github/workflows/ui-lifecycle-guard.yml`), fed only
-metadata (changed files, labels, PR body) fetched by a separate,
-token-bearing step. See CLI `main()` at the bottom.
+metadata (changed files plus one current PR snapshot containing labels, body,
+and head) fetched by a separate token-bearing step. See CLI `main()` at the
+bottom.
 
     python3 tools/ui_surface_lifecycle_guard.py --base <sha> --head <sha>
     python3 tools/ui_surface_lifecycle_guard.py \\
         --changes-json-file changed-files.jsonl \\
+        --expected-change-count-file expected-change-count.txt \\
         --labels-file labels.txt \\
-        --pr-body-file pr-body.md
+        --pr-body-file pr-body.md \\
+        --event-json-file "$GITHUB_EVENT_PATH" \\
+        --current-pull-json-file current-pull.json \\
+        --approver-permission-json-file approver-permission.json
 """
 
 from __future__ import annotations
@@ -65,47 +71,95 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".claude/workflows/flm-ui-verify.js",
     ".github/workflows/ui-lifecycle-guard.yml",
     ".github/pull_request_template.md",
+    "requirements/ui-lifecycle-guard.txt",
 )
 
 # ---------------------------------------------------------------------------
-# Public-static sibling-bypass fix (charter §2.2 addendum).
+# Code-owned presentation classifiers (charter §2.2 addendum).
 #
-# `mira-web/public/**` is served statically by mira-web — a new .html/.css/.js
-# file dropped there is a new presentation surface exactly like a new file
-# under `mira-web/src/views/`, NOT an inert asset. This classifier is
-# code-owned (like CONTROL_PATTERNS) so it applies regardless of what the
-# registry's `guarded_paths` say for this prefix: passive data/asset suffixes
-# are unguarded, and everything else — including unknown suffixes,
-# extensionless names, and any executable script (`sw.js`, `posthog-init.js`,
-# or any other `.js`/`.mjs`) — fails closed (guarded).
+# Registry globs document the broad legacy roots. These classifiers apply
+# first and carry the executable exclusions for preserved capability seams.
+# That order is essential: a broad `src/**` registry glob closes sibling-UI
+# bypasses, while this trusted-base code keeps API/transport/domain paths
+# available for the canonical adapters to reuse.
 #
-# Codex remediation finding #1 (2026-09-06): the original design carried a
-# named exact-path exemption for `mira-web/public/sw.js` and
-# `mira-web/public/posthog-init.js` as "infrastructure". That was itself a
-# live self-service bypass — both are executable JavaScript served to every
-# visitor, indistinguishable in kind from any other guarded `.js` file under
-# this tree. No exemption exists for these paths (or for any executable
-# suffix) anymore; only the passive-asset-suffix carve-out below remains.
+# Public trees are blanket guarded. Images, fonts, PDFs, and manifests all
+# change the shipped legacy experience; "non-executable" never meant
+# "non-presentational". New canonical assets belong in the shared packages or
+# a bounded `src/factorylm-ui/**` adapter, not in an old public tree.
 # ---------------------------------------------------------------------------
-PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = ("mira-web/public/",)
+PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = (
+    "mira-web/public/",
+    "mira-hub/public/",
+)
 
-PUBLIC_STATIC_PASSIVE_SUFFIXES: frozenset[str] = frozenset(
+CLASSIFIED_SOURCE_ROOTS: tuple[str, ...] = (
+    "mira-web/src/",
+    "mira-hub/src/",
+    "mira-mobile/src/",
+)
+
+CANONICAL_ADAPTER_ROOTS: tuple[str, ...] = (
+    "mira-web/src/factorylm-ui/",
+    "mira-hub/src/factorylm-ui/",
+    "mira-mobile/src/factorylm-ui/",
+)
+
+_PRESENTATION_SUFFIXES: tuple[str, ...] = (
+    ".tsx",
+    ".jsx",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+)
+
+# Existing mira-web route modules that are data/API capability seams rather
+# than HTML page mounts. Every other current or future production route file
+# is guarded by default. New backend work has a durable unambiguous home under
+# `mira-web/src/capabilities/**`.
+_WEB_PRESERVED_ROUTE_PATHS: frozenset[str] = frozenset(
     {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".webp",
-        ".gif",
-        ".avif",
-        ".ico",
-        ".woff",
-        ".woff2",
-        ".ttf",
-        ".otf",
-        ".pdf",
-        ".map",
-        ".json",
-        ".txt",
+        "mira-web/src/routes/inbox.ts",
+        "mira-web/src/routes/m.ts",
+        "mira-web/src/routes/mfa.ts",
+        "mira-web/src/routes/probe-state.ts",
+    }
+)
+
+_WEB_PRESENTATION_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/lib/blog-renderer.ts",
+        "mira-web/src/lib/components.ts",
+        "mira-web/src/lib/drive-commander-renderer.ts",
+        "mira-web/src/lib/feature-renderer.ts",
+        "mira-web/src/lib/head.ts",
+    }
+)
+
+# These are operational/native/transport seams already consumed by the mobile
+# application. Everything else under the historical `src/lib/**` bucket fails
+# closed: that bucket also contains visible copy, view models, composer
+# behavior, citation rendering, and transient-layer behavior, so treating the
+# directory itself as a capability boundary is unsafe. New reusable capability
+# code belongs in the API/adapter roots or in the shared FactoryLM packages.
+_MOBILE_PRESERVED_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-mobile/src/lib/live-update.ts",
+        "mira-mobile/src/lib/native-pick.ts",
+        "mira-mobile/src/lib/offline-queue.ts",
+        "mira-mobile/src/lib/open-with.ts",
+        "mira-mobile/src/lib/resume-guard.ts",
+        "mira-mobile/src/lib/sse.ts",
+        "mira-mobile/src/lib/tags.ts",
+    }
+)
+
+_MOBILE_PRESERVED_CHAT_ADAPTER_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-mobile/src/chat-adapter/contract.ts",
+        "mira-mobile/src/chat-adapter/runtime.tsx",
+        "mira-mobile/src/chat-adapter/turns-to-parts.ts",
     }
 )
 
@@ -143,6 +197,10 @@ _PLACEHOLDER_PREFIXES: tuple[str, ...] = (
     "fill in later",
 )
 _ANGLE_PLACEHOLDER_RE = re.compile(r"^<.*>$", re.DOTALL)
+_SUBSTANTIVE_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_MIN_SUBSTANTIVE_TOKENS = 3
+_MIN_SUBSTANTIVE_ALNUM_CHARS = 12
+_FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _EXCEPTION_HEADER_RE = re.compile(r"^##\s+Legacy UI exception\s*$")
 _ANY_H2_RE = re.compile(r"^##\s+")
 # A "fence" opener: 3+ backticks or 3+ tildes, optionally followed by a
@@ -196,6 +254,15 @@ class GuardResult:
     guarded_paths: tuple[str, ...]
     missing_fields: tuple[str, ...]
     message: str
+
+
+@dataclass(frozen=True)
+class ExceptionApproval:
+    """Fresh GitHub label attestation bound to one PR head and body snapshot."""
+
+    valid: bool
+    approver: Optional[str]
+    reason: str
 
 
 # ---------------------------------------------------------------------------
@@ -336,29 +403,119 @@ def _matches_pattern(path: str, pattern: str) -> bool:
     return path == pattern
 
 
-def _is_public_static_guarded(path: str) -> bool:
-    """Deterministic classifier for `mira-web/public/**` paths.
+def _is_test_path(path: str) -> bool:
+    parts = path.split("/")
+    name = parts[-1]
+    return "__tests__" in parts or ".test." in name or ".spec." in name
 
-    Guards everything EXCEPT passive data/asset suffixes that cannot execute
-    or render a UI on their own. Unknown suffixes, extensionless names, and
-    every executable suffix (`.js`, `.mjs`, `.html`, ...) fail closed
-    (guarded) — this is the "sibling bypass" fix: a new file under
-    mira-web/public/ is a new presentation surface by default. No named
-    exact-path exemption exists (Codex remediation finding #1 — see the
-    module-level comment above `PUBLIC_STATIC_GUARDED_ROOTS`).
+
+def _is_hub_api_route(path: str) -> bool:
+    """True only for Next route-handler files below an explicit `api` segment.
+
+    This preserves both `app/api/**/route.ts` and the historical
+    `app/(hub)/api/**/route.ts` capability seams. A `page.tsx` placed below an
+    `api` directory is still presentation and therefore remains guarded.
     """
-    normalized = path.strip("/")
-    name = normalized.rsplit("/", 1)[-1]
-    suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
-    if suffix in PUBLIC_STATIC_PASSIVE_SUFFIXES:
+    prefix = "mira-hub/src/app/"
+    if not path.startswith(prefix) or not path.endswith("/route.ts"):
         return False
+    return "api" in path[len(prefix) :].split("/")[:-1]
+
+
+def _classify_web_source(path: str) -> bool:
+    """Classify `mira-web/src/**`; True means legacy presentation.
+
+    mira-web mixes HTML templates and backend behavior in `.ts` files, so an
+    extension-only rule is unsafe. Existing data/API seams are preserved by
+    explicit roots/paths, while route mounts, renderers, content data,
+    `server.ts`, and every unknown production sibling fail closed.
+    """
+    if _is_test_path(path):
+        return False
+    if path.startswith("mira-web/src/capabilities/"):
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path.startswith("mira-web/src/seed/"):
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path in _WEB_PRESERVED_ROUTE_PATHS:
+        return False
+    if path.startswith("mira-web/src/routes/"):
+        return True
+    if path in _WEB_PRESENTATION_LIB_PATHS:
+        return True
+    if path.startswith("mira-web/src/lib/"):
+        # A new renderer is presentation even before its mount lands. Other
+        # established lib modules are capability seams; mounting one into the
+        # old product still requires a guarded server/route change.
+        return path.rsplit("/", 1)[-1].endswith("-renderer.ts")
+    if path.startswith("mira-web/src/views/") or path.startswith("mira-web/src/data/"):
+        return True
+    if path == "mira-web/src/server.ts":
+        return True
+    # Unknown production roots are not an escape hatch for a new old-site UI.
     return True
+
+
+def _classify_hub_source(path: str) -> bool:
+    """Classify `mira-hub/src/**`; True means legacy presentation."""
+    if _is_test_path(path):
+        return False
+    if _is_hub_api_route(path):
+        return False
+    if path.startswith("mira-hub/src/messages/"):
+        # Locale catalogs are rendered product copy, not inert backend data.
+        return True
+    if path.startswith("mira-hub/src/app/"):
+        return True
+    if path.startswith("mira-hub/src/components/"):
+        # React/style components are presentation. Plain TypeScript helpers
+        # such as notebook-chat-utils.ts and layout/sign-out-action.ts remain
+        # reusable capability seams.
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path.startswith("mira-hub/src/providers/"):
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    # A React/style sibling outside today's conventional directories is still
+    # a presentation surface. Plain `.ts` domain/service modules remain open.
+    return path.lower().endswith(_PRESENTATION_SUFFIXES)
+
+
+def _classify_mobile_source(path: str) -> bool:
+    """Classify `mira-mobile/src/**`; True means legacy presentation."""
+    if _is_test_path(path):
+        return False
+    if path.startswith("mira-mobile/src/chat-adapter/"):
+        return path not in _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS
+    if path.startswith("mira-mobile/src/api/"):
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path.startswith("mira-mobile/src/lib/"):
+        return path not in _MOBILE_PRESERVED_LIB_PATHS
+    if path.startswith("mira-mobile/src/unified/"):
+        # Preserve the pure adapter transforms, but freeze the old CSS/React
+        # presentation that happened to share this historical directory.
+        return path.lower().endswith(_PRESENTATION_SUFFIXES)
+    if path == "mira-mobile/src/nav.ts":
+        return True
+    return path.lower().endswith(_PRESENTATION_SUFFIXES)
+
+
+def _classify_source_path(path: str) -> Optional[bool]:
+    if any(path.startswith(root) for root in CANONICAL_ADAPTER_ROOTS):
+        return False
+    if path.startswith("mira-web/src/"):
+        return _classify_web_source(path)
+    if path.startswith("mira-hub/src/"):
+        return _classify_hub_source(path)
+    if path.startswith("mira-mobile/src/"):
+        return _classify_mobile_source(path)
+    return None
 
 
 def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
     for root in PUBLIC_STATIC_GUARDED_ROOTS:
         if path.startswith(root):
-            return _is_public_static_guarded(path)
+            return True
+    classified = _classify_source_path(path)
+    if classified is not None:
+        return classified
     return any(_matches_pattern(path, pattern) for pattern in policy.guarded_paths)
 
 
@@ -511,6 +668,127 @@ def load_changed_files(
     return tuple(out)
 
 
+def _load_json_object(path: Path, *, description: str) -> dict:
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise GuardPolicyError(f"cannot read {description} file {path}: {exc}") from exc
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise GuardPolicyError(f"{description} file {path} is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise GuardPolicyError(f"{description} file {path} must contain a JSON object")
+    return value
+
+
+def load_exception_approval(
+    event_path: Path,
+    current_pull_path: Path,
+    approver_permission_path: Path,
+) -> ExceptionApproval:
+    """Validate a fresh label act against the current PR snapshot.
+
+    The persistent label is not approval by itself. The only accepted
+    attestation is the `pull_request_target:labeled` event that applied
+    `legacy-ui-exception`, performed by a GitHub User, whose event-time head
+    SHA and PR body still match a separately fetched current pull request, and
+    whose separately fetched repository role is `maintain` or whose legacy
+    base permission is `admin`. GitHub maps Maintain to legacy `write`, so both
+    `permission` and `role_name` are checked.
+    Any later push or body edit causes the next workflow run to fail until an
+    authorized user removes/reapplies the label after reviewing the new state.
+    """
+    event = _load_json_object(event_path, description="GitHub event")
+    current = _load_json_object(current_pull_path, description="current pull request")
+    permission_record = _load_json_object(
+        approver_permission_path, description="approver repository permission"
+    )
+
+    event_pr = event.get("pull_request")
+    event_label = event.get("label")
+    sender = event.get("sender")
+    current_head = current.get("head")
+    current_base = current.get("base")
+    current_labels = current.get("labels")
+    permission_user = permission_record.get("user")
+    if (
+        not all(
+            isinstance(value, dict)
+            for value in (event_pr, event_label, sender, current_head, current_base)
+        )
+        or not isinstance(current_labels, list)
+        or not isinstance(permission_user, dict)
+    ):
+        raise GuardPolicyError("exception approval metadata is missing required GitHub objects")
+
+    event_head = event_pr.get("head")
+    current_base_repo = current_base.get("repo")
+    event_repo = event.get("repository")
+    if not all(isinstance(value, dict) for value in (event_head, current_base_repo, event_repo)):
+        raise GuardPolicyError("exception approval metadata is missing head/repository objects")
+
+    event_sha = event_head.get("sha")
+    current_sha = current_head.get("sha")
+    if not isinstance(event_sha, str) or not _FULL_SHA_RE.fullmatch(event_sha):
+        raise GuardPolicyError("exception approval event head SHA is missing or malformed")
+    if not isinstance(current_sha, str) or not _FULL_SHA_RE.fullmatch(current_sha):
+        raise GuardPolicyError("current pull request head SHA is missing or malformed")
+
+    event_body = event_pr.get("body")
+    current_body = current.get("body")
+    if event_body is not None and not isinstance(event_body, str):
+        raise GuardPolicyError("exception approval event PR body is not text or null")
+    if current_body is not None and not isinstance(current_body, str):
+        raise GuardPolicyError("current pull request body is not text or null")
+
+    label_names: set[str] = set()
+    for item in current_labels:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise GuardPolicyError("current pull request labels contain a malformed item")
+        label_names.add(item["name"])
+
+    approver = sender.get("login") if isinstance(sender.get("login"), str) else None
+    permission_login = (
+        permission_user.get("login") if isinstance(permission_user.get("login"), str) else None
+    )
+    permission = permission_record.get("permission")
+    role_name = permission_record.get("role_name")
+    has_maintainer_authority = permission == "admin" or (
+        permission == "write" and role_name == "maintain"
+    )
+    checks = (
+        (event.get("action") == "labeled", "workflow event is not a label application"),
+        (event_label.get("name") == _LEGACY_LABEL, "workflow event applied a different label"),
+        (_LEGACY_LABEL in label_names, "exception label is no longer present"),
+        (sender.get("type") == "User" and bool(approver), "label actor is not a GitHub User"),
+        (permission_login == approver, "permission record actor mismatches label actor"),
+        (
+            has_maintainer_authority,
+            "label actor does not have repository maintain or admin permission",
+        ),
+        (event.get("number") == current.get("number"), "pull request number changed"),
+        (event_pr.get("number") == current.get("number"), "event pull request number mismatches"),
+        (
+            event_repo.get("full_name") == current_base_repo.get("full_name"),
+            "repository identity mismatches",
+        ),
+        (event_sha == current_sha, "pull request head changed after approval"),
+        ((event_body or "") == (current_body or ""), "pull request body changed after approval"),
+    )
+    failures = [reason for passed, reason in checks if not passed]
+    if failures:
+        return ExceptionApproval(valid=False, approver=approver, reason="; ".join(failures))
+    return ExceptionApproval(
+        valid=True,
+        approver=approver,
+        reason=(
+            "fresh label event matches the current pull request head/body and "
+            "the actor has repository maintainer authority"
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Exception PR-body parsing — strip fenced code blocks and HTML comments
 # FIRST, so neither can be used to smuggle a fake exception section past the
@@ -622,6 +900,11 @@ def _is_substantive(value: Optional[str]) -> bool:
         return False
     if _starts_with_placeholder_phrase(v.lower()):
         return False
+    tokens = _SUBSTANTIVE_TOKEN_RE.findall(v)
+    if len(tokens) < _MIN_SUBSTANTIVE_TOKENS:
+        return False
+    if sum(len(token) for token in tokens) < _MIN_SUBSTANTIVE_ALNUM_CHARS:
+        return False
     return True
 
 
@@ -652,6 +935,8 @@ def evaluate(
     labels: "set[str] | frozenset[str]",
     pr_body: str,
     policy: GuardPolicy,
+    *,
+    exception_approval_valid: bool = False,
 ) -> GuardResult:
     """Require an audited exception for any guarded or control-plane touch.
 
@@ -680,6 +965,8 @@ def evaluate(
     if _LEGACY_LABEL not in set(labels):
         missing.append(f"label:{_LEGACY_LABEL}")
     missing.extend(_exception_missing_fields(pr_body))
+    if not missing and not exception_approval_valid:
+        missing.append("approval:fresh legacy-ui-exception label bound to current head/body")
 
     if missing:
         return GuardResult(
@@ -735,6 +1022,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--labels-file", type=Path, default=None, help="Newline-delimited label names.")
     p.add_argument("--pr-body-file", type=Path, default=None, help="Raw PR body text.")
     p.add_argument(
+        "--event-json-file",
+        type=Path,
+        default=None,
+        help="Raw pull_request_target event JSON used to bind a fresh exception label.",
+    )
+    p.add_argument(
+        "--current-pull-json-file",
+        type=Path,
+        default=None,
+        help="Current GitHub pull-request JSON compared with the label event snapshot.",
+    )
+    p.add_argument(
+        "--approver-permission-json-file",
+        type=Path,
+        default=None,
+        help="Current GitHub repository-permission JSON for the label-event actor.",
+    )
+    p.add_argument(
         "--changes-json-file",
         type=Path,
         default=None,
@@ -777,6 +1082,20 @@ def main(argv: Optional[list] = None) -> int:
             file=sys.stderr,
         )
         return 2
+    approval_files = (
+        args.event_json_file,
+        args.current_pull_json_file,
+        args.approver_permission_json_file,
+    )
+    if any(path is not None for path in approval_files) and not all(
+        path is not None for path in approval_files
+    ):
+        print(
+            "error: --event-json-file, --current-pull-json-file, and "
+            "--approver-permission-json-file must be provided together",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         policy = load_guard_policy(args.registry)
@@ -787,11 +1106,30 @@ def main(argv: Optional[list] = None) -> int:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
         labels = _read_labels(args.labels_file)
         pr_body = _read_pr_body(args.pr_body_file)
+        approval = (
+            load_exception_approval(
+                args.event_json_file,
+                args.current_pull_json_file,
+                args.approver_permission_json_file,
+            )
+            if args.event_json_file is not None
+            else ExceptionApproval(
+                valid=False,
+                approver=None,
+                reason="no GitHub label-event attestation was supplied",
+            )
+        )
     except GuardPolicyError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
 
-    result = evaluate(changes, labels, pr_body, policy)
+    result = evaluate(
+        changes,
+        labels,
+        pr_body,
+        policy,
+        exception_approval_valid=approval.valid,
+    )
     if not result.allowed:
         for touched_path in result.guarded_paths:
             print(f"::error file={touched_path}::{result.message}")

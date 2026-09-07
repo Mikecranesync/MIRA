@@ -60,9 +60,9 @@ const AREAS = [
     key: 'public',
     prompt:
       `Read-only mapping pass for the FactoryLM Unified UI Cutover (${mission}), base SHA ${baseSha}. ` +
-      `Read ${CHARTER} first. Map the PUBLIC surface: mira-web/src/views/**, mira-web/public/** (note the ` +
-      `passive-asset/exempt-infrastructure classifier lives in tools/ui_surface_lifecycle_guard.py — do not ` +
-      `assume every file under mira-web/public/ is guarded), and any existing mira-web/src/factorylm-ui/** ` +
+      `Read ${CHARTER} first. Map the PUBLIC surface: the code-classified page/content/render routes under ` +
+      `mira-web/src/**, the mixed server.ts mount, both blanket-guarded public trees, preserved JSON/API and ` +
+      `backend capability seams, and any existing mira-web/src/factorylm-ui/** ` +
       `adapter scaffolding. Return every relevant real path you actually read (NEVER invent one) and any ` +
       `symbol/finding relevant to an adapter slice. Do not edit anything.`,
   },
@@ -70,7 +70,8 @@ const AREAS = [
     key: 'hub',
     prompt:
       `Read-only mapping pass for ${mission}, base SHA ${baseSha}. Read ${CHARTER} first. Map the HUB surface: ` +
-      `mira-hub/src/app/(hub)/**, mira-hub/src/components/layout/**, mira-hub/src/components/equipment/**, the ` +
+      `classified presentation under mira-hub/src/app/**, React/style components/** and providers/**, ` +
+      `rendered mira-hub/src/messages/** locale catalogs, mira-hub/public/**, the excluded API route handlers, the ` +
       `preserved capability seams (session/tenant/authorization, equipment_notebooks, notebook-chat-utils.ts, ` +
       `notebook-chat-types.ts), and any existing mira-hub/src/factorylm-ui/** adapter scaffolding. Return every ` +
       `relevant real path you actually read and any finding relevant to an adapter slice. Do not edit anything.`,
@@ -79,8 +80,9 @@ const AREAS = [
     key: 'mobile',
     prompt:
       `Read-only mapping pass for ${mission}, base SHA ${baseSha}. Read ${CHARTER} first. Map the MOBILE ` +
-      `surface: mira-mobile/src/App.tsx, mira-mobile/src/nav.ts, mira-mobile/src/screens/**, the preserved ` +
-      `mira-mobile/src/chat-adapter/** transport, and any existing mira-mobile/src/factorylm-ui/** adapter ` +
+      `surface: mira-mobile/index.html plus classified React/style/navigation and mixed copy/view-model helpers ` +
+      `under src/**, the exact preserved API/transport/native allowlist, and any existing ` +
+      `mira-mobile/src/factorylm-ui/** adapter ` +
       `scaffolding. Return every relevant real path you actually read and any finding relevant to an adapter ` +
       `slice. Do not edit anything.`,
   },

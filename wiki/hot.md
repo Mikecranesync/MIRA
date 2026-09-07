@@ -1,46 +1,75 @@
-# Hot Cache — 2026-09-06 — Unified UI cutover governance submitted; new-UI merge train active
+# Hot Cache — 2026-09-06 — New shared UI merged; governance and Slice C gated
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordinated durably in
-[issue #3626](https://github.com/Mikecranesync/MIRA/issues/3626). Governance is now
-[draft PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647) from
-`codex/factorylm-unified-ui-cutover-001`, rebased on `main` commit
-`79aa812d92e03b7c205e2da9e74e1e15f601651c`.
+[issue #3626](https://github.com/Mikecranesync/MIRA/issues/3626). The binding
+direction is the **completely new shared UI** under `packages/factorylm-ui/**`;
+the old public-web, Hub, and mobile presentation trees are rollback-only legacy
+surfaces and must not receive product work.
 
 Current delivery ledger:
 
-- [PR #3646](https://github.com/Mikecranesync/MIRA/pull/3646) merged as
-  `79aa812d92e03b7c205e2da9e74e1e15f601651c`. Shared UI CI now derives every
-  package test suite from disk, rejects an empty suite tree, and fails when a
-  suite is absent from JUnit evidence.
-- [PR #3643](https://github.com/Mikecranesync/MIRA/pull/3643) is the active
-  **completely new shared UI** implementation. Codex passed its code at exact
-  head `15c1398ce1508856ab5617a0e0c98b81127a6fc5` after mobile overflow,
-  stacked-focus, host-owned Retry, 108-unit-test, and 95-browser-test proof.
-  Because #3646 moved `main`, that verdict is intentionally not merge-ready.
-  Claude has since merged current `main` into the branch at
-  `5ae639a6370f91a58cee0413a803b0be3c218b1b`; Codex must recheck that exact
-  head before readying or merging it.
+- [PR #3643](https://github.com/Mikecranesync/MIRA/pull/3643) passed Codex's
+  exact-head product/code review and CI, then merged as current `main` commit
+  `f5f994a78d6d2f2e9393381662804f375dc59209`. This is the new shared-UI
+  baseline. The OTA workflow published canary `1.1.7` from that commit; the
+  workflow result is proven, but final physical-phone restart/visual proof has
+  not yet been independently confirmed in this ledger.
 - [PR #3644](https://github.com/Mikecranesync/MIRA/pull/3644) remains parked and
   draft. Do not merge its `mira-mobile/src/screens/**` changes as new product UI
   and do not use a legacy exception to bypass the product direction. Rework the
   capability beneath `mira-mobile/src/factorylm-ui/**` (retaining pure
   `chat-adapter/**` transport seams where useful) after the cutover lands, or
   defer until that mount seam exists.
+- [PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647), branch
+  `codex/factorylm-unified-ui-cutover-001`, is still draft. Its published head
+  `8313f49885319956dc18ccfd0b2446362d1ffd32` has green CI but is behind current
+  `main`. Local remediation closes the prior lifecycle-guard HOLD: broad legacy
+  presentation coverage, workflow-owned slice scopes and branches, exact
+  head/body-bound exception approval with verified maintainer authority,
+  immutable action pins, and hash-locked dependencies. The focused suite is
+  green (`307` targeted tests plus capability/action checks), and an
+  independent adversarial audit reports no Critical or Important finding.
+  Formatter cleanup and the final exact-state rerun are complete; commit,
+  rebase, push, and a fresh exact-head review remain. No newer #3647 SHA has a
+  verdict.
+- [PR #3651](https://github.com/Mikecranesync/MIRA/pull/3651) is draft Slice C,
+  implementing navigation hierarchy and visual-review findings only in the
+  canonical shared package plus its isolated lab/tests. Head
+  `5657df2c3f544feaecf4d80e8c9250a71562ae56` fixed the first Codex HOLD by
+  rendering authorization-only historical context changes. The completed
+  adversarial review still found that a retained current tree item can expose
+  zero `aria-current` rows, project/folder context changes are detected but not
+  named, explicit retry-state cleanup from issue #3649 was deferred, and the
+  1440x900 desktop navigation footer falls below the initial viewport. Claude
+  has all four reproductions/acceptance checks. Keep it draft; the head must
+  move, then pass a fresh exact-head product/code/visual review after #3647
+  advances `main`.
+- [PR #3652](https://github.com/Mikecranesync/MIRA/pull/3652) is draft Slice D,
+  stacked on Slice C at last observed head
+  `ce0d2c7844548bbc3c3161b5897c4e87d9ec83c0`. Claude reports its ten-capture
+  412x915 look-vs-plan review PASS for the unchanged Slice D delta, but this
+  does not replace independent Codex exact-head review. Do not advance it until
+  #3647 and then #3651 merge in order; rebase and review the resulting head.
 
-Governance #3647 adds the registries, lifecycle guard, trusted-base CI status,
-agent rules, exact-claim/exact-head workflows, bounded verification lane, and
-the CHARLIE peer-review runbook. Local proof at the rebased tree: 223 bounded
-governance/evidence tests and 31 architecture tests passed; Ruff, diff checks,
-pre-commit secret scanning, and independent Codex review passed. The evidence
-profile deliberately avoids repository-wide pytest because unrelated service
-environments are not installed on every cluster node.
+Separate mission `FLEET-PEER-NETWORK-001` is coordinated in
+[issue #3648](https://github.com/Mikecranesync/MIRA/issues/3648) and branch
+`docs/fleet-peer-network-001-prd`. It must not contaminate #3647 or any active
+FLM-UI slice. Draft [PR #3653](https://github.com/Mikecranesync/MIRA/pull/3653)
+continues to move under mutation-test review; GitHub showed
+`cbacc99da1885da24e2da8c2e78f86318a239d43` at this ledger update, but the live
+PR head is authoritative. Every previous review target is superseded, CI is
+still settling, and Claude has not declared a head frozen. Wait for the explicit
+freeze and `23 passed, 0 skipped` proof before starting a new exact-head review.
+Rebase only after #3647 and keep any root agent pointers inside this separate
+PR.
 
-No production route, deployment, feature flag, database, provider, auth, or
-customer-data state changed. The legacy runtime remains available only as a
-rollback surface. Next: clear #3647 CI/exact-head review, merge it, then
-incorporate that newly advanced `main` into #3643 and run its final
-exact-head review, then start only bounded new-UI adapter work. Cross-session
-peer messages supplement this ledger; GitHub remains authoritative.
+No local governance hardening has changed a production route, deployment,
+feature flag, database, provider, auth flow, or customer-data state. Next:
+finish and verify #3647, rebase it on `f5f994a...`, push one reviewable exact
+head, obtain independent PASS plus green CI, and merge it. Then fix/rebase
+#3651 and repeat exact-head code and handset-visual review before its merge;
+#3652 follows. The CHARLIE peer channel is an active notification path; GitHub
+issues, PR heads, checks, and review artifacts remain the durable authority.
 
 ---
 
