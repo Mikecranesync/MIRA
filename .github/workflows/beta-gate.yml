@@ -159,9 +159,31 @@ jobs:
           #    full test harness); the beta gate is self-contained (_gate = httpx).
           set +e
           python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py \
-            --confcutdir=tests/beta -v -rs
+            --confcutdir=tests/beta -v -rs > /tmp/beta-gate.out 2>&1
           GATE_RC=$?
           set -e
+          cat /tmp/beta-gate.out
+
+          # 5b. A pytest run whose only test SKIPS exits 0. The gate test skips itself when
+          #     BETA_GATE_* is unset (beta_ready_upload_retrieval_citation.py:53-61) — correct
+          #     for a local run, silent green in CI. So if provisioning degrades (Doppler token
+          #     scope, staging Neon unreachable, the provision script emitting empty env lines)
+          #     GATE_RC is 0 and this job reports success having proven NOTHING about
+          #     upload -> retrieval -> citation. That is the property line 55 already states:
+          #     "must not be able to reach main on a green CI that skipped it."
+          #     This is the idiom already used for the preflight lane below; the headline lane
+          #     simply never got it. Set GATE_RC rather than exiting here, so the cleanup sweep
+          #     in step 6 still runs — cleanup is proof, and must not be skipped by an early exit.
+          #     NOTE: output is redirected, not piped — `| tee` would make GATE_RC the status of
+          #     tee, which is the failure this whole change is about.
+          if grep -qiE "skipped|no tests ran" /tmp/beta-gate.out; then
+            echo "::error::beta gate SKIPPED — the run proved nothing about upload -> retrieval -> citation. Check BETA_GATE_* provisioning (Doppler scope, staging Neon reachability, provision-beta-gate.ts output)."
+            GATE_RC=1
+          fi
+          if ! grep -qE "(^| )1 passed" /tmp/beta-gate.out; then
+            echo "::error::beta gate did not report a passing case — refusing to call this green."
+            GATE_RC=1
+          fi
 
           # 6. Clean up the staging rows we created. Cleanup is PROOF: a failed
           #    sweep fails the job — but never hides an earlier gate failure.
