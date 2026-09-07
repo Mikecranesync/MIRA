@@ -15,7 +15,9 @@
       "text": "Serial number 49849 is listed on the nameplate [1].",
       "attrs": {
         "class": "fl-turn__parts"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "cite-1",
@@ -25,33 +27,44 @@
         "class": "fl-part fl-source",
         "data-part-type": "source",
         "data-source-id": "s1"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "cite-1-kind",
       "tag": "span",
       "text": "OEM",
       "attrs": {
-        "class": "fl-source__kind",
-        "data-parent": "cite-1"
-      }
+        "class": "fl-source__kind"
+      },
+      "parentId": "cite-1",
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "cite-1-title",
       "tag": "span",
       "text": "SKF 6205 bearing manual",
-      "attrs": {
-        "data-parent": "cite-1"
-      }
+      "attrs": {},
+      "parentId": "cite-1",
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "cite-1-loc",
       "tag": "span",
       "text": "p. 14",
       "attrs": {
-        "class": "fl-source__locator",
-        "data-parent": "cite-1"
-      }
+        "class": "fl-source__locator"
+      },
+      "parentId": "cite-1",
+      "rendered": true,
+      "hittable": true
     }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
   ]
 }

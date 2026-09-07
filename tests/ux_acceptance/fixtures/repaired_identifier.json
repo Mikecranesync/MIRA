@@ -14,18 +14,24 @@
       "tag": "span",
       "text": "Sensor v0 overnight 2026-08-28",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "pill"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "breadcrumb",
       "tag": "span",
       "text": "Notebooks",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "breadcrumb"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
   ]
 }

@@ -8,9 +8,27 @@ Design note — why selector resolution fails closed
 --------------------------------------------------
 The cheapest way for a detector to be wrong is to look for something with a
 selector that matches nothing and report "no defect found". That reads exactly
-like a pass. Every detector here therefore resolves its selectors through
-`Snapshot.require()`, which raises when a selector matches zero nodes. A
-detector that cannot see its subject reports UNKNOWN, never PASS.
+like a pass. Detectors therefore resolve roles through `derive.require()`,
+which raises when nothing derives the role. A detector that cannot see its
+subject reports UNKNOWN, never PASS.
+
+This module deliberately exposes NO marker-matching helpers. An earlier draft
+had `has_marker`/`with_marker`/`require` keyed on invented `data-fl-*`
+attributes; they were left behind after the rebuild, dead but documented, which
+is how a future author walks back into a vocabulary the product never emits.
+
+Two fields exist because one word was covering two questions:
+
+* ``rendered``  — the box is non-empty and display/visibility/opacity allow paint.
+* ``hittable``  — ``document.elementFromPoint`` at the node's centre returns this
+  node or a descendant.
+
+They differ exactly when it matters. ``.fl-scrim`` is ``position: fixed; inset: 0``
+(shell.css:22-25) and ``Overlay.tsx:62`` sets ``inert`` only while a modal layer is
+CLOSED — so with the drawer open the main content is rendered, not inert, not
+aria-hidden, and completely unreachable. A display-derived check calls all of it
+visible. That is the 42 phantom dead controls, and collapsing the two fields is
+how it would arrive here.
 """
 
 from __future__ import annotations
@@ -51,18 +69,25 @@ class Node:
     id: str
     tag: str
     text: str = ""
+    #: Extractor-synthesized parentage. NOT in `attrs`, because `attrs` means
+    #: "what the product emits" and a synthesized key there would force the
+    #: vocabulary guard to whitelist it — a hole in the guard meant to catch
+    #: invented attributes.
+    parent_id: Optional[str] = None
     role: Optional[str] = None
     attrs: dict[str, str] = field(default_factory=dict)
     style: dict[str, str] = field(default_factory=dict)
     box: Optional[Box] = None
-    visible: bool = True
+    #: Paints. Says nothing about whether a technician can touch it.
+    rendered: bool = True
+    #: `elementFromPoint` at the centre returns this node or a descendant.
+    hittable: bool = True
 
     def attr(self, name: str) -> Optional[str]:
         return self.attrs.get(name)
 
-    def has_marker(self, marker: str) -> bool:
-        """True when the element carries the semantic marker `data-fl-<marker>`."""
-        return f"data-fl-{marker}" in self.attrs
+    def classes(self) -> set[str]:
+        return set((self.attrs.get("class") or "").split())
 
 
 @dataclass(frozen=True)
@@ -79,6 +104,12 @@ class Snapshot:
     surface: str  # "web" | "mobile"
     route: str
     nodes: tuple[Node, ...]
+    #: Which computed-style properties the extractor actually captured. A
+    #: snapshot taken with two properties and one taken with twelve are
+    #: otherwise indistinguishable, so a detector could PASS on a snapshot that
+    #: never captured the property it reads. Detectors declare what they need
+    #: and `require_style` raises on absent CAPTURE, distinct from absent value.
+    style_properties: frozenset[str] = frozenset()
     schema_version: int = SCHEMA_VERSION
 
     # -- construction ----------------------------------------------------
@@ -119,6 +150,13 @@ class Snapshot:
                 "not a clean result"
             )
 
+        style_props = raw.get("styleProperties")
+        if not isinstance(style_props, list):
+            raise SnapshotError(
+                "styleProperties missing — without it a detector cannot tell an "
+                "absent value from a property the extractor never captured"
+            )
+
         nodes = tuple(Snapshot._node(n, i) for i, n in enumerate(raw_nodes))
         return Snapshot(
             build_sha=sha,
@@ -126,6 +164,7 @@ class Snapshot:
             surface=surface,
             route=str(raw.get("route", "")),
             nodes=nodes,
+            style_properties=frozenset(str(p) for p in style_props),
         )
 
     @staticmethod
@@ -144,38 +183,45 @@ class Snapshot:
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 raise SnapshotError(f"node[{index}] box malformed: {box_raw!r}") from exc
+        for required in ("rendered", "hittable"):
+            if required not in raw:
+                raise SnapshotError(
+                    f"node[{index}] ({raw.get('id')!r}) has no {required!r}. A node the "
+                    "extractor could not measure must not default to visible — a "
+                    "partial extraction would make detectors see MORE, not less."
+                )
         return Node(
             id=str(raw.get("id", f"n{index}")),
             tag=str(raw.get("tag", "")).lower(),
             text=str(raw.get("text", "")),
+            parent_id=(str(raw["parentId"]) if raw.get("parentId") else None),
             role=raw.get("role"),
             attrs={str(k): str(v) for k, v in (raw.get("attrs") or {}).items()},
             style={str(k): str(v) for k, v in (raw.get("style") or {}).items()},
             box=box,
-            visible=bool(raw.get("visible", True)),
+            rendered=bool(raw["rendered"]),
+            hittable=bool(raw["hittable"]),
         )
 
     # -- querying --------------------------------------------------------
 
-    def visible_nodes(self) -> Iterable[Node]:
-        return (n for n in self.nodes if n.visible)
+    def rendered_nodes(self) -> Iterable[Node]:
+        """Nodes that paint. Includes anything sitting behind a scrim."""
+        return (n for n in self.nodes if n.rendered)
 
-    def with_marker(self, marker: str) -> list[Node]:
-        """Nodes carrying `data-fl-<marker>`. May legitimately be empty."""
-        return [n for n in self.visible_nodes() if n.has_marker(marker)]
+    def reachable_nodes(self) -> Iterable[Node]:
+        """Nodes a technician can actually touch. The stricter of the two."""
+        return (n for n in self.nodes if n.rendered and n.hittable)
 
-    def require(self, marker: str) -> list[Node]:
-        """`with_marker`, but a zero match is an error rather than a clean result.
+    def require_style(self, *properties: str) -> None:
+        """Raise unless the extractor captured every property named.
 
-        This is the guard against the single most common way an outside-in
-        check silently stops checking: the markup moves, the selector matches
-        nothing, and "no defects" is reported for a screen nobody looked at.
+        Absent CAPTURE and absent VALUE are different facts, and only one of
+        them is a clean read.
         """
-        found = self.with_marker(marker)
-        if not found:
+        missing = [p for p in properties if p not in self.style_properties]
+        if missing:
             raise SnapshotError(
-                f"no visible node carries data-fl-{marker} on route {self.route!r} "
-                f"({self.surface} {self.viewport[0]}x{self.viewport[1]}). The detector "
-                "cannot see its subject; this is UNKNOWN, not PASS."
+                f"snapshot captured {sorted(self.style_properties)}; this detector "
+                f"reads {missing} which was never captured — that is UNKNOWN, not PASS"
             )
-        return found

@@ -15,7 +15,13 @@
       "text": "Serial number 49849 is listed on the nameplate [1].",
       "attrs": {
         "class": "fl-turn__parts"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
   ]
 }

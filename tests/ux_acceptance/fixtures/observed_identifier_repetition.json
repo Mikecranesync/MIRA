@@ -7,43 +7,51 @@
     "width": 412,
     "height": 915
   },
-  "_provenance": "Pixel 9a 2026-09-07, .audit/device/01-current.png. Four renderings of one identifier in the top third (mobile teardown \u00a71.2). The per-turn site is Conversation.tsx:77; describeContext is parts.tsx:52-57.",
+  "_provenance": "Pixel 9a 2026-09-07, .audit/device/01-current.png. Four renderings of one identifier in the top third (mobile teardown 1.2): header title, breadcrumb, confirmed pill, composer 'Using:' line. No attribute marks these sites in the product, so the detector finds the repeated identifier across rendered text rather than keying on a marker.",
   "nodes": [
     {
       "id": "header-title",
       "tag": "span",
       "text": "Sensor v0 overnight 2026-08-28",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "title"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "breadcrumb",
       "tag": "span",
       "text": "Notebooks / Sensor v0 overnight 2026-08-28",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "breadcrumb"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "machine-pill",
       "tag": "span",
       "text": "Sensor v0 overnight 2026-08-28 \u00b7 confirmed",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "pill"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "composer-using",
       "tag": "span",
       "text": "Using: Sensor v0 overnight 2026-08-28",
       "attrs": {
-        "class": "fl-card__meta",
-        "data-context-site": "composer"
-      }
+        "class": "fl-card__meta"
+      },
+      "rendered": true,
+      "hittable": true
     }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
   ]
 }

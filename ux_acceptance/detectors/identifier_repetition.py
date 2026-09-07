@@ -1,26 +1,30 @@
-"""S3-03 — the same fact must not be rendered more than once per viewport.
+"""S3-03 — the same identifier must not be rendered more than once per viewport.
 
 Observed on a Pixel 9a, 2026-09-07: "Sensor v0 overnight 2026-08-28" appeared
-FOUR times in the top third of one screen — as the header title (wrapping to
-three lines), the breadcrumb, a green `confirmed` pill, and the composer's
-"Using:" line — plus a fifth time in a turn header.
+FOUR times in the top third of one screen — the header title (wrapping to three
+lines), the breadcrumb, a green `confirmed` pill, and the composer's "Using:"
+line — plus a fifth in a turn header. Four components each decided the context
+mattered; none composes with the others. On a 412px screen that costs over
+100px of vertical space to tell the technician one thing four times.
 
-The cause is structural rather than cosmetic: four components each decided the
-context mattered and none composes with the others. On a 412px screen that
-redundancy costs over 100px of vertical space and makes the technician read the
-same string four times to learn nothing new.
+Two design decisions, both learned the hard way.
 
-Scope note: this counts CONTEXT-BEARING labels only, via `data-fl-context-label`.
-Counting every string on screen would flag legitimate repeats — a column header
-that matches a cell, a word appearing in prose — and a detector that cries wolf
-is one the team turns off.
+**Containment, not equality.** The first version compared whole strings, saw
+four distinct ones, and passed against the fixture built from the real device.
+The renderings wrap one identifier in different chrome — "Notebooks / X",
+"X · confirmed", "Using: X".
+
+**No marker to key on.** The second version invented `data-context-site`. The
+product emits nothing of the kind, so nothing ever derived the role and this
+detector reported UNKNOWN forever — failing closed, but structurally unable to
+judge the defect it exists for. There is no attribute marking these four sites,
+so repetition is found across rendered text instead, with ancestry excluded: a
+parent's text contains its children's, and that is one rendering, not two.
 """
 
 from __future__ import annotations
 
-from collections import Counter
-
-from ..derive import CONTEXT_LABEL, require
+from ..derive import is_ancestor
 from ..snapshot import Snapshot
 from .base import Finding, Verdict
 
@@ -29,89 +33,71 @@ TEST_ID = "S3-03"
 #: One rendering is the intent. Two is a decision nobody made.
 MAX_RENDERINGS = 1
 
+#: Below this length a string is a fragment and would be contained in everything.
+MIN_IDENTIFIER_LEN = 8
+
 
 def _normalise(text: str) -> str:
     return " ".join(text.split()).strip().casefold()
 
 
-#: Below this length a string is a fragment, not an identifier, and would be
-#: contained in everything.
-MIN_IDENTIFIER_LEN = 8
-
-
 def detect_identifier_repetition(snapshot: Snapshot) -> Finding:
-    """FAIL when one identifier is rendered more than `MAX_RENDERINGS` times.
-
-    Matching is by CONTAINMENT, not equality — and that distinction is the
-    whole detector. The four observed renderings were:
-
-        "Sensor v0 overnight 2026-08-28"
-        "Notebooks / Sensor v0 overnight 2026-08-28"
-        "Sensor v0 overnight 2026-08-28 · confirmed"
-        "Using: Sensor v0 overnight 2026-08-28"
-
-    Four *distinct strings* carrying one repeated *identifier*. An equality
-    match reports four unique labels and passes — which is what the first
-    version of this function did, against the fixture built from the real
-    device. Each component wraps the identifier in its own chrome, so the
-    repetition only exists at the substring level.
-    """
-    labels = require(snapshot, CONTEXT_LABEL)
-
-    texts = [(n.id, _normalise(n.text)) for n in labels]
-    non_empty = [(nid, t) for nid, t in texts if t]
-
-    if not non_empty:
+    """FAIL when one identifier renders more than `MAX_RENDERINGS` times."""
+    texts = [
+        (n, _normalise(n.text)) for n in snapshot.rendered_nodes() if n.text.strip()
+    ]
+    if not texts:
         return Finding(
             detector="identifier_repetition",
             test_id=TEST_ID,
             verdict=Verdict.UNKNOWN,
             summary=(
-                f"{len(labels)} context label(s) present but all empty — the extractor "
-                "found the elements and no text; that is a blind read, not a clean one"
+                "no rendered node carries text — an empty screen is an extractor "
+                "failure, not a clean result"
             ),
         )
 
-    # A candidate identifier is any label's own text. Count how many labels
-    # render it, itself included.
     offenders: list[str] = []
     worst = 1
-    for nid, candidate in non_empty:
+    seen_groups: set[tuple[str, ...]] = set()
+
+    for node, candidate in texts:
         if len(candidate) < MIN_IDENTIFIER_LEN:
             continue
-        carriers = [other_id for other_id, other in non_empty if candidate in other]
-        if len(carriers) > MAX_RENDERINGS:
-            worst = max(worst, len(carriers))
-            offenders.append(
-                f"{candidate!r} rendered {len(carriers)}x at {', '.join(carriers)}"
-            )
+        carriers = [
+            other
+            for other, other_text in texts
+            if candidate in other_text
+            and not is_ancestor(snapshot, other.id, node)
+            and not is_ancestor(snapshot, node.id, other)
+            or other.id == node.id
+        ]
+        # Deduplicate carriers by id (the `or` above re-admits the node itself).
+        unique = sorted({c.id for c in carriers})
+        if len(unique) > MAX_RENDERINGS:
+            key = tuple(unique)
+            if key in seen_groups:
+                continue
+            seen_groups.add(key)
+            worst = max(worst, len(unique))
+            offenders.append(f"{candidate!r} rendered {len(unique)}x at {', '.join(unique)}")
 
-    # Deduplicate: when two labels carry the same identifier, both nominate it.
-    seen_sets: set[tuple[str, ...]] = set()
-    unique_offenders: list[str] = []
-    for line in offenders:
-        key = tuple(sorted(line.split(" at ")[-1].split(", ")))
-        if key not in seen_sets:
-            seen_sets.add(key)
-            unique_offenders.append(line)
-
-    if unique_offenders:
+    if offenders:
         return Finding(
             detector="identifier_repetition",
             test_id=TEST_ID,
             verdict=Verdict.FAIL,
             summary=(
-                f"{len(unique_offenders)} identifier(s) repeat in one viewport "
-                f"(worst: {worst}x)"
+                f"{len(offenders)} identifier(s) repeat in one viewport (worst: {worst}x)"
             ),
-            evidence=tuple(unique_offenders),
+            evidence=tuple(offenders),
         )
 
     return Finding(
         detector="identifier_repetition",
         test_id=TEST_ID,
         verdict=Verdict.PASS,
-        summary=f"{len(non_empty)} context label(s), no identifier repeated",
+        summary=f"{len(texts)} rendered text node(s), no identifier repeated",
     )
 
 

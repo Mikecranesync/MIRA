@@ -15,7 +15,9 @@
       "text": "Serial number 49849 is listed on the nameplate.",
       "attrs": {
         "class": "fl-turn__parts"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "a2",
@@ -23,7 +25,9 @@
       "text": "A grinding noise usually indicates bearing wear.",
       "attrs": {
         "class": "fl-turn__parts"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "b1",
@@ -38,7 +42,9 @@
       "style": {
         "color": "rgb(17,17,17)",
         "background-color": "rgba(0,0,0,0)"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     },
     {
       "id": "b2",
@@ -53,7 +59,13 @@
       "style": {
         "color": "rgb(17,17,17)",
         "background-color": "rgba(0,0,0,0)"
-      }
+      },
+      "rendered": true,
+      "hittable": true
     }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
   ]
 }

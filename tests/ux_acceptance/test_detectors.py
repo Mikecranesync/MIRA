@@ -192,8 +192,8 @@ def test_fixtures_use_markup_the_product_actually_emits():
     a vocabulary only the tests spoke. Anchors are verified against
     packages/factorylm-ui/src/parts.tsx and Conversation.tsx.
     """
-    real_anchors = {"data-part-type", "data-context-site", "class", "data-parent",
-                    "data-source-id", "data-basis-kind", "data-authorized"}
+    real_anchors = {"data-part-type", "class", "data-source-id",
+                    "data-basis-kind", "data-authorized"}
     for path in FIXTURES.glob("*.json"):
         for node in json.loads(path.read_text())["nodes"]:
             for key in node.get("attrs", {}):
@@ -231,3 +231,107 @@ def test_a_snapshot_without_a_build_sha_cannot_produce_a_verdict():
     raw["buildSha"] = "0" * 39  # one char short
     with pytest.raises(SnapshotError):
         Snapshot.from_dict(raw)
+
+
+# --------------------------------------------------------------------------
+# The guard that would have caught the second invented vocabulary.
+#
+# The fixture-vocabulary check above polices FIXTURE attributes. The anchors
+# `derive_role` keys on are a different layer, and that is exactly where the
+# second invented vocabulary survived: `data-turn-head` and `data-context-site`
+# have zero occurrences in the product, they were the only routes to
+# CONTEXT_LABEL, and so the repetition detector could never judge the product —
+# it failed closed forever while looking like an extractor problem.
+# --------------------------------------------------------------------------
+
+
+def test_derive_anchors_exist_in_the_product():
+    """Every class/attribute the derivation keys on must occur in the app."""
+    import subprocess
+
+    from ux_acceptance.derive import DERIVE_ANCHORS
+
+    searched = [str(ROOT / "packages"), str(ROOT / "mira-mobile" / "src")]
+    missing = []
+    for anchor in DERIVE_ANCHORS:
+        hits = subprocess.run(
+            ["grep", "-rl", anchor, *searched],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        if not hits:
+            missing.append(anchor)
+    assert not missing, (
+        f"derivation keys on {missing}, which the product never emits — "
+        "a detector anchored there can never judge the product"
+    )
+
+
+def test_the_anchor_scan_can_actually_find_things():
+    """Positive control. A grep that silently matches nothing would pass the
+    test above by finding no anchors to check."""
+    import subprocess
+
+    hits = subprocess.run(
+        ["grep", "-rl", "fl-turn__head", str(ROOT / "packages")],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert hits, "the anchor scan found nothing at all — it is blind, not clean"
+
+
+# --------------------------------------------------------------------------
+# rendered vs hittable — one word was covering two questions
+# --------------------------------------------------------------------------
+
+
+def test_a_node_behind_a_scrim_is_rendered_but_not_reachable():
+    """`.fl-scrim` is `position: fixed; inset: 0` and `Overlay.tsx:62` sets
+    `inert` only while a modal layer is CLOSED. So with the drawer open the main
+    content paints, is not inert, and cannot be touched. Collapsing the two
+    fields is how 42 phantom dead controls arrive in a snapshot."""
+    raw = json.loads((FIXTURES / "repaired_citation.json").read_text())
+    for node in raw["nodes"]:
+        node["hittable"] = False
+    snap = Snapshot.from_dict(raw)
+    assert len(list(snap.rendered_nodes())) == len(raw["nodes"])
+    assert list(snap.reachable_nodes()) == []
+
+
+@pytest.mark.parametrize("field_name", ["rendered", "hittable"])
+def test_visibility_has_no_default(field_name):
+    """A node the extractor could not measure must not default to visible —
+    a partial extraction would make detectors see MORE, not less."""
+    raw = json.loads((FIXTURES / "repaired_citation.json").read_text())
+    raw["nodes"][0].pop(field_name)
+    with pytest.raises(SnapshotError, match=field_name):
+        Snapshot.from_dict(raw)
+
+
+# --------------------------------------------------------------------------
+# style capture depth — absent capture is not absent value
+# --------------------------------------------------------------------------
+
+
+def test_a_detector_cannot_read_a_property_that_was_never_captured():
+    raw = json.loads((FIXTURES / "repaired_citation.json").read_text())
+    snap = Snapshot.from_dict(raw)
+    snap.require_style("color")  # captured
+    with pytest.raises(SnapshotError, match="border-left-color"):
+        snap.require_style("border-left-color")
+
+
+def test_style_properties_is_required():
+    raw = json.loads((FIXTURES / "repaired_citation.json").read_text())
+    raw.pop("styleProperties")
+    with pytest.raises(SnapshotError, match="styleProperties"):
+        Snapshot.from_dict(raw)
+
+
+def test_parentage_is_not_a_product_attribute():
+    """`parentId` is extractor-synthesized, so it lives on the Node and not in
+    `attrs` — otherwise the vocabulary guard would need to whitelist it, which
+    is a hole in the guard meant to catch invented attributes."""
+    raw = json.loads((FIXTURES / "observed_citation_uuid.json").read_text())
+    for node in raw["nodes"]:
+        assert "data-parent" not in node.get("attrs", {})
+    snap = Snapshot.from_dict(raw)
+    assert any(n.parent_id for n in snap.nodes), "fixture lost its parentage"
