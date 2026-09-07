@@ -1,5 +1,5 @@
 import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factorylm/interaction";
-import { useState, type Dispatch, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, MachineIcon, RunIcon, SearchIcon } from "./icons";
 import { ProjectTree } from "./ProjectTree";
 
@@ -44,8 +44,14 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert }: SidebarP
   const machines = state.machines.filter((machine) => !filter || machine.name.toLowerCase().includes(filter.toLowerCase()));
 
   // `inert` removes the closed drawer from focus and the accessibility tree at once;
-  // the stylesheet's visibility flip is the belt for the slide animation.
-  return <aside className="fl-shell__sidebar" aria-label="FactoryLM navigation" inert={inert || undefined}>
+  // the stylesheet's visibility flip is the belt for the slide animation. Toggled on
+  // the node, not as a JSX prop: the package promises React >=18 <20, React 18's types
+  // don't know `inert`, and React 19 treats an empty-string value as false.
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    root.current?.toggleAttribute("inert", Boolean(inert));
+  }, [inert]);
+  return <aside ref={root} className="fl-shell__sidebar" aria-label="FactoryLM navigation">
     <div className="fl-shell__nav-head">
       <div className="fl-shell__brand">FactoryLM</div>
       <button
