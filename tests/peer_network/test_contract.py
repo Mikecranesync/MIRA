@@ -117,12 +117,19 @@ def test_resource_key_pattern_accepts_canonical_keys_and_rejects_free_text() -> 
         ".github/workflows/ci.yml",
         "docs/peer-network",
         "deployment/network.yml",
+        "tools/peer_network",  # claim widened 2026-09-07 (Codex packet: executable race + key semantics)
+        "tools/peer_network/claims.py",
     ]:
         assert pattern.fullmatch(own), own
 
 
+def _norm(text: str) -> str:
+    """Collapse all whitespace so a re-wrapped sentence cannot fail a phrase assertion."""
+    return re.sub(r"\s+", " ", text)
+
+
 def test_start_here_names_every_operation_schema_and_law() -> None:
-    text = (PEER / "START_HERE.md").read_text()
+    text = _norm((PEER / "START_HERE.md").read_text())
     for op in OPERATIONS:
         assert (
             f"`{op}`" in text
@@ -134,8 +141,9 @@ def test_start_here_names_every_operation_schema_and_law() -> None:
             f"{name}.schema.json" in text
             or f"{name}.schema.json" in (SCHEMAS / "README.md").read_text()
         ), name
+    raw = (PEER / "START_HERE.md").read_text()
     for n in range(1, 13):
-        assert re.search(rf"^{n}\. ", text, re.M), f"law {n} missing"
+        assert re.search(rf"^{n}\. ", raw, re.M), f"law {n} missing"
     assert "Do not add new files under `.fleet/`" in text
     assert "Available is not equipped" in text
     assert "not a permission" in text  # P4
@@ -233,20 +241,39 @@ FORBIDDEN_FOR_THIS_SLICE = re.compile(
 )
 
 
-def _changed_files(diff_filter: str) -> list[str]:
-    """Executable changed-path enforcement. Needs `origin/main`; a checkout without it is a
-    RED test, never a skip (fetch it in CI — see the ci.yml step)."""
+def _merge_base() -> str:
+    """merge-base(HEAD, origin/main). A shallow checkout or a missing `origin/main` cannot compute
+    it: that is a RED test naming the ANCESTRY (fetch-depth: 0 in the peer-contract job), never a
+    skip and never a green — and never a message about a path."""
     import subprocess
 
-    base = subprocess.run(
-        ["git", "merge-base", "HEAD", "origin/main"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    run = subprocess.run(
+        ["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, capture_output=True, text=True
+    )
+    if run.returncode != 0 or not run.stdout.strip():
+        pytest.fail(
+            "cannot compute merge-base(HEAD, origin/main): shallow checkout or origin/main "
+            "missing — this guard needs full history (ci.yml peer-contract: fetch-depth: 0). "
+            f"git said: {run.stderr.strip()!r}"
+        )
+    return run.stdout.strip()
+
+
+def _changed_files(diff_filter: str) -> list[str]:
+    """Executable changed-path enforcement over the real diff, base...HEAD. Renames and copies
+    are reported by their NEW path (that is the path being introduced)."""
+    import subprocess
+
     out = subprocess.run(
-        ["git", "diff", "--name-only", f"--diff-filter={diff_filter}", f"{base}...HEAD"],
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "-M",
+            "-C",
+            f"--diff-filter={diff_filter}",
+            f"{_merge_base()}...HEAD",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -257,6 +284,53 @@ def _changed_files(diff_filter: str) -> list[str]:
 
 def _violations(files: list[str]) -> list[str]:
     return [f for f in files if FORBIDDEN_FOR_THIS_SLICE.match(f) or f.startswith(".fleet/")]
+
+
+# The `.fleet/` files tracked at the mission's base SHA f5f994a78d (13). START_HERE grandfathers
+# exactly these for the FLM-UI-4000 lanes that still write them; nothing else may ever appear
+# under `.fleet/` — not by add, modify-into-existence, rename or copy.
+GRANDFATHERED_FLEET = frozenset(
+    {
+        ".fleet/CORRECTIONS-002.md",
+        ".fleet/CORRECTIONS.md",
+        ".fleet/HANDOFF.md",
+        ".fleet/REVIEW-FINAL-004.md",
+        ".fleet/REVIEW-FINAL-005.md",
+        ".fleet/REVIEW-FINAL-006.md",
+        ".fleet/REVIEW-FINAL-007.md",
+        ".fleet/REVIEW-FINAL-008.md",
+        ".fleet/REVIEW-FINAL-009.md",
+        ".fleet/REVIEW-FINAL-011.md",
+        ".fleet/REVIEW-FINAL-012.md",
+        ".fleet/REVIEW-FINAL.md",
+        ".fleet/TASK.md",
+    }
+)
+
+
+def _fleet_violations(tracked_at_head: list[str], introduced: list[str]) -> list[str]:
+    """Any `.fleet/` path at HEAD outside the grandfathered set, plus any `.fleet/` path this
+    branch adds/renames/copies into being (A/R/C) — modifications of grandfathered files are the
+    only permitted `.fleet/` change on any branch, and Slice A makes none at all."""
+    at_head = [
+        f for f in tracked_at_head if f.startswith(".fleet/") and f not in GRANDFATHERED_FLEET
+    ]
+    added = [f for f in introduced if f.startswith(".fleet/") and f not in GRANDFATHERED_FLEET]
+    return sorted(set(at_head) | set(added))
+
+
+def test_fleet_directory_is_frozen_to_the_grandfathered_set() -> None:
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", ".fleet"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert set(tracked) <= GRANDFATHERED_FLEET, sorted(set(tracked) - GRANDFATHERED_FLEET)
+    assert _fleet_violations(tracked, _changed_files("ARC")) == []
+    # positive controls through the SAME matcher: add, rename-in, copy-in, and a stray at HEAD
+    assert _fleet_violations(
+        [".fleet/TASK.md", ".fleet/STRAY.md"], [".fleet/NEW.md", ".fleet/TASK.md"]
+    ) == [".fleet/NEW.md", ".fleet/STRAY.md"]
 
 
 def test_this_branch_touches_no_product_root_or_fleet_paths() -> None:
@@ -280,41 +354,45 @@ def test_mission_directory_convention() -> None:
     assert "Do not add new files under `.fleet/`" in readme
 
 
-def test_ci_treats_the_contract_directory_as_code() -> None:
-    """A docs-only edit to docs/peer-network must NOT skip test-unit: the `changes` filter negates
-    docs/** and a skipped job reports Success (ci.yml header). The contract directory and its
-    suite are re-included AFTER the negations (Codex review of cbacc99da1)."""
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    block = ci[ci.index("            code:") :]
-    lines = []
-    for raw in block.splitlines()[1:]:
-        line = raw.strip()
-        if line.startswith("- "):
-            lines.append(line)
-        elif line and not line.startswith("#"):
-            break
-    assert "- '!docs/**'" in lines
-    for included in ("- 'docs/peer-network/**'", "- 'tests/peer_network/**'"):
-        assert included in lines, included
-        assert lines.index(included) > lines.index("- '!docs/**'"), (
-            f"{included} must come after the docs negation"
-        )
-        assert lines.index(included) > lines.index("- '!**/*.md'"), (
-            f"{included} must come after the markdown negation"
-        )
+def _job(ci: str, name: str) -> str:
+    start = ci.index(f"\n  {name}:\n")
+    m = re.search(r"\n  [a-z][a-z0-9-]*:\n", ci[start + 1 :])
+    return ci[start : start + 1 + m.start()] if m else ci[start:]
 
 
-def test_ci_runs_this_suite_inside_the_gated_unit_job() -> None:
-    """A check that runs but cannot fail the merge is not a guard (ci.yml:453). The suite must be a
-    named step in `test-unit`, which IS in `ci-gate`'s needs list."""
+def test_ci_contract_job_always_runs_with_full_history_and_gates_the_merge() -> None:
+    """The suite runs in its OWN job with no `changes` conditional (a skipped job reports Success,
+    and the filter negates docs/**), checks out full history (the changed-path guard needs
+    merge-base), installs the pinned requirements, and sits in ci-gate's needs — a check that
+    runs but cannot fail the merge is not a guard (ci.yml:453). Mutation-verified 2026-09-07:
+    removing the job, adding `if:`, dropping fetch-depth, or dropping it from needs each turns
+    this test red by name."""
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    unit_start = ci.index("\n  test-unit:")
-    unit_end = ci.index("\n  ", unit_start + 1)
-    # find the next top-level job after test-unit
-    m = re.search(r"\n  [a-z][a-z0-9-]*:\n", ci[unit_start + 1 :])
-    unit_end = unit_start + 1 + m.start() if m else len(ci)
-    unit_job = ci[unit_start:unit_end]
-    assert "pytest tests/peer_network" in unit_job, "peer-network suite is not a step in test-unit"
+    job = _job(ci, "peer-contract")
+    header = job[: job.index("    steps:")]
+    assert not re.search(r"^\s+if:", header, re.M), "peer-contract must not be conditional"
+    assert not re.search(r"^\s+needs:", header, re.M), "peer-contract must not wait on `changes`"
+    checkout = job[job.index("actions/checkout@") : job.index("actions/setup-python@")]
+    assert re.search(r"fetch-depth:\s*0\b", checkout), "changed-path guard needs full history"
+    assert "pip install -r tests/peer_network/requirements.txt" in job
+    assert re.search(r"run:\s*pytest tests/peer_network/? -v", job)
     gate = ci[ci.index("\n  ci-gate:") :]
     needs = gate[: gate.index("steps:")]
-    assert "test-unit" in needs
+    assert re.search(r"^\s+- peer-contract$", needs, re.M), "peer-contract is not in ci-gate.needs"
+    unit = _job(ci, "test-unit")
+    assert "tests/peer_network" not in unit, (
+        "the suite must not ALSO live behind the changes filter"
+    )
+
+
+def test_suite_dependencies_are_pinned_exactly() -> None:
+    reqs = [
+        line.strip()
+        for line in (ROOT / "tests" / "peer_network" / "requirements.txt").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    assert reqs, "empty requirements"
+    for req in reqs:
+        assert re.fullmatch(r"[A-Za-z0-9_.-]+==\d+(\.\d+)+", req), f"not an exact pin: {req}"
+    names = {r.split("==")[0].lower() for r in reqs}
+    assert {"pytest", "pyyaml", "jsonschema", "rfc3339-validator"} <= names, names

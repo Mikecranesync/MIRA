@@ -32,7 +32,9 @@ reviews (Claude implements and remediates; Codex reviews read-only); a node's se
 lane their tools cover — a Claude session on Charlie can implement, a Codex session on Bravo can
 review — as long as reviewer and verifier stay independent of the implementer.
 
-**Available is not equipped.** A session that lacks Bash, git, gh or file-write tools cannot own
+**Available is not equipped.** Every session record carries its own `capabilities`
+(`schemas/session.schema.json`) — what that session is actually equipped with, not what its node
+offers — and dispatch reads the session's list. A session that lacks Bash, git, gh or file-write tools cannot own
 an implementation slice, however idle it is. Say so when dispatched to; the dispatcher falls back
 (PRD §14). Node metadata lives in `deployment/network.yml` (`peer_network` keys); the shape is
 `schemas/node.schema.json`.
@@ -72,7 +74,13 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
    issue/PR with `Status: ACTIVE`, **`Claimed at: <UTC ISO-8601>`**, the base SHA, branch, worktree
    and the **resource keys** you need (`schemas/claim.schema.json`). Claim states: `ACTIVE` (held, working), `BLOCKED` (held, waiting on a human gate or
    dependency), `LEASE_AT_RISK` (renewal missed — stop before the next edit or push), `RELEASED`,
-   `COMPLETE`. **Wait at least 60 seconds, then re-read the whole
+   `COMPLETE`. `ACTIVE` and `BLOCKED` hold the lease: you may keep editing under either, but a
+   `BLOCKED` claim may not push past the gate it is blocked on. The other three are read-only.
+   Resource keys are **canonical** (`tools/peer_network/resource_keys.py`): trimmed, single
+   slashes, no trailing slash, no `.`/`..` segments; two keys **overlap** when equal or when one
+   path is an ancestor of the other (`docs/peer-network` covers `docs/peer-network/schemas/x`).
+   A claim never widens silently — a key outside yours is a NEW claim in the same race
+   (`scope_expansion`). The race itself is executable: `tools/peer_network/claims.py`. **Wait at least 60 seconds, then re-read the whole
    thread** (a settling interval, so two near-simultaneous posts both see each other). The
    ordering key is the same as `.claude/rules/multi-session-protocol.md` §2: the ACTIVE claim with
    the **earliest GitHub creation time / event id** overlapping your keys wins — a server-issued

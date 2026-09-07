@@ -2,7 +2,7 @@
 
 - **Owner/session:** mira-97 (Claude Code session_013qHdfeCVeFpHsZWwmdpN36), CHARLIE
 - **Branch:** `feat/fleet-peer-network-001a-contract` · **Worktree:** `/Users/charlienode/MIRA-worktrees/fleet-peer-network-001a`
-- **Base SHA:** `f5f994a78d6d2f2e9393381662804f375dc59209` · **HEAD SHA:** `0da06c8c247189fe97d9e321b739ad6b60e14be4` (first push; later heads on the PR)
+- **Base SHA:** `f5f994a78d6d2f2e9393381662804f375dc59209` · **HEAD SHA:** bound by the frozen-SHA comment on PR #3653 (an immutable GitHub comment, created after the PR, is the binding — this file is a pointer and must never be the only place a reviewed SHA is written)
 - **Claim generation:** 1
 
 ## Changed files

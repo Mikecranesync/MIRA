@@ -162,12 +162,12 @@ class TestEventPayloadBehaviour:
     @staticmethod
     def _event(kind: str, payload: dict) -> dict:
         return {
-            "event_id": "e1",
-            "idempotency_key": "k1",
+            "event_id": "evt-000000001",
+            "idempotency_key": "idem-7f3a9c2e",
             "ts": "2026-09-07T02:00:00Z",
             "kind": kind,
             "mission_id": "FLEET-PEER-NETWORK-001",
-            "session_uuid": "s1",
+            "session_uuid": "sess-7f3a9c2e",
             "payload": payload,
         }
 
@@ -194,6 +194,9 @@ class TestEventPayloadBehaviour:
             )
         )
 
-    def test_a_kind_with_no_payload_requirement_is_unaffected(self) -> None:
-        # heartbeat carries no evidence claim, so it must stay permissive.
-        self._validate(self._event("heartbeat", {}))
+    def test_every_kind_is_fail_closed_even_the_cheap_ones(self) -> None:
+        # Superseded 2026-09-07 (Codex packet): NO kind is permissive. A heartbeat is a lease
+        # renewal claim and must name when the lease expires; an empty payload is rejected.
+        self._validate(self._event("heartbeat", {"lease_expires_at": "2026-09-07T02:30:00Z"}))
+        with pytest.raises(jsonschema.ValidationError):
+            self._validate(self._event("heartbeat", {}))

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/artifact.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/artifact.schema.json",
   "title": "peer-network artifact",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,7 +14,8 @@
   ],
   "properties": {
     "mission_id": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Z0-9-]+$"
     },
     "kind": {
       "type": "string",

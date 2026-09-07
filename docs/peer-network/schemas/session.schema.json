@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/session.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/session.schema.json",
   "title": "peer-network session",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,11 +12,13 @@
     "mission_id",
     "state",
     "context_budget",
-    "last_heartbeat"
+    "last_heartbeat",
+    "capabilities"
   ],
   "properties": {
     "session_uuid": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$"
     },
     "provider": {
       "type": "string",
@@ -32,7 +34,9 @@
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "pattern": "^[A-Z0-9-]+$",
+      "description": "Fail-closed: a string value must match the pattern (empty or free text is rejected); null only where the operation is mission-less."
     },
     "state": {
       "type": "string",
@@ -69,6 +73,30 @@
     "last_heartbeat": {
       "type": "string",
       "format": "date-time"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "bash",
+          "git",
+          "gh",
+          "write",
+          "worktree",
+          "codex-cli",
+          "adb",
+          "bun",
+          "docker",
+          "plc",
+          "ignition",
+          "factory-io",
+          "read-only"
+        ]
+      },
+      "description": "What THIS session can actually do \u2014 the tools it is equipped with, not what its node offers. A node has adb; a session without Bash cannot drive it. Dispatch reads session capabilities, never node capabilities alone (START_HERE: available is not equipped)."
     }
   }
 }
