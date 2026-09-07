@@ -159,7 +159,13 @@
                 "type": "string",
                 "pattern": "^[0-9a-f]{40}$"
               }
-            }
+            },
+            "not": {
+              "required": [
+                "verdict"
+              ]
+            },
+            "description": "A result is evidence, never a judgement: only submit_verdict may carry `verdict` (a result that names one could be read as a review)."
           }
         }
       }
