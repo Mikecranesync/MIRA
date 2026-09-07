@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/event.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/event.schema.json",
   "title": "peer-network event",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -57,7 +57,175 @@
       "type": "string"
     },
     "payload": {
-      "type": "object"
+      "type": "object",
+      "description": "Per-kind proof: sha-bearing kinds (commit, request_review, submit_verdict, submit_result) must carry a 40-hex sha (laws 8\u20139); submit_verdict also a verdict; human_gate a gate kind and decided_by; accept_handoff the claim generation. A field that carries an authority claim needs a pattern or an enum, not prose."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "commit",
+              "request_review"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "sha"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "submit_verdict"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "sha",
+              "verdict"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "HOLD",
+                  "UNDECIDABLE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "submit_result"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "sha"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "human_gate"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "gate",
+              "decided_by"
+            ],
+            "properties": {
+              "gate": {
+                "type": "string",
+                "enum": [
+                  "merge",
+                  "deploy_production",
+                  "architecture",
+                  "secret",
+                  "protected_infrastructure",
+                  "physical_test"
+                ]
+              },
+              "decided_by": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "accept_handoff"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "generation"
+            ],
+            "properties": {
+              "generation": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
