@@ -30,9 +30,16 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
 
 /**
  * Exactly ONE row in the whole navigation is aria-current — the tree row
- * `currentTreeRowId` picks. Recent and Machines are references to objects
- * the tree already shows; when they point at the current object they carry
- * `data-active` (a quiet weight), never a second selection.
+ * `currentTreeRowId` picks. Recent rows are references to that same object:
+ * the one pointing at the open object carries `data-active` (a quiet weight),
+ * never a second selection.
+ *
+ * The pinned machine carries `data-context`, NOT `data-active`. Machine context
+ * and open-object selection are different facts — a run is open AND it is being
+ * run on a machine, both at once — and overloading one attribute for both meant
+ * Work+run marked two objects active at the same time (Codex P1 on #3651, second
+ * pass). `data-active` now means exactly one thing: "this reference points at the
+ * open object", so a whole-navigation assertion can hold it to exactly one.
  *
  * Left navigation, in the order the plan fixes for every surface
  * (part-2 §6.1): identity → New chat → Search → Recent → Projects →
@@ -150,7 +157,7 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: S
                 data-kind="machine"
                 data-pinned-machine-id={machine.id}
                 data-machine-status={machine.status}
-                data-active={state.activeContext.machineId === machine.id ? "true" : undefined}
+                data-context={state.activeContext.machineId === machine.id ? "true" : undefined}
                 onClick={() => { dispatch({ type: "select-machine", machineId: machine.id }); dispatch({ type: "set-navigation-visible", visible: false }); }}
               >
                 <span className="fl-tree__icon" aria-hidden="true"><MachineIcon /></span>

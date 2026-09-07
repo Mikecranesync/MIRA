@@ -81,6 +81,7 @@
 .fl-tree__meta { flex: 0 0 auto; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-tree__project { font-weight: 700; }
 .fl-tree__row[data-path="true"],
+.fl-tree__row[data-context="true"],
 .fl-tree__row[data-active="true"] { font-weight: 600; }
 .fl-tree__row[aria-current="page"] .fl-tree__icon,
 .fl-tree__row[aria-current="page"] .fl-tree__meta { color: inherit; }

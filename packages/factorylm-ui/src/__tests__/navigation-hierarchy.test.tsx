@@ -93,7 +93,9 @@ describe("tree rows", () => {
     // The active machine's pin points at the object the tree already selects: quiet, not selected.
     const pin = must(nav.querySelector<HTMLElement>('[data-pinned-machine-id="machine-drive-a"]'), "pin");
     expect(pin.getAttribute("aria-current")).toBeNull();
-    expect(pin.dataset.active).toBe("true");
+    // Machine CONTEXT, not open-object selection — the two are different facts.
+    expect(pin.dataset.context).toBe("true");
+    expect(pin.dataset.active).toBeUndefined();
   });
 
   it("a search that does not match the current row keeps it rendered, so exactly one row stays current (P2)", () => {
@@ -216,9 +218,12 @@ describe("context lines only when context differs", () => {
     // work-run: run-drive-a-f30001 belongs to thread-drive-a (fixtures.ts, project tree).
     const view = render({ surface: "web", fixture: "work-run", onOpenItem: () => {} });
     const nav = () => must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
-    // Recent rows only: the pinned machine's data-active reflects the active CONTEXT (a machine),
-    // which is a different reference from the open object and may be active alongside it.
-    const activeIds = () => Array.from(nav().querySelectorAll<HTMLElement>('[data-recent-id][data-active="true"]')).map((el) => must(el.dataset.recentId, "recent id"));
+    // The WHOLE navigation, unscoped: `data-active` means one thing — this reference points at
+    // the open object. Scoping this to Recent rows is what hid the pinned machine and made the
+    // first version of this assertion vacuous (Codex P1, second pass).
+    const activeIds = () => Array.from(nav().querySelectorAll<HTMLElement>('[data-active="true"]')).map(
+      (el) => el.dataset.recentId ?? el.dataset.pinnedMachineId ?? el.dataset.itemId ?? "unlabelled",
+    );
     const threadTreeRow = () => must(nav().querySelector<HTMLElement>('[data-item-id="thread-drive-a"]'), "owning thread tree row");
     // Work + run: the run is the only reference weight and the only current row; the thread carries neither.
     expect(activeIds()).toEqual(["run-drive-a-f30001"]);
@@ -226,10 +231,34 @@ describe("context lines only when context differs", () => {
     expect(threadTreeRow().dataset.active).toBeUndefined();
     expect(nav().querySelector<HTMLElement>('[data-recent-id="thread-drive-a"]')?.dataset.active).toBeUndefined();
     expect(Array.from(nav().querySelectorAll<HTMLElement>('[aria-current="page"]')).map((el) => el.dataset.itemId)).toEqual(["run-drive-a-f30001"]);
-    // Ask: the retained run is background; nothing marks the run, and at most one reference is active.
+    // The machine the run is on is still context — it just is not a second selection.
+    const pin = must(nav().querySelector<HTMLElement>('[data-pinned-machine-id="machine-drive-a"]'), "pin");
+    expect(pin.dataset.context).toBe("true");
+    expect(pin.dataset.active).toBeUndefined();
+    // Ask: the retained run is background; the open thread is the one active reference.
     act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
-    expect(activeIds()).not.toContain("run-drive-a-f30001");
-    expect(activeIds().length).toBeLessThanOrEqual(1);
+    expect(activeIds()).toEqual(["thread-drive-a"]);
+  });
+
+  it("across the WHOLE navigation at most one element carries data-active, on every fixture and mode", () => {
+    // The unscoped invariant Codex asked for: `data-active` is the open-object reference and
+    // nothing else, so no fixture and no mode may ever show two.
+    for (const fixture of ["project-tree", "work-run", "general-ask"] as const) {
+      const view = render({ surface: "web", fixture, onOpenItem: () => {} });
+      const nav = () => must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+      for (const mode of ["work", "ask"] as const) {
+        act(() => { view.dispatch({ type: "set-mode", mode }); });
+        // Never two. Zero is legitimate — `general-ask` opens a thread the tree does not file —
+        // but two would mean the navigation is claiming the user is in two places at once.
+        const counts = {
+          active: nav().querySelectorAll('[data-active="true"]').length,
+          current: nav().querySelectorAll('[aria-current="page"]').length,
+        };
+        expect(`${fixture}/${mode} ${JSON.stringify(counts)}`).toBe(
+          `${fixture}/${mode} ${JSON.stringify({ active: Math.min(counts.active, 1), current: Math.min(counts.current, 1) })}`,
+        );
+      }
+    }
   });
 
   it("an inert current row matches the selection stylesheet selector (styled, not just semantic)", () => {
