@@ -2,11 +2,11 @@
 
 ## Durable Peer Development Network for FactoryLM/MIRA
 
-**Status:** Proposed implementation PRD  
-**Owner:** Mike Harper  
-**Date:** 2026-09-07  
-**Product dependency:** FLM-UI-4000  
-**Implementation type:** Additive development infrastructure; shadow mode first  
+**Status:** Proposed implementation PRD
+**Owner:** Mike Harper
+**Date:** 2026-09-07
+**Product dependency:** FLM-UI-4000
+**Implementation type:** Additive development infrastructure; shadow mode first
 **Runtime effect at first merge:** None on FactoryLM customers or the current UI
 
 ## 1. Decision
@@ -95,12 +95,12 @@ Assignments may change based on capability and availability, but reviewer and ve
 
 ### Minimum durable records
 
-**nodes** — node ID, hostname, OS, capabilities, availability and last heartbeat.  
-**sessions** — session UUID, provider, node, mission, state, context budget and last heartbeat.  
-**work_items** — mission ID, goal, priority, dependencies, acceptance gates, status and authorization.  
-**claims** — mission, session, base SHA, branch, worktree, resource keys, lease expiry and generation.  
-**events** — append-only timestamped lifecycle record with an idempotency key.  
-**artifacts** — commits, PR, handoff, test evidence, reviewed SHA and verdicts.  
+**nodes** — node ID, hostname, OS, capabilities, availability and last heartbeat.
+**sessions** — session UUID, provider, node, mission, state, context budget and last heartbeat.
+**work_items** — mission ID, goal, priority, dependencies, acceptance gates, status and authorization.
+**claims** — mission, session, base SHA, branch, worktree, resource keys, lease expiry and generation.
+**events** — append-only timestamped lifecycle record with an idempotency key.
+**artifacts** — commits, PR, handoff, test evidence, reviewed SHA and verdicts.
 **human_gates** — merge, deploy, architecture, secret, protected infrastructure and physical-test decisions.
 
 Resource claims use explicit canonical keys such as `packages/factorylm-ui`, `mira-mobile`, `migration:next`, `device:pixel9a`, or `environment:staging`. The controller acquires all requested keys in one transaction or grants none.
@@ -269,10 +269,10 @@ Status: PROPOSED — claim only after overlap check and post-claim reread
 
 ## 14. Handoff and review assignment
 
-**Implementer:** one fresh Claude Code session on the Travel laptop, acting as Peer Network Engineer. Start with Slice A only.  
-**Adversarial reviewer:** a fresh Codex session on Charlie, read-only, bound to the exact Slice A HEAD SHA.  
-**Verifier:** a separate Claude or Codex session on the PLC laptop. Prove that both Claude and Codex startup instructions discover the network contract without touching application code.  
-**Integrator:** Alpha combines later slices only after each independent PR is green.  
+**Implementer:** one fresh Claude Code session on the Travel laptop, acting as Peer Network Engineer. Start with Slice A only.
+**Adversarial reviewer:** a fresh Codex session on Charlie, read-only, bound to the exact Slice A HEAD SHA.
+**Verifier:** a separate Claude or Codex session on the PLC laptop. Prove that both Claude and Codex startup instructions discover the network contract without touching application code.
+**Integrator:** Alpha combines later slices only after each independent PR is green.
 **Foreman:** tracks the dependency sequence and reports status; it must not implement the slices itself.
 
 If Travel is the unavailable fifth computer, assign Slice A to the least-loaded working non-UI Claude session. Do not interrupt an active FLM-UI-4000 session; wait for its committed handoff or choose another node.

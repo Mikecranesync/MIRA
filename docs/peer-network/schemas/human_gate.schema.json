@@ -29,7 +29,9 @@
       ]
     },
     "mission_id": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Z0-9-]+$",
+      "description": "F6 (Codex HOLD): a real mission ID, never blank/whitespace/free text — patterned like claim + event mission_id. A gate is the record of a human decision ON a mission; a blank mission is not one."
     },
     "state": {
       "type": "string",

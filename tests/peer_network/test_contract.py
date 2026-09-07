@@ -1,8 +1,9 @@
 """Static contract checks for FLEET-PEER-NETWORK-001 Slice A.
 
-Run locally: ``pytest tests/peer_network -q``. In CI it runs as a named step inside the gated
-``test-unit`` job of ``.github/workflows/ci.yml`` (the ``tests/`` sweep in ``test-eval-offline``
-is advisory: that job is not in ``ci-gate``'s ``needs:``, so a failure there cannot block a merge).
+Run locally: ``pytest tests/peer_network -q``. In CI it runs in its own always-run ``peer-contract``
+job of ``.github/workflows/ci.yml`` (no ``changes:`` filter, ``fetch-depth: 0``, in ``ci-gate``'s
+``needs:``); the ``tests/`` sweep in ``test-eval-offline`` is advisory: that job is not in
+``ci-gate``'s ``needs:``, so a failure there cannot block a merge.
 """
 
 from __future__ import annotations
@@ -240,6 +241,28 @@ def test_a_decided_human_gate_names_its_decider_and_time() -> None:
         },
         schema,
     )
+
+
+def test_human_gate_rejects_blank_or_freetext_mission_id() -> None:
+    """F6 (Codex HOLD): human_gate.mission_id had no pattern, so a blank/whitespace/free-text
+    mission validated — a gate that records a human decision ON a mission with no mission. It is
+    now patterned like claim + event mission_id. Positive control (a real mission ID validates)
+    proves the pattern is the field under test, not an unrelated required-field failure."""
+    import jsonschema
+
+    schema = _schema("human_gate")
+    base = {
+        "gate_id": "g1",
+        "kind": "merge",
+        "state": "open",
+        "requested_at": "2026-09-07T02:00:00Z",
+    }
+    for bad in ["", "   ", "not a mission", "fleet-peer-network-001"]:  # blank / ws / free / lower
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({**base, "mission_id": bad}, schema)
+    jsonschema.validate(
+        {**base, "mission_id": "FLEET-PEER-NETWORK-001"}, schema
+    )  # positive control
 
 
 FORBIDDEN_FOR_THIS_SLICE = re.compile(

@@ -162,9 +162,10 @@ session discovers the contract (PRD §8 step 1). Those two files are inside an a
 (#3626, five open PRs), so the pointers land **only after #3647 merges**, on a rebase of this
 branch. `pointers.status` holds the state: `pending:#3647` now, `landed` afterwards.
 `tests/peer_network/test_contract.py` fails if the pointers appear while pending **and** if they
-are missing once landed — the dependency is enforced, not remembered. The suite runs inside the
-gated `test-unit` job of `ci.yml` (the `tests/` sweep in `test-eval-offline` is advisory — it is
-not in `ci-gate`'s `needs:` — so a step there could go red and merge anyway).
+are missing once landed — the dependency is enforced, not remembered. The suite runs in its own
+always-run `peer-contract` job of `ci.yml` (no `changes:` filter, `fetch-depth: 0`, in `ci-gate`'s
+`needs:`); the `tests/` sweep in `test-eval-offline` is advisory — it is not in `ci-gate`'s
+`needs:`, so a step there could go red and merge anyway.
 
 ## 8. Feature flag and rollback
 
