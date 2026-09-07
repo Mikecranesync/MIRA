@@ -123,20 +123,26 @@ jobs:
           log=/tmp/shared-ui-verify.log
           missing=0
 
-          # Each shared-core contract suite must be named in the junit output.
-          for suite in \
-            shell.test.tsx \
-            reducer.test.ts \
-            theme-contract.test.ts \
-            fixtures.test.ts
-          do
-            if grep -q -- "$suite" "$xml"; then
-              echo "ok   collected ${suite}"
-            else
-              echo "::error::${suite} never ran — the suite was not collected."
-              missing=1
-            fi
-          done
+          # Every shared-core suite on disk (packages/*/src/__tests__/*.test.*)
+          # must appear in the junit xml. Derived from the tree rather than a
+          # hand-maintained list: a list is wrong whenever the tree differs from
+          # the moment someone typed it, and a suite added without a list edit
+          # would silently stop being proven. Any file that never ran is named.
+          # (The .tsx suites need the file: deps that `verify` -> bootstrap:ui
+          # installed in the previous step — reorder those and this fails loud.)
+          find ../../packages -path '*/src/__tests__/*.test.*' -exec basename {} \; | sort > /tmp/suites-on-disk.txt
+          grep -oE '[A-Za-z0-9._-]+\.test\.tsx?' "$xml" | sort -u > /tmp/suites-in-junit.txt
+          if [ ! -s /tmp/suites-on-disk.txt ]; then
+            echo "::error::found no suite files on disk — the derived check would pass vacuously."
+            missing=1
+          fi
+          uncollected=$(comm -23 /tmp/suites-on-disk.txt /tmp/suites-in-junit.txt)
+          if [ -n "$uncollected" ]; then
+            echo "::error::suite file(s) on disk never ran: $(echo "$uncollected" | tr '\n' ' ')"
+            missing=1
+          else
+            echo "ok   every suite on disk ($(wc -l < /tmp/suites-on-disk.txt | tr -d ' ')) is in the junit output"
+          fi
 
           # A junit file naming every suite but running nothing is still a
           # no-op, so read the counts off the root <testsuites> element.
