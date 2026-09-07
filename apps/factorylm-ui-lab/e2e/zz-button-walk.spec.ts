@@ -64,14 +64,31 @@ test.describe("button walk 412x915", () => {
       await landAsMobileApp(page);
       await expect(page.locator(".fl-shell")).toBeVisible();
 
-      const names: string[] = await page.locator("button:visible, [role=button]:visible")
-        .evaluateAll((els) => els.map((e) => (e.getAttribute("aria-label") || e.textContent || "").replace(/\s+/g," ").trim()).filter(Boolean));
-      const unique = [...new Set(names)].filter((n) => !LAB_CHROME.test(n));
+      // Two reachable states are audited: the landing conversation, and the
+      // navigation drawer the user opens from it. Controls inside an [inert]
+      // subtree are skipped — a closed drawer keeps a bounding box, so
+      // :visible alone would enumerate controls nobody can reach.
+      const enumerate = async () => (await page.locator("button:visible, [role=button]:visible")
+        .evaluateAll((els) => els
+          .filter((e) => !e.closest("[inert]"))
+          .map((e) => (e.getAttribute("aria-label") || e.textContent || "").replace(/\s+/g," ").trim())
+          .filter(Boolean)));
+
+      const landing = await enumerate();
+      await page.getByRole("button", { name: "Open navigation", exact: true }).first().click();
+      await page.waitForFunction(() => document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible") === "true");
+      const drawer = await enumerate();
+      const unique = [...new Set([...landing, ...drawer])].filter((n) => !LAB_CHROME.test(n));
+      const inDrawerOnly = new Set(drawer.filter((n) => !landing.includes(n)));
 
       for (const name of unique) {
         // Re-enter the scenario before each control so the walk is order-independent.
         await page.goto(`/?surface=mobile&theme=light&scenario=${scenario}`);
-      await landAsMobileApp(page);
+        await landAsMobileApp(page);
+        if (inDrawerOnly.has(name)) {
+          await page.getByRole("button", { name: "Open navigation", exact: true }).first().click();
+          await page.waitForFunction(() => document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible") === "true");
+        }
         const btn = page.getByRole("button", { name, exact: true }).first();
         if (!(await btn.count().catch(() => 0)) || !(await btn.isVisible().catch(() => false))) continue;
 
