@@ -151,8 +151,8 @@ class TestEventPayloadBehaviour:
     """The structural checks above are the gate; these prove they bite.
 
     `jsonschema` is a hard import (installed by the gated test-unit job): a missing
-    validator is a red step, never a silent skip.
-    because every requirement is already asserted structurally.
+    validator is a red step, never a silent skip. Every requirement is also asserted
+    structurally above, so these cannot mask a regression.
     """
 
     @staticmethod
