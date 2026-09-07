@@ -124,7 +124,9 @@ def test_start_here_names_every_operation_schema_and_law() -> None:
     for exempt in ("#3549", "#3558", "#3533", "docs/pixel-acceptance-and-merge-plan"):  # P5
         assert exempt in text, exempt
     assert "needs a pattern or an enum" in text  # authority-field rule
-    assert "made to fail on the regression it names" in text  # guard-verification rule
+    assert re.search(
+        r"made to fail on the regression\s+it names", text
+    )  # guard-verification rule (wraps)
 
 
 def test_network_yml_represents_all_five_computers_without_changing_the_existing_three() -> None:
