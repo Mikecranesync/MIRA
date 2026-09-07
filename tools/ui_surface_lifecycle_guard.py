@@ -215,12 +215,15 @@ _SUBSTANTIVE_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_EXCEPTION_HEADER_RE = re.compile(r"^##\s+Legacy UI exception\s*$")
-# A level-two Markdown section ends at the next H1/H2. The repository's
+_EXCEPTION_HEADER_RE = re.compile(r"^[ ]{0,3}##[ \t]+Legacy UI exception\s*$")
+# A level-two Markdown section ends at the next CommonMark H1/H2: either an
+# ATX heading (0-3 leading spaces) or a Setext underline. The repository's
 # durable `[WORK-CLAIM]` record is also a top-level PR-body block even though
 # its protocol syntax deliberately is not a Markdown heading; fields in that
 # record (notably its own `Rollback:`) are not exception-attestation fields.
-_EXCEPTION_SECTION_BOUNDARY_RE = re.compile(r"^(?:#{1,2}\s+|\[WORK-CLAIM\]\s*$)")
+_EXCEPTION_SECTION_BOUNDARY_RE = re.compile(
+    r"^[ ]{0,3}(?:#{1,2}[ \t]+|(?:=+|-+)[ \t]*$|\[WORK-CLAIM\][ \t]*$)"
+)
 # A "fence" opener: 3+ backticks or 3+ tildes, optionally followed by a
 # language tag (```python, ~~~markdown, ...).
 _FENCE_OPEN_RE = re.compile(r"^(`{3,}|~{3,})")

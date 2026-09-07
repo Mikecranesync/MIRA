@@ -40,8 +40,10 @@ name: Legacy UI Lifecycle Guard
 # Bootstrap note: this workflow cannot run on the PR that first introduces it
 # (a workflow file change from a PR is not trusted until it exists on the
 # default branch). The lifecycle guard's own local/pytest evidence covers that
-# bootstrap PR; this workflow becomes a required check on `main` only after
-# merge (charter §3.1).
+# bootstrap PR. After merge it begins evaluating future PRs, but its status
+# remains advisory rather than independently merge-blocking until #3657 binds
+# it to a source-authentic required workflow or dedicated status App (charter
+# §3.1).
 
 on:
   pull_request_target:

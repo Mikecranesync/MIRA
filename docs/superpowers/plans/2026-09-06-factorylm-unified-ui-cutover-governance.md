@@ -223,7 +223,7 @@ tests/test_ui_surface_lifecycle_guard.py
 .claude/workflows/flm-ui-map.js
 .claude/workflows/flm-ui-slice.js
 .claude/workflows/flm-ui-verify.js
-.github/workflows/ui-lifecycle-guard.yml
+.github/workflows/**
 .github/pull_request_template.md
 requirements/ui-lifecycle-guard.txt
 ```
@@ -327,7 +327,8 @@ def evaluate(
 
 For a rename, evaluate both `previous_path` and `path`. The CLI accepts
 `--registry`, `--labels-file`, `--pr-body-file`, the paired
-`--event-json-file`/`--current-pull-json-file` approval inputs, and exactly one
+`--event-json-file`/`--current-pull-json-file`/`--approver-permission-json-file`
+approval inputs, and exactly one
 source of changes: either `--changes-json-file` (which additionally REQUIRES
 `--expected-change-count-file` — the pagination-truncation defense above) or
 the pair `--base`/`--head`. It prints GitHub error annotations for violations
@@ -382,28 +383,35 @@ git commit -m "feat(ci): guard legacy FactoryLM presentation paths"
 
 Use `pull_request_target` with explicit activity types `opened`, `reopened`,
 `synchronize`, `edited`, `labeled`, `unlabeled`, and `ready_for_review`.
-Grant only `contents: read`, `pull-requests: read`, and `statuses: write`.
+Use three isolated jobs, `pending` -> `guard` -> `final-status`. Grant
+`statuses: write` only to the pending/final status jobs, neither of which runs
+repository code; grant the guard job only `contents: read` and
+`pull-requests: read`.
 Constrain concurrent runs by PR number.
 
 The workflow must:
 
-1. Post `pending` to the PR head SHA under the unique context
-   `Legacy UI Lifecycle Guard`.
-2. Check out `github.event.pull_request.base.sha` only, with
+1. In the isolated `pending` job, post `pending` to the PR head SHA under the
+   unique context `Legacy UI Lifecycle Guard`.
+2. In the `guard` job, fetch metadata before checkout, then check out
+   `github.event.pull_request.base.sha` only, with
    `persist-credentials: false`. Never check out the head or merge ref.
 3. Install the exact wheel-only dependencies from
    `requirements/ui-lifecycle-guard.txt` with `--require-hashes`, then run the
    trusted-base guard tests. Pin checkout/setup actions to full commit SHAs.
-4. In a metadata-only step carrying `GH_TOKEN`, fetch all changed-file pages as
-   JSON lines plus the complete current PR JSON, current labels, and body into
-   `$RUNNER_TEMP`. Treat these values and `$GITHUB_EVENT_PATH` only as data;
-   never interpolate them into executable script text.
+4. In the guard job's sole metadata-only step carrying `GH_TOKEN`, fetch all
+   changed-file pages plus the complete current PR JSON, labels, body, and the
+   label actor's current repository permission into `$RUNNER_TEMP`. Treat
+   these values and `$GITHUB_EVENT_PATH` only as data; never interpolate them
+   into executable script text.
 5. In a separate step with no token, execute the checked-out base guard against
    those files.
-6. In an `if: always()` trusted step, post `success` only when every prior step
-   succeeded; otherwise post `failure` to the same head/context.
+6. In the separate `final-status` job with `if: always()`, branch only on
+   `needs.guard.result`: post `success` when the guard job succeeded and
+   `failure` otherwise. This fresh job never executes checked-out code.
 
-The metadata command shape is:
+With `APPROVER_LOGIN` supplied by the step environment from
+`github.event.sender.login`, the metadata command shape is:
 
 ```bash
 gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
@@ -417,13 +425,22 @@ jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
   > "$RUNNER_TEMP/pr-body.md"
 jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
   > "$RUNNER_TEMP/labels.txt"
+if jq -e '.action == "labeled" and .label.name == "legacy-ui-exception"' \
+  "$GITHUB_EVENT_PATH" > /dev/null; then
+  gh api "repos/$GITHUB_REPOSITORY/collaborators/$APPROVER_LOGIN/permission" \
+    > "$RUNNER_TEMP/approver-permission.json"
+else
+  jq '{permission: "none", user: {login: .sender.login}}' \
+    "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
+fi
 python tools/ui_surface_lifecycle_guard.py \
   --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
   --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
   --labels-file "$RUNNER_TEMP/labels.txt" \
   --pr-body-file "$RUNNER_TEMP/pr-body.md" \
   --event-json-file "$GITHUB_EVENT_PATH" \
-  --current-pull-json-file "$RUNNER_TEMP/current-pull.json"
+  --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
+  --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"
 ```
 
 `expected-change-count.txt` is fetched from the PR OBJECT (`.changed_files`),

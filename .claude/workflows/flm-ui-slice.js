@@ -101,6 +101,22 @@ const FORBIDDEN_PATH_PREFIXES = [
   'mira-mobile/src/screens/',
 ]
 
+// The existing connected unified shell has two exact screen hosts inside the
+// otherwise legacy-by-default screens directory. Keep the exception exact:
+// adjacent or future screen files remain forbidden until they move behind a
+// canonical adapter boundary or governance explicitly names them.
+const CANONICAL_MOBILE_SCREEN_HOSTS = new Set([
+  'mira-mobile/src/screens/UnifiedRoot.tsx',
+  'mira-mobile/src/screens/UnifiedChat.tsx',
+])
+
+function pathMatchesForbiddenPrefix(path) {
+  if (CANONICAL_MOBILE_SCREEN_HOSTS.has(path)) return false
+  return FORBIDDEN_PATH_PREFIXES.some(
+    (forbidden) => path === forbidden || path.startsWith(forbidden)
+  )
+}
+
 // The bounded adapter roots each lane is allowed to touch (charter §2.2's
 // "new bounded presentation adapters" + the shared-core packages). A claimed
 // slice's allowedPaths must live entirely inside its lane's roots -- an
@@ -113,7 +129,12 @@ const LANE_ALLOWED_ROOTS = {
     'apps/factorylm-ui-lab/',
   ],
   hub: ['mira-hub/src/factorylm-ui/'],
-  mobile: ['mira-mobile/src/factorylm-ui/'],
+  mobile: [
+    'mira-mobile/src/factorylm-ui/',
+    'mira-mobile/src/unified/',
+    'mira-mobile/src/screens/UnifiedRoot.tsx',
+    'mira-mobile/src/screens/UnifiedChat.tsx',
+  ],
   public: ['mira-web/src/factorylm-ui/'],
   verification: [
     'tests/factorylm_ui/',
@@ -138,7 +159,12 @@ const LANE_ALLOWED_SCOPES = {
     'apps/factorylm-ui-lab/src/**',
   ],
   hub: ['mira-hub/src/factorylm-ui/**'],
-  mobile: ['mira-mobile/src/factorylm-ui/**'],
+  mobile: [
+    'mira-mobile/src/factorylm-ui/**',
+    'mira-mobile/src/unified/**',
+    'mira-mobile/src/screens/UnifiedRoot.tsx',
+    'mira-mobile/src/screens/UnifiedChat.tsx',
+  ],
   public: ['mira-web/src/factorylm-ui/**'],
   verification: [
     'tests/factorylm_ui/**',
@@ -179,13 +205,11 @@ function validateAllowedPath(raw, lane, laneRoots) {
         `lane ${JSON.stringify(lane)} (${JSON.stringify(LANE_ALLOWED_SCOPES[lane])})`
     )
   }
-  for (const forbidden of FORBIDDEN_PATH_PREFIXES) {
-    if (p === forbidden || p.startsWith(forbidden)) {
-      throw new Error(
-        `flm-ui-slice: allowedPaths entry ${JSON.stringify(raw)} matches a guarded legacy or ` +
-          `control-plane path (${forbidden}) -- a slice may never claim authority over a guarded path`
-      )
-    }
+  if (pathMatchesForbiddenPrefix(p)) {
+    throw new Error(
+      `flm-ui-slice: allowedPaths entry ${JSON.stringify(raw)} matches a guarded legacy or ` +
+        `control-plane path -- a slice may never claim authority over a guarded path`
+    )
   }
   if (!laneRoots.some((root) => p.startsWith(root))) {
     throw new Error(
@@ -235,9 +259,7 @@ function normalizeChangedPaths(paths, allowedPatterns) {
       pathSegments.includes('..') ||
       filePath === '.git' ||
       filePath.startsWith('.git/') ||
-      FORBIDDEN_PATH_PREFIXES.some(
-        (forbidden) => filePath === forbidden || filePath.startsWith(forbidden)
-      ) ||
+      pathMatchesForbiddenPrefix(filePath) ||
       !allowedPatterns.some((pattern) => pathMatchesAllowedPattern(filePath, pattern))
     ) {
       return null

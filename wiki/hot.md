@@ -1,4 +1,4 @@
-# Hot Cache — 2026-09-06 — New shared UI merged; governance and Slice C gated
+# Hot Cache — 2026-09-07 — New shared UI merged; governance and fleet gated
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordinated durably in
 [issue #3626](https://github.com/Mikecranesync/MIRA/issues/3626). The binding
@@ -17,29 +17,27 @@ Current delivery ledger:
 - [PR #3644](https://github.com/Mikecranesync/MIRA/pull/3644) remains parked and
   draft. Do not merge its `mira-mobile/src/screens/**` changes as new product UI
   and do not use a legacy exception to bypass the product direction. Rework the
-  capability beneath `mira-mobile/src/factorylm-ui/**` (retaining pure
-  `chat-adapter/**` transport seams where useful) after the cutover lands, or
-  defer until that mount seam exists.
+  capability beneath `mira-mobile/src/factorylm-ui/**` or as an explicit
+  extension of the existing `src/unified/**` adapter and exact unified hosts
+  (retaining pure `chat-adapter/**` transport seams where useful). Nearby
+  classic screens remain frozen.
 - [PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647), branch
-  `codex/factorylm-unified-ui-cutover-001`, is still draft. Its published head
-  `8cf5924a77cf2cda4ca127efad467dfa71cb29f2` has green CI and a pinned Codex
-  HOLD. Local, uncommitted remediation now guards every workflow file, removes
-  direct writer-filename injection into proof/reporter prompts, records the
-  shipped mobile canary and its real CI/rollback state, and classifies the
-  existing `UnifiedRoot`/`UnifiedChat`/`src/unified/**` mounts as canonical new
-  UI rather than legacy. It also corrects the earlier status-provenance
-  overclaim: the guard remains advisory until issue #3657 proves a
-  non-spoofable required-workflow or dedicated-App binding. Local verification,
-  commit/push, and a fresh exact-head review remain; no remediation SHA has a
-  verdict yet.
+  `codex/factorylm-unified-ui-cutover-001`, remains draft. Its exact immutable
+  head is recorded in the PR body rather than self-referenced here. The branch
+  guards every workflow file, removes writer-controlled filenames from proof
+  and reporter prompts, records the shipped mobile canary truth, and treats
+  `src/unified/**` plus exact `UnifiedRoot`/`UnifiedChat` hosts as canonical new
+  UI. The status remains advisory until issue #3657 supplies a source-authentic
+  required-workflow or dedicated-App binding. The prior `92da48657` head had
+  fully green CI; final CommonMark-boundary, workflow-allowlist, plan, and
+  current-ledger corrections now require one fresh exact-head review and CI.
 - [PR #3651](https://github.com/Mikecranesync/MIRA/pull/3651) is draft Slice C,
   implementing navigation hierarchy and visual-review findings only in the
   canonical shared package plus its isolated lab/tests. Head
-  `f68eaae3bfbc3e45c0ba659a60c7a311c1b2e5f8` fixes the prior
-  inert-current-row, mode-priority, Recent-marker, and stale-evidence findings.
-  Its GitHub CI and fresh exact-head Codex product/code/visual review are active; keep it draft
-  until that verdict, then rebase after #3647 advances `main` and review the
-  resulting SHA again.
+  `f5c472bcc0cf3cf8c6f3b20b8ef6465402e92ca8` has fully green CI and an
+  independent exact-head Codex PASS for navigation semantics, 412px rendering,
+  and evidence truth. Keep it draft until #3647 advances `main`; rebase, then
+  review the resulting SHA again before merge.
 - [PR #3652](https://github.com/Mikecranesync/MIRA/pull/3652) is draft Slice D,
   stacked on Slice C at last observed head
   `028cd5965686e11ae7ece15de8825de3105aa4e5`. Claude reports its ten-capture
@@ -52,17 +50,20 @@ Separate mission `FLEET-PEER-NETWORK-001` is coordinated in
 `docs/fleet-peer-network-001-prd`. It must not contaminate #3647 or any active
 FLM-UI slice. Draft [PR #3653](https://github.com/Mikecranesync/MIRA/pull/3653)
 is frozen remotely at `cbacc99da1885da24e2da8c2e78f86318a239d43` with green
-CI and an exact-head Codex HOLD covering claim exclusivity, always-run contract
-enforcement, `.fleet` protection, session authority, fail-closed events,
-server-stamped lease ordering, and evidence/dependency drift. Claude has local,
-unpushed remediation through the audited `9ecdffdc904da3964727e675fb14e516b45b969e`;
-the pre-push Codex audit remains HOLD with its durable acceptance list in the PR.
-Rebase only after #3647 and keep root pointers inside this separate PR.
+CI. Charlie's clean, unpushed candidate
+`c89648b9e766ccfecc5f3c8205cd1b5b930a52c7` remains on Codex HOLD for five P1
+contract gaps plus evidence cleanup; the complete verdict is on PR #3653.
+A verified 39 KiB thin bundle is ready to transfer the four local commits
+privately from remote prerequisite `cbacc99da...` without publishing a partial
+PR head. Bravo
+must verify the bundle checksum/tip, close every HOLD item, and obtain a fresh
+exact-head Codex PASS before any push. Rebase only after #3647 and keep root
+pointers inside this separate PR.
 
-No local governance hardening has changed a production route, deployment,
+No governance hardening has changed a production route, deployment,
 feature flag, database, provider, auth flow, or customer-data state. Next:
-finish and verify #3647, push one reviewable exact
-head, obtain independent PASS plus green CI, and merge it. Then fix/rebase
+finish #3647's final correction, obtain independent PASS plus green CI and the
+maintainer's fresh `legacy-ui-exception` attestation, then merge it. Rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;
 #3652 follows. The CHARLIE peer channel is an active notification path; GitHub
 issues, PR heads, checks, and review artifacts remain the durable authority.
@@ -220,7 +221,8 @@ Landed locally (Tasks 1-4, task-sized commits, all local — nothing pushed):
   (blank fields, explanation only in HTML comments — verified to fail closed unfilled and pass once
   substantively completed, against the real registry). `actionlint` clean. This workflow **cannot
   run on the bootstrap PR that introduces it** (`pull_request_target` always uses the workflow
-  definition already on the default branch) — it becomes a required `main` check only after merge.
+  definition already on the default branch). After merge it begins evaluating future PRs, but
+  remains advisory until #3657 supplies a source-authentic protected-main binding.
 - `f235b1ef5` — Three Claude Code dynamic workflows (Task 4): `.claude/workflows/flm-ui-map.js`
   (read-only fan-out + adversarial invented-path/symbol cross-check + proposed `[WORK-CLAIM]`
   drafts, never edits/claims/opens a PR), `flm-ui-slice.js` (claim preflight requiring

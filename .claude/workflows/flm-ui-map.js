@@ -82,8 +82,9 @@ const AREAS = [
       `Read-only mapping pass for ${mission}, base SHA ${baseSha}. Read ${CHARTER} first. Map the MOBILE ` +
       `surface: mira-mobile/index.html plus classified React/style/navigation and mixed copy/view-model helpers ` +
       `under src/**, the exact preserved API/transport/native allowlist, and any existing ` +
-      `mira-mobile/src/factorylm-ui/** adapter ` +
-      `scaffolding. Return every relevant real path you actually read and any finding relevant to an adapter ` +
+      `mira-mobile/src/factorylm-ui/** adapter scaffolding. Also map the already-connected canonical ` +
+      `mira-mobile/src/unified/** adapter and exact mira-mobile/src/screens/UnifiedRoot.tsx and ` +
+      `mira-mobile/src/screens/UnifiedChat.tsx hosts. Return every relevant real path you actually read and any finding relevant to an adapter ` +
       `slice. Do not edit anything.`,
   },
   {

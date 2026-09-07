@@ -109,8 +109,12 @@ visual/device evidence. The response names the exact head:
 
 Scope is checked before behavior. New presentation and host work must stay in
 the canonical `packages/factorylm-*`, `apps/factorylm-ui-lab/**`, or bounded
-`mira-*/src/factorylm-ui/**` roots; preserved mobile transport conversion may
-stay in `mira-mobile/src/chat-adapter/**`. A changed path in a guarded legacy
+`mira-*/src/factorylm-ui/**` roots. The already-connected mobile canonical
+surface also includes `mira-mobile/src/unified/**` and the exact
+`mira-mobile/src/screens/UnifiedRoot.tsx` and
+`mira-mobile/src/screens/UnifiedChat.tsx` hosts; adjacent screens remain
+legacy-by-default. Preserved mobile transport conversion may stay in
+`mira-mobile/src/chat-adapter/**`. A changed path in a guarded legacy
 presentation tree is an automatic hold unless the PR carries the charter's
 audited `legacy-ui-exception`. Ordinary feature work never qualifies for that
 exception, and importing or copying a legacy presentation into a new path does

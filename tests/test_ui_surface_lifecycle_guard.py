@@ -449,6 +449,98 @@ def test_exception_fields_ignore_later_work_claim_fields():
     assert result.allowed is True
 
 
+@pytest.mark.parametrize("boundary", ["   # Other", "   ## Other", "   [WORK-CLAIM]"])
+def test_indented_top_level_boundary_cannot_supply_exception_fields(boundary):
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: severity-1 production repair for a broken rollback path
+        Canonical replacement impact: none, this only touches the recovery route
+
+        {boundary}
+        Rollback: this belongs to a different top-level block
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:Rollback:" in result.missing_fields
+
+
+@pytest.mark.parametrize("underline", ["===", "---", "   ===", "   ---"])
+def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: severity-1 production repair for a broken rollback path
+        Canonical replacement impact: none, this only touches the recovery route
+
+        Other section
+        {underline}
+        Rollback: this belongs to the Setext-heading section
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:Rollback:" in result.missing_fields
+
+
+@pytest.mark.parametrize("pseudo_boundary", ["    ## Other", "    [WORK-CLAIM]", "    ==="])
+def test_four_space_indented_pseudo_boundary_stays_inside_exception(pseudo_boundary):
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: severity-1 production repair for a broken rollback path
+        Canonical replacement impact: none, this only touches the recovery route
+
+        {pseudo_boundary}
+        Rollback: this remains part of the exception section
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is True
+
+
+def test_commonmark_indented_exception_heading_is_live():
+    body = _VALID_BODY.replace("## Legacy UI exception", "   ## Legacy UI exception")
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is True
+
+
 def test_valid_label_and_body_without_fresh_bound_approval_fail():
     result = evaluate(
         _TOUCH,
@@ -1467,6 +1559,32 @@ def test_charter_does_not_claim_github_actions_app_id_identifies_a_workflow():
         assert "separate GitHub App" in text
         assert "required-workflow" in text
         assert "app_id` is what actually prevents" not in text
+
+
+def test_workflow_and_hot_cache_do_not_claim_advisory_status_becomes_required():
+    workflow = _workflow_text()
+    hot_cache = (REPO_ROOT / "wiki" / "hot.md").read_text(encoding="utf-8")
+
+    assert "becomes a required check" not in workflow
+    assert "becomes a required `main` check" not in hot_cache
+    for text in (workflow, hot_cache):
+        assert "#3657" in text
+        assert "advisory" in text
+
+
+def test_governance_plan_runnable_guard_contract_matches_hardened_workflow():
+    plan = (
+        REPO_ROOT
+        / "docs"
+        / "superpowers"
+        / "plans"
+        / "2026-09-06-factorylm-unified-ui-cutover-governance.md"
+    ).read_text(encoding="utf-8")
+
+    assert ".github/workflows/**" in plan
+    assert "--approver-permission-json-file" in plan
+    assert "collaborators/$APPROVER_LOGIN/permission" in plan
+    assert "`pending` -> `guard` -> `final-status`" in plan
 
 
 def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():

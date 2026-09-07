@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP_WORKFLOW = ROOT / ".claude" / "workflows" / "flm-ui-map.js"
@@ -434,6 +436,73 @@ def test_slice_verification_lane_rejects_broad_control_plane_root() -> None:
             branch="codex/flm-ui-verification-1234567890",
             allowedPaths=[".claude/workflows/**"],
             verificationProfile="factorylm-ui-evidence",
+        ),
+    )
+
+    assert "workflow-owned scope" in outcome["error"].lower()
+    assert outcome["calls"] == []
+
+
+def _mobile_slice_success(scope: str, changed_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    branch = "codex/flm-ui-mobile-1234567890"
+    args = _slice_args(
+        lane="mobile",
+        branch=branch,
+        allowedPaths=[scope],
+        verificationProfile="mobile-adapter",
+    )
+    responses = _slice_success_responses()
+    responses["claim-preflight"] = _claim_preflight(
+        lane="mobile",
+        branch=branch,
+        claimScope="requested-paths",
+        allowedPaths=[scope],
+        verificationProfile="mobile-adapter",
+    )
+    responses["writer"] = _writer(filesChanged=[changed_path])
+    for stage in ("before-review", "before-synthesis"):
+        responses[f"head-proof:{stage}"] = _head_proof(
+            stage,
+            headRefName=branch,
+            changedFiles=[{"filename": changed_path, "status": "modified"}],
+        )
+    return args, responses
+
+
+@pytest.mark.parametrize(
+    ("scope", "changed_path"),
+    [
+        (
+            "mira-mobile/src/factorylm-ui/**",
+            "mira-mobile/src/factorylm-ui/MobileShell.tsx",
+        ),
+        ("mira-mobile/src/unified/**", "mira-mobile/src/unified/to-interaction.ts"),
+        (
+            "mira-mobile/src/screens/UnifiedRoot.tsx",
+            "mira-mobile/src/screens/UnifiedRoot.tsx",
+        ),
+        (
+            "mira-mobile/src/screens/UnifiedChat.tsx",
+            "mira-mobile/src/screens/UnifiedChat.tsx",
+        ),
+    ],
+)
+def test_slice_mobile_lane_accepts_each_canonical_connected_scope(scope, changed_path) -> None:
+    args, responses = _mobile_slice_success(scope, changed_path)
+
+    outcome = _run_workflow(SLICE_WORKFLOW, args, responses)
+
+    assert outcome["result"]["verdict"] == "GREEN"
+
+
+def test_slice_mobile_lane_still_rejects_an_adjacent_legacy_screen() -> None:
+    outcome = _run_workflow(
+        SLICE_WORKFLOW,
+        _slice_args(
+            lane="mobile",
+            branch="codex/flm-ui-mobile-1234567890",
+            allowedPaths=["mira-mobile/src/screens/More.tsx"],
+            verificationProfile="mobile-adapter",
         ),
     )
 
@@ -916,6 +985,16 @@ def test_map_public_prompt_does_not_advertise_removed_infrastructure_exemption()
 
     assert "exempt-infrastructure" not in source
     assert "blanket-guarded public trees" in source
+
+
+def test_mobile_mapping_and_review_runbook_name_connected_canonical_paths() -> None:
+    map_source = MAP_WORKFLOW.read_text()
+    runbook = (ROOT / "docs" / "runbooks" / "charlie-codex-claude-peer-review.md").read_text()
+
+    for text in (map_source, runbook):
+        assert "mira-mobile/src/unified/**" in text
+        assert "mira-mobile/src/screens/UnifiedRoot.tsx" in text
+        assert "mira-mobile/src/screens/UnifiedChat.tsx" in text
 
 
 def test_verify_blocks_dimension_review_for_a_different_sha() -> None:
