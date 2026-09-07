@@ -106,3 +106,53 @@ def test_the_host_pattern_accepts_a_colon_after_an_alias() -> None:
     assert "[[:space:]]|:|$" in line, (
         "PROD_HOST no longer accepts ':' after an ssh alias — scp/rsync to prod is bypassable again"
     )
+
+
+# --------------------------------------------------------------------------------------
+# The Stop-hook chain. Not prod-guard, but the same failure class: a guard that can be
+# silently nullified by something adjacent to it.
+# --------------------------------------------------------------------------------------
+
+SETTINGS = Path(__file__).resolve().parents[1] / ".claude" / "settings.json"
+
+
+def test_nothing_after_stop_gate_in_the_chain_writes_to_stdout() -> None:
+    """`.claude/settings.json` chains two Stop hooks on one command line:
+
+        bash tools/hooks/stop-gate.sh; bash .claude/hooks/stop.sh
+
+    They share one stdout. stop-gate signals a block by printing
+    `{"decision":"block"}`; if anything chained AFTER it also printed, the harness would
+    read the wrong object and the gate would stop working with no test noticing.
+
+    Asserted as the property itself — every command after the first must print NOTHING —
+    rather than by running the whole chain. The chain's own output only proves this in the
+    *blocking* state; in the ordinary clean state stop-gate emits a lone approve and there
+    is nothing to bury, so a chain-level assertion passes whether or not the property holds.
+    (Verified 2026-09-07: an earlier version of this test did exactly that and stayed green
+    under a mutation that made the second hook print a decision.)
+    """
+    settings = json.loads(SETTINGS.read_text())
+    repo = SETTINGS.parents[1]
+    checked = 0
+    for group in settings.get("hooks", {}).get("Stop", []):
+        for hook in group.get("hooks", []):
+            command = hook.get("command", "")
+            if "stop-gate.sh" not in command:
+                continue
+            parts = [seg.strip() for seg in command.split(";") if seg.strip()]
+            assert parts and "stop-gate.sh" in parts[0], (
+                f"stop-gate must run FIRST in its chain, else its decision is not the first "
+                f"object on stdout: {command!r}"
+            )
+            for later in parts[1:]:
+                out = subprocess.run(
+                    ["bash", "-c", later], input="", capture_output=True, text=True, cwd=str(repo)
+                ).stdout
+                assert out.strip() == "", (
+                    f"{later!r} runs after stop-gate.sh on a shared stdout and printed "
+                    f"{out.strip()[:120]!r} — this buries stop-gate's decision and silently "
+                    f"disables the gate"
+                )
+                checked += 1
+    assert checked, "no command is chained after stop-gate.sh — update this test if that changed"
