@@ -452,8 +452,11 @@ def test_fleet_directory_is_frozen_to_the_grandfathered_set() -> None:
 
 def test_this_branch_touches_no_product_root_or_fleet_paths() -> None:
     """Acceptance #11 as an executable check on the real diff, with a positive control through
-    the SAME matcher so a clean result cannot come from a broken one."""
-    added_or_changed = _changed_files("ACMR")
+    the SAME matcher so a clean result cannot come from a broken one.
+
+    F3 (Codex HOLD): the filter is ACMRD, not ACMR — including D, so DELETING a protected product
+    file is a violation too (Slice A must not touch product paths in any way, removal included)."""
+    added_or_changed = _changed_files("ACMRD")
     assert added_or_changed, "no changed files — the diff base is wrong"
     assert _violations(added_or_changed) == [], _violations(added_or_changed)
     assert _violations([".fleet/NEW.md", "packages/factorylm-ui/src/x.ts", "CLAUDE.md"]) == [
@@ -461,6 +464,58 @@ def test_this_branch_touches_no_product_root_or_fleet_paths() -> None:
         "packages/factorylm-ui/src/x.ts",
         "CLAUDE.md",
     ]
+
+
+def test_product_deletion_is_caught_by_the_acceptance_11_filter(tmp_path) -> None:
+    """F3 (Codex HOLD): prove, hermetically, that DELETING a protected product file is caught.
+
+    The old filter ACMR omits D, so a product-file deletion slipped through acceptance #11. In a
+    throwaway repo (no origin/main, so we call git directly rather than _changed_files) we delete
+    `mira-mobile/app.ts` and assert: the ACMRD filter surfaces the deletion, the old ACMR filter
+    MISSES it (proving the mutation ACMRD->ACMR would land), and _violations flags the deleted path.
+    """
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    victim = tmp_path / "mira-mobile" / "app.ts"
+    victim.parent.mkdir(parents=True)
+    victim.write_text("x")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "keep.md").write_text("k")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    victim.unlink()
+    git("commit", "-aqm", "delete a protected product file")
+
+    def changed(diff_filter: str) -> list[str]:
+        out = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "-M",
+                "-C",
+                f"--diff-filter={diff_filter}",
+                f"{base}...HEAD",
+            ],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        return [line for line in out.splitlines() if line]
+
+    assert "mira-mobile/app.ts" in changed("ACMRD")  # fixed filter surfaces the deletion
+    assert "mira-mobile/app.ts" not in changed("ACMR")  # old filter missed it — mutation lands
+    assert _violations(changed("ACMRD")) == ["mira-mobile/app.ts"]  # and the matcher flags it
 
 
 def test_mission_directory_convention() -> None:
