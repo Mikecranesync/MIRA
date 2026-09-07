@@ -38,10 +38,15 @@
 - All 7 JSON schemas valid draft-2020-12; `git diff --check` clean; no machine paths/secrets in the diff.
 - Runs in CI in its own **always-run `peer-contract` job** (`fetch-depth: 0`, no `changes:` filter,
   in `ci-gate.needs`, result consumed via `require_success`).
-- Known property: a **full-history restore of the branch into a fresh single-branch clone yields
-  169 passed / 3 failed** — the three are the ancestry guards correctly failing closed because a
-  single-branch clone has no `origin/main` merge-base. In a real-remote worktree they pass. If they
-  ever PASS in a bundle-only clone, that is the defect.
+- Known property (**measured this session at the frozen head**): a full-history restore of the
+  branch into a fresh single-branch clone yields **180 passed / 3 failed** (183 − 3) — the three
+  are the ancestry/merge-base guards correctly failing closed because a single-branch clone has no
+  `origin/main`. In a real-remote worktree they pass. If they ever PASS in a bundle-only clone,
+  that is the defect. (The gen-1 "169/3" figure was pre-remediation; the count moved with the test
+  count, the property did not.)
+- **Not re-run this session:** the inherited 13/13 mutation battery (it is a documented list, not a
+  located script). The reviewer should re-execute it against the frozen SHA; all six findings here
+  ship with their own paired positive controls in-suite.
 
 ## Remaining work — BLOCKED on governance PR #3647 (still OPEN, head moves; bind to the head you measure)
 1. **When #3647 merges:** rebase this branch **exactly once** onto the resulting `main`.
