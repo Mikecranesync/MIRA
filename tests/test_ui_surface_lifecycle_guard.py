@@ -4023,9 +4023,31 @@ def test_prod_migration_driver_is_exactly_pinned_and_hash_locked():
         if line.strip() and not line.lstrip().startswith("#")
     ]
     assert lines == [
-        "psycopg2-binary==2.9.12 "
-        "--hash=sha256:9fe06d93e72f1c048e731a2e3e7854a5bfaa58fc736068df90b352cefe66f03f"
+        "asyncpg==0.31.0 "
+        "--hash=sha256:aad7a33913fb8bcb5454313377cc330fbb19a0cd5faa7272407d8a0c4257b671"
     ]
+
+
+def test_license_ci_installs_and_allowlists_the_isolated_migration_driver():
+    """Catches the production-only dependency escaping the Apache/MIT license gate."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    job = workflow["jobs"]["license-check"]
+    setup = next(step for step in job["steps"] if "cache-dependency-path" in step.get("with", {}))
+    install = next(
+        step for step in job["steps"] if step.get("name") == "Install pip-licenses and project deps"
+    )
+    allowlist = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Check production migration-driver license"
+    )
+
+    assert "tools/migration-drift-requirements.txt" in setup["with"]["cache-dependency-path"]
+    assert "-r tools/migration-drift-requirements.txt" in install["run"]
+    assert "--packages asyncpg" in allowlist["run"]
+    assert '--allow-only="Apache-2.0;MIT"' in allowlist["run"]
 
 
 @pytest.mark.parametrize(

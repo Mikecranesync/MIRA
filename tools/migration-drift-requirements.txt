@@ -1,3 +1,4 @@
 # Production migration-drift gate: CPython 3.12 / ubuntu-latest x86_64.
-# Keep this wheel-only and hash-locked before the job receives any secret.
-psycopg2-binary==2.9.12 --hash=sha256:9fe06d93e72f1c048e731a2e3e7854a5bfaa58fc736068df90b352cefe66f03f
+# Keep this Apache-2.0 wheel-only dependency hash-locked before the job receives
+# any secret. The hash is the CPython 3.12 manylinux_2_28 x86_64 wheel.
+asyncpg==0.31.0 --hash=sha256:aad7a33913fb8bcb5454313377cc330fbb19a0cd5faa7272407d8a0c4257b671

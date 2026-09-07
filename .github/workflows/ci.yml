@@ -1206,6 +1206,7 @@ jobs:
           cache-dependency-path: |
             mira-core/mira-ingest/requirements.txt
             mira-bots/telegram/requirements.txt
+            tools/migration-drift-requirements.txt
 
       - name: Install pip-licenses and project deps
         run: |
@@ -1213,6 +1214,12 @@ jobs:
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
           pip install -r mira-mcp/requirements.txt
+          pip install --only-binary=:all: --require-hashes -r tools/migration-drift-requirements.txt
+
+      - name: Check production migration-driver license
+        run: |
+          pip-licenses --packages asyncpg \
+            --allow-only="Apache-2.0;MIT"
 
       - name: Check licenses
         run: |

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 _MOD_PATH = Path(__file__).resolve().parents[1] / "tools" / "migration_drift.py"
@@ -67,3 +70,71 @@ def test_render_lists_missing():
 def test_render_clean():
     out = drift.render(["001_a.sql"], {"001_a.sql"}, [])
     assert "No drift" in out
+
+
+# --- asyncpg DB glue -------------------------------------------------------
+
+
+@dataclass
+class _FakeConnection:
+    ledger_exists: object = 1
+    rows: tuple[dict[str, str], ...] = (
+        {"migration_name": "002_b.sql"},
+        {"migration_name": "001_a.sql"},
+    )
+    closed: bool = False
+
+    async def fetchval(self, sql: str) -> object:
+        assert sql == drift._LEDGER_EXISTS_SQL
+        return self.ledger_exists
+
+    async def fetch(self, sql: str) -> tuple[dict[str, str], ...]:
+        assert sql == drift._LEDGER_SQL
+        return self.rows
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _FakeAsyncpg:
+    def __init__(self, connection: _FakeConnection):
+        self.connection = connection
+        self.urls: list[str] = []
+
+    async def connect(self, url: str) -> _FakeConnection:
+        self.urls.append(url)
+        return self.connection
+
+
+def test_asyncpg_glue_reads_the_ledger_and_closes(monkeypatch):
+    """Catches a sync-driver regression or a connection leaked after the SELECTs."""
+    connection = _FakeConnection()
+    driver = _FakeAsyncpg(connection)
+    monkeypatch.setitem(sys.modules, "asyncpg", driver)
+
+    applied = asyncio.run(drift._read_applied_migrations("postgres://db.example/mira"))
+
+    assert applied == {"001_a.sql", "002_b.sql"}
+    assert driver.urls == ["postgres://db.example/mira"]
+    assert connection.closed is True
+
+
+def test_asyncpg_glue_treats_a_missing_ledger_as_empty(monkeypatch):
+    """Catches querying a table after the existence probe proves it is absent."""
+    connection = _FakeConnection(ledger_exists=None)
+
+    async def unexpected_fetch(_sql: str):
+        raise AssertionError("missing ledger must not be queried")
+
+    monkeypatch.setattr(connection, "fetch", unexpected_fetch)
+    monkeypatch.setitem(sys.modules, "asyncpg", _FakeAsyncpg(connection))
+
+    assert asyncio.run(drift._read_applied_migrations("postgres://db.example/mira")) == set()
+    assert connection.closed is True
+
+
+def test_production_glue_references_no_psycopg_driver():
+    """Catches reintroducing the prohibited LGPL dependency behind the async helper."""
+    source = _MOD_PATH.read_text(encoding="utf-8")
+    assert "psycopg" not in source
+    assert "import asyncpg" in source
