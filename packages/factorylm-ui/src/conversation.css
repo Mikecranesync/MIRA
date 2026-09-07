@@ -16,7 +16,7 @@
   border-block-end: 1px solid var(--fl-workspace-line);
 }
 
-.fl-conversation__crumbs { min-inline-size: 0; flex: 1 1 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fl-workspace-fs-sm); }
+.fl-conversation__crumbs { min-inline-size: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fl-workspace-fs-sm); }
 .fl-conversation__modes { display: inline-flex; gap: var(--fl-workspace-space-1); padding: 2px; border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); }
 .fl-conversation__modes button { padding-inline: var(--fl-workspace-space-3); color: var(--fl-workspace-muted); }
 .fl-conversation__modes button[aria-pressed="true"] { background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); box-shadow: var(--fl-workspace-shadow); }
@@ -156,7 +156,8 @@
     overflow-y: auto;
   }
   .fl-conversation { padding-inline: var(--fl-workspace-space-3); }
-  .fl-conversation__crumbs { font-weight: 700; }
+  .fl-conversation__crumbs { font-weight: 700; font-size: var(--fl-workspace-fs-xs); }
+  .fl-chip { font-size: var(--fl-workspace-fs-xs); min-block-size: 2rem; padding-inline: var(--fl-workspace-space-2); }
   .fl-turn[data-role="user"] .fl-part--text { max-inline-size: 90%; }
   .fl-composer { padding-inline: var(--fl-workspace-space-3); }
   .fl-composer__machine { max-inline-size: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

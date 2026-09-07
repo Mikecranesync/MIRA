@@ -1,5 +1,6 @@
 import type { ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
 import type { Dispatch, ReactNode } from "react";
+import { CloseIcon } from "./icons";
 import { ProjectTree } from "./ProjectTree";
 
 interface SidebarProps {
@@ -16,9 +17,10 @@ export function Sidebar({ state, dispatch, onOpenItem, footer }: SidebarProps) {
     <button
       className="fl-shell__drawer-close"
       type="button"
+      aria-label="Close navigation"
       onClick={() => dispatch({ type: "set-navigation-visible", visible: false })}
     >
-      Close navigation
+      <CloseIcon />
     </button>
     <button className="fl-shell__new-chat" type="button" disabled title="New threads are not available yet">
       New chat

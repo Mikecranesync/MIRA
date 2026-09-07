@@ -25,3 +25,11 @@ export function DocumentIcon(props: IconProps) {
 export function QRIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="1.5" y="1.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="1.25" /><rect x="10.5" y="1.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="1.25" /><rect x="1.5" y="10.5" width="4" height="4" fill="none" stroke="currentColor" strokeWidth="1.25" /><path d="M8.5 5.5h6M8.5 8h6M8.5 10.5h6M10.5 13h4M8.5 13h1.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.25" /></svg>;
 }
+
+export function HamburgerIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false" {...props}><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+}
+
+export function CloseIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false" {...props}><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}

@@ -1,6 +1,6 @@
 import type { ShellAction, ShellState } from "@factorylm/interaction";
 import type { Dispatch } from "react";
-import { InspectorIcon } from "./icons";
+import { HamburgerIcon, InspectorIcon } from "./icons";
 
 interface ThreadHeaderProps {
   readonly state: ShellState;
@@ -14,11 +14,12 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
     <button
       className="fl-shell__navigation-toggle"
       type="button"
+      aria-label="Open navigation"
       onClick={() => dispatch({ type: "set-navigation-visible", visible: true })}
     >
-      Open navigation
+      <HamburgerIcon />
     </button>
-    <div>
+    <div className="fl-shell__header-title">
       <p className="fl-shell__eyebrow">{state.profile.kind}</p>
       <h1>{state.thread.title}</h1>
     </div>
