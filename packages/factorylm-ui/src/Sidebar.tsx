@@ -2,6 +2,7 @@ import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factory
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, MachineIcon, RunIcon, SearchIcon } from "./icons";
 import { ProjectTree } from "./ProjectTree";
+import type { HostHooks } from "./parts";
 
 interface SidebarProps {
   readonly state: ShellState;
@@ -11,6 +12,7 @@ interface SidebarProps {
   readonly footer?: ReactNode;
   /** The drawer is closed on a layered (mobile) profile: out of the tab order immediately. */
   readonly inert?: boolean;
+  readonly hooks?: HostHooks;
 }
 
 /** Threads and runs anywhere in the workspace, in workspace order (the fixture/host order is the recency order). */
@@ -37,7 +39,8 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pinned machines → host footer (settings / user menu). On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
-export function Sidebar({ state, dispatch, onOpenItem, footer, inert }: SidebarProps) {
+export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: SidebarProps) {
+  const onNewChat = hooks?.onNewChat;
   const [query, setQuery] = useState("");
   const filter = query.trim() || undefined;
   const recent = recentItems(state).filter((item) => !filter || item.label.toLowerCase().includes(filter.toLowerCase()));
@@ -64,12 +67,22 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert }: SidebarP
       </button>
     </div>
 
-    {/* Honestly unavailable: the interaction contract has no new-thread action yet, so the
-        control says why instead of looking like a dim input. */}
-    <button className="fl-shell__new-chat" type="button" disabled aria-describedby="fl-new-chat-reason">
-      <ComposeIcon className="fl-shell__nav-icon" />New chat
-    </button>
-    <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
+    {typeof onNewChat === "function"
+      ? <button
+        className="fl-shell__new-chat"
+        type="button"
+        onClick={() => { onNewChat(); dispatch({ type: "set-navigation-visible", visible: false }); }}
+      >
+        <ComposeIcon className="fl-shell__nav-icon" />New chat
+      </button>
+      : <>
+        {/* No host to create a thread (the disconnected lab): honestly disabled, with the reason
+            linked, instead of a dim input or a button that does nothing. */}
+        <button className="fl-shell__new-chat" type="button" disabled aria-describedby="fl-new-chat-reason">
+          <ComposeIcon className="fl-shell__nav-icon" />New chat
+        </button>
+        <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
+      </>}
 
     <label className="fl-shell__search">
       <SearchIcon className="fl-shell__nav-icon" />

@@ -70,8 +70,6 @@ describe("F2 — Retry is a host capability, not a render-time guess", () => {
   it("does NOT render Retry when hooks are omitted entirely (no host at all)", () => {
     const view = render({ surface: "mobile", fixture: "error-retry" });
     expect(retryButton(view)).toBeNull();
-    // And nothing was requested behind the technician's back.
-    expect(view.outputs().retryTarget).toBe("");
   });
 
   it("never claims 'Retry requested' when no host hook can service the request", () => {

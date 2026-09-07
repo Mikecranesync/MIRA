@@ -108,7 +108,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>
-      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} footer={navigationFooter} inert={mobile && !state.navigationVisible} />
+      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} footer={navigationFooter} inert={mobile && !state.navigationVisible} hooks={hooks} />
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />

@@ -133,8 +133,6 @@ describe("conversation parts", () => {
 
     view.click(retry);
     expect(calls).toEqual(["turn-error-retry"]);
-    // Host-owned: the shell does not also mark a mock "Retry requested" state.
-    expect(view.outputs().retryTarget).toBe("");
     expect(render({ fixture: "safety-stop", surface: "web", hooks }).buttonNamed("Retry")).toBeNull();
   });
 

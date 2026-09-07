@@ -90,7 +90,6 @@ export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOp
         data-project-id={state.activeContext.projectId ?? ""}
         data-draft={state.draft}
         data-mode={state.mode}
-        data-retry-target={state.retryTargetTurnId ?? ""}
         data-turn-count={state.thread.turns.length}
       />
     </>
@@ -106,7 +105,7 @@ export interface HarnessView {
   flush(): Promise<void>;
   dispatch(action: ShellAction): void;
   activeContext(): { projectId: string; folderId: string; machineId: string };
-  outputs(): { draft: string; mode: string; retryTarget: string; turnCount: number };
+  outputs(): { draft: string; mode: string; turnCount: number };
   cleanup(): void;
 }
 
@@ -166,7 +165,6 @@ export function renderHarness(props: HarnessProps): HarnessView {
     outputs: () => ({
       draft: output().dataset.draft ?? "",
       mode: output().dataset.mode ?? "",
-      retryTarget: output().dataset.retryTarget ?? "",
       turnCount: Number(output().dataset.turnCount ?? "0"),
     }),
     cleanup: () => act(() => {

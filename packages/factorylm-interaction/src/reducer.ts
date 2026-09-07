@@ -27,7 +27,6 @@ export interface ShellState {
   readonly theme: ThemeName;
   readonly draft: string;
   readonly selectedSource: SourceReference | null;
-  readonly retryTargetTurnId: string | null;
   readonly selectedProjectId?: string;
   readonly selectedFolderId?: string;
   readonly navigationVisible: boolean;
@@ -60,7 +59,6 @@ export type ShellAction =
   | { readonly type: "select-source"; readonly sourceId: string | null }
   | { readonly type: "set-draft"; readonly draft: string }
   | { readonly type: "mock-send" }
-  | { readonly type: "retry"; readonly turnId: string }
   | { readonly type: "set-theme"; readonly theme: ThemeName }
   | { readonly type: "set-profile"; readonly profile: SurfaceProfile };
 
@@ -173,12 +171,6 @@ function findSource(thread: InteractionThread, sourceId: string): SourceReferenc
   return undefined;
 }
 
-function isRetryableFailedTurn(thread: InteractionThread, turnId: string): boolean {
-  const turn = thread.turns.find((candidate) => candidate.id === turnId);
-  return turn?.lifecycle === "failed" && turn.parts.some(
-    (part) => part.type === "error" && part.error.retryable,
-  );
-}
 
 export function createShellState(fixture: ShellFixture, profile: SurfaceProfile): ShellState {
   const copy = copyValue(fixture);
@@ -195,7 +187,6 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
     theme: "light",
     draft: "",
     selectedSource: null,
-    retryTargetTurnId: null,
     ...(copy.activeContext.projectId ? { selectedProjectId: copy.activeContext.projectId } : {}),
     ...(copy.activeContext.folderId ? { selectedFolderId: copy.activeContext.folderId } : {}),
     navigationVisible: true,
@@ -227,7 +218,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         ...(data.activeContext !== undefined ? { activeContext: data.activeContext } : {}),
         ...(data.offline !== undefined ? { offline: data.offline } : {}),
         ...(data.inspector !== undefined ? { inspector: data.inspector } : {}),
-        ...(threadChanged ? { mode: data.thread.mode, draft: "", retryTargetTurnId: null, attachmentMenuVisible: false } : {}),
+        ...(threadChanged ? { mode: data.thread.mode, draft: "", attachmentMenuVisible: false } : {}),
         selectedSource,
         ...(data.activeContext?.projectId ? { selectedProjectId: data.activeContext.projectId } : {}),
         ...(data.activeContext?.folderId ? { selectedFolderId: data.activeContext.folderId } : {}),
@@ -328,9 +319,6 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       });
     }
 
-    case "retry":
-      if (!isRetryableFailedTurn(state.thread, action.turnId) || state.retryTargetTurnId === action.turnId) return state;
-      return freezeState({ ...state, retryTargetTurnId: action.turnId });
 
     case "set-theme":
       return state.theme === action.theme ? state : freezeState({ ...state, theme: action.theme });

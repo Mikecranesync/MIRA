@@ -14,7 +14,7 @@ interface ProjectTreeProps {
 
 /**
  * The single "current" row. Exactly one row carries aria-current="page":
- * the open thread/run if it is in the tree, else the active machine's link
+ * the open run, else the open thread, if it is in the tree, else the active machine's link
  * (the one under the selected folder when the machine appears twice), else
  * the selected folder, else the selected project. Ancestors of the current
  * row get data-path="true" — a quiet "you are inside this" treatment, not a
@@ -22,8 +22,12 @@ interface ProjectTreeProps {
  */
 export function currentTreeRowId(state: ShellState, projects: readonly Project[]): string | undefined {
   const items = flatten(projects);
-  const open = items.find((entry) => entry.node.kind !== "folder" && entry.node.kind !== "machine-link" && entry.node.id === state.thread.id);
-  if (open) return open.node.id;
+  // The open run outranks its thread: in Work mode the run is what the user is inside.
+  const openIds = [state.run?.id, state.thread.id].filter((id): id is string => Boolean(id));
+  for (const id of openIds) {
+    const open = items.find((entry) => entry.node.kind !== "folder" && entry.node.kind !== "machine-link" && entry.node.id === id);
+    if (open) return open.node.id;
+  }
   const machineId = state.activeContext.machineId;
   if (machineId) {
     const links = items.filter((entry) => entry.node.kind === "machine-link" && entry.node.machineId === machineId);
@@ -178,7 +182,7 @@ function Nodes({ nodes, state, dispatch, onOpenItem, filter, current, path, keep
       const Icon = ITEM_ICON[node.kind];
       if (!onOpenItem) {
         // No host to open it: a label in the same row pattern, never a dead button.
-        return <li key={node.id} className="fl-tree__item fl-tree__row" data-kind={node.kind} data-item-kind={node.kind}>
+        return <li key={node.id} className="fl-tree__item fl-tree__row" data-kind={node.kind} data-item-kind={node.kind} aria-current={current === node.id ? "page" : undefined}>
           <span className="fl-tree__disclosure" aria-hidden="true" />
           <span className="fl-tree__icon" aria-hidden="true"><Icon /></span>
           <span className="fl-tree__label">{node.label}</span>

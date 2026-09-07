@@ -27,7 +27,7 @@
 .fl-shell__search input:focus-visible { outline: none; }
 .fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
 /* Explicit column: an implicit `auto` grid track sizes to the widest row (the 550px main-column bug, again). */
-.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--fl-workspace-space-1); min-inline-size: 0; }
+.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--fl-workspace-space-1); min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
 .fl-shell__nav-section { min-inline-size: 0; }
 .fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-2) 0 0; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
@@ -87,7 +87,9 @@
 .fl-tree__status[data-status="attention"] { background: var(--fl-workspace-warn-line); }
 .fl-shell__nav-footer { margin-block-start: auto; padding-block-start: var(--fl-workspace-space-4); border-block-start: 1px solid var(--fl-workspace-line); display: grid; gap: var(--fl-workspace-space-2); }
 .fl-shell__nav-footer button { border-color: var(--fl-workspace-line); padding-inline: var(--fl-workspace-space-3); }
-.fl-shell__sidebar { display: flex; flex-direction: column; }
+/* A viewport-height column on every profile: the section stack scrolls, the identity row and
+   the host footer (settings / account) stay in view — at 1440×900 the footer sat below the fold. */
+.fl-shell__sidebar { position: sticky; inset-block-start: 0; display: flex; flex-direction: column; block-size: 100dvh; max-block-size: 100dvh; overflow: hidden; }
 .fl-shell__empty { padding: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 .fl-tree__item { min-block-size: max(2.75rem, 44px); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
@@ -138,7 +140,6 @@
   .fl-shell__navigation-toggle,
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
-  .fl-shell__nav-scroll { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
   .fl-shell__brand-mark { display: block; }
   .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 600; }
   .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }

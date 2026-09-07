@@ -159,7 +159,7 @@ describe("safe areas and drawer scroll ownership (stylesheet contract)", () => {
 
   it("gives the drawer's tree the scroll and keeps the footer out of it", () => {
     expect(mobileBlock).toMatch(/\.fl-shell__sidebar\s*\{[^}]*block-size:\s*100dvh/s);
-    expect(mobileBlock).toMatch(/\.fl-shell__nav-scroll\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-block-size:\s*0;[^}]*overflow-y:\s*auto/s);
+    expect(shell).toMatch(/\n\.fl-shell__nav-scroll\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-block-size:\s*0;[^}]*overflow-y:\s*auto/s);
     expect(mobileBlock).toMatch(/\.fl-shell__nav-footer\s*\{[^}]*flex:\s*0 0 auto/s);
   });
 

@@ -101,6 +101,7 @@ const PROJECTS: readonly Project[] = [
                 machineId: "machine-drive-a",
               },
               { kind: "thread", id: "thread-drive-a", label: "F30001 diagnosis" },
+              { kind: "run", id: "run-drive-a-f30001", label: "F30001 investigation" },
             ],
           },
           {

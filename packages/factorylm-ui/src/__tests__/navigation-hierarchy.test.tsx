@@ -166,6 +166,54 @@ describe("context lines only when context differs", () => {
     expect(after.every((line) => /evidence authorized/i.test(line) && !/not authorized/i.test(line))).toBe(true);
   });
 
+  it("a turn recorded under a different project/folder names them, and a machine-less scope still reads", () => {
+    const view = render({ surface: "web", fixture: "grounded-answer" });
+    const thread = getFixture("grounded-answer").thread;
+    const moved = { ...thread, turns: thread.turns.map((turn) => ({ ...turn, context: { ...turn.context, projectId: "project-brake-system", folderId: "folder-brake-history" } })) };
+    act(() => { view.dispatch({ type: "hydrate", data: { thread: moved } }); });
+    const lines = () => Array.from(view.container.querySelectorAll<HTMLElement>('[data-context-line="turn"]')).map((el) => el.textContent ?? "");
+    expect(lines().length).toBeGreaterThan(0);
+    expect(lines().every((line) => /project Brake System/.test(line) && /folder /.test(line))).toBe(true);
+    const noMachine = { ...thread, turns: thread.turns.map((turn) => ({ ...turn, context: { ...turn.context, machineId: undefined, projectId: "project-brake-system" } })) };
+    act(() => { view.dispatch({ type: "hydrate", data: { thread: noMachine } }); });
+    expect(lines().every((line) => /^No machine · evidence /.test(line) && /project Brake System/.test(line))).toBe(true);
+  });
+
+  it("the open run outranks its thread and the machine link as the single current row", () => {
+    const view = render({ surface: "web", fixture: "work-run", onOpenItem: () => {} });
+    const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    const current = Array.from(nav.querySelectorAll<HTMLElement>('[aria-current="page"]'));
+    expect(current.length).toBe(1);
+    expect(current[0].dataset.itemKind).toBe("run");
+    expect(current[0].dataset.itemId).toBe("run-drive-a-f30001");
+  });
+
+  it("New chat is an enabled primary action when the host can start a thread, and it closes the drawer", () => {
+    const calls: string[] = [];
+    const view = render({ surface: "mobile", fixture: "project-tree", hooks: { onNewChat: () => calls.push("newChat") } });
+    const button = must(view.buttonNamed("New chat"), "New chat");
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-describedby")).toBeNull();
+    expect(view.container.querySelector("#fl-new-chat-reason")).toBeNull();
+    view.click(button);
+    expect(calls).toEqual(["newChat"]);
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
+  });
+
+  it("an inert item row (no host opener) is the single current row when its thread is open, before and after a search", () => {
+    const view = render({ surface: "web", fixture: "project-tree" });
+    act(() => { view.dispatch({ type: "hydrate", data: { thread: { ...getFixture("project-tree").thread, id: "thread-drive-a" } } }); });
+    const nav = () => must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
+    const current = () => Array.from(nav().querySelectorAll<HTMLElement>('[aria-current="page"]'));
+    expect(current().length).toBe(1);
+    expect(current()[0].tagName).toBe("LI");
+    expect(current()[0].dataset.itemId ?? current()[0].querySelector(".fl-tree__label")?.textContent).toBeTruthy();
+    const input = must(view.container.querySelector<HTMLInputElement>('input[aria-label="Search navigation"]'), "search");
+    const setter = must(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set, "value setter");
+    act(() => { setter.call(input, "brake"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(current().length).toBe(1);
+  });
+
   it("a turn recorded against a different machine still says so", () => {
     const view = render({ surface: "web", fixture: "grounded-answer" });
     expect(view.container.querySelector('[data-context-line="turn"]')).toBeNull();
@@ -200,7 +248,8 @@ describe("stylesheet contract", () => {
     const view = render({ surface: "mobile", fixture: "project-tree" });
     expect(view.container.querySelector('[aria-label="FactoryLM navigation"] .fl-shell__nav-scroll')).not.toBeNull();
     const mobile = shell.slice(shell.indexOf("@media (max-width: 48rem)"));
-    expect(mobile).toMatch(/\.fl-shell__nav-scroll\s*\{[^}]*overflow-y:\s*auto/s);
+    expect(shell).toMatch(/\n\.fl-shell__nav-scroll\s*\{[^}]*overflow-y:\s*auto/s);
+    expect(shell).toMatch(/\n\.fl-shell__sidebar\s*\{[^}]*position:\s*sticky;[^}]*block-size:\s*100dvh/s);
     expect(mobile).toMatch(/\.fl-shell__brand-mark\s*\{[^}]*display:\s*block/s);
     expect(shell).toMatch(/\.fl-shell__brand-mark\s*\{[^}]*display:\s*none/s);
   });
