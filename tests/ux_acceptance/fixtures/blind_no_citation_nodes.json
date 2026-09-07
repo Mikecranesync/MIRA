@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000008",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "The screen the markup moved out from under: no node carries data-part-type=source. A detector must call this UNKNOWN \u2014 reporting PASS here is how a gate stops gating.",
+  "nodes": [
+    {
+      "id": "a1",
+      "tag": "div",
+      "text": "Serial number 49849 is listed on the nameplate [1].",
+      "attrs": {
+        "class": "fl-turn__parts"
+      }
+    }
+  ]
+}

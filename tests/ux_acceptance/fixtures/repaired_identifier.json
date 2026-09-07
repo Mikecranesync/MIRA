@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000004",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "One scope badge renders the identifier once; the other three sites stop repeating it.",
+  "nodes": [
+    {
+      "id": "scope-badge",
+      "tag": "span",
+      "text": "Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "pill"
+      }
+    },
+    {
+      "id": "breadcrumb",
+      "tag": "span",
+      "text": "Notebooks",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "breadcrumb"
+      }
+    }
+  ]
+}

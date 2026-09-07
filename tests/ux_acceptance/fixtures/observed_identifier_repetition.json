@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000003",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "Pixel 9a 2026-09-07, .audit/device/01-current.png. Four renderings of one identifier in the top third (mobile teardown \u00a71.2). The per-turn site is Conversation.tsx:77; describeContext is parts.tsx:52-57.",
+  "nodes": [
+    {
+      "id": "header-title",
+      "tag": "span",
+      "text": "Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "title"
+      }
+    },
+    {
+      "id": "breadcrumb",
+      "tag": "span",
+      "text": "Notebooks / Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "breadcrumb"
+      }
+    },
+    {
+      "id": "machine-pill",
+      "tag": "span",
+      "text": "Sensor v0 overnight 2026-08-28 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "pill"
+      }
+    },
+    {
+      "id": "composer-using",
+      "tag": "span",
+      "text": "Using: Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta",
+        "data-context-site": "composer"
+      }
+    }
+  ]
+}

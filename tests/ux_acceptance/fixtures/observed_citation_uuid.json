@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000001",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "Pixel 9a, production build 1.1.0, 2026-09-07. Markup shape verified against packages/factorylm-ui/src/parts.tsx:125-136 (source chip) on the same date. The literal citation title is the string observed on the device (docs/audits/2026-09-07-mobile-recon-companion.md, E-1).",
+  "nodes": [
+    {
+      "id": "a1",
+      "tag": "div",
+      "text": "Serial number 49849 is listed on the nameplate [1].",
+      "attrs": {
+        "class": "fl-turn__parts"
+      }
+    },
+    {
+      "id": "cite-1",
+      "tag": "button",
+      "text": "FILE nameplate-12ac8c22-018a-4104-a247-d81c37bdb292.txt p. 1",
+      "attrs": {
+        "class": "fl-part fl-source",
+        "data-part-type": "source",
+        "data-source-id": "s1"
+      }
+    },
+    {
+      "id": "cite-1-kind",
+      "tag": "span",
+      "text": "FILE",
+      "attrs": {
+        "class": "fl-source__kind",
+        "data-parent": "cite-1"
+      }
+    },
+    {
+      "id": "cite-1-title",
+      "tag": "span",
+      "text": "nameplate-12ac8c22-018a-4104-a247-d81c37bdb292.txt",
+      "attrs": {
+        "data-parent": "cite-1"
+      }
+    },
+    {
+      "id": "cite-1-loc",
+      "tag": "span",
+      "text": "p. 1",
+      "attrs": {
+        "class": "fl-source__locator",
+        "data-parent": "cite-1"
+      }
+    }
+  ]
+}
