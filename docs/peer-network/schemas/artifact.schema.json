@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/artifact.schema.json",
+  "title": "peer-network artifact",
+  "version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "kind",
+    "sha",
+    "ref",
+    "recorded_at"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "commit",
+        "pr",
+        "handoff",
+        "test_evidence",
+        "reviewed_sha",
+        "verdict",
+        "screenshot",
+        "gate_log"
+      ]
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Reviews and verdicts bind to one immutable 40-character SHA (law 8)."
+    },
+    "ref": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "HOLD",
+        "UNDECIDABLE"
+      ]
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

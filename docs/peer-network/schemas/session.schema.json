@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.0/session.schema.json",
+  "title": "peer-network session",
+  "version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_uuid",
+    "provider",
+    "node_id",
+    "mission_id",
+    "state",
+    "context_budget",
+    "last_heartbeat"
+  ],
+  "properties": {
+    "session_uuid": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "node_id": {
+      "type": "string"
+    },
+    "mission_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "joined",
+        "idle",
+        "claimed",
+        "working",
+        "lease_at_risk",
+        "handing_off",
+        "reviewing",
+        "verifying",
+        "left"
+      ]
+    },
+    "context_budget": {
+      "type": "object",
+      "required": [
+        "used_pct",
+        "turns"
+      ],
+      "properties": {
+        "used_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "last_heartbeat": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
