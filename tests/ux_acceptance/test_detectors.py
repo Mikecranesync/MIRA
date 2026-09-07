@@ -131,7 +131,10 @@ def test_document_names_pass(label):
 def test_repetition_detector_fires_on_the_observed_four_renderings():
     finding = detect_identifier_repetition(load("observed_identifier_repetition"))
     assert finding.verdict is Verdict.FAIL
-    assert "4x" in " ".join(finding.evidence), finding.evidence
+    evidence = " ".join(finding.evidence)
+    assert "4 distinct site(s)" in evidence, evidence
+    for site in ("header-title", "breadcrumb", "machine-pill", "composer-using"):
+        assert site in evidence, f"{site} missing from the evidence: {evidence}"
 
 
 def test_repetition_detector_passes_when_rendered_once():
@@ -140,10 +143,84 @@ def test_repetition_detector_passes_when_rendered_once():
 
 
 def test_repetition_is_matched_on_normalised_text():
-    """Whitespace and case must not let a repeat hide."""
+    """Whitespace and case must not let a second SITE hide."""
     raw = json.loads((FIXTURES / "repaired_identifier.json").read_text())
-    raw["nodes"][1]["text"] = "  sensor v0   OVERNIGHT 2026-08-28 "
+    raw["nodes"] += [
+        {"id": "header", "tag": "header", "text": "",
+         "attrs": {"class": "fl-shell__header"}, "rendered": True, "hittable": True},
+        # Rendered BARE here, with different case and spacing.
+        {"id": "header-title", "tag": "h1", "parentId": "header",
+         "text": "  sensor v0   OVERNIGHT 2026-08-28 ",
+         "attrs": {"class": "fl-shell__title"}, "rendered": True, "hittable": True},
+    ]
     assert detect_identifier_repetition(Snapshot.from_dict(raw)).verdict is Verdict.FAIL
+
+
+def test_known_blind_spot_identifier_never_rendered_bare():
+    """A limit worth naming rather than discovering.
+
+    Containment matching needs SOME component to render the identifier on its
+    own, because the candidates are whole node texts. If every component wrapped
+    it — "Notebooks / X", "X · confirmed", "Using: X" — and none rendered a bare
+    "X", the shared substring is nobody's full text and the repetition is
+    missed.
+
+    The observed defect does not have this shape (the header title renders it
+    bare, which is why the detector fires). Closing it means common-substring
+    extraction across nodes, which trades this false negative for false
+    positives on incidental shared words. That trade has not been made, so the
+    blind spot is asserted here: this test documents current behaviour and will
+    fail the day someone closes it, which is the prompt to delete it.
+    """
+    raw = json.loads((FIXTURES / "repaired_identifier.json").read_text())
+    for node in raw["nodes"]:
+        if node["id"] == "machine-pill":
+            node["text"] = "Sensor v0 overnight 2026-08-28 · confirmed"
+    raw["nodes"] += [
+        {"id": "composer", "tag": "form", "text": "",
+         "attrs": {"class": "fl-composer"}, "rendered": True, "hittable": True},
+        {"id": "composer-using", "tag": "p", "parentId": "composer",
+         "text": "Using: Sensor v0 overnight 2026-08-28",
+         "attrs": {"class": "fl-card__meta"}, "rendered": True, "hittable": True},
+    ]
+    finding = detect_identifier_repetition(Snapshot.from_dict(raw))
+    assert finding.verdict is Verdict.PASS, (
+        "this documents a MISS, not a success — two components wrap one identifier "
+        "and neither renders it bare. If this now FAILs, the blind spot was closed "
+        "and this test should be deleted."
+    )
+
+
+def test_one_component_repeating_down_a_list_is_not_a_defect():
+    """The regression this detector nearly shipped.
+
+    Each turn is an `li.fl-turn` carrying its own
+    `.fl-turn__head > .fl-card__meta` context line, so a three-turn thread
+    renders that line three times — and renders a BOUND machine's name three
+    times too. An earlier version counted carrier NODES and so would have
+    failed the REPAIRED product: fix D-5 by binding a machine, and the gate
+    stays red. A gate that fails the repaired product gets muted, which is the
+    same death as a gate that cannot fail, reached from the other side.
+
+    Spatial repetition (four components, one moment) is the defect. Temporal
+    repetition (one component, once per turn) is a list doing its job.
+    """
+    finding = detect_identifier_repetition(load("repaired_three_turns_bound_machine"))
+    assert finding.verdict is Verdict.PASS, finding.summary + " | " + str(finding.evidence)
+
+
+def test_the_temporal_fixture_really_does_repeat_the_string():
+    """Positive control for the test above: if the fixture did not actually
+    render the identifier three times, PASS would prove nothing."""
+    snap = load("repaired_three_turns_bound_machine")
+    carriers = [n for n in snap.rendered_nodes() if "CV-101 · confirmed" in n.text]
+    assert len(carriers) == 3, f"fixture renders it {len(carriers)}x, expected 3"
+    from ux_acceptance.derive import site_signature
+
+    assert len({site_signature(snap, n) for n in carriers}) == 1, (
+        "the three carriers must share one render site, or this fixture is "
+        "testing spatial repetition rather than temporal"
+    )
 
 
 def test_all_empty_context_labels_is_unknown_not_pass():
@@ -426,6 +503,9 @@ KNOWN_UNROLED = {
     "cite-1-kind", "cite-1-title", "cite-1-loc",  # chip internals, read via the chip
     "header-title", "breadcrumb", "machine-pill", "composer-using", "scope-badge",
     "b1", "b2",  # evidence_basis pills derive EVIDENCE_BASIS via attrs, not text
+    # Turn role labels ("You"/"MIRA"/"System") — ROLE_LABEL in Conversation.tsx.
+    # Below MIN_IDENTIFIER_LEN and carrying no identifier claim.
+    "turn1-role", "turn2-role", "turn3-role",
 }
 
 

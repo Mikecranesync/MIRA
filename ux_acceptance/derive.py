@@ -109,6 +109,31 @@ def children_of(snapshot: Snapshot, parent_id: str) -> list[Node]:
     return [n for n in snapshot.nodes if n.parent_id == parent_id]
 
 
+def site_signature(snapshot: Snapshot, node: Node) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """A node's RENDER SITE: its ancestry as (tag, classes), root-ward.
+
+    Two carriers of the same string are the same *site* when their signatures
+    match — one component rendering repeatedly down a list. They are different
+    sites when the signatures differ — different components each deciding the
+    same fact mattered.
+
+    This is the distinction between spatial and temporal repetition, and it is
+    the one the teardown actually drew. Each turn is an `li.fl-turn` carrying
+    its own `.fl-turn__head > .fl-card__meta` context line, so a five-turn
+    thread renders that line five times legitimately — and would render a
+    BOUND machine's name five times too. Counting nodes fails the repaired
+    product; counting sites does not.
+    """
+    chain: list[tuple[str, tuple[str, ...]]] = []
+    seen: set[str] = set()
+    current: Node | None = node
+    while current is not None and current.id not in seen:
+        seen.add(current.id)
+        chain.append((current.tag, tuple(sorted(current.classes()))))
+        current = _parent(snapshot, current)
+    return tuple(chain)
+
+
 def is_ancestor(snapshot: Snapshot, ancestor_id: str, node: Node) -> bool:
     """True when `ancestor_id` is above `node`. Guards against double counting:
     a parent's text contains its children's, so an ancestor/descendant pair is
