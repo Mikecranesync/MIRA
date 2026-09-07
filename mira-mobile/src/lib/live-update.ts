@@ -120,6 +120,21 @@ export type BusyProbe = () => Promise<boolean> | boolean;
  * when to surface it, and only the technician decides when to restart — an
  * update that reloads mid-diagnosis is a worse defect than the one it fixes.
  */
+/**
+ * Distinguish the failure modes the plugin reports through one rejected promise.
+ * Checksum and signature are TRUST failures and must be named as such; anything
+ * network-shaped is transient and must never be reported as an integrity problem.
+ */
+export function classifyDownloadFailure(e: unknown): string {
+  const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
+  if (/checksum|digest|sha-?256|hash/.test(msg)) return "checksum_mismatch";
+  if (/signature|signed|public key|verif/.test(msg)) return "signature_invalid";
+  if (/already exists|duplicate/.test(msg)) return "duplicate_bundle";
+  if (/network|timeout|timed out|socket|connection|unreachable|dns|econn|offline/.test(msg))
+    return "download_failed";
+  return "verify_failed";
+}
+
 export async function checkAndStage(opts: {
   channel: OtaChannel;
   /** Any pending offline work, upload, or in-flight mutation → skip this cycle. */
@@ -160,6 +175,35 @@ export async function checkAndStage(opts: {
     return { staged: null, reason: "not_https" };
   }
 
+  // The manifest may legitimately offer the bundle this device is ALREADY
+  // running — a canary that has not moved since the last publish. Re-downloading
+  // it is pure waste and, worse, turns a healthy device into one that reports an
+  // integrity failure every time the technician taps Check now.
+  const active = await LiveUpdate.getCurrentBundle()
+    .then((r) => r?.bundleId ?? "")
+    .catch(() => "");
+  if (active && active === manifest.bundleId) {
+    return { staged: null, reason: "up_to_date" };
+  }
+
+  // Downloaded on an earlier cycle but not yet active: stage what we already
+  // hold instead of fetching it twice. Behind a capability check — if the plugin
+  // cannot enumerate bundles we fall through to the download path, which is
+  // exactly today's behaviour.
+  const enumerate = (LiveUpdate as unknown as {
+    getBundles?: () => Promise<{ bundleIds?: string[] } | string[] | undefined>;
+  }).getBundles;
+  if (typeof enumerate === "function") {
+    const held = await enumerate
+      .call(LiveUpdate)
+      .then((r) => (Array.isArray(r) ? r : (r?.bundleIds ?? [])))
+      .catch(() => [] as string[]);
+    if (Array.isArray(held) && held.includes(manifest.bundleId)) {
+      await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
+      return { staged: manifest.bundleId, reason: "reused_local" };
+    }
+  }
+
   try {
     await LiveUpdate.downloadBundle({
       bundleId: manifest.bundleId,
@@ -172,10 +216,12 @@ export async function checkAndStage(opts: {
     await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
     return { staged: manifest.bundleId, reason: "staged" };
   } catch (e) {
-    // Checksum mismatch, signature failure, or transport error all land here and
-    // all mean the same thing to the technician: nothing changed.
+    // These do NOT mean the same thing. A checksum or signature failure is a
+    // trust event; a transport error is a bad minute on the network. Collapsing
+    // them told a technician with a working phone that their update had failed an
+    // integrity check.
     console.warn("[ota] download/verify rejected", e);
-    return { staged: null, reason: "verify_failed" };
+    return { staged: null, reason: classifyDownloadFailure(e) };
   }
 }
 

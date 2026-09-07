@@ -68,13 +68,22 @@
    area sized itself to the composer row's min-content (550px at a 412px viewport)
    and the page scrolled sideways. */
 .fl-shell__main { min-inline-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.fl-shell__header { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-header); color: var(--fl-workspace-header-ink); }
+.fl-shell__header { display: flex; align-items: center; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-header); color: var(--fl-workspace-header-ink); }
 .fl-shell__header h1,
 .fl-shell__header p { margin: 0; }
-.fl-shell__header h1 { font-size: var(--fl-workspace-fs-title); }
+/* The title block takes the free space so it sits beside the drawer control
+   instead of being pushed flush to the right edge by space-between; the
+   inspector control is the only thing that anchors right. */
+.fl-shell__header > div { flex: 1 1 auto; min-inline-size: 0; }
+.fl-shell__inspector-toggle { margin-inline-start: auto; }
+.fl-shell__header h1 { font-size: var(--fl-workspace-fs-title); line-height: var(--fl-workspace-lh-tight); font-weight: 600; }
 .fl-shell__eyebrow { color: var(--fl-workspace-header-muted); font-size: var(--fl-workspace-fs-xs); text-transform: uppercase; }
 .fl-shell__navigation-toggle,
 .fl-shell__drawer-close { display: none; }
+
+/* Visually hidden, still in the accessibility tree and still matched by
+   getByRole(name) / getByText — used for icon-button labels. */
+.fl-sr-only { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; white-space: nowrap; clip-path: inset(50%); }
 .fl-shell__inspector-toggle { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
 .fl-shell__inspector-toggle svg { inline-size: 1rem; block-size: 1rem; }
 .fl-shell__placeholder { display: grid; place-items: center; padding: var(--fl-workspace-space-6); color: var(--fl-workspace-muted); }
@@ -102,7 +111,7 @@
   }
   .fl-shell[data-navigation-visible="true"] .fl-shell__sidebar { transform: translateX(0); }
   .fl-shell__navigation-toggle,
-  .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
+  .fl-shell__drawer-close { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-inline-size: max(2.75rem, 44px); min-block-size: max(2.75rem, 44px); padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; border-radius: var(--fl-workspace-radius) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
   .fl-tree { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; }
   .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }

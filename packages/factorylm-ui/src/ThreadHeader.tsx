@@ -16,7 +16,8 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
       type="button"
       onClick={() => dispatch({ type: "set-navigation-visible", visible: true })}
     >
-      Open navigation
+      <span aria-hidden="true">☰</span>
+      <span className="fl-sr-only">Open navigation</span>
     </button>
     <div>
       <p className="fl-shell__eyebrow">{state.profile.kind}</p>

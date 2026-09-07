@@ -201,7 +201,7 @@ function FilesList({ onOpen, onBack }: { onOpen: (id: string) => void; onBack: (
   return (
     <div className="content bottompad">
       <button className="btn-link" onClick={onBack}>
-        ← More
+        ← Back
       </button>
       <h3 style={{ margin: "4px 0 8px" }}>Files</h3>
       <div className="meta" style={{ marginBottom: 8 }}>

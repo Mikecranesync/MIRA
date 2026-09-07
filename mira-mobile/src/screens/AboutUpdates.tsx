@@ -73,7 +73,7 @@ export function AboutUpdates({
   return (
     <div className="content bottompad">
       <button className="btn-link" onClick={onBack}>
-        ← More
+        ← Back
       </button>
       <h3>About &amp; updates</h3>
 
@@ -156,6 +156,18 @@ function explain(reason: string): string {
       return "Refused — the update was not properly signed.";
     case "not_https":
       return "Refused — insecure download location.";
+    case "up_to_date":
+      return "Up to date — this device is already running the offered build.";
+    case "reused_local":
+      return "Ready — an update already downloaded was staged. Restart to finish.";
+    case "checksum_mismatch":
+      return "Refused — the download did not match its checksum. Nothing changed.";
+    case "signature_invalid":
+      return "Refused — the update's signature did not verify. Nothing changed.";
+    case "duplicate_bundle":
+      return "Already downloaded — nothing to fetch.";
+    case "download_failed":
+      return "Download did not finish — network problem. Nothing changed; try again.";
     case "verify_failed":
       return "Refused — the update failed its integrity check. Nothing changed.";
     case "unreachable":

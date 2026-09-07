@@ -149,17 +149,48 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     expect(r).toMatchObject({ staged: null, reason: "unreachable" });
   });
 
-  it("reports verify_failed and stages nothing when the plugin rejects the bundle", async () => {
-    // Checksum mismatch / bad signature surface here. The technician's app is
-    // unchanged, which is the only outcome that matters.
+  // CANARY-OTA-NAV-AUDIT: these four used to collapse into one "integrity" message,
+  // which told a technician on a bad network that their update had failed a trust
+  // check. The app being unchanged is still the outcome; WHY it is unchanged is now
+  // distinguishable, because only two of these four are trust events.
+  it.each([
+    ["checksum mismatch", "checksum_mismatch"],
+    ["signature verification failed", "signature_invalid"],
+    ["bundle already exists", "duplicate_bundle"],
+    ["network connection timed out", "download_failed"],
+  ])("plugin rejects with %j -> reason %j, and stages nothing", async (thrown, reason) => {
     const { checkAndStage } = await import("../live-update");
     serve(validManifest);
-    plugin.downloadBundle.mockRejectedValueOnce(new Error("checksum mismatch"));
+    plugin.downloadBundle.mockRejectedValueOnce(new Error(thrown));
 
     const r = await checkAndStage({ channel: "canary", isBusy: idle });
 
-    expect(r).toMatchObject({ staged: null, reason: "verify_failed" });
+    expect(r).toMatchObject({ staged: null, reason });
     expect(plugin.setNextBundle).not.toHaveBeenCalled();
+  });
+
+  it("falls back to verify_failed for an unrecognised rejection", async () => {
+    const { checkAndStage } = await import("../live-update");
+    serve(validManifest);
+    plugin.downloadBundle.mockRejectedValueOnce(new Error("something nobody anticipated"));
+    const r = await checkAndStage({ channel: "canary", isBusy: idle });
+    expect(r).toMatchObject({ staged: null, reason: "verify_failed" });
+  });
+
+  it("reuses a bundle already downloaded but not active, without re-downloading", async () => {
+    const { checkAndStage } = await import("../live-update");
+    plugin.getCurrentBundle.mockResolvedValueOnce({ bundleId: "1.1.6-oldbundle" });
+    (plugin as Record<string, unknown>).getBundles = vi.fn(async () => ({
+      bundleIds: [validManifest.bundleId],
+    }));
+    serve(validManifest);
+
+    const r = await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(plugin.downloadBundle).not.toHaveBeenCalled();
+    expect(plugin.setNextBundle).toHaveBeenCalledWith({ bundleId: validManifest.bundleId });
+    expect(r).toMatchObject({ staged: validManifest.bundleId, reason: "reused_local" });
+    delete (plugin as Record<string, unknown>).getBundles;
   });
 });
 
@@ -187,5 +218,18 @@ describe("startup + recovery", () => {
   it("reports the packaged bundle when nothing has been staged", async () => {
     const { currentBundleId } = await import("../live-update");
     expect(await currentBundleId()).toBe("packaged");
+  });
+});
+
+describe("CANARY-OTA-NAV-AUDIT — Mike's Pixel: canary offers the bundle already running", () => {
+  it("says up to date and does NOT re-download the active bundle", async () => {
+    // Reproduces the reported state exactly: 1.1.7-9bfdc185 is ACTIVE, and the
+    // canary manifest offers that same bundle id.
+    plugin.getCurrentBundle.mockResolvedValueOnce({ bundleId: "1.1.7-9bfdc185" });
+    serve({ ...validManifest, bundleId: "1.1.7-9bfdc185" });
+    const { checkAndStage } = await import("../live-update");
+    const r = await checkAndStage({ channel: "canary", isBusy: async () => false });
+    expect(plugin.downloadBundle).not.toHaveBeenCalled();
+    expect(r).toEqual({ staged: null, reason: "up_to_date" });
   });
 });
