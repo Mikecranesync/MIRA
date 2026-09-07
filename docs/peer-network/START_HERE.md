@@ -70,7 +70,9 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
 **Claim** (`claim_work`)
 4. Post a `[WORK-CLAIM]` block (`.claude/rules/multi-session-protocol.md` §2) on the canonical
    issue/PR with `Status: ACTIVE`, **`Claimed at: <UTC ISO-8601>`**, the base SHA, branch, worktree
-   and the **resource keys** you need (`schemas/claim.schema.json`). **Wait at least 60 seconds,
+   and the **resource keys** you need (`schemas/claim.schema.json`). Claim states: `ACTIVE` (held, working), `BLOCKED` (held, waiting on a human gate or
+   dependency), `LEASE_AT_RISK` (renewal missed — stop before the next edit or push), `RELEASED`,
+   `COMPLETE`. **Wait at least 60 seconds,
    then re-read the whole thread** (a settling interval, so two near-simultaneous posts both see
    each other). The ACTIVE claim with the earliest `claimed_at` overlapping your keys wins; the
    comment's own creation time is only a tiebreak — never the ordering key, because editing a
