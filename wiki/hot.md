@@ -16,8 +16,10 @@ Current delivery ledger:
   **completely new shared UI** implementation. Codex passed its code at exact
   head `15c1398ce1508856ab5617a0e0c98b81127a6fc5` after mobile overflow,
   stacked-focus, host-owned Retry, 108-unit-test, and 95-browser-test proof.
-  Because #3646 moved `main`, that verdict is intentionally not merge-ready:
-  Claude must rebase #3643 and Codex must recheck the resulting exact head.
+  Because #3646 moved `main`, that verdict is intentionally not merge-ready.
+  Claude has since merged current `main` into the branch at
+  `5ae639a6370f91a58cee0413a803b0be3c218b1b`; Codex must recheck that exact
+  head before readying or merging it.
 - [PR #3644](https://github.com/Mikecranesync/MIRA/pull/3644) remains parked and
   draft. Do not merge its `mira-mobile/src/screens/**` changes as new product UI
   and do not use a legacy exception to bypass the product direction. Rework the
