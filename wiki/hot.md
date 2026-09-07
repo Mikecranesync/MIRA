@@ -37,9 +37,10 @@ environments are not installed on every cluster node.
 
 No production route, deployment, feature flag, database, provider, auth, or
 customer-data state changed. The legacy runtime remains available only as a
-rollback surface. Next: clear #3647 CI/exact-head review, merge it, rebase and
-re-review #3643, then start only bounded new-UI adapter work. Cross-session peer
-messages supplement this ledger; GitHub remains authoritative.
+rollback surface. Next: clear #3647 CI/exact-head review, merge it, then
+incorporate that newly advanced `main` into #3643 and run its final
+exact-head review, then start only bounded new-UI adapter work. Cross-session
+peer messages supplement this ledger; GitHub remains authoritative.
 
 ---
 
