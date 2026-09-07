@@ -2,7 +2,7 @@
 
 - **Owner/session:** mira-97 (Claude Code session_013qHdfeCVeFpHsZWwmdpN36), CHARLIE
 - **Branch:** `feat/fleet-peer-network-001a-contract` · **Worktree:** `/Users/charlienode/MIRA-worktrees/fleet-peer-network-001a`
-- **Base SHA:** `f5f994a78d6d2f2e9393381662804f375dc59209` · **HEAD SHA:** _(filled at push; see the PR)_
+- **Base SHA:** `f5f994a78d6d2f2e9393381662804f375dc59209` · **HEAD SHA:** `0da06c8c247189fe97d9e321b739ad6b60e14be4` (first push; later heads on the PR)
 - **Claim generation:** 1
 
 ## Changed files
