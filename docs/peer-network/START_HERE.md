@@ -125,6 +125,16 @@ it names. Reading a check proves nothing; mutate the thing it protects and watch
 the full test count intact, so a load failure is not mistaken for a control. (Five instances on
 Slice A alone were caught this way and none by reading.)
 
+**Rule against green-by-skipping:** a suite that can pass by not running is not a gate, and the
+test count is the tell. Two instances in two days: a Slice A step ran `pytest.importorskip("jsonschema")`
+on a job that never installed it, so five rejection proofs *skipped* and the step reported green;
+and the beta gate read a pytest exit code as its verdict, and a run whose only tests skip exits 0 —
+green having proven nothing. Different mechanisms, same species: the artifact ran, the behaviour did
+not, and nothing distinguished them from outside. So: imports the assertions need are **hard** (a
+missing dependency is a RED step, never a skip); a gate reads the pass/fail *count and names*, never
+a bare exit code; and any expected skip is asserted to be zero. This sits beside the guard rule
+above — that one covers guards that never fire, this one covers suites that never run.
+
 **Rule for every record:** a field that carries an authority claim — a SHA, a verdict, a gate
 decision, a lease state — needs a pattern or an enum, never prose. `claim.base_sha`,
 `artifact.sha`, `claim.status` and the per-kind `event.payload` proofs are the examples; a verdict
