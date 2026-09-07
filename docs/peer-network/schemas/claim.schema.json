@@ -55,11 +55,12 @@
       "type": "string",
       "enum": [
         "ACTIVE",
+        "BLOCKED",
         "LEASE_AT_RISK",
         "RELEASED",
         "COMPLETE"
       ],
-      "description": "Lifecycle of the lease. ACTIVE = held; LEASE_AT_RISK = renewal missed, stop before the next edit/push; RELEASED = given up (lost the race, handed back, stale takeover); COMPLETE = work delivered and claims released (law 5)."
+      "description": "Lifecycle of the lease. ACTIVE = held and working; BLOCKED = held, waiting on a human gate or dependency (protocol \u00a72); LEASE_AT_RISK = renewal missed, stop before the next edit/push (PRD \u00a78); RELEASED = given up (lost the race, handed back, stale takeover); COMPLETE = delivered and released (law 5)."
     },
     "claimed_at": {
       "type": "string",
