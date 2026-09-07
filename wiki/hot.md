@@ -35,9 +35,9 @@ Current delivery ledger:
 - [PR #3651](https://github.com/Mikecranesync/MIRA/pull/3651) is draft Slice C,
   implementing navigation hierarchy and visual-review findings only in the
   canonical shared package plus its isolated lab/tests. Head
-  `246e50b206ee1429b6a04425a35fb043fdfec7ba` has green CI and fixes the prior
+  `f68eaae3bfbc3e45c0ba659a60c7a311c1b2e5f8` fixes the prior
   inert-current-row, mode-priority, Recent-marker, and stale-evidence findings.
-  A fresh exact-head Codex product/code/visual review is active; keep it draft
+  Its GitHub CI and fresh exact-head Codex product/code/visual review are active; keep it draft
   until that verdict, then rebase after #3647 advances `main` and review the
   resulting SHA again.
 - [PR #3652](https://github.com/Mikecranesync/MIRA/pull/3652) is draft Slice D,
