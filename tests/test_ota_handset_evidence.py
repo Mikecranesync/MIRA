@@ -94,9 +94,7 @@ def test_accepts_exact_play_signed_handset_receipt(tmp_path: Path) -> None:
         ("pointerChangedAt", "2026-09-07T01:02:03.005Z"),
     ],
 )
-def test_rejects_receipt_not_bound_to_exact_canary(
-    tmp_path: Path, field: str, value: str
-) -> None:
+def test_rejects_receipt_not_bound_to_exact_canary(tmp_path: Path, field: str, value: str) -> None:
     evidence = _evidence(tmp_path)
     evidence[field] = value
     with pytest.raises(EvidenceError, match=field):

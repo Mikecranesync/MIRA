@@ -57,11 +57,11 @@ def _run_authorizer(
     gh = bin_dir / "gh"
     gh.write_text(
         "#!/bin/sh\n"
-        "test \"$#\" -eq 4 || exit 90\n"
-        "test \"$1\" = api || exit 91\n"
-        "test \"$2\" = repos/Mikecranesync/MIRA/git/ref/heads/main || exit 92\n"
-        "test \"$3\" = --jq || exit 93\n"
-        "test \"$4\" = .object.sha || exit 94\n"
+        'test "$#" -eq 4 || exit 90\n'
+        'test "$1" = api || exit 91\n'
+        'test "$2" = repos/Mikecranesync/MIRA/git/ref/heads/main || exit 92\n'
+        'test "$3" = --jq || exit 93\n'
+        'test "$4" = .object.sha || exit 94\n'
         "printf '%s\\n' \"$REMOTE_MAIN_SHA\"\n",
         encoding="utf-8",
     )
@@ -198,9 +198,7 @@ def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
     assert "secrets." not in revalidate_text
 
     credential = steps[credential_index]
-    assert credential["env"] == {
-        "STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}"
-    }
+    assert credential["env"] == {"STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}"}
     assert "VPS_SSH_KEY" not in json.dumps(deploy)
 
 
@@ -209,9 +207,7 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
     workflow = _workflow()
     deploy = workflow["jobs"]["deploy"]
     checkout = next(step for step in deploy["steps"] if "uses" in step)
-    assert checkout["uses"] == (
-        "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
-    )
+    assert checkout["uses"] == ("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803")
     assert checkout["with"] == {
         "ref": "${{ needs.authorize-target.outputs.target_sha }}",
         "persist-credentials": False,
@@ -226,9 +222,9 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
         "DEPLOY_USER": "${{ steps.revalidate.outputs.deploy_user }}",
     }
     script = deploy_step["run"]
-    assert "git fetch --no-tags origin \"$TARGET_REF\"" in script
+    assert 'git fetch --no-tags origin "$TARGET_REF"' in script
     assert '"$FETCHED_SHA" = "$TARGET_SHA"' in script
-    assert "git reset --hard \"$TARGET_SHA\"" in script
+    assert 'git reset --hard "$TARGET_SHA"' in script
     assert "git diff --quiet" in script
     assert "git diff --cached --quiet" in script
     assert "git ls-files --others --exclude-standard" in script
@@ -248,9 +244,7 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
 def test_staging_health_and_production_co_tenant_guards_fail_the_job():
     """A red staging service or missing prod container cannot be log-only success."""
     workflow = _workflow()
-    script = _step(
-        workflow["jobs"]["deploy"], "Deploy exact authorized staging source"
-    )["run"]
+    script = _step(workflow["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
 
     assert '|| echo "FAIL"' not in script
     for port_path in (

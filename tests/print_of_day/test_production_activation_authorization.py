@@ -26,9 +26,7 @@ def test_activation_authorizes_current_main_without_production_credentials() -> 
 
     assert "environment" not in authorize
     assert "secrets." not in json.dumps(authorize)
-    assert authorize["outputs"] == {
-        "source_sha": "${{ steps.authorize.outputs.source_sha }}"
-    }
+    assert authorize["outputs"] == {"source_sha": "${{ steps.authorize.outputs.source_sha }}"}
     step = _step(authorize, "Authorize exact current main source")
     script = step["run"]
     assert "git/ref/heads/main" in script
@@ -54,9 +52,7 @@ def test_activation_revalidates_main_immediately_before_ssh_key_access() -> None
         if step.get("name") == "Revalidate exact current main source"
     )
     credential_index = next(
-        index
-        for index, step in enumerate(activate["steps"])
-        if step.get("name") == "Set up SSH"
+        index for index, step in enumerate(activate["steps"]) if step.get("name") == "Set up SSH"
     )
     assert credential_index == revalidate_index + 1
     revalidate = activate["steps"][revalidate_index]
@@ -69,12 +65,10 @@ def test_activation_remote_checkout_is_bound_to_authorized_sha() -> None:
     activate = _workflow()["jobs"]["activate"]
     step = _step(activate, "Apply production profile and verify live")
 
-    assert step["env"] == {
-        "ACTIVATION_SHA": "${{ needs.authorize-source.outputs.source_sha }}"
-    }
+    assert step["env"] == {"ACTIVATION_SHA": "${{ needs.authorize-source.outputs.source_sha }}"}
     script = step["run"]
     assert 'bash -s -- "$ACTIVATION_SHA"' in script
-    assert 'git fetch origin main --tags --force' in script
+    assert "git fetch origin main --tags --force" in script
     assert '"$FETCHED_SHA" = "$TARGET_SHA"' in script
     assert 'git reset --hard "$TARGET_SHA"' in script
     assert '"$(git rev-parse HEAD)" = "$TARGET_SHA"' in script

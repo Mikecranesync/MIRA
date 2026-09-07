@@ -15,9 +15,7 @@ from typing import Any, Mapping
 HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 HEX_16 = re.compile(r"^[0-9a-f]{16}$")
-CANONICAL_TIMESTAMP = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
-)
+CANONICAL_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 EVIDENCE_PREFIX = PurePosixPath("docs/release/evidence/ota/files")
 REQUIRED_FILE_KINDS = {"adb_transcript", "about_screenshot"}
 ALLOWED_FILE_KINDS = REQUIRED_FILE_KINDS | {"update_ready_screenshot"}
@@ -51,9 +49,7 @@ def _canonical_time(field: str, value: object) -> datetime:
     if not isinstance(value, str) or not CANONICAL_TIMESTAMP.fullmatch(value):
         raise EvidenceError(f"{field} must be canonical UTC milliseconds")
     try:
-        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
-            tzinfo=timezone.utc
-        )
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
     except ValueError as exc:
         raise EvidenceError(f"{field} is not a real timestamp") from exc
     if parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z") != value:
@@ -125,9 +121,7 @@ def validate_evidence(
     _expect_exact("schemaVersion", value.get("schemaVersion"), 1)
     _expect_exact("result", value.get("result"), "PASS")
     _expect_exact("bundleId", value.get("bundleId"), expected_bundle_id)
-    _expect_exact(
-        "pointerChangedAt", value.get("pointerChangedAt"), expected_pointer_changed_at
-    )
+    _expect_exact("pointerChangedAt", value.get("pointerChangedAt"), expected_pointer_changed_at)
     _expect_exact("packageName", value.get("packageName"), "com.factorylm.mira")
     _expect_exact("installerPackage", value.get("installerPackage"), "com.android.vending")
     _expect_exact("updateReady", value.get("updateReady"), True)

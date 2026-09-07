@@ -2944,22 +2944,17 @@ def test_workflow_fetches_immutable_tree_evidence_without_changing_pull_files_co
     )
     metadata_run = metadata_step["run"]
 
-    assert (
-        'gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"'
-        in metadata_run
-    )
+    assert 'gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"' in metadata_run
     assert "--jq '.[] | {filename, status, previous_filename}'" in metadata_run
     assert "compare/$BASE_SHA...$HEAD_SHA" in metadata_run
     assert "merge_base_commit.sha" in metadata_run
     assert "git/trees/$MERGE_BASE_SHA?recursive=1" in metadata_run
     assert "git/trees/$HEAD_SHA?recursive=1" in metadata_run
-    assert 'jq -r \'.base.sha\' "$RUNNER_TEMP/current-pull.json"' in metadata_run
-    assert 'jq -r \'.head.sha\' "$RUNNER_TEMP/current-pull.json"' in metadata_run
+    assert "jq -r '.base.sha' \"$RUNNER_TEMP/current-pull.json\"" in metadata_run
+    assert "jq -r '.head.sha' \"$RUNNER_TEMP/current-pull.json\"" in metadata_run
 
     eval_step = next(
-        step
-        for step in steps
-        if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
+        step for step in steps if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
     )
     assert '--base-tree-json-file "$RUNNER_TEMP/base-tree.json"' in eval_step["run"]
     assert '--head-tree-json-file "$RUNNER_TEMP/head-tree.json"' in eval_step["run"]
@@ -2977,11 +2972,11 @@ def test_workflow_evaluates_before_tests_and_isolates_python_from_repo_hooks():
     doc = _workflow_doc()
     steps = doc["jobs"]["guard"]["steps"]
     eval_idx = next(
-        i for i, step in enumerate(steps) if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
+        i
+        for i, step in enumerate(steps)
+        if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
     )
-    test_idx = next(
-        i for i, step in enumerate(steps) if "pytest" in step.get("run", "")
-    )
+    test_idx = next(i for i, step in enumerate(steps) if "pytest" in step.get("run", ""))
     eval_step = steps[eval_idx]
     test_step = steps[test_idx]
 
@@ -3258,15 +3253,12 @@ def test_mobile_release_tests_are_isolated_from_production_signing_workspace():
     assert "gradlew" not in sign_text
 
     checkout = next(
-        step
-        for step in build_job["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
+        step for step in build_job["steps"] if step.get("uses", "").startswith("actions/checkout@")
     )
     assert checkout["with"]["ref"] == "${{ github.sha }}"
     assert checkout["with"]["persist-credentials"] is False
     assert not any(
-        step.get("uses", "").startswith("actions/checkout@")
-        for step in sign_job["steps"]
+        step.get("uses", "").startswith("actions/checkout@") for step in sign_job["steps"]
     )
 
 
@@ -3287,23 +3279,17 @@ def test_ota_build_is_isolated_from_production_signing_workspace():
     assert "bun run build" in build_text
     assert sign_job["environment"] == "ota-signing"
     assert sign_job["needs"] == "build-ota"
-    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", sign_text)) == {
-        "OTA_SIGNING_DOPPLER_TOKEN"
-    }
+    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", sign_text)) == {"OTA_SIGNING_DOPPLER_TOKEN"}
     assert "bun run build" not in sign_text
     assert "bun install" not in sign_text
     assert "actions/download-artifact@" in sign_text
     assert not any(
-        step.get("uses", "").startswith("actions/checkout@")
-        for step in sign_job["steps"]
+        step.get("uses", "").startswith("actions/checkout@") for step in sign_job["steps"]
     )
     assert "node scripts/" not in sign_text
     assert "dopplerhq/cli-action@" not in sign_text
     assert "doppler_3.76.5_linux_amd64.tar.gz" in sign_text
-    assert (
-        "1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154"
-        in sign_text
-    )
+    assert "1b2f412d984920d665daf233ab6c15b364df9339b5c5b5224d5e8ee4e0a70154" in sign_text
     assert "sha256sum -c" in sign_text
     assert "cli.doppler.com/install.sh" not in sign_text
     assert "doppler run" not in sign_text
@@ -3328,17 +3314,14 @@ def test_ota_build_is_isolated_from_production_signing_workspace():
 
     assert publish_job["environment"] == "ota-canary"
     assert publish_job["needs"] == "sign-ota"
-    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", publish_text)) == {
-        "OTA_CANARY_SSH_KEY"
-    }
+    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", publish_text)) == {"OTA_CANARY_SSH_KEY"}
     assert "bun run build" not in publish_text
     assert "bun install" not in publish_text
     assert "actions/download-artifact@" in publish_text
     assert "OTA_SIGNING_PRIVATE_KEY" not in publish_text
     assert "doppler" not in publish_text.lower()
     assert not any(
-        step.get("uses", "").startswith("actions/checkout@")
-        for step in publish_job["steps"]
+        step.get("uses", "").startswith("actions/checkout@") for step in publish_job["steps"]
     )
     assert "node scripts/" not in publish_text
 
@@ -3358,8 +3341,7 @@ def test_ota_secret_jobs_do_not_execute_release_head_repository_code():
         job = jobs[job_name]
         text = json.dumps(job)
         assert not any(
-            step.get("uses", "").startswith("actions/checkout@")
-            for step in job["steps"]
+            step.get("uses", "").startswith("actions/checkout@") for step in job["steps"]
         ), f"{job_name} must not check out release-head code"
         assert "node scripts/" not in text
         assert "mira-mobile/scripts/" not in text
@@ -3470,12 +3452,10 @@ def test_ota_build_rechecks_native_inputs_and_fingerprints_immutable_head():
 def test_ota_pointer_source_and_signer_are_bound_to_reviewed_exact_outputs():
     workflow_path = REPO_ROOT / ".github" / "workflows" / "ota-release.yml"
     jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
-    prepare_text = "\n".join(
-        step.get("run", "") for step in jobs["prepare-pointer"]["steps"]
-    )
+    prepare_text = "\n".join(step.get("run", "") for step in jobs["prepare-pointer"]["steps"])
     signer = jobs["sign-pointer"]
 
-    assert "git merge-base --is-ancestor \"$RELEASE_SHA\" \"$GITHUB_SHA\"" in prepare_text
+    assert 'git merge-base --is-ancestor "$RELEASE_SHA" "$GITHUB_SHA"' in prepare_text
     assert "metadata.bundleId" in prepare_text
     assert "`${version}-${sha.slice(0, 8)}`" in prepare_text
 
@@ -3659,18 +3639,13 @@ def test_production_release_actions_are_pinned_to_full_commit_shas(workflow_name
 
 def test_mobile_release_tool_versions_are_immutable():
     for workflow_name in ("mobile-release-distribute.yml", "ota-release.yml"):
-        text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(
-            encoding="utf-8"
-        )
+        text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
         assert "bun-version: latest" not in text
     mobile_release = (
         REPO_ROOT / ".github" / "workflows" / "mobile-release-distribute.yml"
     ).read_text(encoding="utf-8")
     assert "https://firebase.tools/bin/linux/v15.29.0" in mobile_release
-    assert (
-        "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded"
-        in mobile_release
-    )
+    assert "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded" in mobile_release
     assert "sha256sum -c" in mobile_release
     assert "npx --yes firebase-tools" not in mobile_release
 
@@ -3723,17 +3698,13 @@ def _native_job_secret_refs(job: dict) -> set[str]:
         ("vps-cleanup.yml", "cleanup"),
     ],
 )
-def test_main_controller_ssh_jobs_reject_stale_sources_before_credentials(
-    workflow_name, job_name
-):
+def test_main_controller_ssh_jobs_reject_stale_sources_before_credentials(workflow_name, job_name):
     path = REPO_ROOT / ".github" / "workflows" / workflow_name
     job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job_name]
     assert "github.ref == 'refs/heads/main'" in str(job.get("if", ""))
 
     checkout = next(
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
     )
     assert checkout["with"]["ref"] == "${{ github.sha }}"
     assert checkout["with"]["persist-credentials"] is False
@@ -3749,9 +3720,7 @@ def test_main_controller_ssh_jobs_reject_stale_sources_before_credentials(
     assert 'CHECKED_OUT="$(git rev-parse HEAD)"' in commands
     assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in commands
     secret_index = next(
-        index
-        for index, step in enumerate(job["steps"])
-        if _native_job_secret_refs({"step": step})
+        index for index, step in enumerate(job["steps"]) if _native_job_secret_refs({"step": step})
     )
     assert source_index < secret_index
 
@@ -3775,15 +3744,13 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     assert "app-release-unsigned.apk" in build_text
     assert "app-release.aab" in build_text
     assert "21.0.12+8.0" in build_text
-    assert "cmdline-tools-version\": \"12266719" in build_text
+    assert 'cmdline-tools-version": "12266719' in build_text
     assert "build-tools;35.0.0" in build_text
     assert "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172" in build_text
     assert "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb" in build_text
 
     checkout = next(
-        step
-        for step in build["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
+        step for step in build["steps"] if step.get("uses", "").startswith("actions/checkout@")
     )
     assert checkout["with"] == {
         "ref": "${{ github.sha }}",
@@ -3791,22 +3758,14 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     }
 
     wrapper = (
-        REPO_ROOT
-        / "mira-mobile"
-        / "android"
-        / "gradle"
-        / "wrapper"
-        / "gradle-wrapper.properties"
+        REPO_ROOT / "mira-mobile" / "android" / "gradle" / "wrapper" / "gradle-wrapper.properties"
     ).read_text(encoding="utf-8")
     expected_distribution_hash = (
-        "distributionSha256Sum="
-        "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb"
+        "distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb"
     )
     assert wrapper.splitlines().count(expected_distribution_hash) == 1
     wrapper_step = next(
-        step
-        for step in build["steps"]
-        if step.get("name") == "Verify the pinned Gradle wrapper"
+        step for step in build["steps"] if step.get("name") == "Verify the pinned Gradle wrapper"
     )
     assert "distributionSha256Sum=" in wrapper_step["run"]
     assert ">>" not in wrapper_step["run"]
@@ -3848,15 +3807,13 @@ def test_native_release_rejects_stale_main_before_each_credential():
             if step.get("name") == "Require the exact current main source"
         )
         credential_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name") == credential_name
+            index for index, step in enumerate(steps) if step.get("name") == credential_name
         )
         gate = steps[gate_index]
 
         assert gate_index + 1 == credential_index
         assert gate["env"] == {"GH_TOKEN": "${{ github.token }}"}
-        assert 'repos/$GITHUB_REPOSITORY/git/ref/heads/main' in gate["run"]
+        assert "repos/$GITHUB_REPOSITORY/git/ref/heads/main" in gate["run"]
         assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in gate["run"]
         assert _native_job_secret_refs({"step": gate}) == set()
 
@@ -3868,21 +3825,15 @@ def test_native_signing_runner_consumes_only_unsigned_artifacts_and_pins_cert():
     commands = _native_job_commands(job)
 
     assert job["needs"] == "build-unsigned-native"
-    assert not any(
-        step.get("uses", "").startswith("actions/checkout@")
-        for step in job["steps"]
-    )
+    assert not any(step.get("uses", "").startswith("actions/checkout@") for step in job["steps"])
     assert "actions/download-artifact@" in job_text
     assert "native-unsigned-${{ github.sha }}" in job_text
     assert "actions/setup-java@" in job_text
     assert "android-actions/setup-android@" in job_text
     for tool in ("zipalign", "apksigner", "jarsigner", "keytool"):
         assert tool in commands
-    assert (
-        "2395b96050c510a5c787465b83256f381b1ff5e4833d2fa88db73579293f92a9"
-        in commands.lower()
-    )
-    assert "rm -rf \"$SIGNING_DIR\"" in commands
+    assert "2395b96050c510a5c787465b83256f381b1ff5e4833d2fa88db73579293f92a9" in commands.lower()
+    assert 'rm -rf "$SIGNING_DIR"' in commands
 
 
 def test_firebase_distribution_uses_verified_standalone_binary():
@@ -3892,16 +3843,10 @@ def test_firebase_distribution_uses_verified_standalone_binary():
     commands = _native_job_commands(job)
 
     assert job["needs"] == "sign-native"
-    assert not any(
-        step.get("uses", "").startswith("actions/checkout@")
-        for step in job["steps"]
-    )
+    assert not any(step.get("uses", "").startswith("actions/checkout@") for step in job["steps"])
     assert "app-release-apk-${{ github.sha }}" in job_text
     assert "https://firebase.tools/bin/linux/v15.29.0" in commands
-    assert (
-        "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded"
-        in commands
-    )
+    assert "ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded" in commands
     assert "sha256sum -c" in commands
     assert not re.search(r"(^|\s)(npm|npx)(\s|$)", commands)
 
@@ -3911,9 +3856,7 @@ def test_firebase_distribution_uses_verified_standalone_binary():
         if step.get("name") == "Validate distribution inputs"
     )
     secret_index = next(
-        index
-        for index, step in enumerate(job["steps"])
-        if _native_job_secret_refs({"step": step})
+        index for index, step in enumerate(job["steps"]) if _native_job_secret_refs({"step": step})
     )
     assert validation_index < secret_index
 
@@ -3927,9 +3870,7 @@ def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
     assert job["needs"] == "sign-native"
     assert "app-release-apk-${{ github.sha }}" in job_text
     checkout = next(
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
     )
     assert checkout["with"]["ref"] == "${{ github.sha }}"
     assert checkout["with"]["persist-credentials"] is False
@@ -3948,9 +3889,7 @@ def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
         if step.get("name") == "Prepare and validate release payload"
     )
     secret_index = next(
-        index
-        for index, step in enumerate(job["steps"])
-        if _native_job_secret_refs({"step": step})
+        index for index, step in enumerate(job["steps"]) if _native_job_secret_refs({"step": step})
     )
     assert payload_index < secret_index
 
@@ -3958,20 +3897,13 @@ def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
 def test_direct_download_is_content_addressed_and_updates_pointers_atomically():
     job = _native_release_workflow()["jobs"]["publish-download"]
     prepare = next(
-        step
-        for step in job["steps"]
-        if step.get("name") == "Prepare and validate release payload"
+        step for step in job["steps"] if step.get("name") == "Prepare and validate release payload"
     )["run"]
     publish = next(
-        step
-        for step in job["steps"]
-        if step.get("name") == "Publish direct-install download"
+        step for step in job["steps"] if step.get("name") == "Publish direct-install download"
     )["run"]
 
-    assert (
-        'FILE="factorylm-${VERSION_NAME}-vc${VERSION_CODE}-${APK_SHA256}.apk"'
-        in prepare
-    )
+    assert 'FILE="factorylm-${VERSION_NAME}-vc${VERSION_CODE}-${APK_SHA256}.apk"' in prepare
     assert "flock" in publish
     assert "install_immutable" in publish
     assert 'mv -f "$incoming/latest.apk" "$root/latest.apk"' in publish
@@ -4006,9 +3938,7 @@ def test_prod_migration_drift_isolated_from_vps_credentials_and_dependency_hooks
     assert "--only-binary=:all:" in dependency_step["run"]
     assert "tools/migration-drift-requirements.txt" in dependency_step["run"]
 
-    fetch_step = next(
-        step for step in drift["steps"] if "DOPPLER_TOKEN" in step.get("env", {})
-    )
+    fetch_step = next(step for step in drift["steps"] if "DOPPLER_TOKEN" in step.get("env", {}))
     assert set(fetch_step["env"]) == {"DOPPLER_TOKEN"}
     assert "migration_drift.py" not in fetch_step["run"]
     assert "prod-db-url" in fetch_step["run"]
@@ -4035,7 +3965,10 @@ def test_prod_source_authorization_precedes_all_environment_credentials():
     assert "VPS_SSH_KEY" not in authorize_text
     assert "github.event.workflow_run.event == 'push'" in authorize["if"]
     assert "github.event.workflow_run.head_branch == 'main'" in authorize["if"]
-    assert "github.event.workflow_run.head_repository.full_name == github.repository" in authorize["if"]
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        in authorize["if"]
+    )
     assert "git fetch --no-tags origin main" in authorize_commands
     assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in authorize_commands
     assert "skip_staging_gate=true requires a non-empty skip_reason" in authorize_commands
@@ -4058,7 +3991,9 @@ def test_prod_deploy_jobs_reject_stale_or_non_push_main_sources_before_credentia
         condition = job["if"]
         assert "github.event.workflow_run.event == 'push'" in condition
         assert "github.event.workflow_run.head_branch == 'main'" in condition
-        assert "github.event.workflow_run.head_repository.full_name == github.repository" in condition
+        assert (
+            "github.event.workflow_run.head_repository.full_name == github.repository" in condition
+        )
 
         steps = job["steps"]
         source_index = next(
@@ -4074,11 +4009,7 @@ def test_prod_deploy_jobs_reject_stale_or_non_push_main_sources_before_credentia
         assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in source_commands
 
         first_secret_index = next(
-            (
-                index
-                for index, step in enumerate(steps)
-                if _native_job_secret_refs({"step": step})
-            ),
+            (index for index, step in enumerate(steps) if _native_job_secret_refs({"step": step})),
             len(steps),
         )
         assert source_index < first_secret_index
@@ -4113,9 +4044,7 @@ def test_prod_migration_driver_is_exactly_pinned_and_hash_locked():
     ],
 )
 def test_production_ssh_uses_committed_host_identity(workflow_name):
-    text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(
-        encoding="utf-8"
-    )
+    text = (REPO_ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
     assert "ssh-keyscan" not in text
     assert "StrictHostKeyChecking=no" not in text
     assert "StrictHostKeyChecking no" not in text
@@ -4124,9 +4053,7 @@ def test_production_ssh_uses_committed_host_identity(workflow_name):
 
 
 def test_factorylm_prod_host_identity_is_committed_and_guarded():
-    host_key = (
-        REPO_ROOT / "deployment" / "known_hosts.factorylm-prod"
-    ).read_text(encoding="utf-8")
+    host_key = (REPO_ROOT / "deployment" / "known_hosts.factorylm-prod").read_text(encoding="utf-8")
     assert host_key == (
         "165.245.138.91 ssh-ed25519 "
         "AAAAC3NzaC1lZDI1NTE5AAAAIOx9AwtJJMamqcrrAyrea9+7Hmqo4o9IO3QZHI50EUqR\n"
@@ -4138,16 +4065,15 @@ def test_factorylm_prod_host_identity_is_committed_and_guarded():
 
 
 def test_canonical_mobile_updates_focus_uses_visible_accent_token():
-    css = (
-        REPO_ROOT / "mira-mobile" / "src" / "unified" / "unified.css"
-    ).read_text(encoding="utf-8")
+    css = (REPO_ROOT / "mira-mobile" / "src" / "unified" / "unified.css").read_text(
+        encoding="utf-8"
+    )
     assert (
         ".unified-updates button:focus-visible { outline: 3px solid "
         "var(--fl-workspace-accent); outline-offset: 2px; }"
     ) in css
     assert (
-        ".unified-updates button:focus-visible { outline: 3px solid "
-        "var(--fl-workspace-accent-tint)"
+        ".unified-updates button:focus-visible { outline: 3px solid var(--fl-workspace-accent-tint)"
     ) not in css
 
 

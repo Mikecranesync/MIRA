@@ -188,9 +188,7 @@ LEGACY_SURFACE_EXACT_CONTROL_PATHS: frozenset[str] = frozenset(
     }
 )
 
-_ROOT_COMPOSE_CONTROL_RE = re.compile(
-    r"^(?:docker-)?compose[^/]*\.ya?ml$", re.IGNORECASE
-)
+_ROOT_COMPOSE_CONTROL_RE = re.compile(r"^(?:docker-)?compose[^/]*\.ya?ml$", re.IGNORECASE)
 
 # A new root- or scripts-level shell helper must not be able to move the public
 # mount merely by choosing a filename outside the current exact inventory.
@@ -1128,9 +1126,7 @@ def _attach_tree_evidence(
         old_entry = base_entries.get(old_path) if old_path else None
         new_entry = head_entries.get(change.path)
 
-        if change.status in {"modified", "renamed"} and (
-            old_entry is None or new_entry is None
-        ):
+        if change.status in {"modified", "renamed"} and (old_entry is None or new_entry is None):
             raise GuardPolicyError(
                 f"{change.status} path {change.path!r} is missing immutable base/head tree evidence"
             )
