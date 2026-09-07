@@ -151,8 +151,8 @@ jobs:
           # documents intent; this catches the tenth file nobody added to it.
           # (The .tsx suites need the file: deps that `verify` -> bootstrap:ui
           # installed in the previous step — reorder those and this fails loud.)
-          ls ../../packages/*/src/__tests__/*.test.* | xargs -n1 basename | sort > /tmp/suites-on-disk.txt
-          grep -oE '[A-Za-z0-9._-]+\.test\.tsx?' "$xml" | xargs -n1 basename | sort -u > /tmp/suites-in-junit.txt
+          find ../../packages -path '*/src/__tests__/*.test.*' -exec basename {} \; | sort > /tmp/suites-on-disk.txt
+          grep -oE '[A-Za-z0-9._-]+\.test\.tsx?' "$xml" | sort -u > /tmp/suites-in-junit.txt
           uncollected=$(comm -23 /tmp/suites-on-disk.txt /tmp/suites-in-junit.txt)
           if [ -n "$uncollected" ]; then
             echo "::error::suite file(s) on disk never ran: $(echo "$uncollected" | tr '\n' ' ')"
