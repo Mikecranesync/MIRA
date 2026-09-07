@@ -124,8 +124,16 @@ jobs:
           missing=0
 
           # Each shared-core contract suite must be named in the junit output.
+          # Keep this list equal to the suites under packages/*/src/__tests__:
+          # a guard that lives in an unlisted file can stop running and CI
+          # stays green (devops gate finding on #3643).
           for suite in \
             shell.test.tsx \
+            composer.test.tsx \
+            conversation.test.tsx \
+            mobile-behavior.test.tsx \
+            retry-capability.test.tsx \
+            attachment-sheet.test.tsx \
             reducer.test.ts \
             theme-contract.test.ts \
             fixtures.test.ts
