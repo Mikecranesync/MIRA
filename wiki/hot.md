@@ -1,3 +1,46 @@
+# Hot Cache — 2026-09-06 — Unified UI cutover governance submitted; new-UI merge train active
+
+**Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordinated durably in
+[issue #3626](https://github.com/Mikecranesync/MIRA/issues/3626). Governance is now
+[draft PR #3647](https://github.com/Mikecranesync/MIRA/pull/3647) from
+`codex/factorylm-unified-ui-cutover-001`, rebased on `main` commit
+`79aa812d92e03b7c205e2da9e74e1e15f601651c`.
+
+Current delivery ledger:
+
+- [PR #3646](https://github.com/Mikecranesync/MIRA/pull/3646) merged as
+  `79aa812d92e03b7c205e2da9e74e1e15f601651c`. Shared UI CI now derives every
+  package test suite from disk, rejects an empty suite tree, and fails when a
+  suite is absent from JUnit evidence.
+- [PR #3643](https://github.com/Mikecranesync/MIRA/pull/3643) is the active
+  **completely new shared UI** implementation. Codex passed its code at exact
+  head `15c1398ce1508856ab5617a0e0c98b81127a6fc5` after mobile overflow,
+  stacked-focus, host-owned Retry, 108-unit-test, and 95-browser-test proof.
+  Because #3646 moved `main`, that verdict is intentionally not merge-ready:
+  Claude must rebase #3643 and Codex must recheck the resulting exact head.
+- [PR #3644](https://github.com/Mikecranesync/MIRA/pull/3644) remains parked and
+  draft. Do not merge its `mira-mobile/src/screens/**` changes as new product UI
+  and do not use a legacy exception to bypass the product direction. Rework the
+  capability beneath `mira-mobile/src/factorylm-ui/**` (retaining pure
+  `chat-adapter/**` transport seams where useful) after the cutover lands, or
+  defer until that mount seam exists.
+
+Governance #3647 adds the registries, lifecycle guard, trusted-base CI status,
+agent rules, exact-claim/exact-head workflows, bounded verification lane, and
+the CHARLIE peer-review runbook. Local proof at the rebased tree: 223 bounded
+governance/evidence tests and 31 architecture tests passed; Ruff, diff checks,
+pre-commit secret scanning, and independent Codex review passed. The evidence
+profile deliberately avoids repository-wide pytest because unrelated service
+environments are not installed on every cluster node.
+
+No production route, deployment, feature flag, database, provider, auth, or
+customer-data state changed. The legacy runtime remains available only as a
+rollback surface. Next: clear #3647 CI/exact-head review, merge it, rebase and
+re-review #3643, then start only bounded new-UI adapter work. Cross-session peer
+messages supplement this ledger; GitHub remains authoritative.
+
+---
+
 # Hot Cache — 2026-09-06 — FACTORYLM-UNIFIED-UI-CUTOVER-001 Codex remediation (14/18 findings fixed, 4 deferred; local, not pushed)
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination
