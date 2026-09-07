@@ -377,11 +377,20 @@ def test_every_event_kind_has_a_fail_closed_payload_proof() -> None:
     kinds = set(schema["properties"]["kind"]["enum"])
     covered: set[str] = set()
     for clause in schema["allOf"]:
-        k = clause["if"]["properties"]["kind"]
-        if "payload" not in clause["then"]["properties"]:
-            continue  # the mission-bound clause constrains mission_id, not the payload
+        # A per-kind payload proof is keyed on `kind` and constrains `then.properties.payload`.
+        # Skip clauses that are NOT that shape: the unconditional cross-kind guards (F5's global
+        # shell_command ban has no `if`; the verdict-only clause uses `then: {}` + `else`), and the
+        # mission-bound clause (constrains mission_id, not the payload). The covered==kinds assertion
+        # below still proves every kind keeps a real per-kind proof.
+        kind_cond = clause.get("if", {}).get("properties", {}).get("kind")
+        if kind_cond is None:
+            continue
+        then_props = clause.get("then", {}).get("properties", {})
+        if "payload" not in then_props:
+            continue
+        k = kind_cond
         covered |= set(k.get("enum", [k["const"]] if "const" in k else []))
-        payload = clause["then"]["properties"]["payload"]
+        payload = then_props["payload"]
         assert payload.get("required"), f"{k}: a payload proof must REQUIRE something"
         for req in payload["required"]:
             spec = payload["properties"][req]
@@ -428,3 +437,33 @@ def test_per_kind_payload_rejections(kind: str, payload: dict) -> None:
     v = _validator("event")
     with pytest.raises(jsonschema.ValidationError):
         v.validate({**EVENT_OK, "kind": kind, "payload": payload})
+
+
+def test_verdict_and_shell_command_cannot_ride_a_non_verdict_event() -> None:
+    """F5 (Codex HOLD): only submit_verdict may carry `verdict`, and NO kind may carry
+    `shell_command`. The prohibition used to cover submit_result alone, so a heartbeat could
+    smuggle `verdict: PASS` (read as a review) or an arbitrary `shell_command`.
+
+    Positive controls run through the SAME validator so a rejection can only come from the field
+    under test: a clean heartbeat validates, and a well-formed submit_verdict WITH a verdict
+    validates — proving the schema reaches these payloads rather than blanket-failing them.
+    """
+    v = _validator("event")
+    verdict_payload = {"sha": "a" * 40, "verdict": "PASS", "reviewer": "codex-charlie"}
+
+    # negative: a heartbeat may not name a verdict or a shell command
+    assert not v.is_valid({**EVENT_OK, "kind": "heartbeat", "payload": {"verdict": "PASS"}})
+    assert not v.is_valid(
+        {**EVENT_OK, "kind": "heartbeat", "payload": {"shell_command": "rm -rf /"}}
+    )
+
+    # positive controls (same validator, same shape): the guard is specific, not a blanket reject
+    v.validate(EVENT_OK)  # a clean heartbeat is fine
+    v.validate(
+        {**EVENT_OK, "kind": "submit_verdict", "payload": verdict_payload}
+    )  # verdict OK here
+
+    # and even submit_verdict may not smuggle a shell command (shell_command is banned on every kind)
+    assert not v.is_valid(
+        {**EVENT_OK, "kind": "submit_verdict", "payload": {**verdict_payload, "shell_command": "x"}}
+    )

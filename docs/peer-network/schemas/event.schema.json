@@ -702,6 +702,43 @@
         },
         "description": "Mission-bound kinds: mission_id must be a non-null patterned string. Null is legal only for join_network, heartbeat, fleet_status, request_work, leave_network."
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "submit_verdict"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {},
+      "else": {
+        "properties": {
+          "payload": {
+            "not": {
+              "required": [
+                "verdict"
+              ]
+            }
+          }
+        },
+        "description": "F5 (Codex HOLD): only submit_verdict may carry `verdict`. The prohibition used to cover submit_result alone, so a heartbeat (or any other kind) could still smuggle `verdict: PASS` and be read as a review. Verdict is now forbidden in EVERY non-submit_verdict payload."
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "not": {
+            "required": [
+              "shell_command"
+            ]
+          }
+        }
+      },
+      "description": "F5 (Codex HOLD): no event payload — on any kind — may carry `shell_command`. No operation in this contract runs a shell; a payload that names one (the heartbeat leak) is rejected everywhere."
     }
   ]
 }
