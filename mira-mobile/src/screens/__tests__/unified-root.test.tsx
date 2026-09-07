@@ -68,3 +68,27 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("about"))).toBeTruthy();
   });
 });
+
+describe("CANARY-OTA-NAV-AUDIT — a pushed screen must never background the app", () => {
+  it("hardware Back closes About & updates instead of falling through to minimizeApp", async () => {
+    // Reproduces the reported class: opening About from the unified nav footer
+    // unmounts NotebookScreen, which is the only component that assigns
+    // backRef.current. With nothing owning Back, App.tsx's listener sees an
+    // unconsumed press and calls CapApp.minimizeApp() — from a NON-ROOT screen.
+    const backRef: { current: (() => boolean) | null } = { current: () => true };
+    render(<UnifiedRoot me={ME} backRef={backRef as never} onSignOut={vi.fn()} onSwitchClassic={vi.fn()} />);
+    await screen.findByTestId("unified-root");
+
+    fireEvent.click(await screen.findByRole("button", { name: /About & updates/i }));
+    // The pushed screen has replaced the root — that is what "non-root" means here.
+    await waitFor(() => expect(screen.queryByTestId("unified-root")).toBeNull());
+
+    // The contract App.tsx relies on: SOMETHING must claim the press, or the
+    // listener calls minimizeApp() and the app disappears from a pushed screen.
+    const consumed = backRef.current?.() ?? false;
+    expect(consumed).toBe(true);
+
+    // And claiming it must actually return to the shell, not merely return true.
+    await waitFor(() => expect(screen.getByTestId("unified-root")).toBeTruthy());
+  });
+});

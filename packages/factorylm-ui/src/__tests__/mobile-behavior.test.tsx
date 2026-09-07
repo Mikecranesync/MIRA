@@ -194,4 +194,22 @@ describe("touch target and motion contract", () => {
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
+
+  it("makes a closed modal layer inert so Tab cannot reach it", () => {
+    const adapter = fakeAdapter();
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    const nav = view.container.querySelector('.fl-overlay[data-layer="navigation"]') as HTMLElement;
+    if (!nav) throw new Error("navigation overlay is required");
+
+    // Closed on mobile: off-screen by transform, so it must be inert or Tab
+    // reaches controls the user cannot see.
+    view.click(must(view.buttonNamed("Close navigation"), "Close navigation"));
+    expect(nav.getAttribute("data-active")).toBe("false");
+    expect(nav.hasAttribute("inert")).toBe(true);
+
+    // Open again: inert must be lifted or the drawer is unusable.
+    view.click(must(view.buttonNamed("Open navigation"), "Open navigation"));
+    expect(nav.getAttribute("data-active")).toBe("true");
+    expect(nav.hasAttribute("inert")).toBe(false);
+  });
 });

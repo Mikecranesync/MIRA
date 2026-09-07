@@ -1,0 +1,79 @@
+[
+  {
+    "scenario": "empty",
+    "control": "Theme: light",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Reset scenario",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Close navigation",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "New chat",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Open navigation",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Ask",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Work",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Add attachment",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Machine",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Voice",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  },
+  {
+    "scenario": "empty",
+    "control": "Send",
+    "expected": "acts, and any layer unwinds one step",
+    "actual": "NOTHING HAPPENED — dead control",
+    "verdict": "FAIL"
+  }
+]

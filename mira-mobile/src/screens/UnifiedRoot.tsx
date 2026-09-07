@@ -84,6 +84,22 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebooks, me.email, signingOut]);
 
+  // A pushed screen must own hardware Back. Opening About unmounts NotebookScreen,
+  // which is the only component that assigns backRef.current — leaving App.tsx's
+  // listener with an unconsumed press, which it answers with minimizeApp(). A
+  // non-root screen backgrounding the app is the defect (CANARY-OTA-NAV-AUDIT).
+  useEffect(() => {
+    if (!showAbout) return;
+    const previous = backRef.current;
+    backRef.current = () => {
+      setShowAbout(false);
+      return true;
+    };
+    return () => {
+      backRef.current = previous;
+    };
+  }, [showAbout, backRef]);
+
   if (showAbout) {
     return (
       <AboutUpdates

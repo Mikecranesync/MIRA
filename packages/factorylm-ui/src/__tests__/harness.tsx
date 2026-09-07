@@ -111,7 +111,17 @@ export interface HarnessView {
 }
 
 function accessibleName(button: HTMLButtonElement): string {
-  return (button.getAttribute("aria-label") ?? button.textContent ?? "").trim();
+  const label = button.getAttribute("aria-label");
+  if (label !== null) return label.trim();
+  // Per ARIA name computation (and what Playwright's getByRole(name) does), an
+  // aria-hidden subtree contributes nothing to the name. Raw textContent would
+  // fold a decorative glyph into the name, so an icon button labelled by a
+  // visually-hidden span would not be findable by the name a screen reader reads.
+  const clone = button.cloneNode(true) as HTMLElement;
+  for (const hidden of Array.from(clone.querySelectorAll("[aria-hidden='true']"))) {
+    hidden.remove();
+  }
+  return (clone.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 export function renderHarness(props: HarnessProps): HarnessView {

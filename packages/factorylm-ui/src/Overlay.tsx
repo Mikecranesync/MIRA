@@ -51,6 +51,17 @@ export interface OverlayProps {
 export function Overlay({ layer, active, modal, trapsTab, children }: OverlayProps) {
   const root = useRef<HTMLDivElement>(null);
   const trapping = active && modal;
+  // A closed modal layer is only moved off-screen by a transform, so it keeps a
+  // bounding box and stays focusable: Tab reaches "Close navigation" inside a
+  // drawer the user cannot see. Mark it inert while it is closed so keyboard and
+  // assistive tech skip it. Only when modal — the desktop sidebar is a permanent
+  // region (modal=false) and must stay reachable.
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    node.toggleAttribute("inert", Boolean(modal) && !active);
+  }, [modal, active]);
+
   useFocusReturn(trapping, root, focusTargetBehind);
 
   const trapping_tab = trapping && (trapsTab ?? true);

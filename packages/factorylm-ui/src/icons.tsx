@@ -10,6 +10,10 @@ export function InspectorIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M3 2.75h10v10.5H3zM5.5 5.5h5M5.5 8h5M5.5 10.5h3" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.25" /></svg>;
 }
 
+export function MenuIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>;
+}
+
 export function GalleryIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><circle cx="4" cy="5" r="1.25" fill="none" stroke="currentColor" strokeWidth="1.25" /><path d="M1 14.75h14v-10H1zm0-10v-2.5h14v10" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" /></svg>;
 }

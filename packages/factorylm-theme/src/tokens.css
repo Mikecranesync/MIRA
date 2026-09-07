@@ -10,26 +10,26 @@
  */
 :root {
   /* surfaces */
-  --fl-bg: #f3f4f6;          /* app background */
+  --fl-bg: #f7f7f8;          /* app background */
   --fl-surface: #ffffff;     /* cards, panels, rows */
   --fl-header: #111827;      /* top bar / dark chrome */
   --fl-header-ink: #ffffff;
   --fl-header-muted: #9ca3af;
 
   /* text */
-  --fl-ink: #1f2937;         /* primary text */
-  --fl-muted: #6b7280;       /* secondary text */
-  --fl-faint: #9ca3af;       /* disabled / placeholder */
+  --fl-ink: #23252b;         /* primary text */
+  --fl-muted: #6d6f76;       /* secondary text */
+  --fl-faint: #9a9ca3;       /* disabled / placeholder */
 
   /* lines */
-  --fl-line: #e5e7eb;
-  --fl-line-strong: #d1d5db;
+  --fl-line: #ececee;
+  --fl-line-strong: #d8d9dd;
 
   /* brand accent (actions, selection) */
-  --fl-accent: #4f46e5;      /* indigo 600 */
-  --fl-accent-hover: #4338ca;
-  --fl-accent-tint: #eef2ff; /* selected row / chip bg */
-  --fl-accent-ink: #3730a3;
+  --fl-accent: #4b52c9;      /* indigo 600 */
+  --fl-accent-hover: #3f46b4;
+  --fl-accent-tint: #eef0fb; /* selected row / chip bg */
+  --fl-accent-ink: #343a8f;
 
   /* STATE colors — reserved for status/abnormal, never decoration */
   --fl-ok: #16a34a;          /* running / healthy / accepted */
@@ -62,8 +62,11 @@
   --fl-space-4: 16px;
   --fl-space-6: 24px;
   --fl-space-8: 32px;
-  --fl-fs-body: 15px;
+  --fl-fs-body: 16px;
   --fl-fs-title: 17px;
+  --fl-lh: 1.6;
+  --fl-lh-tight: 1.25;
+  --fl-measure: 42rem;
   --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
   --fl-shadow-pop: 0 4px 14px rgba(0,0,0,.25);
 

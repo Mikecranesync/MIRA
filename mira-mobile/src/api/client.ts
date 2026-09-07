@@ -118,11 +118,19 @@ export function onAuthExpired(fn: AuthExpiredFn): () => void {
 
 // Suppressed during the sign-in dance itself (a wrong password 401 is not an
 // expired session).
-let suppressAuthEvents = false;
+// A DEPTH counter, not a boolean. With a boolean, two overlapping suppressed
+// calls race: the inner one's finally clears the flag while the outer is still in
+// flight, so the outer's 401 fires an auth event and signs the user out. Today
+// that overlap is unreachable (everything suppressed runs signed-out or pre-boot,
+// while the OTA check needs booted && me), but that is an accident of app
+// structure nobody has written down — one future caller, a resume handler or a
+// background update check, makes it false silently. The flag gates five separate
+// 401 sites, so the blast radius is wider than any one call path.
+let suppressDepth = 0;
 export function withAuthEventsSuppressed<T>(fn: () => Promise<T>): Promise<T> {
-  suppressAuthEvents = true;
+  suppressDepth += 1;
   return fn().finally(() => {
-    suppressAuthEvents = false;
+    suppressDepth = Math.max(0, suppressDepth - 1);
   });
 }
 
@@ -257,7 +265,7 @@ export async function uploadMultipart(
   } catch {
     data = null;
   }
-  if (res.status === 401 && !suppressAuthEvents) {
+  if (res.status === 401 && suppressDepth === 0) {
     for (const fn of authExpiredListeners) fn();
   }
   if ((res.status >= 200 && res.status < 300) || opts.acceptStatuses?.includes(res.status))
@@ -338,7 +346,7 @@ export async function requestStream(path: string, opts: StreamOpts): Promise<Api
     }
     status = res.status;
     if (native) storeSetCookies(Object.fromEntries(res.headers.entries()));
-    if (status === 401 && !suppressAuthEvents) {
+    if (status === 401 && suppressDepth === 0) {
       for (const fn of authExpiredListeners) fn();
     }
     if (status < 200 || status >= 300) {
@@ -438,7 +446,7 @@ export async function requestBinary(
     }
     storeSetCookies((res.headers ?? {}) as Record<string, string>);
     await saveJar();
-    if (res.status === 401 && !suppressAuthEvents) {
+    if (res.status === 401 && suppressDepth === 0) {
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
@@ -455,7 +463,7 @@ export async function requestBinary(
   } catch (e) {
     throw new ApiError("network", null, String(e));
   }
-  if (res.status === 401 && !suppressAuthEvents) {
+  if (res.status === 401 && suppressDepth === 0) {
     for (const fn of authExpiredListeners) fn();
   }
   if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
@@ -482,7 +490,7 @@ export async function request(path: string, opts: RequestOpts = {}): Promise<Api
       lastNetworkErr = e;
       continue; // transport failure — retry if permitted
     }
-    if (res.status === 401 && !suppressAuthEvents) {
+    if (res.status === 401 && suppressDepth === 0) {
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status >= 200 && res.status < 300) return res;

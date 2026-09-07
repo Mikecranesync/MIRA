@@ -10,7 +10,8 @@ const requiredRoles = [
   "accent-tint", "accent-ink", "accent-line", "ok", "ok-tint", "ok-line",
   "ok-ink", "warn", "warn-tint", "warn-line", "warn-ink", "fault", "fault-tint",
   "fault-line", "fault-ink", "off", "off-tint", "off-line", "off-ink", "font", "mono",
-  "fs", "fs-sm", "fs-xs", "fs-body", "fs-title", "radius", "radius-sm", "radius-card",
+  "fs", "fs-sm", "fs-xs", "fs-body", "fs-title", "lh", "lh-tight", "measure",
+  "radius", "radius-sm", "radius-card",
   "radius-pill", "gap", "pad", "space-1", "space-2", "space-3", "space-4", "space-6",
   "space-8", "shadow", "shadow-pop", "scrim",
 ] as const;
