@@ -82,6 +82,35 @@ describe("attachment sheet layer", () => {
   });
 });
 
+describe("Tab trapping follows layer precedence", () => {
+  it("traps Tab in the attachment sheet, not the drawer, when both are open", () => {
+    const view = render({ surface: "mobile", fixture: "machine-ask" });
+    // The mobile fixture opens the drawer at mount; open the sheet on top of it.
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("true");
+    view.click(must(view.buttonNamed("Add attachment"), "Add attachment"));
+    const dialog = must(sheet(view), "attachment sheet");
+    const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+    const last = must(buttons[buttons.length - 1], "last sheet button");
+    act(() => { last.focus(); });
+    expect(document.activeElement).toBe(last);
+
+    // The drawer's trap must not run at all: without the top-layer gate it
+    // yanks focus into the drawer first and the sheet's trap pulls it back —
+    // the same final element, but a focus bounce a screen reader announces.
+    const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "drawer");
+    let drawerFocusCalls = 0;
+    // Instance-level overrides shadow whichever prototype defines focus().
+    for (const element of Array.from(nav.querySelectorAll<HTMLElement>("button, a[href], [tabindex]"))) {
+      const original = element.focus.bind(element);
+      element.focus = () => { drawerFocusCalls += 1; original(); };
+    }
+    key(document, "Tab");
+    expect(drawerFocusCalls).toBe(0);
+    // The sheet's own trap acted: Tab from the last control wrapped to the first.
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+});
+
 describe("safe areas and drawer scroll ownership (stylesheet contract)", () => {
   const conversation = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
   const shell = readFileSync(new URL("../shell.css", import.meta.url), "utf8");

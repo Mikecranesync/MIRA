@@ -10,6 +10,8 @@ export interface ComposerProps {
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
   readonly hooks?: HostHooks;
+  /** The attachment sheet is the top-most layer (FactoryLMShell decides via topLayer). */
+  readonly attachmentTrapsTab?: boolean;
 }
 
 export interface ComposerKeyEvent {
@@ -44,7 +46,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export function Composer({ state, dispatch, adapter, hooks }: ComposerProps) {
       </li>)}
     </ul> : null}
 
-    <Overlay layer="attachment-menu" active={state.attachmentMenuVisible} modal>
+    <Overlay layer="attachment-menu" active={state.attachmentMenuVisible} modal trapsTab={attachmentTrapsTab}>
       {state.attachmentMenuVisible ? <AttachmentMenu
         native={native}
         busy={busy !== null}

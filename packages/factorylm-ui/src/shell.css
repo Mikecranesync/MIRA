@@ -24,9 +24,10 @@
   inset: 0;
   background: var(--fl-workspace-scrim, var(--fl-scrim));
 }
-/* Stacking, in closing-precedence order (see topLayer): navigation drawer 1 <
-   inspector sheet 2 < attachment sheet (inside the composer's stacking context) 3 <
-   source viewer 5. Each scrim sits just below the layer it belongs to. */
+/* Stacking, in closing-precedence order (see topLayer). Layers: navigation
+   drawer 1 < inspector sheet 2 < attachment sheet 3 (the composer's own stacking
+   context, conversation.css) < source viewer 5. Scrims sit one step below their
+   layer: 0 / 1 / 2 / 4. */
 .fl-scrim[data-layer="navigation"] { z-index: 0; }
 .fl-scrim[data-layer="inspector"] { z-index: 1; }
 .fl-scrim[data-layer="attachment-menu"] { z-index: 2; }

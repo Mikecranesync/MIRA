@@ -69,8 +69,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
           ? "navigation"
           : null;
 
+  const top = topLayer(state);
   const closeTop = () => {
-    const layer = topLayer(state);
+    const layer = top;
     if (layer) dispatch(closeLayerAction(layer));
     else adapter.onBack();
   };
@@ -106,15 +107,15 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
     data-top-layer={topLayer(state) ?? ""}
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
-    <Overlay layer="navigation" active={state.navigationVisible} modal={mobile}>
+    <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>
       <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} footer={navigationFooter} />
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
       <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
-      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
-    <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile}>
+    <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile} trapsTab={top === "inspector"}>
       <Inspector state={state} />
     </Overlay>
     <Overlay layer="source" active={sourceOpen} modal>
