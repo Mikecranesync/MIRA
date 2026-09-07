@@ -63,7 +63,7 @@ describe("attachment sheet layer", () => {
     expect(document.activeElement).toBe(add);
   });
 
-  it("closes on BACK before the inspector and the drawer, and routes actions through the composer", () => {
+  it("closes on BACK before the inspector and the drawer, and routes actions through the composer", async () => {
     const adapter = fakeAdapter({ photo: { id: "a1", name: "IMG_0001.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" } });
     const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
     // Drawer open (fixture contract) + sheet open: BACK closes the sheet first.
@@ -77,6 +77,9 @@ describe("attachment sheet layer", () => {
     // The actions are the composer's: a picked photo lands in the pending list.
     view.click(must(view.buttonNamed("Add attachment"), "Add attachment"));
     view.click(must(view.buttonNamed("Photo"), "Photo"));
+    // attachPhoto is async: let the adapter resolve and the composer commit
+    // the picked attachment inside act, so nothing updates after the test.
+    await act(async () => { await Promise.resolve(); });
     expect(sheet(view)).toBeNull();
     expect(adapter.calls).toEqual(["attachPhoto"]);
   });

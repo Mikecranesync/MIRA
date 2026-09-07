@@ -100,7 +100,14 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     if (patch.theme !== undefined) dispatch({ type: "set-theme", theme: next.theme });
   };
 
-  const shell = <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} />;
+  // The lab is the host here: Retry is offered only because a host can re-send,
+  // and the mock host records the request in the adapter log.
+  const shell = <FactoryLMShell
+    state={state}
+    dispatch={dispatch}
+    adapter={adapter}
+    hooks={{ onRetry: (turnId) => adapter.note(`onRetry:${turnId}`) }}
+  />;
   if (lab.embed) return shell;
 
   const [width, height] = lab.viewport === "fluid" ? [0, 0] : lab.viewport.split("x").map(Number);

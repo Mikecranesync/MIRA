@@ -16,8 +16,12 @@
  * and NO request is ever sent. A dead control that reports success, on a real
  * failure.
  *
- * Intended fix (mira-97, Slice B): render Retry only when `hooks?.onRetry` is
- * present, so retry is a host-owned capability rather than a render-time guess.
+ * Fix (mira-97, Slice A #3643): render Retry only when `hooks?.onRetry` is a
+ * function, so retry is a host-owned capability rather than a render-time
+ * guess. Covers hooks omitted entirely as well as hooks without onRetry — the
+ * omitted case is what a bare `<FactoryLMShell>` mount (the lab before it
+ * supplied a host hook) produced: an enabled Retry that only set
+ * `retryTargetTurnId` (Codex review, 2026-09-07).
  *
  * Run: cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/retry-capability.test.tsx
  */
@@ -61,6 +65,13 @@ describe("F2 — Retry is a host capability, not a render-time guess", () => {
     // session has no failedSend, so the mobile host passes no onRetry.
     const view = render({ surface: "mobile", fixture: "error-retry", hooks: { busy: false } });
     expect(retryButton(view)).toBeNull();
+  });
+
+  it("does NOT render Retry when hooks are omitted entirely (no host at all)", () => {
+    const view = render({ surface: "mobile", fixture: "error-retry" });
+    expect(retryButton(view)).toBeNull();
+    // And nothing was requested behind the technician's back.
+    expect(view.outputs().retryTarget).toBe("");
   });
 
   it("never claims 'Retry requested' when no host hook can service the request", () => {
