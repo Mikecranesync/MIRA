@@ -26,7 +26,13 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "docs" / "peer-network" / "schemas"
 
 SHA40 = "^[0-9a-f]{40}$"
-CLAIM_STATES = {"ACTIVE", "LEASE_AT_RISK", "RELEASED", "COMPLETE"}
+CLAIM_STATES = {
+    "ACTIVE",
+    "BLOCKED",
+    "LEASE_AT_RISK",
+    "RELEASED",
+    "COMPLETE",
+}  # five: protocol BLOCKED + PRD LEASE_AT_RISK are distinct states
 
 # kind -> payload properties that must be required for that kind (law 8 / law 9).
 PAYLOAD_REQUIREMENTS = {
@@ -85,7 +91,7 @@ class TestClaimLifecycleIsRepresentable:
         assert "status" in claim["properties"], "a claim cannot declare its own lifecycle state"
         assert "status" in claim["required"]
 
-    def test_status_enumerates_exactly_the_four_documented_states(self) -> None:
+    def test_status_enumerates_exactly_the_documented_states(self) -> None:
         states = set(_schema("claim")["properties"]["status"]["enum"])
         assert states == CLAIM_STATES
 
