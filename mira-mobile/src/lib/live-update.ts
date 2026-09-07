@@ -214,6 +214,48 @@ function pointerHighWaterKey(channel: OtaChannel): string {
   return `${POINTER_HIGH_WATER_PREFIX}.${channel}`;
 }
 
+type PointerHighWater = {
+  pointerChangedAt: string;
+  /** Canonical payload whose signature was verified before this record was written. */
+  pointerIdentity: string | null;
+};
+
+function parsePointerHighWater(value: string): PointerHighWater | null {
+  // Timestamp-only v1 records already exist on devices. Keep their rollback
+  // floor, but mark identity unavailable so an equal-time pointer cannot be
+  // admitted without proof that it is the same authenticated pointer.
+  if (isCanonicalPointerTimestamp(value)) {
+    return { pointerChangedAt: value, pointerIdentity: null };
+  }
+
+  try {
+    const record = JSON.parse(value) as Record<string, unknown>;
+    if (
+      !record ||
+      typeof record !== "object" ||
+      !isCanonicalPointerTimestamp(record.pointerChangedAt) ||
+      typeof record.pointerIdentity !== "string" ||
+      !record.pointerIdentity.startsWith("factorylm-ota-manifest-pointer-v1\n") ||
+      !record.pointerIdentity.endsWith(`pointerChangedAt=${record.pointerChangedAt}\n`)
+    ) {
+      return null;
+    }
+    return {
+      pointerChangedAt: record.pointerChangedAt,
+      pointerIdentity: record.pointerIdentity,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function serializePointerHighWater(
+  pointerChangedAt: string,
+  pointerIdentity: string,
+): string {
+  return JSON.stringify({ pointerChangedAt, pointerIdentity });
+}
+
 /**
  * Persist an authenticated channel pointer, reconciling a native bridge call
  * whose response may be lost after the write commits. Only an exact reread is
@@ -223,15 +265,17 @@ function pointerHighWaterKey(channel: OtaChannel): string {
 async function persistPointerHighWater(
   channel: OtaChannel,
   pointerChangedAt: string,
+  pointerIdentity: string,
 ): Promise<boolean> {
   const key = pointerHighWaterKey(channel);
+  const value = serializePointerHighWater(pointerChangedAt, pointerIdentity);
   try {
-    await Preferences.set({ key, value: pointerChangedAt });
+    await Preferences.set({ key, value });
     return true;
   } catch (writeError) {
     try {
       const persisted = (await Preferences.get({ key })).value;
-      if (persisted === pointerChangedAt) return true;
+      if (persisted === value) return true;
       console.warn("[ota] replay state write did not commit", writeError);
     } catch (readError) {
       console.warn("[ota] replay state write outcome unavailable", writeError, readError);
@@ -432,6 +476,7 @@ export async function checkAndStage(opts: {
   if (!(await verifyOtaManifestPointer(manifest, manifest.manifestSignature ?? ""))) {
     return { staged: null, reason: "invalid_pointer_signature" };
   }
+  const pointerIdentity = manifestPointerPayload(manifest);
   if (!isCanonicalPointerTimestamp(PACKAGED_BUILD_MINIMUM)) {
     return { staged: null, reason: "invalid_packaged_minimum" };
   }
@@ -440,17 +485,30 @@ export async function checkAndStage(opts: {
     return { staged: null, reason: "stale_pointer" };
   }
 
-  let highWater: string | null;
+  let highWaterRaw: string | null;
   try {
-    highWater = (await Preferences.get({ key: pointerHighWaterKey(opts.channel) })).value;
+    highWaterRaw = (await Preferences.get({ key: pointerHighWaterKey(opts.channel) })).value;
   } catch {
     return { staged: null, reason: "pointer_state_unavailable" };
   }
-  if (highWater !== null && !isCanonicalPointerTimestamp(highWater)) {
-    return { staged: null, reason: "pointer_state_invalid" };
-  }
-  if (highWater !== null && pointerMillis < Date.parse(highWater)) {
-    return { staged: null, reason: "replayed_pointer" };
+  let highWater: PointerHighWater | null = null;
+  if (highWaterRaw !== null) {
+    highWater = parsePointerHighWater(highWaterRaw);
+    if (highWater === null) {
+      return { staged: null, reason: "pointer_state_invalid" };
+    }
+    const highWaterMillis = Date.parse(highWater.pointerChangedAt);
+    if (pointerMillis < highWaterMillis) {
+      return { staged: null, reason: "replayed_pointer" };
+    }
+    if (pointerMillis === highWaterMillis) {
+      if (highWater.pointerIdentity === null) {
+        return { staged: null, reason: "pointer_state_unavailable" };
+      }
+      if (highWater.pointerIdentity !== pointerIdentity) {
+        return { staged: null, reason: "replayed_pointer" };
+      }
+    }
   }
 
   // The native plugin refuses to download an ID that already exists. Recover
@@ -485,7 +543,13 @@ export async function checkAndStage(opts: {
     // when native already runs or targets its bundle. Persist that channel's
     // replay floor before returning; otherwise a bundle promoted from canary
     // to production would leave production open to an older signed pointer.
-    if (!(await persistPointerHighWater(opts.channel, manifest.pointerChangedAt))) {
+    if (
+      !(await persistPointerHighWater(
+        opts.channel,
+        manifest.pointerChangedAt,
+        pointerIdentity,
+      ))
+    ) {
       return { staged: null, reason: "pointer_state_unavailable" };
     }
     if (inventory.currentBundleId === manifest.bundleId) {
@@ -516,9 +580,16 @@ export async function checkAndStage(opts: {
   }
 
   // Make replay state durable BEFORE asking native code to stage the bundle.
-  // Equal timestamps remain retryable, so a process death between these calls
-  // cannot strand a downloaded bundle or weaken the anti-rollback floor.
-  if (!(await persistPointerHighWater(opts.channel, manifest.pointerChangedAt))) {
+  // Only the exact authenticated pointer remains retryable at an equal
+  // timestamp, so a process death between these calls cannot strand a
+  // downloaded bundle or weaken the anti-rollback floor.
+  if (
+    !(await persistPointerHighWater(
+      opts.channel,
+      manifest.pointerChangedAt,
+      pointerIdentity,
+    ))
+  ) {
     await cleanupOrphanedBundle(manifest.bundleId);
     return { staged: null, reason: "pointer_state_unavailable" };
   }
@@ -546,10 +617,10 @@ export async function checkAndStage(opts: {
     // high-water mark so the exact pointer remains retryable, then remove only
     // a proven orphan.
     try {
-      if (highWater === null) {
+      if (highWaterRaw === null) {
         await Preferences.remove({ key: pointerHighWaterKey(opts.channel) });
       } else {
-        await Preferences.set({ key: pointerHighWaterKey(opts.channel), value: highWater });
+        await Preferences.set({ key: pointerHighWaterKey(opts.channel), value: highWaterRaw });
       }
     } catch (restoreError) {
       console.warn("[ota] replay state restore failed", restoreError);

@@ -90,6 +90,36 @@ const validManifest = {
   pointerChangedAt: "2026-09-07T01:02:03.004Z",
 };
 
+const POINTER_IDENTITY_FIELDS = [
+  "bundleId",
+  "version",
+  "artifact",
+  "checksum",
+  "signature",
+  "nativeFingerprint",
+  "releaseSha",
+  "releasedAt",
+  "artifactSha256",
+  "provenanceSignature",
+  "channel",
+  "downloadUrl",
+  "pointerChangedAt",
+] as const;
+
+function authenticatedPointerIdentity(manifest: Record<string, string>): string {
+  return `${[
+    "factorylm-ota-manifest-pointer-v1",
+    ...POINTER_IDENTITY_FIELDS.map((field) => `${field}=${manifest[field]}`),
+  ].join("\n")}\n`;
+}
+
+function serializedHighWater(manifest: Record<string, string>): string {
+  return JSON.stringify({
+    pointerChangedAt: manifest.pointerChangedAt,
+    pointerIdentity: authenticatedPointerIdentity(manifest),
+  });
+}
+
 function serve(body: unknown, ok = true, status = 200) {
   nativeHttp.request.mockResolvedValue({
     status,
@@ -144,7 +174,7 @@ describe("checkAndStage — what it accepts", () => {
     // Staged for next launch — nothing swapped under the running app.
     expect(plugin.setNextBundle).toHaveBeenCalledWith({ bundleId: "b-2026-08-24-01" });
     expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
-      "2026-09-07T01:02:03.004Z",
+      serializedHighWater(validManifest),
     );
     const highWaterCall = preferences.set.mock.calls.findIndex(
       ([input]) => input.key === POINTER_HIGH_WATER_KEY,
@@ -185,7 +215,7 @@ describe("checkAndStage — what it accepts", () => {
 
     expect(result).toEqual({ staged: null, reason: "no_update" });
     expect(preferences.data.get("flm.ota.pointerHighWater.v1.production")).toBe(
-      validManifest.pointerChangedAt,
+      serializedHighWater({ ...validManifest, channel: "production" }),
     );
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
     expect(plugin.deleteBundle).not.toHaveBeenCalled();
@@ -199,7 +229,9 @@ describe("checkAndStage — what it accepts", () => {
     const result = await checkAndStage({ channel: "canary", isBusy: idle });
 
     expect(result).toEqual({ staged: validManifest.bundleId, reason: "staged" });
-    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(validManifest.pointerChangedAt);
+    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
+      serializedHighWater(validManifest),
+    );
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
     expect(plugin.deleteBundle).not.toHaveBeenCalled();
   });
@@ -213,7 +245,9 @@ describe("checkAndStage — what it accepts", () => {
     const result = await checkAndStage({ channel: "canary", isBusy: idle });
 
     expect(result).toEqual({ staged: null, reason: "no_update" });
-    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(validManifest.pointerChangedAt);
+    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
+      serializedHighWater(validManifest),
+    );
     expect(preferences.get).toHaveBeenCalledTimes(2);
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
   });
@@ -385,9 +419,9 @@ describe("checkAndStage — what it refuses, before downloading anything", () =>
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
   });
 
-  it("rejects an older per-channel pointer but allows an equal pointer", async () => {
+  it("rejects an older per-channel pointer but allows an exact equal pointer", async () => {
     const { checkAndStage } = await import("../live-update");
-    preferences.data.set(POINTER_HIGH_WATER_KEY, "2026-09-07T01:02:03.004Z");
+    preferences.data.set(POINTER_HIGH_WATER_KEY, serializedHighWater(validManifest));
     serve({ ...validManifest, pointerChangedAt: "2026-09-07T01:02:03.003Z" });
 
     const replay = await checkAndStage({ channel: "canary", isBusy: idle });
@@ -399,6 +433,35 @@ describe("checkAndStage — what it refuses, before downloading anything", () =>
     expect(equal.reason).toBe("staged");
   });
 
+  it("rejects a different validly signed pointer at the same channel timestamp", async () => {
+    const { checkAndStage } = await import("../live-update");
+    preferences.data.set(POINTER_HIGH_WATER_KEY, serializedHighWater(validManifest));
+    serve({
+      ...validManifest,
+      downloadUrl: "https://app.factorylm.com/ota/different-pointer.zip",
+      manifestSignature: "ZGlmZmVyZW50LXZhbGlkLXBvaW50ZXItc2ln",
+    });
+
+    const result = await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(result).toEqual({ staged: null, reason: "replayed_pointer" });
+    expect(plugin.downloadBundle).not.toHaveBeenCalled();
+    expect(plugin.setNextBundle).not.toHaveBeenCalled();
+    expect(plugin.deleteBundle).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on an equal legacy timestamp that has no pointer identity", async () => {
+    const { checkAndStage } = await import("../live-update");
+    preferences.data.set(POINTER_HIGH_WATER_KEY, validManifest.pointerChangedAt);
+    serve(validManifest);
+
+    const result = await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(result).toEqual({ staged: null, reason: "pointer_state_unavailable" });
+    expect(plugin.downloadBundle).not.toHaveBeenCalled();
+    expect(plugin.setNextBundle).not.toHaveBeenCalled();
+  });
+
   it("keeps production and canary replay high-water marks independent", async () => {
     const { checkAndStage } = await import("../live-update");
     preferences.data.set(POINTER_HIGH_WATER_KEY, "2026-09-08T01:02:03.004Z");
@@ -408,7 +471,7 @@ describe("checkAndStage — what it refuses, before downloading anything", () =>
 
     expect(r.reason).toBe("staged");
     expect(preferences.data.get("flm.ota.pointerHighWater.v1.production")).toBe(
-      validManifest.pointerChangedAt,
+      serializedHighWater({ ...validManifest, channel: "production" }),
     );
   });
 
@@ -436,17 +499,21 @@ describe("checkAndStage — what it refuses, before downloading anything", () =>
   it("allows a newer rollback pointer to reference an older released version", async () => {
     const { checkAndStage } = await import("../live-update");
     preferences.data.set(POINTER_HIGH_WATER_KEY, "2026-09-07T01:02:03.004Z");
-    serve({
+    const newerRollback = {
       ...validManifest,
       bundleId: "0.9.0-deadbeef",
       version: "0.9.0",
       releasedAt: "2026-01-01T00:00:00.000Z",
       pointerChangedAt: "2026-09-07T01:02:03.005Z",
-    });
+    };
+    serve(newerRollback);
 
     const r = await checkAndStage({ channel: "canary", isBusy: idle });
 
     expect(r).toMatchObject({ staged: "0.9.0-deadbeef", reason: "staged" });
+    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
+      serializedHighWater(newerRollback),
+    );
   });
 
   it("stages nothing while the technician has unsynced work", async () => {
@@ -526,7 +593,9 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     const result = await checkAndStage({ channel: "canary", isBusy: idle });
 
     expect(result).toEqual({ staged: validManifest.bundleId, reason: "staged" });
-    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(validManifest.pointerChangedAt);
+    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
+      serializedHighWater(validManifest),
+    );
     expect(plugin.deleteBundle).not.toHaveBeenCalled();
   });
 
@@ -541,7 +610,9 @@ describe("checkAndStage — an update server that is down must be a non-event", 
     const result = await checkAndStage({ channel: "canary", isBusy: idle });
 
     expect(result).toEqual({ staged: null, reason: "bundle_state_unavailable" });
-    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(validManifest.pointerChangedAt);
+    expect(preferences.data.get(POINTER_HIGH_WATER_KEY)).toBe(
+      serializedHighWater(validManifest),
+    );
     expect(plugin.deleteBundle).not.toHaveBeenCalled();
   });
 
