@@ -222,12 +222,18 @@ _StrictUniqueKeyLoader.add_constructor(
 
 
 def _strict_yaml_load(text: str) -> dict:
+    loader = _StrictUniqueKeyLoader(text)
     try:
-        data = yaml.load(text, Loader=_StrictUniqueKeyLoader)
+        # Use the SafeLoader subclass directly instead of routing through
+        # yaml.load. This preserves duplicate-key rejection while making the
+        # safe construction boundary explicit to both readers and scanners.
+        data = loader.get_single_data()
     except GuardPolicyError:
         raise
     except yaml.YAMLError as exc:
         raise GuardPolicyError(f"registry is not valid YAML: {exc}") from exc
+    finally:
+        loader.dispose()
     if data is None:
         return {}
     if not isinstance(data, dict):
