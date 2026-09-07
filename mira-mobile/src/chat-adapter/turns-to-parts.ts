@@ -37,7 +37,11 @@ export function isFailedLiveStatus(status: string): boolean {
  * and would present the question as already handled). Keyed on completion,
  * not on enumerating the ways a turn can fail (ADR-0040 §4, F1/F4 lesson).
  */
-export function isCompletedLiveTurn(t: { a: { status: string } }): boolean {
+export function isCompletedLiveTurn(t: { a: { status: string; sawStatus?: boolean } }): boolean {
+  // Rule 6: no terminal `status` frame means the answer was cut off — a
+  // truncated stream resolves normally, so it reaches liveTurns through the
+  // success path with a partial answer and must not become prior context.
+  if (t.a.sawStatus === false) return false;
   return t.a.status !== "stopped" && !isFailedLiveStatus(t.a.status);
 }
 

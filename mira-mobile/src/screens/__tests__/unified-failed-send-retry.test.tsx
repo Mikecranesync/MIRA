@@ -192,6 +192,28 @@ describe("F4 — a failed send must remain retryable on the unified surface", ()
     expect(JSON.stringify(opts?.history ?? [])).not.toContain("What does fault F005 mean?");
   });
 
+  it("does not feed a TRUNCATED answer (no terminal status frame) to the model as history either", async () => {
+    // F5: a cut-off stream resolves normally (nothing throws), so it lands in
+    // liveTurns via the success path with sawStatus:false and a partial
+    // answer. "Completed" means the terminal status frame arrived — a
+    // truncated turn is not an answer and must not be replayed as one.
+    askNotebook.mockImplementationOnce(async () => ({
+      answer: "The drive trips when the DC bus",
+      citations: [],
+      status: "",
+      sawStatus: false,
+    }) as never);
+    mount();
+    await ask("Why does F005 trip?");
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.body.textContent ?? "").toContain("The drive trips when the DC bus"));
+
+    await ask("And what clears it?");
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
+    const opts = askNotebook.mock.calls[1]?.[3] as { history?: unknown } | undefined;
+    expect(JSON.stringify(opts?.history ?? [])).not.toContain("The drive trips when the DC bus");
+  });
+
   it("does not silently lose the question altogether", async () => {
     // CORRECTION to the first F4 write-up: I reported that the unified surface
     // leaves "a restored draft and nothing else". That was wrong — it leaves
