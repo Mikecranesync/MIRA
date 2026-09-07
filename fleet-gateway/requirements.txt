@@ -1,0 +1,6 @@
+# Fleet Gateway MCP v1. Align FastMCP/starlette pins with mira-mcp when installing extras.
+starlette>=0.27
+uvicorn>=0.32
+# Optional MCP transport (HTTP surface does not require it):
+# fastmcp==3.3.*
+httpx>=0.27
