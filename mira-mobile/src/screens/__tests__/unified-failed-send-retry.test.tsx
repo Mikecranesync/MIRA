@@ -175,22 +175,21 @@ describe("F4 — a failed send must remain retryable on the unified surface", ()
     expect(second?.[1] ?? second?.[0]).toEqual(first?.[1] ?? first?.[0]);
   });
 
-  it("does not replay the failed attempt as unanswered history in the retried payload", async () => {
-    // The failed live turn is rendered (above) but must never reach the model
-    // as prior context: it has no answer, and on retry the same question would
-    // arrive twice — once as history, once as the new message. This is the
-    // payload-level twin of the transcript-level no-duplicate rule.
+  it("does not feed the failed attempt to the model as unanswered history on the next send", async () => {
+    // Retry replays the ORIGINAL request body (captured before the failure),
+    // so it can never carry the failed turn. A fresh question typed after the
+    // failure builds NEW history from liveTurns — that is where a failed turn
+    // would leak in as an unanswered question the model may assume it already
+    // handled. history rides in askNotebook's 4th argument (opts.history).
     mount();
     await ask("What does fault F005 mean?");
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(retryButton()).not.toBeNull());
-    await act(async () => {
-      fireEvent.click(retryButton() as HTMLButtonElement);
-    });
+    await waitFor(() => expect(document.querySelector('[data-part-type="error"]')).not.toBeNull());
+
+    await ask("And what clears it?");
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
-    const second = askNotebook.mock.calls[1];
-    const body = (second?.[1] ?? second?.[0]) as { history?: unknown };
-    expect(JSON.stringify(body?.history ?? [])).not.toContain("What does fault F005 mean?");
+    const opts = askNotebook.mock.calls[1]?.[3] as { history?: unknown } | undefined;
+    expect(JSON.stringify(opts?.history ?? [])).not.toContain("What does fault F005 mean?");
   });
 
   it("does not silently lose the question altogether", async () => {
