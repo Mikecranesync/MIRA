@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.1.1/claim.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/claim.schema.json",
   "title": "peer-network claim",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,10 +19,12 @@
   ],
   "properties": {
     "mission_id": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Z0-9-]+$"
     },
     "session_uuid": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$"
     },
     "base_sha": {
       "type": "string",
@@ -39,9 +41,9 @@
       "minItems": 1,
       "items": {
         "type": "string",
-        "pattern": "^(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
+        "pattern": "^(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tools/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
       },
-      "description": "Canonical resource keys acquired atomically \u2014 all or none (PRD \u00a77). Path-shaped keys may not contain '.' or '..' segments (no traversal past the claimed root)."
+      "description": "Canonical resource keys acquired atomically \u2014 all or none (PRD \u00a77). Path-shaped keys may not contain '.' or '..' segments (no traversal past the claimed root). Keys are canonical (tools/peer_network/resource_keys.py): trimmed, single slashes, no trailing slash, no '.'/'..' segments. Two keys overlap when equal or when one path is an ancestor of the other; a claim never widens silently (scope_expansion)."
     },
     "lease_expires_at": {
       "type": "string",

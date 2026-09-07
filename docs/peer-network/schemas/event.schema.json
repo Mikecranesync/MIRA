@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/event.schema.json",
+  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/event.schema.json",
   "title": "peer-network event",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,10 +16,12 @@
   ],
   "properties": {
     "event_id": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$"
     },
     "idempotency_key": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$"
     },
     "ts": {
       "type": "string",
@@ -51,10 +53,13 @@
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "pattern": "^[A-Z0-9-]+$",
+      "description": "Fail-closed: a string value must match the pattern (empty or free text is rejected); null only where the operation is mission-less."
     },
     "session_uuid": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$"
     },
     "payload": {
       "type": "object",
@@ -221,6 +226,388 @@
               "generation": {
                 "type": "integer",
                 "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "join_network"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "node_id",
+              "capabilities"
+            ],
+            "properties": {
+              "node_id": {
+                "type": "string",
+                "enum": [
+                  "alpha",
+                  "bravo",
+                  "charlie",
+                  "travel",
+                  "plc",
+                  "vps"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "git",
+                    "gh",
+                    "write",
+                    "worktree",
+                    "codex-cli",
+                    "adb",
+                    "bun",
+                    "docker",
+                    "plc",
+                    "ignition",
+                    "factory-io",
+                    "read-only"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "heartbeat"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "lease_expires_at"
+            ],
+            "properties": {
+              "lease_expires_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "fleet_status"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "nodes"
+            ],
+            "properties": {
+              "nodes": {
+                "type": "array"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "request_work"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "capabilities"
+            ],
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "git",
+                    "gh",
+                    "write",
+                    "worktree",
+                    "codex-cli",
+                    "adb",
+                    "bun",
+                    "docker",
+                    "plc",
+                    "ignition",
+                    "factory-io",
+                    "read-only"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "claim_work"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "resource_keys",
+              "base_sha",
+              "branch"
+            ],
+            "properties": {
+              "resource_keys": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(packages/[a-z0-9-]+|apps/[a-z0-9-]+|mira-[a-z-]+|migration:next|device:[a-z0-9-]+|environment:(dev|staging|prod)|docs/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|deployment/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|tests/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+|\\.github/workflows/(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_./-]+\\.ya?ml|root:(CLAUDE\\.md|AGENTS\\.md))$"
+                }
+              },
+              "base_sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "renew_claim"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "lease_expires_at",
+              "generation"
+            ],
+            "properties": {
+              "lease_expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "release_claim"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "RELEASED",
+                  "COMPLETE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "submit_checkpoint"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "sha"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "request_handoff"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "handoff_ref"
+            ],
+            "properties": {
+              "handoff_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "leave_network"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "release"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": [
+              "version",
+              "sha"
+            ],
+            "properties": {
+              "version": {
+                "type": "string",
+                "pattern": "^v?\\d+\\.\\d+\\.\\d+$"
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
               }
             }
           }

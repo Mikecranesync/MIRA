@@ -61,12 +61,6 @@ jobs:
               - '!wiki/**'
               - '!**/*.md'
               - '!.claude/**'
-              # Re-include AFTER the negations: docs/peer-network is the peer-network CONTRACT
-              # (schemas, laws, the root-pointer gate) and tests/peer_network guards it. A
-              # docs-only edit there must run test-unit, not skip the suite that checks it
-              # (FLEET-PEER-NETWORK-001, Codex review of cbacc99da1).
-              - 'docs/peer-network/**'
-              - 'tests/peer_network/**'
               - '!**/*.webp'
               - '!**/*.png'
               - '!**/*.jpg'
@@ -89,6 +83,30 @@ jobs:
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
           args: -color -shellcheck=
+
+  peer-contract:
+    name: Peer-network contract (FLEET-PEER-NETWORK-001)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ALWAYS runs — deliberately no `changes` conditional and no `needs: changes`. The
+    # peer-network contract lives in docs/peer-network (schemas, laws, resource keys, the
+    # root-pointer gate): the `changes` filter negates docs/** and a skipped job reports
+    # Success, so a docs-only PR that rewrote a schema would merge unguarded if this suite
+    # sat behind the filter. In ci-gate's needs so red here blocks the merge.
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history. The changed-path guard diffs against merge-base(HEAD, origin/main);
+          # a shallow checkout cannot compute it and the guard fails naming the ancestry —
+          # never a skip, and never a green.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install the suite's pinned dependencies
+        run: pip install -r tests/peer_network/requirements.txt
+      - name: Peer-network contract tests
+        run: pytest tests/peer_network/ -v
 
   precommit-hook-tests:
     name: Pre-commit Hook Tests
@@ -366,9 +384,6 @@ jobs:
           pip install -r mira-bots/foreman/requirements.txt
           pip install PyJWT cryptography
           pip install pytest pytest-asyncio pytest-cov pytest-xdist
-          # jsonschema: the peer-network hardening tests validate documents against the
-          # contract schemas with a HARD import — without it the step is red, not green-with-skips.
-          pip install jsonschema
 
       - name: Run ingest tests with coverage
         run: |
@@ -420,17 +435,6 @@ jobs:
         # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
-
-      - name: Peer-network contract tests (FLEET-PEER-NETWORK-001)
-        # Static contract checks for docs/peer-network (schemas, laws, resource keys, the
-        # root-pointer status gate) and their hardening tests. Named here, inside the
-        # gated test-unit job, because the tests/ sweep in test-eval-offline is not in
-        # ci-gate's needs — a step there can go red and merge anyway.
-        run: |
-          # The changed-path test diffs against origin/main; a shallow checkout has no such
-          # ref and the test is RED (not skipped) without it.
-          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main 2>/dev/null || git fetch --no-tags origin main
-          pytest tests/peer_network/ -v
 
       - name: Materialized Evidence contract + document-receipt lane
         # `materialized_evidence/` and the batch-document receipt lane it feeds
@@ -1445,6 +1449,7 @@ jobs:
     needs:
       - changes
       - actionlint
+      - peer-contract
       - precommit-hook-tests
       - migration-order-check
       - shared-line-guard
