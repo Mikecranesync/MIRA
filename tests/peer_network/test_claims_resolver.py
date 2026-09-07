@@ -67,19 +67,20 @@ def _validator(name: str) -> Draft202012Validator:
 
 
 @pytest.mark.parametrize(
-    ("raw", "canonical"),
+    "canonical",
     [
-        (" docs/peer-network/ ", "docs/peer-network"),
-        ("docs//peer-network///schemas", "docs/peer-network/schemas"),
-        ("docs/..hidden/x", "docs/..hidden/x"),  # a name that merely starts with dots
-        ("docs/a/..b/c", "docs/a/..b/c"),
-        ("packages/factorylm-ui", "packages/factorylm-ui"),
-        ("migration:next", "migration:next"),
-        ("root:CLAUDE.md", "root:CLAUDE.md"),
+        "docs/..hidden/x",  # a name that merely STARTS with dots is a real segment, not traversal
+        "docs/a/..b/c",
+        "packages/factorylm-ui",
+        "migration:next",
+        "root:CLAUDE.md",
+        "docs/peer-network",
+        "deployment/network.yml",
     ],
 )
-def test_canonicalize_accepts_and_normalises(raw: str, canonical: str) -> None:
-    assert canonicalize(raw) == canonical
+def test_canonicalize_accepts_already_canonical_keys_unchanged(canonical: str) -> None:
+    # An already-canonical key is returned verbatim — canonicalize validates, it does not repair.
+    assert canonicalize(canonical) == canonical
 
 
 @pytest.mark.parametrize(
@@ -87,6 +88,15 @@ def test_canonicalize_accepts_and_normalises(raw: str, canonical: str) -> None:
     [
         "",
         "   ",
+        # F1 (Codex HOLD): noncanonical raw forms the schema rejects — the resolver used to
+        # silently normalise these, letting a claim mean two things across the race. Now rejected.
+        " docs/peer-network/ ",  # surrounding whitespace + trailing slash
+        " docs/x",  # leading whitespace (Codex probe)
+        "docs/x ",  # trailing whitespace
+        "docs//peer-network///schemas",  # duplicate slashes
+        "docs//x",  # duplicate slash (Codex probe)
+        "docs/x/",  # trailing slash (Codex probe)
+        # traversal / free text / unknown families (unchanged)
         "docs/a/./b",
         "docs/a/b/..",
         "docs/../packages/factorylm-ui",
@@ -97,7 +107,9 @@ def test_canonicalize_accepts_and_normalises(raw: str, canonical: str) -> None:
         "environment:qa",
     ],
 )
-def test_canonicalize_rejects_traversal_free_text_and_unknown_families(bad: str) -> None:
+def test_canonicalize_rejects_noncanonical_traversal_free_text_and_unknown_families(
+    bad: str,
+) -> None:
     with pytest.raises(InvalidResourceKey):
         canonicalize(bad)
 

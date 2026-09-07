@@ -20,19 +20,28 @@ class InvalidResourceKey(ValueError):
 
 
 def canonicalize(key: str) -> str:
-    """Trim, collapse duplicate slashes, drop a trailing slash, then require the schema pattern.
+    """Require a key that is ALREADY canonical; REJECT anything noncanonical (Codex HOLD finding 1).
 
-    Rejects '.' / '..' segments before matching so `docs/../packages/x` can never normalise into
-    something the pattern accepts."""
-    raw = key.strip()
-    if not raw:
+    The claim schema's pattern rejects surrounding whitespace, duplicate slashes and a trailing
+    slash outright. This resolver used to silently repair those raw forms (`" docs/x"` -> `docs/x`,
+    `docs//x` -> `docs/x`), so a claim could mean one thing to the schema and another to the race
+    logic — an asymmetry an attacker or a careless caller could ride. The two sides must agree, so
+    the resolver now rejects the same raw forms the schema does instead of normalising them.
+
+    Rejected with InvalidResourceKey: empty/whitespace, surrounding whitespace, duplicate ('//') or
+    trailing ('/') slashes, any '.'/'..' path segment (`docs/../packages/x` can never slip through),
+    and anything the schema pattern does not fullmatch."""
+    if not key:
         raise InvalidResourceKey("empty key")
-    collapsed = re.sub(r"/{2,}", "/", raw).rstrip("/")
-    if any(seg in (".", "..") for seg in collapsed.split("/")):
+    if key != key.strip():
+        raise InvalidResourceKey(f"surrounding whitespace in {key!r}")
+    if "//" in key or key.endswith("/"):
+        raise InvalidResourceKey(f"noncanonical slash in {key!r} (duplicate or trailing)")
+    if any(seg in (".", "..") for seg in key.split("/")):
         raise InvalidResourceKey(f"traversal segment in {key!r}")
-    if not _PATTERN.fullmatch(collapsed):
+    if not _PATTERN.fullmatch(key):
         raise InvalidResourceKey(f"not a canonical resource key: {key!r}")
-    return collapsed
+    return key
 
 
 def _segments(key: str) -> list[str]:
