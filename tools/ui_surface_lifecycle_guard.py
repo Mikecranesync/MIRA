@@ -222,11 +222,17 @@ _EXCEPTION_HEADER_RE = re.compile(r"^[ ]{0,3}##[ \t]+Legacy UI exception\s*$")
 # its protocol syntax deliberately is not a Markdown heading; fields in that
 # record (notably its own `Rollback:`) are not exception-attestation fields.
 _EXCEPTION_SECTION_BOUNDARY_RE = re.compile(
-    r"^[ ]{0,3}(?:#{1,2}[ \t]+|(?:=+|-+)[ \t]*$|\[WORK-CLAIM\][ \t]*$)"
+    r"^[ ]{0,3}(?:#{1,2}(?:[ \t]+|$)|(?:=+|-+)[ \t]*$|\[WORK-CLAIM\][ \t]*$)"
 )
-# A "fence" opener: 3+ backticks or 3+ tildes, optionally followed by a
-# language tag (```python, ~~~markdown, ...).
-_FENCE_OPEN_RE = re.compile(r"^(`{3,}|~{3,})")
+# A CommonMark fence line: 3+ backticks or tildes, optionally nested directly
+# inside block-quote/list container markers and optionally followed by an info
+# string. Recognizing the container prefix matters here because CommonMark can
+# render `- ```markdown` followed by a 2-space-indented H2 as code even though
+# the H2 superficially looks like a live 0-3-space heading to this guard.
+_FENCE_LINE_RE = re.compile(
+    r"^(?:(?:[ ]{0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+))*)"
+    r"[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<tail>[^\r\n]*)$"
+)
 
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
@@ -816,27 +822,39 @@ def load_exception_approval(
 # ---------------------------------------------------------------------------
 def _strip_fenced_code_blocks(text: str) -> str:
     """Drop fenced code-block content — backtick OR tilde fences, length >=3,
+    including fences nested directly in CommonMark list/blockquote containers,
     CLOSED or UNCLOSED. An unclosed fence drops everything through EOF (never
     left un-stripped and scannable, never left as a way to smuggle a fake
-    exception section past the guard by simply never closing the fence)."""
+    exception section past the guard by simply never closing the fence).
+
+    This is deliberately conservative: once a recognizable opener is seen,
+    ambiguous content stays masked until a same-character fence of at least the
+    opening length appears with no trailing content. Over-masking makes an
+    exception fail closed; under-masking could turn code into an attestation.
+    """
     lines = (text or "").splitlines(keepends=True)
     out: list[str] = []
     in_fence = False
     fence_char = ""
     fence_len = 0
     for line in lines:
-        stripped = line.strip()
+        candidate = line.rstrip("\r\n")
+        match = _FENCE_LINE_RE.match(candidate)
         if not in_fence:
-            m = _FENCE_OPEN_RE.match(stripped)
-            if m:
-                fence_char = m.group(1)[0]
-                fence_len = len(m.group(1))
+            if match:
+                fence_run = match.group("fence")
+                fence_char = fence_run[0]
+                fence_len = len(fence_run)
                 in_fence = True
                 continue
             out.append(line)
             continue
-        close_re = re.compile(r"^" + re.escape(fence_char) + "{" + str(fence_len) + r",}$")
-        if close_re.match(stripped):
+        if (
+            match
+            and match.group("fence")[0] == fence_char
+            and len(match.group("fence")) >= fence_len
+            and not match.group("tail").strip()
+        ):
             in_fence = False
         # else: still inside the fence (or this line is the unclosed-to-EOF
         # tail) — drop it either way.

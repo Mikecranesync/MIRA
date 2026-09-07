@@ -475,6 +475,35 @@ def test_indented_top_level_boundary_cannot_supply_exception_fields(boundary):
     assert "body:Rollback:" in result.missing_fields
 
 
+@pytest.mark.parametrize(
+    "boundary",
+    [f"{' ' * indent}{marker}" for indent in range(4) for marker in ("#", "##")],
+)
+def test_bare_commonmark_atx_boundary_cannot_supply_exception_fields(boundary):
+    body = (
+        textwrap.dedent(
+            """
+        ## Legacy UI exception
+
+        Reason: severity-1 production repair for a broken rollback path
+        Canonical replacement impact: none, this only touches the recovery route
+        """
+        )
+        + f"\n{boundary}\nRollback: this belongs to a different top-level section\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:Rollback:" in result.missing_fields
+
+
 @pytest.mark.parametrize("underline", ["===", "---", "   ===", "   ---"])
 def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
     body = textwrap.dedent(
@@ -702,6 +731,44 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
     body = "~~~markdown\n" + _VALID_BODY + "\n~~~\n"
     result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
     assert result.allowed is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        textwrap.dedent(
+            """
+            - ```markdown
+              ## Legacy UI exception
+            Reason: severity one repair for a broken rollback path
+            Canonical replacement impact: canonical shell remains fully unaffected
+            Rollback: revert the emergency repair commit cleanly
+            """
+        ),
+        textwrap.dedent(
+            """
+            1. ~~~markdown
+               ## Legacy UI exception
+               ~~~
+            Reason: severity one repair for a broken rollback path
+            Canonical replacement impact: canonical shell remains fully unaffected
+            Rollback: revert the emergency repair commit cleanly
+            """
+        ),
+    ],
+    ids=("unclosed-unordered-list-fence", "closed-ordered-list-fence"),
+)
+def test_list_contained_fence_cannot_supply_exception_heading(body):
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:## Legacy UI exception section" in result.missing_fields
 
 
 def test_unclosed_html_comment_swallows_everything_after_it():
