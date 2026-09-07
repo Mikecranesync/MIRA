@@ -27,6 +27,27 @@ const plugin = vi.hoisted(() => ({
 }));
 vi.mock("@capawesome/capacitor-live-update", () => ({ LiveUpdate: plugin }));
 
+// checkAndStage now goes through the ONE authenticated seam rather than bare
+// fetch, because the manifest route is session-gated and a bare fetch carries no
+// cookie on native. Mock the seam, not global fetch — mocking fetch would keep
+// these tests green while the real request path 401s, which is exactly how the
+// 401 survived a full green suite.
+const client = vi.hoisted(() => ({
+  request: vi.fn(),
+  withAuthEventsSuppressed: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  API_BASE: "https://app.factorylm.com",
+  ApiError: class ApiError extends Error {
+    kind: string;
+    status: number | null;
+    constructor(kind: string, status: number | null, detail = "") {
+      super(detail || kind);
+      this.kind = kind;
+      this.status = status;
+    }
+  },
+}));
+vi.mock("../../api/client", () => client);
+
 // The build injects this; pin it so the fingerprint gate is testable.
 (globalThis as unknown as Record<string, string>).__FLM_NATIVE_FINGERPRINT__ = FINGERPRINT;
 
@@ -42,10 +63,13 @@ const validManifest = {
 };
 
 function serve(body: unknown, ok = true, status = 200) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({ ok, status, json: async () => body })),
-  );
+  if (ok) {
+    client.request.mockResolvedValue({ status, data: body, text: "" });
+  } else {
+    client.request.mockRejectedValue(
+      new client.ApiError(status === 401 ? "auth" : "server", status, `HTTP ${status}`),
+    );
+  }
 }
 
 const idle = () => false;
@@ -144,7 +168,7 @@ describe("checkAndStage — an update server that is down must be a non-event", 
 
   it("survives a thrown network error", async () => {
     const { checkAndStage } = await import("../live-update");
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ENOTFOUND"); }));
+    client.request.mockRejectedValue(new client.ApiError("network", null, "ENOTFOUND"));
     const r = await checkAndStage({ channel: "canary", isBusy: idle });
     expect(r).toMatchObject({ staged: null, reason: "unreachable" });
   });
@@ -255,5 +279,97 @@ describe("CANARY-OTA-NAV-AUDIT — Mike's Pixel: canary offers the bundle alread
     const r = await checkAndStage({ channel: "canary", isBusy: async () => false });
     expect(plugin.downloadBundle).not.toHaveBeenCalled();
     expect(r).toEqual({ staged: null, reason: "up_to_date" });
+  });
+});
+
+describe("the request contract the phone actually uses", () => {
+  it("asks the session-gated route through the authenticated seam, not bare fetch", async () => {
+    const { checkAndStage } = await import("../live-update");
+    serve(validManifest);
+
+    await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(client.request).toHaveBeenCalledTimes(1);
+    const path = client.request.mock.calls[0][0] as string;
+    // Canonical trailing slash BEFORE the query: without it the server answers
+    // 308 and the client pays a redirect hop on every check.
+    expect(path.startsWith("/api/mobile/live-update/manifest/?")).toBe(true);
+    expect(path).toContain("channel=canary");
+    expect(path).toContain(`fingerprint=${FINGERPRINT}`);
+    // A bare fetch is what produced the 401 in production. It must not be used.
+    expect(path.startsWith("http")).toBe(false);
+  });
+
+  it("reports unauthenticated instead of a bare server_401", async () => {
+    const { checkAndStage } = await import("../live-update");
+    serve({}, false, 401);
+
+    const r = await checkAndStage({ channel: "canary", isBusy: idle });
+
+    expect(r).toEqual({ staged: null, reason: "unauthenticated" });
+    expect(plugin.downloadBundle).not.toHaveBeenCalled();
+  });
+
+  it("never signs the technician out because an update check found no session", async () => {
+    const { checkAndStage } = await import("../live-update");
+    serve({}, false, 401);
+
+    await checkAndStage({ channel: "canary", isBusy: idle });
+
+    // The 401 must be raised INSIDE the suppression window, or a routine update
+    // check throws the user to the login screen mid-diagnosis.
+    expect(client.withAuthEventsSuppressed).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("classifyDownloadFailure — against the plugin's real messages", () => {
+  // Read out of @capawesome/capacitor-live-update's Android sources: these are
+  // the strings that reach the handset. The previous table was written against
+  // invented messages and passed while misclassifying every real one.
+  it.each([
+    ["Bundle could not be downloaded.", "download_failed"],
+    ["Request timed out.", "download_failed"],
+    ["Checksum mismatch.", "checksum_mismatch"],
+    ["Failed to calculate checksum.", "verify_failed"],
+    ["Signature verification failed.", "signature_invalid"],
+    ["Bundle does not contain a signature.", "unsigned_bundle"],
+    ["Invalid public key.", "signature_invalid"],
+    ["Bundle is blocked and will not be downloaded.", "bundle_blocked"],
+    ["Unauthorized. Channel Discovery may not be enabled for this app.", "channel_unauthorized"],
+    ["The bundle does not contain an index.html file.", "bundle_malformed"],
+    ["Sync is already in progress.", "busy"],
+    ["An unknown error has occurred.", "unknown_error"],
+  ])("%s -> %s", async (message, expected) => {
+    const { classifyDownloadFailure } = await import("../live-update");
+    expect(classifyDownloadFailure(new Error(message))).toBe(expected);
+  });
+
+  it("never lets a real plugin message fall through to the catch-all", async () => {
+    const { classifyDownloadFailure } = await import("../live-update");
+    const REAL_MESSAGES = [
+      "Bundle could not be downloaded.",
+      "Request timed out.",
+      "Checksum mismatch.",
+      "Signature verification failed.",
+      "Bundle does not contain a signature.",
+      "Invalid public key.",
+      "Bundle is blocked and will not be downloaded.",
+      "The bundle does not contain an index.html file.",
+      "Sync is already in progress.",
+      "An unknown error has occurred.",
+    ];
+    // "Failed to calculate checksum." maps to verify_failed ON PURPOSE — it means
+    // the check could not run, which is genuinely a verification failure — so it
+    // is excluded here rather than weakening the assertion.
+    for (const m of REAL_MESSAGES) {
+      expect(classifyDownloadFailure(new Error(m))).not.toBe("verify_failed");
+    }
+  });
+
+  it("a transport failure is never reported as an integrity failure", async () => {
+    const { classifyDownloadFailure } = await import("../live-update");
+    const TRUST = ["checksum_mismatch", "signature_invalid", "unsigned_bundle"];
+    expect(TRUST).not.toContain(classifyDownloadFailure(new Error("Bundle could not be downloaded.")));
+    expect(TRUST).not.toContain(classifyDownloadFailure(new Error("Request timed out.")));
   });
 });

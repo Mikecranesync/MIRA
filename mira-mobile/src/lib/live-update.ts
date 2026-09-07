@@ -26,9 +26,16 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { LiveUpdate } from "@capawesome/capacitor-live-update";
+import { API_BASE, ApiError, request, withAuthEventsSuppressed } from "../api/client";
 
-/** Where the signed manifest lives. FactoryLM-controlled, HTTPS, no exceptions. */
-export const OTA_MANIFEST_URL = "https://app.factorylm.com/api/mobile/live-update/manifest";
+/** The canonical, session-gated manifest route. The trailing slash is the
+ *  canonical form; without it the server answers 308 and the redirect hop is
+ *  pure latency. Path only — the origin and the cookie jar belong to
+ *  `api/client`, which is the single owner of native HTTP. */
+export const MANIFEST_PATH = "/api/mobile/live-update/manifest/";
+/** Retained for callers/tests that reference the absolute URL. */
+export const OTA_MANIFEST_URL = `${API_BASE}${MANIFEST_PATH}`;
+const MANIFEST_TIMEOUT_MS = 15_000;
 
 export type OtaChannel = "canary" | "production";
 
@@ -120,6 +127,41 @@ export type BusyProbe = () => Promise<boolean> | boolean;
  * when to surface it, and only the technician decides when to restart — an
  * update that reloads mid-diagnosis is a worse defect than the one it fixes.
  */
+// Keyed on the strings the plugin ACTUALLY emits, read out of
+// @capawesome/capacitor-live-update's Android sources (the authoritative side —
+// that is the code that runs on the handset). The previous version of this
+// classifier was written against invented messages, so the one message a real
+// failed download produces, "Bundle could not be downloaded.", matched no rule
+// and fell through to `verify_failed` — reporting a bad minute on the network as
+// an integrity failure, which is the exact defect this function exists to prevent.
+//
+// Order matters: the specific plugin phrases come first, generic shapes after, so
+// a message this table does not know still lands somewhere sensible.
+const DOWNLOAD_FAILURE_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  // Trust — the bytes are not what the manifest promised.
+  [/checksum mismatch/, "checksum_mismatch"],
+  [/failed to calculate checksum/, "verify_failed"], // could not check ≠ mismatched
+  [/signature verification failed/, "signature_invalid"],
+  [/does not contain a signature/, "unsigned_bundle"],
+  [/invalid public key/, "signature_invalid"],
+  // Policy — the server or the shell refused, nothing is wrong with the bytes.
+  [/is blocked and will not be downloaded/, "bundle_blocked"],
+  [/unauthorized\./, "channel_unauthorized"],
+  // Transport — transient, retry later, never a trust event.
+  [/bundle could not be downloaded/, "download_failed"],
+  [/request timed out/, "download_failed"],
+  // Payload shape.
+  [/does not contain an index\.html/, "bundle_malformed"],
+  // Concurrency / duplicates.
+  [/sync is already in progress/, "busy"],
+  [/already exists|duplicate/, "duplicate_bundle"],
+  [/an unknown error has occurred/, "unknown_error"],
+  // Generic shapes, for anything the plugin adds that this table has not learned.
+  [/network|socket|connection|unreachable|dns|econn|offline|timeout|timed out/, "download_failed"],
+  [/checksum|digest|sha-?256|hash/, "checksum_mismatch"],
+  [/signature|signed|public key/, "signature_invalid"],
+];
+
 /**
  * Distinguish the failure modes the plugin reports through one rejected promise.
  * Checksum and signature are TRUST failures and must be named as such; anything
@@ -127,11 +169,9 @@ export type BusyProbe = () => Promise<boolean> | boolean;
  */
 export function classifyDownloadFailure(e: unknown): string {
   const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
-  if (/checksum|digest|sha-?256|hash/.test(msg)) return "checksum_mismatch";
-  if (/signature|signed|public key|verif/.test(msg)) return "signature_invalid";
-  if (/already exists|duplicate/.test(msg)) return "duplicate_bundle";
-  if (/network|timeout|timed out|socket|connection|unreachable|dns|econn|offline/.test(msg))
-    return "download_failed";
+  for (const [pattern, reason] of DOWNLOAD_FAILURE_RULES) {
+    if (pattern.test(msg)) return reason;
+  }
   return "verify_failed";
 }
 
@@ -139,7 +179,6 @@ export async function checkAndStage(opts: {
   channel: OtaChannel;
   /** Any pending offline work, upload, or in-flight mutation → skip this cycle. */
   isBusy: BusyProbe;
-  manifestUrl?: string;
 }): Promise<{ staged: string | null; reason: string }> {
   if (!Capacitor.isNativePlatform()) return { staged: null, reason: "not_native" };
 
@@ -147,12 +186,28 @@ export async function checkAndStage(opts: {
 
   let manifest: Partial<OtaManifest>;
   try {
-    const url = `${opts.manifestUrl ?? OTA_MANIFEST_URL}?channel=${encodeURIComponent(opts.channel)}&fingerprint=${encodeURIComponent(NATIVE_FINGERPRINT)}`;
-    const res = await fetch(url, { headers: { accept: "application/json" } });
-    if (!res.ok) return { staged: null, reason: `server_${res.status}` };
-    manifest = (await res.json()) as Partial<OtaManifest>;
-  } catch {
+    const query = `?channel=${encodeURIComponent(opts.channel)}&fingerprint=${encodeURIComponent(NATIVE_FINGERPRINT)}`;
+    // Go through the ONE seam that owns the persisted NextAuth cookie jar. The
+    // route is session-gated (`sessionOr401`), and a bare `fetch` carries no
+    // credential on native — it 308s to the trailing-slash path and then 401s, so
+    // every "Check now" reported `Update server error (401)` and no device could
+    // ever be offered a bundle. Requesting MANIFEST_PATH directly (with its
+    // trailing slash) also skips that redirect hop.
+    //
+    // Auth events are suppressed deliberately: a background update check that
+    // happens to find an expired session must not throw the technician out to the
+    // login screen mid-diagnosis. It reports `unauthenticated` and does nothing.
+    const res = await withAuthEventsSuppressed(() =>
+      request(`${MANIFEST_PATH}${query}`, { timeoutMs: MANIFEST_TIMEOUT_MS }),
+    );
+    manifest = (res.data ?? {}) as Partial<OtaManifest>;
+  } catch (e) {
     // An unreachable update server is a non-event, not an error state.
+    if (e instanceof ApiError) {
+      if (e.kind === "auth") return { staged: null, reason: "unauthenticated" };
+      if (e.kind === "network") return { staged: null, reason: "unreachable" };
+      return { staged: null, reason: e.status ? `server_${e.status}` : "unreachable" };
+    }
     return { staged: null, reason: "unreachable" };
   }
 

@@ -170,6 +170,18 @@ function explain(reason: string): string {
       return "Download did not finish — network problem. Nothing changed; try again.";
     case "verify_failed":
       return "Refused — the update failed its integrity check. Nothing changed.";
+    case "unauthenticated":
+      return "Sign in to check for updates. The app is unaffected.";
+    case "unsigned_bundle":
+      return "Refused — the download carried no signature. Nothing changed.";
+    case "bundle_blocked":
+      return "That update has been withdrawn. Nothing changed.";
+    case "channel_unauthorized":
+      return "This app is not enabled for that update channel.";
+    case "bundle_malformed":
+      return "Refused — the update was incomplete. Nothing changed.";
+    case "unknown_error":
+      return "The update could not be applied. Nothing changed; try again.";
     case "unreachable":
       return "Could not reach the update server. The app is unaffected.";
     case "not_native":
