@@ -102,6 +102,11 @@ Each step names the future Foreman operation it stands in for (`schemas/README.m
 9. Set the claim to `COMPLETE` or `RELEASED`, remove your worktree, post the session closeout
    (protocol §9).
 
+**Rule for every guard:** a guard is not verified until it has been made to fail on the regression
+it names. Reading a check proves nothing; mutate the thing it protects and watch it go red — with
+the full test count intact, so a load failure is not mistaken for a control. (Five instances on
+Slice A alone were caught this way and none by reading.)
+
 **Rule for every record:** a field that carries an authority claim — a SHA, a verdict, a gate
 decision, a lease state — needs a pattern or an enum, never prose. `claim.base_sha`,
 `artifact.sha`, `claim.status` and the per-kind `event.payload` proofs are the examples; a verdict
