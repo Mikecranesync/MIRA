@@ -66,7 +66,6 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
 }
 
 function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { readonly turn: InteractionTurn }) {
-  const machine = machineName(state, turn.context.machineId);
   return <li
     className="fl-turn"
     data-turn-id={turn.id}
@@ -77,7 +76,7 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
     <div className="fl-turn__head">
       <span className="fl-turn__role">{ROLE_LABEL[turn.role]}</span>
       {contextDiffers(state, turn.context)
-        ? <span className="fl-card__meta" data-context-line="turn">{machine ? `${machine} · ${turn.context.machineIdentity.replace("_", " ")}` : "No machine context"}</span>
+        ? <span className="fl-card__meta" data-context-line="turn">{describeContext(state, turn.context)}</span>
         : null}
     </div>
     <div className="fl-turn__parts">

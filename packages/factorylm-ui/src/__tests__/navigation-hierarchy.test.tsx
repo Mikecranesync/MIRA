@@ -154,7 +154,16 @@ describe("context lines only when context differs", () => {
     act(() => { view.dispatch({ type: "hydrate", data: { thread: revoked } }); });
     const turns = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
     expect(turns.length).toBeGreaterThan(0);
-    expect(turns.every((turn) => turn.querySelector('[data-context-line="turn"]') !== null)).toBe(true);
+    const lines = turns.map((turn) => turn.querySelector('[data-context-line="turn"]')?.textContent ?? "");
+    // Presence is not enough: the line must SAY what differs — here, that evidence was not authorized.
+    expect(lines.every((line) => /evidence not authorized/i.test(line))).toBe(true);
+
+    // And the other way round: a turn recorded while authorized, shown after authorization moved on,
+    // says "evidence authorized" — the two histories are distinguishable by their visible text.
+    const revokedNow = { ...thread, turns: thread.turns.map((turn) => ({ ...turn, context: { ...turn.context, evidenceAuthorization: "authorized" as const } })) };
+    act(() => { view.dispatch({ type: "hydrate", data: { thread: revokedNow, activeContext: { ...getFixture("grounded-answer").activeContext, evidenceAuthorization: "not_authorized" } } }); });
+    const after = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]")).map((turn) => turn.querySelector('[data-context-line="turn"]')?.textContent ?? "");
+    expect(after.every((line) => /evidence authorized/i.test(line) && !/not authorized/i.test(line))).toBe(true);
   });
 
   it("a turn recorded against a different machine still says so", () => {
