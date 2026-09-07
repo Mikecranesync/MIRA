@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-07
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-07
+
+### Most actionable change for MIRA playbook
+
+MaintainX was acquired by Autodesk for $3.6B (closed Aug 3, 2026). MIRA's closest CMMS adjacent competitor is now a feature inside a $50B+ platform company (Autodesk Operations Solutions = design + make + operate). MIRA's independent, industrial-intelligence-first positioning becomes a differentiator, not a liability. The "They Never Sleep" hook from Notion Custom Agents (Feb 2026) is the sharpest new steal: "Your maintenance intelligence never sleeps" — continuous grounded diagnosis available between shifts, not just when a tech asks.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX → Autodesk** (May 28 announcement, Aug 3 close): $3.6B all-cash. Autodesk creates "Autodesk Operations Solutions (AOS)" to unify design/construction/make/operate. MaintainX YouTube channel now shows as "MaintainX (An Autodesk Company)." No launch video; announcement via press release. Competitive note: CMMS is consolidating into larger platform plays; MIRA's edge is industrial-intelligence depth, not breadth.
+- **UpKeep Nova releases (May–Jun 2026)**: PDF Builder, anonymous safety reporting, AI May educational event ("see Nova work, watch Studio build"), PM workload forecast Studio app, UpKeep Learn AI course creation. Continuing rapid iteration toward "AI-first maintenance operator" positioning.
+
+**Automation / SCADA**
+- **Inductive Automation Ignition Edge** (Aug 7, 2026): Travis Cox video for Automation World covering Ignition Edge enhancements for digital transformation — data collection closer to source. URL: https://www.automationworld.com/factory/iiot/video/21115139/ignition-edge-enhancements-for-digital-transformation [transcript not verified — sourced from Automation World snippet]
+
+**B2B SaaS / dev-tools**
+- **Notion Custom Agents "They Never Sleep"** (Feb 24, 2026 — Notion 3.3): https://www.youtube.com/watch?v=s5Gjs3ufLHs — team-wide AI agents that trigger on schedules or events, integrate across Slack/Mail/Calendar/Figma/Linear/MCP servers. "They Never Sleep" headline is the strongest 24/7-autonomous hook found this cycle.
+- **Figma Config 2026** (Jun 23–25 SF): https://www.youtube.com/watch?v=2ZCc4k_IV5w — Dylan Field keynote; launches: Figma Motion (full timeline animation, export MP4/GIF/SVG), Shaders, Weave Tools (node-based workflow), Code Layers, Figma Agent. Theme: "everything on the canvas." Style shift from aspirational 2025 hook to dense product-demo-as-keynote format.
+- **Stripe Sessions 2026**: https://www.youtube.com/watch?v=lIsHZfRl2zw — "building the economic infrastructure for AI"; Sam Altman joins Patrick Collison; framing shifted from "stablecoins + AI tailwinds" (2025) to "Stripe IS the AI infrastructure layer."
+- **OpenAI GPT-6 Astra** (Sep 3–4, 2026): promo video opens with 1980s AI demo of drawing a yellow circle, cuts to Astra building a 3D game and booking appointments via voice. Core feature: "computer use" — navigates a computer as a human would. "Welcome to the AGI era" positioning. No industrial vertical; pattern-transfer only: the "from simple circles to full games in minutes" time-collapse hook.
 
 ---
 
@@ -55,7 +78,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff
 - No dedicated YouTube video confirmed
 
-**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
+**2026 Nova release cadence (Apr–Jun)**
+- Apr 2026: Nova AI upgrades — PDF reports, PowerPoint generation, Samsara DVIR integration, faster responses.
+- May 2026: Nova Safety features; "AI May" educational event ("see Nova work, watch Studio build") — positions users as "AI-first maintenance operators."
+- Jun 2026: Nova PDF Builder; UpKeep Learn AI course creation; anonymous safety reporting; PM workload forecast via Studio app.
+- No dedicated YouTube launch videos confirmed for 2026 releases; blog-release-note format used instead.
+
+**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA. In 2026, UpKeep is operating as an educational-event-first brand ("AI May") — less promo video, more live webinar + release notes as the content vehicle.
 
 ---
 
@@ -86,7 +115,10 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**August 2026 — Maintenance Plans**
+- New feature: every PM cycle for an asset in one place; no dedicated launch video confirmed.
+
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. **Acquired by Autodesk Aug 3, 2026 ($3.6B).** Now part of Autodesk Operations Solutions (AOS) — unified design/make/operate platform. Largest acquisition in Autodesk history. Competitive note: no longer an independent CMMS startup; backed by Autodesk's $50B+ install base and Autodesk AI roadmap.
 
 ---
 
@@ -188,6 +220,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Video format: release announcement, likely screen capture + narration
 - ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
 
+**Ignition Edge enhancements (Aug 7, 2026)**
+- URL: https://www.automationworld.com/factory/iiot/video/21115139/ignition-edge-enhancements-for-digital-transformation
+- Presenter: Travis Cox (Chief Technology Evangelist)
+- Topic: Ignition Edge updates for placing devices closer to data sources; digital transformation framing
+- VO register: educational / practitioner-peer
+- CTA: none explicit
+- [transcript not verified — sourced from Automation World snippet]
+
 ---
 
 ### Rockwell Automation / Allen-Bradley
@@ -255,8 +295,16 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - CTA: soft — "available now" callouts within demo
 
 **Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+- URL: https://www.youtube.com/watch?v=lIsHZfRl2zw
+- Title: "Stripe Sessions 2026 | Opening keynote"
+- Presenters: Patrick Collison (CEO) + Will Gaybrick (President, Product/Business); Sam Altman joins for AI/internet economy segment
+- Hook: "Stripe is building the economic infrastructure for AI." [description-derived]
+- 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Footage style: on-stage keynote, polished
+- VO register: founder + product exec; data-heavy (John Collison does economic state-of-the-world segment)
+- CTA: soft — product-available callouts within demo
+- Pattern note: Framing shifted from 2025's "AI + stablecoins as tailwinds" to 2026's "Stripe IS the AI infrastructure layer." Stripe is repositioning from payment processor to foundation for the AI economy. No standalone ads; conference keynote remains the only video format.
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -294,6 +342,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "Inside OpenAI: 2026 is the year of agents": https://www.youtube.com/watch?v=z1ISq9Ty4Cg
 - Key claim: Codex agent "grown 20x since August, now serves trillions of tokens weekly"
 - Multiple 2025 launches: GPT-4o Image, Sora standalone app, group chats
+
+**GPT-6 Astra launch (Sep 3–4, 2026)**
+- Announced: https://venturebeat.com/technology/welcome-to-the-agi-era-openai-launches-gpt-6-astra
+- Positioning: "Welcome to the AGI era"
+- Promo video hook: opens with 1980s AI demo of a person asking a computer to draw a yellow circle — simple, flat. Cuts to Astra completing an entire eBay listing, building a 3D game, and booking a tennis court — all via voice. Time-collapse structure: from basic to world-shaping in 40 years.
+- Core feature: "computer use" — navigates a computer as a human would, including spreadsheets, forms, web pages.
+- Footage style: mixed — archival 1980s footage + modern demo screen capture
+- VO register: no VO during demo; on-stage presentation context
+- CTA: limited preview → paid user rollout next day
+- Pattern note: The 1980s→now contrast is the strongest time-collapse hook found this year. "We went from drawing circles to running your computer" is a transferable frame: "We went from fault codes on a whiteboard to AI diagnosing from the nameplate — before the tech reaches the machine."
 
 ---
 
@@ -340,6 +398,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.3: Custom Agents — "They Never Sleep" (Feb 24, 2026)**
+- URL: https://www.youtube.com/watch?v=s5Gjs3ufLHs
+- Title: "Meet Notion's Custom Agents. They Never Sleep."
+- Hook: team-wide AI agents triggered by schedules or events; interviews with three internal Notion teams. "Every team gets its own AI agent."
+- URL (AI lead explainer): https://www.youtube.com/watch?v=YCRWfApHS1U — "Notion's New AI Teammates"; Sarah Sachs (AI Lead) explains governed autonomous agents for enterprise workflows.
+- Integrations: Slack, Mail, Calendar, Figma, Linear, and custom MCP servers
+- VO register: peer / internal-team documentary
+- CTA: "available now in Notion AI"
+- Pattern note: "They Never Sleep" is the strongest 24/7-availability hook found this cycle. More powerful than "You assign / they do" (3.0) because it embeds the value in the headline (continuous) not just in capability (assignment). Transfer: "Your maintenance intelligence never sleeps — next shift inherits context from this one."
+
 ---
 
 ### Figma
@@ -354,6 +422,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 23–25, 2026 — San Francisco)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Closing keynote: https://www.youtube.com/watch?v=SQji6izodIE
+- Hook: "Everything lives on the canvas now — code, motion, shaders, a smarter Agent." [description-derived]
+- Launches: Figma Motion (full timeline animation: keyframes, presets, spring physics, export MP4/GIF/animated SVG), Shaders (custom shader fills/effects), Weave Tools (node-based workflow tool, GA), Code Layers, Generative Plugins, Figma Agent.
+- Footage style: on-stage keynote; product demo-heavy
+- VO register: founder; more technical than 2025
+- Style shift: 2025 was aspirational-hook-led; 2026 is dense-product-demo-as-keynote. The agent is on-stage building things, not just described.
+- Pattern note: Figma flipped from aspirational framing ("future won't be designed by accident") to capability-dense demo-first keynote. If a high-profile competitor can do both in back-to-back years, MIRA can use a demo-first approach without losing credibility.
 
 ---
 
@@ -385,6 +464,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "They Never Sleep" / 24/7-availability | Notion: "Custom Agents. They Never Sleep." (Feb 2026) | "Your maintenance intelligence never sleeps — next shift inherits context from this one." |
+| Time-collapse hook: 1980s demo → today's power | OpenAI GPT-6 Astra: yellow circle → 3D game built by voice | "Fault on a whiteboard in 1985 → root cause cited from the OEM manual before the tech arrives in 2026." |
+| Dense product-demo-as-keynote (style flip from aspirational) | Figma Config 2026: agent builds on-stage, less speechifying | Ship a demo that does the work in front of the audience rather than describing what MIRA will do |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +480,4 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX**: acquired by Autodesk (Aug 2026). No longer a standalone CMMS vendor — now part of a unified design/make/operate platform. Video strategy expected to shift toward Autodesk brand keynote content rather than standalone CMMS promos. Watch for AOS (Autodesk Operations Solutions) to absorb MaintainX's YouTube presence.
