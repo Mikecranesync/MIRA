@@ -2,6 +2,12 @@
 # The workflow runs on ubuntu-latest x86_64 with CPython 3.12 and installs
 # wheels only. Update versions and hashes together through the guarded
 # legacy-ui-exception path.
+# markdown-it-py and mdurl are MIT licensed and reuse versions already locked
+# in the repository's mira-sidecar/uv.lock.
+markdown-it-py==4.0.0 \
+    --hash=sha256:87327c59b172c5011896038353a81343b6754500a08cd7a4973bb48c6d578147
+mdurl==0.1.2 \
+    --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
 PyYAML==6.0.3 \
     --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc
 pytest==9.0.2 \

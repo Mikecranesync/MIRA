@@ -40,11 +40,13 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
 import yaml
+from markdown_it import MarkdownIt
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
@@ -212,27 +214,12 @@ _PLACEHOLDER_PREFIXES: tuple[str, ...] = (
 )
 _ANGLE_PLACEHOLDER_RE = re.compile(r"^<.*>$", re.DOTALL)
 _SUBSTANTIVE_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_GITHUB_FOOTNOTE_RE = re.compile(r"\[\^[^\]\r\n]+\]")
+_GITHUB_EMOJI_ALIAS_RE = re.compile(r":[A-Za-z0-9_+-]+:")
 _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_EXCEPTION_HEADER_RE = re.compile(r"^[ ]{0,3}##[ \t]+Legacy UI exception\s*$")
-# A level-two Markdown section ends at the next CommonMark H1/H2: either an
-# ATX heading (0-3 leading spaces) or a Setext underline. The repository's
-# durable `[WORK-CLAIM]` record is also a top-level PR-body block even though
-# its protocol syntax deliberately is not a Markdown heading; fields in that
-# record (notably its own `Rollback:`) are not exception-attestation fields.
-_EXCEPTION_SECTION_BOUNDARY_RE = re.compile(
-    r"^[ ]{0,3}(?:#{1,2}(?:[ \t]+|$)|(?:=+|-+)[ \t]*$|\[WORK-CLAIM\][ \t]*$)"
-)
-# A CommonMark fence line: 3+ backticks or tildes, optionally nested directly
-# inside block-quote/list container markers and optionally followed by an info
-# string. Recognizing the container prefix matters here because CommonMark can
-# render `- ```markdown` followed by a 2-space-indented H2 as code even though
-# the H2 superficially looks like a live 0-3-space heading to this guard.
-_FENCE_LINE_RE = re.compile(
-    r"^(?:(?:[ ]{0,3}(?:>[ \t]?|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+))*)"
-    r"[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<tail>[^\r\n]*)$"
-)
+_GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
@@ -815,78 +802,167 @@ def load_exception_approval(
 
 
 # ---------------------------------------------------------------------------
-# Exception PR-body parsing — strip fenced code blocks and HTML comments
-# FIRST, so neither can be used to smuggle a fake exception section past the
-# guard. Require exactly one live `## Legacy UI exception` section with all
-# three labeled fields present and substantive.
+# Exception PR-body parsing — consume rendered CommonMark token structure plus
+# GitHub's table/strikethrough rules, not source-looking regex approximations.
+# Only a real top-level H2 can open the section; fenced/indented code, unsafe
+# HTML, lists, blockquotes, tables, and struck text cannot smuggle a heading or
+# field into the attestation.
 # ---------------------------------------------------------------------------
-def _strip_fenced_code_blocks(text: str) -> str:
-    """Drop fenced code-block content — backtick OR tilde fences, length >=3,
-    including fences nested directly in CommonMark list/blockquote containers,
-    CLOSED or UNCLOSED. An unclosed fence drops everything through EOF (never
-    left un-stripped and scannable, never left as a way to smuggle a fake
-    exception section past the guard by simply never closing the fence).
+def _visible_inline_text(token) -> str:
+    """Return visible plain text from one CommonMark inline token.
 
-    This is deliberately conservative: once a recognizable opener is seen,
-    ambiguous content stays masked until a same-character fence of at least the
-    opening length appears with no trailing content. Over-masking makes an
-    exception fail closed; under-masking could turn code into an attestation.
+    HTML tags/comments are structure, not attestation text. Text nested in
+    emphasis or links remains represented by child `text` tokens; inline code
+    is visible and therefore may form part of a substantive field value.
     """
-    lines = (text or "").splitlines(keepends=True)
-    out: list[str] = []
-    in_fence = False
-    fence_char = ""
-    fence_len = 0
-    for line in lines:
-        candidate = line.rstrip("\r\n")
-        match = _FENCE_LINE_RE.match(candidate)
-        if not in_fence:
-            if match:
-                fence_run = match.group("fence")
-                fence_char = fence_run[0]
-                fence_len = len(fence_run)
-                in_fence = True
-                continue
-            out.append(line)
+    visible: list[str] = []
+    struck_depth = 0
+    for child in token.children or ():
+        if child.type == "s_open":
+            struck_depth += 1
             continue
-        if (
-            match
-            and match.group("fence")[0] == fence_char
-            and len(match.group("fence")) >= fence_len
-            and not match.group("tail").strip()
-        ):
-            in_fence = False
-        # else: still inside the fence (or this line is the unclosed-to-EOF
-        # tail) — drop it either way.
-    return "".join(out)
+        if child.type == "s_close":
+            struck_depth = max(0, struck_depth - 1)
+            continue
+        if struck_depth:
+            continue
+        if child.type == "text":
+            # Entity references such as ``&#10;`` decode inside a text token,
+            # but GitHub renders that control as collapsed paragraph space. Do
+            # not promote a decoded character into a structural line boundary;
+            # only the explicit break tokens below may contribute LF.
+            visible.append(child.content.replace("\n", " "))
+        elif child.type == "code_inline":
+            visible.append(child.content)
+        elif child.type in {"softbreak", "hardbreak"}:
+            visible.append("\n")
+    return "".join(visible)
 
 
-def _strip_html_comments(text: str) -> str:
-    """Drop HTML comments — CLOSED (`<!-- ... -->`) first, then any remaining
-    UNCLOSED `<!--` through EOF, so an opened-but-never-closed comment cannot
-    leave the rest of the body (potentially including a real exception
-    section) unstripped."""
-    text = re.sub(r"<!--.*?-->", "", text or "", flags=re.DOTALL)
-    text = re.sub(r"<!--[\s\S]*$", "", text)
-    return text
+def _is_safe_standalone_html_comment(content: str) -> bool:
+    """Accept one HTML-spec-safe comment token and nothing else.
+
+    These restrictions mirror the comment syntax constraints that prevent
+    HTML5's bogus/abrupt comment recovery from escaping into live DOM content.
+    Conservative rejection is intentional for ambiguous or combined tokens.
+    """
+    text = content.strip()
+    if len(text) < len("<!---->") or not text.startswith("<!--") or not text.endswith("-->"):
+        return False
+    inner = text[4:-3]
+    return not (
+        inner.startswith((">", "->")) or "<!--" in inner or "--" in inner or inner.endswith("<!-")
+    )
 
 
-def _find_exception_sections(pr_body: str) -> list[str]:
-    cleaned = _strip_html_comments(_strip_fenced_code_blocks(pr_body or ""))
-    lines = cleaned.splitlines()
+def _has_unsafe_html(tokens) -> bool:
+    """Reject HTML structure that can hide or visually nest an attestation.
+
+    CommonMark deliberately does not model the DOM nesting created by raw HTML
+    containers: with blank lines, a Markdown H2 inside `<details>` can still be
+    emitted as a level-zero heading token. HTML comment recovery also differs
+    between Markdown renderers and HTML5 browsers. Permit only one strictly
+    valid standalone comment per HTML token; reject tags, unclosed/malformed
+    comments, or combined comment/tag tokens anywhere in the PR body.
+    """
+    for token in tokens:
+        for candidate in (token, *(token.children or ())):
+            if candidate.type in {"html_block", "html_inline"} and not (
+                _is_safe_standalone_html_comment(candidate.content)
+            ):
+                return True
+    return False
+
+
+def _has_renderer_specific_markup(source: str) -> bool:
+    """Reject GitHub extensions that can relocate or hide attestation text.
+
+    ``markdown-it-py`` intentionally implements CommonMark plus the explicitly
+    enabled table/strikethrough rules. GitHub additionally moves footnote
+    definitions away from their source position and renders paired dollar
+    delimiters through a math component whose visible text can differ from the
+    source (for example, ``\\phantom``). Exception PR bodies deliberately use a
+    narrow source subset: reject any footnote marker or any two dollar signs,
+    including inside code or comments, so parser token loss and future renderer
+    ordering cannot make this check fail open.
+    """
+    # CommonMark can consume a ``[^name]: value`` line as an ordinary reference
+    # definition and omit it from the token stream entirely. Inspect the raw
+    # source for GitHub's unambiguous footnote marker before walking tokens.
+    return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2
+
+
+def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
+    source = pr_body or ""
+    tokens = _GITHUB_MARKDOWN.parse(source)
+    if _has_unsafe_html(tokens):
+        return [], "body:unsafe or non-comment HTML invalidates Legacy UI exception"
+    if _has_renderer_specific_markup(source):
+        return [], "body:renderer-specific markup invalidates Legacy UI exception"
     sections: list[str] = []
-    i = 0
-    while i < len(lines):
-        if _EXCEPTION_HEADER_RE.match(lines[i]):
-            i += 1
-            body_lines: list[str] = []
-            while i < len(lines) and not _EXCEPTION_SECTION_BOUNDARY_RE.match(lines[i]):
-                body_lines.append(lines[i])
-                i += 1
-            sections.append("\n".join(body_lines))
-        else:
-            i += 1
-    return sections
+    current: Optional[list[str]] = None
+    top_level_paragraph = False
+
+    for index, token in enumerate(tokens):
+        if token.type == "heading_open" and token.level == 0 and token.tag in {"h1", "h2"}:
+            if current is not None:
+                sections.append("\n".join(current))
+                current = None
+
+            # Use the parser-owned heading markup and inline content directly;
+            # indexing token source maps into Python `splitlines()` is unsafe
+            # because Python treats more Unicode characters as line breaks than
+            # CommonMark does. Setext H2s carry `-` markup and therefore remain
+            # boundaries without becoming an exception opener.
+            inline = tokens[index + 1] if index + 1 < len(tokens) else None
+            if (
+                token.tag == "h2"
+                and token.markup == "##"
+                and inline is not None
+                and inline.type == "inline"
+                and inline.content == "Legacy UI exception"
+            ):
+                current = []
+            top_level_paragraph = False
+            continue
+
+        if current is None:
+            continue
+
+        if token.type == "paragraph_open":
+            top_level_paragraph = token.level == 0
+            continue
+        if token.type == "paragraph_close":
+            top_level_paragraph = False
+            continue
+        if token.type != "inline" or not top_level_paragraph:
+            continue
+
+        visible = _visible_inline_text(token)
+        # CommonMark line endings are LF/CRLF/CR only. The parser has already
+        # normalized them to LF in inline content; Python ``splitlines()`` also
+        # treats Unicode separators, VT, and FF as boundaries and could thereby
+        # manufacture field anchors or a fake [WORK-CLAIM] boundary that GitHub
+        # renders inside one paragraph.
+        visible_lines = visible.split("\n")
+        work_claim_at = next(
+            (index for index, line in enumerate(visible_lines) if line.strip() == "[WORK-CLAIM]"),
+            None,
+        )
+        if work_claim_at is None:
+            current.append(visible)
+            continue
+
+        before_work_claim = "\n".join(visible_lines[:work_claim_at])
+        if before_work_claim:
+            current.append(before_work_claim)
+        sections.append("\n".join(current))
+        current = None
+        top_level_paragraph = False
+
+    if current is not None:
+        sections.append("\n".join(current))
+    return sections, None
 
 
 def _extract_field(body: str, label: str) -> tuple[Optional[str], bool]:
@@ -926,8 +1002,20 @@ def _is_punctuation_only(value: str) -> bool:
 def _is_substantive(value: Optional[str]) -> bool:
     if value is None:
         return False
-    v = value.strip()
+    if any(
+        unicodedata.category(char).startswith("C")
+        or "FILLER" in unicodedata.name(char, "")
+        or "ZERO WIDTH" in unicodedata.name(char, "")
+        or "OVERLAY" in unicodedata.name(char, "")
+        for char in value
+    ):
+        return False
+    v = unicodedata.normalize("NFKC", value).strip()
     if not v:
+        return False
+    # GitHub turns emoji aliases into one glyph and single tildes into deleted
+    # text. Neither source form may satisfy the human-readable evidence floor.
+    if _GITHUB_EMOJI_ALIAS_RE.search(v) or "~" in v:
         return False
     if _ANGLE_PLACEHOLDER_RE.match(v):
         return False
@@ -948,7 +1036,9 @@ def _is_substantive(value: Optional[str]) -> bool:
 def _exception_missing_fields(pr_body: str) -> list[str]:
     """Return the list of problems with the PR body's exception section —
     empty means exactly one live section with all three fields substantive."""
-    sections = _find_exception_sections(pr_body)
+    sections, invalid_reason = _find_exception_sections(pr_body)
+    if invalid_reason is not None:
+        return [invalid_reason]
     if len(sections) == 0:
         return ["body:## Legacy UI exception section"]
     if len(sections) > 1:

@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the existing convergence and capability-closure registries, then enforce their legacy presentation paths with one deterministic CI guard. Repository-loaded Codex/Claude instructions point every agent to the same charter, and three project-scoped Claude workflows divide read-only mapping, claim-bound single-writer implementation, exact-SHA verification, deterministic verdict reporting, and independent fresh-comment/readback proof.
 
-**Tech Stack:** Markdown, YAML, Python 3.12, pytest, GitHub Actions, Claude Code dynamic workflow JavaScript.
+**Tech Stack:** Markdown, YAML, Python 3.12, markdown-it-py 4, pytest, GitHub Actions, Claude Code dynamic workflow JavaScript.
 
 **Spec:** `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`
 
@@ -184,8 +184,9 @@ literal fixtures:
   revision removes or changes registry policy;
 - a valid label without a body, a valid body without a label, missing fields,
   blank fields, `N/A`, `<placeholder>` values, HTML-comment-only values,
-  duplicate exception sections, and a complete block inside a fenced code block
-  all fail;
+  duplicate exception sections, fenced/indented code, raw HTML, nested
+  list/blockquote headings, and CommonMark container-transition decoys all
+  fail;
 - exactly one live section with substantive values passes;
 - duplicate YAML keys, a scalar `guarded_paths`, empty lists, non-string paths,
   absolute/backslash/traversal paths, and wildcard forms other than terminal
@@ -267,9 +268,22 @@ requirements/ui-lifecycle-guard.txt
 >    `codex/flm-ui-<lane>-<numeric-claim-id>`. A caller-controlled descendant
 >    path or branch name cannot carry semantic instructions into agent prompts.
 
-The exception parser strips fenced code blocks and HTML comments, requires
-exactly one level-two `## Legacy UI exception` section, and requires
-substantive same-line values after these exact labels:
+The exception parser consumes pinned CommonMark tokens with GitHub table and
+double-tilde strikethrough rules, requires exactly one top-level ATX
+`## Legacy UI exception` section, and accepts field text only from top-level
+rendered paragraphs (never table cells or struck text). It fails closed on HTML
+tags and on any malformed, unclosed, nested, or combined comment token anywhere
+in the PR body, because CommonMark token levels do not model surrounding HTML
+DOM containers and malformed-comment recovery differs across renderers. A
+strictly valid standalone comment remains allowed but cannot provide field
+text. GitHub footnote markers and any two dollar signs anywhere in an
+exception-bearing body also fail closed because those renderer extensions can relocate or hide
+otherwise substantive source text. Field values reject emoji aliases, GitHub's
+single-tilde deletion form, control/format characters, and invisible Unicode
+filler or combining overlay marks. Field and `[WORK-CLAIM]` boundaries use only
+the parser-normalized LF line ending, never Python's broader Unicode
+`splitlines()` set or a character reference decoded inside a text token. The
+parser requires substantive same-line values after these exact labels:
 
 ```text
 Reason:

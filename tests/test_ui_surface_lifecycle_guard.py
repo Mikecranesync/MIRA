@@ -385,7 +385,7 @@ def test_angle_bracket_placeholder_values_fail():
     )
     result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
     assert result.allowed is False
-    assert any("Reason" in f for f in result.missing_fields)
+    assert any("unsafe or non-comment HTML" in f for f in result.missing_fields)
 
 
 def test_html_comment_only_values_fail():
@@ -706,10 +706,10 @@ def test_exception_approval_rejects_permission_record_for_different_actor(tmp_pa
 
 
 # ---------------------------------------------------------------------------
-# Codex remediation finding #2 — harden exception-body parsing:
-#   * fenced-code stripping must handle UNCLOSED fences (drop to EOF) and
-#     tilde (~~~) fences, not just closed exactly-3-backtick fences;
-#   * HTML-comment stripping must handle an UNCLOSED `<!--` (drop to EOF);
+# Codex remediation finding #2 — harden rendered exception-body parsing:
+#   * closed/unclosed backtick and tilde fences must never expose code as a
+#     live exception section;
+#   * a closed/unclosed HTML comment must never supply attestation text;
 #   * placeholder detection must catch phrase VARIANTS ("TODO fill later",
 #     "TBD later", "N/A because...", "placeholder") anchored at the START of
 #     the value, and punctuation-only values, WITHOUT rejecting a substantive
@@ -755,8 +755,23 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
             Rollback: revert the emergency repair commit cleanly
             """
         ),
+        textwrap.dedent(
+            """
+            - ```markdown
+              decoy
+            - ```
+              ## Legacy UI exception
+            Reason: severity one repair for a broken rollback path
+            Canonical replacement impact: canonical shell remains fully unaffected
+            Rollback: revert the emergency repair commit cleanly
+            """
+        ),
     ],
-    ids=("unclosed-unordered-list-fence", "closed-ordered-list-fence"),
+    ids=(
+        "unclosed-unordered-list-fence",
+        "closed-ordered-list-fence",
+        "sibling-list-fence-is-not-a-closer",
+    ),
 )
 def test_list_contained_fence_cannot_supply_exception_heading(body):
     result = evaluate(
@@ -771,11 +786,574 @@ def test_list_contained_fence_cannot_supply_exception_heading(body):
     assert "body:## Legacy UI exception section" in result.missing_fields
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "```markdown\npasted context\n> ```\n" + _VALID_BODY + "\n```\n",
+        "> ```markdown\n> pasted context\n```\n" + _VALID_BODY + "\n```\n",
+    ],
+    ids=("top-level-to-blockquote", "blockquote-to-top-level"),
+)
+def test_container_transition_cannot_close_fence_and_expose_exception(body):
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:## Legacy UI exception section" in result.missing_fields
+
+
+def test_closed_top_level_fence_before_live_exception_still_passes():
+    body = "```markdown\npasted context\n```\n" + _VALID_BODY
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is True
+
+
+@pytest.mark.parametrize(
+    "open_tag,close_tag",
+    [
+        ("<pre>", "</pre>"),
+        ("<script>", "</script>"),
+        ("<div>", "</div>"),
+        ("<details>", "</details>"),
+    ],
+)
+def test_raw_html_block_cannot_supply_exception_heading(open_tag, close_tag):
+    body = (
+        f"{open_tag}\n## Legacy UI exception\n{close_tag}\n"
+        "Reason: severity one repair for a broken rollback path\n"
+        "Canonical replacement impact: canonical shell remains fully unaffected\n"
+        "Rollback: revert the emergency repair commit cleanly\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+def test_raw_html_block_cannot_supply_exception_fields():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        <div>
+        Reason: severity one repair for a broken rollback path
+        Canonical replacement impact: canonical shell remains fully unaffected
+        Rollback: revert the emergency repair commit cleanly
+        </div>
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+@pytest.mark.parametrize("tag", ["details", "div", "blockquote", "section"])
+def test_blank_line_html_container_cannot_wrap_exception_section(tag):
+    body = (
+        f"<{tag}>\n\n"
+        "## Legacy UI exception\n\n"
+        "Reason: severity one repair for a broken rollback path\n"
+        "Canonical replacement impact: canonical shell remains fully unaffected\n"
+        "Rollback: revert the emergency repair commit cleanly\n\n"
+        f"</{tag}>\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+def test_non_comment_inline_html_invalidates_exception_body():
+    body = _VALID_BODY.replace(
+        "Reason: severity-1 production repair for a broken rollback path",
+        "Reason: <span>severity-1 production repair for a broken rollback path</span>",
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+def test_standalone_html_comment_before_live_exception_is_allowed():
+    body = "<!-- reviewer context only -->\n\n" + _VALID_BODY
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is True
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["<!-- --!><details><!-- -->", "<!--><details>x-->"],
+    ids=("abrupt-comment-close", "bogus-comment-close"),
+)
+def test_malformed_html_comment_cannot_open_hidden_container(prefix):
+    body = prefix + "\n\n" + _VALID_BODY + "\n\n</details>\n"
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+def test_overlapping_html_comment_delimiters_are_not_a_valid_empty_comment():
+    body = "<!--->\n\n" + _VALID_BODY
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+        result.missing_fields
+    )
+
+
+@pytest.mark.parametrize(
+    "nested_heading",
+    ["- item\n  ## Legacy UI exception", "> ## Legacy UI exception"],
+    ids=("list", "blockquote"),
+)
+def test_nested_heading_is_not_a_top_level_exception_section(nested_heading):
+    body = (
+        nested_heading
+        + "\nReason: severity one repair for a broken rollback path\n"
+        + "Canonical replacement impact: canonical shell remains fully unaffected\n"
+        + "Rollback: revert the emergency repair commit cleanly\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:## Legacy UI exception section" in result.missing_fields
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\u0085", "\v", "\f"])
+def test_non_commonmark_line_separator_cannot_shift_exception_heading_lookup(separator):
+    body = (
+        f"prefix{separator}## Legacy UI exception\n"
+        "## Other heading\n"
+        "Reason: severity one repair for a broken rollback path\n"
+        "Canonical replacement impact: canonical shell remains fully unaffected\n"
+        "Rollback: revert the emergency repair commit cleanly\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:## Legacy UI exception section" in result.missing_fields
+
+
+def test_gfm_table_cannot_supply_top_level_exception_fields():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: severity one repair for a broken rollback path | note
+        --- | ---
+        Canonical replacement impact: canonical shell remains fully unaffected | note
+        Rollback: revert the emergency repair commit cleanly | note
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+def test_struck_through_text_cannot_supply_exception_field_value():
+    body = _VALID_BODY.replace(
+        "Reason: severity-1 production repair for a broken rollback path",
+        "Reason: ~~severity-1 production repair for a broken rollback path~~",
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert "body:Reason:" in result.missing_fields
+
+
+def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
+    body = textwrap.dedent(
+        """
+        ## Legacy UI exception
+
+        Reason: ~severity one repair for a broken rollback path~
+        Canonical replacement impact: ~canonical shell remains fully unaffected~
+        Rollback: ~revert the emergency repair commit cleanly~
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        textwrap.dedent(
+            """
+            ## Legacy UI exception
+
+            [^attest]:
+                Reason: severity one repair for a broken rollback path
+                Canonical replacement impact: canonical shell remains fully unaffected
+                Rollback: revert the emergency repair commit cleanly
+            """
+        ),
+        textwrap.dedent(
+            """
+            ## Legacy UI exception
+
+            [review the attestation][^long-hyphenated-attestation-reference]
+
+            [^long-hyphenated-attestation-reference]:
+                Reason: severity one repair for a broken rollback path
+                Canonical replacement impact: canonical shell remains fully unaffected
+                Rollback: revert the emergency repair commit cleanly
+            """
+        ),
+        _VALID_BODY + "\n\nReview details[^x]\n\n[^x]: https://example.com\n",
+        _VALID_BODY + "\n\n[^x]: one\n",
+    ],
+    ids=(
+        "unreferenced-footnote-field-container",
+        "referenced-footnote-field-container",
+        "standard-reference-footnote",
+        "consumed-unreferenced-footnote-definition",
+    ),
+)
+def test_github_footnote_container_cannot_supply_exception_fields(body):
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert any("renderer-specific markup" in f for f in result.missing_fields)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        textwrap.dedent(
+            r"""
+            ## Legacy UI exception
+
+            $$
+            Reason: severity one repair for a broken rollback path
+            Canonical replacement impact: canonical shell remains fully unaffected
+            Rollback: revert the emergency repair commit cleanly
+            $$
+            """
+        ),
+        textwrap.dedent(
+            r"""
+            ## Legacy UI exception
+
+            Reason: $\phantom{severity one repair for a broken rollback path}$
+            Canonical replacement impact: $\phantom{canonical shell remains fully unaffected}$
+            Rollback: $\phantom{revert the emergency repair commit cleanly}$
+            """
+        ),
+        textwrap.dedent(
+            r"""
+            ## Legacy UI exception
+
+            Reason: $`\phantom{severity one repair for a broken rollback path}`$
+            Canonical replacement impact: $`\phantom{canonical shell remains fully unaffected}`$
+            Rollback: $`\phantom{revert the emergency repair commit cleanly}`$
+            """
+        ),
+        _VALID_BODY + "\n\n<!-- $$ -->\n",
+    ],
+    ids=(
+        "display-math",
+        "inline-math",
+        "backtick-delimited-inline-math",
+        "math-delimiter-inside-comment",
+    ),
+)
+def test_github_math_container_cannot_hide_exception_fields(body):
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert any("renderer-specific markup" in f for f in result.missing_fields)
+
+
+@pytest.mark.parametrize(
+    "value_template",
+    [":{alias}:", ":{alias}:x", "_:{alias}:_"],
+    ids=("bare", "adjacent-letter", "markdown-underscore-delimiter"),
+)
+def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
+    reason = value_template.format(alias="heavy_check_mark")
+    impact = value_template.format(alias="white_check_mark")
+    rollback = value_template.format(alias="leftwards_arrow_with_hook")
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: {reason}
+        Canonical replacement impact: {impact}
+        Rollback: {rollback}
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+@pytest.mark.parametrize("filler", ["\u115f", "\u1160", "\u3164", "\uffa0"])
+def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
+    invisible_value = (filler * 4 + " ") * 3
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: {invisible_value}
+        Canonical replacement impact: {invisible_value}
+        Rollback: {invisible_value}
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+@pytest.mark.parametrize("overlay", ["\u0335", "\u0336", "\u0337", "\u0338"])
+def test_unicode_combining_overlays_cannot_visually_strike_field_values(overlay):
+    def crossed_out(value):
+        return "".join(char + overlay if char.isalnum() else char for char in value)
+
+    body = textwrap.dedent(
+        f"""
+        ## Legacy UI exception
+
+        Reason: {crossed_out("severity one repair for a broken rollback path")}
+        Canonical replacement impact: {crossed_out("canonical shell remains fully unaffected")}
+        Rollback: {crossed_out("revert the emergency repair commit cleanly")}
+        """
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert set(result.missing_fields) == {
+        "body:Reason:",
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\u0085", "\v", "\f"])
+def test_non_commonmark_separator_cannot_manufacture_field_lines_before_work_claim(
+    separator,
+):
+    body = (
+        "## Legacy UI exception\n\n"
+        "Reason: severity one repair for a broken rollback path"
+        f"{separator}Canonical replacement impact: canonical shell remains fully unaffected"
+        f"{separator}Rollback: revert the emergency repair commit cleanly"
+        f"{separator}[WORK-CLAIM]\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert {
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }.issubset(result.missing_fields)
+
+
+@pytest.mark.parametrize("line_feed_entity", ["&#10;", "&#xA;", "&NewLine;"])
+def test_character_reference_line_feed_cannot_manufacture_field_or_work_claim_lines(
+    line_feed_entity,
+):
+    body = (
+        "## Legacy UI exception\n\n"
+        "Reason: severity one repair for a broken rollback path"
+        f"{line_feed_entity}Canonical replacement impact: canonical shell remains fully unaffected"
+        f"{line_feed_entity}Rollback: revert the emergency repair commit cleanly"
+        f"{line_feed_entity}[WORK-CLAIM]\n"
+        "Reason: contradictory visible followup must not be hidden\n"
+    )
+
+    result = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=body,
+        policy=_POLICY,
+        exception_approval_valid=True,
+    )
+
+    assert result.allowed is False
+    assert {
+        "body:Canonical replacement impact:",
+        "body:Rollback:",
+    }.issubset(result.missing_fields)
+
+
 def test_unclosed_html_comment_swallows_everything_after_it():
     body = "<!-- pasted context, never closed\n" + _VALID_BODY
     result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
     assert result.allowed is False
-    assert any("Legacy UI exception section" in f for f in result.missing_fields)
+    assert any("unsafe or non-comment HTML" in f for f in result.missing_fields)
 
 
 @pytest.mark.parametrize(
@@ -1709,9 +2287,18 @@ def test_workflow_installs_hash_locked_guard_dependencies():
     assert "requirements/ui-lifecycle-guard.txt" in text
     assert requirements.exists()
     requirement_text = requirements.read_text()
-    for package in ("pyyaml", "pytest", "iniconfig", "packaging", "pluggy", "pygments"):
+    for package in (
+        "markdown-it-py",
+        "mdurl",
+        "pyyaml",
+        "pytest",
+        "iniconfig",
+        "packaging",
+        "pluggy",
+        "pygments",
+    ):
         assert re.search(rf"(?im)^{package}==[^\s]+", requirement_text), package
-    assert requirement_text.count("--hash=sha256:") >= 6
+    assert requirement_text.count("--hash=sha256:") >= 8
 
 
 def test_pull_request_template_names_full_guard_control_plane():

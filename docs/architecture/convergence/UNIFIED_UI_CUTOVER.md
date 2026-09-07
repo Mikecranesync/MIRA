@@ -160,14 +160,30 @@ Rollback: <how this exact change is reversed safely>
 ```
 
 The label is a fresh maintainer attestation, not a persistent convenience
-switch. Exactly one real
-`## Legacy UI exception` section is accepted. Its three values must be
-substantive text; blank values, `N/A`, template placeholders, HTML comments,
-and text inside fenced code blocks fail closed. Each value must contain at
-least three alphanumeric tokens and at least twelve alphanumeric characters;
-one-character or long single-token filler is not approval evidence. A passing
-exception run must be triggered by a GitHub `User` whose separately fetched
-collaborator record proves predefined Maintain (`permission: write`,
+switch. Exactly one real top-level `## Legacy UI exception` ATX section is
+accepted. The guard uses a pinned CommonMark token parser with GitHub table and
+double-tilde strikethrough rules rather than inferring rendered structure from
+source-looking regular expressions:
+headings or fields inside fenced/indented code, raw HTML, comments, lists,
+blockquotes, tables, or struck text fail closed. Its three values
+must be substantive text; blank values, `N/A`, and template placeholders also
+fail closed. Exception-bearing bodies use a deliberately narrow rendered-text
+subset: any GitHub footnote marker or any two dollar signs anywhere in the body
+invalidate the exception because footnote/math extensions can relocate or
+visually hide source text.
+GitHub emoji aliases, single-tilde deletion syntax, control/format characters,
+invisible Unicode filler, and combining overlay marks cannot supply a field
+value. Only parser-normalized LF boundaries may separate fields or terminate
+them at `[WORK-CLAIM]`; a character reference decoded inside a text token never
+becomes a structural line boundary.
+To prevent HTML DOM containers or malformed comment recovery from hiding an
+otherwise top-level Markdown token, tags and malformed/unclosed HTML comments
+anywhere in the PR body invalidate the exception. Strictly valid standalone
+HTML comments remain allowed but cannot supply field text. Each value must
+contain at least three alphanumeric tokens and at least twelve alphanumeric
+characters; one-character or long single-token filler is not approval evidence.
+A passing exception run must be triggered by a GitHub `User` whose separately
+fetched collaborator record proves predefined Maintain (`permission: write`,
 `role_name: maintain`) or Admin (`permission: admin`) applying the exact
 `legacy-ui-exception` label, and the event-time head SHA and PR body must still
 match a separately fetched current PR snapshot byte for byte. Any later push,
