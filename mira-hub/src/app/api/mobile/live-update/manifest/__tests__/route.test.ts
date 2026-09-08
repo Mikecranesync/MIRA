@@ -7,10 +7,10 @@
 //
 // The contract is fixed by the client, and the tests below pin it:
 //   - a usable update  -> 200 with bundleId + downloadUrl + checksum + signature
-//   - anything else    -> 200 WITHOUT downloadUrl/bundleId, so the client reads
-//                         "no_update" rather than an error. A non-2xx becomes
-//                         `server_<status>` on the device, which reads as broken
-//                         — reserve that for genuinely bad requests.
+//   - anything else    -> 200 WITHOUT downloadUrl/bundleId and a closed reason
+//                         vocabulary the client maps to actionable copy. A
+//                         non-2xx becomes `server_<status>` on the device, which
+//                         reads as broken — reserve it for bad requests.
 //
 // Run: cd mira-hub && npx vitest run src/app/api/mobile
 
@@ -18,9 +18,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+vi.mock("@/capabilities/ota-provenance", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/capabilities/ota-provenance")>()),
+  verifyPublishedManifestProvenance: vi.fn(() => true),
+}));
 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
+import { verifyPublishedManifestProvenance } from "@/capabilities/ota-provenance";
 
 const session = {
   userId: "u_1",
@@ -40,12 +45,16 @@ function publishedManifest(over: Record<string, unknown> = {}) {
     version: "1.0.1",
     channel: "canary",
     downloadUrl: `${ORIGIN}/releases/1.0.1/web-1.0.1-9f2c1a4b.zip`,
-    checksum: "3q2+7wAAAAA=",
+    checksum: "d".repeat(64),
     signature: "c2lnbmF0dXJlLWJ5dGVz",
     nativeFingerprint: FP,
     releaseSha: "e2b89725f088ac1734100fd01638735c2773108f",
     releasedAt: "2026-08-25T20:00:00.000Z",
-    artifactSha256: "deadbeef",
+    artifact: "web-1.0.1-9f2c1a4b.zip",
+    artifactSha256: "d".repeat(64),
+    provenanceSignature: "cHJvdmVuYW5jZS1zaWduYXR1cmU=",
+    manifestSignature: "bWFuaWZlc3Qtc2lnbmF0dXJl",
+    pointerChangedAt: "2026-09-07T01:02:03.004Z",
     ...over,
   };
 }
@@ -70,6 +79,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.mocked(sessionOr401).mockResolvedValue(session);
+  vi.mocked(verifyPublishedManifestProvenance).mockReturnValue(true);
 });
 
 describe("auth", () => {
@@ -111,10 +121,13 @@ describe("serving an update", () => {
     expect(body).toMatchObject({
       bundleId: "1.0.1-9f2c1a4b",
       downloadUrl: `${ORIGIN}/releases/1.0.1/web-1.0.1-9f2c1a4b.zip`,
-      checksum: "3q2+7wAAAAA=",
+      checksum: "d".repeat(64),
       signature: "c2lnbmF0dXJlLWJ5dGVz",
       nativeFingerprint: FP,
       channel: "canary",
+      provenanceSignature: "cHJvdmVuYW5jZS1zaWduYXR1cmU=",
+      artifact: "web-1.0.1-9f2c1a4b.zip",
+      pointerChangedAt: "2026-09-07T01:02:03.004Z",
     });
     // Reads the channel-specific published manifest.
     expect(String(fetchMock.mock.calls[0][0])).toBe(`${ORIGIN}/manifest.canary.json`);
@@ -136,18 +149,23 @@ describe("serving an update", () => {
   it("honours OTA_ORIGIN so staging can point somewhere else", async () => {
     vi.stubEnv("OTA_ORIGIN", "https://ota-staging.factorylm.com");
     const fetchMock = upstream(
-      publishedManifest({ downloadUrl: "https://ota-staging.factorylm.com/releases/1.0.1/w.zip" }),
+      publishedManifest({
+        artifact: "w.zip",
+        downloadUrl: "https://ota-staging.factorylm.com/releases/1.0.1/w.zip",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await GET(req(`?channel=canary&fingerprint=${FP}`));
+    const res = await GET(req(`?channel=canary&fingerprint=${FP}`));
+    const body = await res.json();
     expect(String(fetchMock.mock.calls[0][0])).toBe("https://ota-staging.factorylm.com/manifest.canary.json");
+    expect(body.downloadUrl).toBe("https://ota-staging.factorylm.com/releases/1.0.1/w.zip");
   });
 });
 
 /**
- * Every case here must be a 200 with NO downloadUrl/bundleId. The device turns
- * that into "no_update" — quiet and correct. A non-2xx would surface as
- * "Update server error (NNN)", which is what a broken deploy looks like.
+ * Every case here must be a 200 with NO downloadUrl/bundleId and, where useful,
+ * a code-owned reason the device can safely map. A non-2xx would surface as
+ * "Update server error (NNN)", which is reserved for malformed requests.
  */
 describe("no update — always 200, never a downloadUrl", () => {
   async function expectNoUpdate(res: Response, reason?: string) {
@@ -199,6 +217,36 @@ describe("no update — always 200, never a downloadUrl", () => {
     await expectNoUpdate(await GET(req(`?channel=canary&fingerprint=${FP}`)), "malformed_manifest");
   });
 
+  it("rejects a manifest missing its authenticated pointer time", async () => {
+    vi.stubGlobal("fetch", upstream(publishedManifest({ pointerChangedAt: undefined })));
+    await expectNoUpdate(
+      await GET(req(`?channel=canary&fingerprint=${FP}`)),
+      "malformed_manifest",
+    );
+  });
+
+  it.each([
+    "2026-09-07T01:02:03Z",
+    "2026-09-07T01:02:03.004+00:00",
+    "2026-02-30T01:02:03.004Z",
+  ])("rejects a noncanonical pointer timestamp: %s", async (pointerChangedAt) => {
+    vi.stubGlobal("fetch", upstream(publishedManifest({ pointerChangedAt })));
+    await expectNoUpdate(
+      await GET(req(`?channel=canary&fingerprint=${FP}`)),
+      "invalid_pointer_timestamp",
+    );
+  });
+
+  it("rejects metadata whose compatibility provenance signature is invalid", async () => {
+    vi.mocked(verifyPublishedManifestProvenance).mockReturnValue(false);
+    vi.stubGlobal("fetch", upstream(publishedManifest()));
+    await expectNoUpdate(
+      await GET(req(`?channel=canary&fingerprint=${FP}`)),
+      "invalid_provenance",
+    );
+    expect(verifyPublishedManifestProvenance).toHaveBeenCalledOnce();
+  });
+
   it("rejects a plain-http downloadUrl", async () => {
     vi.stubGlobal("fetch", upstream(publishedManifest({ downloadUrl: "http://updates.factorylm.com/r/x.zip" })));
     await expectNoUpdate(await GET(req(`?channel=canary&fingerprint=${FP}`)), "bad_download_url");
@@ -215,5 +263,20 @@ describe("no update — always 200, never a downloadUrl", () => {
   it("rejects a lookalike release host", async () => {
     vi.stubGlobal("fetch", upstream(publishedManifest({ downloadUrl: "https://updates.factorylm.com.evil.net/x.zip" })));
     await expectNoUpdate(await GET(req(`?channel=canary&fingerprint=${FP}`)), "bad_download_url");
+  });
+
+  it("refuses a download path that does not name the authenticated artifact", async () => {
+    vi.stubGlobal(
+      "fetch",
+      upstream(
+        publishedManifest({
+          downloadUrl: `${ORIGIN}/releases/1.0.1/different.zip`,
+        }),
+      ),
+    );
+    await expectNoUpdate(
+      await GET(req(`?channel=canary&fingerprint=${FP}`)),
+      "artifact_mismatch",
+    );
   });
 });

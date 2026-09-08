@@ -15,29 +15,46 @@ on:
 
 jobs:
   deploy-nginx:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production nginx change: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
 
       - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
           chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
       - name: SCP vhost to prod
         run: |
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
             deployment/nginx-stg-factorylm.conf \
             root@165.245.138.91:/etc/nginx/sites-available/stg-factorylm
 
       - name: Symlink + test + reload nginx
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
             root@165.245.138.91 'bash -s' << 'ENDSSH'
           set -euo pipefail
           [ -L /etc/nginx/sites-enabled/stg-factorylm ] || \

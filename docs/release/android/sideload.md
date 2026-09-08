@@ -1,7 +1,8 @@
 # Direct install (sideload) — the no-Play distribution path
 
 **Page:** https://updates.factorylm.com/download (302 → `/app/`)
-**Files served:** `/app/index.html`, `/app/latest.json`, `/app/latest.apk`, `/app/factorylm-<versionName>-vc<versionCode>.apk`
+**Files served:** `/app/index.html`, `/app/latest.json`, `/app/latest.apk`, and
+content-addressed `/app/factorylm-<versionName>-vc<versionCode>-<apk-sha256>.apk`
 
 Google Play is one door, not the only one. A technician opens the page on the phone,
 taps Download, allows installs from Chrome once, and installs. No Google account, no
@@ -24,11 +25,14 @@ gh workflow run mobile-release-distribute.yml \
 ```
 
 The job builds and signature-verifies the APK exactly as for Play (`CN=FactoryLM`, v2
-scheme), then copies the versioned APK first and the three pointers second, verifies the
-sha256 on the host, and probes the public URLs. `latest.json`:
+scheme), then installs the digest-named APK with collision refusal. Under a host lock it
+atomically replaces `index.html` and `latest.apk`, then moves `latest.json` last so the
+metadata pointer never names an artifact that is not already available. It verifies the
+exact bytes on the host and downloads both public APK URLs for SHA-256 verification.
+`latest.json`:
 
 ```json
-{"versionName":"1.1.0","versionCode":10,"file":"factorylm-1.1.0-vc10.apk",
+{"versionName":"1.1.0","versionCode":10,"file":"factorylm-1.1.0-vc10-<64-hex-sha256>.apk",
  "sha256":"…","sizeBytes":…,"builtAt":"…Z","commit":"…"}
 ```
 
@@ -40,11 +44,17 @@ The page reads it to label the button; if the fetch fails the button still point
 - **Never reuse a versionCode.** Android treats a same-or-lower versionCode as "not an
   update" and refuses to install over the existing app. Bump it in
   `mira-mobile/android/app/build.gradle` for every APK you publish here, same as Play.
-- **Same signing key as Play** (`docs/release/android/signing.md`). Installing a Play build
-  over a sideloaded one, or vice versa, only works because the certificate is identical.
-- Versioned APKs are immutable; `latest.*` are pointers (`Cache-Control: no-cache`).
-- The nginx block is applied by `ota-release.yml mode=provision` (idempotent, repo file
-  is authoritative). Change the conf → re-run provision.
+- **Do not assume the direct APK has the Play app-signing certificate.** FactoryLM signs
+  direct APKs with its upload key; Google Play App Signing can re-sign Play installs with
+  a distinct app-signing key. Verify the certificates before switching install paths. If
+  they differ, Android requires uninstalling the existing app, which clears local state.
+  A direct or Firebase install never satisfies the OTA production handset receipt, which
+  requires installer package `com.android.vending` and the configured Play certificate.
+- Digest-named APKs are immutable and refuse different bytes at an existing path;
+  `latest.*` are atomically replaced pointers (`Cache-Control: no-cache`).
+- The nginx block is applied through the separately reviewed host-bootstrap runbook;
+  `ota-release.yml` deliberately has no provision mode. The repository nginx file remains
+  authoritative, but a config change needs its own reviewed operator deployment.
 
 ## Related
 

@@ -47,8 +47,37 @@ export function assertNever(value: never): never {
   throw new Error(`Unhandled interaction part: ${JSON.stringify(value)}`);
 }
 
+/**
+ * Human labels for every lifecycle.
+ *
+ * This was `lifecycle.charAt(0).toUpperCase() + lifecycle.slice(1)`, which is
+ * fine for single-word members and produces **"Safety_stop"** for the one that
+ * matters most — a raw identifier shown to a technician at the exact moment
+ * MIRA has declined to answer on safety grounds.
+ *
+ * An explicit map instead, so every member gets a deliberate word rather than
+ * a mechanical transformation that happens to work for nine of ten. The
+ * `Record<Lifecycle, string>` type makes the map exhaustive at COMPILE time:
+ * adding a union member without a label here is a build error, not a string
+ * with an underscore in it.
+ */
+const LIFECYCLE_LABEL: Record<Lifecycle, string> = {
+  accepted: "Accepted",
+  queued: "Queued",
+  running: "Running",
+  waiting: "Waiting",
+  stopping: "Stopping",
+  completed: "Completed",
+  stopped: "Stopped",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  // Not "Stopped". A person stopping an answer and MIRA refusing to give one
+  // are different events, and the technician needs to know which happened.
+  safety_stop: "Safety stop",
+};
+
 export function lifecycleLabel(lifecycle: Lifecycle): string {
-  return lifecycle.charAt(0).toUpperCase() + lifecycle.slice(1);
+  return LIFECYCLE_LABEL[lifecycle];
 }
 
 export function machineName(state: ShellState, machineId: string | undefined): string | undefined {

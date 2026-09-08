@@ -34,6 +34,7 @@
 # STATES
 #   implemented_unconnected  code exists, nothing consumes it
 #   connected_ci_missing     a consumer exists, no named CI job runs its tests
+#   canary_enabled           opt-in tester delivery; not staging/production default
 #   deployed_disabled        shipped, off in every environment
 #   staging_enabled          on in staging only
 #   production_enabled       on in production
@@ -485,6 +486,105 @@ capabilities:
     review_by: "2026-09-26"
     notes: >-
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
+
+  # =========================================================================
+  - id: unified_ui_shell
+    purpose: >-
+      Shared FactoryLM presentation shell (design tokens, interaction
+      contract/reducer/fixtures, conversation parts, composer, navigation,
+      inspector, source viewer, and cross-surface lab) that replaces the
+      separate public/Hub/mobile presentation trees over time. Main now
+      includes the foundation (#3625), interaction and composer (#3628),
+      mobile behavior and fixture matrix (#3632), connected mobile chat and
+      whole-app adapters (#3633/#3639), subsequent mobile hardening (#3642),
+      and shared-shell Slice A (#3643).
+      FACTORYLM-UNIFIED-UI-CUTOVER-001 charter:
+      docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
+    customer_outcome: >-
+      An authorized mobile canary tester can opt into the completely new
+      FactoryLM shell and use the real notebook send, attachment, evidence,
+      citation, retry, navigation, and persistence seams. It is not the
+      production-default surface and Hub/public adapters remain unconnected.
+    feature_flag: null
+    entrypoints:
+      - "packages/factorylm-theme/src/                    # tokens, workspace theme"
+      - "packages/factorylm-interaction/src/               # types, reducer, fixtures, adapter contract"
+      - "packages/factorylm-ui/src/FactoryLMShell.tsx      # shared shell, Sidebar, Inspector, ThreadHeader, ProjectTree"
+      - "packages/factorylm-ui/src/Conversation.tsx        # typed Ask/Work part renderer"
+      - "packages/factorylm-ui/src/Composer.tsx            # shared universal composer"
+      - "apps/factorylm-ui-lab/                             # isolated fixture lab + cross-surface harness"
+      - "mira-mobile/src/App.tsx                            # reads the device choice and mounts UnifiedRoot"
+      - "mira-mobile/src/lib/chat-ui-pref.ts                # owns flm.chatui.v1 selection and rollback"
+      - "mira-mobile/src/screens/UnifiedRoot.tsx            # whole-app mobile host"
+      - "mira-mobile/src/screens/NotebookScreen.tsx         # mounts UnifiedChat on real notebook seams"
+      - "mira-mobile/src/screens/UnifiedChat.tsx            # real notebook shell adapter"
+      - "mira-mobile/src/unified/                           # platform adapter and notebook transforms"
+    consumers:
+      - "mira-mobile canary                     # device-local flm.chatui.v1=unified opt-in"
+    schema: []
+    environments:
+      dev: unset
+      canary: "1"                             # signed OTA canary 1.1.7 at main f5f994a78
+      staging: unset
+      production: unset
+    state: canary_enabled
+    owner: null
+    owner_missing: >-
+      Multi-CPU program coordinated through the mission issue, not a single
+      named owner yet. See docs/architecture/convergence/UNIFIED_UI_CUTOVER.md
+      §5 (ownership lanes) and the [WORK-CLAIM] record on
+      https://github.com/Mikecranesync/MIRA/issues/3626.
+    ci_jobs:
+      - "factorylm-ui-lab.yml:shared-ui"
+      - "mobile-unit-tests"
+    required_checks:
+      - "Shared UI contract (bun 1.4.0)"
+    required_checks_observed_on: "2026-09-06"
+    evidence:
+      - path: packages/factorylm-theme/src/__tests__/theme-contract.test.ts
+        note: "Theme token contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-interaction/src/__tests__/reducer.test.ts
+        note: "Shared interaction reducer contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-interaction/src/__tests__/fixtures.test.ts
+        note: "Shared fixture contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-ui/src/__tests__/shell.test.tsx
+        note: "Shared shell component coverage."
+      - path: packages/factorylm-ui/src/__tests__/conversation.test.tsx
+        note: "Conversation-part rendering coverage from merged Task 5."
+      - path: packages/factorylm-ui/src/__tests__/composer.test.tsx
+        note: "Universal-composer behavior coverage from merged Task 5."
+      - path: apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts
+        note: "Cross-surface browser fixture matrix; local release proof, not part of the required unit check."
+      - path: mira-mobile/src/screens/__tests__/unified-chat.test.tsx
+        note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
+      - path: mira-mobile/src/screens/__tests__/unified-root.test.tsx
+        note: "Whole-app mobile shell host behavior."
+      - path: https://updates.factorylm.com/manifest.canary.json
+        note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
+    rollback: >-
+      On a canary device, choose Use classic app or set the device-local
+      `flm.chatui.v1` preference to `v2`/`legacy`; this switches presentation
+      without changing the notebook API, stored turns, evidence, or safety
+      seams. If the canary bundle itself is bad, use the signed OTA rollback
+      procedure in docs/release/android/ota.md. Production remains unset.
+    reason: >-
+      The shared shell is connected and CI-covered on the opt-in mobile canary,
+      but physical-handset Golden Conversation proof has not yet been recorded
+      for canary 1.1.7 and the new shell is not the production default. No
+      database, provider, Hub route, or public-web cutover is claimed.
+    promotion_criteria:
+      - "Record the Golden Conversation on a physical canary phone at the exact OTA release SHA: sign in, open/create thread, ask, attach evidence, cited answer, save/reload, and reopen the same thread."
+      - "Keep the device-local classic/v2 rollback available until the physical canary proof and accessibility/performance gates pass."
+      - "Connect Hub and public through bounded adapters and their own CI before claiming cross-surface or production-default rollout."
+    review_by: "2026-09-20"
+    notes: >-
+      Do not create a second capability registry for UI cutover state — this
+      record is the ONE capability-closure entry for the unified shell
+      (charter §4). `required_checks_observed_on` is a dated live GitHub read;
+      the offline validator proves the named workflow producer exists but does
+      not claim branch-protection settings cannot drift. Legacy presentation freeze/enforcement state lives in
+      docs/architecture/convergence/REGISTRY.yaml (mira-web-legacy-ui,
+      mira-hub-legacy-ui, mira-mobile-legacy-ui), not here.
 
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability

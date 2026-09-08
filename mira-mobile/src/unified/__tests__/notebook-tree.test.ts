@@ -18,4 +18,11 @@ describe("notebook tree", () => {
     expect(notebookIdFromItem(threadItemId("b"))).toBe("b");
     expect(notebookIdFromItem("link-a")).toBeNull();
   });
+
+  it("gives unnamed notebooks a visible canonical-shell label", () => {
+    const [project] = notebookProjects([nb("blank", "", null)]);
+    expect(project.children).toEqual([
+      { kind: "thread", id: "notebook-blank", label: "Untitled notebook" },
+    ]);
+  });
 });

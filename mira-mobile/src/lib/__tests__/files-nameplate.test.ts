@@ -54,7 +54,7 @@ describe("canBeChatSource — an unconfirmed proposal is not evidence", () => {
 
 describe("fileCapabilityLabel", () => {
   it("maps the three capabilities to the technician sentence", async () => {
-    const { fileCapabilityLabel } = await import("../../api/resources");
+    const { fileCapabilityLabel } = await import("../resource-copy");
     expect(fileCapabilityLabel("indexable")).toBe("Searchable source");
     expect(fileCapabilityLabel("viewable")).toBe("Viewable attachment");
     expect(fileCapabilityLabel("stored")).toBe("Stored file—not searchable in chat");
@@ -62,6 +62,28 @@ describe("fileCapabilityLabel", () => {
     expect(fileCapabilityLabel("something_new")).toBe(
       "Stored file—not searchable in chat",
     );
+  });
+});
+
+describe("resource presentation fallbacks", () => {
+  it("keeps human fallback copy outside the transport/resource module", async () => {
+    const {
+      notebookDisplayName,
+      pmTaskLabel,
+      signInFailureCopy,
+      suggestedDocumentTitle,
+      uploadSourceWarningCopy,
+      workspaceFileName,
+    } = await import("../resource-copy");
+
+    expect(notebookDisplayName("")).toBe("Untitled");
+    expect(pmTaskLabel("")).toBe("PM task");
+    expect(workspaceFileName("")).toBe("untitled");
+    expect(suggestedDocumentTitle("")).toBe("Untitled document");
+    expect(uploadSourceWarningCopy(null)).toBe(
+      "Saved, but this file couldn't be indexed for chat.",
+    );
+    expect(signInFailureCopy("invalid_credentials")).toBe("invalid email or password");
   });
 });
 

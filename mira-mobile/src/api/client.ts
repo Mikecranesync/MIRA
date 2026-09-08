@@ -33,44 +33,30 @@ export class ApiError extends Error {
     this.status = status;
     this.detail = detail;
   }
-  /** Human line for error states; never includes secrets. */
-  get userMessage(): string {
-    switch (this.kind) {
-      case "auth":
-        return "Session expired — sign in again.";
-      case "forbidden":
-        // #3442: source_not_in_notebook is scope staleness (a source was
-        // superseded/replaced while this chat was open), not a role problem.
-        if (this.detail === "source_not_in_notebook") {
-          return "A source in this chat was updated — reopen the notebook and ask again.";
-        }
-        return "Your role doesn't allow this action.";
-      case "not_found":
-        return "Not found (or no access).";
-      case "network":
-        return "Network problem — check connectivity and retry.";
-      case "server":
-        return "Server error — try again shortly.";
-      default:
-        return this.detail || "Request failed.";
-    }
-  }
 }
 
 // --- cookie jar (proven in Phase 2; unchanged semantics) --------------------
 
 let jar: Record<string, string> = {};
 let jarLoaded = false;
+let localSessionEpoch = 0;
+let jarMutationTail: Promise<void> = Promise.resolve();
+
+function serializeJarMutation(mutation: () => Promise<void>): Promise<void> {
+  const result = jarMutationTail.then(mutation, mutation);
+  jarMutationTail = result.catch(() => {});
+  return result;
+}
 
 async function loadJar(): Promise<void> {
   if (jarLoaded) return;
+  const readEpoch = localSessionEpoch;
   const { value } = await Preferences.get({ key: JAR_KEY });
-  jar = value ? (JSON.parse(value) as Record<string, string>) : {};
-  jarLoaded = true;
-}
-
-async function saveJar(): Promise<void> {
-  await Preferences.set({ key: JAR_KEY, value: JSON.stringify(jar) });
+  await serializeJarMutation(async () => {
+    if (readEpoch !== localSessionEpoch || jarLoaded) return;
+    jar = value ? (JSON.parse(value) as Record<string, string>) : {};
+    jarLoaded = true;
+  });
 }
 
 /** Split a combined Set-Cookie header on commas that start a new cookie-pair.
@@ -80,7 +66,10 @@ export function splitSetCookie(combined: string): string[] {
   return combined.split(/,(?=\s*[^\s;,=]+=[^;,]*)/);
 }
 
-function storeSetCookies(headers: Record<string, string>): void {
+function storeSetCookies(
+  target: Record<string, string>,
+  headers: Record<string, string>,
+): void {
   const raw = headers["Set-Cookie"] ?? headers["set-cookie"] ?? headers["SET-COOKIE"];
   if (!raw) return;
   for (const c of splitSetCookie(raw)) {
@@ -89,8 +78,8 @@ function storeSetCookies(headers: Record<string, string>): void {
     if (i <= 0) continue;
     const name = pair.slice(0, i).trim();
     const value = pair.slice(i + 1).trim();
-    if (value === "" || /Max-Age=0/i.test(c)) delete jar[name];
-    else jar[name] = value;
+    if (value === "" || /Max-Age=0/i.test(c)) delete target[name];
+    else target[name] = value;
   }
 }
 
@@ -101,8 +90,31 @@ function cookieHeader(): string {
 }
 
 export async function clearAllLocalState(): Promise<void> {
+  localSessionEpoch++;
   jar = {};
-  await saveJar();
+  jarLoaded = true;
+  await serializeJarMutation(async () => {
+    await Preferences.set({ key: JAR_KEY, value: "{}" });
+  });
+}
+
+/** Invalidate every request already in flight before local sign-out begins. */
+export function invalidateLocalSessionRequests(): void {
+  localSessionEpoch++;
+}
+
+async function applyResponseCookies(
+  headers: Record<string, string>,
+  requestEpoch: number,
+): Promise<void> {
+  await serializeJarMutation(async () => {
+    if (requestEpoch !== localSessionEpoch) return;
+    const next = { ...jar };
+    storeSetCookies(next, headers);
+    const serialized = JSON.stringify(next);
+    await Preferences.set({ key: JAR_KEY, value: serialized });
+    if (requestEpoch === localSessionEpoch) jar = next;
+  });
 }
 
 // --- auth-expiry subscription ----------------------------------------------
@@ -147,8 +159,30 @@ interface RequestOpts {
   acceptStatuses?: number[];
 }
 
+let activeApiMutations = 0;
+
+/** True while any server mutation, upload, or chat stream can still change data. */
+export function hasActiveApiMutations(): boolean {
+  return activeApiMutations > 0;
+}
+
+async function withActiveApiMutation<T>(operation: () => Promise<T>): Promise<T> {
+  activeApiMutations++;
+  try {
+    return await operation();
+  } finally {
+    activeApiMutations--;
+  }
+}
+
+function isMutationMethod(method: string): boolean {
+  const normalized = method.toUpperCase();
+  return normalized !== "GET" && normalized !== "HEAD";
+}
+
 async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse> {
   await loadJar();
+  const requestEpoch = localSessionEpoch;
   const method = opts.method ?? "GET";
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -174,8 +208,7 @@ async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse>
       readTimeout: opts.timeoutMs ?? 90_000,
       connectTimeout: 15_000,
     });
-    storeSetCookies((res.headers ?? {}) as Record<string, string>);
-    await saveJar();
+    await applyResponseCookies((res.headers ?? {}) as Record<string, string>, requestEpoch);
     const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data ?? "");
     let data: unknown = null;
     try {
@@ -227,7 +260,7 @@ export function errorFromStatus(status: number, data: unknown): ApiError {
  *  `acceptStatuses`: same contract as `request()` — a non-2xx whose BODY is
  *  the answer (e.g. LOOK's 502/503 that still carries the parked file) is
  *  returned instead of thrown. Default: none (existing callers unchanged). */
-export async function uploadMultipart(
+async function uploadMultipartRequest(
   path: string,
   form: FormData,
   opts: { acceptStatuses?: number[] } = {},
@@ -265,6 +298,14 @@ export async function uploadMultipart(
   throw errorFromStatus(res.status, data);
 }
 
+export function uploadMultipart(
+  path: string,
+  form: FormData,
+  opts: { acceptStatuses?: number[] } = {},
+): Promise<ApiResponse> {
+  return withActiveApiMutation(() => uploadMultipartRequest(path, form, opts));
+}
+
 // --- streamed POST (chat SSE) -----------------------------------------------
 
 export interface StreamOpts {
@@ -273,14 +314,6 @@ export interface StreamOpts {
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
-}
-
-/** Whether a visible Stop control can cancel the server-side chat request.
- * Browser fetch streams propagate AbortSignal to the server. The Capacitor
- * native fetch patch buffers the response and does not, so advertising Stop
- * there would fabricate a stopped turn while the server keeps working. */
-export function canCancelChatTransport(): boolean {
-  return !Capacitor.isNativePlatform();
 }
 
 /** Streamed POST for the chat SSE endpoints (STRM-1).
@@ -305,8 +338,9 @@ export function canCancelChatTransport(): boolean {
  *  that lands, the UI must not advertise Stop on device: aborting the local
  *  read cannot cancel server work or truthfully persist a stopped turn. NOT
  *  retried — a chat turn is not idempotent. */
-export async function requestStream(path: string, opts: StreamOpts): Promise<ApiResponse> {
+async function requestStreamRequest(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
+  const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (native) {
@@ -322,6 +356,7 @@ export async function requestStream(path: string, opts: StreamOpts): Promise<Api
 
   let text = "";
   let status = 0;
+  let responseHeaders: Record<string, string> | null = null;
   try {
     let res: Response;
     try {
@@ -337,7 +372,7 @@ export async function requestStream(path: string, opts: StreamOpts): Promise<Api
       throw new ApiError("network", null, String(e));
     }
     status = res.status;
-    if (native) storeSetCookies(Object.fromEntries(res.headers.entries()));
+    if (native) responseHeaders = Object.fromEntries(res.headers.entries());
     if (status === 401 && !suppressAuthEvents) {
       for (const fn of authExpiredListeners) fn();
     }
@@ -383,9 +418,13 @@ export async function requestStream(path: string, opts: StreamOpts): Promise<Api
   } finally {
     clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onAbort);
-    if (native) await saveJar();
+    if (native && responseHeaders) await applyResponseCookies(responseHeaders, requestEpoch);
   }
   return { status, data: null, text };
+}
+
+export function requestStream(path: string, opts: StreamOpts): Promise<ApiResponse> {
+  return withActiveApiMutation(() => requestStreamRequest(path, opts));
 }
 
 // --- authenticated binary retrieval -----------------------------------------
@@ -417,6 +456,7 @@ export async function requestBinary(
   opts: { timeoutMs?: number } = {},
 ): Promise<{ status: number; bytes: Uint8Array; contentType: string }> {
   await loadJar();
+  const requestEpoch = localSessionEpoch;
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
   if (cookies) headers["Cookie"] = cookies;
@@ -436,8 +476,7 @@ export async function requestBinary(
     } catch (e) {
       throw new ApiError("network", null, String(e));
     }
-    storeSetCookies((res.headers ?? {}) as Record<string, string>);
-    await saveJar();
+    await applyResponseCookies((res.headers ?? {}) as Record<string, string>, requestEpoch);
     if (res.status === 401 && !suppressAuthEvents) {
       for (const fn of authExpiredListeners) fn();
     }
@@ -470,7 +509,7 @@ export async function requestBinary(
 /** Core request: throws typed ApiError on non-2xx; retries transport failures
  *  once for GETs and keyed mutations. 401s notify the auth-expired listeners
  *  (unless suppressed) AND still throw, so callers always see the failure. */
-export async function request(path: string, opts: RequestOpts = {}): Promise<ApiResponse> {
+async function requestWithRetries(path: string, opts: RequestOpts = {}): Promise<ApiResponse> {
   const method = opts.method ?? "GET";
   const retryable = method === "GET" || Boolean(opts.idempotencyKey);
   let lastNetworkErr: unknown;
@@ -490,4 +529,11 @@ export async function request(path: string, opts: RequestOpts = {}): Promise<Api
     throw errorFromStatus(res.status, res.data);
   }
   throw new ApiError("network", null, String(lastNetworkErr ?? "request failed"));
+}
+
+export function request(path: string, opts: RequestOpts = {}): Promise<ApiResponse> {
+  const method = opts.method ?? "GET";
+  return isMutationMethod(method)
+    ? withActiveApiMutation(() => requestWithRetries(path, opts))
+    : requestWithRetries(path, opts);
 }
