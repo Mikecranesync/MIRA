@@ -339,7 +339,7 @@ describe("V3 — an outage is not an answer (round 2, F3)", () => {
     // the whole defect, so the fixture reproduces it exactly.
     const frame = readFrame(JSON.stringify({
       content: "MIRA is temporarily unavailable. All inference providers are down.",
-      error: "providers_unavailable",
+      error: "all_providers_unavailable",
     }));
     expect(frame.kind).toBe("outage");
     if (frame.kind === "outage") expect(frame.message).toContain("temporarily unavailable");
@@ -363,7 +363,7 @@ describe("V3 — an outage is not an answer (round 2, F3)", () => {
   it("prefers the failure reading when a frame is both content and error", () => {
     // Order matters: an outage frame ALSO carries content. If content were
     // checked first the outage sentence would stream in as the answer again.
-    const frame = readFrame(JSON.stringify({ content: "anything", error: "providers_unavailable" }));
+    const frame = readFrame(JSON.stringify({ content: "anything", error: "all_providers_unavailable" }));
     expect(frame.kind).toBe("outage");
   });
 });

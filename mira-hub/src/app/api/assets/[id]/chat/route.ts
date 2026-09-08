@@ -643,6 +643,11 @@ export async function POST(
         // V3 even badged it "General guidance — no source cited". A technician
         // cannot act on that distinction if the payload does not carry it.
         //
+        // The value matches `api/mira/ask/route.ts`, which already emitted
+        // `all_providers_unavailable` for this same condition. One condition,
+        // one spelling: a second name for it would read as a second failure
+        // mode to anyone matching the literal.
+        //
         // `error` is ADDITIVE: existing consumers keep reading `content`
         // exactly as before, and clients that understand the field can render
         // their retryable failure state instead of an answer. Note the H4
@@ -650,7 +655,7 @@ export async function POST(
         // here — nothing else marks this frame as a failure.
         const msg = "MIRA is temporarily unavailable. All inference providers are down. Please try again in a moment.";
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ content: msg, error: "providers_unavailable" })}\n\n`),
+          enc.encode(`data: ${JSON.stringify({ content: msg, error: "all_providers_unavailable" })}\n\n`),
         );
       }
 

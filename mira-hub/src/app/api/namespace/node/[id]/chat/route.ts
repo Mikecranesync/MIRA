@@ -416,8 +416,16 @@ export async function POST(
       }
 
       if (!served) {
+        // Provider exhaustion is a FAILURE and the frame must say so. Sent as
+        // bare `content` under HTTP 200 it is indistinguishable from an answer,
+        // so a client that only inspects status renders an outage notice as
+        // MIRA's reply. This route was cloned from `api/assets/[id]/chat`, and
+        // inherited the defect with it; `error` is additive, and uses the same
+        // spelling as that route and `api/mira/ask`.
         const msg = "MIRA is temporarily unavailable. All inference providers are down. Please try again in a moment.";
-        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: msg })}\n\n`));
+        controller.enqueue(
+          enc.encode(`data: ${JSON.stringify({ content: msg, error: "all_providers_unavailable" })}\n\n`),
+        );
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
       }
 
