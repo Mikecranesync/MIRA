@@ -59,6 +59,7 @@ vi.mock("../../lib/native-pick", async (importOriginal) => {
 
 import { NotebookScreen } from "../NotebookScreen";
 import type { ChatTurn } from "../../lib/sse";
+import { ApiError } from "../../api/client";
 
 const CITATION = {
   citationId: "1",
@@ -295,13 +296,15 @@ describe("ChatV2 (default surface)", () => {
   });
 
   it("a failed send surfaces Retry and keeps the question", async () => {
-    askNotebook.mockRejectedValue(new Error("network"));
+    askNotebook.mockRejectedValue(new ApiError("network", null, "raw transport detail"));
     mount();
     const el = await type("what trips the overload");
     await act(async () => {
       fireEvent.keyDown(el, { key: "Enter" });
     });
     const retry = await screen.findByText("Retry");
+    expect(screen.getByRole("alert").textContent).toMatch(/Network problem/i);
+    expect(screen.getByRole("alert").textContent).not.toContain("raw transport detail");
     expect((await composer()).value).toBe("what trips the overload");
     askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" } as ChatTurn);
     await act(async () => {
@@ -310,5 +313,16 @@ describe("ChatV2 (default surface)", () => {
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
     // CMPS-2: the retry re-sends the identical question, not a recomputed one.
     expect(askNotebook.mock.calls[1][1]).toBe("what trips the overload");
+  });
+
+  it("shows attachment failure copy even though there is no send to Retry", async () => {
+    const file = new File(["photo"], "motor.jpg", { type: "image/jpeg" });
+    pickPhoto.mockResolvedValue(file);
+    lookAtPhoto.mockResolvedValue({ fileId: null, observation: null });
+    mount();
+    fireEvent.click(await screen.findByTestId("v2-attach"));
+    fireEvent.click(await screen.findByRole("button", { name: /Photo/ }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/photo didn't upload/i);
+    expect(screen.queryByText("Retry")).toBeNull();
   });
 });

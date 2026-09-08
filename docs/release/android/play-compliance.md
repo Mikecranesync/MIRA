@@ -9,12 +9,12 @@ source named. Items marked **OWNER** need a business/legal decision — do not s
 |---|---|
 | Target API ≥36 for NEW apps by 2026-08-31 | ✅ targetSdk=36, compileSdk=36 (`android/variables.gradle`) |
 | Android App Bundle (.aab) | ✅ `bundleRelease` output |
-| Play App Signing | ✅ upload-key workflow (`signing.md`); enrollment happens at first upload |
+| Play App Signing | ✅ upload-key workflow (`signing.md`); enrollment happens at first upload. Google Play's app-signing certificate, not the upload certificate, is the installed-app identity used by the OTA handset gate. |
 | 64-bit native libraries | ✅ N/A — no NDK libs; Capacitor WebView only |
 | Permissions minimal | ✅ INTERNET + CAMERA only; `camera required=false` (manifest) |
 | Cleartext traffic | ✅ none — API base is https; no `usesCleartextTraffic`; no network-security-config overrides |
 | Exported components | ✅ only `MainActivity` (launcher + deep links); FileProvider `exported=false` |
-| App Links | ✅ `autoVerify` for `app.factorylm.com/m/*`; `deployment/well-known/assetlinks.json` carries BOTH the debug and the release-cert fingerprint (`23:95:B9:60:…:92:A9`, added 2026-09-06); deployed by `ota-release.yml mode=provision` |
+| App Links | ✅ `autoVerify` for `app.factorylm.com/m/*`; `deployment/well-known/assetlinks.json` carries the audited fingerprints. Host provisioning is a separately reviewed operator action in `docs/runbooks/ota-updates-host-cutover.md`; the routine `ota-release.yml` has no provision mode. Recheck the Play app-signing fingerprint after enrollment rather than assuming the upload certificate is the installed-app certificate. |
 | debuggable in release | ✅ false (AGP default; never overridden) |
 | Ads | ✅ none — declare "No ads" |
 | Target audience | 18+ / business users (not child-directed) — content rating questionnaire accordingly |

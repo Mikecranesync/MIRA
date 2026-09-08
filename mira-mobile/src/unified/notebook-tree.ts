@@ -7,8 +7,12 @@
 import type { Machine, Project, ProjectNode } from "@factorylm/interaction";
 import type { Notebook } from "../api/resources";
 
+function canonicalNotebookLabel(nb: Pick<Notebook, "displayName">): string {
+  return nb.displayName.trim() || "Untitled notebook";
+}
+
 export function machineNameFor(nb: Notebook): string {
-  return [nb.manufacturer, nb.model].filter(Boolean).join(" ") || nb.displayName;
+  return [nb.manufacturer, nb.model].filter(Boolean).join(" ") || canonicalNotebookLabel(nb);
 }
 
 export function threadItemId(notebookId: string): string {
@@ -40,7 +44,7 @@ export function notebookProjects(notebooks: readonly Notebook[]): readonly Proje
     if (nb.asset) {
       children.push({ kind: "machine-link", id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId });
     }
-    children.push({ kind: "thread", id: threadItemId(nb.id), label: nb.displayName });
+    children.push({ kind: "thread", id: threadItemId(nb.id), label: canonicalNotebookLabel(nb) });
   }
   return [{ id: "project-notebooks", name: "Notebooks", children }];
 }

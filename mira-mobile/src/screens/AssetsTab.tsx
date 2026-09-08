@@ -22,6 +22,11 @@ import {
   type AssetSuggestedDoc,
 } from "../api/resources";
 import { resolveScan, type ScanOutcome } from "../lib/scan-landing";
+import {
+  pmTaskLabel,
+  suggestedDocumentTitle,
+  workspaceFileName,
+} from "../lib/resource-copy";
 import { extractAssetTag } from "../lib/tags";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { Sheet } from "./Sheet";
@@ -233,7 +238,7 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
             {pms?.state === "ready" &&
               pms.data.map((p) => (
                 <div key={p.id} className="meta" style={{ padding: "4px 0" }}>
-                  {p.task}
+                  {pmTaskLabel(p.task)}
                   {p.interval_label ? ` · ${p.interval_label}` : ""}
                   {p.next_due_at ? ` · due ${new Date(p.next_due_at).toLocaleDateString()}` : ""}
                 </div>
@@ -337,7 +342,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
         <div key={f.linkId} className="source-row">
           <div className="grow">
             <div className="title">
-              {fileTypeIcon(f.mimeType)} {f.displayLabel ?? f.filename}
+              {fileTypeIcon(f.mimeType)} {f.displayLabel ?? workspaceFileName(f.filename)}
             </div>
             <div className="meta">
               {formatSize(f.sizeBytes)} ·{" "}
@@ -356,7 +361,7 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
             onClick={async () => {
               if (
                 !window.confirm(
-                  `Detach “${f.filename}” from ${assetName}? The file stays in your workspace.`,
+                  `Detach “${workspaceFileName(f.filename)}” from ${assetName}? The file stays in your workspace.`,
                 )
               )
                 return;
@@ -381,9 +386,9 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
             attached here
           </div>
           {suggested.map((s) => (
-            <div key={s.sourceUrl ?? s.title} className="source-row">
+            <div key={s.sourceUrl ?? suggestedDocumentTitle(s.title)} className="source-row">
               <div className="grow">
-                <div className="title">📄 {s.title}</div>
+                <div className="title">📄 {suggestedDocumentTitle(s.title)}</div>
                 <div className="meta">
                   suggestion · {s.chunkCount} indexed section
                   {s.chunkCount === 1 ? "" : "s"}
@@ -432,11 +437,11 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
       )}
 
       {openFile && (
-        <Sheet label={openFile.filename} onClose={() => setOpenFile(null)}>
-            <h3>{openFile.filename}</h3>
+        <Sheet label={workspaceFileName(openFile.filename)} onClose={() => setOpenFile(null)}>
+            <h3>{workspaceFileName(openFile.filename)}</h3>
             <FilePreview
               fileId={openFile.fileId}
-              filename={openFile.filename}
+              filename={workspaceFileName(openFile.filename)}
               mimeType={openFile.mimeType}
             />
             <button style={{ marginTop: 12 }} onClick={() => setOpenFile(null)}>
@@ -451,13 +456,13 @@ function AssetFilesCard({ assetId, assetName }: { assetId: string; assetName: st
           excludeFileIds={attached.map((f) => f.fileId)}
           busy={busy}
           onClose={() => setPickOpen(false)}
-          onPick={(f) => void attachExisting(f.id, f.filename)}
+          onPick={(f) => void attachExisting(f.id, workspaceFileName(f.filename))}
         />
       )}
       {attachSheet && (
         <AttachFileSheet
           fileId={attachSheet.fileId}
-          filename={attachSheet.filename}
+          filename={workspaceFileName(attachSheet.filename)}
           existingLinks={[
             { id: attachSheet.linkId, targetType: "cmms_asset", targetId: assetId },
           ]}

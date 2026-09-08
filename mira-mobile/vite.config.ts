@@ -2,7 +2,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { nativeFingerprint } from "./scripts/native-fingerprint.mjs";
+import {
+  nativeFingerprint,
+  packagedBuildMinimum,
+} from "./scripts/native-fingerprint.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "../packages");
@@ -48,6 +51,7 @@ export default defineConfig({
   // drift is a bundle accepted onto a shell that cannot run it.
   define: {
     __FLM_NATIVE_FINGERPRINT__: JSON.stringify(nativeFingerprint()),
+    __FLM_PACKAGED_BUILD_MINIMUM__: JSON.stringify(packagedBuildMinimum()),
   },
   build: { outDir: "dist", sourcemap: false },
 });

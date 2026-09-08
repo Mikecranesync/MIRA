@@ -13,6 +13,7 @@ import {
   type Me,
 } from "../api/resources";
 import { can } from "../nav";
+import { pmTaskLabel } from "../lib/resource-copy";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 export function ScheduleTab({
@@ -86,7 +87,7 @@ export function ScheduleTab({
       {state.state === "ready" &&
         state.data.map((s) => (
           <div key={s.id} className="card">
-            <h3>{s.task}</h3>
+            <h3>{pmTaskLabel(s.task)}</h3>
             <div className="meta">
               {[s.manufacturer, s.model_number].filter(Boolean).join(" ") || "asset"}
               {s.interval_label ? ` · ${s.interval_label}` : ""}
