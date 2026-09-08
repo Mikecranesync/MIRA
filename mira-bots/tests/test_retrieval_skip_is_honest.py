@@ -49,16 +49,32 @@ QUESTION = "The SLC 5/03 keeps dropping its comms link. Where do I start?"
 
 
 def _make_worker(tenant_id: str | None) -> RAGWorker:
+    """Build a worker whose tenant is EXACTLY what the caller asked for.
+
+    `RAGWorker.__init__` does `self.tenant_id = tenant_id or os.environ.get(
+    "MIRA_TENANT_ID", "")` (rag_worker.py:602), so passing "" or None is
+    silently backfilled from the environment. Sibling test modules in this
+    package `os.environ.setdefault("MIRA_TENANT_ID", ...)` at import time, and
+    CI sets it too — so under `-n auto` the value present here depends on which
+    modules a worker already imported.
+
+    Without the patch below these tests pass locally (no env var) and fail in CI
+    (env var set) while asserting nothing about the code under test. That is the
+    same defect class the fix itself addresses: a check that passes for a reason
+    unrelated to what it names. Pin the environment instead of inheriting it.
+    """
     router = MagicMock()
     router.enabled = False
-    return RAGWorker(
-        openwebui_url="http://test-openwebui",
-        api_key="test-key",
-        collection_id="test-collection",
-        nemotron=None,
-        router=router,
-        tenant_id=tenant_id,
-    )
+    with patch.dict(os.environ, {"MIRA_TENANT_ID": ""}, clear=False):
+        worker = RAGWorker(
+            openwebui_url="http://test-openwebui",
+            api_key="test-key",
+            collection_id="test-collection",
+            nemotron=None,
+            router=router,
+            tenant_id=tenant_id,
+        )
+    return worker
 
 
 def _state() -> dict:
@@ -94,7 +110,14 @@ async def test_skipped_retrieval_admits_the_gap(tenant):
     ):
         await worker.process(message=QUESTION, state=_state())
 
-    # The gate really did skip retrieval — this is the precondition, not the point.
+    # Precondition, asserted explicitly: the worker's tenant really is falsy.
+    # (Asserted rather than assumed — the constructor backfills from the
+    # environment, which is exactly how the first version of this test passed
+    # locally and failed in CI while testing nothing.)
+    assert not worker.tenant_id, (
+        f"test setup failed: worker.tenant_id is {worker.tenant_id!r}, not falsy — "
+        "the MIRA_TENANT_ID backfill leaked in and this test would assert nothing"
+    )
     recall_mock.assert_not_called()
     embed_mock.assert_not_awaited()
 
