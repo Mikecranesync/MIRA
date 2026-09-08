@@ -5,6 +5,7 @@ import { Bot, Send, AlertTriangle, RotateCcw, ClipboardCheck, Square } from "luc
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 import { SourceChips, type SourceChip } from "@/components/SourceChips";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
 
 interface ChatMessage {
@@ -159,14 +160,28 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
+          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm"
           style={{
             background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
         >
-          {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+          {msg.content ? (
+            /* B-3 — render GFM, do not print it. This surface used
+               `whitespace-pre-wrap` on the raw string, so every bold, bullet
+               and heading MIRA produced arrived as literal syntax. The proof
+               needs no browser: WELCOME itself contains `**${name}**`, so the
+               first thing a technician saw on this screen was the asterisks.
+               Reuses the notebook's renderer rather than adding a second one —
+               one markdown behaviour across surfaces, not two. Citations are
+               passed empty here: the [n] tap-through belongs to the notebook's
+               EvidenceCitation shape, while this surface carries SourceChip and
+               renders its evidence as chips below. */
+            <AnswerMarkdown content={msg.content} citations={[]} />
+          ) : (
+            <span style={{ color: "var(--foreground-subtle)" }}>…</span>
+          )}
         </div>
         {msg.hasSafetyAlert && (
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
