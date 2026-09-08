@@ -95,12 +95,40 @@ export function suggestionsFrom(assets: readonly SuggestionAsset[]): string[] {
   return out.length > 0 ? out : [...FALLBACK_SUGGESTIONS];
 }
 
+/**
+ * What the Copy button puts on the clipboard (gate B-8).
+ *
+ * The citations travel WITH the answer. A technician copies an answer to paste
+ * into a work order, a message, or a handover note, and a claim separated from
+ * its source is the exact defect this product exists to avoid — the answer
+ * would arrive somewhere else looking like an assertion nobody can check.
+ *
+ * An ungrounded answer says so in the copied text too. Otherwise the label is
+ * on the screen and the paste is bare, and the honesty stops at the boundary
+ * where it matters most: when the answer leaves the app.
+ */
+export function copyPayload(result: AskResponse): string {
+  const lines = [result.answer];
+  if (result.citations.length === 0) {
+    lines.push("", "⚠ General guidance — not grounded in a manual on file.");
+    return lines.join("\n");
+  }
+  lines.push("");
+  for (const c of result.citations) {
+    lines.push(`[${c.index}] ${c.title}${c.page !== null ? ` · p.${c.page}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
 export default function HomeComposer() {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AskResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([...FALLBACK_SUGGESTIONS]);
+  /** "Copied" is about THIS answer. A new question must not inherit it, or the
+   *  row claims a copy the technician never made. */
+  const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Suggestions drawn from live equipment state. Starts on the fallbacks so the
@@ -138,6 +166,7 @@ export default function HomeComposer() {
     setBusy(true);
     setError(null);
     setResult(null);
+    setCopied(false);
     try {
       const res = await fetch(`${API_BASE}/api/hub/ask`, {
         method: "POST",
@@ -256,8 +285,14 @@ export default function HomeComposer() {
           <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--foreground)" }}>
             {result.answer}
           </p>
-          {result.citations.length > 0 && (
-            <ul className="space-y-1">
+          {/* E-2 — an unsourced claim says so. The recon's finding was that a
+              manual-cited answer and a general-knowledge answer were
+              typographically identical, which for a product whose claim is
+              GROUNDED answers is a trust failure rather than a styling one.
+              Stated, never inferred from absence: the reader is told which
+              kind of answer this is, in both directions. */}
+          {result.citations.length > 0 ? (
+            <ul className="space-y-1" data-testid="home-composer-citations">
               {result.citations.map((c) => (
                 <li key={c.index} className="text-xs" style={{ color: "var(--foreground-muted)" }}>
                   [{c.index}] {c.title}
@@ -265,7 +300,42 @@ export default function HomeComposer() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <p
+              className="text-xs"
+              data-testid="home-composer-ungrounded"
+              style={{ color: "#92400E" }}
+            >
+              ⚠ General guidance — not grounded in a manual on file.
+            </p>
           )}
+
+          {/* B-8 — a persistent action row under every answer, copy
+              non-negotiable. A technician relays an answer to a colleague, a
+              work order, or a phone call; an answer they cannot lift out is an
+              answer they retype by hand. Copies the citations with the text,
+              because a claim separated from its source is the defect this
+              product exists to avoid. */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(copyPayload(result))
+                  .then(() => setCopied(true))
+                  .catch(() => setCopied(false));
+              }}
+              className="rounded-lg border px-3 text-xs"
+              style={{
+                background: "var(--surface-0)",
+                borderColor: "var(--border)",
+                color: "var(--foreground)",
+                minHeight: 44,
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
         </div>
       )}
     </section>
