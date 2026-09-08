@@ -66,6 +66,46 @@ equivalent stranger walk failed live at step one.
 | Answers actionable + attributable | B-8, E-1, E-2 | ⏳ **built, unmerged** — B-8 on all three answer surfaces (#3694 home, #3696 notebook + asset); E-1 named documents at the producer and defended on the read path (#3695); E-2 on the home composer (#3694), already live on notebook chat. **Caveat: `AssetChat` renders no citations at all** — its `ChatMessage` carries no citations field — so E-1/E-2 remain untouched there and a copy control cannot fix it. |
 | Errors humane + non-destructive | G-1…G-5 | ⏳ **partly built, unmerged** — #3681 renders a 412 as MIRA refusing rather than the app breaking. The permanent banner, retry, and duplicated message are not addressed. |
 
+### 1b-i. Asking the legacy-UI guard whether a PR needs an exception
+
+**Ask the guard; do not reason about its globs.** Two sessions spent an afternoon inferring
+"is this PR blocked?" from red badges and path guesses, and produced three wrong answers between
+them. The guard answers in about five seconds:
+
+```python
+import sys; sys.path.insert(0, "tools")
+from ui_surface_lifecycle_guard import ChangedFile, evaluate, load_guard_policy
+
+policy = load_guard_policy("docs/architecture/convergence/REGISTRY.yaml")
+for f in ["mira-hub/src/components/AssetChat.tsx"]:          # your changed files
+    r = evaluate([ChangedFile(path=f, status="modified")], [], "", policy,
+                 exception_approval_valid=False)
+    print(f, "GUARDED" if not r.allowed else "ok")
+```
+
+Run it with `/usr/bin/python3` — Homebrew's 3.14 lacks the dependencies.
+
+**What the guesses got wrong**, so nobody re-derives them:
+
+- `mira-hub/src/app/**` is *not* the whole scope. `CONTROL_PATTERNS` in
+  `tools/ui_surface_lifecycle_guard.py` adds `.github/workflows/**`, `REGISTRY.yaml`, the charter,
+  `pyproject.toml`, `conftest.py`, and the guard's own source and tests.
+- **`mira-hub/src/components/**` and `src/lib/**` ARE guarded** — the charter covers "every
+  production file under `components/**` and `providers/**`". A PR touching no `app/` file at all
+  can still need the exception.
+
+**And a red guard check is not the same question as a guarded path.** `ui-lifecycle-guard.yml` runs
+on `pull_request_target` and checks out `base.sha`, so a PR several commits behind `main` executes
+the guard as it was *then*. One PR's red was a pre-#3689 copy erroring with `exception approval
+metadata is missing required GitHub objects` before it evaluated any diff — a stale-base artifact
+wearing the same colour as a real violation. Running `evaluate()` locally separates
+*"this file is guarded"* from *"this check is red"*; only the first tells you whether an attestation
+is actually needed.
+
+The label is a **maintainer attestation** (`legacy-ui-exception`, "Maintainer-attested exception for
+guarded legacy UI or lifecycle-control changes"). Applying it *is* the sign-off, so it is never a
+session's to apply — write the `## Legacy UI exception` body section, and leave the label to a human.
+
 ### 1c. Gates that exist on paper and are not yet enforced
 
 | Gate | Where | Blocker |
