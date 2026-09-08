@@ -4,7 +4,7 @@
 
 This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
 
-> **Status note (last refreshed 2026-06-15):** Staging is far more built than this doc long claimed. The CI gate (Doppler `factorylm/stg`, NeonDB staging branch, `staging-gate.yml`) has run on every PR since 2026-05-18. **And a full always-on staging stack now runs on the VPS** — compose project `mira-staging` from `/opt/mira-staging/docker-compose.staging-vps.yml`, all services healthy on offset ports (`stg-mira-hub` 4101, pipeline 4099, web 4200, mcp 4000/4001, atlas-api 4088, atlas-frontend 4100), pointed at the staging Neon branch (`ep-polished-hall-ahcqtcxe-pooler`, NOT prod) with its own Telegram bot `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`). Deploy via `.github/workflows/deploy-staging.yml` (push to `staging`/`release/*` or manual dispatch). **Both `docker-compose.staging.yml` (local-dev) and `docker-compose.staging-vps.yml` (the deployed one) exist** — Gap-1 and Gap-3 are CLOSED (see below). The one real gap was **human access**: the staging hub's `NEXTAUTH_URL` pointed at a Tailscale http IP, so browser/Google login broke. Fix in progress: `stg.factorylm.com` HTTPS subdomain — see `docs/plans/2026-06-15-staging-usable-subdomain.md`.
+> **Status note (refreshed 2026-09-07):** The full staging stack is defined by `/opt/mira-staging/docker-compose.staging-vps.yml`, uses offset `stg-*` services and the staging Neon branch, and has its own Telegram bot token. Its deploy contract is now manual and exact-current-main only: `.github/workflows/deploy-staging.yml` accepts `target_ref=refs/heads/main` plus the current 40-character `target_sha`, then revalidates both before protected credentials are exposed. Push-triggered and feature-ref deploys are retired. The workflow remains on operational HOLD until the protected `staging-deploy` environment, scoped non-root user, and dedicated SSH key are provisioned. The HTTPS/login gap remains tracked in `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
 ---
 
@@ -28,7 +28,7 @@ The three environments below are not aspirational — they are how every code ch
 | **Purpose** | Write code, run unit/eval tests, iterate fast | Test against real-shape data; final gate before prod | Customer surface |
 | **Safe to break** | YES | YES (but must pass gate before promotion) | **NEVER** |
 | **Gate to enter** | none | local tests pass | staging gate passes (see below) |
-| **Who can deploy** | anyone | merge to main | `deploy-vps.yml` workflow (gated on `smoke-test.yml`) |
+| **Who can deploy** | anyone | maintainer through protected exact-main dispatch | `deploy-vps.yml` workflow (gated on `smoke-test.yml`) |
 
 ### Existing infrastructure (what's wired today)
 

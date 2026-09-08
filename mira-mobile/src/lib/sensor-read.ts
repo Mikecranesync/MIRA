@@ -38,7 +38,7 @@ const FALLBACK_BIND = "Could not attach that machine to this notebook.";
  * S5 D6: the tag RESOLVED — so a refused bind must read as a bind refusal,
  * never as "Not found (or no access)". The Hub's PUT …/asset puts its sentence
  * in `error` (BIND_ERRORS: "That asset isn't in this account.", "Notebook not
- * found.", …) but `ApiError.userMessage` throws the detail away for the
+ * found.", …) but generic API error copy throws the detail away for the
  * `not_found` kind. Read the server's sentence off `detail` directly; a bare
  * discriminator or "HTTP 404" falls back to the bind-refusal sentence.
  */

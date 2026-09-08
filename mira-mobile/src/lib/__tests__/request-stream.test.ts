@@ -16,7 +16,8 @@ vi.mock("@capacitor/preferences", () => ({
   Preferences: { get: vi.fn(async () => ({ value: null })), set: vi.fn(async () => {}) },
 }));
 
-import { requestStream, ApiError, canCancelChatTransport } from "../../api/client";
+import { requestStream, ApiError } from "../../api/client";
+import { canCancelChatTransport } from "../chat-transport-presentation";
 
 function streamOf(chunks: string[], opts: { status?: number; gate?: () => Promise<void> } = {}) {
   const enc = new TextEncoder();

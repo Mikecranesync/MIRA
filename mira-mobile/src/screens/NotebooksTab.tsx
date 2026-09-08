@@ -12,6 +12,7 @@ import {
   type NameplateCandidate,
 } from "../api/resources";
 import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-flow";
+import { notebookDisplayName } from "../lib/resource-copy";
 import { openNotebookTransition } from "../lib/scan-landing";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
@@ -178,7 +179,7 @@ function Home({
           <div key={nb.id} className="card nb-card" onClick={() => onOpen(nb.id)}>
             <div className={`nb-cover ${coverClass(nb)}`}>{coverGlyph(nb.equipmentType)}</div>
             <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0 }}>{nb.displayName}</h3>
+              <h3 style={{ margin: 0 }}>{notebookDisplayName(nb.displayName)}</h3>
               <div className="meta">
                 {nb.sourceCount} source{nb.sourceCount === 1 ? "" : "s"}
                 {nb.createdAt ? ` · ${new Date(nb.createdAt).toLocaleDateString()}` : ""}
