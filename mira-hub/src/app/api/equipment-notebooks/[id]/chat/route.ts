@@ -31,6 +31,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
+import { resolveCitationTitle } from "@/lib/citation-identity";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -189,6 +190,32 @@ function providers(): CascadeProvider[] {
   ];
 }
 
+/**
+ * The label a technician sees on a cited source (gate E-1), with the reason
+ * logged rather than swallowed.
+ *
+ * `resolveCitationTitle` refuses to hand a database key to a person. The log
+ * line is not decoration: without it, "the title lookup broke" and "this
+ * document has no name" collapse into the same rendered string, and the surface
+ * can no longer tell a working lookup from a dead one.
+ */
+function citationTitle(raw: string | null | undefined, docId: string, notebookId: string): string {
+  const { title, reason } = resolveCitationTitle(raw);
+  if (reason === "missing") {
+    console.warn(
+      `[citations] doc=${docId} notebook=${notebookId} has NO stored title — ` +
+        `rendering "${title}". Missing data, not a rewrite.`,
+    );
+  } else if (reason === "generated_key") {
+    console.warn(
+      `[citations] doc=${docId} notebook=${notebookId} stored title contains a UUID ` +
+        `(${String(raw).trim()}) — rendering "${title}". Legacy derived doc; ` +
+        `re-confirming the nameplate renames it at the producer.`,
+    );
+  }
+  return title;
+}
+
 /** Build numbered, per-doc citations consistent with appendManualContext's [n]
  *  blocks (same ordering source: the chunk array). */
 async function buildCitations(
@@ -204,7 +231,7 @@ async function buildCitations(
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
-      sourceTitle: c.title || "Attached document",
+      sourceTitle: citationTitle(c.title, c.docId ?? "", notebookId),
       page: c.sourcePage,
       fileId: null,
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
