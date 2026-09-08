@@ -34,10 +34,14 @@ import {
 } from "@/lib/approved-context";
 import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
+import { canonicalProviders } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
 
-// ── LLM Cascade (Groq → Cerebras → Gemini) ────────────────────────────────
+// ── LLM Cascade (Groq → Cerebras → Together) ───────────────────────────────
+// Sourced from the ONE canonical definition (@/lib/inference/canonical-cascade)
+// so this route cannot drift from root CLAUDE.md Hard Constraint #2. Gemini was
+// removed 2026-09-08 (#3688) — it is a PRD §4 violation, never reintroduce.
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -51,26 +55,15 @@ interface CascadeProvider {
 }
 
 function getProviders(): CascadeProvider[] {
-  return [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
-    },
-    {
-      name: "Cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
-    },
-  ];
+  // Borrow only the provider LIST from the canonical seam; this route keeps its
+  // own SSE/H4 streaming machinery (streamFromProvider re-adds gpt-oss
+  // reasoning_effort inline). Not the full usage-telemetry seam.
+  return canonicalProviders().map((p) => ({
+    name: p.name,
+    url: p.url,
+    key: p.key,
+    model: p.model,
+  }));
 }
 
 async function streamFromProvider(
