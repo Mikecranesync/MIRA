@@ -48,6 +48,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
 
 import { NotebookScreen } from "../NotebookScreen";
 import { ApiError } from "../../api/client";
+import { apiErrorCopy } from "../../lib/api-error-copy";
 import { hhmmss } from "../../lib/sensor";
 
 const ANCHOR = "2026-08-28T23:16:31.000Z";
@@ -205,7 +206,7 @@ describe("Sensor REPLAY (S4)", () => {
     expect(screen.queryByText(/No fault window recorded/)).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     // The existing ErrorState (common.tsx): `.error` carrying the typed message.
-    expect(container.querySelector(".error")?.textContent).toBe(err.userMessage);
+    expect(container.querySelector(".error")?.textContent).toBe(apiErrorCopy(err));
   });
 
   it("tables unavailable → says so; no fabricated timeline", async () => {

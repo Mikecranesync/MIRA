@@ -33,6 +33,7 @@ on:
         options: ["no", "yes"]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -40,179 +41,717 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-distribute:
+  # Repository test code runs without a production environment or secrets.
+  verify-mobile:
     runs-on: ubuntu-latest
-    # Same production environment + DOPPLER_TOKEN as deploy-vps.yml — the repo
-    # has no DOPPLER_TOKEN_PRD secret (this workflow had never run).
-    environment: production
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          bun-version: latest
-
-      - uses: actions/setup-java@v4
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Install mobile deps
+          bun-version: 1.4.0
+      - name: Install mobile dependencies
         working-directory: mira-mobile
         run: bun install --frozen-lockfile
-
-      # Gate the release on the same tests that guard every mobile change. A
-      # signed APK that reaches a phone is the most expensive thing to get wrong.
       - name: Mobile unit tests
         working-directory: mira-mobile
         run: bun run test
 
-      - name: Build web bundle (tsc --noEmit + vite build)
-        working-directory: mira-mobile
-        run: bun run build
+  # Build all repository-controlled inputs without any release credential. Only
+  # the unsigned APK/AAB cross into the fresh signing runner below.
+  build-unsigned-native:
+    if: github.ref == 'refs/heads/main'
+    needs: verify-mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      build_epoch: ${{ steps.replay-floor.outputs.build_epoch }}
+      native_fingerprint: ${{ steps.replay-floor.outputs.native_fingerprint }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21.0.12+8.0"
+      - name: Set up pinned Android tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          cmdline-tools-version: "12266719"
+          packages: "platforms;android-36 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: false
+      - name: Verify the pinned Gradle wrapper
+        working-directory: mira-mobile/android
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' \
+            7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172 \
+            gradle/wrapper/gradle-wrapper.jar | sha256sum -c -
 
+          WRAPPER_PROPERTIES=gradle/wrapper/gradle-wrapper.properties
+          EXPECTED_DISTRIBUTION='distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-all.zip'
+          [ "$(grep -cFx "$EXPECTED_DISTRIBUTION" "$WRAPPER_PROPERTIES")" -eq 1 ]
+          SHA_LINE='distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb'
+          [ "$(grep -cFx "$SHA_LINE" "$WRAPPER_PROPERTIES")" -eq 1 ] || {
+            echo "::error::Gradle distribution hash must be committed exactly once"
+            exit 1
+          }
+      - name: Install mobile dependencies
+        working-directory: mira-mobile
+        run: bun install --frozen-lockfile
+      - name: Resolve server-issued packaged replay floor
+        id: replay-floor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT")"
+          FLM_PACKAGED_BUILD_MINIMUM_EPOCH="$(RUN_JSON="$RUN_JSON" node --input-type=module -e '
+            import { workflowAttemptBuildEpoch } from "./mira-mobile/scripts/native-fingerprint.mjs";
+            process.stdout.write(workflowAttemptBuildEpoch(JSON.parse(process.env.RUN_JSON ?? "null"), {
+              runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, headSha: process.env.GITHUB_SHA,
+            }));
+          ')"
+          [[ "$FLM_PACKAGED_BUILD_MINIMUM_EPOCH" =~ ^[0-9]+$ ]]
+          NATIVE_FINGERPRINT="$(node --input-type=module -e '
+            import { nativeFingerprintAtRef } from "./mira-mobile/scripts/native-fingerprint.mjs";
+            process.stdout.write(nativeFingerprintAtRef(process.env.GITHUB_SHA));
+          ')"
+          [[ "$NATIVE_FINGERPRINT" =~ ^[0-9a-f]{16}$ ]]
+          echo "FLM_PACKAGED_BUILD_MINIMUM_EPOCH=$FLM_PACKAGED_BUILD_MINIMUM_EPOCH" >> "$GITHUB_ENV"
+          {
+            echo "build_epoch=$FLM_PACKAGED_BUILD_MINIMUM_EPOCH"
+            echo "native_fingerprint=$NATIVE_FINGERPRINT"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build web bundle (tsc + Vite)
+        working-directory: mira-mobile
+        env:
+          FLM_GOVERNED_RELEASE_BUILD: "1"
+        run: bun run build
       - name: Capacitor sync
         working-directory: mira-mobile
         run: node node_modules/@capacitor/cli/bin/capacitor sync android
-
-      - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
-
-      # The keystore lives in Doppler as base64 and is materialised to a file
-      # that exists only for this job. It is never echoed and never an artifact.
-      - name: Materialise signing key
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      - name: Build unsigned APK and AAB
+        working-directory: mira-mobile/android
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/signing"
+          test ! -e keystore.properties
+          chmod +x ./gradlew
+          env \
+            -u ANDROID_KEYSTORE_FILE \
+            -u ANDROID_KEYSTORE_PASSWORD \
+            -u ANDROID_KEY_ALIAS \
+            -u ANDROID_KEY_PASSWORD \
+            GRADLE_USER_HOME="$RUNNER_TEMP/gradle-home" \
+            ./gradlew --no-daemon assembleRelease bundleRelease
+
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$APK"
+          test -s "$AAB"
+
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          if "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
+            echo "::error::secret-free build unexpectedly produced a signed APK"
+            exit 1
+          fi
+          AAB_VERIFY="$(jarsigner -verify "$AAB" 2>&1 || true)"
+          grep -qi "jar is unsigned" <<< "$AAB_VERIFY" || {
+            echo "::error::secret-free build did not produce an unsigned AAB"
+            exit 1
+          }
+
+          STAGE="$RUNNER_TEMP/native-unsigned"
+          install -d -m 0755 "$STAGE"
+          install -m 0644 "$APK" "$STAGE/app-release-unsigned.apk"
+          install -m 0644 "$AAB" "$STAGE/app-release.aab"
+      - name: Upload unsigned native artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-unsigned
+          if-no-files-found: error
+          retention-days: 1
+
+  # No repository checkout and no repository executable code. This fresh runner
+  # receives only the unsigned artifacts and the production signing credential.
+  sign-native:
+    if: github.ref == 'refs/heads/main'
+    needs: build-unsigned-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21.0.12+8.0"
+      - name: Set up pinned Android signing tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          cmdline-tools-version: "12266719"
+          packages: "build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: false
+      - name: Download unsigned native artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: native-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-unsigned
+      - name: Validate unsigned artifact boundary
+        run: |
+          set -euo pipefail
+          UNSIGNED_DIR="$RUNNER_TEMP/native-unsigned"
+          ACTUAL="$(find "$UNSIGNED_DIR" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+          EXPECTED="$(printf '%s\n' app-release-unsigned.apk app-release.aab | LC_ALL=C sort)"
+          [ "$ACTUAL" = "$EXPECTED" ] || {
+            echo "::error::unexpected unsigned artifact set"
+            printf 'expected:\n%s\nactual:\n%s\n' "$EXPECTED" "$ACTUAL"
+            exit 1
+          }
+          for artifact in "$UNSIGNED_DIR/app-release-unsigned.apk" "$UNSIGNED_DIR/app-release.aab"; do
+            test -f "$artifact"
+            test ! -L "$artifact"
+            test -s "$artifact"
+            SIZE="$(stat -c%s "$artifact")"
+            [ "$SIZE" -le 1073741824 ] || {
+              echo "::error::unsigned artifact exceeds the 1 GiB safety bound"
+              exit 1
+            }
+            unzip -tq "$artifact" >/dev/null
+          done
+
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          if "$APKSIGNER" verify "$UNSIGNED_DIR/app-release-unsigned.apk" >/dev/null 2>&1; then
+            echo "::error::APK entering the signing boundary is already signed"
+            exit 1
+          fi
+          AAB_VERIFY="$(jarsigner -verify "$UNSIGNED_DIR/app-release.aab" 2>&1 || true)"
+          grep -qi "jar is unsigned" <<< "$AAB_VERIFY" || {
+            echo "::error::AAB entering the signing boundary is already signed"
+            exit 1
+          }
+          install -d -m 0755 "$RUNNER_TEMP/native-signed"
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+      - name: Require the exact current main source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::refusing a stale main mobile release"
+            exit 1
+          }
+      - name: Sign and verify native artifacts
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EXPECTED_BUILD_EPOCH: ${{ needs.build-unsigned-native.outputs.build_epoch }}
+          EXPECTED_NATIVE_FINGERPRINT: ${{ needs.build-unsigned-native.outputs.native_fingerprint }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_BUILD_EPOCH" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_NATIVE_FINGERPRINT" =~ ^[0-9a-f]{16}$ ]]
+          [ -n "${DOPPLER_TOKEN:-}" ] || {
+            echo "::error::DOPPLER_TOKEN is required for native signing"
+            exit 1
+          }
+
+          SIGNING_DIR="$RUNNER_TEMP/native-signing-secret"
+          SIGNED_DIR="$RUNNER_TEMP/native-signed"
+          UNSIGNED_DIR="$RUNNER_TEMP/native-unsigned"
+          trap 'rm -rf "$SIGNING_DIR"; unset ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS' EXIT
+          umask 077
+          install -d -m 0700 "$SIGNING_DIR"
+
           doppler secrets get ANDROID_KEYSTORE_BASE64 --plain \
             --project factorylm --config prd \
-            | base64 -d > "$RUNNER_TEMP/signing/upload.jks"
-          test -s "$RUNNER_TEMP/signing/upload.jks"
-          echo "keystore materialised ($(stat -c%s "$RUNNER_TEMP/signing/upload.jks") bytes)"
+            | base64 --decode > "$SIGNING_DIR/upload.jks"
+          ANDROID_KEYSTORE_PASSWORD="$(doppler secrets get ANDROID_KEYSTORE_PASSWORD --plain --project factorylm --config prd)"
+          ANDROID_KEY_PASSWORD="$(doppler secrets get ANDROID_KEY_PASSWORD --plain --project factorylm --config prd)"
+          ANDROID_KEY_ALIAS="$(doppler secrets get ANDROID_KEY_ALIAS --plain --project factorylm --config prd)"
+          export ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS
+          test -s "$SIGNING_DIR/upload.jks"
+          [ "$(stat -c%s "$SIGNING_DIR/upload.jks")" -le 1048576 ] || {
+            echo "::error::signing keystore exceeds the 1 MiB safety bound"
+            exit 1
+          }
+          [ "$ANDROID_KEY_ALIAS" = factorylm-upload ] || {
+            echo "::error::unexpected Android upload-key alias"
+            exit 1
+          }
+          for secret_name in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD; do
+            secret_value="${!secret_name}"
+            [ -n "$secret_value" ] || {
+              echo "::error::missing signing credential: $secret_name"
+              exit 1
+            }
+            [ "${#secret_value}" -le 4096 ]
+            [[ "$secret_value" != *$'\n'* && "$secret_value" != *$'\r'* ]] || {
+              echo "::error::malformed signing credential: $secret_name"
+              exit 1
+            }
+            echo "::add-mask::$secret_value"
+          done
+          unset secret_value
+          unset DOPPLER_TOKEN
 
-      - name: Build signed release APK
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        working-directory: mira-mobile/android
-        run: |
-          set -euo pipefail
-          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
-          # gradlew was committed without the executable bit; belt and braces.
-          chmod +x ./gradlew
-          doppler run --project factorylm --config prd -- ./gradlew --no-daemon assembleRelease
+          keytool -list \
+            -keystore "$SIGNING_DIR/upload.jks" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-      # Fail loudly if the APK came out unsigned. build.gradle deliberately
-      # degrades to "unsigned but successful" when credentials are absent, which
-      # is right for ordinary CI and catastrophic here — an unsigned APK cannot
-      # install, and finding that out on a technician's phone is too late.
-      - name: Verify signature
-        working-directory: mira-mobile/android
-        run: |
-          set -euo pipefail
-          APK=app/build/outputs/apk/release/app-release.apk
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)
-          "$APKSIGNER" verify --print-certs --verbose "$APK" | tee /tmp/signing.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/signing.txt
-          grep -q "CN=FactoryLM" /tmp/signing.txt
-          echo "signed OK"
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/35.0.0"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ALIGNED_APK="$SIGNED_DIR/app-release-aligned.apk"
+          SIGNED_APK="$SIGNED_DIR/app-release.apk"
+          SIGNED_AAB="$SIGNED_DIR/app-release.aab"
 
-      # The signed APK is what testers receive anyway; keeping it as a run
-      # artifact lets a release be installed on an emulator/device for proof
-      # even when Firebase distribution is off. The keystore is never uploaded.
-      # Play accepts only an App Bundle. Same keystore, same run — the APK is for
-      # testers/emulators, the AAB is what gets uploaded to Play Console.
-      - name: Build signed release AAB (Play)
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        working-directory: mira-mobile/android
-        run: |
-          set -euo pipefail
-          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/signing/upload.jks"
-          doppler run --project factorylm --config prd -- ./gradlew --no-daemon bundleRelease
-          AAB=app/build/outputs/bundle/release/app-release.aab
-          jarsigner -verify -verbose -certs "$AAB" | tee /tmp/aab-signing.txt | tail -3
-          grep -q "jar verified" /tmp/aab-signing.txt
-          grep -q "CN=FactoryLM" /tmp/aab-signing.txt
-          echo "AAB signed OK"
+          "$ZIPALIGN" -P 16 -f -v 4 \
+            "$UNSIGNED_DIR/app-release-unsigned.apk" "$ALIGNED_APK" >/dev/null
+          "$APKSIGNER" sign \
+            --ks "$SIGNING_DIR/upload.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$SIGNED_APK" \
+            "$ALIGNED_APK"
+          rm -f "$ALIGNED_APK"
 
-      - name: Upload signed AAB artifact (upload this to Play Console → Internal testing)
-        uses: actions/upload-artifact@v4
+          install -m 0644 "$UNSIGNED_DIR/app-release.aab" "$SIGNED_AAB"
+          jarsigner \
+            -keystore "$SIGNING_DIR/upload.jks" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD \
+            -keypass:env ANDROID_KEY_PASSWORD \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            "$SIGNED_AAB" "$ANDROID_KEY_ALIAS" >/dev/null
+
+          EXPECTED_CERT_SHA256=2395b96050c510a5c787465b83256f381b1ff5e4833d2fa88db73579293f92a9
+          "$APKSIGNER" verify --print-certs --verbose "$SIGNED_APK" > "$RUNNER_TEMP/apk-signing.txt"
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-signing.txt"
+          APK_CERT_SHA256="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' "$RUNNER_TEMP/apk-signing.txt" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          [ "$APK_CERT_SHA256" = "$EXPECTED_CERT_SHA256" ] || {
+            echo "::error::APK signer certificate does not match the pinned FactoryLM upload certificate"
+            exit 1
+          }
+
+          jarsigner -verify -verbose -certs "$SIGNED_AAB" > "$RUNNER_TEMP/aab-signing.txt"
+          grep -q "jar verified" "$RUNNER_TEMP/aab-signing.txt"
+          keytool -printcert -jarfile "$SIGNED_AAB" > "$RUNNER_TEMP/aab-certificate.txt"
+          AAB_CERT_SHA256="$(awk -F': ' '/SHA256:/ {print $2; exit}' "$RUNNER_TEMP/aab-certificate.txt" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          [ "$AAB_CERT_SHA256" = "$EXPECTED_CERT_SHA256" ] || {
+            echo "::error::AAB signer certificate does not match the pinned FactoryLM upload certificate"
+            exit 1
+          }
+          APK_SHA256="$(sha256sum "$SIGNED_APK" | cut -d' ' -f1)"
+          AAB_SHA256="$(sha256sum "$SIGNED_AAB" | cut -d' ' -f1)"
+          RELEASED_AT="$(date -u -d "@$EXPECTED_BUILD_EPOCH" '+%Y-%m-%dT%H:%M:%S.000Z')"
+          [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$AAB_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          jq -n \
+            --argjson schemaVersion 1 \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg workflowRunId "$GITHUB_RUN_ID" \
+            --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg buildEpoch "$EXPECTED_BUILD_EPOCH" \
+            --arg releasedAt "$RELEASED_AT" \
+            --arg nativeFingerprint "$EXPECTED_NATIVE_FINGERPRINT" \
+            --arg apkSha256 "$APK_SHA256" \
+            --arg aabSha256 "$AAB_SHA256" \
+            --arg uploadCertificateSha256 "$EXPECTED_CERT_SHA256" \
+            '{schemaVersion:$schemaVersion,sourceSha:$sourceSha,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,buildEpoch:$buildEpoch,releasedAt:$releasedAt,nativeFingerprint:$nativeFingerprint,apkSha256:$apkSha256,aabSha256:$aabSha256,uploadCertificateSha256:$uploadCertificateSha256}' \
+            > "$SIGNED_DIR/native-release-provenance.json"
+          jq -e \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg buildEpoch "$EXPECTED_BUILD_EPOCH" \
+            --arg apkSha256 "$APK_SHA256" \
+            '.sourceSha == $sourceSha and .buildEpoch == $buildEpoch and .apkSha256 == $apkSha256' \
+            "$SIGNED_DIR/native-release-provenance.json" >/dev/null
+          echo "APK and AAB signer certificate verified"
+      - name: Confirm signing secret cleanup
+        if: always()
+        run: test ! -e "$RUNNER_TEMP/native-signing-secret"
+      - name: Upload signed AAB artifact (Play Internal testing)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: app-release-aab-${{ github.sha }}
-          path: mira-mobile/android/app/build/outputs/bundle/release/app-release.aab
+          name: app-release-aab-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-signed/app-release.aab
           if-no-files-found: error
           retention-days: 14
-
       - name: Upload signed APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: app-release-apk-${{ github.sha }}
-          path: mira-mobile/android/app/build/outputs/apk/release/app-release.apk
+          name: app-release-apk-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-signed/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload native release provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-release-provenance-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-signed/native-release-provenance.json
           if-no-files-found: error
           retention-days: 14
 
-      - name: Distribute to testers
-        if: inputs.distribute == 'yes'
+  # This runner receives only the signed APK and the Firebase credential. It
+  # never checks out or executes repository code.
+  firebase-distribute:
+    if: github.ref == 'refs/heads/main' && inputs.distribute == 'yes'
+    needs: sign-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Download signed APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: app-release-apk-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/firebase-release
+      - name: Validate distribution inputs
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FIREBASE_GROUPS: ${{ inputs.groups }}
+          RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
         run: |
           set -euo pipefail
+          [[ "$FIREBASE_GROUPS" =~ ^[A-Za-z0-9_-]+([[:space:]]*,[[:space:]]*[A-Za-z0-9_-]+)*$ ]] || {
+            echo "::error::groups must be a comma-separated list of Firebase group names"
+            exit 1
+          }
+          [ "${#FIREBASE_GROUPS}" -le 500 ]
+          [[ "$RELEASE_NOTES_INPUT" =~ [^[:space:]] ]] || {
+            echo "::error::release_notes must contain visible text"
+            exit 1
+          }
+          [ "${#RELEASE_NOTES_INPUT}" -le 5000 ] || {
+            echo "::error::release_notes exceeds 5000 characters"
+            exit 1
+          }
+          APK="$RUNNER_TEMP/firebase-release/app-release.apk"
+          test -s "$APK"
+          [ "$(find "$RUNNER_TEMP/firebase-release" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]
+          test ! -L "$APK"
+          unzip -tq "$APK" >/dev/null
+      - name: Download and verify Firebase CLI v15.29.0
+        run: |
+          set -euo pipefail
+          FIREBASE_BIN="$RUNNER_TEMP/firebase-v15.29.0"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --tlsv1.2 \
+            --retry 3 --retry-all-errors \
+            https://firebase.tools/bin/linux/v15.29.0 \
+            --output "$FIREBASE_BIN"
+          printf '%s  %s\n' \
+            ef0998b3c1eeedf2a7b02b23bbe2b98a84a855855ea73d85d4498af432531ded \
+            "$FIREBASE_BIN" | sha256sum -c -
+          chmod 0755 "$FIREBASE_BIN"
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
+      - name: Require the exact current main source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::refusing a stale main mobile release"
+            exit 1
+          }
+      - name: Distribute signed APK to Firebase testers
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FIREBASE_GROUPS: ${{ inputs.groups }}
+          RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          [ -n "${DOPPLER_TOKEN:-}" ] || {
+            echo "::error::DOPPLER_TOKEN is required for Firebase distribution"
+            exit 1
+          }
+          FIREBASE_SECRET_DIR="$RUNNER_TEMP/firebase-secret"
+          trap 'rm -rf "$FIREBASE_SECRET_DIR"; unset APP_ID GOOGLE_APPLICATION_CREDENTIALS' EXIT
+          umask 077
+          install -d -m 0700 "$FIREBASE_SECRET_DIR"
           doppler secrets get FIREBASE_SERVICE_ACCOUNT_JSON --plain \
-            --project factorylm --config prd > "$RUNNER_TEMP/fb.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/fb.json"
-          APP_ID=$(doppler secrets get FIREBASE_ANDROID_APP_ID --plain --project factorylm --config prd)
-          npx --yes firebase-tools appdistribution:distribute \
-            mira-mobile/android/app/build/outputs/apk/release/app-release.apk \
+            --project factorylm --config prd \
+            > "$FIREBASE_SECRET_DIR/service-account.json"
+          test -s "$FIREBASE_SECRET_DIR/service-account.json"
+          [ "$(stat -c%s "$FIREBASE_SECRET_DIR/service-account.json")" -le 1048576 ] || {
+            echo "::error::Firebase credential exceeds the 1 MiB safety bound"
+            exit 1
+          }
+          jq -e '
+            type == "object" and
+            .type == "service_account" and
+            (.client_email | type == "string" and length > 0) and
+            (.private_key | type == "string" and length > 0)
+          ' "$FIREBASE_SECRET_DIR/service-account.json" >/dev/null
+          APP_ID="$(doppler secrets get FIREBASE_ANDROID_APP_ID --plain --project factorylm --config prd)"
+          [[ "$APP_ID" =~ ^1:[0-9]+:android:[0-9A-Fa-f]+$ ]] || {
+            echo "::error::FIREBASE_ANDROID_APP_ID has an invalid shape"
+            exit 1
+          }
+          echo "::add-mask::$APP_ID"
+          unset DOPPLER_TOKEN
+          export GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_SECRET_DIR/service-account.json"
+          "$RUNNER_TEMP/firebase-v15.29.0" appdistribution:distribute \
+            "$RUNNER_TEMP/firebase-release/app-release.apk" \
             --app "$APP_ID" \
-            --groups "${{ inputs.groups }}" \
-            --release-notes "${{ inputs.release_notes }}"
-          rm -f "$RUNNER_TEMP/fb.json"
+            --groups "$FIREBASE_GROUPS" \
+            --release-notes "$RELEASE_NOTES_INPUT" \
+            --non-interactive
+      - name: Confirm Firebase credential cleanup
+        if: always()
+        run: test ! -e "$RUNNER_TEMP/firebase-secret"
 
-      - name: Publish direct-install download (updates.factorylm.com/download)
-        if: inputs.publish_download == 'yes'
+  # This fresh runner receives the signed APK, an exact-SHA checkout containing
+  # only governed metadata/static files, and the VPS key. It executes no repo code.
+  publish-download:
+    if: github.ref == 'refs/heads/main' && inputs.publish_download == 'yes'
+    needs: sign-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            deployment/ota-download/index.html
+            deployment/known_hosts.factorylm-prod
+            mira-mobile/android/app/build.gradle
+          sparse-checkout-cone-mode: false
+      - name: Download signed APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: app-release-apk-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/direct-release
+      - name: Prepare and validate release payload
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [ "$(git rev-parse HEAD)" = "$RELEASE_SHA" ] || {
+            echo "::error::governed metadata checkout is not the dispatched SHA"
+            exit 1
+          }
+
+          APK="$RUNNER_TEMP/direct-release/app-release.apk"
+          test -s "$APK"
+          [ "$(find "$RUNNER_TEMP/direct-release" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]
+          test ! -L "$APK"
+          unzip -tq "$APK" >/dev/null
+
+          mapfile -t VERSION_NAMES < <(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' mira-mobile/android/app/build.gradle)
+          mapfile -t VERSION_CODES < <(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*/\1/p' mira-mobile/android/app/build.gradle)
+          [ "${#VERSION_NAMES[@]}" -eq 1 ]
+          [ "${#VERSION_CODES[@]}" -eq 1 ]
+          VERSION_NAME="${VERSION_NAMES[0]}"
+          VERSION_CODE="${VERSION_CODES[0]}"
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+
+          KNOWN_HOSTS=deployment/known_hosts.factorylm-prod
+          [ "$(wc -l < "$KNOWN_HOSTS")" -eq 1 ]
+          ssh-keygen -F 165.245.138.91 -f "$KNOWN_HOSTS" >/dev/null || {
+            echo "::error::pinned factorylm-prod SSH host key is missing"
+            exit 1
+          }
+          test -s deployment/ota-download/index.html
+
+          APK_SHA256="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIZE_BYTES="$(stat -c%s "$APK")"
+          [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$SIZE_BYTES" =~ ^[1-9][0-9]*$ ]]
+          FILE="factorylm-${VERSION_NAME}-vc${VERSION_CODE}-${APK_SHA256}.apk"
+
+          STAGE="$RUNNER_TEMP/direct-stage"
+          install -d -m 0755 "$STAGE"
+          install -m 0644 "$APK" "$STAGE/release.apk"
+          install -m 0644 deployment/ota-download/index.html "$STAGE/index.html"
+          jq -n \
+            --arg versionName "$VERSION_NAME" \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg file "$FILE" \
+            --arg sha256 "$APK_SHA256" \
+            --argjson sizeBytes "$SIZE_BYTES" \
+            --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg commit "$RELEASE_SHA" \
+            '{versionName:$versionName,versionCode:$versionCode,file:$file,sha256:$sha256,sizeBytes:$sizeBytes,builtAt:$builtAt,commit:$commit}' \
+            > "$STAGE/latest.json"
+          jq -e --arg commit "$RELEASE_SHA" --arg sha "$APK_SHA256" \
+            '.commit == $commit and .sha256 == $sha' "$STAGE/latest.json" >/dev/null
+          METADATA_SHA256="$(sha256sum "$STAGE/latest.json" | cut -d' ' -f1)"
+          INDEX_SHA256="$(sha256sum "$STAGE/index.html" | cut -d' ' -f1)"
+          [[ "$METADATA_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$INDEX_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          {
+            echo "RELEASE_FILE=$FILE"
+            echo "RELEASE_APK_SHA256=$APK_SHA256"
+            echo "RELEASE_METADATA_SHA256=$METADATA_SHA256"
+            echo "RELEASE_INDEX_SHA256=$INDEX_SHA256"
+            echo "RELEASE_STAGE=$STAGE"
+            echo "RELEASE_COMMIT=$RELEASE_SHA"
+          } >> "$GITHUB_ENV"
+      - name: Require the exact current main source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::refusing a stale main mobile release"
+            exit 1
+          }
+      - name: Publish direct-install download
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           set -euo pipefail
-          APK=mira-mobile/android/app/build/outputs/apk/release/app-release.apk
-          VN=$(grep -E '^\s*versionName ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionName "([^"]+)".*/\1/')
-          VC=$(grep -E '^\s*versionCode ' mira-mobile/android/app/build.gradle | head -1 | sed -E 's/.*versionCode ([0-9]+).*/\1/')
-          test -n "$VN" && test -n "$VC"
-          FILE="factorylm-${VN}-vc${VC}.apk"
-          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
-          SIZE=$(stat -c%s "$APK")
-          STAGE="$RUNNER_TEMP/app"; mkdir -p "$STAGE"
-          cp "$APK" "$STAGE/$FILE"
-          cp "$APK" "$STAGE/latest.apk"
-          cp deployment/ota-download/index.html "$STAGE/index.html"
-          printf '{"versionName":"%s","versionCode":%s,"file":"%s","sha256":"%s","sizeBytes":%s,"builtAt":"%s","commit":"%s"}\n' \
-            "$VN" "$VC" "$FILE" "$SHA" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ github.sha }}" > "$STAGE/latest.json"
-          cat "$STAGE/latest.json"
-          mkdir -p ~/.ssh
-          echo "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-          SSH="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91"
-          $SSH 'mkdir -p /srv/factorylm/ota/app'
-          # Versioned APK first (immutable), then the pointers, so a reader never sees
-          # latest.json naming a file that is not there yet.
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/$FILE" "root@165.245.138.91:/srv/factorylm/ota/app/$FILE"
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no "$STAGE/latest.apk" "$STAGE/latest.json" "$STAGE/index.html" root@165.245.138.91:/srv/factorylm/ota/app/
-          $SSH "cd /srv/factorylm/ota/app && echo '$SHA  $FILE' | sha256sum -c - && echo '$SHA  latest.apk' | sha256sum -c -"
-          echo "=== public probes ==="
-          curl -sS -o /dev/null -w "https://updates.factorylm.com/download -> %{http_code} %{redirect_url}\n" https://updates.factorylm.com/download
-          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/ -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/
-          curl -sS -o /dev/null -w "https://updates.factorylm.com/app/latest.json -> %{http_code} %{content_type}\n" https://updates.factorylm.com/app/latest.json
-          curl -sSI https://updates.factorylm.com/app/latest.apk | grep -i -E '^(HTTP|content-type|content-length)'
-          echo "download page: https://updates.factorylm.com/download ($FILE, sha256 $SHA)" >> "$GITHUB_STEP_SUMMARY"
+          [ -n "${VPS_SSH_KEY:-}" ] || {
+            echo "::error::VPS_SSH_KEY is required for direct publication"
+            exit 1
+          }
+          SSH_DIR="$RUNNER_TEMP/direct-publish-ssh"
+          trap 'rm -rf "$SSH_DIR"' EXIT
+          umask 077
+          install -d -m 0700 "$SSH_DIR"
+          install -m 0600 deployment/known_hosts.factorylm-prod "$SSH_DIR/known_hosts"
+          printf '%s\n' "$VPS_SSH_KEY" > "$SSH_DIR/deploy_key"
+          chmod 0600 "$SSH_DIR/deploy_key"
+
+          SSH_OPTIONS=(
+            -i "$SSH_DIR/deploy_key"
+            -o "UserKnownHostsFile=$SSH_DIR/known_hosts"
+            -o StrictHostKeyChecking=yes
+          )
+          TARGET=root@165.245.138.91
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          INCOMING="/srv/factorylm/ota/.incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-direct"
+          ssh "${SSH_OPTIONS[@]}" "$TARGET" sh -s -- "$INCOMING" <<'REMOTE'
+          set -eu
+          mkdir -p "$1"
+          REMOTE
+          scp "${SSH_OPTIONS[@]}" \
+            "$RELEASE_STAGE/release.apk" \
+            "$RELEASE_STAGE/latest.json" \
+            "$RELEASE_STAGE/index.html" \
+            "$TARGET:${INCOMING}/"
+          ssh "${SSH_OPTIONS[@]}" "$TARGET" \
+            sh -s -- \
+              "$INCOMING" \
+              "$RELEASE_APK_SHA256" \
+              "$RELEASE_METADATA_SHA256" \
+              "$RELEASE_INDEX_SHA256" \
+              "$RELEASE_FILE" <<'REMOTE'
+          set -eu
+          incoming=$1
+          release_sha256=$2
+          metadata_sha256=$3
+          index_sha256=$4
+          release_file=$5
+          root=/srv/factorylm/ota/app
+          trap 'rm -rf "$incoming"' EXIT
+          case "$release_file" in
+            factorylm-*-vc*-[0-9a-f][0-9a-f]*.apk) ;;
+            *) echo "invalid content-addressed release name" >&2; exit 1 ;;
+          esac
+          [ "${#release_sha256}" -eq 64 ]
+          [ "${release_file#factorylm-}" != "$release_file" ]
+          [ "${release_file%-$release_sha256.apk}" != "$release_file" ]
+          [ "$(sha256sum "$incoming/release.apk" | cut -d' ' -f1)" = "$release_sha256" ]
+          [ "$(sha256sum "$incoming/latest.json" | cut -d' ' -f1)" = "$metadata_sha256" ]
+          [ "$(sha256sum "$incoming/index.html" | cut -d' ' -f1)" = "$index_sha256" ]
+
+          mkdir -p "$root"
+          exec 9>"$root/.direct-pointer.lock"
+          flock 9
+          install_immutable() {
+            source=$1; target=$2; expected=$3
+            [ "$(sha256sum "$source" | cut -d' ' -f1)" = "$expected" ] || exit 1
+            if [ -e "$target" ]; then
+              [ ! -L "$target" ]
+              [ -f "$target" ]
+              [ "$(sha256sum "$target" | cut -d' ' -f1)" = "$expected" ] || exit 1
+              return
+            fi
+            chmod 0644 "$source"
+            ln "$source" "$target"
+          }
+          install_immutable "$incoming/release.apk" "$root/$release_file" "$release_sha256"
+
+          ln "$root/$release_file" "$incoming/latest.apk"
+          chmod 0644 "$incoming/index.html" "$incoming/latest.json"
+          mv -f "$incoming/index.html" "$root/index.html"
+          mv -f "$incoming/latest.apk" "$root/latest.apk"
+          # The metadata pointer moves last. Once it names the new immutable
+          # artifact, both its content URL and fallback latest.apk are ready.
+          mv -f "$incoming/latest.json" "$root/latest.json"
+          [ "$(sha256sum "$root/$release_file" | cut -d' ' -f1)" = "$release_sha256" ]
+          [ "$(sha256sum "$root/latest.apk" | cut -d' ' -f1)" = "$release_sha256" ]
+          [ "$(sha256sum "$root/latest.json" | cut -d' ' -f1)" = "$metadata_sha256" ]
+          REMOTE
+      - name: Confirm VPS key cleanup
+        if: always()
+        run: test ! -e "$RUNNER_TEMP/direct-publish-ssh"
+      - name: Verify public direct-install pointers
+        run: |
+          set -euo pipefail
+          REMOTE_JSON="$RUNNER_TEMP/published-latest.json"
+          curl --fail --location --silent --show-error --max-time 15 \
+            https://updates.factorylm.com/app/latest.json > "$REMOTE_JSON"
+          jq -e \
+            --arg commit "$RELEASE_COMMIT" \
+            --arg sha "$RELEASE_APK_SHA256" \
+            --arg file "$RELEASE_FILE" \
+            '.commit == $commit and .sha256 == $sha and .file == $file' \
+            "$REMOTE_JSON" >/dev/null
+          curl --fail --location --silent --show-error --max-time 120 \
+            --output "$RUNNER_TEMP/published-release.apk" \
+            "https://updates.factorylm.com/app/$RELEASE_FILE"
+          echo "$RELEASE_APK_SHA256  $RUNNER_TEMP/published-release.apk" | sha256sum -c -
+          curl --fail --location --silent --show-error --max-time 120 \
+            --output "$RUNNER_TEMP/published-latest.apk" \
+            https://updates.factorylm.com/app/latest.apk
+          echo "$RELEASE_APK_SHA256  $RUNNER_TEMP/published-latest.apk" | sha256sum -c -
+          curl --fail --location --silent --show-error --max-time 15 \
+            --output /dev/null https://updates.factorylm.com/download
+          echo "download page: https://updates.factorylm.com/download ($RELEASE_FILE, sha256 $RELEASE_APK_SHA256)" >> "$GITHUB_STEP_SUMMARY"
+
+  report:
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      needs.sign-native.result == 'success' &&
+      (needs.firebase-distribute.result == 'success' || needs.firebase-distribute.result == 'skipped') &&
+      (needs.publish-download.result == 'success' || needs.publish-download.result == 'skipped')
+    needs: [sign-native, firebase-distribute, publish-download]
+    runs-on: ubuntu-latest
+    steps:
       - name: Report
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          DISTRIBUTE_INPUT: ${{ inputs.distribute }}
+          PUBLISH_DOWNLOAD_INPUT: ${{ inputs.publish_download }}
         run: |
           {
             echo "### Mobile release"
-            echo "- commit: \`${{ github.sha }}\`"
-            echo "- distributed: \`${{ inputs.distribute }}\`"
+            echo "- commit: \`$RELEASE_SHA\`"
+            echo "- distributed: \`$DISTRIBUTE_INPUT\`"
+            echo "- direct download: \`$PUBLISH_DOWNLOAD_INPUT\`"
             echo "- expected signer: \`CN=FactoryLM\`, cert SHA-256 \`23:95:B9:60:...:92:A9\`"
             echo "  (full value in docs/release/android/signing.md)"
           } >> "$GITHUB_STEP_SUMMARY"

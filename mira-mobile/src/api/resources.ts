@@ -2,6 +2,7 @@
 // no screen builds its own requests. All paths trailing-slash (Hub canonical).
 
 import {
+  ApiError,
   errorFromStatus,
   request,
   uploadMultipart,
@@ -15,27 +16,55 @@ import type { VisualEvidence } from "../lib/sensor";
 
 // --- auth -------------------------------------------------------------------
 
+export type SignInFailureReason =
+  | "could_not_start"
+  | "invalid_credentials"
+  | "network"
+  | "server";
+
+function signInFailureReason(
+  error: unknown,
+  fallback: Extract<SignInFailureReason, "could_not_start" | "invalid_credentials">,
+): SignInFailureReason {
+  if (error instanceof ApiError && error.kind === "network") return "network";
+  if (error instanceof ApiError && error.kind === "server") return "server";
+  return fallback;
+}
+
 export async function signIn(
   email: string,
   password: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: true } | { ok: false; reason: SignInFailureReason }> {
   return withAuthEventsSuppressed(async () => {
     try {
       const csrfRes = await request("/api/auth/csrf/");
       const csrfToken = (csrfRes.data as { csrfToken?: string } | null)?.csrfToken;
-      if (!csrfToken) return { ok: false, error: "could not start sign-in" };
+      if (!csrfToken) return { ok: false, reason: "could_not_start" };
+      let callbackError: unknown = null;
       try {
         await request("/api/auth/callback/credentials/", {
           method: "POST",
           form: { csrfToken, email, password, json: "true" },
         });
-      } catch {
+      } catch (error) {
+        callbackError = error;
         /* NextAuth's callback status varies; /api/me below is the truth. */
       }
-      await request("/api/me/");
-      return { ok: true };
-    } catch {
-      return { ok: false, error: "invalid email or password" };
+      try {
+        await request("/api/me/");
+        return { ok: true };
+      } catch (error) {
+        const callbackReason = signInFailureReason(callbackError, "invalid_credentials");
+        return {
+          ok: false,
+          reason:
+            callbackReason === "invalid_credentials"
+              ? signInFailureReason(error, "invalid_credentials")
+              : callbackReason,
+        };
+      }
+    } catch (error) {
+      return { ok: false, reason: signInFailureReason(error, "could_not_start") };
     }
   });
 }
@@ -163,7 +192,7 @@ export async function listPmSchedules(): Promise<PmSchedule[]> {
   const d = r.data as { schedules?: Record<string, unknown>[] } | null;
   return (d?.schedules ?? []).map((s) => ({
     id: String(s.id ?? ""),
-    task: String(s.task ?? s.task_description ?? s.title ?? "PM task"),
+    task: String(s.task ?? s.task_description ?? s.title ?? ""),
     manufacturer: (s.manufacturer as string) ?? null,
     model_number: (s.model_number as string) ?? null,
     equipment_id: s.equipment_id ? String(s.equipment_id) : null,
@@ -299,7 +328,7 @@ export function toNotebook(d: Record<string, unknown>): Notebook {
   const a = d.asset as Record<string, unknown> | null | undefined;
   return {
     id: String(d.id ?? ""),
-    displayName: String(d.displayName ?? d.display_name ?? "Untitled"),
+    displayName: String(d.displayName ?? d.display_name ?? ""),
     manufacturer: (d.manufacturer as string) ?? null,
     model: (d.model as string) ?? null,
     equipmentType: (d.equipmentType as string) ?? null,
@@ -600,7 +629,7 @@ export async function uploadSourceToNotebook(
     return {
       attached: false,
       duplicate: Boolean(d?.duplicate),
-      warning: d?.warning ?? "Saved, but this file couldn't be indexed for chat.",
+      warning: d?.warning ?? null,
     };
   }
   await attachSource(notebook.id, d.uploadId, { sourceRole: opts.sourceRole });
@@ -634,24 +663,11 @@ export interface FileLink {
   createdAt: string | null;
 }
 
-/** Technician-facing truth about what a file can do. Never promises search on
- *  a file the pipeline cannot read. */
-export function fileCapabilityLabel(capability: string): string {
-  switch (capability) {
-    case "indexable":
-      return "Searchable source";
-    case "viewable":
-      return "Viewable attachment";
-    default:
-      return "Stored file—not searchable in chat";
-  }
-}
-
 function toWorkspaceFile(d: Record<string, unknown>): WorkspaceFile {
   const cap = String(d.capability ?? "stored");
   return {
     id: String(d.id ?? ""),
-    filename: String(d.filename ?? "untitled"),
+    filename: String(d.filename ?? ""),
     mimeType: String(d.mimeType ?? "application/octet-stream"),
     sizeBytes: Number(d.sizeBytes ?? 0),
     capability: (cap === "indexable" || cap === "viewable" ? cap : "stored") as FileCapability,
@@ -845,7 +861,7 @@ export async function listAssetDocuments(
       return {
         fileId: String(a.fileId ?? ""),
         linkId: String(a.linkId ?? ""),
-        filename: String(a.filename ?? "untitled"),
+        filename: String(a.filename ?? ""),
         mimeType: String(a.mimeType ?? "application/octet-stream"),
         sizeBytes: Number(a.sizeBytes ?? 0),
         capability: (cap === "indexable" || cap === "viewable" ? cap : "stored") as FileCapability,
@@ -860,7 +876,7 @@ export async function listAssetDocuments(
     }),
     suggested: (d?.suggested ?? []).map((s) => ({
       sourceUrl: s.sourceUrl != null ? String(s.sourceUrl) : null,
-      title: String(s.title ?? "Untitled document"),
+      title: String(s.title ?? ""),
       modelNumber: s.modelNumber != null ? String(s.modelNumber) : null,
       equipmentType: s.equipmentType != null ? String(s.equipmentType) : null,
       chunkCount: Number(s.chunkCount ?? 0),

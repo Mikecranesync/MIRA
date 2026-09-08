@@ -2,14 +2,22 @@
 // no Capacitor, no network. The queue's contract: FIFO, deduped on client_key,
 // keep-and-stop on retryable failures, drop-and-report on definitive 4xx,
 // tenant-scoped keys, purge-all on sign-out.
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import {
+  beginSessionLocalPurge,
   enqueueCreate,
   loadQueue,
   drainQueue,
+  drainQueueForSessionPurge,
   purgeAllQueues,
   pendingCount,
   queueKey,
+  hasActiveWorkOrderQueueProducers,
+  resumeSessionLocalWrites,
+  waitForSessionLocalProducers,
+  waitForWorkOrderQueueProducers,
+  withSessionLocalProducer,
+  withWorkOrderQueueProducer,
   type KvStore,
 } from "../offline-queue";
 import { ApiError } from "../../api/client";
@@ -35,6 +43,10 @@ function wo(key: string, desc = "conveyor jammed"): CreateWorkOrderInput {
 }
 
 const T = "tenant-a";
+
+beforeEach(() => {
+  resumeSessionLocalWrites();
+});
 
 describe("enqueueCreate", () => {
   it("appends FIFO and persists", async () => {
@@ -123,7 +135,28 @@ describe("drainQueue", () => {
     expect(r).toMatchObject({ sent: 1, remaining: 0, stopped: false });
     expect(r!.rejected).toHaveLength(1);
     expect(r!.rejected[0].input.client_key).toBe("bad");
+    expect(r!.rejected[0].error).toBeInstanceOf(ApiError);
+    expect(r!.rejected[0].error.kind).toBe("client");
     expect(await pendingCount(s, T)).toBe(0);
+  });
+  it("can retain a definitive rejection for sign-out confirmation", async () => {
+    const s = memStore();
+    await enqueueCreate(s, T, wo("bad"));
+    await enqueueCreate(s, T, wo("later"));
+    const submitted: string[] = [];
+    const r = await drainQueue(
+      s,
+      T,
+      async (i) => {
+        submitted.push(i.client_key);
+        throw new ApiError("client", 422, "validation failed");
+      },
+      { retainRejected: true },
+    );
+    expect(r).toMatchObject({ sent: 0, remaining: 2, stopped: true });
+    expect(r!.rejected).toHaveLength(1);
+    expect(submitted).toEqual(["bad"]);
+    expect((await loadQueue(s, T)).map((i) => i.input.client_key)).toEqual(["bad", "later"]);
   });
   it("non-ApiError throw is treated as transport (keep-and-stop)", async () => {
     const s = memStore();
@@ -149,12 +182,170 @@ describe("drainQueue", () => {
 });
 
 describe("purgeAllQueues (sign-out hygiene)", () => {
-  it("removes every flm.woqueue key across tenants and ONLY those", async () => {
-    const s = memStore({ "flm.cookiejar.v1": "keepme" });
+  it("removes all session data while preserving device-scoped OTA trust", async () => {
+    const s = memStore({
+      "flm.cookiejar.v1": "keepme",
+      "flm.studio.v1.unsaved": "tenant artifact",
+      "flm.chatui.v1": "unified",
+      "flm.unified.notebook.v1": "prior-tenant-notebook",
+      "flm.ota.channel": "canary",
+      "flm.ota.pointerHighWater.v1.canary": "signed device trust",
+    });
     await enqueueCreate(s, T, wo("k1"));
     await enqueueCreate(s, "tenant-b", wo("k2"));
     const n = await purgeAllQueues(s);
-    expect(n).toBe(2);
-    expect(Object.keys(s.data)).toEqual(["flm.cookiejar.v1"]);
+    expect(n).toBe(5);
+    expect(s.data).toEqual({
+      "flm.cookiejar.v1": "keepme",
+      "flm.ota.channel": "canary",
+      "flm.ota.pointerHighWater.v1.canary": "signed device trust",
+    });
+  });
+
+  it("waits for an admitted local producer before the final purge", async () => {
+    const s = memStore();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const producer = withSessionLocalProducer(async () => {
+      await gate;
+      await s.set("flm.studio.v1.delayed", "old tenant artifact");
+    });
+
+    beginSessionLocalPurge();
+    let settled = false;
+    const waiting = waitForSessionLocalProducers().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release();
+    await producer;
+    await waiting;
+    await purgeAllQueues(s);
+    expect(s.data).toEqual({});
+  });
+
+  it("does not admit a new local producer after sign-out starts", async () => {
+    beginSessionLocalPurge();
+    let invoked = false;
+    const result = await withSessionLocalProducer(async () => {
+      invoked = true;
+      return "written";
+    });
+
+    expect(result).toBeUndefined();
+    expect(invoked).toBe(false);
+  });
+
+  it("does not admit a new work-order producer after sign-out starts", async () => {
+    beginSessionLocalPurge();
+    let invoked = false;
+    const admitted = await withWorkOrderQueueProducer(async () => {
+      invoked = true;
+    });
+
+    expect(admitted).toBe(false);
+    expect(invoked).toBe(false);
+    expect(hasActiveWorkOrderQueueProducers()).toBe(false);
+  });
+
+  it("does not admit an ordinary queue drain after sign-out starts", async () => {
+    const s = memStore();
+    await enqueueCreate(s, T, wo("queued"));
+    beginSessionLocalPurge();
+    const submit = async () => undefined;
+
+    const result = await drainQueue(s, T, submit);
+
+    expect(result).toBeNull();
+    expect(await pendingCount(s, T)).toBe(1);
+  });
+
+  it("counts an admitted ordinary drain until its queue write settles", async () => {
+    const s = memStore();
+    await enqueueCreate(s, T, wo("queued"));
+    let rejectSubmit!: (error: unknown) => void;
+    const submitted = new Promise<never>((_resolve, reject) => {
+      rejectSubmit = reject;
+    });
+    const draining = drainQueue(s, T, () => submitted);
+    await Promise.resolve();
+
+    beginSessionLocalPurge();
+    let barrierSettled = false;
+    const barrier = waitForWorkOrderQueueProducers().then(() => {
+      barrierSettled = true;
+    });
+    await Promise.resolve();
+    expect(barrierSettled).toBe(false);
+
+    rejectSubmit(new ApiError("network", null, "offline"));
+    await draining;
+    await barrier;
+    expect(barrierSettled).toBe(true);
+  });
+
+  it("allows only the sign-out-owned drain after admission closes", async () => {
+    const s = memStore();
+    await enqueueCreate(s, T, wo("queued"));
+    beginSessionLocalPurge();
+    let submitted = 0;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+
+    const draining = drainQueueForSessionPurge(s, T, async () => {
+      submitted++;
+      signalStarted();
+      await gate;
+    });
+    await started;
+    expect(hasActiveWorkOrderQueueProducers()).toBe(true);
+    release();
+    const result = await draining;
+
+    expect(result?.sent).toBe(1);
+    expect(submitted).toBe(1);
+    expect(await pendingCount(s, T)).toBe(0);
+    expect(hasActiveWorkOrderQueueProducers()).toBe(false);
+  });
+
+  it("refuses the sign-out-owned drain unless admission is closed and settled", async () => {
+    const openStore = memStore();
+    await enqueueCreate(openStore, T, wo("open"));
+    expect(await drainQueueForSessionPurge(openStore, T, async () => undefined)).toBeNull();
+    expect(await pendingCount(openStore, T)).toBe(1);
+
+    const settlingStore = memStore();
+    await enqueueCreate(settlingStore, T, wo("settling"));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const producer = withWorkOrderQueueProducer(() => gate);
+    beginSessionLocalPurge();
+
+    expect(
+      await drainQueueForSessionPurge(settlingStore, T, async () => undefined),
+    ).toBeNull();
+    expect(await pendingCount(settlingStore, T)).toBe(1);
+
+    release();
+    await producer;
+  });
+
+  it("exposes unresolved work-order producers to OTA busy probes", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const producer = withWorkOrderQueueProducer(() => gate);
+
+    expect(hasActiveWorkOrderQueueProducers()).toBe(true);
+    release();
+    await producer;
+    expect(hasActiveWorkOrderQueueProducers()).toBe(false);
   });
 });

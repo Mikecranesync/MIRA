@@ -59,19 +59,223 @@ permissions:
   issues: write
 
 jobs:
+  # Authorize the immutable source and its Staging Gate result before GitHub
+  # creates either production-environment job. This job deliberately has no
+  # environment and receives neither the production DB credential nor SSH key.
+  authorize-source:
+    name: Authorize production source
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production authorization: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
+      - name: Validate requested gate bypasses
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SKIP_STAGING_GATE: ${{ github.event.inputs.skip_staging_gate }}
+          SKIP_DRIFT_CHECK: ${{ github.event.inputs.skip_drift_check }}
+          REASON: ${{ github.event.inputs.skip_reason }}
+        run: |
+          set -euo pipefail
+          if [ "$SKIP_STAGING_GATE" = "true" ] && [ -z "${REASON// /}" ]; then
+            echo "::error::skip_staging_gate=true requires a non-empty skip_reason."
+            exit 1
+          fi
+          if [ "$SKIP_DRIFT_CHECK" = "true" ] && [ -z "${REASON// /}" ]; then
+            echo "::error::skip_drift_check=true requires a non-empty skip_reason."
+            exit 1
+          fi
+      - name: Verify Staging Gate passed
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_staging_gate != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Resolving PR head for merge commit $DEPLOY_SHA"
+          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
+            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
+            exit 1
+          fi
+          PR_HEAD_SHA=$(echo "$PULLS_JSON" \
+            | jq -r '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty')
+          if [ -z "$PR_HEAD_SHA" ]; then
+            PR_HEAD_SHA=$(echo "$PULLS_JSON" | jq -r '.[0].head.sha // empty')
+          fi
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "::error::No PR associated with $DEPLOY_SHA. Direct pushes to main are not authorized for production."
+            exit 1
+          fi
+          echo "PR head SHA: $PR_HEAD_SHA"
+          if ! STATUS=$(gh run list \
+            --repo "$REPO" \
+            --workflow "Staging Gate" \
+            --commit "$PR_HEAD_SHA" \
+            --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
+            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
+            exit 1
+          fi
+          echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
+          case "$STATUS" in
+            completed:success)
+              echo "✓ source authorized by the Staging Gate"
+              ;;
+            ""|"null:null")
+              echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA."
+              exit 1
+              ;;
+            *)
+              echo "::error::Staging Gate did not pass for PR head $PR_HEAD_SHA (status=$STATUS)."
+              exit 1
+              ;;
+          esac
+
+  # The migration gate intentionally runs on a separate runner from the VPS
+  # deploy. It receives the prod DB URL but never the SSH key; the deploy job
+  # receives the SSH key but never the Doppler token or database URL.
+  migration-drift:
+    name: Verify production migration drift
+    needs: authorize-source
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production migration check: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: github.event.inputs.skip_drift_check != 'true'
+        with:
+          python-version: "3.12"
+      - name: Install hash-locked migration driver
+        if: github.event.inputs.skip_drift_check != 'true'
+        run: |
+          python3 -I -m pip install \
+            --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r tools/migration-drift-requirements.txt
+      - name: Install Doppler CLI
+        if: github.event.inputs.skip_drift_check != 'true'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+      - name: Fetch only the production database URL
+        if: github.event.inputs.skip_drift_check != 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          URL_FILE="$RUNNER_TEMP/prod-db-url"
+          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$URL" ]; then
+            echo "::error::empty prod DATABASE_URL (factorylm/prd) — cannot verify drift"
+            exit 1
+          fi
+          echo "::add-mask::$URL"
+          printf '%s' "$URL" > "$URL_FILE"
+      - name: Verify prod migration drift = 0
+        if: github.event.inputs.skip_drift_check != 'true'
+        run: |
+          set -euo pipefail
+          URL_FILE="$RUNNER_TEMP/prod-db-url"
+          [ -s "$URL_FILE" ] || { echo "::error::production database URL handoff is missing"; exit 1; }
+          URL="$(<"$URL_FILE")"
+          trap 'rm -f "$URL_FILE"' EXIT
+          if env -i PATH="$PATH" NEON_DATABASE_URL="$URL" \
+            python3 -I tools/migration_drift.py | tee /tmp/deploy_drift.out; then
+            echo "✓ prod migration drift = 0 — deploy-order verified"
+          else
+            {
+              echo "## ⛔ Deploy blocked — prod is missing a merged migration"
+              echo '```'
+              cat /tmp/deploy_drift.out
+              echo '```'
+              echo "Apply first:"
+              echo '```'
+              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run"
+              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=apply"
+              echo '```'
+              echo "Then re-run this deploy. A verified-independent manual hotfix may use skip_drift_check=true with skip_reason."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Prod has unapplied migration(s); see the job summary."
+            exit 1
+          fi
+      - name: Record deliberate drift-gate bypass
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_drift_check == 'true'
+        run: echo "Migration drift execution was deliberately bypassed; the deploy job validates the reason and writes the audit issue."
+
   deploy:
     name: Deploy MIRA to production VPS
+    needs: [authorize-source, migration-drift]
     # For workflow_run triggers: only deploy when the smoke test passed.
     # For workflow_dispatch (manual hotfix): always run.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production deploy: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
 
       # When the operator dispatches with skip_staging_gate=true, the gate
       # verification is bypassed. CLAUDE.md says "file a follow-up PR within
@@ -250,50 +454,14 @@ jobs:
             --body-file drift_bypass_issue_body.md \
             || echo "::warning::Could not auto-open the drift-check-bypass audit issue. Deploy continues — record the bypass manually. Reason: ${REASON}"
 
-      # Doppler CLI (repo standard — same as apply-migrations.yml /
-      # migration-drift-check.yml) so the drift gate can resolve the prod DB URL.
-      - name: Install Doppler CLI (for the drift gate)
-        if: github.event.inputs.skip_drift_check != 'true'
-        uses: dopplerhq/cli-action@v4
-
-      - name: Verify prod migration drift = 0 (deploy-order gate)
-        # Runs on the automatic (workflow_run) path too: inputs are empty there,
-        # so skip_drift_check != 'true' and the gate is ALWAYS enforced for
-        # auto-deploys. Only a deliberate operator dispatch can bypass it.
-        if: github.event.inputs.skip_drift_check != 'true'
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet psycopg2-binary
-          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
-          if [ -z "$URL" ]; then echo "::error::empty prod DATABASE_URL (factorylm/prd) — cannot verify drift"; exit 1; fi
-          echo "::add-mask::$URL"
-          if python3 tools/migration_drift.py --database-url "$URL" | tee /tmp/deploy_drift.out; then
-            echo "✓ prod migration drift = 0 — deploy-order verified, proceeding"
-          else
-            {
-              echo "## ⛔ Deploy blocked — prod is missing a merged migration"
-              echo '```'
-              cat /tmp/deploy_drift.out
-              echo '```'
-              echo "Apply first (dev→staging→prod is already done for staging on merge):"
-              echo '```'
-              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run   # review"
-              echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=apply     # then apply"
-              echo '```'
-              echo "Then re-run this deploy. If this deploy genuinely does NOT depend on the pending migration, dispatch deploy-vps with skip_drift_check=true + skip_reason."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Prod has unapplied migration(s) — deploying this code could 500 on the missing schema (the #3245 class). See the job summary to apply, or bypass with skip_drift_check=true for a verified-independent hotfix."
-            exit 1
-          fi
-
       - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
           chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
       # Pre-deploy log preservation (2026-08-04): the recreate below REMOVES
       # the old containers, and with the json-file driver their logs die with
@@ -308,13 +476,13 @@ jobs:
       - name: Preserve pre-deploy bot logs (redacted)
         continue-on-error: true
         run: |
-          SSH_CMD="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91" \
+          SSH_CMD="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes root@165.245.138.91" \
           OUT_DIR="$RUNNER_TEMP/predeploy-logs" \
           bash tools/predeploy_log_capture.sh
 
       - name: Upload pre-deploy log artifact (14-day retention)
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: predeploy-bot-logs-${{ github.run_id }}
           path: ${{ runner.temp }}/predeploy-logs/
@@ -332,10 +500,25 @@ jobs:
           # pinned SHA when no release tag exists yet; the normal path fails closed.
           ALLOW_MOVING_FALLBACK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging_gate == 'true') && '1' || '0' }}
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "SERVICES='$SERVICES' DEPLOY_SHA='$DEPLOY_SHA' ALLOW_MOVING_FALLBACK='$ALLOW_MOVING_FALLBACK' bash -s" << 'ENDSSH'
+          set -euo pipefail
+          ALLOWED_SERVICES="factorylm-foreman mira-ask mira-bot-slack mira-bot-telegram mira-cmms-sync mira-historian-beat mira-historian-worker mira-hub mira-ingest mira-mcp mira-pipeline mira-redis mira-relay mira-synthetic-dogfood-beat mira-synthetic-dogfood-worker mira-tika mira-web nango-db nango-server"
+          NORMALIZED_SERVICES=""
+          for service in $SERVICES; do
+            case " $ALLOWED_SERVICES " in
+              *" $service "*) NORMALIZED_SERVICES="${NORMALIZED_SERVICES:+$NORMALIZED_SERVICES }$service" ;;
+              *) echo "::error::Unknown deploy service: $service"; exit 1 ;;
+            esac
+          done
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deploy SHA"; exit 1; }
+          [[ "$ALLOW_MOVING_FALLBACK" =~ ^[01]$ ]] || { echo "::error::Invalid fallback flag"; exit 1; }
+          SERVICES_B64="$(printf '%s' "$NORMALIZED_SERVICES" | base64 | tr -d '\n')"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
+            root@165.245.138.91 "bash -s -- '$SERVICES_B64' '$DEPLOY_SHA' '$ALLOW_MOVING_FALLBACK'" << 'ENDSSH'
 
           set -euo pipefail
+          SERVICES="$(printf '%s' "$1" | base64 -d)"
+          DEPLOY_SHA="$2"
+          ALLOW_MOVING_FALLBACK="$3"
           cd /opt/mira
 
           # Signal "deploy in progress" so the heartbeat + self-healer crons stand
@@ -602,7 +785,7 @@ jobs:
         # nginx-sites-enabled-hygiene.yml (mode=fix) to clear them, then DELETE
         # KNOWN_PENDING here — the guard then becomes strict on its own.
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
             root@165.245.138.91 'bash -s' << 'ENDSSH'
           set -uo pipefail
           SE=/etc/nginx/sites-enabled

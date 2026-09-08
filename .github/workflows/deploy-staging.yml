@@ -8,50 +8,197 @@ name: Deploy to Staging VPS
 on:
   workflow_dispatch:
     inputs:
+      target_ref:
+        description: "Exact Git ref to deploy (main only)"
+        required: true
+        type: choice
+        options:
+          - refs/heads/main
+      target_sha:
+        description: "Exact 40-character current main commit to deploy"
+        required: true
+        type: string
       services:
         description: "Space-separated services to rebuild (blank = all)"
         required: false
         default: ""
+        type: string
       reset_volumes:
         description: "Destroy staging volumes before bringing up (DANGER — wipes staging Atlas DB)"
-        required: false
+        required: true
         default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
-  # Auto-deploy when a PR is merged to a staging branch.
-  push:
-    branches:
-      - staging
-      - "release/*"
+permissions:
+  contents: read
 
 concurrency:
   group: deploy-staging-vps
   cancel-in-progress: false
 
 jobs:
+  authorize-target:
+    name: Authorize exact main staging target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target_ref: ${{ steps.authorize.outputs.target_ref }}
+      target_sha: ${{ steps.authorize.outputs.target_sha }}
+      services: ${{ steps.authorize.outputs.services }}
+      reset_volumes: ${{ steps.authorize.outputs.reset_volumes }}
+
+    steps:
+      - name: Authorize exact staging source and inputs
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REF_INPUT: ${{ inputs.target_ref }}
+          TARGET_SHA_INPUT: ${{ inputs.target_sha }}
+          SERVICES_INPUT: ${{ inputs.services }}
+          RESET_VOLUMES_INPUT: ${{ inputs.reset_volumes }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$1"
+            exit 1
+          }
+
+          [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || \
+            fail "staging deploys require a manual workflow_dispatch"
+          [ "$GITHUB_REF" = "refs/heads/main" ] || \
+            fail "dispatch this trusted workflow from refs/heads/main"
+          [ "$TARGET_REF_INPUT" = "refs/heads/main" ] || \
+            fail "target_ref must be refs/heads/main"
+          [[ "$TARGET_SHA_INPUT" =~ ^[0-9a-f]{40}$ ]] || \
+            fail "target_sha must be a lowercase 40-character commit SHA"
+
+          CURRENT_MAIN_SHA="$(
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
+          )"
+          [[ "$CURRENT_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+            fail "GitHub returned an invalid current main SHA"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || \
+            fail "workflow source is stale; dispatch the current main head"
+          [ "$TARGET_SHA_INPUT" = "$CURRENT_MAIN_SHA" ] || \
+            fail "target_sha is not the current remote main head"
+
+          if [ -n "$SERVICES_INPUT" ]; then
+            SERVICE_LIST_PATTERN='^[a-z0-9-]+( [a-z0-9-]+)*$'
+            [[ "$SERVICES_INPUT" =~ $SERVICE_LIST_PATTERN ]] || \
+              fail "services must be a single-space-separated list of service names"
+
+            SEEN_SERVICES=" "
+            for service in $SERVICES_INPUT; do
+              case "$service" in
+                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-pipeline|mira-tika|mira-web)
+                  ;;
+                *)
+                  fail "service is not in the staging compose allowlist: $service"
+                  ;;
+              esac
+              case "$SEEN_SERVICES" in
+                *" $service "*) fail "duplicate staging service: $service" ;;
+              esac
+              SEEN_SERVICES="${SEEN_SERVICES}${service} "
+            done
+          fi
+
+          case "$RESET_VOLUMES_INPUT" in
+            true|false) ;;
+            *) fail "reset_volumes must be exactly true or false" ;;
+          esac
+
+          {
+            printf 'target_ref=%s\n' "$TARGET_REF_INPUT"
+            printf 'target_sha=%s\n' "$TARGET_SHA_INPUT"
+            printf 'services=%s\n' "$SERVICES_INPUT"
+            printf 'reset_volumes=%s\n' "$RESET_VOLUMES_INPUT"
+          } >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy MIRA staging to VPS
+    needs: authorize-target
     runs-on: ubuntu-latest
-    environment: staging
+    environment: staging-deploy
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.authorize-target.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Revalidate current main and deploy user
+        id: revalidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORIZED_TARGET_REF: ${{ needs.authorize-target.outputs.target_ref }}
+          AUTHORIZED_TARGET_SHA: ${{ needs.authorize-target.outputs.target_sha }}
+          DEPLOY_USER: ${{ vars.STAGING_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
+          )"
+          [ "$GITHUB_REF" = "refs/heads/main" ] || {
+            echo "::error::staging deploy controller is no longer on main"
+            exit 1
+          }
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::main moved after authorization; dispatch a fresh run"
+            exit 1
+          }
+          [ "$AUTHORIZED_TARGET_REF" = "refs/heads/main" ] || {
+            echo "::error::authorized target ref is not main"
+            exit 1
+          }
+          [ "$AUTHORIZED_TARGET_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::authorized target is no longer current main"
+            exit 1
+          }
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || {
+            echo "::error::STAGING_DEPLOY_USER is missing or invalid"
+            exit 1
+          }
+          [ "$DEPLOY_USER" != "root" ] || {
+            echo "::error::STAGING_DEPLOY_USER must be a scoped non-root account"
+            exit 1
+          }
+          printf 'deploy_user=%s\n' "$DEPLOY_USER" >> "$GITHUB_OUTPUT"
 
       - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Deploy
         env:
-          SERVICES: ${{ github.event.inputs.services }}
-          RESET_VOLUMES: ${{ github.event.inputs.reset_volumes }}
-          DEPLOY_REF: ${{ github.ref_name }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "SERVICES='$SERVICES' RESET_VOLUMES='$RESET_VOLUMES' DEPLOY_REF='$DEPLOY_REF' bash -s" << 'ENDSSH'
+          set -euo pipefail
+          [ -n "$STAGING_DEPLOY_SSH_KEY" ] || {
+            echo "::error::STAGING_DEPLOY_SSH_KEY is not configured"
+            exit 1
+          }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/staging_deploy_key
+          chmod 600 ~/.ssh/staging_deploy_key
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+
+      - name: Deploy exact authorized staging source
+        env:
+          TARGET_REF: ${{ needs.authorize-target.outputs.target_ref }}
+          TARGET_SHA: ${{ needs.authorize-target.outputs.target_sha }}
+          SERVICES: ${{ needs.authorize-target.outputs.services }}
+          RESET_VOLUMES: ${{ needs.authorize-target.outputs.reset_volumes }}
+          DEPLOY_USER: ${{ steps.revalidate.outputs.deploy_user }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'TARGET_REF=%q\n' "$TARGET_REF"
+            printf 'TARGET_SHA=%q\n' "$TARGET_SHA"
+            printf 'SERVICES=%q\n' "$SERVICES"
+            printf 'RESET_VOLUMES=%q\n' "$RESET_VOLUMES"
+            cat <<'ENDSSH'
 
           set -euo pipefail
 
@@ -60,25 +207,32 @@ jobs:
           STG_DIR=/opt/mira-staging
           if [ ! -d "$STG_DIR/.git" ]; then
             echo "=== First-time clone of staging working copy ==="
-            git clone https://github.com/Mikecranesync/MIRA.git "$STG_DIR"
+            git clone --no-checkout https://github.com/Mikecranesync/MIRA.git "$STG_DIR"
           fi
 
           cd "$STG_DIR"
           mkdir -p data data/sessions data/agent-runs
 
-          echo "=== Pull latest code ==="
-          git fetch origin
-          # Default to the same ref that triggered this workflow. workflow_dispatch
-          # also lands here — use the branch the user dispatched from. NOTE:
-          # GITHUB_REF_NAME does NOT survive the ssh heredoc to the VPS, so the
-          # runner passes it explicitly as DEPLOY_REF (env above). Without this,
-          # every dispatch silently deployed `staging` regardless of --ref.
-          REF="${DEPLOY_REF:-${GITHUB_REF_NAME:-staging}}"
-          if git show-ref --verify --quiet "refs/remotes/origin/$REF"; then
-            git reset --hard "origin/$REF"
-          else
-            git reset --hard origin/main
-          fi
+          echo "=== Fetch exact authorized code ==="
+          git remote set-url origin https://github.com/Mikecranesync/MIRA.git
+          git fetch --no-tags origin "$TARGET_REF"
+          FETCHED_SHA="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [ "$FETCHED_SHA" = "$TARGET_SHA" ] || {
+            echo "Refusing deploy: fetched ref no longer matches authorized SHA" >&2
+            exit 1
+          }
+          git reset --hard "$TARGET_SHA"
+          [ "$(git rev-parse HEAD)" = "$TARGET_SHA" ] || {
+            echo "Refusing deploy: staging checkout did not reach authorized SHA" >&2
+            exit 1
+          }
+          git diff --quiet
+          git diff --cached --quiet
+          UNTRACKED_FILES="$(git ls-files --others --exclude-standard)"
+          [ -z "$UNTRACKED_FILES" ] || {
+            echo "Refusing deploy: staging checkout contains untracked files" >&2
+            exit 1
+          }
 
           # mira-bot-telegram MUST be in the default set: the staging Telegram
           # smoke (nameplate photo -> Drive Commander pack answer) runs against
@@ -89,6 +243,7 @@ jobs:
           # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
           # deliberately omitted), so adding it would fail `compose build`.
           TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram}"
+          read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
           if [ "${RESET_VOLUMES:-false}" = "true" ]; then
@@ -98,7 +253,7 @@ jobs:
           fi
 
           echo "=== Pre-deploy cleanup: remove any stale stg-* containers ==="
-          for svc in $TARGETS atlas-api atlas-db atlas-minio; do
+          for svc in "${TARGET_LIST[@]}" atlas-api atlas-db atlas-minio; do
             docker rm -f "stg-${svc}" 2>/dev/null || true
           done
 
@@ -117,7 +272,7 @@ jobs:
 
           echo "=== Build staging images ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml build $TARGETS
+            docker compose -f docker-compose.staging-vps.yml build "${TARGET_LIST[@]}"
 
           echo "=== Bring up full staging stack ==="
           doppler run --project factorylm --config stg -- \
@@ -125,16 +280,16 @@ jobs:
 
           # Force-recreate only the rebuilt services so their new images take effect.
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate $TARGETS
+            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate "${TARGET_LIST[@]}"
 
           echo "=== Health checks ==="
           sleep 10
           echo "--- stg-mira-hub (4101) ---"
-          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4101/api/health || echo "FAIL"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4101/api/health
           echo "--- stg-mira-pipeline (4099) ---"
-          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4099/health || echo "FAIL"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4099/health
           echo "--- stg-atlas-api (4088) ---"
-          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4088/ || echo "FAIL"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4088/
 
           echo "=== Deploy complete ==="
           doppler run --project factorylm --config stg -- \
@@ -145,8 +300,18 @@ jobs:
           echo "Production mira-* containers still running: $PROD_RUNNING"
           if [ "$PROD_RUNNING" -lt 3 ]; then
             echo "::error::Production container count looks too low — investigate before declaring success"
+            exit 1
           fi
           ENDSSH
+          } | ssh \
+            -i ~/.ssh/staging_deploy_key \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -l "$DEPLOY_USER" \
+            165.245.138.91 \
+            'bash -s'
 
       - name: Print staging URL
         if: success()
@@ -159,5 +324,4 @@ jobs:
       - name: Notify failure
         if: failure()
         run: |
-          echo "::error::Staging deploy failed — SSH to 165.245.138.91 and run:"
-          echo "::error::  cd /opt/mira-staging && doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging-vps.yml logs --tail=80"
+          echo "::error::Staging deploy failed; inspect the protected staging-deploy job logs."

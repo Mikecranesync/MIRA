@@ -3,10 +3,15 @@
 // later phases; account deletion lands here in Phase 5 (store requirement).
 import { useEffect, useState, type MutableRefObject } from "react";
 import { listTeam, getUsage, type Me, type TeamMember } from "../api/resources";
+import { hasActiveApiMutations } from "../api/client";
 import { Loading, ErrorState, load, type Loadable } from "./common";
 import { FilesScreen, type FilesRoute } from "./FilesScreen";
 import { AboutUpdates } from "./AboutUpdates";
-import { pendingCount, preferencesStore } from "../lib/offline-queue";
+import {
+  hasActiveWorkOrderQueueProducers,
+  pendingCount,
+  preferencesStore,
+} from "../lib/offline-queue";
 import {
   readChatUiChoice,
   writeChatUiChoice,
@@ -63,7 +68,11 @@ export function MoreTab({
     return (
       <AboutUpdates
         // Never swap the bundle while work is still only on this phone.
-        pendingOfflineWork={async () => (await pendingCount(preferencesStore, me.tenantId)) > 0}
+        pendingOfflineWork={async () =>
+          hasActiveApiMutations() ||
+          hasActiveWorkOrderQueueProducers() ||
+          (await pendingCount(preferencesStore, me.tenantId)) > 0
+        }
         onBack={() => setShowAbout(false)}
       />
     );

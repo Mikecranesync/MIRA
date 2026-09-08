@@ -1,0 +1,241 @@
+name: Legacy UI Lifecycle Guard
+
+# FACTORYLM-UNIFIED-UI-CUTOVER-001. Charter:
+# docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3.1 "Trusted enforcement
+# boundary". Governance plan:
+# docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md
+# Task 3. Hardened per the Codex adversarial review of 1ecb9baef (findings
+# #3-#4): three jobs instead of one, per-job minimal permissions, an explicit
+# runtime `base.ref == main` backstop, and metadata fetched before any
+# checked-out/base code executes.
+#
+# Runs on `pull_request_target` so it ALWAYS evaluates the PR against the
+# TRUSTED BASE revision's registry + guard code — never a revision the PR
+# author controls, even from a fork. It checks out ONLY `base.sha`, with
+# credential persistence disabled; it never checks out or executes the head
+# ref or any PR code. A separate, token-bearing metadata step fetches changed
+# files, immutable merge-base/head Git trees, one PR snapshot containing
+# labels/body/head, and (only for an exception-label event) the actor's current
+# collaborator role as DATA ONLY (never interpolated into executable script
+# text — always written to a file and read back by the guard). The
+# guard-evaluation step itself carries no token and makes no network call.
+#
+# Job split (finding #4): `pending` (posts the pending status, holds
+# statuses:write ONLY) -> `guard` (needs: pending; fetches metadata, checks
+# out trusted base, runs tests + evaluation; holds contents:read +
+# pull-requests:read, NEVER statuses:write) -> `final-status`
+# (needs: [pending, guard]; if: always(); runs on a fresh runner; holds
+# statuses:write ONLY; branches on needs.guard.result rather than an in-job
+# job.status, since a separate job has no visibility into another job's
+# internal step outcomes). The job that executes checked-out/base code can
+# never itself post a status — status-posting is isolated to jobs that never
+# run repository code.
+#
+# Trigger is restricted to `branches: [main]` (finding #3) AND the `guard`
+# job independently asserts `github.event.pull_request.base.ref == 'main'`
+# at runtime and fails the job otherwise — the trigger filter alone is a
+# coarse net; the in-job assertion is defense in depth against any GitHub
+# Actions trigger-matching edge case.
+#
+# Bootstrap note: this workflow cannot run on the PR that first introduces it
+# (a workflow file change from a PR is not trusted until it exists on the
+# default branch). The lifecycle guard's own local/pytest evidence covers that
+# bootstrap PR. After merge it begins evaluating future PRs, but its status
+# remains advisory rather than independently merge-blocking until #3657 binds
+# it to a source-authentic required workflow or dedicated status App (charter
+# §3.1).
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+      - ready_for_review
+
+concurrency:
+  group: ui-lifecycle-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# No blanket workflow-level grant. Every job below declares exactly the
+# scopes it needs, so a job that runs checked-out/base code can never also
+# hold statuses:write.
+permissions: {}
+
+env:
+  STATUS_CONTEXT: "Legacy UI Lifecycle Guard"
+
+jobs:
+  pending:
+    name: Post pending status
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Post pending status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f "context=$STATUS_CONTEXT" \
+            -f description="Evaluating the legacy UI lifecycle guard..."
+
+  guard:
+    name: Legacy UI Lifecycle Guard
+    needs: pending
+    runs-on: ubuntu-latest
+    # Deliberately NO statuses:write here — this job executes checked-out
+    # base-revision code (tests + the guard CLI); status-posting is isolated
+    # to `pending` and `final-status`, neither of which ever runs repo code.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # Defense in depth alongside `on.pull_request_target.branches: [main]`
+      # above — an explicit runtime check that fails the job outright rather
+      # than trusting the trigger filter alone.
+      - name: Assert base ref is main
+        run: |
+          if [ "${{ github.event.pull_request.base.ref }}" != "main" ]; then
+            echo "::error::base.ref is '${{ github.event.pull_request.base.ref }}', expected 'main'"
+            exit 1
+          fi
+
+      # The ONLY token-bearing step in this job. Everything it produces is
+      # written to $RUNNER_TEMP as plain data files; nothing here is
+      # interpolated into a shell command or eval'd — the evaluation step
+      # below reads these files as pure input. Runs BEFORE any checked-out
+      # code executes or any dependency installs, per finding #4.
+      - name: Fetch PR metadata (data only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVER_LOGIN: ${{ github.event.sender.login }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR_NUMBER" \
+            > "$RUNNER_TEMP/current-pull.json"
+          jq -r '.changed_files' "$RUNNER_TEMP/current-pull.json" \
+            > "$RUNNER_TEMP/expected-change-count.txt"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[] | {filename, status, previous_filename}' \
+            > "$RUNNER_TEMP/changed-files.jsonl"
+          BASE_SHA="$(jq -r '.base.sha' "$RUNNER_TEMP/current-pull.json")"
+          HEAD_SHA="$(jq -r '.head.sha' "$RUNNER_TEMP/current-pull.json")"
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pull metadata did not contain immutable base/head SHAs"
+            exit 1
+          fi
+          gh api "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" \
+            > "$RUNNER_TEMP/compare.json"
+          MERGE_BASE_SHA="$(jq -r '.merge_base_commit.sha' "$RUNNER_TEMP/compare.json")"
+          if [[ ! "$MERGE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::compare metadata did not contain an immutable merge-base SHA"
+            exit 1
+          fi
+          gh api "repos/$REPO/git/trees/$MERGE_BASE_SHA?recursive=1" \
+            > "$RUNNER_TEMP/base-tree.json"
+          gh api "repos/$REPO/git/trees/$HEAD_SHA?recursive=1" \
+            > "$RUNNER_TEMP/head-tree.json"
+          jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
+            > "$RUNNER_TEMP/pr-body.md"
+          jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
+            > "$RUNNER_TEMP/labels.txt"
+          if jq -e '.action == "labeled" and .label.name == "legacy-ui-exception"' \
+            "$GITHUB_EVENT_PATH" > /dev/null; then
+            gh api "repos/$REPO/collaborators/$APPROVER_LOGIN/permission" \
+              > "$RUNNER_TEMP/approver-permission.json"
+          else
+            jq '{permission: "none", user: {login: .sender.login}}' \
+              "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
+          fi
+
+      # Trusted base ONLY. Never the head ref, never a merge ref, never PR
+      # code. persist-credentials: false so no later step in this job can use
+      # a lingering git credential to push or fetch as the Actions bot.
+      - name: Checkout trusted base revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install guard dependencies
+        run: |
+          python3 -I -m pip install --quiet --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r requirements/ui-lifecycle-guard.txt
+
+      # No token. The guard module itself makes no network calls (the runner
+      # is not network-isolated); isolated mode prevents a same-directory
+      # yaml.py/markdown_it.py from shadowing the locked packages. Evaluate
+      # before executing any repository test module so test hooks cannot
+      # mutate the artifact that makes the policy decision.
+      - name: Evaluate the legacy UI lifecycle guard
+        run: |
+          python3 -I tools/ui_surface_lifecycle_guard.py \
+            --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
+            --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
+            --base-tree-json-file "$RUNNER_TEMP/base-tree.json" \
+            --head-tree-json-file "$RUNNER_TEMP/head-tree.json" \
+            --labels-file "$RUNNER_TEMP/labels.txt" \
+            --pr-body-file "$RUNNER_TEMP/pr-body.md" \
+            --event-json-file "$GITHUB_EVENT_PATH" \
+            --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
+            --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"
+
+      # Runs the guard's OWN test suite only after the policy decision. Isolated
+      # mode, null config, disabled conftest loading, disabled third-party
+      # plugin autoload, and importlib collection keep repository-level pytest
+      # hooks/configuration out of this trusted-base self-test.
+      - name: Run trusted-base guard tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: >-
+          python3 -I -m pytest -c /dev/null --noconftest
+          --import-mode=importlib --rootdir=. -p no:cacheprovider
+          tests/test_ui_surface_lifecycle_guard.py -q
+
+  final-status:
+    name: Post final status
+    needs: [pending, guard]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      # A fresh runner, isolated from whatever `guard` executed. Branches on
+      # `needs.guard.result` (success/failure/cancelled/skipped) — the only
+      # signal this job has, since it is a SEPARATE job from `guard` and has
+      # no visibility into `guard`'s internal step-level `job.status`.
+      - name: Post final status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUARD_RESULT: ${{ needs.guard.result }}
+        run: |
+          if [ "$GUARD_RESULT" = "success" ]; then
+            STATE=success
+            DESC="No unguarded legacy presentation or control-plane change, or an audited legacy-ui-exception is present."
+          else
+            STATE=failure
+            DESC="Guarded legacy presentation or control-plane path touched without an audited legacy-ui-exception (or a guard step failed)."
+          fi
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f "state=$STATE" \
+            -f "context=$STATUS_CONTEXT" \
+            -f "description=$DESC"

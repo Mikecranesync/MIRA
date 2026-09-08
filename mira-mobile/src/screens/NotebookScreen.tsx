@@ -22,7 +22,6 @@ import {
   lookAtPhoto,
   enabledDocIds,
   canBeChatSource,
-  fileCapabilityLabel,
   type NotebookDetail,
   type NotebookPhoto,
   type NotebookSource,
@@ -30,7 +29,13 @@ import {
   type WorkspaceFile,
   deleteNotebook,
 } from "../api/resources";
-import { preferencesStore } from "../lib/offline-queue";
+import {
+  fileCapabilityLabel,
+  notebookDisplayName,
+  uploadSourceWarningCopy,
+} from "../lib/resource-copy";
+import { preferencesStore, withSessionLocalProducer } from "../lib/offline-queue";
+import { apiErrorCopy } from "../lib/api-error-copy";
 import { answerBody } from "../lib/chat-copy";
 import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
 import { AnswerMarkdown } from "./AnswerMarkdown";
@@ -62,7 +67,7 @@ import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
-import { canCancelChatTransport } from "../api/client";
+import { canCancelChatTransport } from "../lib/chat-transport-presentation";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -179,7 +184,7 @@ export function NotebookScreen({
   const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  const [chatError, setChatError] = useState<unknown>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
   // In-flight turn (STRM-1); mirrored in a ref so the abort path can read the
   // last painted partial without a stale closure.
   const [pending, setPendingState] = useState<{ q: string; a: ChatTurn } | null>(null);
@@ -313,7 +318,7 @@ export function NotebookScreen({
       } else {
         setQ(question);
         setFailedSend(body);
-        setChatError(e);
+        setChatError(apiErrorCopy(e, "Your question wasn't sent — try again."));
       }
     } finally {
       abortRef.current = null;
@@ -346,7 +351,7 @@ export function NotebookScreen({
       setBusy(false);
       setPending(null);
       if (!look.fileId) {
-        setChatError(new Error("The photo didn't upload — try again."));
+        setChatError("The photo didn't upload — try again.");
         return;
       }
       await sendQuestion(question, undefined, {
@@ -359,7 +364,7 @@ export function NotebookScreen({
       setBusy(false);
       setPending(null);
       setQ(question); // the draft survives a failed attachment
-      setChatError(e);
+      setChatError(apiErrorCopy(e, "The photo didn't upload — try again."));
     }
   };
 
@@ -379,9 +384,9 @@ export function NotebookScreen({
     try {
       const r = await uploadSourceToNotebook(notebook, file, { sourceRole: "manual" });
       refresh();
-      if (!r.attached && r.warning) setChatError(new Error(r.warning));
+      if (!r.attached) setChatError(uploadSourceWarningCopy(r.warning));
     } catch (e) {
-      setChatError(e);
+      setChatError(apiErrorCopy(e, "Upload failed — try again."));
     } finally {
       setBusy(false);
       setPending(null);
@@ -424,7 +429,7 @@ export function NotebookScreen({
         <button className="nb-appbar-icon" aria-label="Back to notebooks" onClick={onExit}>
           ‹
         </button>
-        <h3 className="nb-appbar-title">{notebook.displayName}</h3>
+        <h3 className="nb-appbar-title">{notebookDisplayName(notebook.displayName)}</h3>
         <button
           className="nb-appbar-icon"
           aria-label="Open Sensor"
@@ -454,7 +459,7 @@ export function NotebookScreen({
       {overflowOpen && (
         <Sheet label="Notebook options" onClose={() => setOverflowOpen(false)}>
           <div className="v2-attach-menu" data-testid="nb-overflow-menu">
-            <h3>{notebook.displayName}</h3>
+            <h3>{notebookDisplayName(notebook.displayName)}</h3>
             <div className="meta" style={{ marginBottom: 8 }}>
               {sources.length} source{sources.length === 1 ? "" : "s"}
               {notebook.manufacturer ? ` · ${notebook.manufacturer}` : ""}
@@ -529,7 +534,7 @@ export function NotebookScreen({
             <p className="meta" style={{ marginTop: 8 }}>
               {/* Name it explicitly — the technician must see WHICH notebook
                   is being destroyed, not merely that one is. */}
-              <strong>{notebook.displayName}</strong> and its chat history will be
+              <strong>{notebookDisplayName(notebook.displayName)}</strong> and its chat history will be
               permanently deleted. This cannot be undone.
             </p>
             <p className="meta" style={{ marginTop: 6 }}>
@@ -728,6 +733,7 @@ export function NotebookScreen({
           busy={busy}
           canStop={canStopGeneration}
           canRetry={Boolean(failedSend) && !busy}
+          chatError={chatError}
           handlers={{
             onSend: (text) => void sendQuestion(text),
             onStop: stopGeneration,
@@ -739,11 +745,13 @@ export function NotebookScreen({
           host={unifiedShell}
           meta={{
             notebookId: notebook.id,
-            title: notebook.displayName,
+            title: notebookDisplayName(notebook.displayName),
             asset: notebook.asset
               ? {
                   id: notebook.asset.entityId,
-                  name: [notebook.manufacturer, notebook.model].filter(Boolean).join(" ") || notebook.displayName,
+                  name:
+                    [notebook.manufacturer, notebook.model].filter(Boolean).join(" ") ||
+                    notebookDisplayName(notebook.displayName),
                 }
               : null,
             identityConfirmed: notebook.identityStatus === "user_confirmed",
@@ -954,7 +962,9 @@ export function NotebookScreen({
             )}
             {chatError != null && (
               <>
-                <ErrorState error={chatError} />
+                <div className="empty">
+                  <div className="error" role="alert">{chatError}</div>
+                </div>
                 {failedSend && !busy && (
                   <div className="chip-row">
                     <button
@@ -1441,16 +1451,18 @@ function StudioPanel({
     setGenerating(tile.t);
     setGenError(null);
     try {
-      const a = await ask(tile.prompt);
-      const out: StudioOutput = {
-        tile: tile.t,
-        generatedAt: new Date().toISOString(),
-        answer: answerBody(a.answer, a.status),
-        citations: a.citations,
-      };
-      const next = { ...outputs, [tile.t]: out };
-      setOutputs(next);
-      await preferencesStore.set(STUDIO_KEY(notebookId), JSON.stringify(next));
+      await withSessionLocalProducer(async () => {
+        const a = await ask(tile.prompt!);
+        const out: StudioOutput = {
+          tile: tile.t,
+          generatedAt: new Date().toISOString(),
+          answer: answerBody(a.answer, a.status),
+          citations: a.citations,
+        };
+        const next = { ...outputs, [tile.t]: out };
+        setOutputs(next);
+        await preferencesStore.set(STUDIO_KEY(notebookId), JSON.stringify(next));
+      });
     } catch (e) {
       setGenError(e);
     } finally {
@@ -1580,10 +1592,10 @@ function AddSourcesSheet({
         setNote(r.duplicate ? "Already in your workspace — attached here." : "Source added. Ask away.");
         onChanged();
       } else {
-        setNote(r.warning);
+        setNote(uploadSourceWarningCopy(r.warning));
       }
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Upload failed — try again.");
+      setNote(apiErrorCopy(e, "Upload failed — try again."));
     } finally {
       setBusy(false);
     }
@@ -1615,7 +1627,7 @@ function AddSourcesSheet({
       onChanged();
       setMode("menu");
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Couldn't attach that file.");
+      setNote(apiErrorCopy(e, "Couldn't attach that file."));
     } finally {
       setBusy(false);
     }
@@ -1715,10 +1727,10 @@ function AddSourcesSheet({
                     onChanged();
                     setMode("menu");
                   } else {
-                    setNote(r.warning);
+                    setNote(uploadSourceWarningCopy(r.warning));
                   }
                 } catch (e) {
-                  setNote(e instanceof Error ? e.message : "Couldn't save the note — try again.");
+                  setNote(apiErrorCopy(e, "Couldn't save the note — try again."));
                 } finally {
                   setBusy(false);
                 }

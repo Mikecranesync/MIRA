@@ -1,31 +1,42 @@
 # Runbook: `updates.factorylm.com` OTA release-host cutover
 
-**Goal:** bring the static OTA release host live on the prod VPS so Android phones can discover
-and download signed web bundles. This is the last open gate from the OTA program (#3393, #3404).
+**Purpose:** initial or recovery provisioning of the static OTA release host so
+Android phones can discover and download signed web bundles. This is a host
+bootstrap runbook, not the routine publish or rollback procedure.
 
-**Owner split.** Steps marked **[MIKE]** need the DNS account, root on the VPS, or the phone in
-hand. Steps marked **[CLAUDE]** are repo/CI work Claude can do afterwards without touching prod.
+> **Routine releases never follow the old local `doppler run`, `ota-deploy.mjs`,
+> root SSH, or manual `scp` path.** After bootstrap, use the main-only
+> `.github/workflows/ota-release.yml` flow documented in
+> `docs/release/android/ota.md`. That workflow deliberately has no provision mode.
+
+**Owner split.** Steps marked **[MIKE]** need the DNS account, temporary
+administrative host access, GitHub environment administration, or the phone in
+hand. Steps marked **[AGENT]** are read-only repo/CI verification that can happen
+afterwards without changing production.
 
 **Sources of truth (read if anything here looks off):**
-`docs/release/android/ota.md` § *VPS hosting*, `deployment/nginx-updates-factorylm.conf`,
+`docs/release/android/ota.md`, `docs/release/evidence/ota/README.md`,
+`.github/workflows/ota-release.yml`, `deployment/nginx-updates-factorylm.conf`,
 `docs/adr/0034-native-mobile-static-capacitor-client.md` § *signed OTA web bundles*,
-`mira-mobile/scripts/ota-{publish,deploy,rollback}.mjs`,
+`mira-mobile/scripts/ota-{guard,package,provenance,publish,deploy,rollback}.mjs`,
 `mira-hub/src/app/api/mobile/live-update/manifest/route.ts`.
 
-**Never in this file:** secret values. The only secret involved is `OTA_SIGNING_PRIVATE_KEY`
-(Doppler `factorylm/prd`), and it is only ever injected via `doppler run`.
+**Never in this file:** secret values, private keys, tokens, or production
+credentials. Routine signing reads `OTA_SIGNING_PRIVATE_KEY` from the isolated
+Doppler `factorylm/ota_signing` config through a scoped service token; routine
+publication uses separate restricted canary and production SSH identities.
 
 ---
 
 ## 0. Preconditions (2 min)
 
-- **[MIKE]** You can `ssh factorylm-prod` (alias for `root@165.245.138.91`,
-  `docs/runbooks/deploy-to-production.md`). The `ota-deploy.mjs` script uses that exact alias
-  (`--host factorylm-prod` default) for `rsync`/`scp`, so the same key must work from the
-  machine you publish from.
+- **[MIKE]** You have temporary administrative access to provision nginx, TLS,
+  the release directories, and restricted release identities. Routine workflow
+  credentials must never be root credentials.
 - **[MIKE]** `deployment/nginx-updates-factorylm.conf` is on `main` (it is — it ships the
   `/healthz` probe, the `no-store` manifest location, and the immutable `/releases/` location).
-- **[MIKE]** Local checkout of `main` at a known SHA (record it in §7): `git rev-parse HEAD`.
+- **[MIKE]** The exact reviewed nginx configuration is merged to `main`; record
+  that commit in the bootstrap/change ticket.
 
 ---
 
@@ -78,8 +89,9 @@ Then on the VPS:
 ```bash
 ssh factorylm-prod
 
-# artifact store the deploy script rsyncs into (root-owned is fine: deploys run as root over ssh)
+# artifact store; bootstrap uses admin access, routine release jobs do not
 mkdir -p /srv/factorylm/ota/releases
+mkdir -p /srv/factorylm/ota/.incoming
 
 # certbot HTTP-01 webroot referenced by the port-80 server block
 mkdir -p /var/www/certbot
@@ -89,6 +101,23 @@ ln -sf /etc/nginx/sites-available/updates.factorylm.com \
 ls -l /etc/nginx/sites-enabled/ | grep updates
 # lrwxrwxrwx ... updates.factorylm.com -> /etc/nginx/sites-available/updates.factorylm.com
 ```
+
+Before enabling routine publication, provision two separate non-root release
+identities and test their least-privilege boundaries:
+
+- The canary identity may create immutable files below `releases/`, use
+  `.incoming/` and the shared `.ota-pointer.lock`, and atomically replace only
+  `manifest.canary.json`.
+- The production identity may read the exact canary pointer and immutable
+  release files, use `.incoming/` and the shared `.ota-pointer.lock`, and
+  atomically replace only `manifest.production.json`.
+- Neither identity may obtain a shell outside this release role, write the
+  other's pointer, modify nginx/TLS, or run as root.
+
+The concrete account names are environment variables, not doctrine. Store them
+as `OTA_CANARY_SSH_USER` in `ota-canary` and `OTA_PRODUCTION_SSH_USER` in
+`ota-production`; store their distinct private keys only in the matching
+environment secrets. Keep the committed SSH host key as the trust anchor.
 
 **Do NOT run `nginx -t` yet** — the 443 block references
 `/etc/letsencrypt/live/updates.factorylm.com/*.pem`, which does not exist until §3, and `nginx -t`
@@ -149,7 +178,7 @@ systemctl list-timers | grep certbot     # timer present
 
 ---
 
-## 4. Verification — **[MIKE]** on the VPS/laptop, **[CLAUDE]** may re-run the curls later
+## 4. Verification — **[MIKE]** on the VPS/laptop, **[AGENT]** may re-run the curls later
 
 ### 4a. Host liveness + headers
 
@@ -170,23 +199,24 @@ curl -sI http://updates.factorylm.com/healthz | head -3
 curl -sI https://updates.factorylm.com/               # root is deliberately 404
 # HTTP/2 404
 curl -sI https://updates.factorylm.com/manifest.canary.json
-# HTTP/2 404      <- expected UNTIL §5 publishes; after: 200 + cache-control: no-store, no-cache, must-revalidate
+# HTTP/2 404 on a newly provisioned empty host; an existing host may already return a canary pointer
+# After a governed publish: 200 + cache-control: no-store, no-cache, must-revalidate
 ```
 
 Note: this vhost does **not** set `Strict-Transport-Security` (unlike `app.factorylm.com`).
-That is by design in the conf as committed — do not expect an HSTS header. **[CLAUDE]** can
+That is by design in the conf as committed — do not expect an HSTS header. **[AGENT]** can
 add it in a follow-up PR if wanted.
 
 ### 4b. Manifest round-trip through the Hub
 
 The phone never reads `manifest.<channel>.json` directly; it asks
-`GET https://app.factorylm.com/api/mobile/live-update/manifest?channel=<c>&fingerprint=<fp>`.
+`GET https://app.factorylm.com/api/mobile/live-update/manifest/?channel=<c>&fingerprint=<fp>`.
 That route is **session-gated** (`sessionOr401`), so an anonymous curl proves only that the route
 exists:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" \
-  "https://app.factorylm.com/api/mobile/live-update/manifest?channel=canary&fingerprint=0000000000000000"
+  "https://app.factorylm.com/api/mobile/live-update/manifest/?channel=canary&fingerprint=0000000000000000"
 # 401
 ```
 
@@ -202,82 +232,49 @@ Contract to look for once authenticated (any non-2xx is a bug; ordinary outcomes
 The Hub reads the release host from env var **`OTA_ORIGIN`** (name only; default
 `https://updates.factorylm.com`, so no Doppler change is needed unless you want to override it).
 
-**Verify from the phone (the real test):** open the app → **More → About & updates → Check
+**Verify from the phone (the real test):** open the signed-in app → **About & updates → Check
 now**. The screen shows channel, native fingerprint, last check + result. Before §5 the result
-reads as "no update"; after §5 it shows **Update ready** with a Restart action. If it shows
+reads as "no update"; after a governed publish it shows **Update ready** with a Restart action. If it shows
 `Update server error (NNN)`, the Hub route returned non-2xx — capture NNN for §7.
 
 ---
 
-## 5. Canary publish → deploy → rollback — **[MIKE]** (private key required)
+## 5. Hand off to the governed release workflow
 
-All commands from `mira-mobile/`, on the same commit the installed APK was built from (the
-`nativeFingerprint` must match the phone's, and `ota-deploy.mjs` refuses otherwise).
+Host bootstrap stops here. Do not materialize the OTA signing key locally and do
+not publish with root SSH, `ota-deploy.mjs --confirm`, or manual `scp`. Once the
+release configuration and restricted identities are tested, follow
+`docs/release/android/ota.md`:
 
-```bash
-cd mira-mobile
+1. Merge a governed source head to `main`.
+2. Dispatch `.github/workflows/ota-release.yml` with `mode=publish`,
+   `channel=canary`, a semantic `version`, and the exact full `apk_base_sha` of
+   the Play APK installed on the test phone.
+3. Confirm the workflow installs the immutable ZIP and signed provenance before
+   atomically changing `manifest.canary.json`.
+4. On a physical Play-installed phone enrolled in canary, complete **Check now →
+   Update ready → Restart → About shows the exact bundle ID**. Automatic
+   rollback means the canary failed; it is never a soft pass.
+5. Commit the exact receipt and evidence under
+   `docs/release/evidence/ota/` using that directory's `README.md`.
+6. Dispatch `mode=promote` with the exact immutable target and full
+   `evidence_commit_sha`. Production remains behind the protected
+   `ota-production` human-review environment.
 
-# 5a. Build + sign + stage locally. Key injected by Doppler, never typed.
-doppler run --project factorylm --config prd -- \
-  node scripts/ota-publish.mjs --channel canary --version 1.0.2
-# published (staged locally — nothing uploaded yet)
-#   channel       canary
-#   bundleId      1.0.2-<8 hex>
-#   artifact      releases/1.0.2/<16 hex>.zip
-#   sha256        <64 hex>
-#   fingerprint   <16 hex>            <- must equal the phone's About screen fingerprint
-#   manifest      ota-out/manifest.canary.json
-# next: node scripts/ota-deploy.mjs --channel canary
+A rollback follows the same canary-first proof path. Dispatch
+`mode=stage-canary` for an existing authenticated immutable target, test that
+exact target on the Play handset, commit a new receipt, and only then dispatch
+`mode=promote`. The current workflow has no direct production publish and no
+rollback override.
 
-# 5b. Dry run (default). Prints the plan, uploads nothing.
-node scripts/ota-deploy.mjs --channel canary
-# channel     canary
-# bundleId    1.0.2-<8 hex>
-# artifact    https://updates.factorylm.com/releases/1.0.2/<16 hex>.zip
-# fingerprint <16 hex>
-# plan (artifacts first, manifest last):
-#   1. rsync -av --ignore-existing ota-out/releases/ factorylm-prod:/srv/factorylm/ota/releases/
-#   2. scp ota-out/manifest.canary.json factorylm-prod:/srv/factorylm/ota/manifest.canary.json
-# dry run — re-run with --confirm to upload.
+### Quarantined canary 1.1.8
 
-# 5c. Upload: artifacts first, manifest last (the manifest scp is the atomic flip).
-node scripts/ota-deploy.mjs --channel canary --confirm
-# $ rsync -av --ignore-existing ota-out/releases/ factorylm-prod:/srv/factorylm/ota/releases/
-# $ scp ota-out/manifest.canary.json factorylm-prod:/srv/factorylm/ota/manifest.canary.json
-# live: https://updates.factorylm.com/manifest.canary.json
-
-curl -s https://updates.factorylm.com/manifest.canary.json | head -c 400   # JSON, downloadUrl on this host
-```
-
-Phone (on the **canary** channel): More → About & updates → Check now → **Update ready** →
-Restart → About screen shows the new active OTA bundle id. Watch for the ADR-0034 condition 8
-auto-rollback: if the app does not reach `LiveUpdate.ready()` it reverts to the previous bundle
-on its own — that counts as a failed canary, not a crash.
-
-```bash
-# 5d. Rollback drill (repoints the pointer at an artifact that already exists; never rebuilds)
-node scripts/ota-rollback.mjs --channel canary --list
-# available releases (channel: canary)
-#   * 1.0.2/<16 hex>.zip
-# * = currently pointed to by manifest.canary.json
-
-doppler run --project factorylm --config prd -- \
-  node scripts/ota-rollback.mjs --channel canary --to <version>/<hash>.zip
-# rolled back (staged locally — nothing uploaded yet)
-#   channel   canary
-#   now       <version>/<hash>.zip
-#   bundleId  <version>-<8 hex>
-# next: node scripts/ota-deploy.mjs --channel canary
-
-node scripts/ota-deploy.mjs --channel canary --confirm
-```
-
-If rollback prints `INTEGRITY FAILURE: … does not hash to its own name` and exits 1, stop — the
-artifact store has been mutated; do not sign it. (`--list` reads the local `ota-out/releases/`,
-so run it from the machine that published.)
-
-Promotion to `production` is the same rollback command with `--channel production`
-(`ota.md` § *Promotion*). Do it as a separate, later human action.
+Actions run `34131104475` published canary `1.1.8` from draft source
+`5cd26f33a441229abe774b3265570dbdba5a9128`, before the current trust split and
+authenticated provenance contract. It is diagnostic-only, not
+governance-cleared, and must not be promoted or used for handset readiness. Do
+not rerun that historical workflow. Install a newly governed Play APK for the
+current native-fingerprint protocol, then publish and test a new canary.
 
 ---
 
@@ -301,32 +298,26 @@ Then remove (or leave — it is inert without the vhost) the DNS `A` record for 
 
 ---
 
-## 7. Record the evidence — **[MIKE]** captures, **[CLAUDE]** files it
+## 7. Record bootstrap evidence and release evidence separately
 
-Fill in and paste into the tracking issue / `docs/promo-screenshots/` note. (The task cited
-"PRD §13.2 steps 1 and 15"; no such section exists in
-`docs/prd/2026-08-13-native-mobile-app-prd.md`, so the fields below are the ones that section
-was described as requiring.)
+Record DNS, TLS, nginx configuration, restricted-account tests, and `/healthz`
+results in the host-bootstrap change ticket. Those facts establish that the host
+is available; they do **not** prove an OTA is safe for production.
 
-| Field | Value |
-|---|---|
-| Device | e.g. Pixel 9a |
-| Android version | Settings → About phone |
-| App build | About & updates → version/build + package `com.factorylm.mira` |
-| Native fingerprint (phone) | About & updates |
-| Backend SHA | `git rev-parse HEAD` of the deployed Hub (`deploy-vps.yml` run) |
-| OTA `bundleId` / `releaseSha` | from `manifest.canary.json` |
-| Time (UTC) | of §4a pass and of the phone "Update ready" |
-| `curl -sI …/healthz` | paste the 200 |
-| Check-now result before / after publish | "no update" → "Update ready" |
-| Rollback drill result | bundle id after §5d |
-| Screenshots | About & updates before/after, 412x915, into `docs/promo-screenshots/` |
+Each production candidate needs a separate, Git-tracked receipt at
+`docs/release/evidence/ota/<artifact-sha256>.json` plus hashed transcript and
+screenshot files under `docs/release/evidence/ota/files/`. Follow
+`docs/release/evidence/ota/README.md` exactly. The receipt binds the physical
+Play-installed phone result to:
 
-**[CLAUDE] follow-ups after Mike reports green:**
-1. Add `updates.factorylm.com` to the `ALLOW` list in
-   `.github/workflows/nginx-sites-enabled-hygiene.yml` (today it only warns
-   "skipping symlink … add it to ALLOW if it is a real vhost" — not deleted, but noisy).
-2. Update `docs/release/android/ota.md` § *VPS hosting* status line and
-   `.planning/STATE.md`.
-3. Optional: HSTS header on the vhost; `deploy-nginx-updates.yml` mirroring `deploy-nginx-stg.yml`
-   so future vhost edits are a workflow dispatch instead of scp.
+- the immutable artifact SHA-256 and bundle ID;
+- the native fingerprint and exact release SHA;
+- the byte-for-byte canary-manifest SHA-256 and its pointer timestamp;
+- package `com.factorylm.mira`, installer `com.android.vending`, and the Play
+  app-signing certificate;
+- successful Update-ready, Restart, and post-restart About verification.
+
+Commit the receipt and files without credentials, account identifiers, or a
+device serial. The evidence commit must land on `main` before the production
+promotion dispatch, and a human reviewer must still approve the protected
+`ota-production` deployment.

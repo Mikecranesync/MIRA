@@ -23,7 +23,10 @@
  * Exit 0 = safe to publish OTA. Exit 1 = must go through Firebase/Play.
  */
 import { execFileSync } from "node:child_process";
-import { nativeFingerprint } from "./native-fingerprint.mjs";
+import {
+  nativeFingerprintAtRef,
+  parseNulSeparatedPaths,
+} from "./native-fingerprint.mjs";
 
 /** Files whose changes can only ship inside an APK. */
 const NATIVE_PATHS = [
@@ -32,37 +35,51 @@ const NATIVE_PATHS = [
   "mira-mobile/capacitor.config.ts",
   "mira-mobile/package.json", // native plugin add/remove/bump lives here
   "mira-mobile/bun.lock",
+  "mira-mobile/scripts/native-fingerprint.mjs",
 ];
 
 function git(args) {
-  return execFileSync("git", args, { encoding: "utf8" }).trim();
+  return execFileSync("git", args);
 }
 
-/** package.json as it existed at a ref, or null when unreadable. */
-function pkgAt(ref) {
+export function nativeTouchedPaths(output) {
+  return parseNulSeparatedPaths(output).filter((file) =>
+    NATIVE_PATHS.some((prefix) => file.startsWith(prefix)),
+  );
+}
+
+function isAncestor(baseRef, headRef) {
   try {
-    return JSON.parse(git(["show", `${ref}:mira-mobile/package.json`]));
+    execFileSync("git", ["merge-base", "--is-ancestor", baseRef, headRef], {
+      stdio: "ignore",
+    });
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
 export function evaluate(baseRef, headRef = "HEAD") {
-  const changed = git(["diff", "--name-only", `${baseRef}...${headRef}`])
-    .split("\n")
-    .filter(Boolean);
+  const baseIsAncestor = isAncestor(baseRef, headRef);
+  const changedOutput = baseIsAncestor
+    ? git(["diff", "--name-only", "-z", `${baseRef}...${headRef}`])
+    : Buffer.alloc(0);
+  const changed = parseNulSeparatedPaths(changedOutput);
+  const nativeTouched = nativeTouchedPaths(changedOutput);
 
-  const nativeTouched = changed.filter((f) => NATIVE_PATHS.some((p) => f.startsWith(p)));
-
-  const basePkg = pkgAt(baseRef);
-  const headPkg = pkgAt(headRef);
-  const baseFp = basePkg ? nativeFingerprint(basePkg) : null;
-  const headFp = headPkg ? nativeFingerprint(headPkg) : null;
+  let baseFp = null;
+  let headFp = null;
+  try {
+    baseFp = nativeFingerprintAtRef(baseRef);
+    headFp = nativeFingerprintAtRef(headRef);
+  } catch {
+    // Unreadable ends are treated as a mismatch below: unprovable is not safe.
+  }
   // Unreadable ends are treated as a mismatch: unprovable is not the same as
   // safe, and this guard fails closed.
   const fingerprintChanged = baseFp === null || headFp === null || baseFp !== headFp;
 
-  return { changed, nativeTouched, baseFp, headFp, fingerprintChanged };
+  return { changed, nativeTouched, baseFp, headFp, fingerprintChanged, baseIsAncestor };
 }
 
 if (process.argv[1] && process.argv[1].endsWith("ota-guard.mjs")) {
@@ -72,6 +89,10 @@ if (process.argv[1] && process.argv[1].endsWith("ota-guard.mjs")) {
     process.exit(2);
   }
   const r = evaluate(baseRef, headRef);
+  if (!r.baseIsAncestor) {
+    console.error("\nBLOCKED: the installed APK commit is not an ancestor of the bundle head.");
+    process.exit(1);
+  }
   console.log(`native fingerprint: ${r.baseFp} -> ${r.headFp}`);
 
   if (r.fingerprintChanged) {
