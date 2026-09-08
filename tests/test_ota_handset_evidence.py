@@ -233,8 +233,41 @@ STEP about_expected_bundle_id
 RESULT up_to_date
 SECOND_DOWNLOAD observed=false
 """,
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+SECOND_DOWNLOAD observed=true
+""",
+        """prefix FACTORYLM_OTA_PROOF_SEQUENCE_V2 suffix
+prefix STEP update_ready suffix
+prefix STEP restart suffix
+prefix STEP about_expected_bundle_id suffix
+prefix STEP second_check_now suffix
+prefix RESULT up_to_date suffix
+prefix SECOND_DOWNLOAD observed=false suffix
+""",
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+RESULT update_ready
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+""",
     ],
-    ids=["missing-second-check", "second-download", "reordered"],
+    ids=[
+        "missing-second-check",
+        "second-download",
+        "reordered",
+        "contradictory-second-download",
+        "embedded-control-markers",
+        "extra-terminal-result",
+    ],
 )
 def test_rejects_transcript_without_exact_continuous_terminal_proof(
     tmp_path: Path, transcript: str

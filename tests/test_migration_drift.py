@@ -8,7 +8,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 _MOD_PATH = Path(__file__).resolve().parents[1] / "tools" / "migration_drift.py"
+_WORKFLOW_PATH = (
+    Path(__file__).resolve().parents[1] / ".github" / "workflows" / "migration-drift-check.yml"
+)
 _spec = importlib.util.spec_from_file_location("migration_drift", _MOD_PATH)
 drift = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(drift)
@@ -138,3 +143,39 @@ def test_production_glue_references_no_psycopg_driver():
     source = _MOD_PATH.read_text(encoding="utf-8")
     assert "psycopg" not in source
     assert "import asyncpg" in source
+
+
+def test_scheduled_drift_jobs_install_the_hashlocked_asyncpg_requirement():
+    """Catches a scheduled caller retaining LGPL psycopg or omitting asyncpg."""
+    workflow = yaml.safe_load(_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    for job_name in ("drift-staging", "drift-prod"):
+        steps = workflow["jobs"][job_name]["steps"]
+        install_commands = [
+            step["run"] for step in steps if "run" in step and "pip install" in step["run"]
+        ]
+        assert len(install_commands) == 1, job_name
+        install = install_commands[0]
+        assert "--only-binary=:all:" in install, job_name
+        assert "--require-hashes" in install, job_name
+        assert "-r tools/migration-drift-requirements.txt" in install, job_name
+        assert "psycopg" not in install.casefold(), job_name
+
+
+def test_prod_scheduled_drift_isolates_database_secret_to_the_validator_process():
+    """Catches exporting the prod database URL to later third-party steps."""
+    workflow = yaml.safe_load(_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["drift-prod"]["steps"]
+    resolve = next(step["run"] for step in steps if step.get("name") == "Resolve prod DATABASE_URL")
+    check = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Check migration drift (prod — hard gate)"
+    )
+
+    assert "GITHUB_ENV" not in resolve
+    assert "RUNNER_TEMP" in resolve
+    assert "env -i" in check
+    assert 'NEON_DATABASE_URL="$URL"' in check
+    assert "--database-url" not in check
+    assert "trap" in check

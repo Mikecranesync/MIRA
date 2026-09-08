@@ -3619,6 +3619,7 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
         "deploy-vps.yml",
+        "migration-drift-check.yml",
         "mobile-release-distribute.yml",
         "nginx-sites-enabled-hygiene.yml",
         "ota-release.yml",
