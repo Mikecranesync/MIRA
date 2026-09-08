@@ -22,6 +22,58 @@ interface ChatMessage {
   nextCheck?: string;
 }
 
+/**
+ * What the Copy control puts on the clipboard for an asset-scoped answer (B-8).
+ *
+ * Deliberately thinner than the notebook chat's payload, and the difference is
+ * a product gap rather than a styling choice: `ChatMessage` carries **no
+ * citations**, so this surface renders none and there are no sources to attach.
+ * The notebook chat sends its sources and its basis label along with the text;
+ * here the answer travels alone because that is all the surface has.
+ *
+ * A partial answer says so. If the technician pressed Stop mid-stream, the text
+ * on screen is whatever had arrived — pasting that into a work order without
+ * the caption would present a truncated answer as a complete one.
+ */
+export function assetAnswerCopyPayload(msg: {
+  content: string;
+  stopped?: boolean;
+  hasSafetyAlert?: boolean;
+}): string {
+  const lines = [msg.content.trim()];
+  if (msg.stopped) lines.push("", "(Stopped — this answer was cut short.)");
+  if (msg.hasSafetyAlert) lines.push("", "⚠ A safety alert was shown with this answer.");
+  return lines.join("\n");
+}
+
+/** The copy affordance. Its own component so the "Copied" acknowledgement is
+ *  scoped to one answer rather than appearing under every one. */
+function CopyAssetAnswer({ msg }: { msg: ChatMessage }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      data-testid="copy-asset-answer"
+      aria-label="Copy this answer"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(assetAnswerCopyPayload(msg))
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+      className="mt-1.5 rounded-lg border px-3 text-xs"
+      style={{
+        background: "var(--surface-0)",
+        borderColor: "var(--border)",
+        color: "var(--foreground)",
+        minHeight: 44,
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 interface AssetChatProps {
   assetId: string;
   assetName: string;
@@ -127,6 +179,19 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
           </div>
         )}
         {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
+        {/* B-8 — a persistent action row under every answer, copy
+            non-negotiable. Suppressed on a safety stop: that is an instruction
+            to stop work, not an answer to relay.
+
+            NOTE the limit, because a copy button here is weaker than it looks:
+            `ChatMessage` carries no citations, so this surface renders none and
+            the copy has no sources to attach. On the notebook chat the sources
+            and the basis label travel with the text; here there is nothing to
+            travel. Fixing that is E-1/E-2 work on this surface, not a copy
+            control — see `assetAnswerCopyPayload`. */}
+        {msg.role === "assistant" && !isSafety && msg.content.trim() !== "" && (
+          <CopyAssetAnswer msg={msg} />
+        )}
       </div>
     </div>
   );
