@@ -46,6 +46,27 @@ export const PROFILES: Readonly<Record<SurfaceKind, SurfaceProfile>> = Object.fr
   }),
 });
 
+/**
+ * The lifecycle of a turn, a tool call, or a run.
+ *
+ * `safety_stop` is a FIRST-CLASS member, not a flavour of `stopped`.
+ *
+ * The Hub's enum (ADR-0040) has carried a safety-stop state since it shipped;
+ * this union did not, so a safety turn arriving from a Hub surface had no
+ * representation here at all and had to be squeezed into a neighbouring
+ * lifecycle by whichever adapter met it first. That is the one substitution
+ * that must never be made silently: `stopped` means a person interrupted the
+ * answer, `failed` means it broke, and `safety_stop` means MIRA REFUSED on
+ * safety grounds. A renderer that cannot tell them apart will eventually show
+ * a technician "Stopped" where the truthful word was "Safety stop", and the
+ * difference is whether they understand that the machine, not the network, is
+ * the reason there is no answer.
+ *
+ * Adding the member is deliberately its own contract change rather than a
+ * clause inside a feature PR: a safety state must be defined where the type
+ * lives, with exhaustive parsing and rendering, and never inferred at a render
+ * gate from an adjacent lifecycle.
+ */
 export type Lifecycle =
   | "accepted"
   | "queued"
@@ -55,7 +76,56 @@ export type Lifecycle =
   | "completed"
   | "stopped"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "safety_stop";
+
+/**
+ * Every member, in one array, as the SINGLE source of truth for parsing.
+ *
+ * `satisfies readonly Lifecycle[]` plus the exhaustiveness test in
+ * `__tests__/lifecycle.test.ts` means a member added to the union above and
+ * not added here fails the build, rather than becoming a value that silently
+ * fails to parse at a boundary.
+ */
+export const LIFECYCLES = [
+  "accepted",
+  "queued",
+  "running",
+  "waiting",
+  "stopping",
+  "completed",
+  "stopped",
+  "failed",
+  "cancelled",
+  "safety_stop",
+] as const satisfies readonly Lifecycle[];
+
+/** Fail-closed boundary parse. Unknown input is NOT coerced to a neighbour. */
+export function isLifecycle(value: unknown): value is Lifecycle {
+  return typeof value === "string" && (LIFECYCLES as readonly string[]).includes(value);
+}
+
+/**
+ * Parse a lifecycle from untrusted input.
+ *
+ * Returns `null` rather than a fallback. A fallback here would be exactly the
+ * defect this contract exists to prevent: an unrecognised safety state
+ * quietly becoming `completed` or `stopped`, which reads to a technician as
+ * "there is an answer" or "you stopped it".
+ */
+export function parseLifecycle(value: unknown): Lifecycle | null {
+  return isLifecycle(value) ? value : null;
+}
+
+/**
+ * Whether a lifecycle means MIRA declined on safety grounds.
+ *
+ * A predicate rather than an equality check at each call site, so that if a
+ * second safety-bearing state is ever added, every consumer picks it up.
+ */
+export function isSafetyStop(lifecycle: Lifecycle): boolean {
+  return lifecycle === "safety_stop";
+}
 
 export interface Attachment {
   readonly id: string;
