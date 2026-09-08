@@ -135,6 +135,30 @@ describe("V3 — the composer is the home screen (recon A-1/B-1)", () => {
     expect(page).not.toMatch(/MACHINE_SUGGESTIONS[\s\S]{0,400}F\d{4}/);
   });
 
+  it("unwinds every turn-scoped notice on New chat, not just the error", () => {
+    // Found by applying #3681's lesson to this file: `signedOut` was set on a
+    // 401 and cleared only at the start of the NEXT send, so the "Sign in to
+    // ask" notice sat under an empty thread after New chat. The direction that
+    // sets a notice gets written and verified; the direction that clears it
+    // has no author.
+    const newChat = page.slice(page.indexOf('className="v3-new"'));
+    const handler = newChat.slice(0, 400);
+    for (const clear of ["setTurns([])", "setError(null)", "setSignedOut(false)"]) {
+      expect(handler).toContain(clear);
+    }
+    // The scope is a user CHOICE, not turn state — it must survive New chat.
+    expect(handler).not.toContain("setScope(null)");
+  });
+
+  it("keeps the refusal on the turn, so it cannot outlive it", () => {
+    // The structural reason V3 is immune to the #3681 leak: the refusal is a
+    // field on the assistant turn, not separate component state, so clearing
+    // the thread clears it by construction. Asserted so a later refactor to
+    // `useState` would have to argue with this.
+    expect(page).not.toContain("useState<Refusal");
+    expect(page).toContain("refusal?: Refusal;");
+  });
+
   it("renders a 412 as a refusal with its missing pieces, never as an error", () => {
     // A 412 is the approved-context gate holding — the product working. It
     // must not offer Retry, which cannot change the outcome.

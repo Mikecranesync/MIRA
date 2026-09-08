@@ -277,7 +277,16 @@ export default function V3Page() {
 
       <aside className="v3-sidebar">
         <div className="v3-brand"><span className="v3-mark">FL</span>FactoryLM</div>
-        <button className="v3-new" onClick={() => { setTurns([]); setError(null); taRef.current?.focus(); }}>
+        {/* Every piece of turn-scoped state unwinds here. `signedOut` was
+            missing: after a 401 the "Sign in to ask" notice sat under an empty
+            thread until the next send happened to clear it. Same class as the
+            AssetChat refusal leak (#3681) — the direction that SETS a notice
+            gets written and verified; the direction that clears it has no
+            author. The scope is deliberately NOT reset: it is a user choice,
+            not turn state. */}
+        <button className="v3-new" onClick={() => {
+          setTurns([]); setError(null); setSignedOut(false); taRef.current?.focus();
+        }}>
           ＋ New chat
         </button>
         {/* Fixture until Phase 3 connects projects and history. */}
