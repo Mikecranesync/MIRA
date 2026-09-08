@@ -4150,3 +4150,109 @@ def test_ota_workflow_enforces_canary_first_promotion():
     assert "manifest.canary.json" in promote_text
     assert "canary manifest changed" in promote_text.lower()
     assert "canary" in promote_text
+
+
+# ---------------------------------------------------------------------------
+# A non-`labeled` run carries no attestation — that is a NON-APPROVAL, not a
+# malformed-metadata error.
+#
+# `main()` passes `--event-json-file` on every invocation, so
+# `load_exception_approval` ran on every push. GitHub only populates
+# `event.label` on a `labeled` event, so the strict object check raised
+# `exception approval metadata is missing required GitHub objects` and failed
+# the guard on every PR — including PRs whose diff touches no guarded path at
+# all. Observed on PR #3682 at 2eb3701e, whose failure message named a missing
+# GitHub object rather than anything about the change.
+#
+# The fix must be fail-closed: returning `valid=False` grants nothing, so a PR
+# that DOES touch a guarded path is still blocked (asserted below), and a
+# `labeled` act with malformed metadata must still raise (asserted below).
+# ---------------------------------------------------------------------------
+
+
+def _non_label_event_files(tmp_path, action: str = "synchronize"):
+    """A realistic push/synchronize event: no `label` object, as GitHub sends."""
+    event_path = tmp_path / "event.json"
+    pull_path = tmp_path / "pull.json"
+    permission_path = tmp_path / "permission.json"
+    head_sha = "a" * 40
+    event_path.write_text(
+        json.dumps(
+            {
+                "action": action,
+                "pull_request": {"head": {"sha": head_sha}, "body": "body"},
+                "sender": {"type": "User", "login": "someone"},
+                "repository": {"full_name": "Mikecranesync/MIRA"},
+            }
+        )
+    )
+    pull_path.write_text(
+        json.dumps(
+            {
+                "head": {"sha": head_sha},
+                "base": {"repo": {"full_name": "Mikecranesync/MIRA"}},
+                "labels": [{"name": "review:PARTIAL"}],
+                "body": "body",
+            }
+        )
+    )
+    permission_path.write_text(
+        json.dumps({"permission": "write", "role_name": "maintain", "user": {"login": "someone"}})
+    )
+    return event_path, pull_path, permission_path
+
+
+@pytest.mark.parametrize("action", ["synchronize", "opened", "reopened", "edited", "unlabeled"])
+def test_non_label_event_is_a_non_approval_not_an_error(tmp_path, action):
+    """The regression: these actions must not raise, and must not approve."""
+    paths = _non_label_event_files(tmp_path, action=action)
+
+    approval = load_exception_approval(*paths)
+
+    assert approval.valid is False
+    assert approval.approver is None
+    assert "attestation" in approval.reason
+
+
+def test_non_label_event_still_blocks_a_guarded_path(tmp_path):
+    """Fail-closed control. The non-approval must not become a free pass."""
+    approval = load_exception_approval(*_non_label_event_files(tmp_path))
+    assert approval.valid is False
+
+    result = evaluate(
+        [ChangedFile(path="mira-hub/src/app/(hub)/feed/page.tsx", status="modified")],
+        [],
+        "",
+        load_guard_policy(REAL_REGISTRY),
+        exception_approval_valid=approval.valid,
+    )
+
+    assert result.allowed is False
+    assert "feed/page.tsx" in result.message
+
+
+def test_a_labeled_act_with_malformed_metadata_still_raises(tmp_path):
+    """Tamper detection is unchanged: once it IS a label act, every object is
+    still required. Without this the fix could have degraded a tampered
+    attestation into a silent non-approval."""
+    event_path, pull_path, permission_path = _non_label_event_files(tmp_path)
+    event_path.write_text(
+        json.dumps(
+            {
+                "action": "labeled",
+                "label": {"name": "legacy-ui-exception"},
+                "pull_request": {"head": {"sha": "a" * 40}, "body": "body"},
+                # `sender` deliberately absent — the malformed case.
+            }
+        )
+    )
+
+    with pytest.raises(GuardPolicyError, match="missing required GitHub objects"):
+        load_exception_approval(event_path, pull_path, permission_path)
+
+
+def test_a_valid_label_act_is_unaffected_by_the_fix(tmp_path):
+    """Positive control: the happy path still approves, so the new early
+    return cannot be shadowing real attestations."""
+    approval = load_exception_approval(*_write_exception_approval_files(tmp_path))
+    assert approval.valid is True

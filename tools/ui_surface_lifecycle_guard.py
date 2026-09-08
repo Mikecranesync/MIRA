@@ -1355,6 +1355,33 @@ def load_exception_approval(
     event_pr = event.get("pull_request")
     event_label = event.get("label")
     sender = event.get("sender")
+
+    # A run that is not a `labeled` ACT carries no attestation to validate.
+    #
+    # That is the ordinary case for every `synchronize`/push run — GitHub only
+    # populates `event.label` on a `labeled` event — and it is NOT malformed
+    # metadata. The strict object check below was reached unconditionally
+    # (the caller passes `--event-json-file` on every invocation), so every
+    # push to every PR raised `exception approval metadata is missing required
+    # GitHub objects` and failed the guard for a reason unrelated to the PR's
+    # contents. Observed on PR #3682 at 2eb3701e, whose diff touches no
+    # guarded path at all.
+    #
+    # Returning a NON-approval here is strictly fail-closed: `valid=False`
+    # means no exception was granted, so `evaluate()` still blocks any PR that
+    # touches a guarded path (see the `exception_approval_valid` branch). It
+    # only stops the guard from erroring when no exception was ever claimed.
+    #
+    # Tamper detection is unchanged: once the event IS a `labeled` act, every
+    # object below is still required, and a missing or malformed one still
+    # raises rather than degrading to a silent non-approval.
+    if event.get("action") != "labeled" or not isinstance(event_label, dict):
+        return ExceptionApproval(
+            valid=False,
+            approver=None,
+            reason="no GitHub label-event attestation on this run",
+        )
+
     current_head = current.get("head")
     current_base = current.get("base")
     current_labels = current.get("labels")
