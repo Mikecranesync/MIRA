@@ -52,19 +52,25 @@ The acceptance suite is **71 tests + Z-1**, not the 74 it claims about itself (t
 was counted as a test; verified). **27 are P0.** They cluster in five areas; four have observed
 failures, one is now tested-and-failing on mobile:
 
+**Three states, not two.** `❌ fails` is what a technician meets today. **⏳ built, unmerged** is
+work that exists on a branch and changes nothing until it lands — it is NOT a pass, and it is
+tracked separately precisely so a green PR is never mistaken for a shipped fix. That distinction is
+the whole reason this register exists: the beta gate was declared MET on deploy truth while the
+equivalent stranger walk failed live at step one.
+
 | Area | P0s | State |
 |---|---|---|
-| Composer is the home screen | A-1, A-2, B-1 | ❌ fails — no composer on home; mobile has no home at all |
+| Composer is the home screen | A-1, A-2, B-1 | ⏳ **built, unmerged** — #3682 + #3694. #3682 alone did not mount the composer on any page; #3694 mounts it on `/feed/` (the route `/` redirects to) with three suggestions from live equipment state. Mobile still has no home. |
 | Speaker identity + rendering | B-2, B-3 | ❌ fails — alignment doesn't encode speaker; raw markdown leaks |
 | Shell is never broken | C-2, I-1 | ❌ fails — `Scan` drops the shell and flips the theme |
-| Answers actionable + attributable | B-8, E-1, E-2 | ❌ fails — no copy control; citation is a UUID; no groundedness signal |
-| Errors humane + non-destructive | G-1…G-5 | ❌ fails — `Chat unavailable (412)`, permanent banner, no retry, message duplicated |
+| Answers actionable + attributable | B-8, E-1, E-2 | ⏳ **built, unmerged** — B-8 on all three answer surfaces (#3694 home, #3696 notebook + asset); E-1 named documents at the producer and defended on the read path (#3695); E-2 on the home composer (#3694), already live on notebook chat. **Caveat: `AssetChat` renders no citations at all** — its `ChatMessage` carries no citations field — so E-1/E-2 remain untouched there and a copy control cannot fix it. |
+| Errors humane + non-destructive | G-1…G-5 | ⏳ **partly built, unmerged** — #3681 renders a 412 as MIRA refusing rather than the app breaking. The permanent banner, retry, and duplicated message are not addressed. |
 
 ### 1c. Gates that exist on paper and are not yet enforced
 
 | Gate | Where | Blocker |
 |---|---|---|
-| **Z-1 stranger walk** | recon | no owner |
+| **Z-1 stranger walk** | recon | ✅ **PASSED on a physical Pixel 9a, 2026-09-08.** Full journey on an account created ten minutes earlier: register on prod → sign in → all tabs render → create notebook → ask with 0 sources → answer labelled *"General guidance — not grounded in this machine's documents"* → upload a PDF from the phone → ask again → grounded answer, 4 citations, real pages (p.7, p.2, p.1, p.5). The ungrounded answer labelled itself instead of fabricating a citation. Evidence: `docs/promo-screenshots/2026-09-08_pixel9a-*`. This one is a genuine pass, not a built-unmerged: it was observed on shipped bytes, hash-verified against the build. |
 | **UX acceptance detectors** | #3669 | wired but never proven to block; needs a deliberately-broken commit |
 | **Golden Conversation release gate** | FLM-UI-4000 charter | needs V2 default; blocked behind the UI queue |
 | **Phase 1 acceptance gate** (10 items) | FLM-UI-4000 charter | lab work, mostly done, not certified |
