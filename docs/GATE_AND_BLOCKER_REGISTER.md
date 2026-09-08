@@ -171,6 +171,35 @@ Two traps this register has hit and you will too:
 | **A guard that failed every clean PR** | The Legacy UI Lifecycle Guard errored on every non-`labeled` run, so a red check meant nothing about the change. | **Fixed and merged (#3689).** Confirmed only post-merge: it runs on `pull_request_target` against `base.sha`, so its own PR could never show the fix working. |
 | **Stacked PRs run almost no CI** | `ci.yml` is `pull_request: branches: [main]`; a PR based on a feature branch runs **2 of main's 6 required contexts**. Green there means *unmeasured*. | Open — see #3652. Fix is: land the parent, retarget the child to `main`, rebase. |
 | **Serialised on a false dependency** | Work was queued behind a PR believed blocked that had in fact merged. | Discharged. The lesson is below. |
+| **Every merge invalidates every other review** | `main`'s protection sets `required_status_checks.strict = true`, so a branch must be up to date before merging. Combined with reviews being required *at the current head*, updating a branch moves its head and staleness the review that had just passed — through no change of content. | **Structural, not fixable here.** It means the queue cannot be batch-reviewed: each PR needs a review at a head that does not exist until the previous one has landed. Mitigations below. |
+
+#### Working a queue under `strict = true`
+
+Discovered 2026-09-08 while merging this set, and it changes how any multi-PR
+queue has to run here. Three mitigations, in order of how much they save:
+
+1. **Hash the PR's own files at both heads.** For an update-branch-only head
+   change, if every file the PR touches is byte-identical between the reviewed
+   head and the new one, the review transfers. State it as hashes, not as an
+   empty filename-overlap: an empty `comm -12` is also what you get when either
+   input list is empty, so it derives the answer from something with two causes.
+   **Assert the artifact, not a set operation that implies it.**
+2. **Update each branch immediately before its review**, not all at once —
+   updating them all just guarantees every head is stale again by the second
+   merge.
+3. **Publish the old and new SHA with every update.** The reviewer should not
+   have to infer which head their last verdict covered; that is the same
+   resolve-an-identifier-from-memory trap as everything else in this document,
+   and it costs one line to remove.
+
+**The limit of mitigation 1, which must be stated per pair rather than assumed:**
+the hash proves *this PR's files did not change*. It does **not** prove the
+document is still *true* given what else landed. Where two PRs are independent
+in meaning, the hash suffices. Where they touch overlapping meaning rather than
+overlapping files, it does not — and no automation decides which case you are
+in. This very PR is the example: its files hashed identical across four
+intervening merges, and it still needed reading, because it *describes the
+queue those merges moved.*
 
 ### The lesson that outlived the table
 
