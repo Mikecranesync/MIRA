@@ -305,6 +305,19 @@ protection change, no label creation, no push, no production route/database/prov
 governance slice is docs/registry/tests/tooling/CI-definition/Claude-workflow files only, all still
 local to this worktree. Next: Task 5 Step 2 (full local verification) -> Step 3 (collision recheck
 + push + draft PR) -> Step 4 (adversarial review gate) -> Step 5 (owner-authorized merge — human only).
+# Hot Cache — 2026-09-07 — Foreman contact contract + fleet reachability facts (via mira-97 crosstalk)
+
+**Foreman is NOT network-reachable — retire any assumption of a network path.** Not Remote Control,
+not Tailscale, not :7899 peers broker, not LAN, not CAO/:9889. Fleet Gateway `message_worker` reaches
+only Fleet Gateway CAO sessions, never Claude Code peers. The ONLY working path: a comment on a
+**draft PR** starting exactly `[PEER→FOREMAN]` (template fields: Session/Node/Mission/Claim/SHA/Ask/
+Evidence); Foreman replies `[FOREMAN→PEER]` on the same PR. GitHub is the ledger; peer-chat bridges
+are not durable. A PR-comment listener wakes on the tags — an **issue-only comment will NOT**.
+Contract: MIRA issue #3648 comment 5577179879; worked example: PR #3669 comment 5577198310.
+Also: Codex is out of usage — Codex-review-gated lanes are STALLED, not slow. Charlie→Alpha verified
+PASS over Tailscale (TS-only; 192.168.1.x cannot route to Alpha's 192.168.4.0/22). Alpha automation
+audited CLEAR of prod-alias ssh writes (#3659 exposure: interactive shells only, no launchd/cron).
+Peer contact: `mira-97` on Charlie (`/Users/charlienode/MIRA`, SendMessage or claude-peers MCP).
 
 ---
 
@@ -332,6 +345,8 @@ Next implementation boundary: Task 5 conversation-part renderers + Ask/Work comp
 mobile focus/Back/overlay behavior, Task 7 runnable disconnected lab, and Task 8 browser/a11y/
 performance/screenshot matrix. CodeGraph is not initialized in this worktree, so current structural
 coverage used direct declarations plus TypeScript/tests; initialize before relying on graph coverage.
+---
+
 
 ---
 
