@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -276,5 +278,46 @@ describe("AssetChat ApprovedContextNotice — a 412 is a refusal, not an outage"
     const html = renderToStaticMarkup(<ApprovedContextNotice refusal={refusal} />);
     expect(html).toContain('role="status"');
     expect(html).not.toContain("#991B1B"); // the error banner's red
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The refusal must not outlive its turn.
+//
+// Peer review of 5cf3d1707 found `setRefusal` was write-once: two call sites,
+// the useState initializer and the 412 branch, and nothing ever set it back to
+// null. So once the gate fired the amber notice was pinned for the life of the
+// mount — sitting under the next SUCCESSFUL answer still saying MIRA cannot
+// answer, surviving "clear chat", and (the mount carries no `key` while
+// messages reload on assetId) following the technician to a different asset.
+//
+// That is the same defect this component was fixed for — state outliving the
+// turn it describes — one layer down.
+//
+// Asserted at source level because the defect is in the container's state
+// lifecycle, which `renderToStaticMarkup` of a presentational component cannot
+// reach. The invariant is structural: `refusal` is cleared everywhere its
+// sibling `error` is.
+// ---------------------------------------------------------------------------
+describe("AssetChat refusal lifecycle", () => {
+  const source = readFileSync(new URL("./AssetChat.tsx", import.meta.url), "utf8");
+
+  it("clears the refusal everywhere it clears the error", () => {
+    const errorClears = source.match(/setError\(null\)/g)?.length ?? 0;
+    const refusalClears = source.match(/setRefusal\(null\)/g)?.length ?? 0;
+    // Positive control: if the file stopped clearing `error` at all, the
+    // equality below would hold at 0 === 0 and prove nothing.
+    expect(errorClears).toBeGreaterThan(1);
+    expect(refusalClears).toBe(errorClears);
+  });
+
+  it("clears it when a new question is sent, so it cannot sit under the answer", () => {
+    const send = source.slice(source.indexOf("const sendMessage"));
+    expect(send.slice(0, 600)).toContain("setRefusal(null)");
+  });
+
+  it("clears it on clear-history, so it cannot survive a wiped thread", () => {
+    const clear = source.slice(source.indexOf("const clearHistory"));
+    expect(clear.slice(0, 400)).toContain("setRefusal(null)");
   });
 });

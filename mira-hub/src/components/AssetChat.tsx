@@ -266,6 +266,7 @@ const [error, setError] = useState<string | null>(null);
     abortRef.current?.abort();
     setMessages([]);
     setError(null);
+    setRefusal(null);
     setStreaming(false);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
@@ -280,6 +281,13 @@ const [error, setError] = useState<string | null>(null);
     if (!text.trim() || streaming) return;
 
     setError(null);
+    // The refusal describes ONE turn and must not outlive it. Without this it
+    // is write-once: it sits under the next successful answer still saying
+    // MIRA cannot answer, survives "clear chat", and — because the mount
+    // carries no `key`, while messages reload on assetId — follows you to a
+    // different asset. That is the same defect this component was fixed for
+    // (state outliving the turn it describes), one layer down.
+    setRefusal(null);
     const userMsg: ChatMessage = { id: uid(), role: "user", content: text.trim() };
     const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "" };
 
