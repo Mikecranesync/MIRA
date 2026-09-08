@@ -107,6 +107,10 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     dispatch={dispatch}
     adapter={adapter}
     hooks={{ onRetry: (turnId) => adapter.note(`onRetry:${turnId}`) }}
+    navigationFooter={<>
+      <button type="button" onClick={() => adapter.note("openSettings")}>Settings</button>
+      <button type="button" onClick={() => adapter.note("openAccount")}>Account · lab technician</button>
+    </>}
   />;
   if (lab.embed) return shell;
 

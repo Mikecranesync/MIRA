@@ -46,6 +46,27 @@ export const PROFILES: Readonly<Record<SurfaceKind, SurfaceProfile>> = Object.fr
   }),
 });
 
+/**
+ * The lifecycle of a turn, a tool call, or a run.
+ *
+ * `safety_stop` is a FIRST-CLASS member, not a flavour of `stopped`.
+ *
+ * The Hub's enum (ADR-0040) has carried a safety-stop state since it shipped;
+ * this union did not, so a safety turn arriving from a Hub surface had no
+ * representation here at all and had to be squeezed into a neighbouring
+ * lifecycle by whichever adapter met it first. That is the one substitution
+ * that must never be made silently: `stopped` means a person interrupted the
+ * answer, `failed` means it broke, and `safety_stop` means MIRA REFUSED on
+ * safety grounds. A renderer that cannot tell them apart will eventually show
+ * a technician "Stopped" where the truthful word was "Safety stop", and the
+ * difference is whether they understand that the machine, not the network, is
+ * the reason there is no answer.
+ *
+ * Adding the member is deliberately its own contract change rather than a
+ * clause inside a feature PR: a safety state must be defined where the type
+ * lives, with exhaustive parsing and rendering, and never inferred at a render
+ * gate from an adjacent lifecycle.
+ */
 export type Lifecycle =
   | "accepted"
   | "queued"
@@ -55,7 +76,90 @@ export type Lifecycle =
   | "completed"
   | "stopped"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "safety_stop";
+
+/**
+ * Every member, in one array, as the SINGLE source of truth for parsing.
+ *
+ * `satisfies readonly Lifecycle[]` proves every ELEMENT is a `Lifecycle`. It
+ * does NOT prove every `Lifecycle` is present — dropping a member leaves the
+ * array still satisfying the constraint. That distinction matters here more
+ * than almost anywhere: a member in the union but missing from this array
+ * makes `parseLifecycle` return `null` for a LEGITIMATE state, which is this
+ * file's own thesis turned against it — `safety_stop` again, a real lifecycle
+ * the boundary cannot represent.
+ *
+ * The exhaustiveness check below is what actually closes that. See it for why
+ * a `Record<Lifecycle, …>` in a consuming package is not a substitute.
+ */
+export const LIFECYCLES = [
+  "accepted",
+  "queued",
+  "running",
+  "waiting",
+  "stopping",
+  "completed",
+  "stopped",
+  "failed",
+  "cancelled",
+  "safety_stop",
+] as const satisfies readonly Lifecycle[];
+
+/**
+ * Compile-time exhaustiveness: every `Lifecycle` must appear in `LIFECYCLES`.
+ *
+ * `satisfies` above covers one direction (elements are lifecycles); this
+ * covers the other (lifecycles are elements). Both are needed, and only this
+ * one fails in the package that OWNS the union.
+ *
+ * Peer review of 746b0c3ab found the original claim was false. Adding
+ * `| "paused"` to the union without adding it to `LIFECYCLES` produced exactly
+ * ONE tsc error — at `packages/factorylm-ui/src/parts.tsx`, the
+ * `Record<Lifecycle, string>` introduced by this same PR — and none from this
+ * file. So the contract was being defended by a different mechanism in a
+ * different package, which means (a) anything consuming
+ * `factorylm-interaction` WITHOUT `factorylm-ui` got nothing, and (b) it was
+ * one refactor away from gone: `lifecycleLabel` was a `charAt(0).toUpperCase()`
+ * expression until this PR, and restoring that shape would have let
+ * `LIFECYCLES` drift in silence.
+ *
+ * The tuple wrapper is deliberate. A bare `Exclude<…> extends never` is a
+ * distributive conditional, which evaluates to `never` for an empty union and
+ * makes the check unreliable; `[X] extends [never]` is the non-distributive
+ * form and is the one that actually holds.
+ */
+const _LIFECYCLES_ARE_EXHAUSTIVE: [Exclude<Lifecycle, (typeof LIFECYCLES)[number]>] extends [never]
+  ? true
+  : never = true;
+void _LIFECYCLES_ARE_EXHAUSTIVE;
+
+/** Fail-closed boundary parse. Unknown input is NOT coerced to a neighbour. */
+export function isLifecycle(value: unknown): value is Lifecycle {
+  return typeof value === "string" && (LIFECYCLES as readonly string[]).includes(value);
+}
+
+/**
+ * Parse a lifecycle from untrusted input.
+ *
+ * Returns `null` rather than a fallback. A fallback here would be exactly the
+ * defect this contract exists to prevent: an unrecognised safety state
+ * quietly becoming `completed` or `stopped`, which reads to a technician as
+ * "there is an answer" or "you stopped it".
+ */
+export function parseLifecycle(value: unknown): Lifecycle | null {
+  return isLifecycle(value) ? value : null;
+}
+
+/**
+ * Whether a lifecycle means MIRA declined on safety grounds.
+ *
+ * A predicate rather than an equality check at each call site, so that if a
+ * second safety-bearing state is ever added, every consumer picks it up.
+ */
+export function isSafetyStop(lifecycle: Lifecycle): boolean {
+  return lifecycle === "safety_stop";
+}
 
 export interface Attachment {
   readonly id: string;

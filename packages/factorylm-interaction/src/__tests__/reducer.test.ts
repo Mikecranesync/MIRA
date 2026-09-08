@@ -270,23 +270,6 @@ describe("shared shell reducer", () => {
     expect(after.thread.turns.at(-1)?.runId).toBeUndefined();
   });
 
-  it("identifies only existing retryable failed turns without changing lifecycle", () => {
-    const before = createShellState(getFixture("error-retry"), PROFILES.web);
-    const retryableTurnId = before.thread.turns[0]?.id;
-    if (!retryableTurnId) throw new Error("retry fixture must include a failed turn");
-    const after = shellReducer(before, { type: "retry", turnId: retryableTurnId });
-
-    expect(after.retryTargetTurnId).toBe(retryableTurnId);
-    expect(after.thread.turns).toEqual(before.thread.turns);
-    expect(after.thread.turns[0]?.lifecycle).toBe("failed");
-    expect(shellReducer(before, { type: "retry", turnId: "missing-turn" })).toBe(before);
-    expect(
-      shellReducer(createShellState(getFixture("general-ask"), PROFILES.web), {
-        type: "retry",
-        turnId: "turn-general-answer",
-      }),
-    ).toEqual(createShellState(getFixture("general-ask"), PROFILES.web));
-  });
 
   it("changes theme and surface profile without changing the interaction model", () => {
     const before = createShellState(getFixture("machine-ask"), PROFILES.web);

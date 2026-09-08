@@ -1,6 +1,12 @@
 # Staging VPS Runbook
 
-**Created:** 2026-05-19 — replaces the abandoned Coolify approach.
+**Created:** 2026-05-19. **Authorization model updated:** 2026-09-07.
+
+> **Current rule:** staging deploys are manual, protected, and bound to the
+> exact current `main` SHA. Push-triggered deploys, feature-ref deploys, direct
+> root SSH bootstrap, and caller-selected moving refs are retired. The
+> `staging-deploy` GitHub environment and its scoped non-root identity must be
+> provisioned before this workflow is dispatched.
 
 Lightweight staging environment **co-tenanted on the production VPS**
 (165.245.138.91). Completely isolated from production via separate Docker
@@ -13,8 +19,8 @@ network, container names, volumes, and host ports.
   graph with a smaller subset of services and offset ports.
 - **Separate NeonDB branch** — `ep-polished-hall-ahcqtcxe-pooler`, has the
   garage namespace already seeded.
-- **No bots in staging** — Slack/Telegram tokens are shared with prod and a
-  second poller would conflict. Staging is API + Hub only for now.
+- **Dedicated Telegram bot only** — staging uses `TELEGRAM_BOT_TOKEN_STG` and
+  never the production poller token. Slack remains intentionally absent.
 
 ## What runs in staging
 
@@ -30,7 +36,7 @@ network, container names, volumes, and host ports.
 
 **Not in staging** (intentionally): mira-core (Open WebUI), mira-ingest,
 mira-docling (1.7GB RAM), mira-sidecar, mira-bridge, mira-relay,
-mira-bot-telegram, mira-bot-slack, mira-cmms-sync. Hub will render KB and
+mira-bot-slack, mira-cmms-sync. Hub will render KB and
 proposal data from the staging NeonDB branch — no LLM-backed ingest is
 required for Phase 1.
 
@@ -62,50 +68,50 @@ Both deferred until the Phase 1 preview is working end-to-end.
 7. The deploy workflow ends with a guard that fails loudly if the count of
    running production `mira-*` containers drops below 3.
 
-## First-time deploy (manual)
+## First-time provisioning (maintainer-owned)
 
-Until the GitHub Action is approved end-to-end, the first deploy is manual:
+Do not bootstrap staging through an ad-hoc root shell. A maintainer must first:
 
-```bash
-ssh root@165.245.138.91
-# Clone into a separate path so production isn't touched
-git clone https://github.com/Mikecranesync/MIRA.git /opt/mira-staging
-cd /opt/mira-staging
-mkdir -p data data/sessions data/agent-runs
+1. Create and protect the GitHub environment `staging-deploy`.
+2. Set its `STAGING_DEPLOY_USER` variable to a scoped non-root VPS account.
+3. Set its dedicated `STAGING_DEPLOY_SSH_KEY` secret.
+4. Give that account only the access needed for `/opt/mira-staging`, Docker,
+   Git, and the `factorylm/stg` Doppler configuration.
+5. Verify the committed `deployment/known_hosts.factorylm-prod` identity.
 
-# Verify Doppler can read staging config
-doppler run --project factorylm --config stg -- env | grep NEON_DATABASE_URL
-
-# Build + start
-DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
-  docker compose -f docker-compose.staging-vps.yml build
-doppler run --project factorylm --config stg -- \
-  docker compose -f docker-compose.staging-vps.yml up -d
-
-# Verify
-curl -s http://127.0.0.1:4101/api/health
-curl -s http://127.0.0.1:4099/health
-docker ps --filter "name=^stg-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-```
+The workflow creates the staging checkout if it is absent. Until the protected
+environment and scoped account exist, staging deployment is intentionally on
+HOLD; do not fall back to the retired root procedure.
 
 ## Routine deploy (GitHub Action)
 
-```
-gh workflow run deploy-staging.yml
+Resolve the exact current `main` SHA, then dispatch the workflow itself from
+`main` with both immutable target fields:
+
+```bash
+MAIN_SHA="$(gh api repos/Mikecranesync/MIRA/git/ref/heads/main --jq '.object.sha')"
+gh workflow run deploy-staging.yml --ref main \
+  -f target_ref=refs/heads/main \
+  -f target_sha="$MAIN_SHA"
 ```
 
-Or push to `staging` / `release/*` to auto-deploy.
+If `main` moves between authorization and credential access, the run fails and
+must be dispatched again. There is no push trigger and no feature-branch path.
 
 To rebuild a single service:
 
-```
-gh workflow run deploy-staging.yml -f services="mira-hub"
+```bash
+gh workflow run deploy-staging.yml --ref main \
+  -f target_ref=refs/heads/main -f target_sha="$MAIN_SHA" \
+  -f services="mira-hub"
 ```
 
 To wipe the staging Atlas DB volumes (e.g., to re-seed from scratch):
 
-```
-gh workflow run deploy-staging.yml -f reset_volumes=true
+```bash
+gh workflow run deploy-staging.yml --ref main \
+  -f target_ref=refs/heads/main -f target_sha="$MAIN_SHA" \
+  -f reset_volumes=true
 ```
 
 ## Doppler `factorylm/stg` — required keys

@@ -1,6 +1,8 @@
-import type { ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
-import type { Dispatch, ReactNode } from "react";
-import { ProjectTree } from "./ProjectTree";
+import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factorylm/interaction";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
+import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, MachineIcon, RunIcon, SearchIcon } from "./icons";
+import { ProjectTree, openObjectId } from "./ProjectTree";
+import type { HostHooks } from "./parts";
 
 interface SidebarProps {
   readonly state: ShellState;
@@ -8,22 +10,165 @@ interface SidebarProps {
   readonly onOpenItem?: (item: ProjectItem) => void;
   /** Host-owned controls at the bottom of navigation (account, updates, sign out). */
   readonly footer?: ReactNode;
+  /** The drawer is closed on a layered (mobile) profile: out of the tab order immediately. */
+  readonly inert?: boolean;
+  readonly hooks?: HostHooks;
 }
 
-export function Sidebar({ state, dispatch, onOpenItem, footer }: SidebarProps) {
-  return <aside className="fl-shell__sidebar" aria-label="FactoryLM navigation">
-    <div className="fl-shell__brand">FactoryLM</div>
-    <button
-      className="fl-shell__drawer-close"
-      type="button"
-      onClick={() => dispatch({ type: "set-navigation-visible", visible: false })}
-    >
-      Close navigation
-    </button>
-    <button className="fl-shell__new-chat" type="button" disabled title="New threads are not available yet">
-      New chat
-    </button>
-    <ProjectTree projects={state.projects} state={state} dispatch={dispatch} onOpenItem={onOpenItem} />
+/** Threads and runs anywhere in the workspace, in workspace order (the fixture/host order is the recency order). */
+function recentItems(state: ShellState, limit = 5): ProjectItem[] {
+  const out: ProjectItem[] = [];
+  const walk = (nodes: readonly ProjectNode[]) => {
+    for (const node of nodes) {
+      if (node.kind === "folder") walk(node.children);
+      else if (node.kind === "thread" || node.kind === "run") out.push(node);
+    }
+  };
+  for (const project of state.projects) walk(project.children);
+  return out.slice(0, limit);
+}
+
+/**
+ * Exactly ONE row in the whole navigation is aria-current — the tree row
+ * `currentTreeRowId` picks. Recent rows are references to that same object:
+ * the one pointing at the open object carries `data-active` (a quiet weight),
+ * never a second selection.
+ *
+ * The pinned machine carries `data-context`, NOT `data-active`. Machine context
+ * and open-object selection are different facts — a run is open AND it is being
+ * run on a machine, both at once — and overloading one attribute for both meant
+ * Work+run marked two objects active at the same time (Codex P1 on #3651, second
+ * pass). `data-active` now means exactly one thing: "this reference points at the
+ * open object", so a whole-navigation assertion can hold it to exactly one.
+ *
+ * Left navigation, in the order the plan fixes for every surface
+ * (part-2 §6.1): identity → New chat → Search → Recent → Projects →
+ * pinned machines → host footer (settings / user menu). On mobile the same
+ * markup is the drawer; nothing is reordered or renamed per surface.
+ */
+/**
+ * The ONE open object for reference lists — the same object the tree marks current
+ * (`openObjectId`). Work with a run selects the run exclusively (its owning thread is
+ * not active); Work without a run and Ask select the thread. Codex P1 on #3651: the
+ * previous version let every non-run row fall through to the thread, so run and
+ * thread were both active at once.
+ */
+function isOpenItem(state: ShellState, itemId: string): boolean {
+  return openObjectId(state) === itemId;
+}
+
+export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: SidebarProps) {
+  const onNewChat = hooks?.onNewChat;
+  const [query, setQuery] = useState("");
+  const filter = query.trim() || undefined;
+  const recent = recentItems(state).filter((item) => !filter || item.label.toLowerCase().includes(filter.toLowerCase()));
+  const machines = state.machines.filter((machine) => !filter || machine.name.toLowerCase().includes(filter.toLowerCase()));
+
+  // `inert` removes the closed drawer from focus and the accessibility tree at once;
+  // the stylesheet's visibility flip is the belt for the slide animation. Toggled on
+  // the node, not as a JSX prop: the package promises React >=18 <20, React 18's types
+  // don't know `inert`, and React 19 treats an empty-string value as false.
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    root.current?.toggleAttribute("inert", Boolean(inert));
+  }, [inert]);
+  return <aside ref={root} className="fl-shell__sidebar" aria-label="FactoryLM navigation">
+    <div className="fl-shell__nav-head">
+      <div className="fl-shell__brand">FactoryLM</div>
+      <button
+        className="fl-shell__drawer-close"
+        type="button"
+        aria-label="Close navigation"
+        onClick={() => dispatch({ type: "set-navigation-visible", visible: false })}
+      >
+        <CloseIcon />
+      </button>
+    </div>
+
+    {typeof onNewChat === "function"
+      ? <button
+        className="fl-shell__new-chat"
+        type="button"
+        onClick={() => { onNewChat(); dispatch({ type: "set-navigation-visible", visible: false }); }}
+      >
+        <ComposeIcon className="fl-shell__nav-icon" />New chat
+      </button>
+      : <>
+        {/* No host to create a thread (the disconnected lab): honestly disabled, with the reason
+            linked, instead of a dim input or a button that does nothing. */}
+        <button className="fl-shell__new-chat" type="button" disabled aria-describedby="fl-new-chat-reason">
+          <ComposeIcon className="fl-shell__nav-icon" />New chat
+        </button>
+        <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
+      </>}
+
+    <label className="fl-shell__search">
+      <SearchIcon className="fl-shell__nav-icon" />
+      <input
+        type="search"
+        aria-label="Search navigation"
+        placeholder="Search"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+      />
+    </label>
+
+    <div className="fl-shell__nav-scroll">
+      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-recent">
+        <h2 id="fl-nav-recent" className="fl-shell__section-title"><ClockIcon className="fl-shell__nav-icon" />Recent</h2>
+        {recent.length === 0
+          ? <p className="fl-shell__empty">{filter ? "No matches." : "No conversations yet."}</p>
+          : <ul className="fl-tree fl-tree--flat" aria-label="Recent conversations">
+            {recent.map((item) => onOpenItem
+              ? <li key={item.id}>
+                <button
+                  type="button"
+                  className="fl-tree__row fl-tree__item-button"
+                  data-kind={item.kind}
+                  data-recent-id={item.id}
+                  data-active={isOpenItem(state, item.id) ? "true" : undefined}
+                  onClick={() => { onOpenItem(item); dispatch({ type: "set-navigation-visible", visible: false }); }}
+                >
+                  <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
+                  <span className="fl-tree__label">{item.label}</span>
+                </button>
+              </li>
+              : <li key={item.id} className="fl-tree__item fl-tree__row" data-kind={item.kind} data-recent-id={item.id} data-active={isOpenItem(state, item.id) ? "true" : undefined}>
+                <span className="fl-tree__icon" aria-hidden="true">{item.kind === "run" ? <RunIcon /> : <ChatIcon />}</span>
+                <span className="fl-tree__label">{item.label}</span>
+              </li>)}
+          </ul>}
+      </section>
+
+      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-projects">
+        <h2 id="fl-nav-projects" className="fl-shell__section-title">Projects</h2>
+        <ProjectTree projects={state.projects} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} />
+      </section>
+
+      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-machines">
+        <h2 id="fl-nav-machines" className="fl-shell__section-title">Machines</h2>
+        {machines.length === 0
+          ? <p className="fl-shell__empty">{filter ? "No matches." : "No machines in this workspace."}</p>
+          : <ul className="fl-tree fl-tree--flat" aria-label="Machines">
+            {machines.map((machine) => <li key={machine.id}>
+              <button
+                type="button"
+                className="fl-tree__row fl-tree__machine"
+                data-kind="machine"
+                data-pinned-machine-id={machine.id}
+                data-machine-status={machine.status}
+                data-context={state.activeContext.machineId === machine.id ? "true" : undefined}
+                onClick={() => { dispatch({ type: "select-machine", machineId: machine.id }); dispatch({ type: "set-navigation-visible", visible: false }); }}
+              >
+                <span className="fl-tree__icon" aria-hidden="true"><MachineIcon /></span>
+                <span className="fl-tree__label">{machine.name}</span>
+                <span className="fl-tree__status" data-status={machine.status} aria-label={machine.status} />
+              </button>
+            </li>)}
+          </ul>}
+      </section>
+    </div>
+
     {footer ? <div className="fl-shell__nav-footer">{footer}</div> : null}
   </aside>;
 }

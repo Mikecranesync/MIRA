@@ -57,6 +57,7 @@ export interface UnifiedChatProps {
   readonly busy: boolean;
   readonly canStop: boolean;
   readonly canRetry: boolean;
+  readonly chatError: string | null;
   readonly handlers: ChatV2Handlers;
   readonly meta: Omit<UnifiedNotebookMeta, "capturedAt">;
   readonly host?: UnifiedShellHost;
@@ -73,7 +74,7 @@ function initialState(messages: ReturnType<typeof threadMessages>, meta: Unified
   return shellReducer(created, { type: "set-navigation-visible", visible: false });
 }
 
-export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry, handlers, meta, host }: UnifiedChatProps) {
+export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry, chatError, handlers, meta, host }: UnifiedChatProps) {
   const capturedAt = useRef(new Date().toISOString());
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
@@ -122,6 +123,14 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
   };
 
   return <div className="unified-host" data-testid="unified-chat">
+    {chatError != null && (
+      <div className="fl-error" role="alert">
+        <p>{chatError}</p>
+        {canRetry && handlers.onRetry ? (
+          <button type="button" onClick={() => handlers.onRetry?.()}>Retry</button>
+        ) : null}
+      </div>
+    )}
     <FactoryLMShell
       state={state}
       dispatch={dispatch}

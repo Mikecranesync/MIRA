@@ -98,6 +98,27 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
     }
   });
 
+  test("the current inert item row is visibly selected (computed style), before and after a search", async ({ page }) => {
+    await page.goto("/?surface=mobile&theme=light&scenario=work-run");
+    const style = async () => page.evaluate(() => {
+      const li = document.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"] li[aria-current="page"]');
+      if (!li) return null;
+      const cs = getComputedStyle(li);
+      return { bg: cs.backgroundColor, weight: cs.fontWeight, color: cs.color, label: li.querySelector(".fl-tree__label")?.textContent };
+    });
+    const before = await style();
+    expect(before).not.toBeNull();
+    expect(before!.label).toBe("F30001 investigation");
+    expect(before!.bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(Number(before!.weight)).toBeGreaterThanOrEqual(600);
+    expect(before!.color).not.toBe("rgb(107, 114, 128)");
+    await page.getByRole("searchbox", { name: "Search navigation" }).fill("brake");
+    const after = await style();
+    expect(after).not.toBeNull();
+    expect(after!.bg).toBe(before!.bg);
+    expect(after!.weight).toBe(before!.weight);
+  });
+
   test("every visible control is at least 44 by 44 CSS pixels", async ({ page }) => {
     for (const scenario of ["machine-ask", "work-run", "attachments"]) {
       await page.goto(`/?surface=mobile&theme=light&scenario=${scenario}`);

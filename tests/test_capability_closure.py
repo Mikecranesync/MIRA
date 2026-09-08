@@ -76,6 +76,18 @@ def test_the_committed_registry_has_no_unacknowledged_findings():
     assert not blocking, "unacknowledged findings:\n" + "\n".join(str(f) for f in blocking)
 
 
+def test_unified_ui_shell_records_the_merged_mobile_canary_truth():
+    cap = next(c for c in _registry()["capabilities"] if c["id"] == "unified_ui_shell")
+
+    assert cap["state"] == "canary_enabled"
+    assert cap["environments"]["canary"] == "1"
+    assert any("mira-mobile" in consumer for consumer in cap["consumers"])
+    assert "factorylm-ui-lab.yml:shared-ui" in cap["ci_jobs"]
+    assert "mobile-unit-tests" in cap["ci_jobs"]
+    assert "Shared UI contract (bun 1.4.0)" in cap["required_checks"]
+    assert cap["required_checks_observed_on"] == "2026-09-06"
+
+
 def test_every_gate_flag_in_code_is_accounted_for():
     """A new flag cannot stay anonymous — the whole inventory decays otherwise."""
     missing = cc.discover_unregistered(_registry(), _ROOT)
@@ -230,6 +242,37 @@ def test_claiming_a_required_check_that_does_not_gate_fails():
     cap = _cap(required_checks=["visible-but-ungated"])
     findings = cc.check_ci_jobs_exist(cap, {"visible-but-ungated"}, gated={"other"})
     assert "required_check_false" in _rules(findings)
+
+
+def test_separate_workflow_job_and_observed_required_check_are_validated(tmp_path):
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "factorylm-ui-lab.yml").write_text(
+        "jobs:\n  shared-ui:\n    name: Shared UI contract (bun 1.4.0)\n",
+        encoding="utf-8",
+    )
+    jobs, check_names = cc.workflow_job_inventory(tmp_path)
+    cap = _cap(
+        ci_jobs=["factorylm-ui-lab.yml:shared-ui"],
+        required_checks=["Shared UI contract (bun 1.4.0)"],
+        required_checks_observed_on="2026-09-06",
+    )
+
+    assert "factorylm-ui-lab.yml:shared-ui" in jobs
+    assert "Shared UI contract (bun 1.4.0)" in check_names
+    assert cc.check_ci_jobs_exist(cap, jobs, set(), check_names) == []
+
+
+def test_external_required_check_needs_a_dated_live_observation():
+    cap = _cap(required_checks=["Shared UI contract (bun 1.4.0)"])
+    findings = cc.check_ci_jobs_exist(
+        cap,
+        jobs=set(),
+        gated=set(),
+        workflow_check_names={"Shared UI contract (bun 1.4.0)"},
+    )
+
+    assert "required_check_observation_missing" in _rules(findings)
 
 
 def test_missing_evidence_path_fails():

@@ -1,5 +1,6 @@
 // Tiny shared screen primitives — loading / empty / typed-error / retry.
 import { ApiError } from "../api/client";
+import { apiErrorCopy } from "../lib/api-error-copy";
 
 export function Loading({ what }: { what: string }) {
   return <div className="empty">Loading {what}…</div>;
@@ -16,8 +17,7 @@ export function ErrorState({
   error: unknown;
   onRetry?: () => void;
 }) {
-  const msg =
-    error instanceof ApiError ? error.userMessage : "Something went wrong.";
+  const msg = error instanceof ApiError ? apiErrorCopy(error) : "Something went wrong.";
   const forbidden = error instanceof ApiError && error.kind === "forbidden";
   return (
     <div className="empty">
