@@ -1,12 +1,13 @@
 /**
  * Cascade LLM client (non-streaming) for internal classifiers and extractors.
  *
- * Mirrors the Groq → Cerebras → Gemini cascade used by /api/assets/[id]/chat
- * but returns the full completion as a string. Designed for short structured
- * outputs (JSON-mode classifications), not long-form chat.
+ * Mirrors the Groq → Cerebras → Together cascade (root CLAUDE.md Hard
+ * Constraint #2) but returns the full completion as a string. Designed for
+ * short structured outputs (JSON-mode classifications), not long-form chat.
  *
- * Cluster law (CLUSTER.md / global memory): no Anthropic, no LangChain,
- * always cascade.
+ * Cluster law (CLUSTER.md / global memory): no Anthropic, no Gemini, no
+ * LangChain, always cascade. Gemini was removed 2026-09-08 (#3688) — it is a
+ * PRD §4 violation, never reintroduce.
  */
 
 interface CascadeProvider {
@@ -33,10 +34,13 @@ function defaultProviders(): CascadeProvider[] {
       model: process.env.CEREBRAS_CLASSIFIER_MODEL ?? process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     },
     {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_CLASSIFIER_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+      name: "Together",
+      url: "https://api.together.xyz/v1/chat/completions",
+      key: process.env.TOGETHERAI_API_KEY,
+      model:
+        process.env.TOGETHERAI_CLASSIFIER_MODEL ??
+        process.env.TOGETHERAI_MODEL ??
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     },
   ];
 }
