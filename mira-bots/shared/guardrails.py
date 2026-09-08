@@ -817,6 +817,7 @@ _INSTRUCTIONAL_PHRASES = (
     "first steps to install",
     "how do i wire",
     "how to wire",
+    "how do i set",
     "how to set up",
     "how do i set up",
     "how to commission",
@@ -1068,7 +1069,10 @@ def classify_intent(message: str) -> str:
 
     # Procedural how-to questions — checked BEFORE documentation so phrases like
     # "how to install" route to answer_question (LLM direct) not a doc crawl.
-    if any(phrase in msg for phrase in _INSTRUCTIONAL_PHRASES):
+    if any(
+        re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", msg)
+        for phrase in _INSTRUCTIONAL_PHRASES
+    ):
         return "instructional"
 
     # Documentation retrieval — checked BEFORE industrial so "manual" in
