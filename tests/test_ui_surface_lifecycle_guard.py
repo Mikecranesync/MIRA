@@ -3760,7 +3760,7 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     assert 'cmdline-tools-version": "12266719' in build_text
     assert "build-tools;35.0.0" in build_text
     assert "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172" in build_text
-    assert "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb" in build_text
+    assert "ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7c" in build_text
 
     checkout = next(
         step for step in build["steps"] if step.get("uses", "").startswith("actions/checkout@")
@@ -3774,9 +3774,34 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
         REPO_ROOT / "mira-mobile" / "android" / "gradle" / "wrapper" / "gradle-wrapper.properties"
     ).read_text(encoding="utf-8")
     expected_distribution_hash = (
-        "distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb"
+        "distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7c"
     )
     assert wrapper.splitlines().count(expected_distribution_hash) == 1
+
+    # SHAPE, not just the literal. The literal above is what let a MALFORMED
+    # value be pinned for as long as it was: the committed hash carried a 65th
+    # character (`…4911d7cb`), the assertion was written to match it, and every
+    # copy agreed with every other copy while none of them was a SHA-256.
+    #
+    # A literal assertion can only ever say "this matches what I was told to
+    # expect". It cannot say "this is a well-formed hash", which is the property
+    # that was actually violated — so the test passed for months while the
+    # wrapper aborted every cold build with "Your Gradle distribution may have
+    # been tampered with".
+    #
+    # Checked here rather than only against services.gradle.org, because an
+    # offline test cannot fetch — but length and alphabet are decidable locally
+    # and are exactly what went wrong.
+    committed_hash = expected_distribution_hash.split("=", 1)[1]
+    assert len(committed_hash) == 64, (
+        f"SHA-256 is 64 hex characters; the committed value is {len(committed_hash)}. "
+        "A 65th character makes the wrapper abort with a tamper warning on every "
+        "cold build, and reads as supply-chain compromise rather than a typo."
+    )
+    assert re.fullmatch(r"[0-9a-f]{64}", committed_hash), (
+        "the committed Gradle distribution hash is not lowercase hex"
+    )
+
     wrapper_step = next(
         step for step in build["steps"] if step.get("name") == "Verify the pinned Gradle wrapper"
     )

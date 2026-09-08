@@ -99,7 +99,7 @@ jobs:
           WRAPPER_PROPERTIES=gradle/wrapper/gradle-wrapper.properties
           EXPECTED_DISTRIBUTION='distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-all.zip'
           [ "$(grep -cFx "$EXPECTED_DISTRIBUTION" "$WRAPPER_PROPERTIES")" -eq 1 ]
-          SHA_LINE='distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7cb'
+          SHA_LINE='distributionSha256Sum=ed1a8d686605fd7c23bdf62c7fc7add1c5b23b2bbc3721e661934ef4a4911d7c'
           [ "$(grep -cFx "$SHA_LINE" "$WRAPPER_PROPERTIES")" -eq 1 ] || {
             echo "::error::Gradle distribution hash must be committed exactly once"
             exit 1
