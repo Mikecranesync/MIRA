@@ -10,6 +10,7 @@
  */
 import { ApiError } from "../api/client";
 import type { Asset, AssetSelectionMethod, Notebook } from "../api/resources";
+import { apiErrorCopy } from "./api-error-copy";
 
 export type ScanOutcome =
   /** Resolved all the way: open the machine's notebook. The point of scanning. */
@@ -32,7 +33,7 @@ const FALLBACK_NOTEBOOK = "Could not open a notebook for this machine.";
 /** A server message is preferred over ours: the server knows WHY. */
 export function messageFrom(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
-    const m = err.userMessage;
+    const m = apiErrorCopy(err, fallback);
     // Never surface a bare discriminator: the mobile error layer passes
     // `data.error` through verbatim, so a token would reach the technician as
     // the literal string "asset_not_found".

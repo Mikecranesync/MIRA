@@ -13,3 +13,27 @@
 .unified-root .fl-shell__eyebrow { display: none; }
 .unified-root > .nb-screen, .unified-root .unified-host { flex: 1 1 auto; min-block-size: 0; }
 .unified-root__empty { padding: var(--fl-workspace-space-6); color: var(--fl-workspace-muted); }
+
+/* Canonical About & Updates route. It uses the shared workspace tokens and
+   card vocabulary without reaching back into the frozen classic screen. */
+.unified-updates { overflow-y: auto; background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); }
+.unified-updates__header { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
+.unified-updates__header h1, .unified-updates__content h2 { margin: 0; }
+.unified-updates__header h1 { font-size: var(--fl-workspace-fs-title); line-height: 1.2; }
+.unified-updates__content { inline-size: min(100%, 44rem); margin-inline: auto; display: grid; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); padding-block-end: calc(var(--fl-workspace-space-6) + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+.unified-updates__content h2 { margin-block: var(--fl-workspace-space-1) var(--fl-workspace-space-3); font-size: var(--fl-workspace-fs-body); }
+.unified-updates button { min-block-size: 2.75rem; border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; font-weight: 650; }
+.unified-updates button:disabled { cursor: not-allowed; opacity: 0.55; }
+.unified-updates button:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.unified-updates__back { flex: 0 0 auto; min-block-size: 2.5rem; }
+.unified-updates__actions { flex-wrap: wrap; }
+.unified-updates__primary { border-color: var(--fl-workspace-accent); background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); }
+.unified-updates__result { margin: var(--fl-workspace-space-3) 0 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
+.unified-updates__ready { display: grid; gap: var(--fl-workspace-space-3); margin-block-start: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-ok-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-ok-tint); }
+.unified-updates__ready p { margin: var(--fl-workspace-space-1) 0 0; }
+
+@media (max-width: 30rem) {
+  .unified-updates__header, .unified-updates__content { padding-inline: var(--fl-workspace-space-3); }
+  .unified-updates__actions { align-items: stretch; flex-direction: column; }
+  .unified-updates__actions button { inline-size: 100%; }
+}

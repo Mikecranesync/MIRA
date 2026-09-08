@@ -5,6 +5,9 @@ import { describe, it, expect } from "vitest";
 import { extractAssetTag } from "../tags";
 import { parseChatSse } from "../sse";
 import { ApiError, splitSetCookie } from "../../api/client";
+import { apiErrorCopy } from "../api-error-copy";
+import { signInFailureCopy } from "../resource-copy";
+import { signOutSyncInProgressCopy, signOutWarningCopy } from "../sign-out-copy";
 import { TABS, visibleTabs, can } from "../../nav";
 
 describe("extractAssetTag (Hub scan-target semantics + trust filter)", () => {
@@ -47,19 +50,51 @@ describe("parseChatSse", () => {
   });
 });
 
-describe("ApiError.userMessage", () => {
+describe("apiErrorCopy", () => {
   // #3442: a 403 whose server error is source_not_in_notebook is a
   // scope-staleness condition (a source was replaced under the open client),
   // NOT a permissions problem — the generic role copy misdirects the tech.
   it("names scope staleness for source_not_in_notebook, not roles", () => {
     const err = new ApiError("forbidden", 403, "source_not_in_notebook");
-    expect(err.userMessage).toBe(
+    expect(apiErrorCopy(err)).toBe(
       "A source in this chat was updated — reopen the notebook and ask again.",
     );
   });
   it("keeps the generic role copy for every other 403", () => {
     const err = new ApiError("forbidden", 403, "HTTP 403");
-    expect(err.userMessage).toBe("Your role doesn't allow this action.");
+    expect(apiErrorCopy(err)).toBe("Your role doesn't allow this action.");
+  });
+  it("never leaks a generic Error message into presentation", () => {
+    expect(apiErrorCopy(new Error("network (0): raw transport detail"), "Upload failed.")).toBe(
+      "Upload failed.",
+    );
+  });
+  it("never renders a bare server discriminator as technician-facing copy", () => {
+    const err = new ApiError("client", 413, "image_too_large");
+    expect(apiErrorCopy(err, "The photo didn't upload — try again.")).toBe(
+      "The photo didn't upload — try again.",
+    );
+  });
+  it("never renders a generated HTTP status as technician-facing copy", () => {
+    const err = new ApiError("client", 422, "HTTP 422");
+    expect(apiErrorCopy(err, "Couldn't save the note — try again.")).toBe(
+      "Couldn't save the note — try again.",
+    );
+  });
+});
+
+describe("structured auth and sign-out copy", () => {
+  it("distinguishes connectivity and service failures from invalid credentials", () => {
+    expect(signInFailureCopy("network")).toContain("Network");
+    expect(signInFailureCopy("server")).toContain("unavailable");
+    expect(signInFailureCopy("invalid_credentials")).toBe("invalid email or password");
+  });
+
+  it("warns about both queued and definitively rejected work before purge", () => {
+    expect(signOutWarningCopy(0, 0)).toBeNull();
+    expect(signOutWarningCopy(3, 2)).toContain("3 work orders");
+    expect(signOutWarningCopy(1, 1)).toContain("1 work order");
+    expect(signOutSyncInProgressCopy()).toContain("still syncing");
   });
 });
 

@@ -279,7 +279,7 @@ export function ChatV2({
   draft: string;
   onDraftChange: (text: string) => void;
   scopeCount: number;
-  chatError: unknown;
+  chatError: string | null;
   canRetry: boolean;
   handlers: ChatV2Handlers;
 }) {
@@ -326,13 +326,14 @@ export function ChatV2({
               Searching your docs…
             </div>
           )}
-          {chatError != null && canRetry && (
-            <div className="chip-row">
-              <button className="chip" onClick={() => handlers.onRetry?.()}>
-                Retry
-              </button>
-            </div>
-          )}
+          {chatError != null && <div className="error" role="alert">{chatError}</div>}
+          {canRetry && (
+              <div className="chip-row">
+                <button className="chip" onClick={() => handlers.onRetry?.()}>
+                  Retry
+                </button>
+              </div>
+            )}
           <ThreadPrimitive.ScrollToBottom
             className="v2-jump"
             data-testid="jump-to-latest"

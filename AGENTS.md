@@ -121,6 +121,7 @@ bash install/smoke_test.sh
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
+- **FactoryLM Unified UI Cutover (new UI work goes to the shared shell, not the legacy public/Hub/mobile trees):** `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md` (charter) + `.claude/rules/factorylm-unified-ui-cutover.md` — mission `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination issue [#3626](https://github.com/Mikecranesync/MIRA/issues/3626)
 
 ---
 

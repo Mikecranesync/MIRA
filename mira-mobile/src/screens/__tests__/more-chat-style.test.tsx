@@ -8,6 +8,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const mem = new Map<string, string>();
+const otaProbe = vi.hoisted(() => ({
+  value: null as boolean | null,
+  activeApiMutation: false,
+}));
+vi.mock("../../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+  return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
+});
 vi.mock("../../lib/offline-queue", async () => {
   const actual = await vi.importActual<typeof import("../../lib/offline-queue")>("../../lib/offline-queue");
   return {
@@ -24,14 +32,24 @@ vi.mock("../../api/resources", async () => {
   const actual = await vi.importActual<typeof import("../../api/resources")>("../../api/resources");
   return { ...actual, listTeam: vi.fn(async () => []), getUsage: vi.fn(async () => null) };
 });
+vi.mock("../AboutUpdates", () => ({
+  AboutUpdates: ({ pendingOfflineWork }: { pendingOfflineWork: () => Promise<boolean> }) => (
+    <button onClick={() => void pendingOfflineWork().then((value) => { otaProbe.value = value; })}>
+      Probe update readiness
+    </button>
+  ),
+}));
 
 import { MoreTab } from "../More";
+import { withWorkOrderQueueProducer } from "../../lib/offline-queue";
 
 const ME = { id: "u1", email: "tech@example.com", name: "Tech", role: "owner", tenantId: "t1", capabilities: [] as string[] };
 
 afterEach(() => {
   cleanup();
   mem.clear();
+  otaProbe.value = null;
+  otaProbe.activeApiMutation = false;
 });
 
 describe("MoreTab chat style", () => {
@@ -56,5 +74,31 @@ describe("MoreTab chat style", () => {
     await waitFor(() => expect(toggle.textContent).toContain("Try the unified interface"));
     fireEvent.click(toggle);
     expect(onChatUiChange).toHaveBeenCalledWith("unified");
+  });
+
+  it("reports an unresolved work-order producer as busy to the update controller", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const producer = withWorkOrderQueueProducer(() => gate);
+    render(<MoreTab me={ME} chatV2Available={false} onSignOut={async () => {}} backRef={{ current: null }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "About & updates" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Probe update readiness" }));
+    await waitFor(() => expect(otaProbe.value).toBe(true));
+
+    release();
+    await producer;
+  });
+
+  it("reports an in-flight API mutation as busy to the update controller", async () => {
+    otaProbe.activeApiMutation = true;
+    render(<MoreTab me={ME} chatV2Available={false} onSignOut={async () => {}} backRef={{ current: null }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "About & updates" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Probe update readiness" }));
+
+    await waitFor(() => expect(otaProbe.value).toBe(true));
   });
 });
