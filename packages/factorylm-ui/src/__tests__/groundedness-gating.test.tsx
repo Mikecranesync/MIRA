@@ -18,6 +18,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { LIFECYCLES } from "@factorylm/interaction";
 import type {
   InteractionPart,
   InteractionTurn,
@@ -27,17 +28,12 @@ import type {
 } from "@factorylm/interaction";
 import { PartRenderer, showsGroundedness } from "../parts";
 
-const LIFECYCLES: readonly Lifecycle[] = [
-  "accepted",
-  "queued",
-  "running",
-  "waiting",
-  "stopping",
-  "completed",
-  "stopped",
-  "failed",
-  "cancelled",
-];
+// The list is IMPORTED, never restated here. It was a hand-written array of
+// nine until #3691 added `safety_stop` — at which point every "for every
+// lifecycle" loop below silently stopped covering the newest member, and the
+// suite stayed green while its own expectation set went stale. A local copy of
+// a union is a second source of truth that drifts on someone else's commit;
+// `LIFECYCLES` is the contract's single parse source and cannot.
 
 // ---------------------------------------------------------------- the rule
 
@@ -78,6 +74,50 @@ describe("showsGroundedness — provenance and invitations follow different rule
     expect(showsGroundedness("source", "completed")).toBe(true);
     expect(showsGroundedness("evidence_basis", "completed")).toBe(true);
     expect(showsGroundedness("followups", "completed")).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------ safety_stop
+//
+// Decided in `showsGroundedness`'s docblock BEFORE the member existed (#3691
+// had not landed), and asserted here now that it has. Both rules were already
+// correct by inheritance from `!== "failed"` and `=== "completed"`; the point
+// of these cases is that the behaviour is a decision on the record rather than
+// a leftover nobody chose.
+
+describe("showsGroundedness on safety_stop — MIRA refused, which is neither a stop nor a failure", () => {
+  it("is a member of the contract, not an inference from a neighbour", () => {
+    // Positive control for everything below: if the union ever loses the
+    // member, these cases must fail loudly rather than pass vacuously against
+    // a string the type no longer admits.
+    expect(LIFECYCLES).toContain("safety_stop");
+  });
+
+  it("HIDES follow-ups — the most important case for that rule anywhere", () => {
+    // "What next?" underneath a refusal to guide an unsafe step is an
+    // invitation to continue toward the hazard MIRA just declined to walk
+    // into. If this rule were ever loosened to "any terminal state", this is
+    // the turn it would break, and it would break it silently.
+    expect(showsGroundedness("followups", "safety_stop")).toBe(false);
+  });
+
+  it("KEEPS provenance — a cited refusal is more trustworthy than a bare one", () => {
+    // Suppressing the citation here would strip attribution from the single
+    // most safety-critical turn the surface can render. `safety_stop` means
+    // MIRA declined on safety grounds; the document it declined on behalf of
+    // is exactly what the technician needs to see.
+    expect(showsGroundedness("source", "safety_stop")).toBe(true);
+    expect(showsGroundedness("evidence_basis", "safety_stop")).toBe(true);
+  });
+
+  it("is not treated as `stopped` or `failed`", () => {
+    // The substitution the contract exists to prevent. A person interrupting,
+    // a breakage, and a refusal are three different events; if this gate ever
+    // collapsed them, `stopped` and `safety_stop` would have to agree on
+    // follow-ups — they do — AND on provenance, where a future change to
+    // either rule must move them apart deliberately, not by accident.
+    expect(showsGroundedness("source", "failed")).toBe(false);
+    expect(showsGroundedness("source", "safety_stop")).toBe(true);
   });
 });
 
@@ -145,6 +185,14 @@ describe("PartRenderer — a failed turn renders no groundedness chrome", () => 
 
   it("keeps the citation on a stopped turn", () => {
     expect(html(SOURCE_PART, "stopped")).toContain('data-part-type="source"');
+  });
+
+  it("on a safety_stop, renders the citation and the basis but not the follow-ups", () => {
+    // The render-layer twin of the predicate cases: a safety refusal shows what
+    // it refused on behalf of, and does not invite the technician onward.
+    expect(html(SOURCE_PART, "safety_stop")).toContain('data-part-type="source"');
+    expect(html(BASIS_PART, "safety_stop")).toContain('data-part-type="evidence_basis"');
+    expect(html(FOLLOWUPS_PART, "safety_stop")).toBe("");
   });
 
   it("withholds follow-ups on a stopped turn even though the citation stays", () => {
