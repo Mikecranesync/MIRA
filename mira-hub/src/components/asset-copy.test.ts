@@ -35,6 +35,23 @@ describe("assetAnswerCopyPayload", () => {
     expect(out).toContain("safety alert");
   });
 
+  it("carries the citations that the surface was already receiving", () => {
+    // The route has always emitted a `sources` frame — its own comment says the
+    // UI should render chips from it — and this client dropped it. Once the
+    // chips render, the copy must carry them too, or the paste is an uncited
+    // claim from a surface that had the sources all along.
+    const out = assetAnswerCopyPayload({
+      content: "Torque to 4.5 Nm [1].",
+      sources: [
+        { index: 1, title: "PowerFlex 525 User Manual.pdf", url: null, page: 42 },
+        { index: 2, title: "Series 3 End Trucks.pdf", url: null, page: null },
+      ],
+    });
+    expect(out).toContain("[1] PowerFlex 525 User Manual.pdf · p.42");
+    expect(out).toContain("[2] Series 3 End Trucks.pdf");
+    expect(out).not.toContain("p.null");
+  });
+
   it("adds nothing to a complete, alert-free answer", () => {
     // No decoration on the ordinary case: the paste is the answer.
     const out = assetAnswerCopyPayload({ content: "Torque to 4.5 Nm." });

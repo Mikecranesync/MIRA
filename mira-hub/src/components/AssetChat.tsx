@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, ClipboardCheck, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { SourceChips, type SourceChip } from "@/components/SourceChips";
 import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
 
 interface ChatMessage {
@@ -20,6 +21,12 @@ interface ChatMessage {
   stopped?: boolean;
   traceId?: string;
   nextCheck?: string;
+  /** Retrieved manual sources for this answer. The route has ALWAYS emitted
+   *  these — its own comment at the emit site reads "Emit retrieved sources up
+   *  front so the UI can render citation chips" — and this client dropped the
+   *  frame, so the surface showed none. E-1: the citation is the product's
+   *  claim; withholding it is not a styling gap. */
+  sources?: SourceChip[];
 }
 
 /**
@@ -39,8 +46,15 @@ export function assetAnswerCopyPayload(msg: {
   content: string;
   stopped?: boolean;
   hasSafetyAlert?: boolean;
+  sources?: readonly SourceChip[];
 }): string {
   const lines = [msg.content.trim()];
+  if (msg.sources && msg.sources.length > 0) {
+    lines.push("");
+    for (const s of msg.sources) {
+      lines.push(`[${s.index}] ${s.title}${s.page != null ? ` · p.${s.page}` : ""}`);
+    }
+  }
   if (msg.stopped) lines.push("", "(Stopped — this answer was cut short.)");
   if (msg.hasSafetyAlert) lines.push("", "⚠ A safety alert was shown with this answer.");
   return lines.join("\n");
@@ -178,6 +192,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
             Next check: {msg.nextCheck}
           </div>
         )}
+        {!isSafety && <SourceChips sources={msg.sources} />}
         {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
         {/* B-8 — a persistent action row under every answer, copy
             non-negotiable. Suppressed on a safety stop: that is an instruction
@@ -352,6 +367,11 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
               traceId?: string;
               next_check?: string;
               safetyAlert?: boolean;
+              /** Retrieved manual sources. The route emits this frame whenever
+               *  `manualSources.length > 0`; this type omitted it, which is how
+               *  the frame came to be dropped silently — the compiler could not
+               *  object to reading a field the shape never declared. */
+              sources?: SourceChip[];
             };
             if (parsed.content) {
               setMessages((prev) => {
@@ -380,6 +400,17 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, traceId: tid };
+                }
+                return next;
+              });
+            }
+            if (Array.isArray(parsed.sources)) {
+              const src = parsed.sources as SourceChip[];
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, sources: src };
                 }
                 return next;
               });
