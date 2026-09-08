@@ -1,3 +1,19 @@
+# Hot Cache — 2026-09-07 — Foreman contact contract + fleet reachability facts (via mira-97 crosstalk)
+
+**Foreman is NOT network-reachable — retire any assumption of a network path.** Not Remote Control,
+not Tailscale, not :7899 peers broker, not LAN, not CAO/:9889. Fleet Gateway `message_worker` reaches
+only Fleet Gateway CAO sessions, never Claude Code peers. The ONLY working path: a comment on a
+**draft PR** starting exactly `[PEER→FOREMAN]` (template fields: Session/Node/Mission/Claim/SHA/Ask/
+Evidence); Foreman replies `[FOREMAN→PEER]` on the same PR. GitHub is the ledger; peer-chat bridges
+are not durable. A PR-comment listener wakes on the tags — an **issue-only comment will NOT**.
+Contract: MIRA issue #3648 comment 5577179879; worked example: PR #3669 comment 5577198310.
+Also: Codex is out of usage — Codex-review-gated lanes are STALLED, not slow. Charlie→Alpha verified
+PASS over Tailscale (TS-only; 192.168.1.x cannot route to Alpha's 192.168.4.0/22). Alpha automation
+audited CLEAR of prod-alias ssh writes (#3659 exposure: interactive shells only, no launchd/cron).
+Peer contact: `mira-97` on Charlie (`/Users/charlienode/MIRA`, SendMessage or claude-peers MCP).
+
+---
+
 # Hot Cache — 2026-09-06 — FLM-UI-4000 shared shell foundation started (local, not pushed)
 
 PR #3622 remains the draft design authority at exact head `470aa1873f05da597b5304ead119aeb19ba3d9b9`.
@@ -22,6 +38,42 @@ Next implementation boundary: Task 5 conversation-part renderers + Ask/Work comp
 mobile focus/Back/overlay behavior, Task 7 runnable disconnected lab, and Task 8 browser/a11y/
 performance/screenshot matrix. CodeGraph is not initialized in this worktree, so current structural
 coverage used direct declarations plus TypeScript/tests; initialize before relying on graph coverage.
+---
+
+
+---
+
+# Hot Cache — 2026-09-02 — Alpha joined the CAO fleet (Bravo→TS-SSH→Alpha loopback CAO LIVE)
+
+CAO = `cli-agent-orchestrator` **v2.5.0** (AWS Labs, uv tool; data/logs in
+`~/.aws/cli-agent-orchestrator/`). Installed on Alpha (`uv tool install cli-agent-orchestrator==2.5.0`),
+LaunchAgent `com.factorylm.cao-server` (clone of Bravo's): `cao-server --host 127.0.0.1 --port 9889`,
+KeepAlive. Verified loopback-ONLY (refused on TS + LAN IPs); `/sessions` = `[]`. Bravo-side persistent
+tunnel LIVE: `com.factorylm.alpha-cao-tunnel` → `~/.factorylm/alpha-cao-tunnel.sh` →
+`ssh -N -L 127.0.0.1:29889:127.0.0.1:9889 factorylm@100.107.140.12` (Tailscale ONLY — no LAN branch,
+Alpha is 192.168.4.0/22, unroutable to 192.168.1.x; host key pinned; verified end-to-end from Bravo).
+**Bravo-local CAO port map: 9889 = Bravo self, 19889 = Charlie, 29889 = Alpha.** Orchestrator
+(grokbot) connects from Bravo at `http://127.0.0.1:29889` — no auth token (loopback+SSH is the auth).
+Bravo→Alpha SSH key-auth already worked pre-existing (shared id_ed25519, Alpha authorized_keys).
+Flag: retired OpenClaw gateway still KeepAlive on Alpha 127.0.0.1:18789 w/ plaintext GROQ key in its
+plist — untouched, cleanup decision pending.
+
+---
+
+# Hot Cache — 2026-09-02 — Alpha connectivity survey (observe-only, no changes made)
+---
+
+
+Alpha (Michaels-Mac-mini-2, user `factorylm`) LAN is **192.168.4.30/22** on en0 Ethernet (gw
+192.168.4.1) + Wi-Fi 192.168.4.32 — the old `192.168.4.28` record is STALE. The /22 (192.168.4.0–
+192.168.7.255) does NOT contain Bravo/Charlie's 192.168.1.x; ping + TCP/22 to 192.168.1.11/.12 both
+FAIL — Alpha↔Bravo/Charlie LAN path does not exist (separate physical networks, matches node-map
+"Tailscale only"). Tailscale healthy: alphanode 100.107.140.12; Bravo/Charlie ping + :22 PASS over
+TS. SSH IS listening on Alpha (*.22). No process/dir named "CAO"; closest match = retired OpenClaw
+gateway `ai.openclaw.gateway` PID-alive on loopback 127.0.0.1:18789/18791/18792 (node). Ansible-
+managed `~/.ssh/config` already has `bravo`/`charlie` TS aliases with shared id_ed25519. Verdict:
+Tailscale = primary transport for Alpha (LAN-primary is impossible); next action = key-auth check
+Bravo→Alpha over TS.
 
 ---
 
@@ -505,6 +557,27 @@ operational again after the Groq vision deprecation.
   reply, conversation_eval meta, flood-guarded ntfy P0 alerts; fold in open PR #2714). Awaiting
   build go. Also awaiting Mike: OpenAI dashboard cap, credits → paid Lane-A, Phase 5 thresholds.
 - **OCR regime keep-alive + runbook (v3.168.0, branch `feat/ocr-keepalive`):** deterministic Tesseract floor is provenance-tagged (`ocr_source`) end-to-end, autoeval P0 `ocr_floor_dead` pages on a dead floor, `ocr-lane-health` scheduled probe watches staging — lane map + failure-mode first moves at `docs/runbooks/ocr-regime.md`.
+---
+
+---
+
+# Hot Cache — 2026-07-03 — CV-101 electrical print recovery: E-007 shipped as FIELD VERIFICATION DRAFT
+
+Evidence-law print package built on `main` working tree (uncommitted). Mike uploaded 9 bench photos
+in-session; archived at `docs/onboarding/cv-101-evidence/photos/` (P1-P9, cataloged in
+`wiring_evidence.md`). Source of truth: `devices/terminals/wires/open_items.yaml` (same dir) —
+every drawn line = one wires.yaml row. **E-007 RS-485/Modbus** at `docs/prints/E007_rs485_modbus.{md,svg,pdf}`:
+Micro820 serial TB (D+=BLU, D−=WHT, G=GRN — photo-VERIFIED, P4) ↔ GS10 RJ45 (SG+ 5 / SG− 4 / SGND 3,7
+per GS10 UM Rev B p.5-9, extract archived in `manual-extracts/`). ALL conductors dashed FIELD VERIFY —
+drive-end landing unphotographed (OI-1b flips it to Rev A solid). Devices photo-verified: PLC
+2080-LC20-20QBB SerC FW12.011; VFD **GS11N-20P2** 0.25HP; relay **CA3KN22BD** "MLC" (control relay —
+CONFLICTS with legacy gist's power-contactor Q1 story, OI-5). Key resolved conflicts: legacy
+`gist-master-wiring-guide.md` RJ45 pinout REFUTED by manual (C-1); Channel 2 (not 0) is embedded
+serial (C-5, `micro820.yaml` gotcha stale); GS10 guide's ×10 scale wrong, manual+ST say ×100 (C-7).
+Open: 8N1 vs 8N2 keypad read (OI-9), May-22 PhaseA smoke-test PDF still on PLC laptop (OI-11).
+Crosswalk: `docs/onboarding/cv-101-evidence/plc_logic_to_wiring_crosswalk.md`; matrix:
+`electrical_evidence_matrix.md`; prior-art: `docs/discovery/electrical_print_prior_artifact_recovery.md`.
+Next: drive-end RJ45 photo → upgrade E-007; then E-005/E-006 from P5/P6 + behind-panel photos (OI-2).
 
 ---
 
