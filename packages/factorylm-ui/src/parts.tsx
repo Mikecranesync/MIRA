@@ -73,6 +73,43 @@ export function lifecycleLabel(lifecycle: Lifecycle): string {
   return LIFECYCLE_LABEL[lifecycle];
 }
 
+/**
+ * Whether a groundedness part renders, given the lifecycle of the turn it sits on.
+ *
+ * `PartRenderer` consulted `turn.lifecycle` in exactly one place — the Retry
+ * button — so `source`, `evidence_basis` and `followups` rendered on any turn at
+ * all. `toTurn` (mira-mobile/src/unified/to-interaction.ts) maps parts and
+ * lifecycle independently, so a turn that FAILED still arrives carrying every
+ * citation and basis pill it had accumulated: see the fixture at
+ * `mira-mobile/src/unified/__tests__/to-interaction.test.ts:78`, an assistant
+ * message with `lifecycle: "failed"` whose parts include `basis`, `source` and
+ * `followups`. Rendered as-is, that is a full groundedness display attached to
+ * an answer that does not exist.
+ *
+ * The two rules are deliberately different, because the two things mean
+ * different things:
+ *
+ * - **Provenance** (`source`, `evidence_basis`) describes content that is on
+ *   screen. It survives a stop — a turn the technician interrupted still shows
+ *   the partial answer, and the citations are that text's provenance, so
+ *   suppressing them would strip attribution from words still being read. Only
+ *   `failed` leaves nothing for provenance to describe.
+ * - **An invitation** (`followups`) belongs only to a turn that finished.
+ *   "What next?" under an answer that stopped, failed, or is still streaming is
+ *   offering to continue from a place the conversation never reached.
+ *
+ * Note this keys on the lifecycle and never on whether parts are absent. A
+ * `completed` turn that legitimately has no sources must render normally; the
+ * gate exists to suppress a claim the turn cannot support, not to demand one.
+ */
+export function showsGroundedness(
+  part: "source" | "evidence_basis" | "followups",
+  lifecycle: Lifecycle,
+): boolean {
+  if (part === "followups") return lifecycle === "completed";
+  return lifecycle !== "failed";
+}
+
 export function machineName(state: ShellState, machineId: string | undefined): string | undefined {
   if (!machineId) return undefined;
   return state.machines.find((machine) => machine.id === machineId)?.name ?? machineId;
@@ -150,6 +187,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "source": {
+      if (!showsGroundedness("source", turn.lifecycle)) return null;
       const { source } = part;
       return <button
         type="button"
@@ -166,6 +204,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "evidence_basis": {
+      if (!showsGroundedness("evidence_basis", turn.lifecycle)) return null;
       const { basis } = part;
       return <span
         className={`fl-part fl-pill${basis.authorized ? " fl-pill--primary" : ""}`}
@@ -317,6 +356,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "followups":
+      if (!showsGroundedness("followups", turn.lifecycle)) return null;
       return <ul className="fl-part fl-followups" data-part-type="followups" aria-label="Suggested follow-ups">
         {part.suggestions.map((suggestion) => <li key={suggestion}>
           <button type="button" onClick={() => dispatch({ type: "set-draft", draft: suggestion })}>{suggestion}</button>
