@@ -82,10 +82,16 @@ export type Lifecycle =
 /**
  * Every member, in one array, as the SINGLE source of truth for parsing.
  *
- * `satisfies readonly Lifecycle[]` plus the exhaustiveness test in
- * `__tests__/lifecycle.test.ts` means a member added to the union above and
- * not added here fails the build, rather than becoming a value that silently
- * fails to parse at a boundary.
+ * `satisfies readonly Lifecycle[]` proves every ELEMENT is a `Lifecycle`. It
+ * does NOT prove every `Lifecycle` is present — dropping a member leaves the
+ * array still satisfying the constraint. That distinction matters here more
+ * than almost anywhere: a member in the union but missing from this array
+ * makes `parseLifecycle` return `null` for a LEGITIMATE state, which is this
+ * file's own thesis turned against it — `safety_stop` again, a real lifecycle
+ * the boundary cannot represent.
+ *
+ * The exhaustiveness check below is what actually closes that. See it for why
+ * a `Record<Lifecycle, …>` in a consuming package is not a substitute.
  */
 export const LIFECYCLES = [
   "accepted",
@@ -99,6 +105,34 @@ export const LIFECYCLES = [
   "cancelled",
   "safety_stop",
 ] as const satisfies readonly Lifecycle[];
+
+/**
+ * Compile-time exhaustiveness: every `Lifecycle` must appear in `LIFECYCLES`.
+ *
+ * `satisfies` above covers one direction (elements are lifecycles); this
+ * covers the other (lifecycles are elements). Both are needed, and only this
+ * one fails in the package that OWNS the union.
+ *
+ * Peer review of 746b0c3ab found the original claim was false. Adding
+ * `| "paused"` to the union without adding it to `LIFECYCLES` produced exactly
+ * ONE tsc error — at `packages/factorylm-ui/src/parts.tsx`, the
+ * `Record<Lifecycle, string>` introduced by this same PR — and none from this
+ * file. So the contract was being defended by a different mechanism in a
+ * different package, which means (a) anything consuming
+ * `factorylm-interaction` WITHOUT `factorylm-ui` got nothing, and (b) it was
+ * one refactor away from gone: `lifecycleLabel` was a `charAt(0).toUpperCase()`
+ * expression until this PR, and restoring that shape would have let
+ * `LIFECYCLES` drift in silence.
+ *
+ * The tuple wrapper is deliberate. A bare `Exclude<…> extends never` is a
+ * distributive conditional, which evaluates to `never` for an empty union and
+ * makes the check unreliable; `[X] extends [never]` is the non-distributive
+ * form and is the one that actually holds.
+ */
+const _LIFECYCLES_ARE_EXHAUSTIVE: [Exclude<Lifecycle, (typeof LIFECYCLES)[number]>] extends [never]
+  ? true
+  : never = true;
+void _LIFECYCLES_ARE_EXHAUSTIVE;
 
 /** Fail-closed boundary parse. Unknown input is NOT coerced to a neighbour. */
 export function isLifecycle(value: unknown): value is Lifecycle {

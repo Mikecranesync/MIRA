@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "bun:test";
 
 import { LIFECYCLES, isLifecycle, isSafetyStop, parseLifecycle, type Lifecycle } from "../types";
@@ -22,7 +24,22 @@ describe("Lifecycle contract", () => {
     // is covered here automatically, and one added to only the union fails
     // the `satisfies` check at compile time.
     for (const l of LIFECYCLES) expect(parseLifecycle(l)).toBe(l);
-    expect(LIFECYCLES.length).toBeGreaterThan(9);
+  });
+
+  it("keeps the compile-time exhaustiveness check that runtime cannot express", () => {
+    // A runtime test CANNOT verify that every union member is in LIFECYCLES —
+    // the union is erased before this file runs. The original version of this
+    // test asserted `LIFECYCLES.length > 9`, which peer review correctly
+    // called out as no check at all: 10 still passes while the union has 11.
+    //
+    // The real guard is `_LIFECYCLES_ARE_EXHAUSTIVE` in types.ts, verified by
+    // mutation — adding `| "paused"` to the union without adding it to
+    // LIFECYCLES errors at types.ts(133,7). This asserts the guard is still
+    // THERE, since deleting it would restore the silent drift with every
+    // runtime test still green.
+    const source = readFileSync(new URL("../types.ts", import.meta.url), "utf8");
+    expect(source).toContain("_LIFECYCLES_ARE_EXHAUSTIVE");
+    expect(source).toMatch(/\[Exclude<Lifecycle, \(typeof LIFECYCLES\)\[number\]>\] extends \[never\]/);
   });
 
   it("refuses unknown input instead of coercing it to a neighbour", () => {
