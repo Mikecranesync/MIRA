@@ -37,6 +37,44 @@ export function distinctPassages(cites: EvidenceCitation[]): EvidenceCitation[] 
   return out;
 }
 
+/**
+ * What the Copy control puts on the clipboard (gate B-8).
+ *
+ * The answer leaves the app constantly — into a work order, a message to a
+ * colleague, a handover note — and whatever the clipboard carries is what the
+ * next person reads, usually with no product in front of them. So two things
+ * travel with the text:
+ *
+ *   - **the sources**, because a claim separated from its citations arrives
+ *     looking like an assertion nobody can check, which is the defect this
+ *     product exists to avoid;
+ *   - **the basis label**, because an answer that says "General guidance — not
+ *     grounded in this machine's documents" on screen and pastes bare has
+ *     stopped being honest at exactly the boundary where honesty matters most.
+ *
+ * Passages are collapsed with `distinctPassages` so the paste matches what the
+ * reader saw — six cites of one page are one source, not six.
+ */
+export function turnCopyPayload(turn: {
+  content: string;
+  citations?: EvidenceCitation[];
+  basis?: string | null;
+}): string {
+  const lines = [turn.content.trim()];
+  const cites = distinctPassages(turn.citations ?? []);
+  if (cites.length > 0) {
+    lines.push("");
+    for (const c of cites) {
+      lines.push(
+        `[${c.citationId}] ${c.sourceTitle}${c.page !== null ? ` · p.${c.page}` : ""}`,
+      );
+    }
+  }
+  const label = basisLabel(turn.basis as never);
+  if (label) lines.push("", label);
+  return lines.join("\n");
+}
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant";
@@ -85,6 +123,35 @@ const COMPOSER_MAX_PX = 160;
  *  never clobbered by a late (or repeated) load of the same history. */
 export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] {
   return prev.length === 0 && initial.length > 0 ? initial : prev;
+}
+
+/** The copy affordance (B-8). Its own component so `Bubble` keeps its shape
+ *  and the "Copied" acknowledgement is scoped to one answer — a shared flag
+ *  would have every answer claim a copy the technician made once. */
+function CopyAnswer({ turn }: { turn: ChatTurn }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      data-testid="copy-answer"
+      aria-label="Copy this answer with its sources"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(turnCopyPayload(turn))
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+      className="mt-2 rounded-lg border px-3 text-xs"
+      style={{
+        background: "var(--surface-0)",
+        borderColor: "var(--border)",
+        color: "var(--foreground)",
+        minHeight: 44,
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
 }
 
 /** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text as
@@ -222,6 +289,13 @@ export function Bubble({
         >
           {basisLabel(turn.basis)}
         </p>
+      )}
+      {/* B-8 — a persistent action row under every answer, copy
+          non-negotiable. Suppressed on a safety notice: a LOTO/arc-flash stop
+          is an instruction to stop work, not an answer to relay, and giving it
+          the same affordances as an answer would blur that. */}
+      {turn.role === "assistant" && !turn.safetyNotice && turn.content.trim() !== "" && (
+        <CopyAnswer turn={turn} />
       )}
       {onFollowup && turn.status === "answered" && !turn.safetyNotice && (turn.followups?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" aria-label="Ask follow-up:" data-testid="followup-chips">
