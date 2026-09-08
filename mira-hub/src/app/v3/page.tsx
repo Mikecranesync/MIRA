@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import MoreSheet from "@/factorylm-ui/MoreSheet";
+import ScopePicker, {
+  askEndpointFor,
+  scopeHint,
+  scopeLabel,
+  type Scope,
+} from "@/factorylm-ui/ScopePicker";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 
@@ -36,9 +42,24 @@ import "./v3.css";
 type Citation = { index: number; title: string; url: string | null; page: number | null; verified: boolean };
 type AskResponse = { answer: string; citations: Citation[]; provider: string | null };
 
+/** The asset path's 412 body. A 412 is MIRA REFUSING for a stated reason —
+ *  the train-before-deploy gate holding — not the app failing. Rendering it as
+ *  an error would teach technicians to retry through a deliberate refusal. */
+type Refusal = {
+  gate?: string;
+  reason?: string;
+  missingContext?: { key: string; label: string; status: string; action: string }[];
+};
+
 type Turn =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; citations: Citation[]; evidence: EvidenceCitation[] };
+  | {
+      role: "assistant";
+      text: string;
+      citations: Citation[];
+      evidence: EvidenceCitation[];
+      refusal?: Refusal;
+    };
 
 /** Project the ask API's citation list onto the renderer's evidence shape, so
  *  inline `[n]` markers resolve to the same sources the cards below show. */
@@ -71,6 +92,8 @@ export default function V3Page() {
   const [signedOut, setSignedOut] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [more, setMore] = useState(false);
+  const [scope, setScope] = useState<Scope>(null);
+  const [picker, setPicker] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -81,47 +104,144 @@ export default function V3Page() {
 
   // The waiting state names the step rather than showing a bare spinner, so a
   // variable multi-step pipeline reads as diagnostic instead of broken.
+  // The step resets where the request STARTS (in `ask`), not here: resetting
+  // it synchronously inside the effect body triggers a cascading render
+  // (react-hooks/set-state-in-effect), and the effect's only real job is
+  // owning the interval.
   useEffect(() => {
-    if (!busy) { setStep(0); return; }
+    if (!busy) return;
     const t = setInterval(() => setStep((s) => Math.min(s + 1, WAIT_STEPS.length - 1)), 1800);
     return () => clearInterval(t);
   }, [busy]);
 
-  const ask = useCallback(async (question: string) => {
+  /**
+   * Two scopes, two endpoints — routed by `askEndpointFor`.
+   *
+   * general → POST /api/hub/ask (JSON) — hybrid corpus, no asset context.
+   * machine → POST /api/assets/{id}/chat/ (SSE) — asset-scoped RAG, KG
+   *   context, live signals, the safety classifier and the approved-context
+   *   gate. It streams, so the answer appears token by token.
+   *
+   * The general route's own system prompt forbids claiming to know which
+   * machine the technician is at, so a machine-scoped question CANNOT be
+   * served there — it would read as machine-specific while being generic.
+   */
+  const ask = useCallback(async (question: string, at: Scope) => {
     const q = question.trim();
     if (!q || busy) return;
     setError(null);
     setSignedOut(false);
     setTurns((t) => [...t, { role: "user", text: q }]);
     setInput("");
+    setStep(0);
     setBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/api/hub/ask`, {
+      if (at === null) {
+        const res = await fetch(askEndpointFor(null), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q }),
+        });
+        if (res.status === 401) { setSignedOut(true); return; }
+        const data = (await res.json()) as AskResponse & { error?: string };
+        if (!res.ok) {
+          // Plain language, the question preserved, and a button. Never a status
+          // code, and never "refresh the page" — advice that cannot work.
+          setError(data.error ?? "MIRA couldn't answer that just now.");
+          setInput(q);
+          return;
+        }
+        const citations = data.citations ?? [];
+        setTurns((t) => [
+          ...t,
+          { role: "assistant", text: data.answer, citations, evidence: toEvidence(citations) },
+        ]);
+        return;
+      }
+
+      // ── Machine scope: the streaming asset path ──────────────────────────
+      // A refusal turn is not an answer and must not enter the next turn's
+      // history — the same rule AssetChat applies to a stopped turn.
+      const history = turns
+        .filter((t) => t.role === "user" || !t.refusal)
+        .map((t) => ({ role: t.role, content: t.text }));
+      const res = await fetch(askEndpointFor(at), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ messages: [...history, { role: "user", content: q }] }),
       });
       if (res.status === 401) { setSignedOut(true); return; }
-      const data = (await res.json()) as AskResponse & { error?: string };
-      if (!res.ok) {
-        // Plain language, the question preserved, and a button. Never a status
-        // code, and never "refresh the page" — advice that cannot work.
-        setError(data.error ?? "MIRA couldn't answer that just now.");
+      if (res.status === 412) {
+        // NOT an error. The approved-context gate is train-before-deploy
+        // holding: this machine has no approved grounding yet, so MIRA
+        // declines rather than guessing. Rendered as a refusal with the
+        // specific missing pieces, so the technician knows what to fix.
+        const body = (await res.json().catch(() => ({}))) as Refusal;
+        setTurns((t) => [
+          ...t,
+          { role: "assistant", text: "", citations: [], evidence: [], refusal: body },
+        ]);
+        return;
+      }
+      if (!res.ok || !res.body) {
+        setError("MIRA couldn't answer that just now.");
         setInput(q);
         return;
       }
-      const citations = data.citations ?? [];
-      setTurns((t) => [
-        ...t,
-        { role: "assistant", text: data.answer, citations, evidence: toEvidence(citations) },
-      ]);
+
+      // Sources arrive up front, before the first token, so the citation
+      // chips are present while the answer is still streaming.
+      let acc = "";
+      let citations: Citation[] = [];
+      setTurns((t) => [...t, { role: "assistant", text: "", citations: [], evidence: [] }]);
+      const commit = () =>
+        setTurns((t) => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = {
+              ...last,
+              text: acc,
+              citations,
+              evidence: toEvidence(citations),
+            };
+          }
+          return next;
+        });
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as { content?: string; sources?: Citation[] };
+            if (parsed.sources) citations = parsed.sources;
+            if (parsed.content) acc += parsed.content;
+            commit();
+          } catch {
+            // A malformed frame is skipped, never rendered as text — a raw
+            // JSON fragment in the answer body reads as corruption.
+          }
+        }
+      }
+      commit();
     } catch {
       setError("Couldn't reach MIRA. Your question is saved below — nothing was lost.");
       setInput(q);
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, turns]);
 
   const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
@@ -146,6 +266,9 @@ export default function V3Page() {
       </aside>
 
       {more && <MoreSheet onClose={() => setMore(false)} />}
+      {picker && (
+        <ScopePicker current={scope} onPick={setScope} onClose={() => setPicker(false)} />
+      )}
 
       <main className="v3-main">
         <header className="v3-top">
@@ -156,17 +279,24 @@ export default function V3Page() {
           {/* Permanent scope badge. It says what MIRA does NOT have rather than
               implying plant context — answering about the wrong machine is a
               safety problem, not an inconvenience. */}
-          <button className="v3-scope"><span className="v3-dot" /><span>No machine — general</span></button>
+          <button
+            className={`v3-scope${scope ? " v3-scope--bound" : ""}`}
+            aria-haspopup="dialog"
+            aria-label="Change what you're asking about"
+            onClick={() => setPicker(true)}
+          >
+            <span className="v3-dot" /><span>{scopeLabel(scope)}</span><span className="v3-caret">⌄</span>
+          </button>
         </header>
 
         <div className="v3-thread">
           {turns.length === 0 && !busy && (
             <div className="v3-home">
               <h1>What are you working on?</h1>
-              <p className="v3-sub">Ask anything. Open a machine to ask about it specifically.</p>
+              <p className="v3-sub">{scopeHint(scope)}</p>
               <div className="v3-sugg">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s.q} onClick={() => void ask(s.q)}>
+                  <button key={s.q} onClick={() => void ask(s.q, scope)}>
                     {s.q}<small>{s.hint}</small>
                   </button>
                 ))}
@@ -177,6 +307,40 @@ export default function V3Page() {
           {turns.map((t, i) =>
             t.role === "user" ? (
               <div key={i} className="v3-turn v3-u"><div className="v3-bubble">{t.text}</div></div>
+            ) : t.refusal ? (
+              /* A refusal, not a failure. MIRA has no approved grounding for
+                 this machine yet, so it declines and names what is missing —
+                 the train-before-deploy gate working as designed. There is no
+                 Retry: retrying changes nothing until the context exists. */
+              <div key={i} className="v3-turn v3-a">
+                <div className="v3-ahead">
+                  <span className="v3-mira">M</span><b>MIRA</b>
+                  <span className="v3-basis v3-basis-held">◐ Holding — not enough approved context</span>
+                </div>
+                <div className="v3-refusal">
+                  <p>{t.refusal.reason ?? "MIRA needs approved context for this machine before answering."}</p>
+                  {(t.refusal.missingContext ?? []).length > 0 && (
+                    <ul>
+                      {(t.refusal.missingContext ?? []).map((m) => (
+                        <li key={m.key} data-status={m.status}>
+                          <b>{m.label}</b> — {m.action}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="v3-refusal__foot">
+                    You can still ask this as a general question.
+                  </p>
+                  <div className="v3-actions">
+                    <button onClick={() => {
+                      setScope(null);
+                      if (lastUser) void ask(lastUser.text, null);
+                    }}>
+                      Ask generally instead
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div key={i} className="v3-turn v3-a">
                 <div className="v3-ahead">
@@ -189,7 +353,7 @@ export default function V3Page() {
                       ● Grounded in {t.citations.length} source{t.citations.length === 1 ? "" : "s"}
                     </span>
                   ) : (
-                    <span className="v3-basis v3-basis-general">⚠ General guidance — no manual on file</span>
+                    <span className="v3-basis v3-basis-general">⚠ General guidance — no source cited</span>
                   )}
                 </div>
 
@@ -210,7 +374,7 @@ export default function V3Page() {
 
                 <div className="v3-actions">
                   <button onClick={() => void navigator.clipboard?.writeText(t.text)}>⧉ Copy</button>
-                  <button onClick={() => lastUser && void ask(lastUser.text)}>↻ Retry</button>
+                  <button onClick={() => lastUser && void ask(lastUser.text, scope)}>↻ Retry</button>
                 </div>
               </div>
             ),
@@ -238,7 +402,7 @@ export default function V3Page() {
             <div className="v3-notice v3-notice-stop"><div>✕</div><div>
               <b>Couldn&apos;t reach MIRA</b>{error} Your question is still in the box below.
               <div className="v3-noticerow">
-                <button onClick={() => lastUser && void ask(lastUser.text)}>Try again</button>
+                <button onClick={() => lastUser && void ask(lastUser.text, scope)}>Try again</button>
                 <button onClick={() => setError(null)}>Dismiss</button>
               </div>
             </div></div>
@@ -249,7 +413,7 @@ export default function V3Page() {
 
         <div className="v3-cwrap">
           <div className="v3-composer">
-            <div className="v3-ctx">General question · open a machine to ask about it specifically</div>
+            <button className="v3-ctx" onClick={() => setPicker(true)}>{scopeHint(scope)}</button>
             <div className="v3-crow">
               <button className="v3-icon" aria-label="Add attachment">＋</button>
               <button className="v3-icon" aria-label="Take photo">◉</button>
@@ -259,12 +423,12 @@ export default function V3Page() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault(); void ask(input);
+                    e.preventDefault(); void ask(input, scope);
                   }
                 }}
               />
               <button className="v3-icon v3-send" aria-label="Send"
-                disabled={!input.trim() || busy} onClick={() => void ask(input)}>↑</button>
+                disabled={!input.trim() || busy} onClick={() => void ask(input, scope)}>↑</button>
             </div>
           </div>
         </div>

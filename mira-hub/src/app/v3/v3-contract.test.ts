@@ -66,7 +66,11 @@ describe("V3 — the claim is stated, never inferred (recon E-1/E-2)", () => {
   it("labels an ungrounded answer explicitly rather than leaving it blank", () => {
     // Absence of a citation is indistinguishable from a citation that failed to
     // render — which is the state the mobile walk was actually in.
-    expect(page).toContain("General guidance — no manual on file");
+    // Wording changed with the scope picker: "no manual on file" was a claim
+    // about the CORPUS, and it is wrong for a bound machine whose manuals
+    // exist but returned no chunk for this question. "No source cited" is a
+    // claim about THIS ANSWER, which is the thing actually known.
+    expect(page).toContain("General guidance — no source cited");
   });
 
   it("renders a citation by document name and page, never by id", () => {
@@ -99,7 +103,27 @@ describe("V3 — the composer is the home screen (recon A-1/B-1)", () => {
   });
 
   it("says what it is scoped to, so it never implies plant context", () => {
-    expect(page).toContain("No machine — general");
+    // The literal string now lives in `scopeLabel` (ScopePicker.tsx), which is
+    // asserted in ScopePicker.test.ts. What matters HERE is that the header and
+    // the composer both read from that one function — two hand-written strings
+    // would let the badge say "CV-101" while the composer still said "general".
+    expect(page).toContain("scopeLabel(scope)");
+    expect(page).toContain("scopeHint(scope)");
+  });
+
+  it("routes by scope rather than always calling the general endpoint", () => {
+    // The silent failure this guards: a machine-scoped question sent to
+    // /api/hub/ask returns a fluent generic answer that reads as specific.
+    expect(page).toContain("askEndpointFor(");
+    expect(page).not.toMatch(/fetch\(`\$\{API_BASE\}\/api\/hub\/ask`/);
+  });
+
+  it("renders a 412 as a refusal with its missing pieces, never as an error", () => {
+    // A 412 is the approved-context gate holding — the product working. It
+    // must not offer Retry, which cannot change the outcome.
+    expect(page).toContain("res.status === 412");
+    expect(page).toContain("missingContext");
+    expect(page).toContain("Ask generally instead");
   });
 });
 
