@@ -175,9 +175,59 @@ describe("V3 — mounted without disturbing the existing product", () => {
     expect(here.replace(/\\/g, "/")).toMatch(/\/app\/v3$/);
   });
 
-  it("keeps every touch target at or above 44px", () => {
-    const targets = css.match(/min-height:44px|height:44px/g) ?? [];
-    expect(targets.length).toBeGreaterThanOrEqual(4);
+  // H-1, decided 2026-09-08: a control may LOOK 44px, but its interactive hit
+  // area must be at least 48px/48dp — gloves, one-handed reach, a technician
+  // not looking straight at the screen. That separates the two questions the
+  // 44-vs-48 spec conflict had fused together.
+  //
+  // The previous version of this test counted occurrences of the literal
+  // `min-height:44px` and asserted `>= 4`. That is not a floor: it passes if
+  // four controls are 44 and a fifth is 20, and it would have gone RED on this
+  // very change, which raises the floor. Replaced with the actual invariant.
+  describe("touch targets (H-1)", () => {
+    const heights = [...css.matchAll(/(?:min-)?height:\s*(\d+)px/g)].map((m) => Number(m[1]));
+
+    it("declares no interactive height between the icon size and 48px", () => {
+      // Everything is either >= 48 (a real target), or exactly 44 (the two
+      // square controls, which carry an expander asserted below), or small
+      // decoration (marks, avatars, the hamburger's bars) that is never a
+      // target in its own right.
+      // 36 (scope badge), 38 (Copy/Retry, notice buttons) and 44 (square icons)
+      // are the visual heights of controls that carry an expander, asserted
+      // below. Anything else in this band is an unguarded small target.
+      const expanded = [36, 38, 44];
+      const suspicious = heights.filter((h) => h > 28 && h < 48 && !expanded.includes(h));
+      expect(suspicious).toEqual([]);
+    });
+
+    it("every 44px control expands its hit area to 48", () => {
+      // The visual box stays 44; `inset:-2px` adds 2px on each side. Without
+      // this the 44s above would be a silent exemption rather than a
+      // documented one.
+      // Every under-48 control must be `position:relative` (or the overlay
+      // escapes to the nearest positioned ancestor and covers the wrong thing)
+      // AND must have an ::after. Both halves, or the expander is decorative.
+      for (const sel of [".v3-icon", ".v3-ham", ".v3-scope"]) {
+        expect(css).toMatch(new RegExp(`\\${sel}\\{[^}]*position:relative`));
+        expect(css).toContain(`${sel}::after`);
+      }
+      for (const sel of [".v3-actions button", ".v3-noticerow button"]) {
+        expect(css).toContain(`${sel}::after`);
+        expect(css).toMatch(new RegExp(`\\${sel.replace(" ", " ")}\\{[^}]*position:relative`));
+      }
+      // The insets must actually reach 48 from each visual height.
+      for (const inset of ["-2px", "-5px", "-6px"]) {
+        expect(css).toContain(`inset: ${inset}`);
+      }
+    });
+
+    it("the height matcher actually finds heights (positive control)", () => {
+      // Without this, a regex that silently matched nothing would make the
+      // filter above vacuously empty and the suite green on any CSS at all.
+      expect(heights.length).toBeGreaterThan(5);
+      expect(heights).toContain(48);
+      expect(heights).toContain(44);
+    });
   });
 
   it("scopes its styles so it cannot leak into other Hub routes", () => {
