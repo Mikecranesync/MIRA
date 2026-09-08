@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
-import HomeComposer from "@/components/HomeComposer";
+import HomeComposer from "@/factorylm-ui/HomeComposer";
 import { API_BASE } from "@/lib/config";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 
