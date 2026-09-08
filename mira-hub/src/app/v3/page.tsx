@@ -6,6 +6,7 @@ import ScopePicker, {
   askEndpointFor,
   scopeHint,
   scopeLabel,
+  suggestionsFor,
   type Scope,
 } from "@/factorylm-ui/ScopePicker";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
@@ -76,38 +77,6 @@ function toEvidence(citations: Citation[]): EvidenceCitation[] {
 
 /** The steps the waiting state names, in the order the backend performs them. */
 const WAIT_STEPS = ["Searching your manuals…", "Reading the closest sources…", "Writing the answer…"];
-
-const GENERAL_SUGGESTIONS = [
-  "What does fault F0004 mean on a PowerFlex 525?",
-  "A conveyor is grinding under load — what should I check first?",
-  "How do I reset a Siemens G120 after an overcurrent trip?",
-];
-
-/**
- * Machine-scoped starters.
- *
- * Deliberately question SHAPES, not invented specifics: MIRA knows nothing
- * about this machine until it retrieves, so a suggestion naming a fault code
- * or a part number would be a fabrication printed by the UI itself. These ask
- * about things the asset path can actually ground — its history, its manuals,
- * its startup procedure.
- *
- * They also fixed a live contradiction the first screenshot caught: with
- * CV-101 bound, every chip still read "General question" while the badge read
- * "CV-101". The chips routed correctly and labelled themselves wrongly, which
- * is the worst combination — the interface disagreeing with itself about the
- * one thing that decides whether an answer is about your machine.
- */
-const MACHINE_SUGGESTIONS = [
-  "What faults has this machine had before?",
-  "It stopped unexpectedly — what should I check first?",
-  "Walk me through starting this machine safely.",
-];
-
-function suggestionsFor(scope: Scope): { q: string; hint: string }[] {
-  const hint = scope ? scope.tag : "General question";
-  return (scope ? MACHINE_SUGGESTIONS : GENERAL_SUGGESTIONS).map((q) => ({ q, hint }));
-}
 
 export default function V3Page() {
   const [turns, setTurns] = useState<Turn[]>([]);

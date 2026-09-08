@@ -3,7 +3,9 @@ import {
   askEndpointFor,
   filterMachines,
   scopeHint,
+  scopeIdentity,
   scopeLabel,
+  suggestionsFor,
   toMachines,
   type Machine,
 } from "./ScopePicker";
@@ -98,5 +100,86 @@ describe("filtering", () => {
     // pass above could come from a matcher that always returns the input.
     expect(filterMachines(list, "   ")).toHaveLength(2);
     expect(filterMachines(list, "zzzz")).toHaveLength(0);
+  });
+});
+
+
+/**
+ * One state, four renderings — they must agree.
+ *
+ * The first guard for this was VACUOUS. It pinned the source string
+ * `hint: "General question" }` in page.tsx, so a peer reinstated the exact
+ * live-hub defect (every chip reading "General question" under a machine
+ * badge) as `const hint = "General question";` and all 22 tests stayed green.
+ * Hoisting to a variable, losing the space, or concatenating all walk past a
+ * literal. These assert BEHAVIOUR, so all three shapes fail.
+ */
+describe("every scope-derived string agrees about identity", () => {
+  const cv101: Machine = {
+    id: "id-1", tag: "CV-101", name: "Infeed conveyor",
+    manufacturer: "Rockwell Automation", model: "PowerFlex 525", location: "Line 1",
+  };
+
+  it("a chip hint under a bound machine names that machine, never 'General question'", () => {
+    // The live-hub defect, asserted directly: chips routed to the asset
+    // endpoint while labelling themselves general.
+    for (const s of suggestionsFor(cv101)) {
+      expect(s.hint).toBe(scopeIdentity(cv101));
+      expect(s.hint).not.toBe("General question");
+    }
+  });
+
+  it("the chip hint is the same identity the badge shows", () => {
+    expect(scopeLabel(cv101)).toContain(suggestionsFor(cv101)[0].hint);
+    expect(scopeHint(cv101)).toContain(suggestionsFor(cv101)[0].hint);
+  });
+
+  it("still says 'General question' when nothing is bound (positive control)", () => {
+    // Without this the assertions above could pass on a function that named
+    // the machine unconditionally — including in the general case, where that
+    // would be a worse lie than the one being fixed.
+    for (const s of suggestionsFor(null)) expect(s.hint).toBe("General question");
+  });
+
+  it("degrades identically when a machine's tag is empty", () => {
+    // `tag` is non-optional but nothing guarantees non-empty. Before
+    // `scopeIdentity`, the badge rendered " — Infeed conveyor" with a leading
+    // dash while the chip hint rendered "" — one state, two renderings, both
+    // wrong in different ways.
+    const untagged: Machine = { ...cv101, tag: "" };
+    expect(scopeIdentity(untagged)).toBe("Infeed conveyor");
+    expect(suggestionsFor(untagged)[0].hint).toBe("Infeed conveyor");
+    expect(scopeLabel(untagged)).toBe("Infeed conveyor");
+    expect(scopeLabel(untagged)).not.toContain("—");
+  });
+
+  it("never renders an empty identity, even with nothing to go on", () => {
+    const blank: Machine = { ...cv101, tag: "  ", name: "  " };
+    expect(scopeIdentity(blank).trim().length).toBeGreaterThan(0);
+    expect(suggestionsFor(blank)[0].hint.trim().length).toBeGreaterThan(0);
+  });
+});
+
+describe("machine starters are groundable, never invented", () => {
+  it("asks about things the asset path can retrieve", () => {
+    const hints = suggestionsFor({
+      id: "i", tag: "CV-101", name: "Infeed conveyor",
+      manufacturer: null, model: null, location: null,
+    }).map((s) => s.q);
+    expect(hints).toContain("What faults has this machine had before?");
+  });
+
+  it("never names a fault code or part number for a machine not yet retrieved", () => {
+    // A starter printing "F0004" for an arbitrary bound machine would be a
+    // fabrication produced by the UI itself, before any retrieval happened.
+    for (const s of suggestionsFor({
+      id: "i", tag: "CV-101", name: "Infeed conveyor",
+      manufacturer: null, model: null, location: null,
+    })) {
+      expect(s.q).not.toMatch(/\b[A-Z]{1,2}\d{3,5}\b/);
+    }
+    // Positive control: the GENERAL set deliberately does name codes, so this
+    // matcher is capable of firing.
+    expect(suggestionsFor(null).some((s) => /\b[A-Z]\d{4}\b/.test(s.q))).toBe(true);
   });
 });

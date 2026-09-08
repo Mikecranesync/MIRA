@@ -118,21 +118,21 @@ describe("V3 — the composer is the home screen (recon A-1/B-1)", () => {
     expect(page).not.toMatch(/fetch\(`\$\{API_BASE\}\/api\/hub\/ask`/);
   });
 
-  it("never labels a chip 'General question' while a machine is bound", () => {
-    // Caught on a real render, not in review: with CV-101 bound the badge said
-    // CV-101 and every suggestion chip still said "General question". The chips
-    // routed correctly and labelled themselves wrongly — the interface
-    // disagreeing with itself about the one thing that decides whether an
-    // answer is about your machine.
-    expect(page).toContain("suggestionsFor(scope)");
-    expect(page).not.toContain("hint: \"General question\" }");
-  });
-
-  it("machine starters ask about groundable things, never invented specifics", () => {
-    // A suggestion naming a fault code for a machine MIRA has not retrieved
-    // yet would be a fabrication printed by the UI itself.
-    expect(page).toContain("What faults has this machine had before?");
-    expect(page).not.toMatch(/MACHINE_SUGGESTIONS[\s\S]{0,400}F\d{4}/);
+  it("reads every scope-derived string from the shared module", () => {
+    // NOT a text pin. The previous version of this asserted the literal
+    // `hint: "General question" }` in this file, and a peer reinstated the
+    // exact defect as `const hint = "General question";` with all 22 tests
+    // green — hoisting to a variable walks straight past a literal.
+    //
+    // The behavioural assertions now live in ScopePicker.test.ts, where the
+    // functions are. What this file still owns is that page.tsx does not grow
+    // a FIFTH decider: it must read all four strings from the shared module,
+    // never compute one itself.
+    for (const fn of ["scopeLabel(scope)", "scopeHint(scope)", "suggestionsFor(scope)"]) {
+      expect(page).toContain(fn);
+    }
+    expect(page).not.toContain("General question");
+    expect(page).not.toContain("SUGGESTIONS");
   });
 
   it("unwinds every turn-scoped notice on New chat, not just the error", () => {

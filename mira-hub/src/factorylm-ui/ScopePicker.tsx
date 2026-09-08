@@ -51,10 +51,27 @@ export type Machine = {
  *  missing/failed selection can never be mistaken for a real asset. */
 export type Scope = Machine | null;
 
-/** What the badge and the composer context line say. One function, so the two
- *  can never disagree about what MIRA is currently scoped to. */
+/**
+ * The ONE identity string. Every other scope-derived string is built from it,
+ * so no two surfaces can disagree about which machine is bound.
+ *
+ * `tag` is non-optional on `Machine` but nothing guarantees it is non-EMPTY,
+ * and an empty one used to diverge: the badge rendered " — Infeed conveyor"
+ * while the chip hint rendered "". Falling back to the name here means every
+ * consumer degrades identically, because they all read this.
+ */
+export function scopeIdentity(scope: Scope): string {
+  if (!scope) return "General question";
+  return scope.tag.trim() || scope.name.trim() || "This machine";
+}
+
+/** What the badge says. Identity first — it is the safety-relevant half, and
+ *  it is what survives when the badge is ellipsed on a narrow screen. */
 export function scopeLabel(scope: Scope): string {
-  return scope ? `${scope.tag} — ${scope.name}` : "No machine — general";
+  if (!scope) return "No machine — general";
+  const id = scopeIdentity(scope);
+  const name = scope.name.trim();
+  return name && name !== id ? `${id} — ${name}` : id;
 }
 
 /** The composer's sub-line. It states the CONSEQUENCE of the current scope,
@@ -62,8 +79,41 @@ export function scopeLabel(scope: Scope): string {
  *  about to read is about their machine. */
 export function scopeHint(scope: Scope): string {
   return scope
-    ? `Answering about ${scope.tag}. Its manuals and history are in scope.`
+    ? `Answering about ${scopeIdentity(scope)}. Its manuals and history are in scope.`
     : "General question · pick a machine to ask about it specifically";
+}
+
+const GENERAL_SUGGESTIONS = [
+  "What does fault F0004 mean on a PowerFlex 525?",
+  "A conveyor is grinding under load — what should I check first?",
+  "How do I reset a Siemens G120 after an overcurrent trip?",
+];
+
+/**
+ * Machine-scoped starters.
+ *
+ * Deliberately question SHAPES, not invented specifics: MIRA knows nothing
+ * about this machine until it retrieves, so a suggestion naming a fault code
+ * or a part number would be a fabrication printed by the UI itself.
+ */
+const MACHINE_SUGGESTIONS = [
+  "What faults has this machine had before?",
+  "It stopped unexpectedly — what should I check first?",
+  "Walk me through starting this machine safely.",
+];
+
+/**
+ * Starter chips, with the hint read from `scopeIdentity` — NOT re-derived.
+ *
+ * This lived in `page.tsx` and computed `scope ? scope.tag : "General
+ * question"` itself, making it a FOURTH place that decided what the current
+ * scope is called, out of sight of the other three. Peer review found that the
+ * four already disagreed on reachable input. Moving it here leaves one place
+ * to get it wrong instead of four.
+ */
+export function suggestionsFor(scope: Scope): { q: string; hint: string }[] {
+  const hint = scopeIdentity(scope);
+  return (scope ? MACHINE_SUGGESTIONS : GENERAL_SUGGESTIONS).map((q) => ({ q, hint }));
 }
 
 /**
