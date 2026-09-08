@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
+import HomeComposer from "@/factorylm-ui/HomeComposer";
 import { API_BASE } from "@/lib/config";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 
@@ -389,6 +390,14 @@ export default function FeedPage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 space-y-4 max-w-3xl mx-auto">
+        {/* The composer IS the home screen (gates A-1, B-1). `/` redirects to
+            `/feed/`, so this is the first surface a signed-in technician sees —
+            and until now the only way to ask anything from it was a link out to
+            a Telegram bot. It goes FIRST, above the readiness widget and the KPI
+            row: the recon's finding was that the product opens on an operations
+            console containing an AI feature, when it should open on an AI
+            surface containing operations. */}
+        <HomeComposer />
         {/* Namespace readiness widget (Phase 2 slice 1) — kept above the KPI row. */}
         <HealthScoreWidget />
 
