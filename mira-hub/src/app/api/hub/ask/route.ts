@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
@@ -31,7 +31,8 @@ import { stripConflictingVendors } from "@/lib/vendor-relevance";
  *
  * Which corpus
  * ------------
- * `retrieveManualChunks` under the caller's tenant applies the hybrid read law
+ * `retrieveManualChunks` on the RAW owner pool, with the caller's tenant passed
+ * as the predicate argument, applies the hybrid read law
  * (`.claude/rules/knowledge-entries-tenant-scoping.md`): the shared OEM library
  * plus this tenant's own private uploads. The quickstart route deliberately
  * runs as the public tenant and therefore cannot see a customer's uploads —
@@ -103,14 +104,41 @@ export async function POST(req: Request) {
   const manufacturer = (body.manufacturer ?? "").trim() || null;
 
   let chunks: ManualChunk[] = [];
-  try {
-    chunks = await withTenantContext(ctx.tenantId, async (client) =>
-      retrieveManualChunks(client, ctx.tenantId, question, { manufacturer, topK: 6 }),
-    );
-  } catch (err) {
-    console.error("[hub/ask] retrieval failed:", err);
-    // Continue — the model can still refuse with no context. A retrieval
-    // outage must not become a fabricated answer.
+  {
+    // #2178 — the RAW owner pool (BYPASSRLS), NOT withTenantContext.
+    //
+    // `knowledge_entries` is a hybrid corpus: the shared OEM library lives
+    // under the system tenant with `is_private = false`, and
+    // retrieveManualChunks filters `(is_private = false OR tenant_id = $1)`.
+    // `withTenantContext` issues `SET LOCAL ROLE factorylm_app`, which
+    // activates the RLS policy `tenant_id = current_setting('app.current_tenant_id')`
+    // (003_kb_hardening.sql:52). RLS ANDs on top of the hybrid predicate and
+    // collapses it to `tenant_id = $caller`, so every OEM row becomes
+    // invisible and a customer sees ZERO manuals for every manufacturer.
+    //
+    // The first version of this route used withTenantContext, copied from
+    // `/api/quickstart/ask`. That shape is safe THERE only because quickstart
+    // passes `quickstartTenantId()` — it IS the corpus owner, so scoping to
+    // its own tenant returns the library. This route passes the CUSTOMER's
+    // tenant, where the identical call has the opposite effect. Same code,
+    // opposite outcome, and the failure is silent: retrieval returns no rows
+    // rather than erroring, and the model then refuses politely.
+    //
+    // See `.claude/rules/knowledge-entries-tenant-scoping.md` line 47 and the
+    // matching comment in `api/assets/[id]/chat/route.ts`.
+    const client = await pool.connect();
+    try {
+      chunks = await retrieveManualChunks(client, ctx.tenantId, question, {
+        manufacturer,
+        topK: 6,
+      });
+    } catch (err) {
+      console.error("[hub/ask] retrieval failed:", err);
+      // Continue — the model can still refuse with no context. A retrieval
+      // outage must not become a fabricated answer.
+    } finally {
+      client.release();
+    }
   }
 
   chunks = stripConflictingVendors(chunks, manufacturer ?? question);
