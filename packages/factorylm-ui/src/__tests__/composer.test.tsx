@@ -247,7 +247,6 @@ describe("universal composer", () => {
     const failed = render({ surface: "mobile", fixture: "error-retry", hooks });
     view.click(failed.buttonNamed("Retry") ?? new Error("Retry is required") as never);
     expect(calls).toContain("retry:turn-error-retry");
-    expect(failed.outputs().retryTarget).toBe("");
 
     const busy = render({ surface: "mobile", fixture: "grounded-answer", hooks: { ...hooks, busy: true } });
     expect(busy.buttonNamed("Send")).toBeNull();

@@ -1,4 +1,5 @@
 import type {
+  ProjectNode,
   ContextSnapshot,
   InteractionPart,
   InteractionTurn,
@@ -24,6 +25,12 @@ export interface HostHooks {
   readonly onRetry?: (turnId: string) => void;
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
+  /**
+   * Start a new thread. New chat is OFFERED as an enabled primary action only when the host
+   * provides this; without it (the disconnected lab) the control is honestly disabled with a
+   * visible reason — never a dead button (#3649 scope 4).
+   */
+  readonly onNewChat?: () => void;
   readonly busy?: boolean;
 }
 
@@ -78,12 +85,50 @@ export function machineName(state: ShellState, machineId: string | undefined): s
   return state.machines.find((machine) => machine.id === machineId)?.name ?? machineId;
 }
 
+/** A turn or run carries its own context line only when it differs from the current context
+ *  (machine, identity, evidence authorization, project or folder) — the chip at the top already
+ *  says where we are. Authorization is a scope change too: an answer recorded while evidence was
+ *  authorized must keep saying so after authorization is revoked (Codex P1, #3651). */
+export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): boolean {
+  const now = state.activeContext;
+  return snapshot.machineId !== now.machineId
+    || snapshot.machineIdentity !== now.machineIdentity
+    || snapshot.evidenceAuthorization !== now.evidenceAuthorization
+    || (snapshot.projectId ?? undefined) !== (now.projectId ?? undefined)
+    || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
+}
+
+function folderLabel(nodes: readonly ProjectNode[], folderId: string): string | undefined {
+  for (const node of nodes) {
+    if (node.kind !== "folder") continue;
+    if (node.id === folderId) return node.label;
+    const nested = folderLabel(node.children, folderId);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+/**
+ * The visible text of a recorded context. Names every field that differs from the CURRENT
+ * context (machine, identity, evidence, project, folder) so a history line says what
+ * differs, and handles a machine-less scope: "No machine · evidence … · project …".
+ */
 export function describeContext(state: ShellState, context: ContextSnapshot): string {
+  const now = state.activeContext;
   const machine = machineName(state, context.machineId);
-  if (!machine) return "No machine";
-  const identity = context.machineIdentity.replace("_", " ");
-  const evidence = context.evidenceAuthorization.replace(/_/g, " ");
-  return `${machine} · identity ${identity} · evidence ${evidence}`;
+  const parts: string[] = [];
+  if (machine) {
+    parts.push(machine, `identity ${context.machineIdentity.replace("_", " ")}`);
+  } else {
+    parts.push("No machine");
+  }
+  parts.push(`evidence ${context.evidenceAuthorization.replace(/_/g, " ")}`);
+  const project = context.projectId ? state.projects.find((candidate) => candidate.id === context.projectId) : undefined;
+  if (context.projectId && context.projectId !== now.projectId) parts.push(`project ${project?.name ?? context.projectId}`);
+  if (context.folderId && context.folderId !== now.folderId) {
+    parts.push(`folder ${(project ? folderLabel(project.children, context.folderId) : undefined) ?? context.folderId}`);
+  }
+  return parts.join(" · ");
 }
 
 const SOURCE_KIND_LABEL = {
@@ -287,7 +332,10 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       return <ArtifactPart part={part} adapter={adapter} />;
 
     case "context_change":
-      return <p className="fl-part fl-context-change" data-part-type="context_change">
+      // Same predicate as the turn/run lines: a change that equals the current
+      // context is not news — the chip already says it.
+      if (!contextDiffers(state, part.change)) return null;
+      return <p className="fl-part fl-context-change" data-part-type="context_change" data-context-line="part">
         Context: {describeContext(state, part.change)}
       </p>;
 

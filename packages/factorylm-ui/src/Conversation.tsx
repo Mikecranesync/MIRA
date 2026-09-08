@@ -7,7 +7,7 @@ import type {
   ShellState,
 } from "@factorylm/interaction";
 import type { Dispatch } from "react";
-import { PartRenderer, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
+import { PartRenderer, contextDiffers, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
   readonly state: ShellState;
@@ -49,7 +49,9 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
       <p className="fl-card__meta">{lifecycleLabel(run.status)} · {completed}/{run.plan.length} steps</p>
     </div>
     <p className="fl-run__goal">{run.goal}</p>
-    <p className="fl-card__meta">Context: {describeContext(state, run.contextSnapshot)}</p>
+    {contextDiffers(state, run.contextSnapshot)
+      ? <p className="fl-card__meta" data-context-line="run">Context: {describeContext(state, run.contextSnapshot)}</p>
+      : null}
     <ol className="fl-run__steps" aria-label="Plan steps">
       {run.plan.map((step) => <li key={step.id} className="fl-step" data-step-status={step.status}>
         <span className="fl-step__check" aria-hidden="true">{step.status === "completed" ? "✓" : ""}</span>
@@ -64,7 +66,6 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
 }
 
 function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { readonly turn: InteractionTurn }) {
-  const machine = machineName(state, turn.context.machineId);
   return <li
     className="fl-turn"
     data-turn-id={turn.id}
@@ -74,7 +75,9 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
   >
     <div className="fl-turn__head">
       <span className="fl-turn__role">{ROLE_LABEL[turn.role]}</span>
-      <span className="fl-card__meta">{machine ? `${machine} · ${turn.context.machineIdentity.replace("_", " ")}` : "No machine context"}</span>
+      {contextDiffers(state, turn.context)
+        ? <span className="fl-card__meta" data-context-line="turn">{describeContext(state, turn.context)}</span>
+        : null}
     </div>
     <div className="fl-turn__parts">
       {turn.parts.map((part, index) => <PartRenderer
@@ -100,7 +103,6 @@ export function Conversation({ state, dispatch, adapter, hooks }: ConversationPr
         {crumbs.length > 0
           ? crumbs.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)
           : <span>Workspace</span>}
-        <span className="fl-card__meta"> / {state.thread.title}</span>
       </nav>
       <div className="fl-conversation__modes" role="group" aria-label="Mode">
         <button type="button" aria-pressed={state.mode === "ask"} onClick={() => dispatch({ type: "set-mode", mode: "ask" })}>Ask</button>

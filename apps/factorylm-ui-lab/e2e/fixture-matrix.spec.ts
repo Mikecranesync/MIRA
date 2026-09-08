@@ -86,3 +86,18 @@ test.describe("screenshot matrix", () => {
     }
   }
 });
+
+test("at 1440x900 the navigation footer (settings / account) is inside the viewport and the sidebar does not overflow it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // embed=1 is the product surface; the lab's control bar above it is lab chrome.
+  await page.goto("/?surface=web&theme=light&scenario=project-tree&embed=1");
+  const sidebar = page.getByRole("complementary", { name: "FactoryLM navigation" });
+  const box = await sidebar.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(900 + 1);
+  for (const name of ["Settings", /Account/]) {
+    const b = await page.getByRole("button", { name }).boundingBox();
+    expect(b, String(name)).not.toBeNull();
+    expect(b!.y + b!.height, String(name)).toBeLessThanOrEqual(900);
+  }
+});
