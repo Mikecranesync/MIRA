@@ -27,7 +27,22 @@ describe("V3 — errors are humane (recon G-1…G-5)", () => {
   it("never renders an HTTP status code in user-facing copy", () => {
     // The live product showed "Chat unavailable (412)". The recon's finding was
     // not that the number was wrong — it was that a number is not a sentence.
-    const strings = page.match(/"[^"]{12,}"/g) ?? [];
+    // A TS string literal cannot span a newline — that is the discriminator, and
+  // the previous pattern lacked it.
+  //
+  // `/"[^"]{12,}"/g` pairs quotes BY POSITION. Line 1 of this page is
+  // `"use client";` and `use client` is 10 characters — under the 12 minimum —
+  // so that literal's OPENING quote is skipped and matching resumes from its
+  // CLOSING quote. Everything after pairs off by one, and the regex matches the
+  // code BETWEEN literals instead of the literals. Measured on the shipped
+  // file: 113 "matches", 95 of them spanning a newline, the first being
+  // `";\n\nimport { useCallback, useEffect, useRef, useState } from`.
+  //
+  // So `strings` never held a single piece of user copy, and the status-code
+  // filter below was scanning code and always finding nothing. The guard RAN,
+  // was REACHED by the gate, and reported green — while structurally unable to
+  // see its own subject. A correct scan finds 37 real literals.
+  const strings = (page.match(/"(?:[^"\\\n]|\\.)*"/g) ?? []).filter((s) => s.length >= 14);
     const withStatus = strings.filter((s) => /\((?:[1-5]\d\d)\)/.test(s));
     expect(withStatus).toEqual([]);
   });
