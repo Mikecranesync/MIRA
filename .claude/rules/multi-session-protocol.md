@@ -145,6 +145,36 @@ The **invariants below bind in all cases, tooling or no tooling**:
   the review and do not silently skip it. Preserve the implementation and
   test evidence, then report PARTIAL or BLOCKED naming the exact dependency.
 
+> **⏳ TIME-BOXED CARVE-OUT — Codex unavailable, 2026-09-07 → 2026-09-13.**
+> Codex is out of usage until **2026-09-13**. That is exactly the "unavailable"
+> condition above, whose prescribed answer is to report BLOCKED rather than
+> appoint a substitute. Mike has decided otherwise for this window: **Claude
+> implements, a DIFFERENT Claude reviews, and CI must be green.** Three
+> conditions on it, all binding:
+>
+> 1. **Every review run this way is labelled PARTIAL** in its own text, naming
+>    the degraded lane. A verdict that does not record which lane produced it is
+>    indistinguishable from a full one within a week.
+> 2. **It expires 2026-09-13.** On that date this block is deleted and the rule
+>    above governs again unamended. If Codex has not returned, the expiry is
+>    re-decided by a human — it does not roll over by default.
+> 3. **It does not weaken any other gate.** Green CI, exact-SHA review, the
+>    three-round cap and the human merge gate all still apply.
+>
+> **Why this is a carve-out and not a replacement.** The value of
+> Codex-reviews-Claude is *provider* independence — a different model with
+> different blind spots. Two Claude sessions share training, priors and failure
+> modes. Evidence from the night this was written cuts both ways: cross-Claude
+> review caught six real defects that the author missed, so it is plainly not
+> worthless — but every one of them was a governance or wiring defect, the class
+> both sessions were already tuned to hunt. Whether a second Claude catches what
+> the first missed in the classes *neither* hunts is precisely what the
+> substitution assumes away. So this is the best option available, not a
+> like-for-like fallback, and calling it "the review lane" would overstate it.
+>
+> Raised by `fleet-001-review-e9`; decided by Mike 2026-09-07; discussion at
+> #3653.
+
 ## 7. Hard human gates
 
 Never merge, deploy production, bypass CI, weaken gates or tests, rewrite
