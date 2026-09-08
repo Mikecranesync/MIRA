@@ -109,6 +109,21 @@ describe("focus return respects the layer stack", () => {
   });
 });
 
+describe("sheet dismissal affordance", () => {
+  it("shows a drag handle and an accessible Close control that dismisses the sheet and returns focus", () => {
+    const view = render({ surface: "mobile", fixture: "machine-ask" });
+    view.click(must(view.buttonNamed("Close navigation"), "Close navigation"));
+    const add = must(view.buttonNamed("Add attachment"), "Add attachment");
+    act(() => { add.focus(); });
+    view.click(add);
+    const dialog = must(sheet(view), "attachment sheet");
+    expect(dialog.querySelector(".fl-attachment-menu__handle")).not.toBeNull();
+    view.click(must(view.buttonNamed("Close attachment menu"), "Close attachment menu"));
+    expect(sheet(view)).toBeNull();
+    expect(document.activeElement).toBe(add);
+  });
+});
+
 describe("Tab trapping follows layer precedence", () => {
   it("traps Tab in the attachment sheet, not the drawer, when both are open", () => {
     const view = render({ surface: "mobile", fixture: "machine-ask" });
@@ -172,7 +187,7 @@ describe("safe areas and drawer scroll ownership (stylesheet contract)", () => {
   it("uses the workspace scrim token so dark theme remaps it", () => {
     expect(shell).toMatch(/\.fl-scrim\s*\{[^}]*var\(--fl-workspace-scrim/s);
     const workspace = readFileSync(new URL("../../../factorylm-theme/src/workspace.css", import.meta.url), "utf8");
-    expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-scrim\)/);
+    expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-modal-scrim\)/);
     expect(workspace).toMatch(/--fl-workspace-scrim:\s*var\(--fl-dark-scrim\)/);
   });
 });

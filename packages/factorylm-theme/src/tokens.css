@@ -41,6 +41,7 @@
   --fl-fault-bg: #fef2f2;
   --fl-off: #9ca3af;         /* off / unknown / low confidence */
   --fl-scrim: rgba(17, 24, 39, 0.72); /* overlay scrim on live media (header at 72%) */
+  --fl-modal-scrim: rgba(17, 24, 39, 0.45); /* modal layers over the workspace (drawer, sheet, viewer): quiets, never erases */
 
   /* type */
   --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -105,7 +106,14 @@
   --fl-dark-fault: #ff5d5d;       /* stop / escalate / fault */
   --fl-dark-fault-tint: rgba(255,93,93,.08);
   --fl-dark-fault-line: rgba(255,93,93,.35);
-  --fl-dark-scrim: rgba(255, 255, 255, 0.12); /* overlay scrim on dark background */
+  --fl-dark-scrim: rgba(0, 0, 0, 0.55); /* modal scrim on dark: a dark neutral overlay so the active layer stays the brightest surface */
+  /* dark WORKSPACE accent — indigo, the same hue as light. The datasheet orange above
+   * is the public-site brand accent; a technician's dark workspace keeps action/selection
+   * colour consistent across themes (Codex look-vs-plan, 2026-09-07). */
+  --fl-dark-workspace-accent: #8b8cf6;
+  --fl-dark-workspace-accent-hover: #a5a6f8;
+  --fl-dark-workspace-accent-tint: rgba(139,140,246,.12);
+  --fl-dark-workspace-accent-line: rgba(139,140,246,.42);
 
   /* dark type (marketing stacks) */
   --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;

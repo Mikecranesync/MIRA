@@ -98,6 +98,12 @@ export function contextDiffers(state: ShellState, snapshot: ContextSnapshot): bo
     || (snapshot.folderId ?? undefined) !== (now.folderId ?? undefined);
 }
 
+/** Mono only for the code-like token in a locator ("Chapter 8, F30001" → the F30001). */
+function locatorWithCode(locator: string) {
+  const parts = locator.split(/(\b[A-Z]{1,3}\d{3,}\b)/);
+  return parts.map((piece, index) => (index % 2 === 1 ? <code key={index}>{piece}</code> : piece));
+}
+
 function folderLabel(nodes: readonly ProjectNode[], folderId: string): string | undefined {
   for (const node of nodes) {
     if (node.kind !== "folder") continue;
@@ -205,8 +211,8 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
         onClick={() => (hooks?.onSource ? hooks.onSource(source) : dispatch({ type: "select-source", sourceId: source.id }))}
       >
         <span className="fl-source__kind">{SOURCE_KIND_LABEL[source.kind]}</span>
-        <span>{source.title}</span>
-        <span className="fl-source__locator">{source.locator}</span>
+        <span className="fl-source__title">{source.title}</span>
+        <span className="fl-source__locator">{locatorWithCode(source.locator)}</span>
       </button>;
     }
 
