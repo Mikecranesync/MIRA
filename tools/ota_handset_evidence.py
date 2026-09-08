@@ -73,6 +73,16 @@ class EvidenceError(ValueError):
     """The receipt cannot authorize a production pointer change."""
 
 
+def _reject_duplicate_object_names(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one JSON object while rejecting ambiguous duplicate names."""
+    value: dict[str, Any] = {}
+    for name, item in pairs:
+        if name in value:
+            raise EvidenceError("receipt JSON contains a duplicate JSON object name")
+        value[name] = item
+    return value
+
+
 def _canonical_time(field: str, value: object) -> datetime:
     if not isinstance(value, str) or not CANONICAL_TIMESTAMP.fullmatch(value):
         raise EvidenceError(f"{field} must be canonical UTC milliseconds")
@@ -94,6 +104,8 @@ def _regular_evidence_file(root: Path, relative: object) -> Path:
     if not isinstance(relative, str) or not relative:
         raise EvidenceError("evidenceFiles path must be a nonempty string")
     posix = PurePosixPath(relative)
+    if relative != posix.as_posix():
+        raise EvidenceError("evidenceFiles path must use canonical POSIX spelling")
     if (
         posix.is_absolute()
         or ".." in posix.parts
@@ -115,7 +127,7 @@ def _regular_evidence_file(root: Path, relative: object) -> Path:
         raise EvidenceError("evidenceFiles path resolves outside the evidence tree")
     if candidate.is_symlink() or not candidate.is_file():
         raise EvidenceError("evidenceFiles entries must be regular files, never symlinks")
-    return candidate
+    return resolved
 
 
 def _validate_continuous_transcript(path: Path) -> None:
@@ -197,7 +209,8 @@ def validate_evidence(
     if not isinstance(files, list) or not (2 <= len(files) <= 20):
         raise EvidenceError("evidenceFiles must include transcript and About screenshot")
     kinds: set[str] = set()
-    paths: set[str] = set()
+    resolved_paths: set[Path] = set()
+    file_identities: set[tuple[int, int]] = set()
     path_kinds: dict[str, str] = {}
     path_files: dict[str, Path] = {}
     for item in files:
@@ -209,7 +222,9 @@ def validate_evidence(
         relative = item.get("path")
         path = _regular_evidence_file(evidence_root, relative)
         assert isinstance(relative, str)  # narrowed by _regular_evidence_file
-        if relative in paths:
+        stat = path.stat()
+        file_identity = (stat.st_dev, stat.st_ino)
+        if path in resolved_paths or file_identity in file_identities:
             raise EvidenceError("evidenceFiles paths must be unique")
         expected_sha = item.get("sha256")
         if not isinstance(expected_sha, str) or not HEX_64.fullmatch(expected_sha):
@@ -218,7 +233,8 @@ def validate_evidence(
         if actual_sha != expected_sha:
             raise EvidenceError(f"evidenceFiles digest mismatch: {relative}")
         kinds.add(kind)
-        paths.add(relative)
+        resolved_paths.add(path)
+        file_identities.add(file_identity)
         path_kinds[relative] = kind
         path_files[relative] = path
     if not REQUIRED_FILE_KINDS.issubset(kinds):
@@ -243,7 +259,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--play-signing-cert-sha256", required=True)
     args = parser.parse_args(argv)
     try:
-        raw = json.loads(args.evidence_json.read_text(encoding="utf-8"))
+        raw = json.loads(
+            args.evidence_json.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object_names,
+        )
         validate_evidence(
             raw,
             evidence_root=args.evidence_root,
