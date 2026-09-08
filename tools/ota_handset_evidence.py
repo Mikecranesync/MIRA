@@ -38,11 +38,9 @@ PROOF_TRANSCRIPT_MARKERS = [
     "RESULT up_to_date",
     "SECOND_DOWNLOAD observed=false",
 ]
-PROOF_CONTROL_TOKENS = (
-    "FACTORYLM_OTA_PROOF_SEQUENCE_",
-    "STEP ",
-    "RESULT ",
-    "SECOND_DOWNLOAD ",
+PROOF_CONTROL_PATTERN = re.compile(
+    r"FACTORYLM_OTA_PROOF_SEQUENCE(?:_|\b)|\b(?:STEP|RESULT|SECOND_DOWNLOAD)(?:\s|:)",
+    re.IGNORECASE,
 )
 EXPECTED_FIELDS = {
     "schemaVersion",
@@ -127,11 +125,7 @@ def _validate_continuous_transcript(path: Path) -> None:
     except UnicodeError as exc:
         raise EvidenceError("proofTranscriptPath must be a UTF-8 text transcript") from exc
 
-    control_lines = [
-        line
-        for line in transcript.splitlines()
-        if any(token in line for token in PROOF_CONTROL_TOKENS)
-    ]
+    control_lines = [line for line in transcript.splitlines() if PROOF_CONTROL_PATTERN.search(line)]
     if control_lines != PROOF_TRANSCRIPT_MARKERS:
         raise EvidenceError(
             "proofTranscriptPath must contain only the exact ordered proof-control lines"

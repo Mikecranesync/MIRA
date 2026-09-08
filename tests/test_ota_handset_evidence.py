@@ -259,6 +259,33 @@ RESULT update_ready
 RESULT up_to_date
 SECOND_DOWNLOAD observed=false
 """,
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+SECOND_DOWNLOAD\tobserved=true
+""",
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+result update_ready
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+""",
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+STEP: download_again
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+""",
     ],
     ids=[
         "missing-second-check",
@@ -267,6 +294,9 @@ SECOND_DOWNLOAD observed=false
         "contradictory-second-download",
         "embedded-control-markers",
         "extra-terminal-result",
+        "tab-separated-second-download",
+        "lowercase-terminal-result",
+        "colon-separated-step",
     ],
 )
 def test_rejects_transcript_without_exact_continuous_terminal_proof(
