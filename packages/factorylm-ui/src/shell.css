@@ -21,15 +21,15 @@
 .fl-shell__nav-head { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-3); }
 .fl-shell__brand { font-size: var(--fl-workspace-fs-title); font-weight: 700; }
 .fl-shell__nav-icon { inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; }
-.fl-shell__hint { margin: calc(-1 * var(--fl-workspace-space-2)) 0 var(--fl-workspace-space-3); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-shell__hint { margin: 0 0 var(--fl-workspace-space-3); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-shell__search { display: flex; align-items: center; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-muted); }
-.fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
+.fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; font-size: var(--fl-workspace-fs); border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
 .fl-shell__search input:focus-visible { outline: none; }
 .fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
 /* Explicit column: an implicit `auto` grid track sizes to the widest row (the 550px main-column bug, again). */
-.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--fl-workspace-space-1); min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
+.fl-shell__nav-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-inline-size: 0; flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overflow-x: hidden; }
 .fl-shell__nav-section { min-inline-size: 0; }
-.fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-2) 0 0; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.fl-shell__section-title { display: flex; align-items: center; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-3) 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 
 .fl-overlay { display: contents; }
 
@@ -63,22 +63,25 @@
 /* The one current row is styled whether it is a button (host opener) or an inert <li>. */
 .fl-shell button[aria-current="page"],
 .fl-tree__row[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); font-weight: 600; }
-.fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); }
+.fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); }
 .fl-shell__new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 
 .fl-tree,
 .fl-tree__children { margin: 0; padding: 0; list-style: none; }
-.fl-tree__children { padding-inline-start: var(--fl-workspace-space-3); }
+.fl-tree__children { padding-inline-start: var(--fl-workspace-space-2); }
 .fl-tree--flat .fl-tree__row { padding-inline-start: var(--fl-workspace-space-2); }
 /* One row pattern for every object type: disclosure column, type icon, label, muted metadata.
    Exactly one row is aria-current; ancestors carry data-path (quiet, not a second selection). */
-.fl-tree__row { display: flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-ink); text-align: start; }
+/* Base scale (14px) for navigation rows; the 44px hit floor stays, the visual weight drops. */
+.fl-tree__row { display: flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); text-align: start; }
 .fl-tree__disclosure { display: grid; place-items: center; inline-size: 1rem; flex: 0 0 auto; }
 .fl-tree__chevron { inline-size: 1rem; block-size: 1rem; }
 .fl-tree__icon { display: grid; place-items: center; inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; color: var(--fl-workspace-muted); }
 .fl-tree__icon svg { inline-size: 1rem; block-size: 1rem; }
 .fl-tree__label { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fl-tree__meta { flex: 0 0 auto; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+/* Fixed metadata column: the label gets the same width in both themes and at any weight, so
+   a selected row truncates identically in light and dark (Codex D review). */
+.fl-tree__meta { flex: 0 0 3.75rem; inline-size: 3.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: end; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-tree__project { font-weight: 700; }
 .fl-tree__row[data-path="true"],
 .fl-tree__row[data-context="true"],
@@ -145,7 +148,7 @@
   .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
   .fl-shell__brand-mark { display: block; }
-  .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 600; }
+  .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 700; color: var(--fl-workspace-header-ink); }
   .fl-shell__nav-footer { flex: 0 0 auto; margin-block-start: 0; padding-block-start: var(--fl-workspace-space-3); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); border-radius: 0; }
   .fl-shell__inspector {
     position: fixed;

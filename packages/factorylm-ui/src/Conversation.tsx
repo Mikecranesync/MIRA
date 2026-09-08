@@ -46,7 +46,7 @@ function RunCard({ run, state }: { readonly run: InteractionRun; readonly state:
   return <section className="fl-run" aria-label="Diagnostic Run" data-run-status={run.status}>
     <div className="fl-run__head">
       <p className="fl-card__label">Diagnostic Run · {run.kind}</p>
-      <p className="fl-card__meta">{lifecycleLabel(run.status)} · {completed}/{run.plan.length} steps</p>
+      <p className="fl-card__meta fl-run__status">{lifecycleLabel(run.status)} · {completed}/{run.plan.length} steps</p>
     </div>
     <p className="fl-run__goal">{run.goal}</p>
     {contextDiffers(state, run.contextSnapshot)

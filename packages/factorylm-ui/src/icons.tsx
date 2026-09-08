@@ -67,3 +67,7 @@ export function ComposeIcon(props: IconProps) {
 export function ClockIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><circle cx="8" cy="8" r="6" {...STROKE} /><path d="M8 4.5V8l2.5 1.5" {...STROKE} /></svg>;
 }
+
+export function MicIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" {...STROKE} /><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5M5.5 14.5h5" {...STROKE} /></svg>;
+}
