@@ -843,6 +843,13 @@ jobs:
         # same "written but never wired" gap called out in the step below.
         run: pytest tests/test_rm_guard.py -v
 
+      - name: beta-gate workflow contract
+        # The headline beta gate captured a pytest exit code as its verdict, and a run whose
+        # only test SKIPS exits 0 — so degraded provisioning reported green having proven
+        # nothing. Pinned here, in a job that IS in ci-gate's needs, because the workflow
+        # itself cannot police its own verdict logic.
+        run: pytest tests/test_beta_gate_workflow.py -v
+
       - name: Check Hub Unit Tests path-filter contract
         # tests/test_hub_unit_filter_contract.py was written for this job
         # (its docstring: "pytest + pyyaml only — matches the Architecture
