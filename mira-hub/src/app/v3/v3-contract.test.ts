@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { historyFor, questionBefore } from "./page";
+import { scopeKey } from "@/factorylm-ui/ScopePicker";
 
 /**
  * V3 surface contract.
@@ -249,5 +251,76 @@ describe("V3 — mounted without disturbing the existing product", () => {
     const rules = css.split("\n").filter((l) => /^\.[a-z]/.test(l.trim()));
     const unscoped = rules.filter((l) => !/^\.v3/.test(l.trim()));
     expect(unscoped).toEqual([]);
+  });
+});
+
+/**
+ * The identity boundary, asserted on data rather than on source shape.
+ *
+ * These three came out of adversarial review round 1 on PR #3683 (F1 HIGH,
+ * F3 LOW). They are deliberately behavioural: `historyFor` and
+ * `questionBefore` are the functions the component actually calls, so
+ * reverting either fix turns these red instead of leaving a source-scan green.
+ */
+describe("V3 — a conversation belongs to one machine (F1)", () => {
+  const A = { id: "aaa", tag: "CV-101", name: "Infeed conveyor" } as never;
+  const B = { id: "bbb", tag: "CV-102", name: "Outfeed conveyor" } as never;
+  const turns = [
+    { role: "user" as const, text: "A is overheating", at: A, key: "asset:aaa" },
+    { role: "assistant" as const, text: "A ran hot after the bearing swap", citations: [], evidence: [], at: A, key: "asset:aaa" },
+    { role: "user" as const, text: "general question", at: null, key: "general" },
+    { role: "assistant" as const, text: "a general answer", citations: [], evidence: [], at: null, key: "general" },
+  ];
+
+  it("sends machine B none of machine A's turns", () => {
+    const sent = historyFor(turns, scopeKey(B));
+    expect(sent).toEqual([]);
+    const text = JSON.stringify(sent);
+    expect(text).not.toContain("overheating");
+    expect(text).not.toContain("bearing swap");
+  });
+
+  it("keeps a machine's own turns, so the filter is not simply empty", () => {
+    // Positive control. Without this, a `historyFor` that returned [] for
+    // everything would pass the test above while breaking the product.
+    const sent = historyFor(turns, scopeKey(A));
+    expect(sent.map((m) => m.content)).toEqual(["A is overheating", "A ran hot after the bearing swap"]);
+  });
+
+  it("does not carry general turns into a machine, or a machine into general", () => {
+    expect(JSON.stringify(historyFor(turns, scopeKey(A)))).not.toContain("a general answer");
+    expect(JSON.stringify(historyFor(turns, scopeKey(null)))).not.toContain("bearing swap");
+  });
+
+  it("still excludes refusals within the same scope", () => {
+    const withRefusal = [
+      ...turns,
+      { role: "assistant" as const, text: "", citations: [], evidence: [], refusal: { reason: "no approved context" }, at: A, key: "asset:aaa" },
+    ];
+    expect(historyFor(withRefusal, scopeKey(A)).length).toBe(2);
+  });
+});
+
+describe("V3 — Retry re-asks its own question (F3)", () => {
+  const A = { id: "aaa", tag: "CV-101", name: "Infeed" } as never;
+  const thread = [
+    { role: "user" as const, text: "Q1", at: A, key: "asset:aaa" },
+    { role: "assistant" as const, text: "A1", citations: [], evidence: [], at: A, key: "asset:aaa" },
+    { role: "user" as const, text: "Q2", at: null, key: "general" },
+    { role: "assistant" as const, text: "A2", citations: [], evidence: [], at: null, key: "general" },
+  ];
+
+  it("retries Q1 from A1, not the newest question", () => {
+    const asked = questionBefore(thread, 1);
+    expect(asked?.text).toBe("Q1");
+  });
+
+  it("retries Q1 under Q1's own scope, not the currently selected one", () => {
+    expect(questionBefore(thread, 1)?.key).toBe("asset:aaa");
+    expect(questionBefore(thread, 3)?.key).toBe("general");
+  });
+
+  it("has nothing to retry before the first question", () => {
+    expect(questionBefore(thread, 0)).toBeUndefined();
   });
 });

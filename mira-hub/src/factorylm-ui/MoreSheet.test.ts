@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { moreDestinations } from "./MoreSheet";
+import { NAV_ITEMS } from "@/providers/access-control";
+import { moreDestinations, sidebarDestinations, SIDEBAR_KEYS } from "./MoreSheet";
 
 /**
  * `More ›` was a dead row — the 13→5 nav reduction shipped before its
@@ -15,10 +16,39 @@ describe("More › destinations", () => {
     expect(moreDestinations(tech, false).length).toBeGreaterThan(0);
   });
 
-  it("never repeats a primary item — More carries what the sidebar does not", () => {
+  it("never repeats a sidebar row — More carries what the sidebar does not", () => {
     const keys = moreDestinations(owner, false).map((d) => d.key);
-    for (const primary of ["feed", "namespace", "command-center", "channels", "knowledge", "notebooks"]) {
-      expect(keys).not.toContain(primary);
+    for (const shown of SIDEBAR_KEYS) {
+      expect(keys).not.toContain(shown);
+    }
+  });
+
+  it("carries the legacy primary items the V3 sidebar does NOT show", () => {
+    // The gap this closes (F2): the exclusion used to key on NAV_ITEMS'
+    // `group === "primary"` — the LEGACY Hub's five, which are not V3's four.
+    // So these were excluded from More while the sidebar rows were inert
+    // buttons, leaving them reachable from neither place. If the exclusion
+    // ever reverts to the group, this test goes red.
+    const keys = moreDestinations(owner, false).map((d) => d.key);
+    for (const orphaned of ["feed", "namespace", "command-center", "channels"]) {
+      expect(keys).toContain(orphaned);
+    }
+  });
+
+  it("partitions every visible destination into exactly one of the two lists", () => {
+    const inMore = moreDestinations(owner, false).map((d) => d.key);
+    const inSidebar = sidebarDestinations(owner, false).map((d) => d.key);
+    // Disjoint — nothing offered twice.
+    expect(inMore.filter((k) => inSidebar.includes(k))).toEqual([]);
+    // And complete — every gate-passing destination is reachable from one of
+    // them, so no future NAV_ITEMS addition can silently become unreachable.
+    const reachable = new Set([...inMore, ...inSidebar]);
+    for (const item of NAV_ITEMS) {
+      if (item.group === "labs") continue;
+      if (!item.roles.includes("owner" as never)) continue;
+      const cap = (item as { capability?: string }).capability;
+      if (cap && !owner.capabilities.includes(cap)) continue;
+      expect(reachable.has(item.key)).toBe(true);
     }
   });
 
@@ -63,9 +93,31 @@ describe("More › destinations", () => {
 
   it("uses words a technician says, not invented vocabulary", () => {
     const labels = moreDestinations(owner, false).map((d) => d.label);
-    expect(labels).not.toContain("CMMS");
-    expect(labels).toContain("Work orders");
     expect(labels).not.toContain("Contextualization");
+    expect(labels).toContain("Equipment map");
+    // "Work orders" moved to the sidebar with the `workorders` key, so the
+    // plain-vocabulary rule is asserted where the row now lives. The canonical
+    // label is "CMMS"; neither list may show it.
+    const sidebarLabels = sidebarDestinations(owner, false).map((d) => d.label);
+    expect(sidebarLabels).toContain("Work orders");
+    expect([...labels, ...sidebarLabels]).not.toContain("CMMS");
+  });
+
+  it("gates sidebar rows by role and capability, like More", () => {
+    // A row the caller cannot reach must not be rendered and then refused
+    // (#1932). Unknown role fails closed to nothing.
+    expect(sidebarDestinations({ role: "nonsense", capabilities: [] }, false)).toEqual([]);
+    // Positive control: a real role does get rows, so the assertion above
+    // cannot be passing because the function always returns [].
+    expect(sidebarDestinations(tech, false).length).toBeGreaterThan(0);
+  });
+
+  it("resolves every sidebar key to a real destination with an href", () => {
+    // A key with no matching NAV_ITEMS entry would silently vanish from the
+    // sidebar — the inert-button failure in a new disguise.
+    const rows = sidebarDestinations(owner, false);
+    expect(rows.length).toBe(SIDEBAR_KEYS.length);
+    for (const r of rows) expect(r.href.startsWith("/")).toBe(true);
   });
 
   it("returns nothing for an unknown role rather than everything", () => {

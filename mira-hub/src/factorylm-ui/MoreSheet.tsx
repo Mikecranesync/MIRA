@@ -38,12 +38,64 @@ const PLAIN_LABEL: Record<string, string> = {
   "ctx-review": "Import review",
 };
 
+/**
+ * The V3 sidebar's rows, in order, as canonical `NAV_ITEMS` keys.
+ *
+ * ONE list, read by both the sidebar and `moreDestinations`, so the two can
+ * never disagree — a destination is in exactly one of them.
+ *
+ * This is deliberately NOT `group === "primary"`. That group is the LEGACY
+ * Hub's five, which are not V3's five, and excluding it from More while the
+ * sidebar rows were inert left `feed`, `namespace`, `command-center` and
+ * `channels` reachable from neither place. Keying the exclusion to what the
+ * sidebar actually renders is what closes that gap. Adversarial review F2 on
+ * PR #3683.
+ */
+export const SIDEBAR_KEYS = ["notebooks", "assets", "knowledge", "workorders"] as const;
+
+/** The sidebar's own words, over the canonical labels. Same intent as
+ *  `PLAIN_LABEL`: say what a technician would say. */
+const SIDEBAR_LABEL: Record<string, string> = {
+  notebooks: "Projects",
+  assets: "Machines",
+  knowledge: "Manuals",
+  workorders: "Work orders",
+};
+
+function visibleTo(item: (typeof NAV_ITEMS)[number], me: Me, labs: boolean): boolean {
+  const role = me.role ?? "";
+  const caps = new Set(me.capabilities ?? []);
+  // Labs are mock-data surfaces, hidden on prod builds. Never offer a
+  // destination backed by fixtures as though it were real.
+  if (item.group === "labs" && !labs) return false;
+  if (!item.roles.includes(role as never)) return false;
+  const cap = (item as { capability?: string }).capability;
+  if (cap && !caps.has(cap)) return false;
+  return true;
+}
+
+/**
+ * The sidebar's primary destinations, resolved from `NAV_ITEMS` and gated by
+ * the same server-authoritative role/capability contract as More. A row the
+ * caller may not reach is not rendered, rather than rendered and then refused.
+ */
+export function sidebarDestinations(me: Me, labs: boolean) {
+  return SIDEBAR_KEYS.map((key) => NAV_ITEMS.find((i) => i.key === key))
+    .filter((item): item is (typeof NAV_ITEMS)[number] => Boolean(item))
+    .filter((item) => visibleTo(item, me, labs))
+    .map((item) => ({
+      key: item.key,
+      href: item.href,
+      label: SIDEBAR_LABEL[item.key] ?? item.label,
+    }));
+}
+
 export function moreDestinations(me: Me, labs: boolean) {
   const role = me.role ?? "";
   const caps = new Set(me.capabilities ?? []);
   return NAV_ITEMS.filter((item) => {
-    // The 5 primary items live in the sidebar; More carries the rest.
-    if (item.group === "primary") return false;
+    // Whatever the sidebar already shows lives there; More carries the rest.
+    if ((SIDEBAR_KEYS as readonly string[]).includes(item.key)) return false;
     // Labs are mock-data surfaces, hidden on prod builds. Never offer a
     // destination backed by fixtures as though it were real.
     if (item.group === "labs" && !labs) return false;

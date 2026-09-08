@@ -125,6 +125,24 @@ export function askEndpointFor(scope: Scope): string {
   return scope ? `${API_BASE}/api/assets/${scope.id}/chat/` : `${API_BASE}/api/hub/ask`;
 }
 
+/**
+ * The ROUTING identity of a scope — the key a conversation is partitioned by.
+ *
+ * Deliberately NOT `scopeIdentity`, which returns a display string (tag, then
+ * name, then a fallback) and can therefore collide across two machines or
+ * change when a machine is renamed. This keys on the same `scope.id` that
+ * `askEndpointFor` routes on, and lives beside it so the endpoint a turn was
+ * sent to and the bucket it is remembered in cannot drift apart.
+ *
+ * Why it exists: history is per-scope. Sending machine A's turns to machine
+ * B's endpoint lets A's fault history shape an answer presented as grounded
+ * for B — the identity boundary `.claude/rules/direct-connection-uns-certified.md`
+ * exists to hold. Found by adversarial review (F1) on PR #3683.
+ */
+export function scopeKey(scope: Scope): string {
+  return scope ? `asset:${scope.id}` : "general";
+}
+
 /** Substring match over the fields a technician would actually type: the tag
  *  on the machine, its name, its maker, its model, where it is. */
 export function filterMachines(machines: Machine[], query: string): Machine[] {

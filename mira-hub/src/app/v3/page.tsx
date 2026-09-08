@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import MoreSheet from "@/factorylm-ui/MoreSheet";
+import MoreSheet, { sidebarDestinations } from "@/factorylm-ui/MoreSheet";
+import { labsEnabled } from "@/providers/access-control";
 import ScopePicker, {
   askEndpointFor,
   scopeHint,
+  scopeKey,
   scopeLabel,
   suggestionsFor,
   type Scope,
@@ -52,7 +54,19 @@ type Refusal = {
   missingContext?: { key: string; label: string; status: string; action: string }[];
 };
 
-type Turn =
+/**
+ * Every turn records the scope it was asked under.
+ *
+ * `at` is the live Scope (so Retry can re-ask a turn against ITS machine, not
+ * whatever is selected now) and `key` is its routing identity from
+ * `scopeKey` (so history can be partitioned without comparing objects).
+ *
+ * This is not bookkeeping — it is the identity boundary. Without it, switching
+ * from machine A to machine B carried A's turns into B's request, letting A's
+ * fault history shape an answer rendered as grounded for B. Adversarial review
+ * F1 on PR #3683.
+ */
+type Turn = { at: Scope; key: string } & (
   | { role: "user"; text: string }
   | {
       role: "assistant";
@@ -60,7 +74,42 @@ type Turn =
       citations: Citation[];
       evidence: EvidenceCitation[];
       refusal?: Refusal;
-    };
+    }
+);
+
+/**
+ * The history a machine-scoped request is allowed to carry.
+ *
+ * Exported and pure so the boundary can be asserted directly on data, rather
+ * than inferred from the shape of the source. Two exclusions, both grounding
+ * rules:
+ *
+ *  1. `t.key === key` — only turns asked under THIS scope. Machine A's turns
+ *     must never reach machine B's endpoint: B's answer would be shaped by A's
+ *     fault history while being rendered as grounded for B, with the scope
+ *     badge saying B and the evidence belonging to A.
+ *  2. refusals are not answers, so they do not enter the next turn's history —
+ *     the same rule AssetChat applies to a stopped turn.
+ */
+export function historyFor(turns: Turn[], key: string): { role: string; content: string }[] {
+  return turns
+    .filter((t) => t.key === key)
+    .filter((t) => t.role === "user" || !t.refusal)
+    .map((t) => ({ role: t.role, content: t.text }));
+}
+
+/**
+ * The question an assistant turn at index `i` is answering — the nearest user
+ * turn before it. Pure and exported for the same reason as `historyFor`: what
+ * Retry re-sends is a behaviour, and it was wrong (F3).
+ */
+export function questionBefore(turns: Turn[], i: number): Extract<Turn, { role: "user" }> | undefined {
+  for (let j = i - 1; j >= 0; j--) {
+    const t = turns[j];
+    if (t.role === "user") return t;
+  }
+  return undefined;
+}
 
 /** Project the ask API's citation list onto the renderer's evidence shape, so
  *  inline `[n]` markers resolve to the same sources the cards below show. */
@@ -78,6 +127,17 @@ function toEvidence(citations: Citation[]): EvidenceCitation[] {
 /** The steps the waiting state names, in the order the backend performs them. */
 const WAIT_STEPS = ["Searching your manuals…", "Reading the closest sources…", "Writing the answer…"];
 
+/** Glyphs for the sidebar rows. Presentation only — the destinations, their
+ *  order and their gating all come from `sidebarDestinations`. */
+const SIDEBAR_ICON: Record<string, string> = {
+  notebooks: "▣",
+  assets: "▦",
+  knowledge: "▤",
+  workorders: "✓",
+};
+
+type Me = { role?: string; capabilities?: string[] };
+
 export default function V3Page() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -91,6 +151,21 @@ export default function V3Page() {
   const [picker, setPicker] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Who is asking — role and capabilities gate which sidebar rows exist. Same
+  // server-authoritative contract MoreSheet consumes (#1932: the nav once
+  // offered what the API then refused). On failure the sidebar simply carries
+  // no primary rows; `More ›` and the composer still work.
+  const [me, setMe] = useState<Me | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(`${API_BASE}/api/me`, { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => { if (live) setMe(d as Me); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const navItems = me ? sidebarDestinations(me, labsEnabled()) : [];
 
   // Focused on load: "type, press Enter, answer begins" — a composer you must
   // click first does not meet A-1.
@@ -126,7 +201,8 @@ export default function V3Page() {
     if (!q || busy) return;
     setError(null);
     setSignedOut(false);
-    setTurns((t) => [...t, { role: "user", text: q }]);
+    const key = scopeKey(at);
+    setTurns((t) => [...t, { role: "user", text: q, at, key }]);
     setInput("");
     setStep(0);
     setBusy(true);
@@ -149,17 +225,21 @@ export default function V3Page() {
         const citations = data.citations ?? [];
         setTurns((t) => [
           ...t,
-          { role: "assistant", text: data.answer, citations, evidence: toEvidence(citations) },
+          { role: "assistant", text: data.answer, citations, evidence: toEvidence(citations), at, key },
         ]);
         return;
       }
 
       // ── Machine scope: the streaming asset path ──────────────────────────
-      // A refusal turn is not an answer and must not enter the next turn's
-      // history — the same rule AssetChat applies to a stopped turn.
-      const history = turns
-        .filter((t) => t.role === "user" || !t.refusal)
-        .map((t) => ({ role: t.role, content: t.text }));
+      // Two independent exclusions, and BOTH are grounding rules:
+      //
+      //  1. Only turns asked under THIS scope. A conversation about machine A
+      //     must never be sent to machine B's endpoint — B's answer would be
+      //     shaped by A's fault history while being rendered as grounded for
+      //     B. The scope badge would say B and the evidence would be A's.
+      //  2. A refusal turn is not an answer and must not enter the next
+      //     turn's history — the same rule AssetChat applies to a stopped turn.
+      const history = historyFor(turns, key);
       const res = await fetch(askEndpointFor(at), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,7 +254,7 @@ export default function V3Page() {
         const body = (await res.json().catch(() => ({}))) as Refusal;
         setTurns((t) => [
           ...t,
-          { role: "assistant", text: "", citations: [], evidence: [], refusal: body },
+          { role: "assistant", text: "", citations: [], evidence: [], refusal: body, at, key },
         ]);
         return;
       }
@@ -188,7 +268,7 @@ export default function V3Page() {
       // chips are present while the answer is still streaming.
       let acc = "";
       let citations: Citation[] = [];
-      setTurns((t) => [...t, { role: "assistant", text: "", citations: [], evidence: [] }]);
+      setTurns((t) => [...t, { role: "assistant", text: "", citations: [], evidence: [], at, key }]);
       const commit = () =>
         setTurns((t) => {
           const next = [...t];
@@ -240,6 +320,18 @@ export default function V3Page() {
 
   const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
+  /**
+   * The question a given assistant turn is answering: the nearest user turn
+   * BEFORE it.
+   *
+   * Retry has to re-ask THAT question, under the scope it was originally asked
+   * in. Every Retry button used to close over one shared `lastUser`, so
+   * pressing Retry on the first answer silently re-sent the newest question
+   * and appended a duplicate turn — the earlier answer could not be retried at
+   * all. Adversarial review F3 on PR #3683.
+   */
+  const askedBefore = (i: number) => questionBefore(turns, i);
+
   return (
     <div className={`v3${drawer ? " v3-drawer" : ""}`} data-testid="v3-shell">
       <div className="v3-scrim" onClick={() => setDrawer(false)} />
@@ -258,13 +350,19 @@ export default function V3Page() {
         }}>
           ＋ New chat
         </button>
-        {/* Fixture until Phase 3 connects projects and history. */}
+        {/* Real destinations, resolved from the canonical NAV_ITEMS via
+            `sidebarDestinations` and gated by the caller's role/capabilities —
+            the same contract More uses. These were four handlerless buttons:
+            they looked like navigation and did nothing, which is the same
+            broken promise `More ›` made before it opened. Rows the caller
+            cannot reach are not rendered at all. (F2, PR #3683.) */}
         <nav className="v3-nav">
           <div className="v3-navlabel">Workspace</div>
-          <button className="v3-item">▣ Projects</button>
-          <button className="v3-item">▦ Machines</button>
-          <button className="v3-item">▤ Manuals</button>
-          <button className="v3-item">✓ Work orders</button>
+          {navItems.map((n) => (
+            <a key={n.key} className="v3-item" href={`${API_BASE}${n.href}`}>
+              {SIDEBAR_ICON[n.key] ?? "▫"} {n.label}
+            </a>
+          ))}
           <button className="v3-item" onClick={() => setMore(true)}>More ›</button>
         </nav>
       </aside>
@@ -378,7 +476,12 @@ export default function V3Page() {
 
                 <div className="v3-actions">
                   <button onClick={() => void navigator.clipboard?.writeText(t.text)}>⧉ Copy</button>
-                  <button onClick={() => lastUser && void ask(lastUser.text, scope)}>↻ Retry</button>
+                  <button onClick={() => {
+                    // This answer's own question, at its own scope — never the
+                    // newest question, and never the currently-selected machine.
+                    const asked = askedBefore(i);
+                    if (asked) void ask(asked.text, asked.at);
+                  }}>↻ Retry</button>
                 </div>
               </div>
             ),
