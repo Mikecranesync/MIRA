@@ -710,7 +710,9 @@ jobs:
           # Receipt schema bindings checked by the pinned release-head validator:
           # artifactSha256 bundleId nativeFingerprint releaseSha
           # canaryManifestSha256 playSigningCertSha256 updateReady
-          # restartCompleted aboutBundleIdVerified and installerPackage=com.android.vending.
+          # restartCompleted aboutBundleIdVerified secondCheckNowCompleted
+          # secondCheckResult=up_to_date secondDownloadObserved=false proofSequence
+          # proofTranscriptPath and installerPackage=com.android.vending.
           [[ "$PLAY_SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::FACTORYLM_PLAY_SIGNING_CERT_SHA256 must be configured from Play Console evidence"; exit 1; }
           RECEIPT="evidence/docs/release/evidence/ota/${ARTIFACT_SHA256}.json"
           test -f "$RECEIPT" && [ ! -L "$RECEIPT" ]

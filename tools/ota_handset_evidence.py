@@ -18,7 +18,26 @@ HEX_16 = re.compile(r"^[0-9a-f]{16}$")
 CANONICAL_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 EVIDENCE_PREFIX = PurePosixPath("docs/release/evidence/ota/files")
 REQUIRED_FILE_KINDS = {"adb_transcript", "about_screenshot"}
-ALLOWED_FILE_KINDS = REQUIRED_FILE_KINDS | {"update_ready_screenshot"}
+ALLOWED_FILE_KINDS = REQUIRED_FILE_KINDS | {
+    "update_ready_screenshot",
+    "up_to_date_screenshot",
+}
+PROOF_SEQUENCE = [
+    "update_ready",
+    "restart",
+    "about_expected_bundle_id",
+    "second_check_now",
+    "up_to_date",
+]
+PROOF_TRANSCRIPT_MARKERS = [
+    "FACTORYLM_OTA_PROOF_SEQUENCE_V2",
+    "STEP update_ready",
+    "STEP restart",
+    "STEP about_expected_bundle_id",
+    "STEP second_check_now",
+    "RESULT up_to_date",
+    "SECOND_DOWNLOAD observed=false",
+]
 EXPECTED_FIELDS = {
     "schemaVersion",
     "result",
@@ -37,6 +56,11 @@ EXPECTED_FIELDS = {
     "restartCompleted",
     "aboutBundleIdVerified",
     "aboutChannel",
+    "secondCheckNowCompleted",
+    "secondCheckResult",
+    "secondDownloadObserved",
+    "proofSequence",
+    "proofTranscriptPath",
     "evidenceFiles",
 }
 
@@ -58,7 +82,7 @@ def _canonical_time(field: str, value: object) -> datetime:
 
 
 def _expect_exact(field: str, actual: object, expected: object) -> None:
-    if actual != expected:
+    if type(actual) is not type(expected) or actual != expected:
         raise EvidenceError(f"{field} does not match the exact canary evidence")
 
 
@@ -90,6 +114,22 @@ def _regular_evidence_file(root: Path, relative: object) -> Path:
     return candidate
 
 
+def _validate_continuous_transcript(path: Path) -> None:
+    """Require one ordered, non-replayed terminal proof in the bound transcript."""
+    try:
+        transcript = path.read_text(encoding="utf-8")
+    except UnicodeError as exc:
+        raise EvidenceError("proofTranscriptPath must be a UTF-8 text transcript") from exc
+
+    offsets: list[int] = []
+    for marker in PROOF_TRANSCRIPT_MARKERS:
+        if transcript.count(marker) != 1:
+            raise EvidenceError(f"proofTranscriptPath must contain exactly one {marker!r} marker")
+        offsets.append(transcript.index(marker))
+    if offsets != sorted(offsets):
+        raise EvidenceError("proofTranscriptPath markers must preserve the proof sequence")
+
+
 def validate_evidence(
     value: Mapping[str, Any],
     *,
@@ -105,7 +145,7 @@ def validate_evidence(
     """Raise ``EvidenceError`` unless ``value`` proves the exact canary on Play."""
 
     if not isinstance(value, Mapping) or set(value) != EXPECTED_FIELDS:
-        raise EvidenceError("receipt fields must exactly match schemaVersion 1")
+        raise EvidenceError("receipt fields must exactly match schemaVersion 2")
     for name, pattern, expected in (
         ("artifactSha256", HEX_64, expected_artifact_sha256),
         ("nativeFingerprint", HEX_16, expected_native_fingerprint),
@@ -118,7 +158,7 @@ def validate_evidence(
             raise EvidenceError(f"{name} has a non-canonical shape")
         _expect_exact(name, actual, expected)
 
-    _expect_exact("schemaVersion", value.get("schemaVersion"), 1)
+    _expect_exact("schemaVersion", value.get("schemaVersion"), 2)
     _expect_exact("result", value.get("result"), "PASS")
     _expect_exact("bundleId", value.get("bundleId"), expected_bundle_id)
     _expect_exact("pointerChangedAt", value.get("pointerChangedAt"), expected_pointer_changed_at)
@@ -128,6 +168,19 @@ def validate_evidence(
     _expect_exact("restartCompleted", value.get("restartCompleted"), True)
     _expect_exact("aboutBundleIdVerified", value.get("aboutBundleIdVerified"), True)
     _expect_exact("aboutChannel", value.get("aboutChannel"), "canary")
+    _expect_exact("secondCheckNowCompleted", value.get("secondCheckNowCompleted"), True)
+    _expect_exact("secondCheckResult", value.get("secondCheckResult"), "up_to_date")
+    _expect_exact("secondDownloadObserved", value.get("secondDownloadObserved"), False)
+
+    sequence = value.get("proofSequence")
+    if not isinstance(sequence, list) or sequence != PROOF_SEQUENCE:
+        raise EvidenceError(
+            "proofSequence must be the exact continuous Update ready through Up to date sequence"
+        )
+
+    proof_transcript = value.get("proofTranscriptPath")
+    if not isinstance(proof_transcript, str) or not proof_transcript:
+        raise EvidenceError("proofTranscriptPath must identify the continuous proof transcript")
 
     model = value.get("deviceModel")
     if not isinstance(model, str) or not model.strip() or len(model) > 100 or "\n" in model:
@@ -143,26 +196,36 @@ def validate_evidence(
         raise EvidenceError("evidenceFiles must include transcript and About screenshot")
     kinds: set[str] = set()
     paths: set[str] = set()
+    path_kinds: dict[str, str] = {}
+    path_files: dict[str, Path] = {}
     for item in files:
         if not isinstance(item, Mapping) or set(item) != {"kind", "path", "sha256"}:
             raise EvidenceError("evidenceFiles entries have invalid fields")
         kind = item.get("kind")
-        if kind not in ALLOWED_FILE_KINDS:
+        if not isinstance(kind, str) or kind not in ALLOWED_FILE_KINDS:
             raise EvidenceError("evidenceFiles contains an unsupported kind")
         relative = item.get("path")
+        path = _regular_evidence_file(evidence_root, relative)
+        assert isinstance(relative, str)  # narrowed by _regular_evidence_file
         if relative in paths:
             raise EvidenceError("evidenceFiles paths must be unique")
         expected_sha = item.get("sha256")
         if not isinstance(expected_sha, str) or not HEX_64.fullmatch(expected_sha):
             raise EvidenceError("evidenceFiles sha256 has a non-canonical shape")
-        path = _regular_evidence_file(evidence_root, relative)
         actual_sha = hashlib.sha256(path.read_bytes()).hexdigest()
         if actual_sha != expected_sha:
             raise EvidenceError(f"evidenceFiles digest mismatch: {relative}")
         kinds.add(kind)
         paths.add(relative)
+        path_kinds[relative] = kind
+        path_files[relative] = path
     if not REQUIRED_FILE_KINDS.issubset(kinds):
         raise EvidenceError("evidenceFiles must include adb_transcript and about_screenshot")
+    if path_kinds.get(proof_transcript) != "adb_transcript":
+        raise EvidenceError(
+            "proofTranscriptPath must match an adb_transcript entry in evidenceFiles"
+        )
+    _validate_continuous_transcript(path_files[proof_transcript])
 
 
 def main(argv: list[str] | None = None) -> int:

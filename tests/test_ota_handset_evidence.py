@@ -23,6 +23,13 @@ ARTIFACT_SHA = "a" * 64
 CANARY_SHA = "b" * 64
 RELEASE_SHA = "c" * 40
 PLAY_CERT_SHA = "d" * 64
+PROOF_SEQUENCE = [
+    "update_ready",
+    "restart",
+    "about_expected_bundle_id",
+    "second_check_now",
+    "up_to_date",
+]
 
 
 def _evidence(root: Path) -> dict[str, object]:
@@ -30,10 +37,24 @@ def _evidence(root: Path) -> dict[str, object]:
     files.mkdir(parents=True)
     transcript = files / "phone-check.txt"
     screenshot = files / "about-screen.png"
-    transcript.write_bytes(b"adb proof")
+    transcript.write_text(
+        "\n".join(
+            [
+                "FACTORYLM_OTA_PROOF_SEQUENCE_V2",
+                "STEP update_ready",
+                "STEP restart",
+                "STEP about_expected_bundle_id",
+                "STEP second_check_now",
+                "RESULT up_to_date",
+                "SECOND_DOWNLOAD observed=false",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     screenshot.write_bytes(b"png proof")
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "result": "PASS",
         "artifactSha256": ARTIFACT_SHA,
         "bundleId": "1.2.3-aaaaaaaa",
@@ -50,6 +71,11 @@ def _evidence(root: Path) -> dict[str, object]:
         "restartCompleted": True,
         "aboutBundleIdVerified": True,
         "aboutChannel": "canary",
+        "secondCheckNowCompleted": True,
+        "secondCheckResult": "up_to_date",
+        "secondDownloadObserved": False,
+        "proofSequence": PROOF_SEQUENCE.copy(),
+        "proofTranscriptPath": "docs/release/evidence/ota/files/phone-check.txt",
         "evidenceFiles": [
             {
                 "kind": "adb_transcript",
@@ -112,6 +138,10 @@ def test_rejects_receipt_not_bound_to_exact_canary(tmp_path: Path, field: str, v
         ("restartCompleted", False),
         ("aboutBundleIdVerified", False),
         ("aboutChannel", "production"),
+        ("secondCheckNowCompleted", False),
+        ("secondCheckResult", "update_ready"),
+        ("secondDownloadObserved", True),
+        ("secondDownloadObserved", 0),
     ],
 )
 def test_rejects_non_play_or_incomplete_physical_proof(
@@ -127,6 +157,97 @@ def test_rejects_proof_older_than_the_canary_pointer(tmp_path: Path) -> None:
     evidence = _evidence(tmp_path)
     evidence["testedAt"] = "2026-09-07T01:02:03.003Z"
     with pytest.raises(EvidenceError, match="testedAt"):
+        _validate(tmp_path, evidence)
+
+
+@pytest.mark.parametrize(
+    "sequence",
+    [
+        PROOF_SEQUENCE[:-2] + ["up_to_date"],
+        PROOF_SEQUENCE[:-2] + ["up_to_date", "second_check_now"],
+        [*PROOF_SEQUENCE, "up_to_date"],
+    ],
+    ids=["missing-second-check", "wrong-order", "duplicate-terminal-state"],
+)
+def test_rejects_incomplete_or_discontinuous_proof_sequence(
+    tmp_path: Path, sequence: list[str]
+) -> None:
+    """Catches omitting, reordering, or replaying steps in the continuous capture."""
+    evidence = _evidence(tmp_path)
+    evidence["proofSequence"] = sequence
+
+    with pytest.raises(EvidenceError, match="proofSequence"):
+        _validate(tmp_path, evidence)
+
+
+def test_rejects_proof_sequence_not_bound_to_the_continuous_transcript(tmp_path: Path) -> None:
+    """Catches claiming continuity while pointing the chain at a single screenshot."""
+    evidence = _evidence(tmp_path)
+    evidence["proofTranscriptPath"] = "docs/release/evidence/ota/files/about-screen.png"
+
+    with pytest.raises(EvidenceError, match="proofTranscriptPath"):
+        _validate(tmp_path, evidence)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "secondCheckNowCompleted",
+        "secondCheckResult",
+        "secondDownloadObserved",
+        "proofSequence",
+        "proofTranscriptPath",
+    ],
+)
+def test_rejects_missing_terminal_proof_field(tmp_path: Path, field: str) -> None:
+    evidence = _evidence(tmp_path)
+    del evidence[field]
+
+    with pytest.raises(EvidenceError, match="schemaVersion 2"):
+        _validate(tmp_path, evidence)
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+""",
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+RESULT up_to_date
+SECOND_DOWNLOAD observed=true
+""",
+        """FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP second_check_now
+STEP about_expected_bundle_id
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+""",
+    ],
+    ids=["missing-second-check", "second-download", "reordered"],
+)
+def test_rejects_transcript_without_exact_continuous_terminal_proof(
+    tmp_path: Path, transcript: str
+) -> None:
+    evidence = _evidence(tmp_path)
+    transcript_path = (
+        tmp_path / "docs" / "release" / "evidence" / "ota" / "files" / "phone-check.txt"
+    )
+    transcript_path.write_text(transcript, encoding="utf-8")
+    evidence_file = evidence["evidenceFiles"][0]  # type: ignore[index]
+    evidence_file["sha256"] = hashlib.sha256(transcript_path.read_bytes()).hexdigest()  # type: ignore[index]
+
+    with pytest.raises(EvidenceError, match="proofTranscriptPath"):
         _validate(tmp_path, evidence)
 
 

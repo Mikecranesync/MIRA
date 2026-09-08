@@ -17,6 +17,11 @@ condition is a Play-installed physical handset completing:
 2. **Update ready** for the exact expected bundle.
 3. **Restart** without automatic rollback.
 4. **About & updates** showing that exact active `bundleId` and `canary` channel.
+5. **Check now** again after the restart.
+6. **Up to date** with no second download beginning or completing.
+
+All six observations must belong to one continuous capture. Separate successful
+screenshots from unrelated runs cannot be assembled into a passing receipt.
 
 ## File layout
 
@@ -28,7 +33,8 @@ docs/release/evidence/ota/
 └── files/
     ├── <capture>-adb.txt
     ├── <capture>-about.png
-    └── <capture>-update-ready.png  # optional
+    ├── <capture>-update-ready.png  # optional
+    └── <capture>-up-to-date.png    # optional
 ```
 
 The receipt filename is the complete lowercase 64-hex artifact SHA-256. Evidence
@@ -40,13 +46,13 @@ and twenty files.
 Do not commit credentials, cookies, access tokens, phone numbers, account email,
 or a device serial. A device model is required; a unique device identifier is not.
 
-## Receipt schema version 1
+## Receipt schema version 2
 
 The validator accepts exactly these top-level fields; extra fields fail closed.
 
 | Field | Required value |
 |---|---|
-| `schemaVersion` | Integer `1` |
+| `schemaVersion` | Integer `2` |
 | `result` | String `PASS` |
 | `artifactSha256` | Exact lowercase 64-hex hash of the canary ZIP and receipt filename |
 | `bundleId` | Exact bundle ID shown by the app after restart |
@@ -63,6 +69,11 @@ The validator accepts exactly these top-level fields; extra fields fail closed.
 | `restartCompleted` | Boolean `true` |
 | `aboutBundleIdVerified` | Boolean `true` |
 | `aboutChannel` | String `canary` |
+| `secondCheckNowCompleted` | Boolean `true`; the tester invoked Check now again after restart and About verification |
+| `secondCheckResult` | String `up_to_date` |
+| `secondDownloadObserved` | Boolean `false`; no second bundle download began or completed |
+| `proofSequence` | Exact ordered array: `update_ready`, `restart`, `about_expected_bundle_id`, `second_check_now`, `up_to_date` |
+| `proofTranscriptPath` | Path of the `adb_transcript` evidence record that documents that one continuous sequence |
 | `evidenceFiles` | Array of two to twenty exact evidence-file records described below |
 
 Canonical timestamps use `YYYY-MM-DDTHH:MM:SS.sssZ`, for example
@@ -73,16 +84,34 @@ Each `evidenceFiles` record has exactly three fields:
 
 | Field | Required value |
 |---|---|
-| `kind` | `adb_transcript`, `about_screenshot`, or optional `update_ready_screenshot` |
+| `kind` | `adb_transcript`, `about_screenshot`, or optional `update_ready_screenshot` / `up_to_date_screenshot` |
 | `path` | Repository-relative path below `docs/release/evidence/ota/files/` |
 | `sha256` | Lowercase 64-hex SHA-256 of the committed file bytes |
 
 At least one `adb_transcript` and one `about_screenshot` are mandatory. The
 transcript should establish the physical model, package, installer package, and
-the observed update/restart sequence without retaining a device serial. The
-About screenshot must visibly establish the post-restart bundle ID and canary
-channel. An Update-ready screenshot is useful but optional because the receipt
-also binds the before/after sequence to the transcript.
+the complete ordered sequence through the post-restart second Check now and Up
+to date result, without retaining a device serial. `proofTranscriptPath` must
+name that exact transcript entry. The About screenshot must visibly establish
+the post-restart bundle ID and canary channel. Update-ready and Up-to-date
+screenshots are useful but optional because the human-reviewed continuous
+transcript remains the binding record for the full before/after sequence.
+
+The bound UTF-8 transcript must contain each of these marker lines exactly once,
+in this order, alongside the redacted capture details that substantiate them:
+
+```text
+FACTORYLM_OTA_PROOF_SEQUENCE_V2
+STEP update_ready
+STEP restart
+STEP about_expected_bundle_id
+STEP second_check_now
+RESULT up_to_date
+SECOND_DOWNLOAD observed=false
+```
+
+Changing, omitting, duplicating, or reordering a marker fails validation even
+when the file digest in the receipt is otherwise correct.
 
 ## Capture and validate
 
@@ -97,8 +126,11 @@ also binds the before/after sequence to the transcript.
    adb shell pm list packages -i com.factorylm.mira
    ```
 
-3. Capture the complete Check-now, Update-ready, Restart, and About result. Store
-   a redacted text transcript and About screenshot under `files/`.
+3. In one uninterrupted evidence run, capture Check now, Update ready, Restart,
+   About with the expected bundle ID and canary channel, a second Check now, and
+   the resulting Up to date state with no second download. Store a redacted
+   continuous transcript and About screenshot under `files/`; optional
+   Update-ready and Up-to-date screenshots may accompany them.
 4. Hash every evidence file with `sha256sum` or `shasum -a 256`, then create the
    receipt named for the artifact SHA-256.
 5. Validate from the repository root using the exact values from the signed

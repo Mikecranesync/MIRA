@@ -3522,6 +3522,11 @@ def test_ota_production_promotion_requires_protected_human_and_handset_evidence(
         "updateReady",
         "restartCompleted",
         "aboutBundleIdVerified",
+        "secondCheckNowCompleted",
+        "secondCheckResult",
+        "secondDownloadObserved",
+        "proofSequence",
+        "proofTranscriptPath",
     ):
         assert field in authorize_text
 
@@ -3609,6 +3614,7 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
 @pytest.mark.parametrize(
     "workflow_name",
     [
+        "ci.yml",
         "deploy-nginx-staging-passthrough.yml",
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
@@ -3630,6 +3636,12 @@ def test_production_release_actions_are_pinned_to_full_commit_shas(workflow_name
         for step in job.get("steps", []):
             action = step.get("uses")
             if action is None:
+                continue
+            if action.startswith("docker://"):
+                assert re.fullmatch(r"docker://[^@]+@sha256:[0-9a-f]{64}", action), (
+                    f"{workflow_name}:{job_name}:{step.get('name', '<unnamed>')} "
+                    f"must pin {action!r} to an immutable image digest"
+                )
                 continue
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), (
                 f"{workflow_name}:{job_name}:{step.get('name', '<unnamed>')} "
