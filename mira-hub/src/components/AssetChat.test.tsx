@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AssetChat, ComposerButton, MessageBubble, isEnterToSend, restoreComposer } from "./AssetChat";
+import { ApprovedContextNotice, AssetChat, ComposerButton, MessageBubble, isEnterToSend, restoreComposer } from "./AssetChat";
 
 // Static-markup coverage for the machine-memory "Next check" evidence line
 // (T2 Task 4) — same pattern as MachineMemoryCard.test.tsx.
@@ -228,5 +228,53 @@ describe("AssetChat restoreComposer", () => {
 
   it("treats whitespace-only composer content as empty and restores the failed message", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
+  });
+});
+
+describe("AssetChat ApprovedContextNotice — a 412 is a refusal, not an outage", () => {
+  const refusal = {
+    gate: "approved_context" as const,
+    reason: "MIRA needs approved asset context before answering.",
+    missingContext: [
+      {
+        key: "approved_documents",
+        label: "Approved document context",
+        status: "missing",
+        action: "Upload and approve a manual, PLC tag list, or evidence document.",
+      },
+      {
+        key: "verified_relationships",
+        label: "Verified relationships",
+        status: "ready",
+        action: "Approve a relationship proposal.",
+      },
+    ],
+  };
+
+  it("shows the reason the server gave, not an HTTP status", () => {
+    const html = renderToStaticMarkup(<ApprovedContextNotice refusal={refusal} />);
+    expect(html).toContain("MIRA needs approved asset context before answering.");
+    expect(html).not.toContain("412");
+    expect(html).not.toContain("Chat unavailable");
+  });
+
+  it("shows the action that actually resolves the gate", () => {
+    const html = renderToStaticMarkup(<ApprovedContextNotice refusal={refusal} />);
+    expect(html).toContain("Upload and approve a manual");
+    // "Try again or refresh the page" was the old copy and is advice that can
+    // never work: retrying does not satisfy a gate that wants a document.
+    expect(html).not.toContain("refresh the page");
+  });
+
+  it("lists only outstanding items, not satisfied ones", () => {
+    const html = renderToStaticMarkup(<ApprovedContextNotice refusal={refusal} />);
+    expect(html).toContain("Approved document context");
+    expect(html).not.toContain("Verified relationships");
+  });
+
+  it("is not styled as an error", () => {
+    const html = renderToStaticMarkup(<ApprovedContextNotice refusal={refusal} />);
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain("#991B1B"); // the error banner's red
   });
 });
