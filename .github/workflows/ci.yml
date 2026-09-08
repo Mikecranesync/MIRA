@@ -843,6 +843,14 @@ jobs:
         # same "written but never wired" gap called out in the step below.
         run: pytest tests/test_rm_guard.py -v
 
+      - name: prod-guard unit tests
+        # Written 2026-09-07 when this guard was made to fail on the regression it names and
+        # a real bypass fell out: PROD_HOST wanted a space after an ssh alias, but scp/rsync
+        # write `host:path`, so `scp ./x.py prod:/opt/mira/x.py` was ALLOWED while the same
+        # command against the IP was denied. Named here, in a job that IS in ci-gate's needs,
+        # because a guard nothing exercises is a guard nobody knows is broken.
+        run: pytest tests/test_prod_guard.py -v
+
       - name: Check Hub Unit Tests path-filter contract
         # tests/test_hub_unit_filter_contract.py was written for this job
         # (its docstring: "pytest + pyyaml only — matches the Architecture

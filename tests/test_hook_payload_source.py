@@ -205,6 +205,14 @@ def test_guard_fails_open_loudly_not_silently(name):
 # because only the long `factorylm-prod` spelling was in PROD_HOST. CLAUDE.md hard
 # rule #2 ("NEVER restart, rebuild, or docker compose a VPS container directly")
 # rests on this guard, so the alias forms are pinned here.
+#
+# ⚠️ THIS BLOCK SHARED THE GUARD'S OWN BLIND SPOT until 2026-09-07. Every case below
+# writes the alias followed by a SPACE (`ssh prod …`), which is the form that already
+# worked. scp and rsync address a host as `host:path`, so the character after the alias
+# is a COLON — and `scp ./x.py prod:/opt/mira/x.py` was allowed for a month after the
+# 2026-08-09 fix, while the identical command against the IP was denied. A test that
+# enumerates the shapes its author thought of inherits the blind spot of the code it
+# guards. The `host:path` forms now live in tests/test_prod_guard.py; keep both.
 @pytest.mark.parametrize(
     "command,should_deny",
     [

@@ -83,7 +83,13 @@ EOF
 # invocation at a command position (see §2 below), so the loose `prod` alternative
 # cannot fire on unrelated text; and a false positive here fails CLOSED, which is
 # the correct direction for this guard (override: MIRA_ALLOW_PROD=1).
-PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120\.99|[[:space:]]prod(-public)?([[:space:]]|$))'
+# The trailing alternation must include ':' — scp/rsync address a host as `host:path`, so the
+# character after an ssh alias is a colon, not a space. Without it, `scp ./x.py prod:/opt/mira/x.py`
+# and `rsync -a ./dist/ prod:/opt/mira/` were ALLOWED while the identical commands written against
+# the IP or `root@` were denied — i.e. the first class HARD_DENY names ("scp/rsync TO prod") was
+# bypassable by using the alias, which is the most natural way to type it and is configured in
+# ~/.ssh/config. Found 2026-09-07 by making this guard fail on the regression it names.
+PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120\.99|[[:space:]]prod(-public)?([[:space:]]|:|$))'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
 # at the start of a line or right after a shell separator (; & ( ). This stops
