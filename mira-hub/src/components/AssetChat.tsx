@@ -31,6 +31,37 @@ interface ChatMessage {
 }
 
 /**
+ * Humane failure copy (gates G-1…G-5).
+ *
+ * The live product said `Chat unavailable (412). Try again or refresh the page.`
+ * — three defects in one sentence. A status code is not a sentence; refreshing
+ * cannot satisfy a gate, restore a connection, or re-run a provider call, so it
+ * is advice that cannot work; and a 412 is not an outage at all — it is MIRA
+ * REFUSING for a stated reason, which reads as breakage only because we
+ * rendered it as breakage.
+ *
+ * The composer already gets the failed text back (`restoreComposer`), so
+ * "your message is still here" is a statement of fact, not reassurance.
+ */
+export function failureMessage(status: number | null): string {
+  if (status === 412) {
+    return "MIRA needs to know which machine before answering that. Your message is still here.";
+  }
+  if (status !== null && status >= 500) {
+    return "MIRA could not answer that just now. Your message is still here.";
+  }
+  return "Couldn't reach MIRA. Your message is still here.";
+}
+
+/** The HTTP status behind a failure, or null when the failure was transport —
+ *  no network, aborted socket, DNS. Kept separate from the copy so the number
+ *  can reach a log without ever reaching a technician. */
+export function statusFromError(err: unknown): number | null {
+  const m = /\bstatus (\d{3})\b/.exec((err as Error)?.message ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
  * What the Copy control puts on the clipboard for an asset-scoped answer (B-8).
  *
  * Deliberately thinner than the notebook chat's payload, and the difference is
@@ -288,6 +319,10 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The message that failed, so Retry has something to re-send. The composer
+   *  also keeps it (restoreComposer), which is why the copy can truthfully say
+   *  "your message is still here". */
+  const [failedText, setFailedText] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -322,6 +357,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {
+    setError(null);
+    setFailedText(null);
     if (!text.trim() || streaming) return;
 
     setError(null);
@@ -352,7 +389,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
       });
 
       if (!res.ok) {
-        throw new Error(`Server error ${res.status}`);
+        // Machine-readable for `statusFromError`; never rendered.
+        throw new Error(`request failed with status ${res.status}`);
       }
 
       isSafety = res.headers.get("X-Safety-Stop") !== null;
@@ -462,12 +500,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         return;
       }
       console.error("[AssetChat] chat request failed:", err);
-      const statusCode = /(\d{3})/.exec((err as Error).message ?? "")?.[1];
-      setError(
-        statusCode
-          ? `Chat unavailable (${statusCode}). Try again or refresh the page.`
-          : "Connection lost. Check your network and try again.",
-      );
+      setError(failureMessage(statusFromError(err)));
+      setFailedText(text);
       setMessages((prev) => {
         const next = [...prev];
         next.pop(); // remove empty assistant bubble
@@ -568,11 +602,39 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         ))}
 
         {error && (
+          /* G-3/G-4 — degrade to the nearest working state, and give the
+             technician a BUTTON rather than a sentence telling them to try
+             again. Amber, not red: this is a state to act from, not damage.
+             Dismissible, so it cannot become the permanent banner the recon
+             found. */
           <div
-            className="text-xs px-3 py-2 rounded-lg"
-            style={{ background: "var(--status-red-bg)", color: "#991B1B", border: "1px solid #FECACA" }}
+            role="status"
+            data-testid="chat-error"
+            className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+            style={{ background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}
           >
-            {error}
+            <span className="flex-1">{error}</span>
+            {failedText && (
+              <button
+                type="button"
+                data-testid="chat-retry"
+                onClick={() => { const t = failedText; setError(null); setFailedText(null); void sendMessage(t); }}
+                className="rounded-lg border px-3"
+                style={{ borderColor: "#FDE68A", color: "#92400E", minHeight: 44 }}
+              >
+                Retry
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss"
+              data-testid="chat-error-dismiss"
+              onClick={() => { setError(null); setFailedText(null); }}
+              className="rounded-lg px-2"
+              style={{ color: "#92400E", minHeight: 44 }}
+            >
+              ×
+            </button>
           </div>
         )}
 
