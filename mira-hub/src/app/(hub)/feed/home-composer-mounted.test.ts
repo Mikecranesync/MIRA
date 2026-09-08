@@ -72,8 +72,26 @@ describe("the composer is mounted on the home screen (A-1, B-1)", () => {
     const feed = read("app", "(hub)", "feed", "page.tsx");
     const composerAt = feed.indexOf("<HomeComposer />");
     const widgetAt = feed.indexOf("<HealthScoreWidget />");
+    const kpiAt = feed.indexOf("kpiCards.map");
     expect(composerAt, "HomeComposer is not rendered at all").toBeGreaterThan(-1);
     expect(widgetAt, "HealthScoreWidget moved — re-check what the home screen leads with").toBeGreaterThan(-1);
+    expect(kpiAt, "the KPI row moved — re-check what the home screen leads with").toBeGreaterThan(-1);
     expect(composerAt).toBeLessThan(widgetAt);
+    expect(composerAt).toBeLessThan(kpiAt);
+  });
+
+  it("the dispatch summary is demoted BELOW the work board", () => {
+    // Tracker unblocker 1: the KPI tiles and the readiness bar leave the home
+    // screen. They are demoted rather than deleted because HealthScoreWidget
+    // renders on no other page — deleting it here would make the readiness
+    // score unreachable, which is removing a feature rather than relocating
+    // one. This asserts the demotion actually happened, so a later edit cannot
+    // quietly float them back above the fold.
+    const feed = read("app", "(hub)", "feed", "page.tsx");
+    const boardAt = feed.indexOf("Asset-grouped command board");
+    const summaryAt = feed.indexOf('aria-label="Dispatch summary"');
+    expect(boardAt, "the command board marker moved — re-anchor this test").toBeGreaterThan(-1);
+    expect(summaryAt, "the dispatch summary section is gone — if it was deleted, re-home HealthScoreWidget first").toBeGreaterThan(-1);
+    expect(boardAt).toBeLessThan(summaryAt);
   });
 });

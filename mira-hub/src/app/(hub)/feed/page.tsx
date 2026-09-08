@@ -398,25 +398,6 @@ export default function FeedPage() {
             console containing an AI feature, when it should open on an AI
             surface containing operations. */}
         <HomeComposer />
-        {/* Namespace readiness widget (Phase 2 slice 1) — kept above the KPI row. */}
-        <HealthScoreWidget />
-
-        {/* KPI Summary Row — dispatch clarity at a glance */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {kpiCards.map((kpi) => (
-            <Link key={kpi.label} href={kpi.href}>
-              <div className="card p-3 flex flex-col gap-1 hover:shadow-md transition-shadow cursor-pointer">
-                <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: kpi.bg }}>
-                    <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
-                  </div>
-                </div>
-                <div className="kpi-value mt-1" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
-                <div className="kpi-label mt-0.5">{KPI_LABEL_MAP[kpi.label] ?? kpi.label}</div>
-              </div>
-            </Link>
-          ))}
-        </div>
 
         {/* Asset-grouped command board */}
         {loading ? (
@@ -465,6 +446,34 @@ export default function FeedPage() {
             ))}
           </div>
         )}
+
+        {/* Dispatch summary — DEMOTED below the composer and the board.
+            Tracker unblocker 1 says the KPI tiles and the readiness bar leave
+            the home screen, and above the fold they are exactly the inversion
+            the recon named: an operations console that contains an AI feature.
+            They are moved rather than deleted because `HealthScoreWidget`
+            renders on NO other page — removing it here would make the
+            readiness score unreachable, which is deleting a feature, not
+            relocating one. Re-homing it (its own link target is `/namespace`)
+            is the follow-up that lets this section disappear entirely. */}
+        <section aria-label="Dispatch summary" className="space-y-4 pt-2">
+          <HealthScoreWidget />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {kpiCards.map((kpi) => (
+              <Link key={kpi.label} href={kpi.href}>
+                <div className="card p-3 flex flex-col gap-1 hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: kpi.bg }}>
+                      <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
+                    </div>
+                  </div>
+                  <div className="kpi-value mt-1" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
+                  <div className="kpi-label mt-0.5">{KPI_LABEL_MAP[kpi.label] ?? kpi.label}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
 
       {/* FAB — "Scan asset QR" first: most field-relevant quick action */}
