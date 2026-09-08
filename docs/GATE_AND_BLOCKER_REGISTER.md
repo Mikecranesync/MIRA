@@ -1,7 +1,7 @@
 # FactoryLM — Gate & Blocker Register
 
 **One page. Every gate that must pass, every blocker in the way, what unblocks what.**
-Compiled 2026-09-07 from three independent UX reports, the acceptance suite, CI config,
+Compiled 2026-09-07, amended 2026-09-08, from three independent UX reports, the acceptance suite, CI config,
 and branch protection. Every status below was read from the tree or the API, not recalled.
 
 ---
@@ -137,16 +137,58 @@ The object model is correct. The citation chip already carries the right locator
 
 ---
 
-## 4. The freeze — what is actually blocking
+## 4. Why work was blocked — the reasons, not the states
 
-| PR | State | Note |
+⚠️ **This section previously held a live-state table** (`draft, CLEAN`, `DIRTY`, "queued behind
+#3647") **stamped with a compile date.** Peer review found six of its seven rows stale — one of
+them *before the PR had even merged* — and the #3647 row wrong in the direction that costs someone
+a day: it named a discharged blocker as live and called landed work stranded.
+
+A mergeability table in a committed file is wrong the moment anyone pushes. **The reasons are the
+durable half; the states are not.** So the states are gone and the command to compute them is here
+instead.
+
+### Live state — compute it, don't read it
+
+```bash
+gh pr list --state open --json number,title,isDraft,mergeStateStatus,baseRefName   --jq '.[] | "#\(.number) \(if .isDraft then "draft" else "OPEN" end) \(.mergeStateStatus) base=\(.baseRefName)"'
+```
+
+Two traps this register has hit and you will too:
+
+- **`mergeStateStatus` returns `UNKNOWN` on the first read.** A bulk `gh pr list` never computes
+  mergeability; a direct `gh pr view` triggers it, so the *second* read is the real one. Never
+  resolve an uncomputed status to CLEAN.
+- **`BLOCKED` is a catch-all and it lags.** Run `tools/pr-merge-blocker.sh <n>`, which intersects
+  reported checks with the branch's *required* contexts — a required context that never reported is
+  **pending and invisible** to any scan of reported checks alone.
+
+### The reasons (durable)
+
+| Cause | What it actually was | Status |
 |---|---|---|
-| #3647 unified UI cutover governance | draft, CLEAN | **author cannot push** — Codex out of usage until 2026-09-13. One commit (`bc27c17ce`) stranded locally; a push would be a pure fast-forward. |
-| #3651 Slice C | draft, CLEAN | queued behind #3647 |
-| #3652 Slice D | draft, **DIRTY** | needs rebase |
-| #3661 OTA + nav/visual | draft, CLEAN | handset verification in flight |
-| #3653 peer-network Slice A | draft, CLEAN | under HOLD; names Codex as reviewer in 6 places (now false) |
-| #3665 gate spec / #3668 PRD / #3669 detectors | draft, CLEAN | **zero file overlap with the frozen four — verified with a positive control.** Not actually blocked. |
+| **Reviewer unavailable** | The adversarial-review lane named a reviewer who could not run, so PRs sat with no path to a verdict rather than a failing one. | Discharged — time-boxed carve-out (#3686), expires 2026-09-13. |
+| **A guard that failed every clean PR** | The Legacy UI Lifecycle Guard errored on every non-`labeled` run, so a red check meant nothing about the change. | **Fixed and merged (#3689).** Confirmed only post-merge: it runs on `pull_request_target` against `base.sha`, so its own PR could never show the fix working. |
+| **Stacked PRs run almost no CI** | `ci.yml` is `pull_request: branches: [main]`; a PR based on a feature branch runs **2 of main's 6 required contexts**. Green there means *unmeasured*. | Open — see #3652. Fix is: land the parent, retarget the child to `main`, rebase. |
+| **Serialised on a false dependency** | Work was queued behind a PR believed blocked that had in fact merged. | Discharged. The lesson is below. |
+
+### The lesson that outlived the table
+
+**A blocker has to be re-verified before it is acted on, not just recorded.** #3647 was listed as
+blocked on an unavailable author with a commit "stranded locally". By the time anyone read that row
+it had merged (`2182205ea`), and the supposedly stranded commit's content was in `main` — its three
+new tests are present today, and the object is simply not an ancestor because the PR was
+squash-merged.
+
+Both halves of that row were wrong, and each was wrong in the expensive direction: it told a reader
+to wait for something already done, and to rescue work already landed.
+
+⚠️ **A caution on how to check it.** The obvious test — "are the files identical to `main`?" — gives
+the wrong answer here. Three of the five files differ, because `main` moved on afterwards (the
+workflow actions were SHA-pinned; #3689 changed the guard's test file). File equality measures
+*whether main has changed since*, not *whether the work landed*. **Ask instead whether the commit's
+own additions are present** — the test names, the function, the specific hunks. That question
+survives later commits; byte equality does not.
 
 ---
 
@@ -182,3 +224,8 @@ To connect Grokbot to the peer network, three things are needed:
 - The grammar says "fourteen deliberate departures" and lists **nineteen**. Unreconciled.
 - The presentation-scorecard survey (what it grades *against*) **failed to return** and must be
   re-run before that scorecard is built.
+- **This document was wrong about live PR state within 24 hours of being written**, and wrong
+  *before* it merged. §4's mergeability table has been replaced with the durable reasons plus the
+  command to compute state. Treat any remaining state-shaped claim here as a snapshot, and
+  re-derive it before acting. The failure was structural, not clerical: a committed file cannot
+  hold a value that changes on every push.
