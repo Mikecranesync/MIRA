@@ -42,6 +42,34 @@ so a flaky connection was indistinguishable from a tampered bundle.
 `AboutUpdates` renders a distinct line for each. Covered by an `it.each` over the
 four classified pairs plus a fallback case.
 
+### 1.4 Canary is a one-way door — NOT FIXED
+
+**A device that reaches the canary channel has no route back to production from the
+UI.** This is a support problem, not a config detail, and it is the reason "put a
+technician on canary" is a heavier decision than it reads.
+
+`AboutUpdates.tsx:34` is `const [channel] = useState<OtaChannel>("canary")` — a
+`useState` destructured **without its setter**, so the channel is a hardcoded
+constant wearing state's clothing. The screen renders `Channel: canary` and offers
+nothing to change it.
+
+The persistence built for exactly this is inert. `CHANNEL_KEY`, `LAST_CHECK_KEY` and
+`LAST_RESULT_KEY` (`live-update.ts:78-80`) each appear **twice** in `mira-mobile/src`
+— their definition, and one re-export in `otaStorageKeys` at line 321. Nothing reads
+or writes any of them, so `lastCheck` and `lastResult` reset on every app start.
+Positive control for that count: `MANIFEST_PATH` appears 8 times in the same tree.
+**An export is not a use**, and that single re-export is the only thing making these
+keys look live to a reader or to a grep.
+
+Independently reconstructed in the Phase 1 discovery (#3678); the count and the
+control above were then verified in this tree.
+
+Not fixed here, deliberately: the fix is a channel control plus real persistence,
+which is a feature rather than a correctness repair, and this branch is already
+carrying two unrelated halves. It does **not** block the handset run — the build
+currently installed hardcodes canary identically, so installing this one adds no
+risk that was not already there.
+
 ---
 
 ## 2. Navigation
@@ -233,6 +261,8 @@ browser before being trusted.
 
 ## 7. Not done / carried
 
+- **Canary is a one-way door (§1.4)** — no UI to leave the channel, and the storage
+  keys built for it are dead. Needs a channel control plus real persistence.
 - The shared reducer's desktop-shaped `navigationVisible` default (§4 residual).
 - The drawer's own "Close navigation" is still a full-width text button. An X in
   the drawer's top corner would mirror the hamburger, but the brief named the
