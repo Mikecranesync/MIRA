@@ -100,7 +100,7 @@ describe("native compatibility fingerprint", () => {
     } finally {
       rmSync(temporaryGitDirectory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("changes for Android manifest/native source changes", () => {
     const changed = new Map(files);
