@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
+import HomeComposer from "@/components/HomeComposer";
 import { API_BASE } from "@/lib/config";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 
@@ -389,6 +390,11 @@ export default function FeedPage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 space-y-4 max-w-3xl mx-auto">
+        {/* The composer leads. A technician must be able to ask from the
+            landing screen without navigating first — step one of the beta
+            gate, and the first thing the 2026-09-07 UX recon failed. */}
+        <HomeComposer />
+
         {/* Namespace readiness widget (Phase 2 slice 1) — kept above the KPI row. */}
         <HealthScoreWidget />
 
