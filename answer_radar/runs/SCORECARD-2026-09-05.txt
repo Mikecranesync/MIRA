@@ -1,5 +1,15 @@
 MIRA FIELD BENCHMARK — 2026-09-05
 
+> ⚠️ **SUPERSEDED — the 0-chunk column is a MIRA finding, not a harness artefact.**
+> Verified after the fact: the corpus IS reachable (a recall probe returns 5 rows) and
+> `recall_knowledge` returns 5 hits for the seed-001 text called directly. The engine
+> simply did not invoke retrieval — `recall_knowledge` was called **0 times** for the
+> full seed text, reproducibly. Retrieval invocation is the defect; the corpus and the
+> recall function are healthy. Scores below remain valid as graded. See issue linked in
+> `answer_radar/kb_health.py` and the re-run alongside this file.
+
+
+
 Discovered:                   6
 Unique after dedupe:          6
 Qualified maintenance:        6
