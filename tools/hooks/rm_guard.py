@@ -146,16 +146,33 @@ def _resolve(path: str, cwd: str) -> str:
     return os.path.realpath(path)
 
 
+def _norm(p: str) -> str:
+    """Separator- and case-normalized path for comparison ONLY.
+
+    `os.path.realpath` returns native separators, so on Windows every path here
+    is backslash-delimited. The containment test below used a hardcoded "/",
+    which meant it never matched on Windows and the guard silently allowed
+    `rm -rf /`, `rm -rf $HOME` and `rm -rf <repo root>` — fail-OPEN on a safety
+    floor. Windows paths are also case-insensitive, so compare case-folded there.
+    """
+    p = p.replace("\\", "/")
+    return p.lower() if os.name == "nt" else p
+
+
 def _is_ancestor_or_equal(a: str, b: str) -> bool:
     """True if `a` is `b` or an ancestor directory of `b`."""
-    a = a.rstrip("/") or "/"
-    b = b.rstrip("/") or "/"
+    a = _norm(a).rstrip("/") or "/"
+    b = _norm(b).rstrip("/") or "/"
     return a == b or b.startswith(a + "/")
 
 
 def _danger(p: str, home: str, repo_root: str) -> Optional[str]:
-    if p == "/" or p == "//":
-        return "the root filesystem '/'"
+    pn = _norm(p)
+    # A bare drive root ("c:/") is the Windows equivalent of "/" — both name an
+    # entire filesystem. `rm -rf /` under Git Bash resolves to the MSYS install
+    # root, which is equally catastrophic.
+    if pn in ("/", "//") or re.fullmatch(r"[a-z]:/?", pn):
+        return "the root filesystem ({})".format(p)
     if home:
         home_r = os.path.realpath(home)
         if _is_ancestor_or_equal(p, home_r):
@@ -164,7 +181,7 @@ def _danger(p: str, home: str, repo_root: str) -> Optional[str]:
         repo_r = os.path.realpath(repo_root)
         if _is_ancestor_or_equal(p, repo_r):
             return "the repository root ({})".format(repo_r)
-    if os.path.basename(p.rstrip("/")) == ".git":
+    if os.path.basename(pn.rstrip("/")) == ".git":
         return "a .git admin directory ({})".format(p)
     return None
 
