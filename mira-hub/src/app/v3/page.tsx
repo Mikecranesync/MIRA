@@ -111,6 +111,44 @@ export function questionBefore(turns: Turn[], i: number): Extract<Turn, { role: 
   return undefined;
 }
 
+/**
+ * One SSE frame from the asset-chat stream, classified.
+ *
+ * Exported and pure because the distinction it draws is a grounding rule, not
+ * a parsing detail: the asset route streams provider exhaustion as HTTP 200
+ * with the outage sentence in an ordinary `content` field, so status alone
+ * cannot tell an outage from an answer. V3 rendered that text as MIRA's reply,
+ * badged "General guidance - no source cited". A technician could not tell the
+ * backend was down. (Round 2, F3.)
+ *
+ * A frame carrying `error` is a FAILURE and never becomes answer text.
+ */
+export type Frame =
+  | { kind: "outage"; message: string }
+  | { kind: "sources"; sources: Citation[] }
+  | { kind: "content"; text: string }
+  | { kind: "ignore" };
+
+export function readFrame(payload: string): Frame {
+  if (payload === "[DONE]") return { kind: "ignore" };
+  let parsed: { content?: string; sources?: Citation[]; error?: string };
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    // A malformed frame is skipped, never rendered as text - a raw JSON
+    // fragment in the answer body reads as corruption.
+    return { kind: "ignore" };
+  }
+  // Checked FIRST: a failure frame also carries `content`, and treating it as
+  // content is precisely the defect.
+  if (parsed.error) {
+    return { kind: "outage", message: parsed.content ?? "MIRA is temporarily unavailable." };
+  }
+  if (parsed.sources) return { kind: "sources", sources: parsed.sources };
+  if (parsed.content) return { kind: "content", text: parsed.content };
+  return { kind: "ignore" };
+}
+
 /** Project the ask API's citation list onto the renderer's evidence shape, so
  *  inline `[n]` markers resolve to the same sources the cards below show. */
 function toEvidence(citations: Citation[]): EvidenceCitation[] {
@@ -151,6 +189,25 @@ export default function V3Page() {
   const [picker, setPicker] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  /** Conversation generation. `New chat` bumps it; a request whose generation
+   *  is stale must not write to the replacement conversation. (Round 2, F1.) */
+  const genRef = useRef(0);
+  /** The in-flight request, so `New chat` can abort it rather than merely
+   *  ignoring its result. */
+  const abortRef = useRef<AbortController | null>(null);
+
+  /**
+   * The request that failed, with the question AND the scope it was asked
+   * under.
+   *
+   * `Try again` used to combine the global newest question with the CURRENTLY
+   * selected machine, so failing on machine A then switching the picker to B
+   * re-sent A's question to B. A failure is a property of the request that
+   * failed, not of whatever is selected when the user reaches for the button.
+   * (Round 2, F2.)
+   */
+  const [failed, setFailed] = useState<{ text: string; at: Scope } | null>(null);
 
   // Who is asking — role and capabilities gate which sidebar rows exist. Same
   // server-authoritative contract MoreSheet consumes (#1932: the nav once
@@ -201,7 +258,22 @@ export default function V3Page() {
     if (!q || busy) return;
     setError(null);
     setSignedOut(false);
+    setFailed(null);
     const key = scopeKey(at);
+
+    // This request's claim on the conversation.
+    //
+    // New chat bumps `genRef` and aborts the in-flight request. Without both,
+    // a slow reply that landed after New chat appended an assistant turn into
+    // the fresh, empty thread — machine-specific guidance with no question
+    // above it — and `busy` stayed true until the abandoned request finished,
+    // so the composer was locked meanwhile. Every state write below is gated
+    // on `alive()`. Adversarial review round 2, F1.
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    const gen = genRef.current;
+    const alive = () => genRef.current === gen && !ctrl.signal.aborted;
     setTurns((t) => [...t, { role: "user", text: q, at, key }]);
     setInput("");
     setStep(0);
@@ -212,13 +284,17 @@ export default function V3Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: q }),
+          signal: ctrl.signal,
         });
+        if (!alive()) return;
         if (res.status === 401) { setSignedOut(true); return; }
         const data = (await res.json()) as AskResponse & { error?: string };
+        if (!alive()) return;
         if (!res.ok) {
           // Plain language, the question preserved, and a button. Never a status
           // code, and never "refresh the page" — advice that cannot work.
           setError(data.error ?? "MIRA couldn't answer that just now.");
+          setFailed({ text: q, at });
           setInput(q);
           return;
         }
@@ -244,7 +320,9 @@ export default function V3Page() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...history, { role: "user", content: q }] }),
+        signal: ctrl.signal,
       });
+      if (!alive()) return;
       if (res.status === 401) { setSignedOut(true); return; }
       if (res.status === 412) {
         // NOT an error. The approved-context gate is train-before-deploy
@@ -252,6 +330,7 @@ export default function V3Page() {
         // declines rather than guessing. Rendered as a refusal with the
         // specific missing pieces, so the technician knows what to fix.
         const body = (await res.json().catch(() => ({}))) as Refusal;
+        if (!alive()) return;
         setTurns((t) => [
           ...t,
           { role: "assistant", text: "", citations: [], evidence: [], refusal: body, at, key },
@@ -260,6 +339,7 @@ export default function V3Page() {
       }
       if (!res.ok || !res.body) {
         setError("MIRA couldn't answer that just now.");
+        setFailed({ text: q, at });
         setInput(q);
         return;
       }
@@ -268,8 +348,15 @@ export default function V3Page() {
       // chips are present while the answer is still streaming.
       let acc = "";
       let citations: Citation[] = [];
+      // Set by an explicit `error` frame. The asset route streams provider
+      // exhaustion as HTTP 200 + ordinary text, so status alone cannot tell an
+      // outage from an answer — and rendering it as one badged "General
+      // guidance — no source cited" over the words "MIRA is temporarily
+      // unavailable". (Round 2, F3.)
+      let outage: string | null = null;
       setTurns((t) => [...t, { role: "assistant", text: "", citations: [], evidence: [], at, key }]);
-      const commit = () =>
+      const commit = () => {
+        if (!alive()) return;
         setTurns((t) => {
           const next = [...t];
           const last = next[next.length - 1];
@@ -283,6 +370,7 @@ export default function V3Page() {
           }
           return next;
         });
+      };
 
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -297,28 +385,45 @@ export default function V3Page() {
           const trimmed = line.trim();
           if (!trimmed.startsWith("data:")) continue;
           const payload = trimmed.slice(5).trim();
-          if (payload === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(payload) as { content?: string; sources?: Citation[] };
-            if (parsed.sources) citations = parsed.sources;
-            if (parsed.content) acc += parsed.content;
-            commit();
-          } catch {
-            // A malformed frame is skipped, never rendered as text — a raw
-            // JSON fragment in the answer body reads as corruption.
-          }
+          const frame = readFrame(payload);
+          if (frame.kind === "outage") { outage = frame.message; continue; }
+          if (frame.kind === "sources") citations = frame.sources;
+          else if (frame.kind === "content") acc += frame.text;
+          else continue;
+          commit();
         }
       }
+      if (outage) {
+        if (!alive()) return;
+        // Drop the placeholder assistant turn — there is no answer — and show
+        // the same recoverable failure state any other outage produces, with
+        // the question preserved so nothing is lost.
+        setTurns((t) => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant" && !last.text) next.pop();
+          return next;
+        });
+        setError(outage);
+        setFailed({ text: q, at });
+        setInput(q);
+        return;
+      }
       commit();
-    } catch {
+    } catch (e) {
+      // An abort is this component cancelling deliberately (New chat), not a
+      // failure to report. Rendering it as an error would blame the network
+      // for the user's own action.
+      if ((e as { name?: string })?.name === "AbortError" || !alive()) return;
       setError("Couldn't reach MIRA. Your question is saved below — nothing was lost.");
+      setFailed({ text: q, at });
       setInput(q);
     } finally {
-      setBusy(false);
+      // Only the request that still owns the conversation may release the
+      // composer — otherwise an abandoned request unlocks a live one.
+      if (alive()) setBusy(false);
     }
   }, [busy, turns]);
-
-  const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
   /**
    * The question a given assistant turn is answering: the nearest user turn
@@ -346,7 +451,15 @@ export default function V3Page() {
             author. The scope is deliberately NOT reset: it is a user choice,
             not turn state. */}
         <button className="v3-new" onClick={() => {
-          setTurns([]); setError(null); setSignedOut(false); taRef.current?.focus();
+          // Invalidate first, then abort: a reply already in flight must not
+          // land in the conversation that replaces this one, and the composer
+          // must free immediately rather than when the abandoned request ends.
+          genRef.current += 1;
+          abortRef.current?.abort();
+          abortRef.current = null;
+          setBusy(false);
+          setTurns([]); setError(null); setSignedOut(false); setFailed(null);
+          taRef.current?.focus();
         }}>
           ＋ New chat
         </button>
@@ -435,8 +548,12 @@ export default function V3Page() {
                   </p>
                   <div className="v3-actions">
                     <button onClick={() => {
+                      // THIS refusal's question, by index — not the newest one.
+                      // Clicking an older refusal after later turns used to
+                      // resend whatever was asked most recently. (Round 2, F2.)
+                      const asked = questionBefore(turns, i);
                       setScope(null);
-                      if (lastUser) void ask(lastUser.text, null);
+                      if (asked) void ask(asked.text, null);
                     }}>
                       Ask generally instead
                     </button>
@@ -509,7 +626,10 @@ export default function V3Page() {
             <div className="v3-notice v3-notice-stop"><div>✕</div><div>
               <b>Couldn&apos;t reach MIRA</b>{error} Your question is still in the box below.
               <div className="v3-noticerow">
-                <button onClick={() => lastUser && void ask(lastUser.text, scope)}>Try again</button>
+                {/* The failed request, at ITS scope. Using the current picker
+                    value here sent machine A's failed question to machine B
+                    after a scope switch. (Round 2, F2.) */}
+                <button onClick={() => failed && void ask(failed.text, failed.at)}>Try again</button>
                 <button onClick={() => setError(null)}>Dismiss</button>
               </div>
             </div></div>

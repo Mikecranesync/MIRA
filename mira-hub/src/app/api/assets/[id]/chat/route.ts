@@ -635,8 +635,23 @@ export async function POST(
       }
 
       if (!served) {
+        // Provider exhaustion is a FAILURE, and the frame has to say so.
+        //
+        // Sent as bare `content` this was indistinguishable from an answer: the
+        // response is HTTP 200, the text streams like any other, and a client
+        // that only inspects status renders an outage notice as MIRA's reply —
+        // V3 even badged it "General guidance — no source cited". A technician
+        // cannot act on that distinction if the payload does not carry it.
+        //
+        // `error` is ADDITIVE: existing consumers keep reading `content`
+        // exactly as before, and clients that understand the field can render
+        // their retryable failure state instead of an answer. Note the H4
+        // gap-admission net below is gated on `served`, so it does not fire
+        // here — nothing else marks this frame as a failure.
         const msg = "MIRA is temporarily unavailable. All inference providers are down. Please try again in a moment.";
-        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: msg })}\n\n`));
+        controller.enqueue(
+          enc.encode(`data: ${JSON.stringify({ content: msg, error: "providers_unavailable" })}\n\n`),
+        );
       }
 
       // H4 gap-admission safety net (#2542) — if the answer streamed with NO

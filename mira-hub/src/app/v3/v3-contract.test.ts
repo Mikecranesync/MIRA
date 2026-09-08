@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { historyFor, questionBefore } from "./page";
+import { historyFor, questionBefore, readFrame } from "./page";
 import { scopeKey } from "@/factorylm-ui/ScopePicker";
 
 /**
@@ -322,5 +322,81 @@ describe("V3 — Retry re-asks its own question (F3)", () => {
 
   it("has nothing to retry before the first question", () => {
     expect(questionBefore(thread, 0)).toBeUndefined();
+  });
+});
+
+/**
+ * Round 2 of adversarial review found three more defects. These prove the
+ * fixes. `readFrame` is genuinely behavioural; the two structural assertions
+ * below guard bug CLASSES that live in component state, which this suite
+ * cannot click (vitest runs `environment: "node"` here — there is no jsdom or
+ * testing-library, so no render/click harness exists in the Hub today).
+ * That gap is stated in the PR rather than papered over.
+ */
+describe("V3 — an outage is not an answer (round 2, F3)", () => {
+  it("classifies a provider-exhaustion frame as an outage, never as content", () => {
+    // The asset route sends this under HTTP 200 WITH content — that pairing is
+    // the whole defect, so the fixture reproduces it exactly.
+    const frame = readFrame(JSON.stringify({
+      content: "MIRA is temporarily unavailable. All inference providers are down.",
+      error: "providers_unavailable",
+    }));
+    expect(frame.kind).toBe("outage");
+    if (frame.kind === "outage") expect(frame.message).toContain("temporarily unavailable");
+  });
+
+  it("still treats an ordinary answer frame as content (positive control)", () => {
+    // Without this, a readFrame that called EVERYTHING an outage would pass
+    // the test above while breaking every answer.
+    const frame = readFrame(JSON.stringify({ content: "Check the drive's DC bus." }));
+    expect(frame.kind).toBe("content");
+    if (frame.kind === "content") expect(frame.text).toBe("Check the drive's DC bus.");
+  });
+
+  it("reads sources, and ignores [DONE] and malformed frames", () => {
+    expect(readFrame(JSON.stringify({ sources: [{ index: 1 }] })).kind).toBe("sources");
+    expect(readFrame("[DONE]").kind).toBe("ignore");
+    expect(readFrame("{not json").kind).toBe("ignore");
+    expect(readFrame(JSON.stringify({})).kind).toBe("ignore");
+  });
+
+  it("prefers the failure reading when a frame is both content and error", () => {
+    // Order matters: an outage frame ALSO carries content. If content were
+    // checked first the outage sentence would stream in as the answer again.
+    const frame = readFrame(JSON.stringify({ content: "anything", error: "providers_unavailable" }));
+    expect(frame.kind).toBe("outage");
+  });
+});
+
+describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
+  it("has no global lastUser for an action to close over", () => {
+    // F2's whole mechanism was a single thread-wide `lastUser` combined with
+    // the CURRENT scope. Deleting it removes the bug class: there is no longer
+    // a 'newest question' any button can accidentally reach for.
+    expect(page).not.toContain("lastUser");
+  });
+
+  it("binds Try again to the failed request rather than current state", () => {
+    expect(page).toContain("failed && void ask(failed.text, failed.at)");
+    expect(page).not.toContain("ask(lastUser.text, scope)");
+  });
+
+  it("New chat invalidates and aborts the in-flight request", () => {
+    // F1: clearing the thread without cancelling let a slow reply land in the
+    // fresh conversation, and left the composer locked until it finished.
+    expect(page).toContain("genRef.current += 1");
+    expect(page).toContain("abortRef.current?.abort()");
+    expect(page).toContain("setBusy(false)");
+  });
+
+  it("passes an abort signal on both request paths", () => {
+    const signals = page.match(/signal: ctrl\.signal/g) ?? [];
+    expect(signals.length).toBe(2);
+  });
+
+  it("gates state writes on the request still owning the conversation", () => {
+    expect(page).toContain("const alive = ()");
+    expect((page.match(/if \(!alive\(\)\) return;/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(page).toContain("if (alive()) setBusy(false)");
   });
 });
