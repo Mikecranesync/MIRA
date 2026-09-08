@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **69** (12 dynamic) |
-| API routes | **179** (66 dynamic) |
+| API routes | **181** (67 dynamic) |
 
 ## Pages (69)
 
@@ -87,7 +87,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (179)
+## API routes (181)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -191,6 +191,7 @@
 | `/api/files/[fileId]/links/[linkId]` | dynamic | `api/files/[fileId]/links/[linkId]/route.ts` |
 | `/api/files/[fileId]/relocate` | dynamic | `api/files/[fileId]/relocate/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/hub/ask` | static | `api/hub/ask/route.ts` |
 | `/api/hub/status` | static | `api/hub/status/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
 | `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
