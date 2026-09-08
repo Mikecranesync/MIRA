@@ -168,6 +168,47 @@ describe("context lines only when context differs", () => {
     expect(after.every((line) => /evidence authorized/i.test(line) && !/not authorized/i.test(line))).toBe(true);
   });
 
+  // `contextDiffers` compares FIVE fields. Review found only two were guarded —
+  // `machineId` and `evidenceAuthorization` — so deleting the `machineIdentity`,
+  // `projectId` or `folderId` clause left the suite green while a turn recorded
+  // under a different context silently lost its line.
+  //
+  // `machineIdentity` is the one that mattered: same trust class as
+  // `evidenceAuthorization`, which was guarded only because it had been flagged
+  // P1. The sibling got the code and not the test — guarding the instance we
+  // were burned by rather than the layer.
+  //
+  // Parametrised, so one guarded field became five and a sixth added to
+  // `contextDiffers` fails HERE rather than shipping unguarded.
+  const CONTEXT_FIELDS = [
+    { field: "machineId", differing: { machineId: "machine-other" } },
+    { field: "machineIdentity", differing: { machineIdentity: "unconfirmed" } },
+    { field: "evidenceAuthorization", differing: { evidenceAuthorization: "not_authorized" } },
+    { field: "projectId", differing: { projectId: "project-brake-system" } },
+    { field: "folderId", differing: { folderId: "folder-brake-history" } },
+  ] as const;
+
+  for (const { field, differing } of CONTEXT_FIELDS) {
+    it(`a turn whose ${field} differs from the current context renders a context line`, () => {
+      const view = render({ surface: "web", fixture: "grounded-answer" });
+      // Control: identical context renders NO line. Without this the assertion
+      // below could pass on a component that always renders one.
+      expect(view.container.querySelector('[data-context-line="turn"]')).toBeNull();
+
+      const thread = getFixture("grounded-answer").thread;
+      const moved = {
+        ...thread,
+        turns: thread.turns.map((turn) => ({ ...turn, context: { ...turn.context, ...differing } })),
+      };
+      act(() => { view.dispatch({ type: "hydrate", data: { thread: moved } }); });
+
+      const turns = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
+      expect(turns.length).toBeGreaterThan(0);
+      const lines = turns.map((t) => t.querySelector('[data-context-line="turn"]')?.textContent ?? "");
+      expect(lines.every((line) => line.trim().length > 0)).toBe(true);
+    });
+  }
+
   it("a turn recorded under a different project/folder names them, and a machine-less scope still reads", () => {
     const view = render({ surface: "web", fixture: "grounded-answer" });
     const thread = getFixture("grounded-answer").thread;
