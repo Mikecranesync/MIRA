@@ -113,6 +113,12 @@
    needs to know in one look whether the answer they are reading is about their
    machine — colour carries state here, never decoration (.claude/rules/ui-style.md). */
 .v3-scope { cursor: pointer; }
+/* One line, ellipsed — never wrapped. The TAG is the safety-relevant half and
+   it leads, so a truncated badge still says which machine; a wrapped one grew
+   the header and pushed the thread down on a phone. */
+.v3-scope > span:not(.v3-dot):not(.v3-caret) {
+  max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .v3-scope .v3-caret { opacity: 0.55; margin-left: 2px; font-size: 11px; }
 .v3-scope--bound { border-color: var(--fl-ok, #15803d); color: var(--fl-ok, #15803d); }
 .v3-scope--bound .v3-dot { background: var(--fl-ok, #15803d); }
@@ -124,8 +130,17 @@
   border: 1px solid var(--fl-line, #e5e7eb); border-radius: var(--fl-radius, 8px);
   font: inherit; background: var(--fl-surface, #fff); color: inherit;
 }
+/* A two-line row. `.v3-item` is `display:flex; align-items:center` for the
+   sidebar, so `small { display:block }` alone still laid the subtitle out
+   BESIDE the tag — caught on a real render, not in the source. The sheet rows
+   also carry real content, so they stack and wrap rather than ellipsing. */
+.v3-sheet__list .v3-item {
+  flex-direction: column; align-items: flex-start; gap: 0;
+  padding: 8px 10px; white-space: normal; overflow: visible;
+}
 .v3-sheet__list .v3-item small {
   display: block; opacity: 0.62; font-size: 12px; margin-top: 2px;
+  white-space: normal;
 }
 .v3-sheet__list .v3-item[aria-current] { border-color: var(--fl-accent, #4f46e5); }
 

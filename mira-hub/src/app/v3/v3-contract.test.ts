@@ -118,6 +118,23 @@ describe("V3 — the composer is the home screen (recon A-1/B-1)", () => {
     expect(page).not.toMatch(/fetch\(`\$\{API_BASE\}\/api\/hub\/ask`/);
   });
 
+  it("never labels a chip 'General question' while a machine is bound", () => {
+    // Caught on a real render, not in review: with CV-101 bound the badge said
+    // CV-101 and every suggestion chip still said "General question". The chips
+    // routed correctly and labelled themselves wrongly — the interface
+    // disagreeing with itself about the one thing that decides whether an
+    // answer is about your machine.
+    expect(page).toContain("suggestionsFor(scope)");
+    expect(page).not.toContain("hint: \"General question\" }");
+  });
+
+  it("machine starters ask about groundable things, never invented specifics", () => {
+    // A suggestion naming a fault code for a machine MIRA has not retrieved
+    // yet would be a fabrication printed by the UI itself.
+    expect(page).toContain("What faults has this machine had before?");
+    expect(page).not.toMatch(/MACHINE_SUGGESTIONS[\s\S]{0,400}F\d{4}/);
+  });
+
   it("renders a 412 as a refusal with its missing pieces, never as an error", () => {
     // A 412 is the approved-context gate holding — the product working. It
     // must not offer Retry, which cannot change the outcome.
