@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { selectCitations } from "../route";
+import type { ManualChunk } from "@/lib/manual-rag";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -63,5 +65,97 @@ describe("/api/hub/ask — the hybrid corpus must stay visible (#2178)", () => {
     // customer the library but hide their own uploads.
     expect(code).not.toContain("quickstartTenantId");
     expect(code).not.toContain("SHARED_TENANT_ID");
+  });
+});
+
+/**
+ * Adversarial review round 1 on #3682 (F3 citation numbering, F4 phantom
+ * citations beside a refusal, F5 unmetered paid cascade).
+ *
+ * These live in this file rather than a new one on purpose: every file under
+ * `mira-hub/src/app/**` is guarded by the UI lifecycle guard, so a second test
+ * file would double this PR's attestation surface for no benefit. The subject
+ * is the same route.
+ *
+ * F3/F4 are behavioural — `selectCitations` is the function the route calls.
+ * F5 is order-sensitive rather than presence-only: a limiter that runs AFTER
+ * the paid call is not a limiter.
+ */
+describe("/api/hub/ask — citations follow the numbering contract (F3/F4)", () => {
+  const chunk = (over: Partial<ManualChunk>): ManualChunk =>
+    ({
+      title: "manual",
+      content: "text",
+      manufacturer: "Rockwell",
+      modelNumber: "PowerFlex 525",
+      sourceUrl: "https://example.test/a.pdf",
+      sourcePage: 4,
+      verified: true,
+      ...over,
+    }) as ManualChunk;
+
+  // Two excerpts from the SAME document page, then a distinct source. The
+  // context builder numbers these [1], [1], [2] — by unique source, not by chunk.
+  const dupes: ManualChunk[] = [
+    chunk({}),
+    chunk({ content: "second excerpt, same page" }),
+    chunk({ sourceUrl: "https://example.test/b.pdf", sourcePage: 9, title: "other" }),
+  ];
+
+  it("deduplicates a repeated source instead of numbering raw chunks", () => {
+    const cards = selectCitations(dupes, "Cause is X [1]. See also [2].");
+    expect(cards.map((c) => c.index)).toEqual([1, 2]);
+    // The pre-fix code emitted three cards from three chunks, so the model's
+    // [2] pointed at the duplicate and a phantom [3] appeared.
+    expect(cards.length).toBe(2);
+  });
+
+  it("returns only the sources the answer actually cited", () => {
+    const cards = selectCitations(dupes, "Only the first matters [1].");
+    expect(cards.map((c) => c.index)).toEqual([1]);
+  });
+
+  it("ships NO citations beside a refusal, whatever its wording", () => {
+    // The old check matched one quickstart-specific sentence, so this route's
+    // own phrasings went undetected and shipped every retrieved card.
+    for (const refusal of [
+      "I don't have supporting documentation for that yet.",
+      "The knowledge base does not contain enough information to answer.",
+      "I can't answer that from the manuals on file.",
+      "No tengo documentación para eso.",
+    ]) {
+      expect(selectCitations(dupes, refusal)).toEqual([]);
+    }
+  });
+
+  it("still cites normally when markers are present (positive control)", () => {
+    // Without this, a selectCitations that always returned [] would satisfy
+    // every assertion above while removing citations from the product.
+    expect(selectCitations(dupes, "Grounded answer [1][2].").length).toBe(2);
+  });
+});
+
+describe("/api/hub/ask — the paid cascade is metered (F5)", () => {
+  it("rate-limits BEFORE retrieval and before the paid completion", () => {
+    const limitAt = code.indexOf("rateLimited(");
+    const retrieveAt = code.indexOf("retrieveManualChunks(");
+    const cascadeAt = code.indexOf("cascadeComplete(");
+    expect(limitAt).toBeGreaterThan(-1);
+    expect(retrieveAt).toBeGreaterThan(-1);
+    expect(cascadeAt).toBeGreaterThan(-1);
+    // Order, not presence. A limiter after the spend is not a limiter.
+    expect(limitAt).toBeLessThan(retrieveAt);
+    expect(limitAt).toBeLessThan(cascadeAt);
+  });
+
+  it("meters by tenant AND by client, not by one of them", () => {
+    // Tenant alone lets one compromised session drain the workspace; IP alone
+    // lets one account spread across addresses.
+    expect(code).toContain('rateLimited("hub-ask-tenant", ctx.tenantId');
+    expect(code).toContain('rateLimited("hub-ask-ip"');
+  });
+
+  it("answers 429 rather than a 500 or a silent drop", () => {
+    expect(code).toContain("status: 429");
   });
 });

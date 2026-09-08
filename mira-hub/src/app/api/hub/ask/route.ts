@@ -5,11 +5,43 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
-  displayPage,
-  isRefusalAnswer,
+  chunksToSources,
   type ManualChunk,
+  type ManualSource,
 } from "@/lib/manual-rag";
+import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
+
+/** Per-minute allowance for one tenant, and separately for one client IP.
+ *  Deliberately generous for a technician typing questions, and far below what
+ *  a script would need to matter. */
+const HUB_ASK_MAX_PER_MIN = 20;
+
+/**
+ * The citation cards an answer is allowed to ship, by two rules that must agree.
+ *
+ * 1. NUMBERING — `chunksToSources` is the documented conversion contract that
+ *    pairs with `buildGroundedContext`, which numbers by UNIQUE source key: two
+ *    excerpts from the same document page are both `[1]`. Rebuilding the cards
+ *    locally with `i + 1` numbered the RAW chunks instead, so the model's `[2]`
+ *    pointed at the wrong card and a phantom `[3]` appeared.
+ *
+ * 2. REFUSAL — a refusal cites nothing, so cards beside it are a lie the user
+ *    can see (#1875). The previous check was `isRefusalAnswer`, which substring
+ *    matches a QUICKSTART-specific sentence; this route has its own prompt and
+ *    its own phrasing, so a refusal here went undetected and shipped every
+ *    retrieved card. Keying on the MARKERS the answer actually used is
+ *    phrasing-independent: no `[n]` resolving to a returned source means
+ *    nothing was cited, in any wording.
+ *
+ * Exported and pure so both rules are asserted on data rather than inferred
+ * from the shape of the source.
+ */
+export function selectCitations(chunks: ManualChunk[], answer: string): ManualSource[] {
+  const all = chunksToSources(chunks);
+  const cited = new Set([...answer.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
+  return all.filter((s) => cited.has(s.index));
+}
 
 /**
  * POST /api/hub/ask — the signed-in technician's general question.
@@ -43,14 +75,6 @@ import { stripConflictingVendors } from "@/lib/vendor-relevance";
  */
 
 type AskPayload = { question?: string; manufacturer?: string };
-
-type ManualSource = {
-  index: number;
-  title: string;
-  url: string | null;
-  page: number | null;
-  verified: boolean;
-};
 
 export type HubAskResponse = {
   answer: string;
@@ -102,6 +126,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "question too long (>1000 chars)" }, { status: 400 });
   }
   const manufacturer = (body.manufacturer ?? "").trim() || null;
+
+  // Cost control BEFORE retrieval or inference. This endpoint is authenticated,
+  // but authentication is not an allowance: one trial or compromised account
+  // could otherwise drive unbounded paid cascade completions. Keyed on the
+  // TENANT so a single account cannot spend the workspace's budget, with the
+  // IP hash as a secondary key so one compromised session cannot exhaust the
+  // whole tenant either. The public quickstart route limits 20/min and
+  // `/api/mira/ask` limits by IP hash; this is the authenticated equivalent.
+  if (
+    rateLimited("hub-ask-tenant", ctx.tenantId, HUB_ASK_MAX_PER_MIN, 60_000) ||
+    rateLimited("hub-ask-ip", await clientIpHash(), HUB_ASK_MAX_PER_MIN, 60_000)
+  ) {
+    return NextResponse.json(
+      { error: "You are asking faster than MIRA can answer. Try again in a minute." },
+      { status: 429 },
+    );
+  }
 
   let chunks: ManualChunk[] = [];
   {
@@ -171,17 +212,24 @@ export async function POST(req: Request) {
     );
   }
 
-  // A refusal cited nothing, so shipping citation cards beside it would be a
-  // lie the user can see (#1875). Same rule the quickstart route applies.
-  const citations: ManualSource[] = isRefusalAnswer(result.content)
-    ? []
-    : chunks.map((c, i) => ({
-        index: i + 1,
-        title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
-        url: c.sourceUrl || null,
-        page: displayPage(c),
-        verified: c.verified === true,
-      }));
+  // Citations, by two rules that must agree with each other.
+  //
+  // 1. NUMBERING — `chunksToSources` is the documented conversion contract
+  //    (manual-rag.ts). `buildGroundedContext` numbers by UNIQUE source key, so
+  //    two excerpts from the same document page are both `[1]`. Rebuilding the
+  //    cards locally with `i + 1` numbered the RAW chunks instead, so the
+  //    model's `[2]` pointed at the wrong card and a phantom `[3]` appeared.
+  //    Use the helper the context builder is paired with, never a second
+  //    numbering.
+  //
+  // 2. REFUSAL — a refusal cites nothing, so cards beside it are a lie the
+  //    user can see (#1875). The previous check was `isRefusalAnswer`, which
+  //    substring-matches a QUICKSTART-specific sentence; this route has its own
+  //    prompt and its own phrasing, so a refusal here went undetected and
+  //    shipped every retrieved card. Keying on the MARKERS the answer actually
+  //    used is phrasing-independent: no `[n]` resolving to a returned source
+  //    means nothing was cited, whatever words were chosen.
+  const citations: ManualSource[] = selectCitations(chunks, result.content);
 
   return NextResponse.json({
     answer: result.content,
