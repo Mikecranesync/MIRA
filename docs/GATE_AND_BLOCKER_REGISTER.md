@@ -190,6 +190,20 @@ workflow actions were SHA-pinned; #3689 changed the guard's test file). File equ
 own additions are present** — the test names, the function, the specific hunks. That question
 survives later commits; byte equality does not.
 
+⚠️ **And that method has its own gap, which peer review found in this very paragraph.** It is sound
+for an **added** function: the name did not exist before, so a hit proves the commit landed. It is a
+**false positive for a MODIFIED one** — the name existed already and exists in `main` whether or not
+the change landed. `bc27c17ce` contains three such cases
+(`test_prod_migration_driver_is_exactly_pinned_and_hash_locked`, `test_render_clean`,
+`test_render_lists_missing`); all three predate the commit, so grepping their names answers a
+different question than the one asked.
+
+That is the *same shape* as the trap this paragraph replaces — a check whose answer is "yes" for an
+unrelated reason. The one-clause fix: **for a modified function, grep a token the commit
+INTRODUCED** (a new assertion, a changed constant, a renamed symbol), **never the function name.**
+Distinguish the two cases before choosing the token, because the method is only sound for one of
+them.
+
 ---
 
 ## 5. Peer network + Grokbot — what it takes
