@@ -4251,6 +4251,44 @@ def test_a_labeled_act_with_malformed_metadata_still_raises(tmp_path):
         load_exception_approval(event_path, pull_path, permission_path)
 
 
+@pytest.mark.parametrize(
+    "malformed_label",
+    ["legacy-ui-exception", None, ["legacy-ui-exception"], 7],
+    ids=["string", "null", "list", "number"],
+)
+def test_a_labeled_act_with_a_malformed_label_raises_rather_than_reporting_no_attestation(
+    tmp_path, malformed_label
+):
+    """Diagnostics control (peer review of 719c0e99).
+
+    The first draft of the early return also tested `isinstance(event_label,
+    dict)`, so a GENUINE `labeled` act whose `label` was malformed took the
+    non-approval path and was told "no GitHub label-event attestation on this
+    run" — pointing the author at the push/label distinction instead of at
+    their malformed metadata. No security impact (a non-approval blocks either
+    way), but it is the same misdirection this fix exists to remove: the old
+    message said "policy violation" when it meant "missing JSON key".
+
+    A malformed `label` on a real label act is malformed METADATA and must
+    reach the strict object check.
+    """
+    event_path, pull_path, permission_path = _non_label_event_files(tmp_path)
+    event_path.write_text(
+        json.dumps(
+            {
+                "action": "labeled",
+                "label": malformed_label,
+                "pull_request": {"head": {"sha": "a" * 40}, "body": "body"},
+                "sender": {"type": "User", "login": "someone"},
+                "repository": {"full_name": "Mikecranesync/MIRA"},
+            }
+        )
+    )
+
+    with pytest.raises(GuardPolicyError, match="missing required GitHub objects"):
+        load_exception_approval(event_path, pull_path, permission_path)
+
+
 def test_a_valid_label_act_is_unaffected_by_the_fix(tmp_path):
     """Positive control: the happy path still approves, so the new early
     return cannot be shadowing real attestations."""

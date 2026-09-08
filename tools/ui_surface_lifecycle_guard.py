@@ -1373,9 +1373,15 @@ def load_exception_approval(
     # only stops the guard from erroring when no exception was ever claimed.
     #
     # Tamper detection is unchanged: once the event IS a `labeled` act, every
-    # object below is still required, and a missing or malformed one still
-    # raises rather than degrading to a silent non-approval.
-    if event.get("action") != "labeled" or not isinstance(event_label, dict):
+    # object below is still required — INCLUDING `label` itself — and a missing
+    # or malformed one still raises rather than degrading to a silent
+    # non-approval. The condition deliberately tests only `action`: a genuine
+    # `labeled` act carrying a malformed `label` is malformed metadata, and must
+    # reach the strict object check below so the message says so. Folding
+    # `isinstance(event_label, dict)` in here would have reported "no
+    # attestation on this run" for a tampered label — the same class of
+    # misdirection this fix removes.
+    if event.get("action") != "labeled":
         return ExceptionApproval(
             valid=False,
             approver=None,
