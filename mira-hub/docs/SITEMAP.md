@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **69** (12 dynamic) |
-| API routes | **179** (66 dynamic) |
+| Pages | **70** (12 dynamic) |
+| API routes | **180** (67 dynamic) |
 
-## Pages (69)
+## Pages (70)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -80,6 +80,7 @@
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
+| `/v3` | static | `v3/page.tsx` |
 | `/visual` | static | `(hub)/visual/page.tsx` |
 | `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |
@@ -87,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (179)
+## API routes (180)
 
 | Route | Kind | Source |
 |---|---|---|

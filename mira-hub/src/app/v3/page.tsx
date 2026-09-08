@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import MoreSheet from "@/factorylm-ui/MoreSheet";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 
@@ -69,6 +70,7 @@ export default function V3Page() {
   const [error, setError] = useState<string | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [more, setMore] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -139,9 +141,11 @@ export default function V3Page() {
           <button className="v3-item">▦ Machines</button>
           <button className="v3-item">▤ Manuals</button>
           <button className="v3-item">✓ Work orders</button>
-          <button className="v3-item">More ›</button>
+          <button className="v3-item" onClick={() => setMore(true)}>More ›</button>
         </nav>
       </aside>
+
+      {more && <MoreSheet onClose={() => setMore(false)} />}
 
       <main className="v3-main">
         <header className="v3-top">

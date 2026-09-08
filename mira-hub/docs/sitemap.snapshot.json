@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 69,
-    "apiRoutes": 179
+    "pages": 70,
+    "apiRoutes": 180
   },
   "pages": [
     "/admin",
@@ -68,6 +68,7 @@
     "/team",
     "/upgrade",
     "/usage",
+    "/v3",
     "/visual",
     "/visual/[id]",
     "/workflows",
