@@ -101,6 +101,24 @@ export function lifecycleLabel(lifecycle: Lifecycle): string {
  * Note this keys on the lifecycle and never on whether parts are absent. A
  * `completed` turn that legitimately has no sources must render normally; the
  * gate exists to suppress a claim the turn cannot support, not to demand one.
+ *
+ * ON `safety_stop` (#3691, not yet in this union — decided here in advance so
+ * that when it lands the behaviour is a choice rather than a leftover of
+ * `!== "failed"`). It means MIRA REFUSED on safety grounds — distinct from
+ * `stopped` (a person interrupted) and `failed` (it broke). Both rules land
+ * the right way, and both matter more here than anywhere else:
+ *
+ * - **Follow-ups are hidden**, and this is the single most important case for
+ *   that rule. "What next?" underneath a refusal to guide an unsafe step is an
+ *   invitation to continue toward the hazard MIRA just declined to walk into.
+ * - **Provenance is kept.** A safety refusal that cites the procedure it is
+ *   refusing on behalf of is more trustworthy than a bare one, and this is the
+ *   last turn in the product where a technician should have to take MIRA's
+ *   word for it. Suppressing the citation here would strip attribution from
+ *   the most safety-critical turn the surface can render.
+ *
+ * The test for this arrives with the rebase onto #3691 — it cannot be written
+ * before the union member exists without casting a lie past the compiler.
  */
 export function showsGroundedness(
   part: "source" | "evidence_basis" | "followups",
