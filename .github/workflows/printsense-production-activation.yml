@@ -40,35 +40,61 @@ env:
   ACTIVATION_PR: "2903"
 
 jobs:
-  activate:
-    name: Activate Together/MiniMax PrintSense in production
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+  authorize-source:
+    name: Authorize exact production source
     runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 20
-
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      source_sha: ${{ steps.authorize.outputs.source_sha }}
     steps:
-      - name: Checkout activation revision
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Authorize exact current main source
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+        run: |
+          set -euo pipefail
+          fail() {
+            echo "::error::$*"
+            exit 1
+          }
+
+          [ "$GITHUB_REF" = "refs/heads/main" ] || \
+            fail "production activation controller must run from main"
+          case "$GITHUB_EVENT_NAME" in
+            push|workflow_dispatch)
+              ;;
+            workflow_run)
+              [ "$WORKFLOW_RUN_CONCLUSION" = "success" ] || \
+                fail "the triggering production deploy did not succeed"
+              [ "$WORKFLOW_RUN_HEAD_BRANCH" = "main" ] || \
+                fail "the triggering production deploy was not for main"
+              ;;
+            *)
+              fail "unsupported production activation event: $GITHUB_EVENT_NAME"
+              ;;
+          esac
+
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+            fail "activation source must be a lowercase 40-character SHA"
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || \
+            fail "refusing a stale production activation controller"
+          [ "$SOURCE_SHA" = "$CURRENT_MAIN_SHA" ] || \
+            fail "refusing a production activation for anything except current main"
+          printf 'source_sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Verify source PR passed Staging Gate
-        # On workflow_run triggers this SHA was ALREADY gated by the deploy that
-        # just shipped it: deploy-vps.yml either verified the Staging Gate itself
-        # or the operator explicitly bypassed it with an audited skip_reason.
-        # Re-verifying here cannot add safety, but it CAN subtract it — a
-        # hotfix-bypass deploy recreates the bot containers with legacy compose
-        # defaults, and if this step then hard-fails ('No PR associated'), the
-        # production PrintSense profile is silently never re-applied. Trust the
-        # triggering deploy's decision; keep the hard check for push and
-        # workflow_dispatch, where no deploy has gated the SHA.
         if: github.event_name != 'workflow_run'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ steps.authorize.outputs.source_sha }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -89,26 +115,68 @@ jobs:
           echo "Staging Gate for PR head $PR_HEAD_SHA: $STATUS"
           test "$STATUS" = "completed:success"
 
-      - name: Set up SSH
+  activate:
+    name: Activate Together/MiniMax PrintSense in production
+    needs: authorize-source
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout activation revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.authorize-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Revalidate exact current main source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORIZED_SHA: ${{ needs.authorize-source.outputs.source_sha }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          [ "$GITHUB_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::refusing a stale production activation controller"
+            exit 1
+          }
+          [ "$AUTHORIZED_SHA" = "$CURRENT_MAIN_SHA" ] || {
+            echo "::error::refusing a stale authorized production source"
+            exit 1
+          }
+
+      - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
           chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
       - name: Apply production profile and verify live
+        env:
+          ACTIVATION_SHA: ${{ needs.authorize-source.outputs.source_sha }}
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 'bash -s' <<'ENDSSH'
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
+            root@165.245.138.91 bash -s -- "$ACTIVATION_SHA" <<'ENDSSH'
           set -euo pipefail
+          TARGET_SHA="$1"
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           cd /opt/mira
 
           touch /opt/mira/.deploy-in-progress
           trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
 
-          echo "=== Pin activation code to current main ==="
+          echo "=== Pin activation code to the authorized current-main SHA ==="
           git fetch origin main --tags --force
-          git reset --hard origin/main
+          FETCHED_SHA="$(git rev-parse FETCH_HEAD)"
+          test "$FETCHED_SHA" = "$TARGET_SHA"
+          git reset --hard "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           test -f docker-compose.printsense-production.yml
 
           # Deploy identity must be exported HERE too, not only in deploy-vps.yml.
@@ -121,10 +189,9 @@ jobs:
           # on 2026-08-03: mira-pipeline reported 3.248.0 while mira-bot-telegram
           # reported "unknown" — same commit, same minute, different build path.
           #
-          # Derived from the tag at origin/main HEAD (this step resets to
-          # origin/main, so that IS the deployed code). No tag ⇒ "unknown", which
-          # is the honest answer rather than a plausible wrong one.
-          PS_RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          # Derived from the tag at the immutable authorized SHA. No tag means
+          # "unknown", which is the honest answer rather than a plausible wrong one.
+          PS_RELEASE_TAG="$(git tag --points-at "$TARGET_SHA" --list 'v[0-9]*' | sort -V | tail -1)"
           export MIRA_APP_VERSION="${PS_RELEASE_TAG#v}"
           export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
           export MIRA_GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -230,7 +297,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ACTIVATED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ACTIVATED_SHA: ${{ needs.authorize-source.outputs.source_sha }}
         run: |
           gh pr comment "$ACTIVATION_PR" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
           ## ✅ Production activation verified
@@ -259,7 +326,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ATTEMPTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ATTEMPTED_SHA: ${{ needs.authorize-source.outputs.source_sha }}
         run: |
           gh pr comment "$ACTIVATION_PR" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
           ## ❌ Production activation failed closed

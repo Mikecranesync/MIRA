@@ -9,11 +9,18 @@
 import { useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
 import { listNotebooks, type Me, type Notebook } from "../api/resources";
-import { pendingCount, preferencesStore } from "../lib/offline-queue";
+import { hasActiveApiMutations } from "../api/client";
+import {
+  hasActiveWorkOrderQueueProducers,
+  pendingCount,
+  preferencesStore,
+  withSessionLocalProducer,
+} from "../lib/offline-queue";
+import { apiErrorCopy } from "../lib/api-error-copy";
 import { notebookIdFromItem, notebookMachines, notebookProjects } from "../unified/notebook-tree";
-import { AboutUpdates } from "./AboutUpdates";
 import { NotebookScreen } from "./NotebookScreen";
 import type { UnifiedShellHost } from "./UnifiedChat";
+import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
 
 const LAST_NOTEBOOK_KEY = "flm.unified.notebook.v1";
 
@@ -41,7 +48,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         const preferred = last && list.some((nb) => nb.id === last) ? last : (list[0]?.id ?? null);
         setSelected(preferred);
       } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : "Could not load notebooks.");
+        if (live) setError(apiErrorCopy(e, "Could not load notebooks."));
       }
     })();
     return () => {
@@ -51,7 +58,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
 
   const open = (id: string) => {
     setSelected(id);
-    void preferencesStore.set(LAST_NOTEBOOK_KEY, id);
+    void withSessionLocalProducer(() => preferencesStore.set(LAST_NOTEBOOK_KEY, id));
   };
 
   const host = useMemo<UnifiedShellHost | null>(() => {
@@ -84,10 +91,35 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebooks, me.email, signingOut]);
 
+  // NotebookScreen owns Android Back while a conversation is mounted. Every
+  // root-owned state must replace that handler explicitly: otherwise the
+  // unmounted notebook leaves its last callback behind and About can minimize
+  // the app instead of returning to the conversation.
+  const rootOwnsBack = showAbout || Boolean(error) || !notebooks || !host || !selected;
+  useEffect(() => {
+    if (!rootOwnsBack) return;
+    const previous = backRef.current;
+    const handleBack = () => {
+      if (showAbout) {
+        setShowAbout(false);
+        return true;
+      }
+      return false;
+    };
+    backRef.current = handleBack;
+    return () => {
+      if (backRef.current === handleBack) backRef.current = previous;
+    };
+  }, [backRef, rootOwnsBack, showAbout]);
+
   if (showAbout) {
     return (
-      <AboutUpdates
-        pendingOfflineWork={async () => (await pendingCount(preferencesStore, me.tenantId)) > 0}
+      <UnifiedAboutUpdates
+        pendingOfflineWork={async () =>
+          hasActiveApiMutations() ||
+          hasActiveWorkOrderQueueProducers() ||
+          (await pendingCount(preferencesStore, me.tenantId)) > 0
+        }
         onBack={() => setShowAbout(false)}
       />
     );

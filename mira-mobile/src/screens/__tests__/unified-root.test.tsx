@@ -2,7 +2,18 @@
 // The unified root: the shell owns the app; the drawer lists notebooks; opening
 // an item switches the notebook; the footer carries host controls.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { MutableRefObject } from "react";
+
+const otaProbe = vi.hoisted(() => ({
+  value: null as boolean | null,
+  activeApiMutation: false,
+}));
+
+vi.mock("../../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+  return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
+});
 
 vi.mock("../../api/resources", async () => {
   const actual = await vi.importActual<typeof import("../../api/resources")>("../../api/resources");
@@ -15,12 +26,15 @@ vi.mock("../../api/resources", async () => {
   };
 });
 vi.mock("../NotebookScreen", () => ({
-  NotebookScreen: (props: { id: string; chromeless?: boolean; unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void } }) => (
-    <div data-testid="nb" data-id={props.id} data-chromeless={String(props.chromeless)}>
-      {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b", label: "General notes" })}>open-b</button> : null}
-      <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
-    </div>
-  ),
+  NotebookScreen: (props: { id: string; chromeless?: boolean; backRef: MutableRefObject<(() => boolean) | null>; unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void } }) => {
+    props.backRef.current = () => false;
+    return (
+      <div data-testid="nb" data-id={props.id} data-chromeless={String(props.chromeless)}>
+        {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b", label: "General notes" })}>open-b</button> : null}
+        <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
+      </div>
+    );
+  },
 }));
 // preferencesStore is the real @capacitor/preferences web path; under some
 // jsdom builds localStorage is not a full Storage and the root's load() throws,
@@ -38,13 +52,26 @@ vi.mock("../../lib/offline-queue", async () => {
     },
   };
 });
-vi.mock("../AboutUpdates", () => ({ AboutUpdates: (p: { onBack: () => void }) => <div data-testid="about"><button onClick={p.onBack}>back</button></div> }));
+vi.mock("../../unified/UnifiedAboutUpdates", () => ({
+  UnifiedAboutUpdates: (p: { onBack: () => void; pendingOfflineWork: () => Promise<boolean> }) => (
+    <div data-testid="about">
+      <button onClick={p.onBack}>back</button>
+      <button onClick={() => void p.pendingOfflineWork().then((value) => { otaProbe.value = value; })}>
+        Probe update readiness
+      </button>
+    </div>
+  ),
+}));
 
 import { UnifiedRoot } from "../UnifiedRoot";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  otaProbe.value = null;
+  otaProbe.activeApiMutation = false;
+});
 
 describe("UnifiedRoot", () => {
   it("loads notebooks, opens the first chromeless, switches on item open, and hosts the footer controls", async () => {
@@ -66,5 +93,46 @@ describe("UnifiedRoot", () => {
     expect(onSignOut).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("About & updates"));
     expect(await waitFor(() => screen.getByTestId("about"))).toBeTruthy();
+  });
+
+  it("consumes Android Back on About and returns to the unified conversation", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={backRef}
+        onSignOut={async () => {}}
+        onSwitchClassic={() => {}}
+      />,
+    );
+
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("About & updates"));
+    await waitFor(() => screen.getByTestId("about"));
+
+    let consumed = false;
+    await act(async () => {
+      consumed = backRef.current?.() ?? false;
+    });
+    expect(consumed).toBe(true);
+    expect(await waitFor(() => screen.getByTestId("nb"))).toBeTruthy();
+  });
+
+  it("reports an in-flight API mutation as busy to the update controller", async () => {
+    otaProbe.activeApiMutation = true;
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={{ current: null }}
+        onSignOut={async () => {}}
+        onSwitchClassic={() => {}}
+      />,
+    );
+
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("About & updates"));
+    fireEvent.click(await screen.findByRole("button", { name: "Probe update readiness" }));
+
+    await waitFor(() => expect(otaProbe.value).toBe(true));
   });
 });

@@ -5,7 +5,7 @@
 // Default ON only INSIDE the server-authorized `chat_v2` capability. More →
 // "Chat style" is a device preference; it can opt an allowed user back to the
 // classic surface, but it can never grant ChatV2 or override a fleet rollback.
-import { preferencesStore } from "./offline-queue";
+import { preferencesStore, withSessionLocalProducer } from "./offline-queue";
 import { useEffect, useState } from "react";
 
 export const CHAT_UI_KEY = "flm.chatui.v1";
@@ -28,7 +28,7 @@ export async function readChatUiChoice(): Promise<ChatUiChoice> {
 
 export async function writeChatUiChoice(choice: ChatUiChoice): Promise<void> {
   try {
-    await preferencesStore.set(CHAT_UI_KEY, choice);
+    await withSessionLocalProducer(() => preferencesStore.set(CHAT_UI_KEY, choice));
   } catch {
     /* a preference that won't persist must never break the conversation */
   }

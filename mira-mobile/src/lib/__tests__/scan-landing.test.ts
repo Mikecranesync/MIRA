@@ -71,7 +71,7 @@ describe("resolveScan", () => {
   });
 
   it("never shows a bare discriminator token to a technician", async () => {
-    const out = await resolveScan(
+    const notebookOut = await resolveScan(
       "CV-101",
       deps({
         openAssetNotebook: vi.fn(async () => {
@@ -81,8 +81,24 @@ describe("resolveScan", () => {
         }),
       }),
     );
-    expect(out).toMatchObject({ kind: "asset_only" });
-    expect("message" in out && out.message).not.toMatch(/^[a-z0-9]+(_[a-z0-9]+)+$/);
+    expect(notebookOut).toEqual({
+      kind: "asset_only",
+      assetId: "asset-1",
+      message: "Could not open a notebook for this machine.",
+    });
+
+    const lookupOut = await resolveScan(
+      "CV-101",
+      deps({
+        getAssetByTag: vi.fn(async () => {
+          throw new ApiError("client", 404, "asset_not_found");
+        }),
+      }),
+    );
+    expect(lookupOut).toEqual({
+      kind: "failed",
+      message: "Could not resolve the tag — check connectivity.",
+    });
   });
 
   it("treats a lookup failure as failed, with a message", async () => {

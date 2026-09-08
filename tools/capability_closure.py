@@ -43,6 +43,7 @@ CI_REL = ".github/workflows/ci.yml"
 STATES = {
     "implemented_unconnected",  # code exists, nothing consumes it
     "connected_ci_missing",  # a consumer exists, no named CI job runs its tests
+    "canary_enabled",  # opt-in tester delivery; not staging or production default
     "deployed_disabled",  # shipped, flag off everywhere
     "staging_enabled",
     "production_enabled",
@@ -52,7 +53,7 @@ STATES = {
 }
 
 # States that assert the capability is live somewhere.
-ENABLED_STATES = {"staging_enabled", "production_enabled"}
+ENABLED_STATES = {"canary_enabled", "staging_enabled", "production_enabled"}
 
 REQUIRED_FIELDS = ("id", "purpose", "state", "owner", "environments", "evidence")
 
@@ -137,6 +138,35 @@ def ci_job_ids(root: Path) -> set[str]:
         m.group(1)
         for m in re.finditer(r"^  ([a-z][a-z0-9-]+):\s*$", ci.read_text(errors="replace"), re.M)
     }
+
+
+def workflow_job_inventory(root: Path) -> tuple[set[str], set[str]]:
+    """Return qualified job ids and display names from every Actions workflow.
+
+    ``ci.yml`` job ids remain the vocabulary used by ``ci-gate.needs``. Jobs
+    in standalone workflows are qualified as ``<filename>:<job-id>`` so the
+    capability registry can name their source without colliding with another
+    workflow. Display names let a dated live branch-protection observation be
+    checked against an actual repository-owned producer. This deliberately
+    does not claim to read GitHub branch protection; that external state is
+    represented by ``required_checks_observed_on`` in the capability record.
+    """
+    job_refs: set[str] = set()
+    check_names: set[str] = set()
+    workflow_dir = root / ".github" / "workflows"
+    for path in sorted((*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml"))):
+        try:
+            document = yaml.safe_load(path.read_text(errors="replace")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        jobs = document.get("jobs") if isinstance(document, dict) else None
+        if not isinstance(jobs, dict):
+            continue
+        for job_id, job in jobs.items():
+            job_refs.add(f"{path.name}:{job_id}")
+            if isinstance(job, dict) and isinstance(job.get("name"), str):
+                check_names.add(job["name"])
+    return job_refs, check_names
 
 
 def ci_gate_needs(root: Path) -> set[str]:
@@ -254,10 +284,22 @@ def check_flag_exists_in_code(cap: dict, defaults: dict[str, str | None]) -> lis
     ]
 
 
-def check_ci_jobs_exist(cap: dict, jobs: set[str], gated: set[str]) -> list[Finding]:
-    """Declared CI jobs must be real, and `required_checks` must be honest."""
+def check_ci_jobs_exist(
+    cap: dict,
+    jobs: set[str],
+    gated: set[str],
+    workflow_check_names: set[str] | None = None,
+) -> list[Finding]:
+    """Declared CI jobs must be real, and required-check claims sourced.
+
+    A required check outside ``ci-gate`` is accepted only when a repository
+    workflow produces that exact display name and the record dates the live
+    branch-protection read. The offline validator can prove the producer, not
+    GitHub settings; the date keeps that limitation explicit.
+    """
     cid = cap.get("id", "<no id>")
     out = []
+    workflow_check_names = workflow_check_names or set()
     for j in cap.get("ci_jobs") or []:
         if j not in jobs:
             out.append(
@@ -266,13 +308,31 @@ def check_ci_jobs_exist(cap: dict, jobs: set[str], gated: set[str]) -> list[Find
                 )
             )
     for j in cap.get("required_checks") or []:
-        if j not in gated:
+        if j in gated:
+            continue
+        if j in workflow_check_names:
+            observed = cap.get("required_checks_observed_on")
+            try:
+                if isinstance(observed, str):
+                    _dt.date.fromisoformat(observed)
+                    continue
+            except ValueError:
+                pass
+            out.append(
+                Finding(
+                    cid,
+                    "required_check_observation_missing",
+                    f"external required check `{j}` has a workflow producer but no "
+                    "ISO-dated `required_checks_observed_on` live GitHub observation",
+                )
+            )
+        else:
             out.append(
                 Finding(
                     cid,
                     "required_check_false",
-                    f"claims `{j}` is a required check, but it is not in ci-gate's "
-                    f"needs — a job that runs but cannot fail the merge is not a guard",
+                    f"claims `{j}` is a required check, but it is neither in ci-gate's "
+                    "needs nor the exact display name of a repository workflow job",
                 )
             )
     return out
@@ -337,7 +397,8 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
     today = today or _dt.date.today()
     defaults = code_flag_defaults(root)
     plumbed = compose_plumbed_flags(root)
-    jobs = ci_job_ids(root)
+    workflow_jobs, workflow_check_names = workflow_job_inventory(root)
+    jobs = ci_job_ids(root) | workflow_jobs
     gated = ci_gate_needs(root)
 
     findings: list[Finding] = []
@@ -352,7 +413,7 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
         findings += check_disabled_has_a_decision(cap)
         findings += check_enabled_flags_are_plumbed(cap, plumbed)
         findings += check_flag_exists_in_code(cap, defaults)
-        findings += check_ci_jobs_exist(cap, jobs, gated)
+        findings += check_ci_jobs_exist(cap, jobs, gated, workflow_check_names)
         findings += check_evidence_paths_exist(cap, root)
         findings += check_production_has_rollback(cap)
         findings += check_review_not_expired(cap, today)
