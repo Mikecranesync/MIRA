@@ -412,6 +412,25 @@ jobs:
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
 
+      - name: UX acceptance detectors
+        # Outside-in UX detectors (ux_acceptance/) + their fixtures. Hermetic:
+        # pure functions over a serialized screen snapshot, no browser, no DB,
+        # no network. Root tests/ is NOT collected wholesale here, so this
+        # directory is named explicitly (like bot_regression.py above).
+        #
+        # A separate step on purpose: a failure names itself in the job timeline
+        # instead of hiding inside another step's output. No --ignore and no -k
+        # — the test_email_adapter note in this file records an --ignore that
+        # silently capped 21 tests, and the foreman step exists because 73 tests
+        # were "green in CI without ever running".
+        #
+        # It has to live HERE rather than in test-eval-offline. That job does
+        # sweep `pytest tests/` and would collect this directory, but it is not
+        # in ci-gate.needs and is not a required context, so a red detector
+        # there cannot stop a merge — a suite that runs without gating is worse
+        # than one that does not run, because it looks like coverage.
+        run: pytest tests/ux_acceptance/ -q -rs
+
       - name: Materialized Evidence contract + document-receipt lane
         # `materialized_evidence/` and the batch-document receipt lane it feeds
         # (mira-crawler step 6) were covered by ~90 tests that NO workflow ran —

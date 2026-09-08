@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000004",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "styleProperties": [
+    "color",
+    "background-color"
+  ],
+  "_provenance": "One component renders the identifier; the other three stop repeating it.",
+  "nodes": [
+    {
+      "id": "turn1",
+      "tag": "li",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-head",
+      "tag": "div",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn__head"
+      },
+      "parentId": "turn1",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "machine-pill",
+      "tag": "span",
+      "text": "Sensor v0 overnight 2026-08-28 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "turn1-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "nav",
+      "tag": "nav",
+      "text": "",
+      "attrs": {
+        "class": "fl-breadcrumb"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "breadcrumb",
+      "tag": "span",
+      "text": "Notebooks",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "nav",
+      "rendered": true,
+      "hittable": true
+    }
+  ]
+}
