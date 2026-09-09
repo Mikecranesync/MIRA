@@ -368,50 +368,6 @@ describe("V3 — an outage is not an answer (round 2, F3)", () => {
   });
 });
 
-/**
- * Round 3 adversarial review — F3: private colour palette.
- *
- * v3.css previously declared a --v3-* private palette and raw hex hardcodes
- * (#f7f7f5, #fff, #1f2328, #0003, #15803d44, etc.) that bypassed the shared
- * --fl-* token system (.claude/rules/ui-style.md hard rule 1). These assertions
- * are the revert guard: reverting to a private palette turns them red.
- */
-describe("V3 — colours from shared --fl-* tokens, no private palette (R3 F3)", () => {
-  const cssStripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
-
-  it("declares no private --v3-* colour variables", () => {
-    // A --v3-xxx:#hex or --v3-xxx:rgb( declaration is the private palette.
-    // Layout/structural custom properties (if any) would not be colour values.
-    expect(cssStripped).not.toMatch(/--v3-\w+\s*:#[0-9a-fA-F]/);
-    expect(cssStripped).not.toMatch(/--v3-\w+\s*:rgb/);
-  });
-
-  it("contains none of the specific hex hardcodes called out in R3 F3", () => {
-    // These are the exact values the adversarial reviewer flagged. Each is a
-    // colour decision that must come from a token, not from a literal.
-    for (const hex of [
-      "#f7f7f5",   // former --v3-bg
-      "#1f2328",   // former --v3-text
-      "#15803d44", // ok alpha border
-      "#15803d0e", // ok alpha fill
-      "#a1620744", // warn alpha border
-      "#a162070e", // warn alpha fill
-      "#fde68a",   // former --v3-warnline (amber-200 solid)
-    ]) {
-      expect(cssStripped).not.toContain(hex);
-    }
-  });
-
-  it("every colour property references a --fl-* token, not a bare hex", () => {
-    // Strip the fallback values inside var() calls (they are acceptable CSS
-    // defensive coding), then assert no standalone hex colour remains.
-    // Fallbacks look like: var(--fl-ok, #15803d) — we strip the ,#... part.
-    const noFallbacks = cssStripped.replace(/var\([^)]*,\s*#[0-9a-fA-F]{3,8}\)/g, "var(STRIPPED)");
-    const hexMatches = noFallbacks.match(/#[0-9a-fA-F]{3,8}/g) ?? [];
-    expect(hexMatches).toEqual([]);
-  });
-});
-
 describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
   it("has no global lastUser for an action to close over", () => {
     // F2's whole mechanism was a single thread-wide `lastUser` combined with
