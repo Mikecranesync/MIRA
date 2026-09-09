@@ -174,8 +174,13 @@ type AssetRow = {
  *
  * Two kinds of row are excluded, for two different reasons:
  *
- *  - No id → DROPPED silently. A row you cannot route to is a dead option, and
- *    picking it would send the question to `/api/assets/undefined/chat/`.
+ *  - No id → DROPPED and COUNTED as `malformed`. A row you cannot route to is a
+ *    dead option — picking it would send the question to `/api/assets/undefined/chat/`
+ *    — but it is not an "unplaced asset", it is a broken API response, so it
+ *    must not inflate that count. It is counted separately so that an `/api/assets`
+ *    regression on `id` (rename, dropped projection) is distinguishable from a
+ *    tenant who genuinely owns no assets: an empty picker must be able to say
+ *    which of those it is (round-4 review, #3683).
  *  - No UNS path → excluded and COUNTED as `unplaced`. Binding a question to a
  *    machine is a direct connection, and a direct connection must carry a
  *    resolvable UNS identifier or refuse — it may not proceed and ask later
@@ -186,14 +191,18 @@ type AssetRow = {
  *
  * A machine with no description falls back to its tag rather than an empty line.
  */
-export function partitionMachines(rows: unknown): { machines: Machine[]; unplaced: number } {
-  if (!Array.isArray(rows)) return { machines: [], unplaced: 0 };
+export function partitionMachines(rows: unknown): { machines: Machine[]; unplaced: number; malformed: number } {
+  if (!Array.isArray(rows)) return { machines: [], unplaced: 0, malformed: 0 };
   const machines: Machine[] = [];
   let unplaced = 0;
+  let malformed = 0;
   for (const raw of rows) {
     const r = (raw ?? {}) as AssetRow;
     const id = typeof r.id === "string" ? r.id : null;
-    if (!id) continue;
+    if (!id) {
+      malformed += 1;
+      continue;
+    }
     const unsPath = typeof r.unsPath === "string" ? r.unsPath.trim() : "";
     if (!unsPath) {
       unplaced += 1;
@@ -211,7 +220,11 @@ export function partitionMachines(rows: unknown): { machines: Machine[]; unplace
       location: typeof r.location === "string" ? r.location : null,
     });
   }
-  return { machines, unplaced };
+  if (malformed > 0) {
+    // Loud in the console because this is the API misbehaving, not the data.
+    console.warn(`[ScopePicker] /api/assets returned ${malformed} row(s) without a string id — dropped as unroutable`);
+  }
+  return { machines, unplaced, malformed };
 }
 
 /** The offerable machines only — `partitionMachines` without the count. */
@@ -230,6 +243,7 @@ export default function ScopePicker({
 }) {
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [unplaced, setUnplaced] = useState(0);
+  const [malformed, setMalformed] = useState(0);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -242,9 +256,10 @@ export default function ScopePicker({
       // envelope guess would yield an empty list and read as "no machines".
       .then((d) => {
         if (!live) return;
-        const { machines: offerable, unplaced: excluded } = partitionMachines(d);
+        const { machines: offerable, unplaced: excluded, malformed: broken } = partitionMachines(d);
         setMachines(offerable);
         setUnplaced(excluded);
+        setMalformed(broken);
       })
       .catch(() => live && setFailed(true));
     return () => {
@@ -302,7 +317,15 @@ export default function ScopePicker({
           namespace yet, so {unplaced === 1 ? "it" : "they"} cannot be asked about specifically.
         </p>
       )}
-      {machines !== null && machines.length === 0 && (
+      {/* An empty list because the API returned rows the picker cannot route is a
+          different fact from an empty register, and must not be shown as one. */}
+      {machines !== null && malformed > 0 && (
+        <p className="v3-sheet__note" role="status">
+          The machine list came back with {malformed === 1 ? "an entry" : `${malformed} entries`} the app
+          could not read. Try again; if it persists, the assets API is misbehaving.
+        </p>
+      )}
+      {machines !== null && machines.length === 0 && malformed === 0 && (
         <p className="v3-sheet__note">
           No machines yet. Add one to ask about it specifically.
         </p>
