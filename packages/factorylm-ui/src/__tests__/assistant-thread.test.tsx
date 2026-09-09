@@ -377,4 +377,94 @@ describe("assistant surface rendering", () => {
     // Question is preserved in composer (draft is not cleared on error)
     expect(textarea.value).toBe("Check the motor");
   });
+
+  describe("speaker asymmetry: ChatGPT-like visual grammar", () => {
+    it("user and assistant turns have distinguishable role data on the assistant surface", () => {
+      // Test across all fixtures to find at least one with user turns
+      let foundUser = false;
+      let foundAssistant = false;
+
+      for (const fixtureId of FIXTURE_IDS) {
+        const fixture = getFixture(fixtureId);
+        const view = render({ surface: "web", fixture: fixtureId, conversationSurface: "assistant" });
+
+        const userTurns = Array.from(view.container.querySelectorAll<HTMLElement>('[data-turn-id][data-role="user"]'));
+        const assistantTurns = Array.from(view.container.querySelectorAll<HTMLElement>('[data-turn-id][data-role="assistant"]'));
+
+        if (userTurns.length > 0) {
+          foundUser = true;
+          userTurns.forEach((turn) => {
+            expect(turn.dataset.role).toBe("user");
+            expect(turn.className).toContain("fl-turn");
+          });
+        }
+
+        if (assistantTurns.length > 0) {
+          foundAssistant = true;
+          assistantTurns.forEach((turn) => {
+            expect(turn.dataset.role).toBe("assistant");
+            expect(turn.className).toContain("fl-turn");
+          });
+        }
+
+        view.cleanup();
+      }
+
+      expect(foundUser).toBe(true);
+      expect(foundAssistant).toBe(true);
+    });
+
+    it("stylesheet uses only token variables, no hardcoded hex colors", () => {
+      // Scan conversation.css for hardcoded color values (hex, rgb, hsl)
+      // Valid patterns: var(--fl-*), transparent, inherit, currentColor
+      const fs = require("fs");
+      const path = require("path");
+      const cssPath = path.join(__dirname, "../conversation.css");
+      const content = fs.readFileSync(cssPath, "utf-8");
+
+      // Regex to find hex colors, rgb/rgba, hsl/hsla that aren't in comments
+      // Exclude var(--fl-*), transparent, inherit, currentColor
+      const lines = content.split("\n");
+      const offendingLines: string[] = [];
+
+      lines.forEach((line, i) => {
+        // Skip comments and lines that clearly use tokens
+        if (line.trim().startsWith("/*") || line.trim().startsWith("//")) return;
+        if (line.includes("var(--fl-")) return;
+        if (line.includes("transparent") || line.includes("inherit") || line.includes("currentColor")) {
+          // These are OK, but check if there's also a hex color
+          if (!/\b#[0-9a-f]{3,8}\b|\brgb/.test(line)) return;
+        }
+
+        // Look for color values: hex, rgb, rgba, hsl, hsla
+        if (/\b#[0-9a-f]{3,8}\b|\brgb\(|\brgba\(|\bhsl\(|\bhsla\(/.test(line)) {
+          // Allow exceptions: in strings (url, data:), comments, or known values
+          if (line.includes("url(") || line.includes("data:")) return;
+          offendingLines.push(`Line ${i + 1}: ${line.trim()}`);
+        }
+      });
+
+      expect(offendingLines).toEqual([]);
+    });
+
+    it("stylesheet contains no gradient definitions", () => {
+      const fs = require("fs");
+      const path = require("path");
+      const cssPath = path.join(__dirname, "../conversation.css");
+      const content = fs.readFileSync(cssPath, "utf-8");
+
+      // Look for linear-gradient, radial-gradient, conic-gradient
+      const lines = content.split("\n");
+      const gradientLines: string[] = [];
+
+      lines.forEach((line, i) => {
+        if (line.trim().startsWith("/*") || line.trim().startsWith("//")) return;
+        if (/linear-gradient|radial-gradient|conic-gradient|repeating-/.test(line)) {
+          gradientLines.push(`Line ${i + 1}: ${line.trim()}`);
+        }
+      });
+
+      expect(gradientLines).toEqual([]);
+    });
+  });
 });
