@@ -71,6 +71,69 @@ function getProviders(): CascadeProvider[] {
   ];
 }
 
+/**
+ * Drains one provider's SSE body, forwarding content deltas to the client.
+ *
+ * Returns whether this provider actually SERVED an answer — not whether its
+ * body closed cleanly. A provider that terminates correctly (`[DONE]`, or
+ * `finish_reason: "stop"`) having emitted no delta produced nothing, and
+ * reporting that as success stops the cascade and hands the client an empty
+ * 200 that reads as a successful blank answer. (Round 3, F2.)
+ *
+ * A provider that emits deltas and then dies mid-stream still returns true:
+ * that text is already on the wire, so re-running the cascade would duplicate
+ * it. Partial beats double.
+ *
+ * Exported for test — the defect lives in the loop's terminal condition, so
+ * a test of the frame parser alone could not express it.
+ */
+export async function drainProviderStream(
+  body: ReadableStream<Uint8Array>,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  enc: TextEncoder,
+  responseBuffer: string[],
+): Promise<boolean> {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  let served = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === "[DONE]") {
+        return served;
+      }
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: { delta?: { content?: string }; finish_reason?: string }[];
+        };
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) {
+          served = true;
+          responseBuffer.push(delta);
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+        }
+        if (parsed.choices?.[0]?.finish_reason === "stop") {
+          return served;
+        }
+      } catch {
+        // malformed SSE chunk — skip
+      }
+    }
+  }
+  return served;
+}
+
 // Streams content deltas only — the caller owns the terminal `data: [DONE]`
 // so it can run the H4 gap-admission safety net (#2542) BEFORE closing.
 async function streamFromProvider(
@@ -108,43 +171,7 @@ async function streamFromProvider(
 
   if (!res.ok || !res.body) return false;
 
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += dec.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === "[DONE]") {
-        return true;
-      }
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: { delta?: { content?: string }; finish_reason?: string }[];
-        };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          responseBuffer.push(delta);
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
-        }
-        if (parsed.choices?.[0]?.finish_reason === "stop") {
-          return true;
-        }
-      } catch {
-        // malformed SSE chunk — skip
-      }
-    }
-  }
-  return true;
+  return drainProviderStream(res.body, controller, enc, responseBuffer);
 }
 
 // ── Asset context ──────────────────────────────────────────────────────────
@@ -635,8 +662,28 @@ export async function POST(
       }
 
       if (!served) {
+        // Provider exhaustion is a FAILURE, and the frame has to say so.
+        //
+        // Sent as bare `content` this was indistinguishable from an answer: the
+        // response is HTTP 200, the text streams like any other, and a client
+        // that only inspects status renders an outage notice as MIRA's reply —
+        // V3 even badged it "General guidance — no source cited". A technician
+        // cannot act on that distinction if the payload does not carry it.
+        //
+        // The value matches `api/mira/ask/route.ts`, which already emitted
+        // `all_providers_unavailable` for this same condition. One condition,
+        // one spelling: a second name for it would read as a second failure
+        // mode to anyone matching the literal.
+        //
+        // `error` is ADDITIVE: existing consumers keep reading `content`
+        // exactly as before, and clients that understand the field can render
+        // their retryable failure state instead of an answer. Note the H4
+        // gap-admission net below is gated on `served`, so it does not fire
+        // here — nothing else marks this frame as a failure.
         const msg = "MIRA is temporarily unavailable. All inference providers are down. Please try again in a moment.";
-        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: msg })}\n\n`));
+        controller.enqueue(
+          enc.encode(`data: ${JSON.stringify({ content: msg, error: "all_providers_unavailable" })}\n\n`),
+        );
       }
 
       // H4 gap-admission safety net (#2542) — if the answer streamed with NO
