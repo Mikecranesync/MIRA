@@ -90,10 +90,20 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     const text = state.draft.trim();
     if (!text) return;
     if (hooks?.onSend) {
-      hooks.onSend(text);
-      dispatch({ type: "set-draft", draft: "" });
+      try {
+        hooks.onSend(text);
+        dispatch({ type: "set-draft", draft: "" });
+        dispatch({ type: "set-send-error", error: null });
+      } catch (error) {
+        // Preserve the question in the composer and show a plain-language error
+        // (no status codes or technical details).
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const plainMessage = errorMessage.replace(/\b\d{3}\b/g, ""); // Strip HTTP status codes
+        dispatch({ type: "set-send-error", error: plainMessage.trim() || "Couldn't reach MIRA. Your message is saved." });
+      }
     } else {
       dispatch({ type: "mock-send" });
+      dispatch({ type: "set-send-error", error: null });
     }
   };
 

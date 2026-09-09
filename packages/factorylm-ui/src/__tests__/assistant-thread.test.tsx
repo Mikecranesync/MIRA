@@ -9,7 +9,7 @@
  * two surfaces differ only in viewport behaviour, never in what they say.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { FIXTURE_IDS, LIFECYCLES, getFixture, type ContextSnapshot, type InteractionTurn, type Lifecycle } from "@factorylm/interaction";
+import { FIXTURE_IDS, LIFECYCLES, getFixture, type ContextSnapshot, type InteractionTurn, type Lifecycle, type ShellAction } from "@factorylm/interaction";
 import { contextDiffers } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, sendText, statusOf, textOfAppend, turnToThreadMessage } from "../assistant";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
@@ -301,5 +301,80 @@ describe("assistant surface rendering", () => {
     const messages = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
     expect(greeting).toBeNull();
     expect(messages.length).toBeGreaterThan(0);
+  });
+
+  it("does not clear question on send error", () => {
+    const view = render({
+      surface: "web",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: {
+        onSend: () => {
+          throw new Error("Temporarily unavailable");
+        },
+      },
+    });
+    const composer = view.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]');
+    const textarea = composer?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]');
+    if (!composer || !textarea) throw new Error("composer must render");
+
+    // Type a question
+    view.type(textarea, "What is the current temperature?");
+    expect(textarea.value).toBe("What is the current temperature?");
+
+    // Submit the form (this will throw in onSend)
+    view.submit(composer);
+
+    // The question should still be in the composer (draft not cleared on error)
+    expect(textarea.value).toBe("What is the current temperature?");
+  });
+
+  it("retry re-sends the exact same question", () => {
+    const sent: string[] = [];
+    const view = render({
+      surface: "web",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: {
+        onSend: (text) => {
+          sent.push(text);
+          if (sent.length === 1) {
+            throw new Error("Temporarily unavailable");
+          }
+        },
+      },
+    });
+    const composer = view.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]');
+    const textarea = composer?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]');
+    if (!composer || !textarea) throw new Error("composer must render");
+
+    view.type(textarea, "Why did it stop?");
+    view.submit(composer);
+
+    // Question is preserved in composer on first (failed) send
+    expect(textarea.value).toBe("Why did it stop?");
+    expect(sent).toEqual(["Why did it stop?"]);
+  });
+
+  it("preserves question in composer on failed send", () => {
+    const view = render({
+      surface: "web",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: {
+        onSend: () => {
+          throw new Error("Service unavailable");
+        },
+      },
+    });
+    const composer = view.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]');
+    const textarea = composer?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]');
+    if (!composer || !textarea) throw new Error("composer must render");
+
+    view.type(textarea, "Check the motor");
+    view.submit(composer);
+
+    // Question is preserved in composer (draft is not cleared on error)
+    expect(textarea.value).toBe("Check the motor");
   });
 });

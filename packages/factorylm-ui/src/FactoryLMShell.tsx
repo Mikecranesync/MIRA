@@ -6,6 +6,7 @@ import { Conversation } from "./Conversation";
 import { Inspector } from "./Inspector";
 import { Overlay, type LayerName } from "./Overlay";
 import type { HostHooks } from "./parts";
+import { SendError } from "./SendError";
 import { Sidebar } from "./Sidebar";
 import { SourceViewer } from "./SourceViewer";
 import { ThreadHeader } from "./ThreadHeader";
@@ -126,6 +127,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
       {conversationSurface === "assistant"
         ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
+      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} hooks={hooks} /> : null}
       <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile} trapsTab={top === "inspector"}>
