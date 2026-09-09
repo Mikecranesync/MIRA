@@ -64,6 +64,21 @@ describe("the composer is mounted on the home screen (A-1, B-1)", () => {
     expect(feed).toMatch(/<HomeComposer\s*\/>/);
   });
 
+  it("the HomeComposer module file exists on disk (TS2307 guard — missing file fails here)", () => {
+    // The source-text import check above proves feed/page.tsx SAYS it imports
+    // HomeComposer; this proves the module file it imports ACTUALLY EXISTS.
+    // When HomeComposer.tsx is absent, the import in page.tsx produces TS2307
+    // at build time and the tsc type-check CI step fails — but neither of those
+    // failures appears in this test suite. This case closes the gap: it fails
+    // at the same layer as the other read() calls (ENOENT on missing file)
+    // so a deleted or never-restored HomeComposer.tsx fails the test run, not
+    // just the build.
+    const source = read("factorylm-ui", "HomeComposer.tsx");
+    // Confirm we read the right file and not an empty stub.
+    expect(source).toContain("export default function HomeComposer");
+    expect(source).toContain("use client");
+  });
+
   it("the composer comes before the KPI/readiness chrome", () => {
     // The recon's structural finding: the product opens on an operations
     // console that contains an AI feature, when it should open on an AI
