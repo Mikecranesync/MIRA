@@ -127,7 +127,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
       {conversationSurface === "assistant"
         ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
-      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} hooks={hooks} /> : null}
+      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
       <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile} trapsTab={top === "inspector"}>
