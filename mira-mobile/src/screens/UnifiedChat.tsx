@@ -26,9 +26,9 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
-import type { InteractionTurn } from "@factorylm/interaction";
+import type { InteractionPart, InteractionTurn } from "@factorylm/interaction";
 import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
-import { AnswerMarkdown } from "./AnswerMarkdown";
+import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -130,9 +130,33 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
     return <AnswerMarkdown text={text} citations={own} onCitation={onCitation} />;
   }, [citations, onCitation]);
 
+
+  /**
+   * Copy an answer WITH its citations. `copyText` is only the clipboard
+   * primitive — ChatV2 copies the bare answer, so a pasted answer there loses
+   * the one thing that makes it trustworthy. The shell hands us a turn id; we
+   * rebuild the text from the store's own parts so the copied block always
+   * matches what is on screen, then append the sources it cited.
+   */
+  const onCopy = useCallback((turnId: string) => {
+    const turn = state.thread.turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    const body = turn.parts
+      .filter((part): part is Extract<InteractionPart, { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join("\n\n")
+      .trim();
+    const sources = turn.parts
+      .filter((part): part is Extract<InteractionPart, { type: "source" }> => part.type === "source")
+      .map((part, i) => `[${i + 1}] ${part.source.title}${part.source.locator ? ` ${part.source.locator}` : ""}`);
+    const text = sources.length > 0 ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
+    if (text) void copyText(text);
+  }, [state.thread.turns]);
+
   const hooks: HostHooks = {
     onSend: handlers.onSend,
     renderText,
+    onCopy,
     ...(canStop ? { onStop: handlers.onStop } : {}),
     ...(canRetry && handlers.onRetry ? { onRetry: () => handlers.onRetry?.() } : {}),
     onSource: (source) => {

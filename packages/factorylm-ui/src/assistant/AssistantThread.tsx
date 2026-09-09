@@ -23,6 +23,7 @@ import {
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { createContext, useContext, useMemo, type Dispatch } from "react";
 import { ConversationBar, RunCard } from "../Conversation";
+import { CopyIcon, RegenerateIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
@@ -100,7 +101,7 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
-    {isAssistant ? (
+    {isAssistant && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback) ? (
       <div className="fl-turn__actions">
         {hooks?.onCopy ? (
           <button
@@ -110,7 +111,7 @@ function TurnMessage() {
             title="Copy answer"
             onClick={() => hooks.onCopy?.(id)}
           >
-            <span className="fl-turn__action-icon">⧉</span>
+            <CopyIcon className="fl-turn__action-icon" />
           </button>
         ) : null}
         {hooks?.onRegenerate ? (
@@ -121,7 +122,7 @@ function TurnMessage() {
             title="Regenerate answer"
             onClick={() => hooks.onRegenerate?.(id)}
           >
-            <span className="fl-turn__action-icon">↻</span>
+            <RegenerateIcon className="fl-turn__action-icon" />
           </button>
         ) : null}
         {hooks?.onFeedback ? (
@@ -129,20 +130,20 @@ function TurnMessage() {
             <button
               type="button"
               className="fl-turn__action"
-              aria-label="Feedback"
-              title="Thumbs up"
+              aria-label="Good answer"
+              title="Good answer"
               onClick={() => hooks.onFeedback?.(id, "up")}
             >
-              <span className="fl-turn__action-icon">👍</span>
+              <ThumbUpIcon className="fl-turn__action-icon" />
             </button>
             <button
               type="button"
               className="fl-turn__action"
-              aria-label="Feedback down"
-              title="Thumbs down"
+              aria-label="Bad answer"
+              title="Bad answer"
               onClick={() => hooks.onFeedback?.(id, "down")}
             >
-              <span className="fl-turn__action-icon">👎</span>
+              <ThumbDownIcon className="fl-turn__action-icon" />
             </button>
           </>
         ) : null}
