@@ -408,17 +408,85 @@ describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
     expect(page).toContain("if (alive()) setBusy(false)");
   });
 
-  // Two controls (＋ attachment, ◉ camera) shipped to production rendering as
-  // enabled buttons with accessible labels and NO onClick — so assistive tech
-  // announced an attachment control that did nothing when activated. This is an
-  // invariant, not a moved string: it re-derives the button list from source
-  // every run, so it fails for ANY future handler-less button, not just those two.
-  it("every button in the surface carries a handler — no dead affordances", () => {
-    const buttons = page.match(/<button[^>]*>/g) ?? [];
-    expect(buttons.length).toBeGreaterThan(3); // the check must see a real population
-    const dead = buttons.filter(
-      (b) => !b.includes("onClick") && !b.includes("type=\"submit\""),
-    );
+  /**
+   * No button in the V3 surface is missing an `onClick` attribute.
+   *
+   * The name is deliberately narrow. This proves an ATTRIBUTE IS PRESENT — it
+   * cannot prove a handler works, so `onClick={undefined}` passes. Reviewed
+   * adversarially (round-4 reviewer, 7 crafted cases); the earlier name, "every
+   * button carries a handler — no dead affordances", claimed more than the scan
+   * can see, which is the `notice={null}` failure in a different costume.
+   *
+   * Three defects it exists for, all shipped to production: the ＋ attachment
+   * and ◉ camera buttons had no onClick at all, and Sign-in was a <button>
+   * nested in an <a> — announced to assistive tech as controls that do nothing
+   * when activated.
+   *
+   * It derives its subject from source each run, so it fails for ANY future
+   * handler-less button rather than the three named.
+   */
+  function buttonTags(src: string): string[] {
+    // A regex cannot do this. `/<button[^>]*>/` stops at the first `>`, which
+    // misses every multi-line opening tag — measured on the shipped files: 5 of
+    // 18 buttons invisible (3 in page.tsx, 2 in ScopePicker) — and truncates on
+    // a `>` inside an expression like `onClick={() => set(a > b)}`. Walk the tag
+    // instead, tracking brace depth so only a top-level `>` closes it.
+    const tags: string[] = [];
+    const open = /<button\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = open.exec(src)) !== null) {
+      let depth = 0;
+      let i = m.index + m[0].length;
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+        else if (c === ">" && depth === 0) break;
+      }
+      tags.push(src.slice(m.index, i + 1));
+    }
+    return tags;
+  }
+
+  const surfaceFiles = {
+    "page.tsx": page,
+    "ScopePicker.tsx": readFileSync(resolve(here, "../../factorylm-ui/ScopePicker.tsx"), "utf8"),
+    "MoreSheet.tsx": readFileSync(resolve(here, "../../factorylm-ui/MoreSheet.tsx"), "utf8"),
+  };
+
+  it("no button in the V3 surface is missing an onClick attribute", () => {
+    const dead: string[] = [];
+    let seen = 0;
+    for (const [name, src] of Object.entries(surfaceFiles)) {
+      for (const tag of buttonTags(src)) {
+        seen += 1;
+        if (tag.includes("onClick")) continue;
+        // Exempt, each for a stated reason:
+        //  - `disabled` with no handler is the honestly-disabled pattern, inert
+        //    by design. Flagging it would fail the guard on CORRECT code, and a
+        //    guard that fails on correct code gets weakened by whoever is under
+        //    the most time pressure.
+        //  - a spread may carry onClick; we cannot see through it.
+        //  - type="submit" is a form's own handler — pinned as unused below.
+        if (/\bdisabled\b/.test(tag)) continue;
+        if (/\{\.\.\./.test(tag)) continue;
+        if (tag.includes('type="submit"')) continue;
+        dead.push(`${name}: ${tag.replace(/\s+/g, " ").slice(0, 70)}`);
+      }
+    }
+    // The scan must see a real population; one that finds nothing passes trivially.
+    expect(seen).toBeGreaterThanOrEqual(15);
     expect(dead).toEqual([]);
+  });
+
+  it("the type=submit exemption is unused — a tripwire, not a dead allowance", () => {
+    // An exemption you cannot yet justify should assert it is unused, so it
+    // cannot quietly start being used. V3 has no forms today. When one arrives
+    // this fails, and the allowance gets re-decided deliberately rather than
+    // inherited.
+    const submits = Object.values(surfaceFiles)
+      .flatMap(buttonTags)
+      .filter((t) => t.includes('type="submit"'));
+    expect(submits).toEqual([]);
   });
 });
