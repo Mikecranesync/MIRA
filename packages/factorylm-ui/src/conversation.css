@@ -31,6 +31,15 @@
 .fl-turn__role { font-weight: 700; }
 .fl-turn__parts { display: grid; gap: var(--fl-workspace-space-2); }
 .fl-turn[data-role="user"] .fl-turn__parts { justify-items: end; }
+/* Per-message action row: rendered on assistant turns only. Subtle styling — muted icons,
+   no fill, appears without shouting. Touch targets >= 44px while staying visually small. */
+.fl-turn__actions { display: flex; gap: var(--fl-workspace-space-3); align-items: center; margin-block-start: var(--fl-workspace-space-2); }
+.fl-turn__action { display: inline-flex; align-items: center; justify-content: center; min-block-size: max(2.75rem, 44px); min-inline-size: max(2.75rem, 44px); padding: var(--fl-workspace-space-1); border: 1px solid transparent; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: var(--fl-workspace-muted); cursor: pointer; font: inherit; }
+.fl-turn__action:not(:disabled) { cursor: pointer; }
+.fl-turn__action:hover:not(:disabled) { color: var(--fl-workspace-ink); background: var(--fl-workspace-surface); }
+.fl-turn__action:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.fl-turn__action:disabled { color: var(--fl-workspace-off-ink); opacity: 0.5; cursor: not-allowed; }
+.fl-turn__action-icon { inline-size: 1.25rem; block-size: 1.25rem; }
 .fl-turn[data-role="user"] .fl-part--text { max-inline-size: 78%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border-radius: var(--fl-workspace-radius-card) var(--fl-workspace-radius-card) var(--fl-workspace-radius-sm) var(--fl-workspace-radius-card); background: var(--fl-workspace-bg); }
 .fl-turn[data-lifecycle="failed"] .fl-turn__head,
 .fl-turn[data-lifecycle="stopped"] .fl-turn__head { color: var(--fl-workspace-fault-ink); }

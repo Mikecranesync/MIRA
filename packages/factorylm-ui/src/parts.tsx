@@ -32,6 +32,21 @@ export interface HostHooks {
    */
   readonly onNewChat?: () => void;
   /**
+   * Copy the answer. The host implements the copy sink; the shell renders the
+   * control only when this is provided. Copy text carries sources and page numbers.
+   */
+  readonly onCopy?: (turnId: string) => void;
+  /**
+   * Regenerate the answer. The host re-sends the original question; the shell renders
+   * the control only when this is provided.
+   */
+  readonly onRegenerate?: (turnId: string) => void;
+  /**
+   * Feedback on the answer. The host records a thumbs-up or thumbs-down; the shell
+   * renders the control only when this is provided.
+   */
+  readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
+  /**
    * Render a turn's text part. The package renders plain text; a host whose
    * text carries markdown and inline citation marks (mobile AnswerMarkdown)
    * supplies its own renderer here so the same text reads the same on every

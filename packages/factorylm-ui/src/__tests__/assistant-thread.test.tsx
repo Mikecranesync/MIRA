@@ -163,4 +163,67 @@ describe("assistant surface rendering", () => {
     await view.flush();
     expect(sent).toEqual(["why did the conveyor stop"]);
   });
+
+  it("renders per-message action row on assistant turns only", () => {
+    const view = render({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant" });
+    const turns = view.container.querySelectorAll<HTMLElement>("[data-turn-id]");
+    expect(turns.length).toBeGreaterThan(0);
+    let found = 0;
+    turns.forEach((turn) => {
+      const isAssistant = turn.dataset.role === "assistant";
+      const actionRow = turn.querySelector(".fl-turn__actions");
+      if (isAssistant) {
+        expect(actionRow).not.toBeNull();
+        found += 1;
+      } else {
+        expect(actionRow).toBeNull();
+      }
+    });
+    expect(found).toBeGreaterThan(0);
+  });
+
+  it("renders action row controls only when their hooks exist", () => {
+    const copied: string[] = [];
+    const regenerated: string[] = [];
+    const fedback: Array<[string, "up" | "down"]> = [];
+    const withHooks = render({
+      surface: "web",
+      fixture: "grounded-answer",
+      conversationSurface: "assistant",
+      hooks: {
+        onCopy: (turnId) => copied.push(turnId),
+        onRegenerate: (turnId) => regenerated.push(turnId),
+        onFeedback: (turnId, dir) => fedback.push([turnId, dir]),
+      },
+    });
+    const assistantTurns = Array.from(withHooks.container.querySelectorAll<HTMLElement>('[data-turn-id][data-role="assistant"]'));
+    expect(assistantTurns.length).toBeGreaterThan(0);
+
+    const firstTurnId = assistantTurns[0]?.dataset.turnId;
+    const row = assistantTurns[0]?.querySelector(".fl-turn__actions");
+    expect(row).not.toBeNull();
+
+    const copyBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Copy"]');
+    const regenBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Regenerate"]');
+    const feedbackBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Feedback"]');
+    const feedbackDownBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Feedback down"]');
+
+    expect(copyBtn).not.toBeNull();
+    expect(regenBtn).not.toBeNull();
+    expect(feedbackBtn).not.toBeNull();
+    expect(feedbackDownBtn).not.toBeNull();
+
+    if (copyBtn && firstTurnId) {
+      copyBtn.click();
+      expect(copied).toEqual([firstTurnId]);
+    }
+    if (regenBtn && firstTurnId) {
+      regenBtn.click();
+      expect(regenerated).toEqual([firstTurnId]);
+    }
+    if (feedbackBtn && firstTurnId) {
+      feedbackBtn.click();
+      expect(fedback).toContainEqual([firstTurnId, "up"]);
+    }
+  });
 });

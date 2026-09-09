@@ -89,8 +89,9 @@ const partComponents = {
  *  both surfaces with one selector. */
 function TurnMessage() {
   const id = useAuiState((aui) => aui.message.id);
-  const { turns } = useEnvironment();
+  const { turns, hooks } = useEnvironment();
   const turn = turns.get(id);
+  const isAssistant = turn?.role === "assistant";
   return <MessagePrimitive.Root
     className="fl-turn fl-turn--aui"
     data-turn-id={id}
@@ -99,6 +100,54 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
+    {isAssistant ? (
+      <div className="fl-turn__actions">
+        {hooks?.onCopy ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Copy"
+            title="Copy answer"
+            onClick={() => hooks.onCopy?.(id)}
+          >
+            <span className="fl-turn__action-icon">⧉</span>
+          </button>
+        ) : null}
+        {hooks?.onRegenerate ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Regenerate"
+            title="Regenerate answer"
+            onClick={() => hooks.onRegenerate?.(id)}
+          >
+            <span className="fl-turn__action-icon">↻</span>
+          </button>
+        ) : null}
+        {hooks?.onFeedback ? (
+          <>
+            <button
+              type="button"
+              className="fl-turn__action"
+              aria-label="Feedback"
+              title="Thumbs up"
+              onClick={() => hooks.onFeedback?.(id, "up")}
+            >
+              <span className="fl-turn__action-icon">👍</span>
+            </button>
+            <button
+              type="button"
+              className="fl-turn__action"
+              aria-label="Feedback down"
+              title="Thumbs down"
+              onClick={() => hooks.onFeedback?.(id, "down")}
+            >
+              <span className="fl-turn__action-icon">👎</span>
+            </button>
+          </>
+        ) : null}
+      </div>
+    ) : null}
   </MessagePrimitive.Root>;
 }
 
