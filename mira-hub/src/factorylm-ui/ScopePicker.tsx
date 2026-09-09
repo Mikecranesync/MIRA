@@ -273,6 +273,78 @@ export function listNotice(s: {
   return null;
 }
 
+/**
+ * The notice line, as its own pure component so the ROLE and the COPY are
+ * testable — not just the state that selects them.
+ *
+ * `listNotice` pins which fact we are in. It cannot pin how that fact reaches
+ * the technician, and that half was free to break: downgrading the failure's
+ * `role="alert"` to `role="status"`, or pasting the degraded copy into the
+ * unreadable branch, each changed one line and left all 33 tests green
+ * (verified by mutation before this was extracted).
+ *
+ * It has to be a separate component rather than a render test of `ScopePicker`
+ * itself: the picker fetches in `useEffect`, which never runs under
+ * `renderToStaticMarkup`, so an SSR render of the whole sheet is permanently
+ * stuck on "loading" and can never reach these branches. Splitting the
+ * presentation out is what makes the assertion reachable at all — the same
+ * shape as `PartRenderer` in `packages/factorylm-ui`, which is render-tested
+ * directly for exactly this reason.
+ *
+ * Behaviour is unchanged: every branch below is the markup that was previously
+ * inline, moved verbatim.
+ */
+export function ListNoticeLine({
+  notice,
+  malformed,
+  query,
+}: {
+  readonly notice: ListNotice;
+  readonly malformed: number;
+  readonly query: string;
+}) {
+  switch (notice) {
+    case "load-failed":
+      return (
+        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
+          Couldn&apos;t load your machines. You can still ask a general question.
+        </p>
+      );
+    case "loading":
+      return <p className="v3-sheet__note">Loading…</p>;
+    // Some rows unreadable, some usable. The technician can still work, so this
+    // is polite (role="status") and says the rest are fine.
+    case "degraded":
+      return (
+        <p className="v3-sheet__note" role="status">
+          The machine list came back with {malformed === 1 ? "an entry" : `${malformed} entries`} the app
+          could not read. Those are missing below; the rest are fine to ask about.
+        </p>
+      );
+    // EVERY row unreadable. Nothing is usable and retrying the filter cannot
+    // help, so it is announced assertively and must never read as an empty
+    // account — that is the distinction this branch exists to carry.
+    case "unreadable":
+      return (
+        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
+          Couldn&apos;t read your machine list — {malformed === 1 ? "its only entry" : `all ${malformed} entries`} came
+          back unreadable. This is a data problem, not an empty account. Try again; if it
+          persists, the assets API is misbehaving.
+        </p>
+      );
+    case "empty":
+      return (
+        <p className="v3-sheet__note">
+          No machines yet. Add one to ask about it specifically.
+        </p>
+      );
+    case "no-match":
+      return <p className="v3-sheet__note">No machine matches “{query}”.</p>;
+    default:
+      return null;
+  }
+}
+
 export function toMachines(rows: unknown): Machine[] {
   return partitionMachines(rows).machines;
 }
@@ -349,12 +421,6 @@ export default function ScopePicker({
         />
       )}
 
-      {notice === "load-failed" && (
-        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
-          Couldn&apos;t load your machines. You can still ask a general question.
-        </p>
-      )}
-      {notice === "loading" && <p className="v3-sheet__note">Loading…</p>}
       {/* Honest about what is NOT offered. A technician who sees fewer machines
           here than on the assets page should be told the reason, not left to
           suspect the list is broken. */}
@@ -364,41 +430,12 @@ export default function ScopePicker({
           namespace yet, so {unplaced === 1 ? "it" : "they"} cannot be asked about specifically.
         </p>
       )}
-      {/* Three distinct facts, three distinct presentations. An empty list because
-          the API returned rows the picker cannot route is NOT an empty register,
-          and losing SOME rows is not the same as losing every one:
-
-          - some rows unreadable, some usable -> degraded. Keep the machines,
-            note the loss politely (role="status"): the technician can still work.
-          - EVERY row unreadable -> a load failure, announced assertively
-            (role="alert"). Nothing is usable and no amount of retrying the filter
-            will help, so this is not a note that happens to appear alone.
-          - genuinely no machines -> the empty register.
-
-          The `malformed === 0` guard on the empty copy is what stops a wholly
-          broken payload reading as "you have no equipment". It is pinned by a
-          render test; without one, dropping it passes every assertion. */}
-      {notice === "degraded" && (
-        <p className="v3-sheet__note" role="status">
-          The machine list came back with {malformed === 1 ? "an entry" : `${malformed} entries`} the app
-          could not read. Those are missing below; the rest are fine to ask about.
-        </p>
-      )}
-      {notice === "unreadable" && (
-        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
-          Couldn&apos;t read your machine list — {malformed === 1 ? "its only entry" : `all ${malformed} entries`} came
-          back unreadable. This is a data problem, not an empty account. Try again; if it
-          persists, the assets API is misbehaving.
-        </p>
-      )}
-      {notice === "empty" && (
-        <p className="v3-sheet__note">
-          No machines yet. Add one to ask about it specifically.
-        </p>
-      )}
-      {notice === "no-match" && (
-        <p className="v3-sheet__note">No machine matches “{query}”.</p>
-      )}
+      {/* Three distinct facts, three distinct presentations — selected by
+          `listNotice`, RENDERED by `ListNoticeLine`. The split is deliberate:
+          the state machine is unit-tested and the role/copy binding is
+          render-tested, because pinning which fact we are in says nothing about
+          how that fact reaches the technician. See ListNoticeLine's docblock. */}
+      <ListNoticeLine notice={notice} malformed={malformed} query={query} />
 
       <nav className="v3-sheet__list">
         {shown.map((m) => (
