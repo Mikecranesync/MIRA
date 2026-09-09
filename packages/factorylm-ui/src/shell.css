@@ -144,8 +144,10 @@
     transition: transform 160ms ease, visibility 0s linear 160ms;
   }
   .fl-shell[data-navigation-visible="true"] .fl-shell__sidebar { transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
+  /* inline-size: auto defends against a host-global `button { width: 100% }`
+     (mira-mobile app.css); without it the toggle spans 61% of a phone header. */
   .fl-shell__navigation-toggle,
-  .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
+  .fl-shell__drawer-close { display: inline-flex; align-items: center; inline-size: auto; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
   .fl-shell__brand-mark { display: block; }
   .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 700; color: var(--fl-workspace-header-ink); }
