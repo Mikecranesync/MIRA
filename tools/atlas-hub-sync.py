@@ -34,7 +34,7 @@ import psycopg2
 import psycopg2.extras
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mira-bots"))
-from shared.asset_bridge import LegacyTenantError, create_equipment  # noqa: E402
+from shared.asset_bridge import BridgeFailed, LegacyTenantError, create_equipment  # noqa: E402
 
 # Match key + fields we copy in both directions.
 # (atlas_col, neon_col)
@@ -190,6 +190,10 @@ def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[s
         )
     except LegacyTenantError as exc:
         log.error("SKIP %s: %s", bar_code, exc)
+        return False
+    except BridgeFailed as exc:
+        # The row was rolled back with the bridge (D1-A): not synced, not counted.
+        log.error("FAILED %s: %s", bar_code, exc)
         return False
     return True
 

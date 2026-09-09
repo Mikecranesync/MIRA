@@ -53,6 +53,17 @@ class LegacyTenantError(ValueError):
     """The tenant is a legacy slug; a machine created for it could never be placed."""
 
 
+class BridgeFailed(RuntimeError):
+    """The row inserted but its kg_entities node / uns_path could not be written.
+
+    Raised by ``create_equipment`` so the CALLER's transaction fails as a whole
+    (maintainer decision D1-A, 2026-09-09; Codex round 3 on #3715): a machine
+    MIRA refuses to talk about must not be committed and reported as created.
+    The Hub route keeps-and-warns because its register shows the asset; the
+    Python writers have no such surface, so they fail loudly instead.
+    """
+
+
 def is_uuid_tenant(tenant_id: str | None) -> bool:
     """kg_entities.tenant_id is UUID; cmms_equipment.tenant_id is TEXT and still holds
     legacy slugs ('mike' — the HUB_TENANT_ID default in the compose files, and what
@@ -114,6 +125,9 @@ def create_equipment(
     expressions such as ``NOW()`` (code literals only, validated). ``conflict``
     is an ``ON CONFLICT …`` clause; when it skips the row, ``id`` is None and
     nothing is bridged — the existing row was bridged when it was created.
+
+    Atomic: a bridge failure raises ``BridgeFailed`` (D1-A). Callers let it
+    propagate to their own error path so nothing is committed.
     """
     tenant = require_uuid_tenant(tenant_id)
     bound = {"tenant_id": tenant, **columns}
@@ -141,6 +155,13 @@ def create_equipment(
         manufacturer=manufacturer,
         model=model,
     )
+    if not bridge.ok:
+        # bridge_asset already rolled back to its savepoint; the outer transaction is
+        # usable and MUST now fail — no half-machine commits (D1-A).
+        raise BridgeFailed(
+            f"equipment {equipment_id} (tenant {tenant}) inserted but could not be placed: "
+            f"{bridge.reason} — the enclosing transaction must roll back (#3708)"
+        )
     return CreatedEquipment(id=equipment_id, bridge=bridge)
 
 

@@ -22,6 +22,7 @@ from shared import asset_bridge
 from shared.asset_bridge import (
     DEFAULT_SITE_NAME,
     SLUG_MAX_LEN,
+    BridgeFailed,
     BridgeResult,
     CreatedEquipment,
     LegacyTenantError,
@@ -542,3 +543,100 @@ def test_slug_rules_match_uns_ts():
     ts = (REPO / "mira-hub/src/lib/uns.ts").read_text()
     assert re.search(r"\.replace\(/\[\^a-z0-9\]\+/g, \"_\"\)", ts), "uns.ts slug regex moved"
     assert f".slice(0, {SLUG_MAX_LEN})" in ts, "uns.ts slug cap changed — update SLUG_MAX_LEN"
+
+
+# ---------------------------------------------------------------------------
+# D1-A (Codex round 3 F1): a bridge failure after the insert is atomic — it raises,
+# so the caller's transaction fails and no half-machine is committed or reported.
+# ---------------------------------------------------------------------------
+
+
+def test_create_equipment_raises_when_the_bridge_fails_after_the_insert(monkeypatch):
+    from shared import asset_bridge as ab
+
+    monkeypatch.setattr(
+        ab, "bridge_asset", lambda *a, **k: BridgeResult(ok=False, reason="error:PermissionDenied")
+    )
+    cur = FakeCursor(plan=[("eq-9",)])
+    with pytest.raises(BridgeFailed, match="eq-9.*could not be placed.*error:PermissionDenied"):
+        ab.create_equipment(cur, TENANT, "CV-207", columns={"equipment_number": "CV-207"})
+
+
+def test_hub_neon_work_order_fails_and_commits_nothing_when_the_bridge_fails(monkeypatch):
+    from shared.integrations import hub_neon
+
+    _creator(
+        monkeypatch, hub_neon, raises=BridgeFailed("equipment x inserted but could not be placed")
+    )
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://test")
+
+    class _Conn:
+        committed = False
+
+        def cursor(self):
+            return FakeCursor(plan=[None])
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    conn = _Conn()
+    monkeypatch.setattr(hub_neon.psycopg2, "connect", lambda *_a, **_k: conn)
+    res = hub_neon.create_hub_work_order(
+        tenant_id=TENANT,
+        user_id="u1",
+        title="t",
+        description="d",
+        priority="normal",
+        asset_name="CV-207",
+    )
+    assert "error" in res and "could not be placed" in res["error"]
+    assert conn.committed is False
+
+
+def test_pm_scheduler_returns_none_when_the_bridge_fails(monkeypatch):
+    from shared import pm_scheduler
+
+    _creator(monkeypatch, pm_scheduler, raises=BridgeFailed("inserted but could not be placed"))
+
+    class _Engine:
+        def begin(self):
+            class _Ctx:
+                def __enter__(self_inner):
+                    class _Conn:
+                        connection = type("DbApi", (), {"cursor": staticmethod(FakeCursor)})()
+
+                        def execute(self, *_a, **_k):
+                            return type("R", (), {"fetchone": staticmethod(lambda: None)})()
+
+                    return _Conn()
+
+                def __exit__(self_inner, *exc):
+                    return False
+
+            return _Ctx()
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr(pm_scheduler, "_get_neon_engine", lambda: _Engine())
+    assert pm_scheduler._resolve_equipment_id("Dorner", "2200", None, TENANT) is None
+
+
+def test_atlas_sync_returns_false_when_the_bridge_fails(monkeypatch):
+    mod = _load_atlas_sync()
+    _creator(monkeypatch, mod, raises=BridgeFailed("inserted but could not be placed"))
+    conn = type("Conn", (), {"cursor": staticmethod(FakeCursor)})()
+    row = {
+        "id": 42,
+        "name": "Infeed",
+        "manufacturer": "Dorner",
+        "model": "2200",
+        "updated_at": "2026-01-01",
+    }
+    assert mod.insert_into_neon(conn, TENANT, "CV-207", row) is False

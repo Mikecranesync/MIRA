@@ -24,7 +24,7 @@ from typing import Any, Optional
 
 import httpx
 
-from shared.asset_bridge import LegacyTenantError, create_equipment
+from shared.asset_bridge import BridgeFailed, LegacyTenantError, create_equipment
 
 logger = logging.getLogger("mira-pm-scheduler")
 
@@ -110,9 +110,10 @@ def _resolve_equipment_id(
                 model_number,
             )
         return new_id
-    except LegacyTenantError as exc:
-        # Not a transient: no equipment can exist for this tenant. Return None so
-        # the work order is NOT created against a machine that does not exist.
+    except (LegacyTenantError, BridgeFailed) as exc:
+        # LegacyTenantError: no equipment can exist for this tenant. BridgeFailed:
+        # the row could not be placed and was rolled back (D1-A). Either way return
+        # None so NO work order is created against a machine that does not exist.
         logger.error("_resolve_equipment_id refused: %s", exc)
         return None
     except Exception as exc:
@@ -324,7 +325,7 @@ def _insert_work_order(pm: dict[str, Any]) -> str | None:
     if equipment_id is None:
         logger.error(
             "_insert_work_order: no equipment can be created for pm_id=%s tenant=%r "
-            "(legacy tenant) — work order NOT created (#3708)",
+            "(legacy tenant or bridge failure) — work order NOT created (#3708)",
             pm["id"],
             pm["tenant_id"],
         )
