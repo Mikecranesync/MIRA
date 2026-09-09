@@ -330,6 +330,25 @@ describe("drainProviderStream — no answer means no success and no terminator",
     expect(written.join("")).not.toContain("[DONE]");
   });
 
+  // Round 4, Q1 (advisory). A dropped connection leaves the loop through
+  // `if (done) break;` and returns `served` WITHOUT calling finish() — so a
+  // truncated answer keeps whatever text reached the wire and emits no
+  // terminator, leaving the truncation visible to the client rather than
+  // sealing it as complete. That is correct and it was undefended: the three
+  // tests above all exercise CLEAN terminations, so a refactor collapsing the
+  // two `return finish()` calls into one exit after the loop would keep them
+  // green while making a dropped stream announce itself as finished.
+  it("a dropped stream keeps its partial text AND emits no terminator", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(
+      drainProviderStream(sse(delta("half an ans")), controller, new TextEncoder(), buf),
+    ).resolves.toBe(true);
+    expect(buf).toEqual(["half an ans"]);
+    expect(written.join("")).toContain('"content":"half an ans"');
+    expect(written.join("")).not.toContain("[DONE]");
+  });
+
   it("returns FALSE when the body closes having emitted nothing", async () => {
     const { controller } = sink();
     const buf: string[] = [];
