@@ -58,7 +58,7 @@
 /* Compact citation card: type + title on the first line, the locator as small metadata below.
    Mono is reserved for the code inside the locator, not the whole line. */
 .fl-source { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--fl-workspace-space-2); row-gap: 2px; align-items: baseline; inline-size: fit-content; max-inline-size: 100%; padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); font-size: var(--fl-workspace-fs); text-align: start; }
-.fl-source__title { grid-column: 2; min-inline-size: 0; }
+.fl-source__title { grid-column: 2; min-inline-size: 0; overflow-wrap: anywhere; }
 .fl-attachment__kind,
 .fl-source__kind { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .fl-attachment__status { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
