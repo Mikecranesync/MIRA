@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 import psycopg2
 import psycopg2.extras
 
+from shared.asset_bridge import bridge_asset
+
 logger = logging.getLogger("mira-gsd")
 
 _PRIORITY_MAP = {
@@ -65,7 +67,11 @@ def _get_or_create_equipment_id(
         (eq_id, search_name, "Unknown", tenant_id),
     )
     created = cur.fetchone()
-    return str(created[0]) if created else eq_id
+    eq_id = str(created[0]) if created else eq_id
+    # #3708: a cmms_equipment row without its kg_entities node is unplaced — the
+    # notebook refuses it and V3 cannot scope to it. Same bridge POST /api/assets runs.
+    bridge_asset(cur, tenant_id, eq_id, search_name, manufacturer="Unknown")
+    return eq_id
 
 
 def create_hub_work_order(

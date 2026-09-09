@@ -1647,3 +1647,130 @@ def test_registry_tags_checker_catches_violations():
     commented = "mod-a: # note\n  path: a/\n"
     entries, tag_lines, _ = scan_registry_tags(commented)
     assert entries == 1 and tag_lines == 0, "trailing-comment key evaded the entry count"
+
+
+# ---------------------------------------------------------------------------
+# Contract 7: cmms_equipment rows are minted through the asset bridge (#3708)
+#
+# POST /api/assets (mira-hub) creates a machine as a whole: the cmms_equipment
+# row, its kg_entities node, and cmms_equipment.uns_path. Every consumer that
+# needs a machine's location anchors on that node, so a bare
+# `INSERT INTO cmms_equipment` from Python creates a machine MIRA refuses to
+# talk about. Python writers go through shared/asset_bridge.py::bridge_asset —
+# the mirror of the Hub bridge — immediately after their insert.
+#
+# Default-deny: any Python file inserting cmms_equipment fails unless it is
+# allowlisted with a reason AND calls bridge_asset( after the insert.
+# ---------------------------------------------------------------------------
+
+_CMMS_EQUIPMENT_WRITE_GLOBS = [
+    "mira-bots/**/*.py",
+    "mira-core/**/*.py",
+    "mira-crawler/**/*.py",
+    "mira-mcp/**/*.py",
+    "mira-pipeline/**/*.py",
+    "mira-relay/**/*.py",
+    "tools/**/*.py",
+]
+
+_CMMS_EQUIPMENT_INSERT_ALLOWLIST: dict[str, str] = {
+    "mira-bots/shared/integrations/hub_neon.py": "bot-conversation assets — inserts, then bridge_asset on the same cursor "
+    "inside the work-order transaction.",
+    "mira-bots/shared/pm_scheduler.py": "PM-scheduler assets — inserts, then bridge_asset on the SQLAlchemy "
+    "connection's DBAPI cursor (same transaction).",
+    "tools/atlas-hub-sync.py": "Atlas→Neon sync — INSERT ... RETURNING id, then bridge_asset only for a "
+    "row this run actually inserted.",
+}
+
+_CMMS_EQUIPMENT_INSERT_RE = re.compile(
+    r"\binsert\s+into\s+(public\.)?cmms_equipment\b", re.IGNORECASE
+)
+_BRIDGE_CALL_RE = re.compile(r"\bbridge_asset\s*\(")
+
+
+def scan_cmms_equipment_writer(
+    rel: str, source: str, allowlist: dict[str, str] | None = None
+) -> list[str]:
+    """Return violations for one file (empty list = clean)."""
+    allow = _CMMS_EQUIPMENT_INSERT_ALLOWLIST if allowlist is None else allowlist
+    inserts = list(_CMMS_EQUIPMENT_INSERT_RE.finditer(source))
+    if not inserts:
+        return []
+    if rel not in allow:
+        return [
+            f"{rel}:{_line_of(source, m.start())}: INSERT INTO cmms_equipment outside the asset "
+            "bridge — call shared.asset_bridge.bridge_asset after the insert and allowlist the "
+            "file with a reason (Contract 7)"
+            for m in inserts
+        ]
+    last_insert = inserts[-1].start()
+    if not any(m.start() > last_insert for m in _BRIDGE_CALL_RE.finditer(source)):
+        return [
+            f"{rel}:{_line_of(source, last_insert)}: allowlisted, but no bridge_asset( call follows "
+            "the INSERT INTO cmms_equipment (Contract 7)"
+        ]
+    return []
+
+
+def _cmms_equipment_write_surface_files() -> list[Path]:
+    seen: set[Path] = set()
+    for pattern in _CMMS_EQUIPMENT_WRITE_GLOBS:
+        for p in _ROOT.glob(pattern):
+            if not p.is_file() or p.suffix != ".py":
+                continue
+            parts = p.parts
+            if (
+                "__pycache__" in parts
+                or "tests" in parts
+                or "node_modules" in parts
+                or ".venv" in parts
+                or p.name.startswith("test_")
+            ):
+                continue
+            seen.add(p)
+    return sorted(seen)
+
+
+def test_cmms_equipment_inserts_go_through_the_asset_bridge():
+    """No Python writer mints an unplaced machine. Doctrine: issue #3708,
+    .claude/rules/uns-compliance.md, mira-bots/shared/asset_bridge.py."""
+    offenders: list[str] = []
+    for path in _cmms_equipment_write_surface_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        offenders.extend(scan_cmms_equipment_writer(rel, path.read_text(errors="replace")))
+    assert not offenders, (
+        "cmms_equipment inserted outside the asset bridge — the machine has no kg_entities "
+        "node / uns_path and MIRA will refuse it (#3708).\n\n" + "\n".join(offenders)
+    )
+
+
+def test_cmms_equipment_allowlist_is_honest():
+    """Every allowlisted file exists, still inserts, and carries a real reason."""
+    for rel, reason in _CMMS_EQUIPMENT_INSERT_ALLOWLIST.items():
+        p = _ROOT / rel
+        assert p.is_file(), f"allowlisted file missing: {rel}"
+        assert _CMMS_EQUIPMENT_INSERT_RE.search(p.read_text()), f"stale allowlist entry: {rel}"
+        assert len(reason) >= 30, f"allowlist entry needs a real reason: {rel}"
+
+
+def test_cmms_equipment_checker_catches_violations():
+    """The guard must FAIL on the obvious forks (so a green run means something)."""
+    bare = "cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+    assert scan_cmms_equipment_writer("x.py", bare), "checker missed a bare insert"
+    assert scan_cmms_equipment_writer(
+        "x.py", bare.replace("INSERT INTO cmms_equipment", "insert  into public.cmms_equipment")
+    ), "checker missed a case/schema-qualified variant"
+    bridged_first = "bridge_asset(cur, t, i, tag)\n" + bare
+    assert scan_cmms_equipment_writer("x.py", bridged_first, {"x.py": "r" * 30}), (
+        "a bridge call BEFORE the insert must not count"
+    )
+    assert scan_cmms_equipment_writer("x.py", bare, {"x.py": "r" * 30}), (
+        "allowlisted file with no bridge call must fail"
+    )
+    assert (
+        scan_cmms_equipment_writer(
+            "x.py", bare + "bridge_asset(cur, t, i, tag)\n", {"x.py": "r" * 30}
+        )
+        == []
+    )
+    assert scan_cmms_equipment_writer("x.py", "SELECT 1 FROM cmms_equipment\n") == []

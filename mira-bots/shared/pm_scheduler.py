@@ -24,6 +24,8 @@ from typing import Any, Optional
 
 import httpx
 
+from shared.asset_bridge import bridge_asset
+
 logger = logging.getLogger("mira-pm-scheduler")
 
 # Criticality → work_order priority mapping
@@ -108,6 +110,16 @@ def _resolve_equipment_id(
                 new_id,
                 manufacturer,
                 model_number,
+            )
+            # #3708: mint the kg_entities node + uns_path on the same DBAPI
+            # connection (same transaction) — see shared/asset_bridge.py.
+            bridge_asset(
+                conn.connection.cursor(),
+                tenant_id,
+                new_id,
+                eq_number,
+                manufacturer=manufacturer,
+                model=model_number,
             )
         return new_id
     except Exception as exc:
