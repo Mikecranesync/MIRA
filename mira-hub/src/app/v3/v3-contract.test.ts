@@ -426,11 +426,20 @@ describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
    * handler-less button rather than the three named.
    */
   function buttonTags(src: string): string[] {
-    // A regex cannot do this. `/<button[^>]*>/` stops at the first `>`, which
-    // misses every multi-line opening tag — measured on the shipped files: 5 of
-    // 18 buttons invisible (3 in page.tsx, 2 in ScopePicker) — and truncates on
-    // a `>` inside an expression like `onClick={() => set(a > b)}`. Walk the tag
-    // instead, tracking brace depth so only a top-level `>` closes it.
+    // Why not a regex: `/<button[^>]*>/` truncates at the first `>`, and an
+    // arrow function puts one INSIDE the tag. On
+    // `<button onClick={() => setN(a > b)} className="x">` it captures exactly
+    // `<button onClick={() =>` — which still contains "onClick", so the tag
+    // passes for the wrong reason and a genuinely dead button written the same
+    // way could pass too. Walk the tag instead, tracking brace depth so only a
+    // top-level `>` closes it.
+    //
+    // It does NOT fix multi-line tags: `[^>]` matches newlines in JS, so the
+    // regex crossed them fine. An earlier version of this comment claimed 5 of
+    // 18 buttons were invisible to it. That was wrong — the count came from
+    // `grep -cE`, which is line-oriented and cannot match across newlines, while
+    // the JS regex can. Both instruments see all 18. Measured with the wrong
+    // tool, and the disagreement blamed on the code.
     const tags: string[] = [];
     const open = /<button\b/g;
     let m: RegExpExecArray | null;
