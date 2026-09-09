@@ -1,0 +1,9 @@
+{
+  "name": "factorylm-ui-workspace",
+  "private": true,
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "packages/factorylm-*",
+    "apps/factorylm-ui-lab"
+  ]
+}
