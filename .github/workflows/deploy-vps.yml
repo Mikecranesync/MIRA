@@ -197,7 +197,23 @@ jobs:
             -r tools/migration-drift-requirements.txt
       - name: Install Doppler CLI
         if: github.event.inputs.skip_drift_check != 'true'
-        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+        # dopplerhq/cli-action@v4 downloads a .sig file via curl; a TLS handshake
+        # failure on the sig redirect (curl exit 35) brings down the whole job even
+        # though the binary arrived fine (run 34336741072, #3725). The apt-based
+        # install uses apt's own GPG key verification instead of a separate curl
+        # sig-download, so it is resilient to the exact failure class we saw.
+        # Retry flags on the curl calls guard against the same transient TLS issues.
+        run: |
+          set -euo pipefail
+          curl -sLf --retry 3 --retry-delay 5 --tlsv1.2 --proto "=https" \
+            'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' \
+            | gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] \
+            https://packages.doppler.com/public/cli/deb/debian any-version main" \
+            | tee /etc/apt/sources.list.d/doppler-cli.list
+          apt-get update -q
+          apt-get install -y doppler
+          doppler --version
       - name: Fetch only the production database URL
         if: github.event.inputs.skip_drift_check != 'true'
         env:
