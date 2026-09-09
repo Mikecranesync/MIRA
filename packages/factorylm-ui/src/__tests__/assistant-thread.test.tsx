@@ -164,15 +164,17 @@ describe("assistant surface rendering", () => {
     expect(sent).toEqual(["why did the conveyor stop"]);
   });
 
-  it("renders per-message action row on assistant turns only", () => {
-    const view = render({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant" });
+  it("renders the action row on assistant turns only, and never on a user turn", () => {
+    const view = render({
+      surface: "web", fixture: "grounded-answer", conversationSurface: "assistant",
+      hooks: { onCopy: () => {} },
+    });
     const turns = view.container.querySelectorAll<HTMLElement>("[data-turn-id]");
     expect(turns.length).toBeGreaterThan(0);
     let found = 0;
     turns.forEach((turn) => {
-      const isAssistant = turn.dataset.role === "assistant";
       const actionRow = turn.querySelector(".fl-turn__actions");
-      if (isAssistant) {
+      if (turn.dataset.role === "assistant") {
         expect(actionRow).not.toBeNull();
         found += 1;
       } else {
@@ -180,6 +182,16 @@ describe("assistant surface rendering", () => {
       }
     });
     expect(found).toBeGreaterThan(0);
+  });
+
+  it("mounts no action row at all when the host supplies no action hooks", () => {
+    // The wrapper carries display:flex and a top margin, so mounting it empty
+    // adds dead vertical space under every answer and gives nothing back. The
+    // mobile host supplied none of these hooks when the row first landed.
+    const view = render({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant" });
+    const assistant = view.container.querySelectorAll<HTMLElement>('[data-turn-id][data-role="assistant"]');
+    expect(assistant.length).toBeGreaterThan(0);
+    assistant.forEach((turn) => expect(turn.querySelector(".fl-turn__actions")).toBeNull());
   });
 
   it("renders action row controls only when their hooks exist", () => {
@@ -205,8 +217,8 @@ describe("assistant surface rendering", () => {
 
     const copyBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Copy"]');
     const regenBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Regenerate"]');
-    const feedbackBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Feedback"]');
-    const feedbackDownBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Feedback down"]');
+    const feedbackBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Good answer"]');
+    const feedbackDownBtn = row?.querySelector<HTMLButtonElement>('[aria-label="Bad answer"]');
 
     expect(copyBtn).not.toBeNull();
     expect(regenBtn).not.toBeNull();
