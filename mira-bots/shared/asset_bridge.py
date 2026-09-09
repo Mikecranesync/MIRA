@@ -14,7 +14,7 @@ Three Python writers insert ``cmms_equipment`` (bot conversations, PM
 scheduling, the Atlas sync). They cannot call the TypeScript bridge, so this
 module mirrors it statement for statement. Parity with the TS source is
 guarded by ``mira-bots/tests/test_asset_bridge.py`` (it reads the ``.ts``
-files), and ``tests/test_architecture.py`` Contract 7 refuses any Python
+files), and ``tests/test_architecture.py`` Contract 16 refuses any Python
 ``cmms_equipment`` insert that bypasses ``bridge_asset``.
 
 Works on any DB-API cursor (psycopg2 ``%s`` params). From a SQLAlchemy
@@ -45,6 +45,14 @@ _UNIQUE_VIOLATION = "23505"
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
+_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+_RAW_SQL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\(\)$")  # NOW() and friends, nothing else
+
+
+class LegacyTenantError(ValueError):
+    """The tenant is a legacy slug; a machine created for it could never be placed."""
+
+
 def is_uuid_tenant(tenant_id: str | None) -> bool:
     """kg_entities.tenant_id is UUID; cmms_equipment.tenant_id is TEXT and still holds
     legacy slugs ('mike' — the HUB_TENANT_ID default in the compose files, and what
@@ -65,6 +73,75 @@ class BridgeResult:
     node_id: str | None = None
     created: bool = False
     reason: str | None = None
+
+
+def require_uuid_tenant(tenant_id: str | None) -> str:
+    """Refuse to create a cmms_equipment row that can never own a kg_entities node."""
+    if not is_uuid_tenant(tenant_id):
+        raise LegacyTenantError(
+            f"tenant {tenant_id!r} is not a UUID; kg_entities.tenant_id is UUID-only, so a "
+            "machine created for it could never be placed — refusing to insert an unplaceable "
+            "cmms_equipment row (#3708)"
+        )
+    return str(tenant_id)
+
+
+@dataclass(frozen=True)
+class CreatedEquipment:
+    """``id`` is None when the insert's ON CONFLICT clause skipped the row."""
+
+    id: str | None
+    bridge: BridgeResult | None
+
+
+def create_equipment(
+    cur: DbCursor,
+    tenant_id: str | None,
+    tag: str,
+    *,
+    columns: dict[str, Any],
+    raw: dict[str, str] | None = None,
+    conflict: str = "",
+    description: str | None = None,
+    manufacturer: str | None = None,
+    model: str | None = None,
+) -> CreatedEquipment:
+    """THE way Python code creates a machine: refuse-before-insert, insert, bridge.
+
+    ``tests/test_architecture.py`` Contract 16 forbids the insert literal anywhere
+    else, so a writer cannot insert on one path and bridge on another (Codex
+    round 2, F1/F2 on #3715). ``columns`` are bound values; ``raw`` are SQL
+    expressions such as ``NOW()`` (code literals only, validated). ``conflict``
+    is an ``ON CONFLICT …`` clause; when it skips the row, ``id`` is None and
+    nothing is bridged — the existing row was bridged when it was created.
+    """
+    tenant = require_uuid_tenant(tenant_id)
+    bound = {"tenant_id": tenant, **columns}
+    exprs = dict(raw or {})
+    for name in list(bound) + list(exprs):
+        if not _IDENT_RE.match(name):
+            raise ValueError(f"refusing non-identifier column name {name!r}")
+    for expr in exprs.values():
+        if not _RAW_SQL_RE.match(expr):
+            raise ValueError(f"refusing raw SQL expression {expr!r}")
+    names = ", ".join([*bound, *exprs])
+    values = ", ".join(["%s"] * len(bound) + list(exprs.values()))
+    sql = f"INSERT INTO cmms_equipment ({names}) VALUES ({values}) {conflict} RETURNING id".strip()
+    cur.execute(sql, tuple(bound.values()))
+    row = cur.fetchone()
+    if not row:
+        return CreatedEquipment(id=None, bridge=None)
+    equipment_id = str(row[0])
+    bridge = bridge_asset(
+        cur,
+        tenant,
+        equipment_id,
+        tag,
+        description=description,
+        manufacturer=manufacturer,
+        model=model,
+    )
+    return CreatedEquipment(id=equipment_id, bridge=bridge)
 
 
 def hub_slug(value: str | None) -> str | None:

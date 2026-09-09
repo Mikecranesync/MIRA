@@ -34,7 +34,7 @@ import psycopg2
 import psycopg2.extras
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mira-bots"))
-from shared.asset_bridge import bridge_asset  # noqa: E402
+from shared.asset_bridge import LegacyTenantError, create_equipment  # noqa: E402
 
 # Match key + fields we copy in both directions.
 # (atlas_col, neon_col)
@@ -158,35 +158,40 @@ def update_atlas_from_neon(atlas_conn, atlas_id: int, neon_row: dict[str, Any], 
     )
 
 
-def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[str, Any]) -> None:
+def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[str, Any]) -> bool:
+    """Create the machine through the ONE helper (#3708). Returns False, inserting
+    nothing, when the tenant is a legacy slug — a machine that could never be placed
+    is not a sync success."""
     p = neon_payload(atlas_row)
-    cur = neon_conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO cmms_equipment
-            (tenant_id, equipment_number, manufacturer, model_number, serial_number,
-             location, description, updated_at, atlas_id, cmms_synced_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (equipment_number) DO NOTHING
-        RETURNING id
-        """,
-        (
-            tenant_id, bar_code,
-            p["manufacturer"], p["model_number"], p["serial_number"],
-            p["location"], p["description"],
-            atlas_row["updated_at"], str(atlas_row["id"]),
-        ),
-    )
-    inserted = cur.fetchone()
-    if inserted:
-        # #3708: a synced machine needs its kg_entities node + uns_path or MIRA
-        # will not talk about it. ON CONFLICT rows were already bridged (or not
-        # ours to touch).
-        bridge_asset(
-            neon_conn.cursor(), tenant_id, str(inserted[0]), bar_code,
-            description=p["description"], manufacturer=p["manufacturer"],
+    try:
+        create_equipment(
+            neon_conn.cursor(),
+            tenant_id,
+            bar_code,
+            columns={
+                "equipment_number": bar_code,
+                "manufacturer": p["manufacturer"],
+                "model_number": p["model_number"],
+                "serial_number": p["serial_number"],
+                "location": p["location"],
+                "description": p["description"],
+                "updated_at": atlas_row["updated_at"],
+                "atlas_id": str(atlas_row["id"]),
+            },
+            raw={"cmms_synced_at": "NOW()"},
+            # Migration 083 replaced the global equipment_number unique with the
+            # per-tenant PARTIAL index (tenant_id, equipment_number) WHERE
+            # equipment_number IS NOT NULL; ON CONFLICT must name that exact
+            # target (predicate included) or Postgres rejects the statement.
+            conflict="ON CONFLICT (tenant_id, equipment_number) WHERE equipment_number IS NOT NULL DO NOTHING",
+            description=p["description"],
+            manufacturer=p["manufacturer"],
             model=p["model_number"],
         )
+    except LegacyTenantError as exc:
+        log.error("SKIP %s: %s", bar_code, exc)
+        return False
+    return True
 
 
 def insert_into_atlas(atlas_conn, company_id: int, equipment_number: str, neon_row: dict[str, Any]) -> int:
@@ -225,7 +230,10 @@ def reconcile(atlas_conn, neon_conn, company_id: int, tenant_id: str) -> dict[st
     atlas_rows = fetch_atlas(atlas_conn, company_id)
     neon_rows = fetch_neon(neon_conn, tenant_id)
 
-    stats = {"a_to_n": 0, "n_to_a": 0, "new_to_n": 0, "new_to_a": 0, "unchanged": 0}
+    stats = {
+        "a_to_n": 0, "n_to_a": 0, "new_to_n": 0, "new_to_a": 0, "unchanged": 0,
+        "skipped_legacy_tenant": 0,
+    }
 
     keys = set(atlas_rows) | set(neon_rows)
     for key in keys:
@@ -233,9 +241,11 @@ def reconcile(atlas_conn, neon_conn, company_id: int, tenant_id: str) -> dict[st
         n = neon_rows.get(key)
 
         if a and not n:
-            insert_into_neon(neon_conn, tenant_id, key, a)
-            stats["new_to_n"] += 1
-            log.info("INSERT -> NeonDB: %s (from Atlas id=%s)", key, a["id"])
+            if insert_into_neon(neon_conn, tenant_id, key, a):
+                stats["new_to_n"] += 1
+                log.info("INSERT -> NeonDB: %s (from Atlas id=%s)", key, a["id"])
+            else:
+                stats["skipped_legacy_tenant"] += 1
             continue
 
         if n and not a:

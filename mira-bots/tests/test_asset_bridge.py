@@ -23,7 +23,10 @@ from shared.asset_bridge import (
     DEFAULT_SITE_NAME,
     SLUG_MAX_LEN,
     BridgeResult,
+    CreatedEquipment,
+    LegacyTenantError,
     bridge_asset,
+    create_equipment,
     equipment_path,
     hub_slug,
     site_path,
@@ -209,51 +212,148 @@ def test_non_unique_insert_error_is_not_retried_as_a_collision():
 
 
 # ---------------------------------------------------------------------------
-# 2. call sites
+# 2. create_equipment — the ONE creation path — and the three writers on it
 # ---------------------------------------------------------------------------
 
 
-def _recorder(monkeypatch, module):
-    calls: list[dict] = []
+def test_create_equipment_refuses_a_legacy_tenant_before_any_sql():
+    cur = FakeCursor()
+    with pytest.raises(LegacyTenantError, match="not a UUID"):
+        create_equipment(cur, "mike", "CV-207", columns={"equipment_number": "CV-207"})
+    assert cur.executed == [], "refusal happens BEFORE the insert, so nothing is committed unplaced"
 
-    def fake(cur, tenant_id, asset_id, tag, **kw):
-        calls.append({"cur": cur, "tenant_id": tenant_id, "asset_id": asset_id, "tag": tag, **kw})
-        return BridgeResult(ok=True, uns_path="enterprise.main_site.x", node_id="n", created=True)
 
-    monkeypatch.setattr(module, "bridge_asset", fake)
+def test_create_equipment_inserts_then_bridges_the_returned_id():
+    # plan: INSERT RETURNING → ("eq-9",); then the bridge: parent SELECT, node SELECT, node INSERT
+    cur = FakeCursor(plan=[("eq-9",), None, None, ("node-1",)])
+    got = create_equipment(
+        cur,
+        TENANT,
+        "CV-207",
+        columns={"equipment_number": "CV-207", "manufacturer": "Dorner"},
+        raw={"created_at": "NOW()"},
+        conflict="ON CONFLICT (id) DO NOTHING",
+        manufacturer="Dorner",
+    )
+    (sql, params), *_ = cur.executed
+    assert sql == (
+        "INSERT INTO cmms_equipment (tenant_id, equipment_number, manufacturer, created_at) "
+        "VALUES (%s, %s, %s, NOW()) ON CONFLICT (id) DO NOTHING RETURNING id"
+    )
+    assert params == (TENANT, "CV-207", "Dorner")
+    assert got.id == "eq-9" and got.bridge is not None and got.bridge.ok
+    ((up_sql, up_params),) = cur.find("UPDATE cmms_equipment")
+    assert up_params == ("enterprise.main_site.cv_207", TENANT, "eq-9")
+
+
+def test_create_equipment_skipped_by_on_conflict_bridges_nothing():
+    cur = FakeCursor(plan=[None])
+    got = create_equipment(
+        cur, TENANT, "CV-207", columns={"id": "x"}, conflict="ON CONFLICT (id) DO NOTHING"
+    )
+    assert got == CreatedEquipment(id=None, bridge=None)
+    assert len(cur.executed) == 1, "no bridge for a row that was not inserted"
+
+
+@pytest.mark.parametrize(
+    "columns, raw",
+    [
+        ({"equipment_number; DROP TABLE x": "a"}, None),
+        ({"ok": "a"}, {"ok2": "NOW(); DROP"}),
+        ({"Bad-Name": "a"}, None),
+    ],
+)
+def test_create_equipment_rejects_unsafe_identifiers_and_expressions(columns, raw):
+    cur = FakeCursor()
+    with pytest.raises(ValueError, match="refusing"):
+        create_equipment(cur, TENANT, "t", columns=columns, raw=raw)
+    assert cur.executed == []
+
+
+def _creator(monkeypatch, module, result=None, raises=None):
+    calls = []
+
+    def fake(cur, tenant_id, tag, **kw):
+        calls.append({"cur": cur, "tenant_id": tenant_id, "tag": tag, **kw})
+        if raises:
+            raise raises
+        return result or CreatedEquipment(
+            id="created-id", bridge=BridgeResult(ok=True, uns_path="p", node_id="n", created=True)
+        )
+
+    monkeypatch.setattr(module, "create_equipment", fake)
     return calls
 
 
-def test_hub_neon_bridges_the_row_it_inserts(monkeypatch):
+def test_hub_neon_creates_through_the_helper_with_its_columns(monkeypatch):
     from shared.integrations import hub_neon
 
-    calls = _recorder(monkeypatch, hub_neon)
-    cur = FakeCursor(plan=[None, ("eq-77",)])  # lookup miss → INSERT RETURNING
-    got = hub_neon._get_or_create_equipment_id(cur, "tenant-x", "CV-207")
-    assert got == "eq-77"
-    assert calls == [
-        {
-            "cur": cur,
-            "tenant_id": "tenant-x",
-            "asset_id": "eq-77",
-            "tag": "CV-207",
-            "manufacturer": "Unknown",
-        }
-    ]
+    calls = _creator(monkeypatch, hub_neon)
+    got = hub_neon._get_or_create_equipment_id(FakeCursor(plan=[None]), "tenant-x", "CV-207")
+    assert got == "created-id"
+    (c,) = calls
+    assert (c["tenant_id"], c["tag"], c["conflict"]) == (
+        "tenant-x",
+        "CV-207",
+        "ON CONFLICT (id) DO NOTHING",
+    )
+    assert (
+        c["columns"]["equipment_number"] == "CV-207" and c["columns"]["manufacturer"] == "Unknown"
+    )
+    assert c["columns"]["id"] == got or c["columns"]["id"]  # a fresh uuid was minted for the insert
 
 
-def test_hub_neon_does_not_bridge_an_existing_row(monkeypatch):
+def test_hub_neon_does_not_create_for_an_existing_row(monkeypatch):
     from shared.integrations import hub_neon
 
-    calls = _recorder(monkeypatch, hub_neon)
-    got = hub_neon._get_or_create_equipment_id(FakeCursor(plan=[("eq-1",)]), "tenant-x", "CV-207")
-    assert got == "eq-1" and calls == []
+    calls = _creator(monkeypatch, hub_neon)
+    assert (
+        hub_neon._get_or_create_equipment_id(FakeCursor(plan=[("eq-1",)]), "tenant-x", "CV-207")
+        == "eq-1"
+    )
+    assert calls == []
 
 
-def test_pm_scheduler_bridges_on_the_same_dbapi_connection(monkeypatch):
+def test_hub_neon_work_order_reports_an_error_for_a_legacy_tenant(monkeypatch):
+    """The refusal must surface as the {"error": …} contract, not a committed half-machine."""
+    from shared.integrations import hub_neon
+
+    _creator(monkeypatch, hub_neon, raises=LegacyTenantError("tenant 'mike' is not a UUID"))
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://test")
+
+    class _Conn:
+        committed = False
+
+        def cursor(self):
+            return FakeCursor(plan=[None])
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    conn = _Conn()
+    monkeypatch.setattr(hub_neon.psycopg2, "connect", lambda *_a, **_k: conn)
+    res = hub_neon.create_hub_work_order(
+        tenant_id="mike",
+        user_id="u1",
+        title="t",
+        description="d",
+        priority="normal",
+        asset_name="CV-207",
+    )
+    assert "error" in res and "not a UUID" in res["error"]
+    assert conn.committed is False
+
+
+def test_pm_scheduler_creates_through_the_helper_on_the_same_dbapi_connection(monkeypatch):
     from shared import pm_scheduler
 
-    calls = _recorder(monkeypatch, pm_scheduler)
+    calls = _creator(monkeypatch, pm_scheduler)
     raw_cursor = FakeCursor()
 
     class _Result:
@@ -284,22 +384,68 @@ def test_pm_scheduler_bridges_on_the_same_dbapi_connection(monkeypatch):
 
     monkeypatch.setattr(pm_scheduler, "_get_neon_engine", lambda: _Engine())
     new_id = pm_scheduler._resolve_equipment_id("Dorner", "2200", None, "tenant-y")
-    assert calls == [
-        {
-            "cur": raw_cursor,
-            "tenant_id": "tenant-y",
-            "asset_id": new_id,
-            "tag": "DORN-2200",
-            "manufacturer": "Dorner",
-            "model": "2200",
-        }
-    ]
+    (c,) = calls
+    assert c["cur"] is raw_cursor and c["tenant_id"] == "tenant-y" and c["tag"] == "DORN-2200"
+    assert c["columns"]["id"] == new_id and c["raw"] == {
+        "created_at": "NOW()",
+        "updated_at": "NOW()",
+    }
 
 
-def test_pm_scheduler_hint_and_lookup_hit_skip_the_bridge(monkeypatch):
+def test_pm_scheduler_returns_none_for_a_legacy_tenant_and_creates_no_work_order(monkeypatch):
     from shared import pm_scheduler
 
-    calls = _recorder(monkeypatch, pm_scheduler)
+    _creator(monkeypatch, pm_scheduler, raises=LegacyTenantError("tenant 'mike' is not a UUID"))
+
+    class _Engine:
+        def begin(self):
+            class _Ctx:
+                def __enter__(self_inner):
+                    class _Conn:
+                        connection = type("DbApi", (), {"cursor": staticmethod(FakeCursor)})()
+
+                        def execute(self, *_a, **_k):
+                            return type("R", (), {"fetchone": staticmethod(lambda: None)})()
+
+                    return _Conn()
+
+                def __exit__(self_inner, *exc):
+                    return False
+
+            return _Ctx()
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr(pm_scheduler, "_get_neon_engine", lambda: _Engine())
+    assert pm_scheduler._resolve_equipment_id("Dorner", "2200", None, "mike") is None
+    # and _insert_work_order stops before touching the DB when there is no equipment
+    monkeypatch.setattr(pm_scheduler, "_resolve_equipment_id", lambda *_a, **_k: None)
+    engine_touched = []
+    monkeypatch.setattr(pm_scheduler, "_get_neon_engine", lambda: engine_touched.append(1))
+    assert (
+        pm_scheduler._insert_work_order(
+            {
+                "id": "pm-1",
+                "name": "Belt check",
+                "task": "Inspect belt",
+                "manufacturer": "D",
+                "model_number": "M",
+                "tenant_id": "mike",
+                "criticality": "medium",
+                "interval_value": 30,
+                "interval_unit": "days",
+            }
+        )
+        is None
+    )
+    assert engine_touched == []
+
+
+def test_pm_scheduler_hint_and_lookup_hit_skip_creation(monkeypatch):
+    from shared import pm_scheduler
+
+    calls = _creator(monkeypatch, pm_scheduler)
     assert pm_scheduler._resolve_equipment_id("D", "M", "hinted-id", "t") == "hinted-id"
     assert calls == []
 
@@ -314,29 +460,43 @@ def _load_atlas_sync():
     return mod
 
 
-@pytest.mark.parametrize("returned, expect_bridge", [(("neon-3",), True), (None, False)])
-def test_atlas_sync_bridges_only_a_row_it_actually_inserted(monkeypatch, returned, expect_bridge):
+def test_atlas_sync_creates_through_the_helper_with_its_columns(monkeypatch):
     mod = _load_atlas_sync()
-    calls = _recorder(monkeypatch, mod)
-    cur = FakeCursor(plan=[returned])
-    conn = type("Conn", (), {"cursor": staticmethod(lambda: cur)})()
-    atlas_row = {
+    calls = _creator(monkeypatch, mod)
+    conn = type("Conn", (), {"cursor": staticmethod(FakeCursor)})()
+    row = {
         "id": 42,
-        "name": "CV-207",
+        "name": "Infeed",
+        "manufacturer": "Dorner",
         "model": "2200",
-        "serialNumber": "S1",
-        "location": "Line 1",
-        "description": "Infeed",
+        "serial_number": "S1",
+        "area": "Line 1",
         "updated_at": "2026-01-01",
-        "updatedAt": "2026-01-01",
     }
-    mod.insert_into_neon(conn, "tenant-z", "CV-207", atlas_row)
-    ((ins_sql, _),) = cur.find("INSERT INTO cmms_equipment")
-    assert "RETURNING id" in ins_sql
-    if expect_bridge:
-        assert len(calls) == 1 and calls[0]["asset_id"] == "neon-3" and calls[0]["tag"] == "CV-207"
-    else:
-        assert calls == []
+    assert mod.insert_into_neon(conn, "tenant-z", "CV-207", row) is True
+    (c,) = calls
+    assert c["tag"] == "CV-207"
+    # migration 083: per-tenant partial unique index — the conflict target must match it
+    assert c["conflict"] == (
+        "ON CONFLICT (tenant_id, equipment_number) WHERE equipment_number IS NOT NULL DO NOTHING"
+    )
+    assert c["columns"]["atlas_id"] == "42" and c["raw"] == {"cmms_synced_at": "NOW()"}
+
+
+def test_atlas_sync_counts_a_legacy_tenant_as_skipped_not_synced(monkeypatch):
+    mod = _load_atlas_sync()
+    _creator(monkeypatch, mod, raises=LegacyTenantError("tenant 'mike' is not a UUID"))
+    conn = type("Conn", (), {"cursor": staticmethod(FakeCursor)})()
+    row = {
+        "id": 42,
+        "name": "Infeed",
+        "manufacturer": "Dorner",
+        "model": "2200",
+        "updated_at": "2026-01-01",
+    }
+    assert mod.insert_into_neon(conn, "mike", "CV-207", row) is False
+    src = (REPO / "tools/atlas-hub-sync.py").read_text()
+    assert 'stats["skipped_legacy_tenant"] += 1' in src and "if insert_into_neon(" in src
 
 
 # ---------------------------------------------------------------------------

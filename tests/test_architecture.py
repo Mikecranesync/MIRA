@@ -1650,17 +1650,17 @@ def test_registry_tags_checker_catches_violations():
 
 
 # ---------------------------------------------------------------------------
-# Contract 7: cmms_equipment rows are minted through the asset bridge (#3708)
+# Contract 16: cmms_equipment rows are created ONLY by shared.asset_bridge.create_equipment (#3708)
 #
 # POST /api/assets (mira-hub) creates a machine as a whole: the cmms_equipment
 # row, its kg_entities node, and cmms_equipment.uns_path. Every consumer that
 # needs a machine's location anchors on that node, so a bare
 # `INSERT INTO cmms_equipment` from Python creates a machine MIRA refuses to
-# talk about. Python writers go through shared/asset_bridge.py::bridge_asset —
-# the mirror of the Hub bridge — immediately after their insert.
-#
-# Default-deny: any Python file inserting cmms_equipment fails unless it is
-# allowlisted with a reason AND calls bridge_asset( after the insert.
+# talk about. Python code therefore has exactly ONE creation path —
+# `create_equipment` (refuse legacy tenants before inserting, insert, bridge,
+# one call) — and this contract forbids the insert literal anywhere else. A
+# textual ban on the literal is control-flow-proof by construction: there is
+# no second path to pair (Codex round 2 F2 on #3715).
 # ---------------------------------------------------------------------------
 
 _CMMS_EQUIPMENT_WRITE_GLOBS = [
@@ -1673,89 +1673,29 @@ _CMMS_EQUIPMENT_WRITE_GLOBS = [
     "tools/**/*.py",
 ]
 
-_CMMS_EQUIPMENT_INSERT_ALLOWLIST: dict[str, str] = {
-    "mira-bots/shared/integrations/hub_neon.py": "bot-conversation assets — inserts, then bridge_asset on the same cursor "
-    "inside the work-order transaction.",
-    "mira-bots/shared/pm_scheduler.py": "PM-scheduler assets — inserts, then bridge_asset on the SQLAlchemy "
-    "connection's DBAPI cursor (same transaction).",
-    "tools/atlas-hub-sync.py": "Atlas→Neon sync — INSERT ... RETURNING id, then bridge_asset only for a "
-    "row this run actually inserted.",
-}
+_CMMS_EQUIPMENT_CREATOR = "mira-bots/shared/asset_bridge.py"
+_CMMS_EQUIPMENT_CREATOR_REASON = (
+    "THE creation helper — create_equipment() refuses non-UUID tenants before inserting, "
+    "inserts, and bridges the row (kg_entities node + uns_path) in one call."
+)
 
 _CMMS_EQUIPMENT_INSERT_RE = re.compile(
     r"\binsert\s+into\s+(public\.)?cmms_equipment\b", re.IGNORECASE
 )
-_BRIDGE_CALL_RE = re.compile(r"\bbridge_asset\s*\(")
-
-
-def _enclosing_function(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST | None:
-    cur = parents.get(id(node))
-    while cur is not None:
-        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return cur
-        cur = parents.get(id(cur))
-    return None
 
 
 def scan_cmms_equipment_writer(
-    rel: str, source: str, allowlist: dict[str, str] | None = None
+    rel: str, source: str, creator: str = _CMMS_EQUIPMENT_CREATOR
 ) -> list[str]:
-    """Return violations for one file (empty list = clean).
-
-    Pairing is PER INSERT, PER FUNCTION (Codex F2 on #3715): every string
-    literal that inserts into cmms_equipment must be followed, in the same
-    function, by a `bridge_asset(` call. A file-wide "some call somewhere
-    after the last insert" check let a second, unbridged insert path ship.
-    """
-    allow = _CMMS_EQUIPMENT_INSERT_ALLOWLIST if allowlist is None else allowlist
-    if not _CMMS_EQUIPMENT_INSERT_RE.search(source):
+    """Return violations for one file (empty list = clean)."""
+    if rel == creator:
         return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        return [
-            f"{rel}:{exc.lineno}: could not parse to verify cmms_equipment inserts (Contract 7)"
-        ]
-    parents: dict[int, ast.AST] = {}
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            parents[id(child)] = parent
-    inserts: list[tuple[ast.AST | None, int]] = []
-    bridge_calls: list[tuple[ast.AST | None, int]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if _CMMS_EQUIPMENT_INSERT_RE.search(node.value):
-                inserts.append((_enclosing_function(node, parents), node.lineno))
-        elif isinstance(node, ast.Call):
-            fn = node.func
-            name = (
-                fn.id
-                if isinstance(fn, ast.Name)
-                else fn.attr
-                if isinstance(fn, ast.Attribute)
-                else ""
-            )
-            if name == "bridge_asset":
-                bridge_calls.append((_enclosing_function(node, parents), node.lineno))
-    if not inserts:
-        return []  # the literal only appears in a comment/docstring-free non-string context
-    if rel not in allow:
-        return [
-            f"{rel}:{line}: INSERT INTO cmms_equipment outside the asset bridge — call "
-            "shared.asset_bridge.bridge_asset after the insert, in the same function, and "
-            "allowlist the file with a reason (Contract 7)"
-            for _, line in inserts
-        ]
-    offenders = []
-    for scope, line in inserts:
-        paired = any(s is scope and cl > line for s, cl in bridge_calls)
-        if not paired:
-            where = getattr(scope, "name", "<module>")
-            offenders.append(
-                f"{rel}:{line}: allowlisted, but no bridge_asset( call follows this INSERT INTO "
-                f"cmms_equipment inside {where}() (Contract 7)"
-            )
-    return offenders
+    return [
+        f"{rel}:{_line_of(source, m.start())}: INSERT INTO cmms_equipment outside "
+        "shared.asset_bridge.create_equipment — Python creates machines through that ONE "
+        "helper only (Contract 16)"
+        for m in _CMMS_EQUIPMENT_INSERT_RE.finditer(source)
+    ]
 
 
 def _cmms_equipment_write_surface_files() -> list[Path]:
@@ -1777,63 +1717,48 @@ def _cmms_equipment_write_surface_files() -> list[Path]:
     return sorted(seen)
 
 
-def test_cmms_equipment_inserts_go_through_the_asset_bridge():
-    """No Python writer mints an unplaced machine. Doctrine: issue #3708,
+def test_cmms_equipment_is_created_only_by_the_asset_bridge():
+    """No Python writer mints a machine outside create_equipment. Doctrine: issue #3708,
     .claude/rules/uns-compliance.md, mira-bots/shared/asset_bridge.py."""
     offenders: list[str] = []
     for path in _cmms_equipment_write_surface_files():
         rel = path.relative_to(_ROOT).as_posix()
         offenders.extend(scan_cmms_equipment_writer(rel, path.read_text(errors="replace")))
     assert not offenders, (
-        "cmms_equipment inserted outside the asset bridge — the machine has no kg_entities "
-        "node / uns_path and MIRA will refuse it (#3708).\n\n" + "\n".join(offenders)
+        "cmms_equipment inserted outside shared.asset_bridge.create_equipment — the machine "
+        "would have no kg_entities node / uns_path and MIRA would refuse it (#3708).\n\n"
+        + "\n".join(offenders)
     )
 
 
-def test_cmms_equipment_allowlist_is_honest():
-    """Every allowlisted file exists, still inserts, and carries a real reason."""
-    for rel, reason in _CMMS_EQUIPMENT_INSERT_ALLOWLIST.items():
-        p = _ROOT / rel
-        assert p.is_file(), f"allowlisted file missing: {rel}"
-        assert _CMMS_EQUIPMENT_INSERT_RE.search(p.read_text()), f"stale allowlist entry: {rel}"
-        assert len(reason) >= 30, f"allowlist entry needs a real reason: {rel}"
+def test_cmms_equipment_creator_is_real():
+    """The one exempt file exists, inserts, and exposes the helper the writers use."""
+    src = (_ROOT / _CMMS_EQUIPMENT_CREATOR).read_text()
+    assert _CMMS_EQUIPMENT_INSERT_RE.search(src), "the creator no longer inserts cmms_equipment?"
+    assert "def create_equipment(" in src and "require_uuid_tenant(" in src
+    assert len(_CMMS_EQUIPMENT_CREATOR_REASON) >= 30
 
 
 def test_cmms_equipment_checker_catches_violations():
     """The guard must FAIL on the obvious forks (so a green run means something)."""
     bare = "def f(cur, i):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
-    ok = {"x.py": "r" * 30}
     assert scan_cmms_equipment_writer("x.py", bare), "checker missed a bare insert"
     assert scan_cmms_equipment_writer(
         "x.py", bare.replace("INSERT INTO cmms_equipment", "insert  into public.cmms_equipment")
     ), "checker missed a case/schema-qualified variant"
-    assert scan_cmms_equipment_writer("x.py", bare, ok), (
-        "allowlisted file with no bridge call must fail"
+    # Codex round 2 F2: insert on one branch, bridge on another — there is no
+    # "pairing" to fool any more; the literal itself is the violation.
+    branchy = (
+        "def f(cur, i, create, t, tag):\n"
+        "    if create:\n        cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+        "    else:\n        bridge_asset(cur, t, i, tag)\n"
     )
-    assert scan_cmms_equipment_writer(
-        "x.py",
-        "def f(cur, i, t, tag):\n    bridge_asset(cur, t, i, tag)\n" + bare.split("\n", 1)[1],
-        ok,
-    ), "a bridge call BEFORE the insert must not count"
-    paired = bare + "    bridge_asset(cur, t, i, tag)\n"
-    assert scan_cmms_equipment_writer("x.py", paired, ok) == []
-    # Codex F2: two insert paths, only the second bridged — the first must be reported.
-    two = (
-        "def first(cur, i):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n\n"
-        "def second(cur, i, t, tag):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
-        "    bridge_asset(cur, t, i, tag)\n"
+    assert scan_cmms_equipment_writer("x.py", branchy), "branch-split insert must be reported"
+    assert scan_cmms_equipment_writer("x.py", bare + "    bridge_asset(cur, t, i, tag)\n"), (
+        "a bridge call next to a raw insert does not license the insert"
     )
-    found = scan_cmms_equipment_writer("x.py", two, ok)
-    assert len(found) == 1 and "first()" in found[0], found
-    # a bridge call in a DIFFERENT function does not pair
-    apart = bare + "def g(cur, t, i, tag):\n    bridge_asset(cur, t, i, tag)\n"
-    assert scan_cmms_equipment_writer("x.py", apart, ok), "a call in another function must not pair"
-    # a module-level insert with no module-level call
-    assert scan_cmms_equipment_writer(
-        "x.py", "cur.execute('INSERT INTO cmms_equipment (id) VALUES (1)')\n", ok
+    assert scan_cmms_equipment_writer(_CMMS_EQUIPMENT_CREATOR, bare) == [], (
+        "the creator itself is exempt"
     )
-    # attribute-style call pairs too (e.g. module.bridge_asset)
-    assert (
-        scan_cmms_equipment_writer("x.py", bare + "    ab.bridge_asset(cur, t, i, tag)\n", ok) == []
-    )
+    assert scan_cmms_equipment_writer("x.py", "create_equipment(cur, t, tag, columns={})\n") == []
     assert scan_cmms_equipment_writer("x.py", "SELECT 1 FROM cmms_equipment\n") == []

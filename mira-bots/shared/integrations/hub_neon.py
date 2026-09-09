@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import psycopg2
 import psycopg2.extras
 
-from shared.asset_bridge import bridge_asset
+from shared.asset_bridge import create_equipment
 
 logger = logging.getLogger("mira-gsd")
 
@@ -58,20 +58,18 @@ def _get_or_create_equipment_id(
         return str(row[0])
 
     eq_id = str(uuid.uuid4())
-    cur.execute(
-        """INSERT INTO cmms_equipment
-           (id, equipment_number, manufacturer, tenant_id)
-           VALUES (%s, %s, %s, %s)
-           ON CONFLICT (id) DO NOTHING
-           RETURNING id""",
-        (eq_id, search_name, "Unknown", tenant_id),
+    # #3708: created through the ONE helper — refuses a legacy slug tenant before
+    # inserting (LegacyTenantError → create_hub_work_order's {"error": …}), then
+    # inserts and bridges (kg_entities node + uns_path) in the same transaction.
+    created = create_equipment(
+        cur,
+        tenant_id,
+        search_name,
+        columns={"id": eq_id, "equipment_number": search_name, "manufacturer": "Unknown"},
+        conflict="ON CONFLICT (id) DO NOTHING",
+        manufacturer="Unknown",
     )
-    created = cur.fetchone()
-    eq_id = str(created[0]) if created else eq_id
-    # #3708: a cmms_equipment row without its kg_entities node is unplaced — the
-    # notebook refuses it and V3 cannot scope to it. Same bridge POST /api/assets runs.
-    bridge_asset(cur, tenant_id, eq_id, search_name, manufacturer="Unknown")
-    return eq_id
+    return created.id or eq_id
 
 
 def create_hub_work_order(

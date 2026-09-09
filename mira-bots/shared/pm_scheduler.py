@@ -24,7 +24,7 @@ from typing import Any, Optional
 
 import httpx
 
-from shared.asset_bridge import bridge_asset
+from shared.asset_bridge import LegacyTenantError, create_equipment
 
 logger = logging.getLogger("mira-pm-scheduler")
 
@@ -52,7 +52,7 @@ _EQUIPMENT_NAMESPACE = uuid.UUID("7f3d1a2b-4c5e-6f7a-8b9c-0d1e2f3a4b5c")
 
 def _resolve_equipment_id(
     manufacturer: str, model_number: str, hint: str | None, tenant_id: str
-) -> str:
+) -> str | None:
     """Return a UUID for the equipment, creating a cmms_equipment row if needed.
 
     Priority: (1) hint from pm_schedules, (2) existing cmms_equipment lookup,
@@ -85,25 +85,23 @@ def _resolve_equipment_id(
             if row:
                 return str(row[0])
             eq_number = f"{manufacturer[:4].upper()}-{model_number[:8].upper()}"
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO cmms_equipment
-                        (id, equipment_number, manufacturer, model_number,
-                         tenant_id, created_at, updated_at)
-                    VALUES
-                        (:id, :eq_number, :manufacturer, :model_number,
-                         :tenant_id, NOW(), NOW())
-                    ON CONFLICT (id) DO NOTHING
-                    """
-                ),
-                {
+            # #3708: the ONE creation helper — refuses a legacy slug tenant BEFORE
+            # inserting, then inserts + bridges (node + uns_path) on this
+            # transaction's own DBAPI connection.
+            create_equipment(
+                conn.connection.cursor(),
+                tenant_id,
+                eq_number,
+                columns={
                     "id": new_id,
-                    "eq_number": eq_number,
+                    "equipment_number": eq_number,
                     "manufacturer": manufacturer,
                     "model_number": model_number,
-                    "tenant_id": tenant_id,
                 },
+                raw={"created_at": "NOW()", "updated_at": "NOW()"},
+                conflict="ON CONFLICT (id) DO NOTHING",
+                manufacturer=manufacturer,
+                model=model_number,
             )
             logger.info(
                 "_resolve_equipment_id: created cmms_equipment id=%s %s %s",
@@ -111,17 +109,12 @@ def _resolve_equipment_id(
                 manufacturer,
                 model_number,
             )
-            # #3708: mint the kg_entities node + uns_path on the same DBAPI
-            # connection (same transaction) — see shared/asset_bridge.py.
-            bridge_asset(
-                conn.connection.cursor(),
-                tenant_id,
-                new_id,
-                eq_number,
-                manufacturer=manufacturer,
-                model=model_number,
-            )
         return new_id
+    except LegacyTenantError as exc:
+        # Not a transient: no equipment can exist for this tenant. Return None so
+        # the work order is NOT created against a machine that does not exist.
+        logger.error("_resolve_equipment_id refused: %s", exc)
+        return None
     except Exception as exc:
         logger.error("_resolve_equipment_id failed: %s", exc)
         return new_id
@@ -328,6 +321,14 @@ def _insert_work_order(pm: dict[str, Any]) -> str | None:
     equipment_id = _resolve_equipment_id(
         pm["manufacturer"], pm["model_number"], pm.get("equipment_id"), pm["tenant_id"]
     )
+    if equipment_id is None:
+        logger.error(
+            "_insert_work_order: no equipment can be created for pm_id=%s tenant=%r "
+            "(legacy tenant) — work order NOT created (#3708)",
+            pm["id"],
+            pm["tenant_id"],
+        )
+        return None
 
     engine = _get_neon_engine()
     try:
