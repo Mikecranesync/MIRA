@@ -226,4 +226,80 @@ describe("assistant surface rendering", () => {
       expect(fedback).toContainEqual([firstTurnId, "up"]);
     }
   });
+
+  it("renders greeting and grounding line on first-run (empty thread)", () => {
+    const view = render({ surface: "mobile", fixture: "empty", conversationSurface: "assistant" });
+    const greeting = view.container.querySelector<HTMLElement>(".fl-conversation__greeting");
+    const grounding = view.container.querySelector<HTMLElement>(".fl-conversation__grounding");
+    expect(greeting).not.toBeNull();
+    expect(grounding).not.toBeNull();
+    expect(greeting?.textContent).toContain("What can I help you with");
+  });
+
+  it("does not render first-run surface once a turn exists", () => {
+    const view = render({ surface: "mobile", fixture: "grounded-answer", conversationSurface: "assistant" });
+    const greeting = view.container.querySelector(".fl-conversation__greeting");
+    const grounding = view.container.querySelector(".fl-conversation__grounding");
+    expect(greeting).toBeNull();
+    expect(grounding).toBeNull();
+  });
+
+  it("renders suggestion chips when host provides them", () => {
+    const sent: string[] = [];
+    const chips = [
+      { id: "chip-1", text: "Why did the motor stop?" },
+      { id: "chip-2", text: "Check the voltage" },
+      { id: "chip-3", text: "What is a VFD?" },
+    ];
+    const view = render({
+      surface: "mobile",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: {
+        onSend: (text) => sent.push(text),
+        suggestChips: () => chips,
+      },
+    });
+    const chipButtons = Array.from(view.container.querySelectorAll<HTMLButtonElement>(".fl-suggestion-chip"));
+    expect(chipButtons.length).toBe(3);
+    expect(chipButtons[0]?.textContent).toContain("Why did the motor stop?");
+  });
+
+  it("sends exact chip text when chip is clicked", () => {
+    const sent: string[] = [];
+    const chips = [
+      { id: "chip-1", text: "Why did the motor stop?" },
+    ];
+    const view = render({
+      surface: "mobile",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: {
+        onSend: (text) => sent.push(text),
+        suggestChips: () => chips,
+      },
+    });
+    const chipButton = view.container.querySelector<HTMLButtonElement>(".fl-suggestion-chip");
+    if (!chipButton) throw new Error("chip button must render");
+    view.click(chipButton);
+    expect(sent).toEqual(["Why did the motor stop?"]);
+  });
+
+  it("does not render chips when host supplies none", () => {
+    const view = render({ surface: "mobile", fixture: "empty", conversationSurface: "assistant" });
+    const chips = view.container.querySelectorAll(".fl-suggestion-chip");
+    expect(chips.length).toBe(0);
+  });
+
+  it("does not render greeting when turns already exist", () => {
+    const view = render({
+      surface: "mobile",
+      fixture: "grounded-answer",
+      conversationSurface: "assistant",
+    });
+    const greeting = view.container.querySelector(".fl-conversation__greeting");
+    const messages = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"));
+    expect(greeting).toBeNull();
+    expect(messages.length).toBeGreaterThan(0);
+  });
 });

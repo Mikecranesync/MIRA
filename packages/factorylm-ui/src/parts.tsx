@@ -47,6 +47,11 @@ export interface HostHooks {
    */
   readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
   /**
+   * Suggest initial questions for first-run. The host provides up to three
+   * suggested questions that send on tap; absent = no suggestions rendered.
+   */
+  readonly suggestChips?: () => readonly { id: string; text: string }[] | undefined;
+  /**
    * Render a turn's text part. The package renders plain text; a host whose
    * text carries markdown and inline citation marks (mobile AnswerMarkdown)
    * supplies its own renderer here so the same text reads the same on every
