@@ -14,7 +14,8 @@ type AppManifest = {
 };
 
 const appRoot = resolve(import.meta.dir, "..");
-const firstPartyPackagesRoot = resolve(appRoot, "../../packages");
+const workspaceRoot = resolve(appRoot, "../..");
+const firstPartyPackagesRoot = resolve(workspaceRoot, "packages");
 const allowedLicenses = new Set(["MIT", "Apache-2.0"]);
 const auditedPaths = new Set<string>();
 // `name@version` of every external package already covered by the installed
@@ -26,15 +27,24 @@ let auditedExternalPackageCount = 0;
 const appManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8")) as AppManifest;
 const linkedFirstPartyPackageNames = new Set(
   Object.entries(appManifest.dependencies ?? {})
-    .filter(([, version]) => version.startsWith("file:"))
+    .filter(([, version]) => version.startsWith("workspace:") || version.startsWith("file:"))
     .map(([name]) => name),
 );
 
 function isFirstPartyPackage(realPackagePath: string, manifest: PackageManifest): boolean {
   const packageRelativePath = relative(firstPartyPackagesRoot, realPackagePath);
+  // A workspace member resolves to its SOURCE directory (packages/x, apps/x) — a
+  // path under the workspace root with no node_modules segment. Everything
+  // installed from the registry resolves under node_modules.
+  const workspaceRelativePath = relative(workspaceRoot, realPackagePath);
+  const isWorkspaceSource =
+    workspaceRelativePath !== "" &&
+    !workspaceRelativePath.startsWith("..") &&
+    !workspaceRelativePath.split("/").includes("node_modules");
   return (
     manifest.private === true &&
     ((packageRelativePath !== "" && !packageRelativePath.startsWith("..")) ||
+      isWorkspaceSource ||
       (manifest.name !== undefined && linkedFirstPartyPackageNames.has(manifest.name)))
   );
 }
@@ -73,7 +83,33 @@ async function auditNodeModules(nodeModulesPath: string): Promise<void> {
   }
 }
 
-await auditNodeModules(join(appRoot, "node_modules"));
+// ── Installed-tree audit ────────────────────────────────────────────────────
+// Bun's isolated linker (pinned in the root bunfig.toml) installs every package
+// exactly once under <workspaceRoot>/node_modules/.bun/<name>@<version>/node_modules/,
+// with a member's own node_modules holding only symlinks into that store. So the
+// store IS the installed set: walk it and every third-party manifest is audited
+// once, no link-following needed. The classic roots are walked too — realpaths
+// dedupe, and it keeps the audit correct if the linker is ever switched to hoisted.
+const isolatedStore = join(workspaceRoot, "node_modules", ".bun");
+if (existsSync(isolatedStore)) {
+  for (const entry of await readdir(isolatedStore, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "node_modules") continue;
+    const storeNodeModules = join(isolatedStore, entry.name, "node_modules");
+    if (existsSync(storeNodeModules)) await auditNodeModules(storeNodeModules);
+  }
+}
+for (const classicRoot of [join(workspaceRoot, "node_modules"), join(appRoot, "node_modules")]) {
+  if (existsSync(classicRoot)) await auditNodeModules(classicRoot);
+}
+// An empty walk is not a clean bill — it is the shape of a wrong root or an
+// uninstalled tree, and it would otherwise print "0 manifests are MIT" and exit 0.
+if (auditedExternalPackageCount === 0) {
+  console.error(
+    "Dependency license audit failed: the installed-tree walk audited zero external packages. " +
+      "Run `bun install` at the workspace root first; if it is installed, the walk roots are wrong.",
+  );
+  process.exit(1);
+}
 
 // ── Closure audit ───────────────────────────────────────────────────────────
 // Walking node_modules only sees what THIS platform installed. Optional and
@@ -90,8 +126,12 @@ await auditNodeModules(join(appRoot, "node_modules"));
 // auditing the moment a task adds a package with its own bun.lock — the same
 // class of blind spot as only auditing the installed tree. Globbing `apps/` as
 // well as `packages/` costs nothing and covers a future sibling app too.
-const workspaceRoot = resolve(appRoot, "../..");
 const lockfilePaths: string[] = [];
+// The workspace shares ONE lockfile at its root. The globs stay so that a
+// sibling that opts out of the workspace and carries its own bun.lock is still
+// audited rather than silently skipped.
+const workspaceLockfile = join(workspaceRoot, "bun.lock");
+if (existsSync(workspaceLockfile)) lockfilePaths.push(workspaceLockfile);
 for (const pattern of ["apps/factorylm-*/bun.lock", "packages/factorylm-*/bun.lock"]) {
   for await (const match of new Bun.Glob(pattern).scan({ cwd: workspaceRoot, absolute: true })) {
     lockfilePaths.push(match);
@@ -99,7 +139,7 @@ for (const pattern of ["apps/factorylm-*/bun.lock", "packages/factorylm-*/bun.lo
 }
 lockfilePaths.sort(); // deterministic order, so the audit output is stable
 if (lockfilePaths.length === 0) {
-  console.error("Dependency license audit failed: no bun.lock discovered under apps/factorylm-*/ or packages/factorylm-*/.");
+  console.error("Dependency license audit failed: no bun.lock discovered at the workspace root or under apps/factorylm-*/ / packages/factorylm-*/.");
   process.exit(1);
 }
 const registryLicenseCache = new Map<string, string | undefined>();
@@ -154,8 +194,9 @@ for (const lockfilePath of lockfilePaths) {
   for (const entry of Object.values(lockfile.packages ?? {})) {
     const specifier = entry[0];
     if (typeof specifier !== "string") continue;
-    // `name@file:../..` entries are the first-party workspace links.
-    if (specifier.includes("@file:")) continue;
+    // `name@workspace:packages/x` (and legacy `name@file:../x`) entries are the
+    // first-party workspace members, not registry packages.
+    if (specifier.includes("@workspace:") || specifier.includes("@file:")) continue;
 
     const separator = specifier.lastIndexOf("@");
     if (separator <= 0) continue;
