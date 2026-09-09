@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   askEndpointFor,
+  listNotice,
   filterMachines,
   partitionMachines,
   scopeHint,
@@ -250,5 +251,60 @@ describe("machine starters are groundable, never invented", () => {
     // Positive control: the GENERAL set deliberately does name codes, so this
     // matcher is capable of firing.
     expect(suggestionsFor(null).some((s) => /\b[A-Z]\d{4}\b/.test(s.q))).toBe(true);
+  });
+});
+
+// Round 4 Q2, second gap. The guard keeping a wholly-unreadable payload from
+// rendering as "No machines yet" lived in a JSX condition, and this component
+// fetches in useEffect — which never runs under renderToStaticMarkup, so no SSR
+// render reaches these states. The guard was therefore free to delete: dropping
+// `&& malformed === 0` changed one line and all 37 tests still passed. Verified
+// by mutation before writing these.
+describe("listNotice — degraded data is not an empty register", () => {
+  // A complete Machine, not a partial cast — `listNotice` only reads the array's
+  // length, so a loose object would type-check nothing and would let the shape
+  // drift out from under these tests unnoticed.
+  const M = (id: string): Machine => ({
+    id,
+    unsPath: `enterprise.site.area.line.${id}`,
+    tag: id.toUpperCase(),
+    name: `Machine ${id}`,
+    manufacturer: null,
+    model: null,
+    location: null,
+  });
+
+  it("EVERY row unreadable is a failure, never the empty state", () => {
+    expect(listNotice({ failed: false, machines: [], malformed: 3, shown: 0 })).toBe("unreadable");
+  });
+
+  it("genuinely no machines is the empty state", () => {
+    expect(listNotice({ failed: false, machines: [], malformed: 0, shown: 0 })).toBe("empty");
+  });
+
+  it("the two are distinguishable on malformed alone — same machines, different notice", () => {
+    const empty = listNotice({ failed: false, machines: [], malformed: 0, shown: 0 });
+    const broken = listNotice({ failed: false, machines: [], malformed: 1, shown: 0 });
+    expect(empty).not.toBe(broken);
+  });
+
+  it("some unreadable, some usable is degraded — the good machines are kept", () => {
+    expect(listNotice({ failed: false, machines: [M("cv1")], malformed: 2, shown: 1 })).toBe("degraded");
+  });
+
+  it("a fetch failure outranks everything below it", () => {
+    expect(listNotice({ failed: true, machines: [], malformed: 5, shown: 0 })).toBe("load-failed");
+  });
+
+  it("not-yet-loaded is loading, not empty", () => {
+    expect(listNotice({ failed: false, machines: null, malformed: 0, shown: 0 })).toBe("loading");
+  });
+
+  it("a filter that matches nothing is no-match, not empty", () => {
+    expect(listNotice({ failed: false, machines: [M("cv1")], malformed: 0, shown: 0 })).toBe("no-match");
+  });
+
+  it("nothing to say when there are machines and nothing is wrong", () => {
+    expect(listNotice({ failed: false, machines: [M("cv1")], malformed: 0, shown: 1 })).toBeNull();
   });
 });

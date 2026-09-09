@@ -228,6 +228,51 @@ export function partitionMachines(rows: unknown): { machines: Machine[]; unplace
 }
 
 /** The offerable machines only — `partitionMachines` without the count. */
+/**
+ * Which single list-state message the sheet should show.
+ *
+ * This exists because the decision was previously spelled as JSX guards, and a
+ * JSX guard in this component cannot be tested: `ScopePicker` fetches in
+ * `useEffect`, which does not run under `renderToStaticMarkup`, so every SSR
+ * render freezes at "Loading…" and never reaches these states. The guard that
+ * matters most — the one keeping a wholly-unreadable payload from rendering as
+ * "No machines yet" — was therefore defended by nothing: deleting it changed
+ * one line and passed all 37 tests. (Round 4 Q2, second gap.)
+ *
+ * Moving the decision into a pure function does not make the JSX correct by
+ * itself; it makes the decision the JSX consumes assertable, which is the part
+ * that was missing.
+ *
+ * Order is significant: a load failure outranks emptiness, and "every row
+ * unreadable" outranks "some rows unreadable", because the more specific fact
+ * is the one the technician needs.
+ */
+export type ListNotice =
+  | "load-failed"
+  | "loading"
+  | "unreadable"
+  | "degraded"
+  | "empty"
+  | "no-match"
+  | null;
+
+export function listNotice(s: {
+  failed: boolean;
+  machines: Machine[] | null;
+  malformed: number;
+  shown: number;
+}): ListNotice {
+  if (s.failed) return "load-failed";
+  if (s.machines === null) return "loading";
+  // Nothing usable came back AND rows were unreadable: a data failure, never
+  // the empty register. This is the guard the mutation deleted for free.
+  if (s.machines.length === 0 && s.malformed > 0) return "unreadable";
+  if (s.machines.length === 0) return "empty";
+  if (s.malformed > 0) return "degraded";
+  if (s.shown === 0) return "no-match";
+  return null;
+}
+
 export function toMachines(rows: unknown): Machine[] {
   return partitionMachines(rows).machines;
 }
@@ -268,6 +313,8 @@ export default function ScopePicker({
   }, []);
 
   const shown = useMemo(() => filterMachines(machines ?? [], query), [machines, query]);
+  // One decision, made in a tested pure function rather than in six JSX guards.
+  const notice = listNotice({ failed, machines, malformed, shown: shown.length });
 
   return (
     <div className="v3-sheet" role="dialog" aria-modal="true" aria-label="Choose what to ask about">
@@ -302,12 +349,12 @@ export default function ScopePicker({
         />
       )}
 
-      {failed && (
-        <p className="v3-sheet__note">
+      {notice === "load-failed" && (
+        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
           Couldn&apos;t load your machines. You can still ask a general question.
         </p>
       )}
-      {!failed && machines === null && <p className="v3-sheet__note">Loading…</p>}
+      {notice === "loading" && <p className="v3-sheet__note">Loading…</p>}
       {/* Honest about what is NOT offered. A technician who sees fewer machines
           here than on the assets page should be told the reason, not left to
           suspect the list is broken. */}
@@ -317,20 +364,39 @@ export default function ScopePicker({
           namespace yet, so {unplaced === 1 ? "it" : "they"} cannot be asked about specifically.
         </p>
       )}
-      {/* An empty list because the API returned rows the picker cannot route is a
-          different fact from an empty register, and must not be shown as one. */}
-      {machines !== null && malformed > 0 && (
+      {/* Three distinct facts, three distinct presentations. An empty list because
+          the API returned rows the picker cannot route is NOT an empty register,
+          and losing SOME rows is not the same as losing every one:
+
+          - some rows unreadable, some usable -> degraded. Keep the machines,
+            note the loss politely (role="status"): the technician can still work.
+          - EVERY row unreadable -> a load failure, announced assertively
+            (role="alert"). Nothing is usable and no amount of retrying the filter
+            will help, so this is not a note that happens to appear alone.
+          - genuinely no machines -> the empty register.
+
+          The `malformed === 0` guard on the empty copy is what stops a wholly
+          broken payload reading as "you have no equipment". It is pinned by a
+          render test; without one, dropping it passes every assertion. */}
+      {notice === "degraded" && (
         <p className="v3-sheet__note" role="status">
           The machine list came back with {malformed === 1 ? "an entry" : `${malformed} entries`} the app
-          could not read. Try again; if it persists, the assets API is misbehaving.
+          could not read. Those are missing below; the rest are fine to ask about.
         </p>
       )}
-      {machines !== null && machines.length === 0 && malformed === 0 && (
+      {notice === "unreadable" && (
+        <p className="v3-sheet__note v3-sheet__note--fail" role="alert">
+          Couldn&apos;t read your machine list — {malformed === 1 ? "its only entry" : `all ${malformed} entries`} came
+          back unreadable. This is a data problem, not an empty account. Try again; if it
+          persists, the assets API is misbehaving.
+        </p>
+      )}
+      {notice === "empty" && (
         <p className="v3-sheet__note">
           No machines yet. Add one to ask about it specifically.
         </p>
       )}
-      {machines !== null && machines.length > 0 && shown.length === 0 && (
+      {notice === "no-match" && (
         <p className="v3-sheet__note">No machine matches “{query}”.</p>
       )}
 
