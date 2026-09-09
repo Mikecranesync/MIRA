@@ -123,6 +123,27 @@ describe("machine list projection", () => {
     expect(partitionMachines([{ id: "a", tag: "CV-115", name: "ok", unsPath: "enterprise.p.l.cv_115" }]).unplaced).toBe(0);
   });
 
+  // An id-less row is a broken API response, not an unplaced asset. It is dropped
+  // (unroutable) but COUNTED separately, so an /api/assets regression on `id`
+  // cannot present as "you own no machines" (round-4 review on #3683).
+  it("counts id-less rows as malformed, separately from unplaced, and never as machines", () => {
+    const { machines, unplaced, malformed } = partitionMachines([
+      { tag: "CV-116", name: "no id, has path", unsPath: "enterprise.p.l.cv_116" },
+      { tag: "CV-117", name: "no id, no path" },
+      { id: "c", tag: "CV-118", name: "placed", unsPath: "enterprise.p.l.cv_118" },
+      { id: "d", tag: "CV-119", name: "unplaced" },
+    ]);
+    expect(machines.map((m) => m.tag)).toEqual(["CV-118"]);
+    expect(unplaced).toBe(1);
+    expect(malformed).toBe(2);
+  });
+
+  it("reports zero malformed for a well-formed list (positive control)", () => {
+    expect(partitionMachines([{ id: "a", tag: "CV-120", name: "ok", unsPath: "enterprise.p.l.cv_120" }]).malformed).toBe(0);
+    expect(partitionMachines([]).malformed).toBe(0);
+    expect(partitionMachines(null).malformed).toBe(0);
+  });
+
   it("returns an empty list for a non-array body instead of throwing", () => {
     // The route returns a bare array on success and `{error}` on failure; an
     // exception here would blank the whole shell rather than one sheet.
