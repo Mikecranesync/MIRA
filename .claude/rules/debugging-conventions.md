@@ -72,6 +72,21 @@ Concretely, before citing a result:
   lacks `markdown_it`. A traceback from the wrong interpreter is not a policy
   failure. Print `sys.executable` before blaming code.
 
+**The trap has two directions, and the second erodes trust between people.**
+A non-landing mutation produces **false accusation** as readily as false
+confidence: the run goes green and you conclude *someone else's* guard is
+decorative, or their fix is unverified. On 2026-09-08 one reviewer nearly filed
+defects against two other sessions' work from mutations that had never landed —
+each time it was `git diff --numstat` printing nothing, not judgement, that
+stopped it. "Be careful with other people's work" is an attitude and attitudes
+go first under deadline; **"read the diff before the result"** survives.
+
+**A near neighbour: counting prose about the mechanism instead of the
+mechanism.** A `grep -c 'role="status"'` that returns 2 before and 3 after looks
+like a behaviour change; two of the three were *comments about* `role="status"`.
+The same defect flags a button whose only `onClick` appears in a neighbouring
+comment. Strip comments, or assert on parsed structure, before counting.
+
 **Why this is a rule.** On 2026-09-08/09 a single session hit eight distinct
 instances in one night — a broken `&&` chain, a path filter that ran zero tests
 and exited 1, a reachability glob blind to two-level names, a local reproduction
