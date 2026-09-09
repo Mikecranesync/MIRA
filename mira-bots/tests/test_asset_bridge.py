@@ -236,7 +236,7 @@ def test_create_equipment_inserts_then_bridges_the_returned_id():
         conflict="ON CONFLICT (id) DO NOTHING",
         manufacturer="Dorner",
     )
-    (sql, params), *_ = cur.executed
+    _sp, (sql, params), *_ = cur.executed  # [0] is SAVEPOINT create_equipment
     assert sql == (
         "INSERT INTO cmms_equipment (tenant_id, equipment_number, manufacturer, created_at) "
         "VALUES (%s, %s, %s, NOW()) ON CONFLICT (id) DO NOTHING RETURNING id"
@@ -253,7 +253,9 @@ def test_create_equipment_skipped_by_on_conflict_bridges_nothing():
         cur, TENANT, "CV-207", columns={"id": "x"}, conflict="ON CONFLICT (id) DO NOTHING"
     )
     assert got == CreatedEquipment(id=None, bridge=None)
-    assert len(cur.executed) == 1, "no bridge for a row that was not inserted"
+    assert [x for x in cur.sql() if "SAVEPOINT" not in x] == [cur.sql()[1]], (
+        "no bridge for a row that was not inserted"
+    )
 
 
 @pytest.mark.parametrize(
@@ -560,6 +562,34 @@ def test_create_equipment_raises_when_the_bridge_fails_after_the_insert(monkeypa
     cur = FakeCursor(plan=[("eq-9",)])
     with pytest.raises(BridgeFailed, match="eq-9.*could not be placed.*error:PermissionDenied"):
         ab.create_equipment(cur, TENANT, "CV-207", columns={"equipment_number": "CV-207"})
+    # Codex round 4: the insert itself must be gone before the caller sees the exception,
+    # so a caller that continues its transaction (Atlas reconcile) cannot commit it.
+    sql = cur.sql()
+    assert sql[0] == "SAVEPOINT create_equipment" and sql[1].startswith(
+        "INSERT INTO cmms_equipment"
+    )
+    assert sql[-2:] == [
+        "ROLLBACK TO SAVEPOINT create_equipment",
+        "RELEASE SAVEPOINT create_equipment",
+    ]
+
+
+def test_create_equipment_releases_its_savepoint_on_success_and_on_conflict_skip():
+    ok = FakeCursor(plan=[("eq-9",), None, None, ("node-1",)])
+    create_equipment(ok, TENANT, "CV-207", columns={"equipment_number": "CV-207"})
+    assert (
+        ok.sql()[-1] == "RELEASE SAVEPOINT create_equipment"
+        and "ROLLBACK TO SAVEPOINT create_equipment" not in ok.sql()
+    )
+    skipped = FakeCursor(plan=[None])
+    create_equipment(
+        skipped, TENANT, "CV-207", columns={"id": "x"}, conflict="ON CONFLICT (id) DO NOTHING"
+    )
+    assert skipped.sql() == [
+        "SAVEPOINT create_equipment",
+        skipped.sql()[1],
+        "RELEASE SAVEPOINT create_equipment",
+    ]
 
 
 def test_hub_neon_work_order_fails_and_commits_nothing_when_the_bridge_fails(monkeypatch):

@@ -192,7 +192,8 @@ def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[s
         log.error("SKIP %s: %s", bar_code, exc)
         return False
     except BridgeFailed as exc:
-        # The row was rolled back with the bridge (D1-A): not synced, not counted.
+        # create_equipment rolled back its own insert before raising (savepoint), so
+        # reconcile's later commit holds nothing of this machine: not synced, not counted.
         log.error("FAILED %s: %s", bar_code, exc)
         return False
     return True

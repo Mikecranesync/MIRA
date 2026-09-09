@@ -141,9 +141,14 @@ def create_equipment(
     names = ", ".join([*bound, *exprs])
     values = ", ".join(["%s"] * len(bound) + list(exprs.values()))
     sql = f"INSERT INTO cmms_equipment ({names}) VALUES ({values}) {conflict} RETURNING id".strip()
+    # The insert and its bridge succeed or fail TOGETHER (Codex round 4 on #3715): a
+    # caller that catches BridgeFailed and continues its transaction (Atlas sync
+    # reconciles asset by asset) must not be able to commit the bare row.
+    cur.execute("SAVEPOINT create_equipment")
     cur.execute(sql, tuple(bound.values()))
     row = cur.fetchone()
     if not row:
+        cur.execute("RELEASE SAVEPOINT create_equipment")
         return CreatedEquipment(id=None, bridge=None)
     equipment_id = str(row[0])
     bridge = bridge_asset(
@@ -156,12 +161,15 @@ def create_equipment(
         model=model,
     )
     if not bridge.ok:
-        # bridge_asset already rolled back to its savepoint; the outer transaction is
-        # usable and MUST now fail — no half-machine commits (D1-A).
+        # bridge_asset rolled back to ITS savepoint; now drop the insert as well, so
+        # the outer transaction holds nothing of this machine (D1-A, atomic).
+        cur.execute("ROLLBACK TO SAVEPOINT create_equipment")
+        cur.execute("RELEASE SAVEPOINT create_equipment")
         raise BridgeFailed(
             f"equipment {equipment_id} (tenant {tenant}) inserted but could not be placed: "
             f"{bridge.reason} — the enclosing transaction must roll back (#3708)"
         )
+    cur.execute("RELEASE SAVEPOINT create_equipment")
     return CreatedEquipment(id=equipment_id, bridge=bridge)
 
 
