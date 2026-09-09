@@ -6,6 +6,8 @@ import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
 import { MicIcon } from "./icons";
 
+import { withoutStatusCode } from "./SendError";
+
 export interface ComposerProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
@@ -98,7 +100,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         // Preserve the question in the composer and show a plain-language error
         // (no status codes or technical details).
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const plainMessage = errorMessage.replace(/\b\d{3}\b/g, ""); // Strip HTTP status codes
+        const plainMessage = withoutStatusCode(errorMessage);
         dispatch({ type: "set-send-error", error: plainMessage.trim() || "Couldn't reach MIRA. Your message is saved." });
       }
     } else {

@@ -47,6 +47,12 @@ export interface HostHooks {
    */
   readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
   /**
+   * The one line under the first-run greeting saying what this conversation can
+   * answer from. The shell's default claims only what any notebook can do; a host
+   * that knows its scope (machine bound, sources loaded) should say so truthfully.
+   */
+  readonly groundingLine?: () => string | undefined;
+  /**
    * Suggest initial questions for first-run. The host provides up to three
    * suggested questions that send on tap; absent = no suggestions rendered.
    */

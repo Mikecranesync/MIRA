@@ -2,6 +2,20 @@ import type { Dispatch } from "react";
 import type { ShellAction } from "@factorylm/interaction";
 import type { HostHooks } from "./parts";
 
+/**
+ * Strip an HTTP status code from a message without eating the technician's own
+ * numbers. The first pass used /\b\d{3}\b/, which turns "PowerFlex 525" into
+ * "PowerFlex " — a model number is three digits far more often than an error is.
+ * Only 4xx/5xx are statuses, and only where a message actually reports one.
+ */
+export function withoutStatusCode(message: string): string {
+  return message
+    .replace(/\(\s*[45]\d\d\s*\)/g, "")
+    .replace(/\b(?:HTTP\s*|status\s*(?:code\s*)?)[45]\d\d\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export interface SendErrorProps {
   readonly error: string | null;
   readonly dispatch: Dispatch<ShellAction>;
@@ -28,7 +42,7 @@ export function SendError({ error, dispatch, draft, hooks }: SendErrorProps) {
       } catch (err) {
         // Retry failed; keep showing error with updated message
         const msg = err instanceof Error ? err.message : String(err);
-        dispatch({ type: "set-send-error", error: msg.replace(/\b\d{3}\b/g, "").trim() || "Couldn't reach MIRA." });
+        dispatch({ type: "set-send-error", error: withoutStatusCode(msg) || "Couldn't reach MIRA." });
       }
     }
   };

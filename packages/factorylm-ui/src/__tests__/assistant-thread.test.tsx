@@ -439,7 +439,7 @@ describe("assistant surface rendering", () => {
       const lines = content.split("\n");
       const offendingLines: string[] = [];
 
-      lines.forEach((line, i) => {
+      lines.forEach((line: string, i: number) => {
         // Skip comments and lines that clearly use tokens
         if (line.trim().startsWith("/*") || line.trim().startsWith("//")) return;
         if (line.includes("var(--fl-")) return;
@@ -469,7 +469,7 @@ describe("assistant surface rendering", () => {
       const lines = content.split("\n");
       const gradientLines: string[] = [];
 
-      lines.forEach((line, i) => {
+      lines.forEach((line: string, i: number) => {
         if (line.trim().startsWith("/*") || line.trim().startsWith("//")) return;
         if (/linear-gradient|radial-gradient|conic-gradient|repeating-/.test(line)) {
           gradientLines.push(`Line ${i + 1}: ${line.trim()}`);
