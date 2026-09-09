@@ -162,7 +162,14 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
   // technician sees.
   useEffect(() => {
     dispatch({ type: "set-send-error", error: chatError ?? null });
-  }, [chatError]);
+    // The composer clears the draft at send time, so by the time a failure
+    // arrives the question is gone. Put it back — host-owned, because only the
+    // host knows what was in flight. The reducer has no idea what failed.
+    if (chatError && !state.draft.trim()) {
+      const q = pending?.q ?? liveTurns.at(-1)?.q ?? "";
+      if (q) dispatch({ type: "set-draft", draft: q });
+    }
+  }, [chatError, pending, liveTurns, state.draft]);
 
   const hooks: HostHooks = {
     onSend: handlers.onSend,
@@ -178,14 +185,9 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
   };
 
   return <div className="unified-host" data-testid="unified-chat">
-    {chatError != null && (
-      <div className="fl-error" role="alert">
-        <p>{chatError}</p>
-        {canRetry && handlers.onRetry ? (
-          <button type="button" onClick={() => handlers.onRetry?.()}>Retry</button>
-        ) : null}
-      </div>
-    )}
+    {/* No host-level error banner: the shell's SendError is the surface now. It
+        renders in the thread, strips status codes, offers the host's own Retry
+        and dismisses — keeping this too drew two error surfaces for one failure. */}
     <FactoryLMShell
       state={state}
       dispatch={dispatch}

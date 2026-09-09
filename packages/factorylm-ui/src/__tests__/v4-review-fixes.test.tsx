@@ -1,6 +1,17 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { withoutStatusCode } from "../SendError";
+import { renderHarness, type HarnessView } from "./harness";
+
+const views: HarnessView[] = [];
+afterEach(() => { views.splice(0).forEach((v) => v.cleanup()); });
+
+function show(hooks: Record<string, unknown>): HarnessView {
+  const view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant", hooks });
+  views.push(view);
+  view.dispatch({ type: "set-send-error", error: "Couldn't reach MIRA." });
+  return view;
+}
 
 const CONVERSATION_CSS = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
 
@@ -36,5 +47,30 @@ describe("withoutStatusCode", () => {
 
   it("leaves an already-plain message untouched", () => {
     expect(withoutStatusCode("Couldn't reach MIRA.")).toBe("Couldn't reach MIRA.");
+  });
+});
+
+describe("Try again is never a dead button", () => {
+  it("offers no Try again when neither a host retry nor a draft exists", () => {
+    // On the real host the composer clears the draft at send time, so a
+    // draft-only retry is exactly the dead control Stop was designed to avoid.
+    const view = show({});
+    expect(view.container.querySelector('[aria-label="Send error"]')).not.toBeNull();
+    expect(view.buttonNamed("Try again")).toBeNull();
+  });
+
+  it("prefers the host's retry, which is the only layer that knows what failed", () => {
+    const retried: string[] = [];
+    const view = show({ onRetry: (id: string) => { retried.push(id); } });
+    const btn = view.buttonNamed("Try again");
+    expect(btn).not.toBeNull();
+    view.click(btn!);
+    expect(retried.length).toBe(1);
+  });
+
+  it("only promises the message is saved when a draft actually holds it", () => {
+    const view = show({});
+    const detail = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
+    expect(detail).not.toContain("saved below");
   });
 });
