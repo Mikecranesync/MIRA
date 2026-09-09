@@ -228,9 +228,17 @@ describe("V3 — mounted without disturbing the existing product", () => {
         expect(css).toMatch(new RegExp(`\\${sel}\\{[^}]*position:relative`));
         expect(css).toContain(`${sel}::after`);
       }
-      for (const sel of [".v3-actions button", ".v3-noticerow button"]) {
+      // `.v3-noticerow a` joined this set when the Sign-in control stopped being
+      // a <button> nested in an <a> (invalid HTML, two overlapping controls for
+      // one action). The anchor must carry the SAME 48px expansion the button
+      // had, or the fix would have traded an accessibility defect for a
+      // touch-target one. Selectors may be grouped across lines, so match the
+      // declaration block that follows the group rather than a single selector
+      // immediately followed by `{`.
+      for (const sel of [".v3-actions button", ".v3-noticerow button", ".v3-noticerow a"]) {
         expect(css).toContain(`${sel}::after`);
-        expect(css).toMatch(new RegExp(`\\${sel.replace(" ", " ")}\\{[^}]*position:relative`));
+        const block = new RegExp(`\\${sel}[^{}]*\\{[^}]*position:relative`);
+        expect(css).toMatch(block);
       }
       // The insets must actually reach 48 from each visual height.
       for (const inset of ["-2px", "-5px", "-6px"]) {
@@ -398,5 +406,19 @@ describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
     expect(page).toContain("const alive = ()");
     expect((page.match(/if \(!alive\(\)\) return;/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(page).toContain("if (alive()) setBusy(false)");
+  });
+
+  // Two controls (＋ attachment, ◉ camera) shipped to production rendering as
+  // enabled buttons with accessible labels and NO onClick — so assistive tech
+  // announced an attachment control that did nothing when activated. This is an
+  // invariant, not a moved string: it re-derives the button list from source
+  // every run, so it fails for ANY future handler-less button, not just those two.
+  it("every button in the surface carries a handler — no dead affordances", () => {
+    const buttons = page.match(/<button[^>]*>/g) ?? [];
+    expect(buttons.length).toBeGreaterThan(3); // the check must see a real population
+    const dead = buttons.filter(
+      (b) => !b.includes("onClick") && !b.includes("type=\"submit\""),
+    );
+    expect(dead).toEqual([]);
   });
 });
