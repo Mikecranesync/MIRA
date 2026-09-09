@@ -29,6 +29,12 @@ function rowToAsset(r: Record<string, unknown>) {
     createdAt: r.created_at ?? null,
     parentAssetId: r.parent_asset_id ?? null,
     qrGeneratedAt: r.qr_generated_at ?? null,
+    // The asset's place in the Unified Namespace (cmms_equipment.uns_path, ltree →
+    // text). A direct-connection surface — V3's scope picker is one — may bind a
+    // question to a machine ONLY if it can name where that machine is; a row with
+    // no path is not a scope it may offer (.claude/rules/direct-connection-uns-
+    // certified.md). Additive: every existing consumer of this list reads by key.
+    unsPath: r.uns_path ?? null,
   };
 }
 
@@ -60,7 +66,8 @@ export async function GET(req: Request) {
           equipment_type, location, department, criticality,
           work_order_count, total_downtime_hours,
           last_maintenance_date, last_work_order_at,
-          last_reported_fault, description, created_at, parent_asset_id
+          last_reported_fault, description, created_at, parent_asset_id,
+          uns_path::text AS uns_path
         FROM cmms_equipment
         WHERE ${filters.join(" AND ")}
         ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC`,

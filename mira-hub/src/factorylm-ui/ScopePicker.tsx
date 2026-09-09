@@ -40,6 +40,9 @@ import { API_BASE } from "@/lib/config";
 
 export type Machine = {
   id: string;
+  /** Where the machine sits in the Unified Namespace. Non-empty by construction:
+   *  a row without one never becomes a Machine (see `partitionMachines`). */
+  unsPath: string;
   tag: string;
   name: string;
   manufacturer: string | null;
@@ -157,6 +160,7 @@ export function filterMachines(machines: Machine[], query: string): Machine[] {
 
 type AssetRow = {
   id?: unknown;
+  unsPath?: unknown;
   tag?: unknown;
   name?: unknown;
   manufacturer?: unknown;
@@ -165,24 +169,41 @@ type AssetRow = {
 };
 
 /**
- * Project `/api/assets` rows onto the picker's shape.
+ * Project `/api/assets` rows onto the picker's shape, keeping only machines the
+ * picker is allowed to offer.
  *
- * Rows without an id are DROPPED, not rendered with a blank one: a row you
- * cannot route to is a dead option, and picking it would send the question to
- * `/api/assets/undefined/chat/`. A machine with no description falls back to
- * its tag rather than showing an empty line.
+ * Two kinds of row are excluded, for two different reasons:
+ *
+ *  - No id → DROPPED silently. A row you cannot route to is a dead option, and
+ *    picking it would send the question to `/api/assets/undefined/chat/`.
+ *  - No UNS path → excluded and COUNTED as `unplaced`. Binding a question to a
+ *    machine is a direct connection, and a direct connection must carry a
+ *    resolvable UNS identifier or refuse — it may not proceed and ask later
+ *    (.claude/rules/direct-connection-uns-certified.md). A machine nobody has
+ *    placed in the namespace is therefore not a scope, however real it is in
+ *    the CMMS. The count exists so the sheet can SAY why those machines are
+ *    missing instead of presenting a silently shorter list.
+ *
+ * A machine with no description falls back to its tag rather than an empty line.
  */
-export function toMachines(rows: unknown): Machine[] {
-  if (!Array.isArray(rows)) return [];
-  const out: Machine[] = [];
+export function partitionMachines(rows: unknown): { machines: Machine[]; unplaced: number } {
+  if (!Array.isArray(rows)) return { machines: [], unplaced: 0 };
+  const machines: Machine[] = [];
+  let unplaced = 0;
   for (const raw of rows) {
     const r = (raw ?? {}) as AssetRow;
     const id = typeof r.id === "string" ? r.id : null;
     if (!id) continue;
+    const unsPath = typeof r.unsPath === "string" ? r.unsPath.trim() : "";
+    if (!unsPath) {
+      unplaced += 1;
+      continue;
+    }
     const tag = typeof r.tag === "string" && r.tag ? r.tag : id;
     const name = typeof r.name === "string" && r.name.trim() ? r.name.trim() : tag;
-    out.push({
+    machines.push({
       id,
+      unsPath,
       tag,
       name,
       manufacturer: typeof r.manufacturer === "string" ? r.manufacturer : null,
@@ -190,7 +211,12 @@ export function toMachines(rows: unknown): Machine[] {
       location: typeof r.location === "string" ? r.location : null,
     });
   }
-  return out;
+  return { machines, unplaced };
+}
+
+/** The offerable machines only — `partitionMachines` without the count. */
+export function toMachines(rows: unknown): Machine[] {
+  return partitionMachines(rows).machines;
 }
 
 export default function ScopePicker({
@@ -203,6 +229,7 @@ export default function ScopePicker({
   onClose: () => void;
 }) {
   const [machines, setMachines] = useState<Machine[] | null>(null);
+  const [unplaced, setUnplaced] = useState(0);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -213,7 +240,12 @@ export default function ScopePicker({
       // `/api/assets` returns a BARE array (route.ts: `rows.map(rowToAsset)`),
       // not an envelope. Verified against the route rather than assumed — an
       // envelope guess would yield an empty list and read as "no machines".
-      .then((d) => live && setMachines(toMachines(d)))
+      .then((d) => {
+        if (!live) return;
+        const { machines: offerable, unplaced: excluded } = partitionMachines(d);
+        setMachines(offerable);
+        setUnplaced(excluded);
+      })
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
@@ -261,6 +293,15 @@ export default function ScopePicker({
         </p>
       )}
       {!failed && machines === null && <p className="v3-sheet__note">Loading…</p>}
+      {/* Honest about what is NOT offered. A technician who sees fewer machines
+          here than on the assets page should be told the reason, not left to
+          suspect the list is broken. */}
+      {machines !== null && unplaced > 0 && (
+        <p className="v3-sheet__note">
+          {unplaced === 1 ? "1 machine is not" : `${unplaced} machines are not`} placed in the
+          namespace yet, so {unplaced === 1 ? "it" : "they"} cannot be asked about specifically.
+        </p>
+      )}
       {machines !== null && machines.length === 0 && (
         <p className="v3-sheet__note">
           No machines yet. Add one to ask about it specifically.

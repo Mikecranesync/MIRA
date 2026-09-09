@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   askEndpointFor,
   filterMachines,
+  partitionMachines,
   scopeHint,
   scopeIdentity,
   scopeLabel,
@@ -19,6 +20,7 @@ import {
 
 const cv101: Machine = {
   id: "3f1a2b4c-0000-4000-8000-000000000001",
+  unsPath: "enterprise.plant.line_1.cv_101",
   tag: "CV-101",
   name: "Infeed conveyor",
   manufacturer: "Rockwell Automation",
@@ -66,13 +68,59 @@ describe("scope labelling", () => {
 describe("machine list projection", () => {
   it("drops a row with no id rather than rendering an unroutable option", () => {
     // Picking such a row would POST to /api/assets/undefined/chat/.
-    const rows = [{ tag: "CV-102", name: "No id here" }, { id: "a", tag: "CV-103", name: "Fine" }];
+    const rows = [
+      { tag: "CV-102", name: "No id here", unsPath: "enterprise.p.l.cv_102" },
+      { id: "a", tag: "CV-103", name: "Fine", unsPath: "enterprise.p.l.cv_103" },
+    ];
     const out = toMachines(rows);
     expect(out.map((m) => m.tag)).toEqual(["CV-103"]);
   });
 
   it("falls back to the tag when a machine has no description", () => {
-    expect(toMachines([{ id: "a", tag: "CV-104", name: "" }])[0].name).toBe("CV-104");
+    expect(toMachines([{ id: "a", tag: "CV-104", name: "", unsPath: "enterprise.p.l.cv_104" }])[0].name).toBe("CV-104");
+  });
+
+  // Binding a question to a machine is a direct connection; a direct connection
+  // must carry a resolvable UNS identifier or refuse. A machine with no place in
+  // the namespace is real in the CMMS and still not a scope this picker may offer.
+  it("drops a machine with no UNS path — a scope you cannot place cannot be bound", () => {
+    const rows = [
+      { id: "a", tag: "CV-105", name: "Placed", unsPath: "enterprise.p.l.cv_105" },
+      { id: "b", tag: "CV-106", name: "Never placed" },
+    ];
+    expect(toMachines(rows).map((m) => m.tag)).toEqual(["CV-105"]);
+  });
+
+  it("treats an empty or non-string UNS path as unplaced, not as an identity", () => {
+    const rows = [
+      { id: "a", tag: "CV-107", name: "blank", unsPath: "" },
+      { id: "b", tag: "CV-108", name: "spaces", unsPath: "   " },
+      { id: "c", tag: "CV-109", name: "number", unsPath: 42 },
+    ];
+    expect(toMachines(rows)).toEqual([]);
+  });
+
+  it("carries the UNS path onto the machine, so a bound scope can always say where it is", () => {
+    expect(toMachines([{ id: "a", tag: "CV-110", name: "x", unsPath: "enterprise.p.l.cv_110" }])[0].unsPath).toBe(
+      "enterprise.p.l.cv_110",
+    );
+  });
+
+  it("counts unplaced machines so the sheet can say why they are missing", () => {
+    const { machines, unplaced } = partitionMachines([
+      { id: "a", tag: "CV-111", name: "ok", unsPath: "enterprise.p.l.cv_111" },
+      { id: "b", tag: "CV-112", name: "no path" },
+      { id: "c", tag: "CV-113", name: "blank path", unsPath: "" },
+      // No id: unroutable, dropped — and NOT counted, because it was never a
+      // machine the technician could have been offered under any rule.
+      { tag: "CV-114", name: "no id", unsPath: "enterprise.p.l.cv_114" },
+    ]);
+    expect(machines.map((m) => m.tag)).toEqual(["CV-111"]);
+    expect(unplaced).toBe(2);
+  });
+
+  it("reports zero unplaced when every machine is placed (positive control)", () => {
+    expect(partitionMachines([{ id: "a", tag: "CV-115", name: "ok", unsPath: "enterprise.p.l.cv_115" }]).unplaced).toBe(0);
   });
 
   it("returns an empty list for a non-array body instead of throwing", () => {
@@ -86,7 +134,7 @@ describe("machine list projection", () => {
 describe("filtering", () => {
   const list: Machine[] = [
     cv101,
-    { id: "2", tag: "PMP-7", name: "Coolant pump", manufacturer: "Grundfos", model: "CR-15", location: "Line 2" },
+    { id: "2", unsPath: "enterprise.plant.line_2.pmp_7", tag: "PMP-7", name: "Coolant pump", manufacturer: "Grundfos", model: "CR-15", location: "Line 2" },
   ];
 
   it("matches on tag, maker and location — what a technician actually types", () => {
@@ -116,7 +164,7 @@ describe("filtering", () => {
  */
 describe("every scope-derived string agrees about identity", () => {
   const cv101: Machine = {
-    id: "id-1", tag: "CV-101", name: "Infeed conveyor",
+    id: "id-1", unsPath: "enterprise.plant.line_1.cv_101", tag: "CV-101", name: "Infeed conveyor",
     manufacturer: "Rockwell Automation", model: "PowerFlex 525", location: "Line 1",
   };
 
@@ -163,7 +211,7 @@ describe("every scope-derived string agrees about identity", () => {
 describe("machine starters are groundable, never invented", () => {
   it("asks about things the asset path can retrieve", () => {
     const hints = suggestionsFor({
-      id: "i", tag: "CV-101", name: "Infeed conveyor",
+      id: "i", unsPath: "enterprise.plant.line_1.cv_101", tag: "CV-101", name: "Infeed conveyor",
       manufacturer: null, model: null, location: null,
     }).map((s) => s.q);
     expect(hints).toContain("What faults has this machine had before?");
@@ -173,7 +221,7 @@ describe("machine starters are groundable, never invented", () => {
     // A starter printing "F0004" for an arbitrary bound machine would be a
     // fabrication produced by the UI itself, before any retrieval happened.
     for (const s of suggestionsFor({
-      id: "i", tag: "CV-101", name: "Infeed conveyor",
+      id: "i", unsPath: "enterprise.plant.line_1.cv_101", tag: "CV-101", name: "Infeed conveyor",
       manufacturer: null, model: null, location: null,
     })) {
       expect(s.q).not.toMatch(/\b[A-Z]{1,2}\d{3,5}\b/);
