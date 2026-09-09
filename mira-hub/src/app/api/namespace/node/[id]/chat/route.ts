@@ -73,6 +73,71 @@ function getProviders(): CascadeProvider[] {
   ];
 }
 
+/**
+ * Drains one provider's SSE body, forwarding content deltas to the client.
+ *
+ * Returns whether this provider actually SERVED an answer — not whether its
+ * body closed cleanly. A provider that terminates correctly (`[DONE]`, or
+ * `finish_reason: "stop"`) having emitted no delta produced nothing, and
+ * reporting that as success stops the cascade and hands the client an empty
+ * 200 that reads as a successful blank answer. (Round 3, F2.)
+ *
+ * Unlike the asset-chat clone, this route forwards the terminator itself — so
+ * a provider that served nothing must NOT emit one either, or the client
+ * stream would close before the cascade's next provider (or its outage frame)
+ * could be written after it.
+ *
+ * Exported for test — the defect lives in the loop's terminal condition, so
+ * a test of the frame parser alone could not express it.
+ */
+export async function drainProviderStream(
+  body: ReadableStream<Uint8Array>,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  enc: TextEncoder,
+  responseBuffer: string[],
+): Promise<boolean> {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  let served = false;
+
+  const finish = () => {
+    if (served) controller.enqueue(enc.encode("data: [DONE]\n\n"));
+    return served;
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === "[DONE]") return finish();
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: { delta?: { content?: string }; finish_reason?: string }[];
+        };
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) {
+          served = true;
+          responseBuffer.push(delta);
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+        }
+        if (parsed.choices?.[0]?.finish_reason === "stop") return finish();
+      } catch {
+        // malformed SSE chunk — skip
+      }
+    }
+  }
+  return served;
+}
+
 async function streamFromProvider(
   provider: CascadeProvider,
   messages: ChatMessage[],
@@ -108,45 +173,7 @@ async function streamFromProvider(
 
   if (!res.ok || !res.body) return false;
 
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += dec.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === "[DONE]") {
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        return true;
-      }
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: { delta?: { content?: string }; finish_reason?: string }[];
-        };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          responseBuffer.push(delta);
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
-        }
-        if (parsed.choices?.[0]?.finish_reason === "stop") {
-          controller.enqueue(enc.encode("data: [DONE]\n\n"));
-          return true;
-        }
-      } catch {
-        // malformed SSE chunk — skip
-      }
-    }
-  }
-  return true;
+  return drainProviderStream(res.body, controller, enc, responseBuffer);
 }
 
 // ── Node context ─────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ vi.mock("@/lib/manual-rag", () => ({
   ),
 }));
 
-import { POST } from "../route";
+import { POST, drainProviderStream } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { appendManualContext, retrieveNodeChunks } from "@/lib/manual-rag";
@@ -275,5 +275,65 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     expect(appendManualContext).toHaveBeenCalled();
     const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
     expect(chunks.map((chunk) => chunk.content)).toEqual(["Approved node context"]);
+  });
+});
+
+// Round 3, F2. Same defect as the asset-chat clone, plus one this route owns
+// alone: it forwards the terminator itself, so a provider that served nothing
+// must not emit one either — otherwise the client stream closes before the
+// cascade's next provider (or its outage frame) can be written after it.
+describe("drainProviderStream — no answer means no success and no terminator", () => {
+  function sse(...frames: string[]): ReadableStream<Uint8Array> {
+    const enc = new TextEncoder();
+    return new ReadableStream({
+      start(c) {
+        for (const f of frames) c.enqueue(enc.encode(`data: ${f}\n\n`));
+        c.close();
+      },
+    });
+  }
+
+  function sink() {
+    const written: string[] = [];
+    const dec = new TextDecoder();
+    return {
+      written,
+      controller: {
+        enqueue: (chunk: Uint8Array) => written.push(dec.decode(chunk)),
+      } as unknown as ReadableStreamDefaultController<Uint8Array>,
+    };
+  }
+
+  const delta = (text: string) => JSON.stringify({ choices: [{ delta: { content: text } }] });
+  const stop = JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] });
+
+  it("serves, then forwards the terminator", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(delta("hi"), "[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(true);
+    expect(buf).toEqual(["hi"]);
+    expect(written.join("")).toContain("data: [DONE]");
+  });
+
+  it("returns FALSE and forwards NO terminator when [DONE] arrives with no delta", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse("[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+    expect(written.join("")).not.toContain("[DONE]");
+  });
+
+  it("returns FALSE and forwards NO terminator on a bare finish_reason stop", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(stop), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(written.join("")).not.toContain("[DONE]");
+  });
+
+  it("returns FALSE when the body closes having emitted nothing", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
   });
 });

@@ -47,7 +47,7 @@ vi.mock("@/lib/machine-context-packet", () => ({
   renderMachineEvidenceSection: vi.fn(() => ""),
 }));
 
-import { POST } from "../route";
+import { POST, drainProviderStream } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
@@ -829,5 +829,78 @@ describe("POST /api/assets/[id]/chat", () => {
   it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {
     expect(KB_GAP_ADMISSION).toContain("knowledge base");
     expect(KB_GAP_ADMISSION).toContain(GAP_MARKER);
+  });
+});
+
+// Round 3, F2. `streamFromProvider` reported success whenever a provider's
+// body closed, so a provider that terminated cleanly having emitted nothing
+// stopped the cascade and handed the client an empty 200 — which the surface
+// renders as a successful blank answer rather than an outage.
+describe("drainProviderStream — a provider that served nothing is not a success", () => {
+  function sse(...frames: string[]): ReadableStream<Uint8Array> {
+    const enc = new TextEncoder();
+    return new ReadableStream({
+      start(c) {
+        for (const f of frames) c.enqueue(enc.encode(`data: ${f}\n\n`));
+        c.close();
+      },
+    });
+  }
+
+  function sink() {
+    const written: string[] = [];
+    const dec = new TextDecoder();
+    return {
+      written,
+      controller: {
+        enqueue: (chunk: Uint8Array) => written.push(dec.decode(chunk)),
+      } as unknown as ReadableStreamDefaultController<Uint8Array>,
+    };
+  }
+
+  const delta = (text: string) => JSON.stringify({ choices: [{ delta: { content: text } }] });
+  const stop = JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] });
+
+  it("returns true when deltas were served and the stream said [DONE]", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(delta("hi"), "[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(true);
+    expect(buf).toEqual(["hi"]);
+    expect(written.join("")).toContain('"content":"hi"');
+  });
+
+  it("returns FALSE when [DONE] arrives with no delta — the cascade must advance", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse("[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns FALSE when finish_reason 'stop' arrives with no delta", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(stop), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns FALSE when the body simply closes having emitted nothing", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns true for a partial answer — that text is already on the wire", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(delta("half")), controller, new TextEncoder(), buf)).resolves.toBe(true);
+    expect(buf).toEqual(["half"]);
+  });
+
+  it("ignores malformed frames without counting them as served", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse("{not json", "[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
   });
 });
