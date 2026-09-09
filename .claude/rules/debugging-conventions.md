@@ -37,11 +37,57 @@ bcrypt prefix guesses on the Atlas signin work).
 - A "MISSING" / 404 / 401 result against an unverified name or path is
   **inconclusive**, not a finding. Confirm the name first, then trust the result.
 
+## 3. Positive-control every instrument before believing what it says
+
+**Before treating any red or green as evidence, prove the instrument can produce
+the other answer.** A check that cannot express failure has not been run — it has
+been *assumed*. The failure looks identical to success, which is why this needs a
+rule rather than care.
+
+Concretely, before citing a result:
+
+- **A mutation is only "caught" if the UNMUTATED run first FINDS the tests and
+  PASSES.** Confirm the test count. `vitest run "src/app/api/foo/\[id\]/bar"`
+  matches nothing, prints `No test files found`, and exits **1** — indistinguishable
+  from a caught mutation. So does a typo in a path filter.
+- **Confirm the mutation actually landed**, e.g. `git diff --numstat` shows the
+  expected insertions/deletions at the expected line — not appended after a
+  trailing `exit 0`, not in a comment, not in a sibling copy of the string.
+- **Confirm the mutation fails the RIGHT assertion, by name.** A red at a different
+  test means the mutation exercised something else and the target is still
+  undefended.
+- **A clean scan is only clean if you know what it could not see.** State the
+  exclusions. `git for-each-ref 'refs/remotes/origin/*' --contains <sha>` cannot
+  match two-level branch names (`origin/fix/my-branch`) and returns 0 for a commit
+  provably on one — use unglobbed `refs/remotes/`. `git grep -E "\bword\b"` matches
+  nothing in this repo. Nested worktrees inflate or invent results for any scanner
+  that walks the tree.
+- **Never `cmd | tail` or `cmd | grep` a gate** — `$?` is the pipe's. Use
+  `if cmd > log 2>&1; then rc=0; else rc=$?; fi`, or `PIPESTATUS`.
+- **`&&` chains silently truncate on a zero-count `grep -c`** (exit 1), swallowing
+  every later check in the chain. Separate verification steps with `;` or run them
+  individually.
+- **Two interpreters, two answers.** `/usr/bin/python3` is 3.9 here and raises
+  `TypeError` on `X | None` annotations *before doing any work*; Homebrew's 3.14
+  lacks `markdown_it`. A traceback from the wrong interpreter is not a policy
+  failure. Print `sys.executable` before blaming code.
+
+**Why this is a rule.** On 2026-09-08/09 a single session hit eight distinct
+instances in one night — a broken `&&` chain, a path filter that ran zero tests
+and exited 1, a reachability glob blind to two-level names, a local reproduction
+that "confirmed" a different failure, a `tsc` delta misread as baseline, an
+eslint exit-2 read as a lint state, a mutation batch voided by a shell-collapsed
+argument, and a review "dispatched" to an idle session that never started. Every
+one returned the shape the reader expected. **The positive control caught every
+instance it was applied to, and nothing else caught any of them.**
+
 ## When this applies
 
 - Any perf/latency/slowness diagnosis in `mira-bots/`, `mira-hub/`,
   `mira-pipeline/`, `mira-web/`, or infra.
 - Any db-inspect / row-existence check, any new SQL, any auth-path probe.
+- **Any mutation test, guard verification, CI-failure reproduction, or repo-wide
+  scan whose result you intend to state as a fact.**
 
 ## When this does NOT apply
 
