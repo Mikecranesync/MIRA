@@ -94,7 +94,9 @@ const isolatedStore = join(workspaceRoot, "node_modules", ".bun");
 const skippedStoreEntries: string[] = [];
 if (existsSync(isolatedStore)) {
   for (const entry of await readdir(isolatedStore, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === "node_modules") continue;
+    // Accept symlinks as well as directories — the same shape auditNodeModules
+    // accepts — so a linked store entry is audited rather than silently skipped.
+    if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === "node_modules") continue;
     const storeNodeModules = join(isolatedStore, entry.name, "node_modules");
     if (existsSync(storeNodeModules)) await auditNodeModules(storeNodeModules);
     else skippedStoreEntries.push(entry.name);

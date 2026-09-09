@@ -18,7 +18,7 @@ import { realpathSync } from "node:fs";
 // assertion that it still holds — one resolved realpath, checked by name, instead
 // of a hook error five frames from its cause.
 
-/** Modules that must resolve to a single instance; `bootstrap:ui` links each one. */
+/** Modules that must resolve to a single instance; the workspace provides each once. */
 const SHARED_MODULES = ["react", "react-dom"] as const;
 
 type Resolution = { path: string } | { error: string };
