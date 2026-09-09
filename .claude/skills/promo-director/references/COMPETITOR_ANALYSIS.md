@@ -1,8 +1,34 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-09
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-09
+
+*Cutoff: 2026-05-03. New signal since last refresh.*
+
+### Most actionable change for the playbook
+
+MaintainX shipped AI-powered OT tag auto-mapping (Ignition, MQTT, Kepware) in March 2026 — then was acquired by Autodesk for $3.6B in May 2026. This is a direct encroachment on MIRA's UNS/machine-context layer: MaintainX now ingests OT signals, auto-maps tags to assets with confidence scores, and triggers condition-based maintenance. Backed by Autodesk's enterprise distribution, it is the most material competitive shift since the initial cache. MIRA's counterplay: grounded citations from OEM fault libraries + UNS-certified context, not generic tag telemetry.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Smart Tag Mapping for OT Data Connectors (Ignition, Kepware, MQTT), launched Mar 2026 in Beta: https://www.getmaintainx.com/blog/whats-new-at-maintainx-march-2026 — AI auto-recommends tag-to-asset mappings with suggested meter names, units, and confidence scores; directly competes on the machine-context layer
+- **MaintainX** — Report Builder AI (Apr 2026): https://www.getmaintainx.com/blog/whats-new-at-maintainx-april-2026 — build custom maintenance reports in natural language, no spreadsheets
+- **MaintainX → Autodesk** — $3.6B acquisition announced May 2026, completed by summer: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — largest acquisition in Autodesk history; MaintainX joins Autodesk Operations Solutions (Tandem, FlexSim, Fusion Operations); enterprise distribution and platform resources now behind the CMMS
+
+**Automation / SCADA**
+- No new launch video found for Rockwell (Automation Fair 2026 is Nov 16–19, Boston — not yet); Inductive Automation: Ignition 8.3.3 released Jan 2026, no new promo pattern
+
+**B2B SaaS / dev-tools**
+- **Figma** — Config 2026 keynote (Jun 23–25): https://www.youtube.com/watch?v=2ZCc4k_IV5w — hook: "AI has lowered the floor, but it has not raised the ceiling. Designers, creatives, builders: You will raise the ceiling." — new frame vs 2025; launches: Figma Motion (timeline animation + shaders, 3D transforms, export MP4/GIF), Code Layers, Figma Agent
+- **OpenAI** — ChatGPT Work (Jul 9): https://openai.com/index/introducing-openai-presence/ — agent gathers context across connected apps, completes tasks independently for hours; Presence platform (Jul 22): enterprise managed-agent deployment, OpenAI engineers build+deploy agents into customer workflows
+- **Cursor / SpaceXAI** — Cursor acquired by SpaceXAI (SpaceX's AI division) for $60B all-stock (Jun 2026, closed Aug 2026); Grok Bot launched Aug 11: https://startupfortune.com/spacexai-and-cursor-launch-grok-bot-an-always-on-team-of-ai-agents/ — "always-on AI agents that sign into apps, retain memory across tasks, and coordinate with each other"
+- **Anthropic** — Claude Design launched Apr 17, 2026: https://www.anthropic.com/news/claude-design-anthropic-labs — visual design tool powered by Claude Opus 4.7; no standalone promo video found
 
 ---
 
@@ -86,7 +112,18 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position (updated Sep 2026):** Autodesk company ($3.6B acquisition, May 2026). 13,000+ companies. Expected $135M+ ARR 2026. Now part of Autodesk Operations Solutions alongside Tandem and FlexSim. Enterprise distribution has materially changed the competitive weight.
+
+**Smart Tag Mapping (Mar 2026 Beta)**
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-march-2026
+- AI-powered enhancement to OT Data Connectors (Ignition, Kepware, MQTT): auto-recommends tag-to-asset mappings with meter names, units, and confidence scores
+- Directly competes on the machine-context / OT integration layer
+- No dedicated promo video confirmed; feature-blog release format
+
+**Report Builder AI (Apr 2026)**
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-april-2026
+- Build custom maintenance reports via natural language; no spreadsheets or manual exports
+- No dedicated promo video confirmed
 
 ---
 
@@ -291,31 +328,57 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### OpenAI
 
+**ChatGPT Work (Jul 9, 2026)**
+- Source: https://www.digitalapplied.com/blog/chatgpt-work-openai-agent-launch-2026
+- Agent takes an outcome, gathers information across connected apps and workflows, breaks the job into smaller steps, and completes them independently — staying with complex projects for hours
+- Pattern: "outcome-in, finished artifact out" — no step-by-step user direction needed
+- Also launched: GPT-5.6, Codex desktop integration, hosted sites service
+
+**OpenAI Presence platform (Jul 22, 2026)**
+- Source: https://openai.com/index/introducing-openai-presence/
+- Enterprise-managed deployment: voice and chat AI agents with access to internal systems, configurable policies, Codex-powered improvement loops
+- Launched in limited GA; OpenAI engineers build+deploy rather than self-service
+- Pattern: "AI-as-managed-service" — not buy-a-model-and-integrate, but OpenAI builds the agent into your workflows. New enterprise model for industrial AI to watch.
+
+**Prior entries**
 - "Inside OpenAI: 2026 is the year of agents": https://www.youtube.com/watch?v=z1ISq9Ty4Cg
 - Key claim: Codex agent "grown 20x since August, now serves trillions of tokens weekly"
-- Multiple 2025 launches: GPT-4o Image, Sora standalone app, group chats
 
 ---
 
 ### Anthropic
 
+**Claude Design (Apr 17, 2026)**
+- Source: https://www.anthropic.com/news/claude-design-anthropic-labs
+- Visual design collaboration tool; powered by Claude Opus 4.7
+- Signals Anthropic moving into direct creative-tool market (not just API/model provider)
+- No standalone promo video confirmed
+
+**Prior entries**
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+- 29+ product launches Jan–May 2026 (roughly every two weeks): models, agents, desktop apps, certification programs
+- No standalone promo video; analyst/conference appearances + changelog posts as primary channel
 
 ---
 
-### Cursor
+### Cursor / SpaceXAI
 
-**Product trajectory (all video-light)**
+**Acquisition (Jun–Aug 2026)**
+- SpaceXAI (SpaceX's AI division) acquired Cursor for $60B all-stock (Jun 2026 agreement, Aug 2026 close)
+- Cursor team now works across Grok, Grok Build, Grok Bot, Grok API, and Cursor
+- Competitive implication: Cursor is no longer an independent dev-tool company; it is a distribution channel inside the largest aerospace + AI platform on the planet
+
+**Grok Bot launch (Aug 11, 2026)**
+- Source: https://startupfortune.com/spacexai-and-cursor-launch-grok-bot-an-always-on-team-of-ai-agents/
+- "Always-on AI agents that sign into apps, retain memory across tasks, and coordinate with each other"
+- Pattern: shifts from "AI coding copilot" to "team of persistent agents" — agents hold state and sign into services, not just complete single tasks
+- No dedicated YouTube promo video confirmed; news-coverage format
+
+**Prior trajectory (still relevant)**
 - Channel: https://www.youtube.com/@cursor_ai
-- Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
-- Cursor 3.0 (Apr 2, 2026): Agents Window
-- Cursor 3.1 (Apr 13, 2026): Tiled Layout
-- 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
-- ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+- Cursor 3.0 (Apr 2026): Agents Window; ARR: $2B+ by Q1 2026
+- No standalone promo video — growth organic/changelog-driven through acquisition
 
 ---
 
@@ -344,6 +407,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Figma
 
+**Config 2026 keynote (Jun 23–25, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Hook: "AI has lowered the floor, but it has not raised the ceiling. Designers, creatives, builders: You will raise the ceiling." [search-derived]
+- Launches: Figma Motion (timeline animation, shader effects, 3D transforms, export MP4/GIF/SVG), Code Layers (live interactive code on canvas), Figma Agent, Generative Plugins, Weave Tools, Shader fills
+- Footage style: on-stage keynote, San Francisco
+- VO register: founder
+- CTA: none explicit; awareness
+- Pattern note: floor-vs-ceiling frame is the strongest "AI amplifies human expertise, not replaces it" compression found in 2026 — adapt for MIRA as "AI has lowered the bar for generic answers, but citations from OEM manuals raise the ceiling for who can trust the diagnosis."
+
 **Config 2025 keynote (May 6–8, 2025)**
 - URL: https://www.youtube.com/watch?v=5q8YAUTYAyk
 - Title: "Config 2025: Figma product launch keynote"
@@ -353,7 +426,6 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Footage style: on-stage keynote, Moscone Center, 8,500 attendees
 - VO register: founder
 - CTA: none explicit; awareness
-- London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
 ---
 
@@ -385,6 +457,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Floor-vs-ceiling frame (2026 new): AI commoditizes the floor; human expertise raises the ceiling | Figma Config 2026: "AI has lowered the floor, but it has not raised the ceiling. Designers, creatives, builders: You will raise the ceiling." | "Any AI can guess at a fault code. Only MIRA raises the ceiling — grounded in your OEM manuals, your asset history, your plant." |
+| Outcome-in, artifact-out (2026 new): agent receives a goal and returns a finished deliverable | OpenAI ChatGPT Work: "takes an outcome, completes them independently for hours" | "Tell MIRA the symptom. Get back a cited root-cause and the exact procedure — not a search result." |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +469,7 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX (now Autodesk)**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; then OT tag auto-mapping (Ignition/MQTT/Kepware, Mar 2026) — now competing on the machine-context / OT integration layer. $3.6B Autodesk acquisition (May 2026) means platform distribution, not just product. No longer a scrappy CMMS — it is Autodesk's operations intelligence play.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Cursor → SpaceXAI (Jun 2026)**: acquired for $60B. Grok Bot shifts the narrative from "AI coding tool" to "persistent team of agents that sign into your apps." Not a coding assistant story anymore — an agentic platform story.
