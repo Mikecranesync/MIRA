@@ -72,6 +72,29 @@ Concretely, before citing a result:
   lacks `markdown_it`. A traceback from the wrong interpreter is not a policy
   failure. Print `sys.executable` before blaming code.
 
+**When two counts of the same thing disagree, suspect the counters before the
+code — and check whether they share a notion of "a line."** The sharpest instance
+of this family is not a guard that cannot fail; it is a **measurement taken with
+the wrong instrument**, whose disagreement with reality then reads as a defect in
+the subject.
+
+Worked example (2026-09-09): a test scanned buttons with the JS regex
+`/<button[^>]*>/`. Counting the same files with `grep -cE '<button[^>]*>'` gave
+11/1/1 where the source had 14/3/1, and the 5-tag gap was written into a code
+comment as "5 of 18 buttons invisible to the old regex." **It was zero.** `[^>]`
+matches a newline in JavaScript, so the JS regex crossed multi-line tags without
+difficulty; `grep` is line-oriented and cannot. Two instruments, one differing
+property, and the difference blamed on the code. The comment named specific
+counts, which is exactly what makes a wrong one durable — the next reader has no
+reason to doubt it.
+
+Same shape, different sign: `grep -c 'role="status"'` returning 2 before and 3
+after a change, where two of the three were *comments about* `role="status"` —
+counting prose the compiler never sees.
+
+**Before reporting a count as a finding: re-measure with the instrument the code
+actually uses.**
+
 **The trap has two directions, and the second erodes trust between people.**
 A non-landing mutation produces **false accusation** as readily as false
 confidence: the run goes green and you conclude *someone else's* guard is
