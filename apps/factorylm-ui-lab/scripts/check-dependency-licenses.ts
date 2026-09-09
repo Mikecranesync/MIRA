@@ -91,12 +91,25 @@ async function auditNodeModules(nodeModulesPath: string): Promise<void> {
 // once, no link-following needed. The classic roots are walked too — realpaths
 // dedupe, and it keeps the audit correct if the linker is ever switched to hoisted.
 const isolatedStore = join(workspaceRoot, "node_modules", ".bun");
+const skippedStoreEntries: string[] = [];
 if (existsSync(isolatedStore)) {
   for (const entry of await readdir(isolatedStore, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === "node_modules") continue;
+    // Accept symlinks as well as directories — the same shape auditNodeModules
+    // accepts — so a linked store entry is audited rather than silently skipped.
+    if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === "node_modules") continue;
     const storeNodeModules = join(isolatedStore, entry.name, "node_modules");
     if (existsSync(storeNodeModules)) await auditNodeModules(storeNodeModules);
+    else skippedStoreEntries.push(entry.name);
   }
+}
+// A store entry the walk cannot read is a package the audit did not cover. Left
+// silent, the total below shrinks and still exits 0 — the partial-walk twin of
+// the empty-walk guard, raised by the #3705 review.
+if (skippedStoreEntries.length > 0) {
+  console.error(
+    `Dependency license audit failed: ${skippedStoreEntries.length} store entr${skippedStoreEntries.length === 1 ? "y" : "ies"} had no node_modules/ and could not be audited: ${skippedStoreEntries.join(", ")}`,
+  );
+  process.exit(1);
 }
 for (const classicRoot of [join(workspaceRoot, "node_modules"), join(appRoot, "node_modules")]) {
   if (existsSync(classicRoot)) await auditNodeModules(classicRoot);
