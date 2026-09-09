@@ -153,6 +153,40 @@ function TurnMessage() {
 
 const messageComponents = { UserMessage: TurnMessage, AssistantMessage: TurnMessage };
 
+/** First-run surface: greeting, grounding line, and optional suggestion chips. */
+function FirstRun() {
+  const { dispatch, hooks } = useEnvironment();
+  const chips = hooks?.suggestChips?.();
+  const handleChipClick = (text: string) => {
+    if (hooks?.onSend) {
+      hooks.onSend(text);
+    } else {
+      dispatch({ type: "set-draft", draft: text });
+      dispatch({ type: "mock-send" });
+    }
+  };
+  return <div className="fl-conversation__first-run">
+    <h2 className="fl-conversation__greeting">What can I help you with?</h2>
+    <p className="fl-conversation__grounding">
+      I can troubleshoot issues, explain equipment, and help you understand what&apos;s happening right now in this facility.
+    </p>
+    {chips && chips.length > 0 ? (
+      <div className="fl-conversation__chips">
+        {chips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className="fl-suggestion-chip"
+            onClick={() => handleChipClick(chip.text)}
+          >
+            {chip.text}
+          </button>
+        ))}
+      </div>
+    ) : null}
+  </div>;
+}
+
 export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantThreadProps) {
   const runtime = useInteractionRuntime({ state, dispatch, hooks });
   const turns = useMemo(() => new Map(state.thread.turns.map((turn) => [turn.id, turn])), [state.thread.turns]);
@@ -178,7 +212,7 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
               : <p className="fl-conversation__notice" role="status">No diagnostic run exists for this thread in the lab.</p>)
             : null}
           {state.thread.turns.length === 0
-            ? <p className="fl-conversation__empty">No turns yet.</p>
+            ? <FirstRun />
             : null}
           <ThreadPrimitive.Messages components={messageComponents} />
           <ThreadPrimitive.ScrollToBottom className="fl-thread__jump" aria-label="Jump to latest">

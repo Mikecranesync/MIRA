@@ -26,6 +26,15 @@
 .fl-conversation__notice,
 .fl-conversation__empty { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
+/* First-run surface: greeting, grounding line, and optional suggestion chips. Centred and calm. */
+.fl-conversation__first-run { display: grid; place-items: center; min-block-size: max(100%, 600px); padding: var(--fl-workspace-space-6); }
+.fl-conversation__greeting { margin: 0 0 var(--fl-workspace-space-4) 0; font-size: var(--fl-workspace-fs-lg); font-weight: 600; color: var(--fl-workspace-ink); max-inline-size: 28rem; text-align: center; }
+.fl-conversation__grounding { margin: 0 0 var(--fl-workspace-space-6) 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-body); max-inline-size: 32rem; text-align: center; line-height: 1.6; }
+.fl-conversation__chips { display: flex; flex-direction: column; gap: var(--fl-workspace-space-3); max-inline-size: 28rem; }
+.fl-suggestion-chip { display: block; width: 100%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-body); text-align: start; cursor: pointer; transition: background 150ms, border-color 150ms; }
+.fl-suggestion-chip:hover { border-color: var(--fl-workspace-accent-line); background: var(--fl-workspace-accent-tint); }
+.fl-suggestion-chip:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
+
 .fl-conversation__log { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--fl-workspace-space-4); }
 .fl-turn__head { display: flex; align-items: baseline; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); }
 .fl-turn__role { font-weight: 700; }
