@@ -15,7 +15,7 @@ import { API_BASE } from "@/lib/config";
  * The two scopes are genuinely different code paths, and this routes between
  * them rather than blurring them:
  *
- *   general → POST /api/hub/ask            (JSON, hybrid corpus, no asset)
+ *   general → POST /api/hub/ask/           (JSON, hybrid corpus, no asset)
  *   machine → POST /api/assets/{id}/chat/  (SSE, asset-scoped RAG + KG + live)
  *
  * Why not pass a machine to `/api/hub/ask`? Its system prompt says "NEVER
@@ -125,7 +125,7 @@ export function suggestionsFor(scope: Scope): { q: string; hint: string }[] {
  * to the general route still returns a plausible answer.
  */
 export function askEndpointFor(scope: Scope): string {
-  return scope ? `${API_BASE}/api/assets/${scope.id}/chat/` : `${API_BASE}/api/hub/ask`;
+  return scope ? `${API_BASE}/api/assets/${scope.id}/chat/` : `${API_BASE}/api/hub/ask/`;
 }
 
 /**
