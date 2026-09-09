@@ -31,7 +31,7 @@ const cv101: Machine = {
 
 describe("scope routing", () => {
   it("sends a general question to the general endpoint", () => {
-    expect(askEndpointFor(null)).toMatch(/\/api\/hub\/ask$/);
+    expect(askEndpointFor(null)).toMatch(/\/api\/hub\/ask\/$/); // #3712: slash form, no 308
   });
 
   it("sends a machine question to that machine's asset chat, not the general route", () => {
