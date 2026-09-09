@@ -47,7 +47,7 @@ describe("findReactDuplication", () => {
     expect(message).toContain("react-dom: two instances");
     // The cure has to be in the message: the whole point is that the reader
     // should not have to trace an "Invalid hook call" back to install state.
-    expect(message).toContain("bun run bootstrap:ui");
+    expect(message).toContain("Reinstall from the");
   });
 
   test("reports a module that does not resolve from the package at all", () => {
@@ -57,6 +57,6 @@ describe("findReactDuplication", () => {
 
     expect(message).not.toBeNull();
     expect(message).toContain("not resolvable from @factorylm/ui");
-    expect(message).toContain("bun run bootstrap:ui");
+    expect(message).toContain("Reinstall from the");
   });
 });
