@@ -15,8 +15,8 @@ Requires **Bun 1.4.0** (`packageManager` pin). On CHARLIE use `/opt/homebrew/bin
 the `~/.bun` binary is 1.3.10 and cannot read the lockfile.
 
 ```bash
+bun install --frozen-lockfile   # from anywhere in the workspace — one root bun.lock
 cd apps/factorylm-ui-lab
-bun install --frozen-lockfile
 bun run dev        # Bun's HTML dev server on index.html
 bun run build      # tsc --noEmit, then a static bundle in dist/
 bun run preview    # serve the built dist/index.html
@@ -26,12 +26,23 @@ bun run test:e2e   # Playwright: network/console matrix, screenshots, keyboard/m
 bun run budget     # gzip every emitted JS asset in dist/ and enforce the 300 KB budget
 ```
 
-`bootstrap:ui` runs before every script. Besides installing the UI package's own
-toolchain it does two things a plain install does not: it replaces Bun's
-install-time **copies** of the `file:` packages with symlinks to the real package
-directories (so a local run never tests a stale snapshot), and it points the UI
-package's package-local React at the lab's single copy (so there is exactly one
-React instance and hooks work). Both are explained in `scripts/bootstrap-ui.ts`.
+## One workspace, one React
+
+`packages/factorylm-*` and this lab are members of a Bun **workspace** rooted at the
+repository root (`/package.json`, `/bun.lock`, `/bunfig.toml`). Two things follow,
+and both used to need a bootstrap script (`bootstrap:ui`, removed in #3692's fix):
+
+- **Members are symlinks, not copies.** `@factorylm/ui` in `node_modules` *is*
+  `packages/factorylm-ui`, so a local run can never test a stale snapshot.
+- **There is exactly one React.** The linker is pinned to `isolated`, so every
+  installed package lives once under `node_modules/.bun/` and both the lab's
+  `react` and the peer `react` linked into `packages/factorylm-ui` are the same
+  directory. `@factorylm/ui` declares React only as a peer — it cannot carry its
+  own copy — and `bun test ../../packages src` passes with no preparation step.
+
+If a hook ever throws `Invalid hook call` in these suites, two Reacts are loading:
+check `readlink node_modules/react` in the lab and in `packages/factorylm-ui` — they
+must agree — and reinstall from the root.
 
 ## Controls and URL state
 
