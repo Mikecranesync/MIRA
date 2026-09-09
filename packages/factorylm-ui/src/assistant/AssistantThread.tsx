@@ -92,7 +92,11 @@ function TurnMessage() {
   const id = useAuiState((aui) => aui.message.id);
   const { turns, hooks } = useEnvironment();
   const turn = turns.get(id);
+  // Copy/regenerate/rate belong to a FINISHED answer. On a running turn the
+  // copy is half an answer; on a failed one there is nothing to copy. A refusal
+  // (safety_stop) IS a real answer a technician may want to keep, so it counts.
   const isAssistant = turn?.role === "assistant";
+  const isAnswered = turn?.lifecycle === "completed" || turn?.lifecycle === "safety_stop";
   return <MessagePrimitive.Root
     className="fl-turn fl-turn--aui"
     data-turn-id={id}
@@ -101,7 +105,7 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
-    {isAssistant && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback) ? (
+    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback) ? (
       <div className="fl-turn__actions">
         {hooks?.onCopy ? (
           <button
@@ -155,9 +159,15 @@ function TurnMessage() {
 const messageComponents = { UserMessage: TurnMessage, AssistantMessage: TurnMessage };
 
 /** First-run surface: greeting, grounding line, and optional suggestion chips. */
+/** Neutral default: claims only what a notebook can actually do. A host that
+ *  knows its scope (machine bound, sources loaded) should pass a truer line —
+ *  the first draft asserted live facility awareness the notebook does not have. */
+const DEFAULT_GROUNDING = "Ask about this notebook's documents and the equipment it covers.";
+
 function FirstRun() {
   const { dispatch, hooks } = useEnvironment();
   const chips = hooks?.suggestChips?.();
+  const grounding = hooks?.groundingLine?.() ?? DEFAULT_GROUNDING;
   const handleChipClick = (text: string) => {
     if (hooks?.onSend) {
       hooks.onSend(text);
@@ -169,7 +179,7 @@ function FirstRun() {
   return <div className="fl-conversation__first-run">
     <h2 className="fl-conversation__greeting">What can I help you with?</h2>
     <p className="fl-conversation__grounding">
-      I can troubleshoot issues, explain equipment, and help you understand what&apos;s happening right now in this facility.
+      {grounding}
     </p>
     {chips && chips.length > 0 ? (
       <div className="fl-conversation__chips">

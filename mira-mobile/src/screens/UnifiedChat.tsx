@@ -148,10 +148,21 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
       .trim();
     const sources = turn.parts
       .filter((part): part is Extract<InteractionPart, { type: "source" }> => part.type === "source")
-      .map((part, i) => `[${i + 1}] ${part.source.title}${part.source.locator ? ` ${part.source.locator}` : ""}`);
+      // Label by the source id the inline marks use, so the pasted block matches
+      // the [n] the reader saw. Numbering by position renumbers them silently.
+      .map((part) => `[${part.source.id}] ${part.source.title}${part.source.locator ? ` ${part.source.locator}` : ""}`);
     const text = sources.length > 0 ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
     if (text) void copyText(text);
   }, [state.thread.turns]);
+
+  // NotebookScreen reports a failed send later via `chatError`, and nothing
+  // throws, so the try/catch in Composer could never fire on device — the humane
+  // error surface was unreachable exactly where it was needed. Mirror the host's
+  // error into shell state so the in-thread surface (with Retry) is the one the
+  // technician sees.
+  useEffect(() => {
+    dispatch({ type: "set-send-error", error: chatError ?? null });
+  }, [chatError]);
 
   const hooks: HostHooks = {
     onSend: handlers.onSend,
