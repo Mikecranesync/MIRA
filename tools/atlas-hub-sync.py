@@ -27,10 +27,14 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import psycopg2
 import psycopg2.extras
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mira-bots"))
+from shared.asset_bridge import bridge_asset  # noqa: E402
 
 # Match key + fields we copy in both directions.
 # (atlas_col, neon_col)
@@ -164,6 +168,7 @@ def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[s
              location, description, updated_at, atlas_id, cmms_synced_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         ON CONFLICT (equipment_number) DO NOTHING
+        RETURNING id
         """,
         (
             tenant_id, bar_code,
@@ -172,6 +177,16 @@ def insert_into_neon(neon_conn, tenant_id: str, bar_code: str, atlas_row: dict[s
             atlas_row["updated_at"], str(atlas_row["id"]),
         ),
     )
+    inserted = cur.fetchone()
+    if inserted:
+        # #3708: a synced machine needs its kg_entities node + uns_path or MIRA
+        # will not talk about it. ON CONFLICT rows were already bridged (or not
+        # ours to touch).
+        bridge_asset(
+            neon_conn.cursor(), tenant_id, str(inserted[0]), bar_code,
+            description=p["description"], manufacturer=p["manufacturer"],
+            model=p["model_number"],
+        )
 
 
 def insert_into_atlas(atlas_conn, company_id: int, equipment_number: str, neon_row: dict[str, Any]) -> int:
