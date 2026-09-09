@@ -152,6 +152,26 @@ def test_unplaceable_tag_reports_no_uns_path_and_writes_no_node():
     assert cur.sql()[-1] == "RELEASE SAVEPOINT asset_bridge"
 
 
+def test_legacy_slug_tenant_is_refused_before_any_sql(caplog):
+    """Codex F1: a ::uuid cast on 'mike' would fail inside the savepoint and be swallowed
+    as a transient error. The structural case must be explicit, loud, and SQL-free."""
+    cur = FakeCursor(plan=[("enterprise.main_site",), None, ("node-x",)])
+    with caplog.at_level("WARNING", logger="mira-gsd"):
+        res = bridge_asset(cur, "mike", "asset-7", "CV-207")
+    assert res == BridgeResult(ok=False, reason="legacy_tenant")
+    assert cur.executed == [], "no SAVEPOINT, no SELECT, no INSERT for a slug tenant"
+    assert any(
+        "legacy tenant 'mike'" in r.getMessage() and "asset-7" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.parametrize("tenant", ["", None, "78917b56-0000-4000-8000", "MIKE"])
+def test_non_uuid_tenants_never_reach_sql(tenant):
+    cur = FakeCursor()
+    assert bridge_asset(cur, tenant, "a", "CV-1").reason == "legacy_tenant" and cur.executed == []
+
+
 def test_name_collision_retries_with_the_tag_suffixed_name():
     cur = FakeCursor(
         plan=[None, None, ("node-4",)],

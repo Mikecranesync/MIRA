@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -41,6 +42,14 @@ logger = logging.getLogger("mira-gsd")
 DEFAULT_SITE_NAME = "Main Site"
 SLUG_MAX_LEN = 64
 _UNIQUE_VIOLATION = "23505"
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def is_uuid_tenant(tenant_id: str | None) -> bool:
+    """kg_entities.tenant_id is UUID; cmms_equipment.tenant_id is TEXT and still holds
+    legacy slugs ('mike' — the HUB_TENANT_ID default in the compose files, and what
+    pm_scheduler normalises a tenantless schedule to). A slug can never own a node."""
+    return bool(tenant_id) and bool(_UUID_RE.match(tenant_id))
 
 
 class DbCursor(Protocol):
@@ -212,7 +221,22 @@ def bridge_asset(
     state and never aborts the enclosing transaction (a bot work order must
     still land when the KG write fails). A failure is logged, exactly as the
     Hub route warns, and reported in the result — never raised.
+
+    A legacy (non-UUID) tenant is refused BEFORE any SQL: the ``::uuid`` cast
+    would fail inside the savepoint and read like a transient error, when it
+    is a structural one — that machine stays unplaced until its tenant
+    migrates (Codex F1 on #3715). The repair path for rows already written
+    this way is tools/cmms_equipment_uns_backfill.py, which reports them.
     """
+    if not is_uuid_tenant(tenant_id):
+        logger.warning(
+            "asset_bridge: asset %s under legacy tenant %r cannot be bridged — "
+            "kg_entities.tenant_id is UUID-only; the row stays UNPLACED until the tenant "
+            "migrates (#3708)",
+            asset_id,
+            tenant_id,
+        )
+        return BridgeResult(ok=False, reason="legacy_tenant")
     cur.execute("SAVEPOINT asset_bridge")
     try:
         result = mint_asset_bridge_node(

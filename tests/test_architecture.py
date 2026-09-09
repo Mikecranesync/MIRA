@@ -1688,28 +1688,74 @@ _CMMS_EQUIPMENT_INSERT_RE = re.compile(
 _BRIDGE_CALL_RE = re.compile(r"\bbridge_asset\s*\(")
 
 
+def _enclosing_function(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST | None:
+    cur = parents.get(id(node))
+    while cur is not None:
+        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return cur
+        cur = parents.get(id(cur))
+    return None
+
+
 def scan_cmms_equipment_writer(
     rel: str, source: str, allowlist: dict[str, str] | None = None
 ) -> list[str]:
-    """Return violations for one file (empty list = clean)."""
+    """Return violations for one file (empty list = clean).
+
+    Pairing is PER INSERT, PER FUNCTION (Codex F2 on #3715): every string
+    literal that inserts into cmms_equipment must be followed, in the same
+    function, by a `bridge_asset(` call. A file-wide "some call somewhere
+    after the last insert" check let a second, unbridged insert path ship.
+    """
     allow = _CMMS_EQUIPMENT_INSERT_ALLOWLIST if allowlist is None else allowlist
-    inserts = list(_CMMS_EQUIPMENT_INSERT_RE.finditer(source))
-    if not inserts:
+    if not _CMMS_EQUIPMENT_INSERT_RE.search(source):
         return []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [
+            f"{rel}:{exc.lineno}: could not parse to verify cmms_equipment inserts (Contract 7)"
+        ]
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+    inserts: list[tuple[ast.AST | None, int]] = []
+    bridge_calls: list[tuple[ast.AST | None, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if _CMMS_EQUIPMENT_INSERT_RE.search(node.value):
+                inserts.append((_enclosing_function(node, parents), node.lineno))
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            name = (
+                fn.id
+                if isinstance(fn, ast.Name)
+                else fn.attr
+                if isinstance(fn, ast.Attribute)
+                else ""
+            )
+            if name == "bridge_asset":
+                bridge_calls.append((_enclosing_function(node, parents), node.lineno))
+    if not inserts:
+        return []  # the literal only appears in a comment/docstring-free non-string context
     if rel not in allow:
         return [
-            f"{rel}:{_line_of(source, m.start())}: INSERT INTO cmms_equipment outside the asset "
-            "bridge — call shared.asset_bridge.bridge_asset after the insert and allowlist the "
-            "file with a reason (Contract 7)"
-            for m in inserts
+            f"{rel}:{line}: INSERT INTO cmms_equipment outside the asset bridge — call "
+            "shared.asset_bridge.bridge_asset after the insert, in the same function, and "
+            "allowlist the file with a reason (Contract 7)"
+            for _, line in inserts
         ]
-    last_insert = inserts[-1].start()
-    if not any(m.start() > last_insert for m in _BRIDGE_CALL_RE.finditer(source)):
-        return [
-            f"{rel}:{_line_of(source, last_insert)}: allowlisted, but no bridge_asset( call follows "
-            "the INSERT INTO cmms_equipment (Contract 7)"
-        ]
-    return []
+    offenders = []
+    for scope, line in inserts:
+        paired = any(s is scope and cl > line for s, cl in bridge_calls)
+        if not paired:
+            where = getattr(scope, "name", "<module>")
+            offenders.append(
+                f"{rel}:{line}: allowlisted, but no bridge_asset( call follows this INSERT INTO "
+                f"cmms_equipment inside {where}() (Contract 7)"
+            )
+    return offenders
 
 
 def _cmms_equipment_write_surface_files() -> list[Path]:
@@ -1755,22 +1801,39 @@ def test_cmms_equipment_allowlist_is_honest():
 
 def test_cmms_equipment_checker_catches_violations():
     """The guard must FAIL on the obvious forks (so a green run means something)."""
-    bare = "cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+    bare = "def f(cur, i):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+    ok = {"x.py": "r" * 30}
     assert scan_cmms_equipment_writer("x.py", bare), "checker missed a bare insert"
     assert scan_cmms_equipment_writer(
         "x.py", bare.replace("INSERT INTO cmms_equipment", "insert  into public.cmms_equipment")
     ), "checker missed a case/schema-qualified variant"
-    bridged_first = "bridge_asset(cur, t, i, tag)\n" + bare
-    assert scan_cmms_equipment_writer("x.py", bridged_first, {"x.py": "r" * 30}), (
-        "a bridge call BEFORE the insert must not count"
-    )
-    assert scan_cmms_equipment_writer("x.py", bare, {"x.py": "r" * 30}), (
+    assert scan_cmms_equipment_writer("x.py", bare, ok), (
         "allowlisted file with no bridge call must fail"
     )
+    assert scan_cmms_equipment_writer(
+        "x.py",
+        "def f(cur, i, t, tag):\n    bridge_asset(cur, t, i, tag)\n" + bare.split("\n", 1)[1],
+        ok,
+    ), "a bridge call BEFORE the insert must not count"
+    paired = bare + "    bridge_asset(cur, t, i, tag)\n"
+    assert scan_cmms_equipment_writer("x.py", paired, ok) == []
+    # Codex F2: two insert paths, only the second bridged — the first must be reported.
+    two = (
+        "def first(cur, i):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n\n"
+        "def second(cur, i, t, tag):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+        "    bridge_asset(cur, t, i, tag)\n"
+    )
+    found = scan_cmms_equipment_writer("x.py", two, ok)
+    assert len(found) == 1 and "first()" in found[0], found
+    # a bridge call in a DIFFERENT function does not pair
+    apart = bare + "def g(cur, t, i, tag):\n    bridge_asset(cur, t, i, tag)\n"
+    assert scan_cmms_equipment_writer("x.py", apart, ok), "a call in another function must not pair"
+    # a module-level insert with no module-level call
+    assert scan_cmms_equipment_writer(
+        "x.py", "cur.execute('INSERT INTO cmms_equipment (id) VALUES (1)')\n", ok
+    )
+    # attribute-style call pairs too (e.g. module.bridge_asset)
     assert (
-        scan_cmms_equipment_writer(
-            "x.py", bare + "bridge_asset(cur, t, i, tag)\n", {"x.py": "r" * 30}
-        )
-        == []
+        scan_cmms_equipment_writer("x.py", bare + "    ab.bridge_asset(cur, t, i, tag)\n", ok) == []
     )
     assert scan_cmms_equipment_writer("x.py", "SELECT 1 FROM cmms_equipment\n") == []
