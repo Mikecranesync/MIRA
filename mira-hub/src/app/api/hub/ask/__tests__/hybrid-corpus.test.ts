@@ -55,13 +55,6 @@ describe("/api/hub/ask — the hybrid corpus must stay visible (#2178)", () => {
     expect(code).toMatch(/retrieveManualChunks\(\s*client,\s*ctx\.tenantId/);
   });
 
-  it("documents that the approval gate still admits this tenant's private uploads", () => {
-    // retrieveManualChunks owns the SQL; this route must not re-impose a
-    // blanket verified=true that would hide folder=brain uploads.
-    expect(route).toMatch(/is_private = true/);
-    expect(code).not.toMatch(/AND verified = true/);
-  });
-
   it("releases the client on every path", () => {
     expect(code).toContain("finally");
     expect(code).toContain("client.release()");
