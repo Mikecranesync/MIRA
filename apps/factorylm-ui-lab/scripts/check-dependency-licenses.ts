@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
+import { APPROVED_EXCEPTIONS, licenseVerdict, normalizeNoticeText } from "./license-policy";
 
 type PackageManifest = {
   name?: string;
@@ -16,7 +17,10 @@ type AppManifest = {
 const appRoot = resolve(import.meta.dir, "..");
 const workspaceRoot = resolve(appRoot, "../..");
 const firstPartyPackagesRoot = resolve(workspaceRoot, "packages");
-const allowedLicenses = new Set(["MIT", "Apache-2.0"]);
+// Policy (allowlist + maintainer-approved per-version exceptions) lives in
+// license-policy.ts so it is testable and its decisions are named.
+/** Installed path of every approved-exception package seen, for the notices check. */
+const exceptionPackagePaths = new Map<string, string>();
 const auditedPaths = new Set<string>();
 // `name@version` of every external package already covered by the installed
 // tree, so the lockfile-closure pass below only re-checks what this platform
@@ -58,8 +62,11 @@ async function auditPackage(packagePath: string): Promise<void> {
   if (!isFirstPartyPackage(realPackagePath, manifest)) {
     auditedExternalPackageCount += 1;
     if (manifest.name && manifest.version) auditedExternalPackages.add(`${manifest.name}@${manifest.version}`);
-    if (!manifest.license || !allowedLicenses.has(manifest.license)) {
+    const verdict = licenseVerdict(manifest.name ?? "", manifest.version ?? "", manifest.license);
+    if (!verdict.ok) {
       violations.push(`${manifest.name ?? realPackagePath}@${manifest.version ?? "unknown"}: ${manifest.license ?? "missing license"}`);
+    } else if (verdict.reason === "approved-exception") {
+      exceptionPackagePaths.set(`${manifest.name}@${manifest.version}`, realPackagePath);
     }
   }
 
@@ -220,11 +227,37 @@ for (const lockfilePath of lockfilePaths) {
     auditedExternalPackages.add(`${name}@${version}`);
     auditedClosureOnlyPackageCount += 1;
     const license = await licenseFromRegistry(name, version);
+    const verdict = licenseVerdict(name, version, license);
     if (!license) {
       violations.push(`${name}@${version}: not installed on this platform and its licence could not be resolved from the registry`);
-    } else if (!allowedLicenses.has(license)) {
+    } else if (!verdict.ok) {
       violations.push(`${name}@${version}: ${license} (not installed on this platform; resolved from the registry)`);
     }
+  }
+}
+
+// ── Notices check ───────────────────────────────────────────────────────────
+// Every approved exception was granted on the condition that its copyright and
+// licence notice is preserved in the generated THIRD_PARTY_NOTICES.md. A
+// missing or stale notice therefore fails the audit, not just the generator.
+const noticesPath = join(appRoot, "THIRD_PARTY_NOTICES.md");
+const notices = existsSync(noticesPath) ? normalizeNoticeText(await readFile(noticesPath, "utf8")) : "";
+for (const exception of APPROVED_EXCEPTIONS) {
+  const key = `${exception.name}@${exception.version}`;
+  if (!notices.includes(`## ${key} — ${exception.license}`)) {
+    violations.push(`${key}: approved exception has no section in THIRD_PARTY_NOTICES.md (run \`bun run notices\`)`);
+    continue;
+  }
+  const packagePath = exceptionPackagePaths.get(key);
+  if (!packagePath) continue; // not installed on this platform; the section is the best available check
+  const licenseFile = (await readdir(packagePath)).find((entry) => /^(LICENSE|LICENCE|COPYING)/i.test(entry));
+  if (!licenseFile) {
+    violations.push(`${key}: approved exception ships no LICENSE file to preserve`);
+    continue;
+  }
+  const text = normalizeNoticeText(await readFile(join(packagePath, licenseFile), "utf8"));
+  if (!notices.includes(text)) {
+    violations.push(`${key}: THIRD_PARTY_NOTICES.md does not carry its ${licenseFile} text verbatim (run \`bun run notices\`)`);
   }
 }
 
@@ -238,6 +271,7 @@ if (violations.length > 0) {
 
 console.log(
   `Dependency license audit passed: ${auditedExternalPackageCount} external package manifests are MIT or Apache-2.0` +
+    ` or one of ${APPROVED_EXCEPTIONS.length} maintainer-approved per-version exception(s) with preserved notices` +
     ` (plus ${auditedClosureOnlyPackageCount} platform-skipped package(s) resolved from the registry` +
     `, across ${lockfilePaths.length} discovered lockfile(s)).`,
 );

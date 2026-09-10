@@ -5,6 +5,12 @@
 .unified-host .fl-shell { min-block-size: 0; block-size: 100%; flex: 1 1 auto; }
 .unified-host .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); }
 .unified-host .fl-conversation { padding-block-end: var(--fl-workspace-space-4); }
+/* Inline [n] citation marks (AnswerMarkdown via HostHooks.renderText) must flow
+   with the sentence. The shell's `.fl-shell button` touch-target rule outranks
+   app.css's `.cite-mark` reset, so the reset is restated at host specificity. */
+.unified-host .fl-part--text .cite-mark { display: inline; inline-size: auto; min-inline-size: 0; min-block-size: 0; padding: 0 4px; margin: 0 1px; border: none; border-radius: var(--fl-workspace-radius-sm); font-size: inherit; line-height: inherit; }
+.unified-host .fl-part--text p { margin: 0 0 var(--fl-workspace-space-2); }
+.unified-host .fl-part--text p:last-child { margin-block-end: 0; }
 
 /* Unified root: the shell owns the whole viewport (no tab bar, no top bar), so
    it also owns the status-bar inset the classic .shell applied (app.css). */

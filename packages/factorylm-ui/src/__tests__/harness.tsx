@@ -14,7 +14,7 @@ import {
   type SurfaceKind,
 } from "@factorylm/interaction";
 import type { Dispatch, MutableRefObject, ReactNode } from "react";
-import { FactoryLMShell } from "../FactoryLMShell";
+import { FactoryLMShell, type ConversationSurface } from "../FactoryLMShell";
 import type { HostHooks } from "../parts";
 
 export interface HarnessProps {
@@ -25,6 +25,7 @@ export interface HarnessProps {
   readonly onOpenItem?: (item: ProjectItem) => void;
   readonly navigationFooter?: ReactNode;
   readonly dispatchRef?: MutableRefObject<Dispatch<ShellAction> | null>;
+  readonly conversationSurface?: ConversationSurface;
 }
 
 export interface RecordingAdapter extends PlatformAdapter {
@@ -73,7 +74,7 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
   };
 }
 
-export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, navigationFooter, dispatchRef }: HarnessProps) {
+export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, navigationFooter, dispatchRef, conversationSurface }: HarnessProps) {
   const [state, dispatch] = useReducer(
     shellReducer,
     createShellState(getFixture(fixture), PROFILES[surface]),
@@ -82,7 +83,7 @@ export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOp
 
   return (
     <>
-      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} onOpenItem={onOpenItem} navigationFooter={navigationFooter} />
+      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} onOpenItem={onOpenItem} navigationFooter={navigationFooter} conversationSurface={conversationSurface} />
       <output
         aria-label="Active context"
         data-folder-id={state.activeContext.folderId ?? ""}

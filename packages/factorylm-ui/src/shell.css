@@ -103,7 +103,11 @@
 /* An explicit minmax(0, 1fr) column: with the implicit `auto` column the main
    area sized itself to the composer row's min-content (550px at a 412px viewport)
    and the page scrolled sideways. */
-.fl-shell__main { min-inline-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+/* min-block-size: 0 — as a grid item of .fl-shell, main otherwise keeps the
+   default `min-height: auto` and grows to its content (2600 px inside an 865 px
+   shell on a Pixel 9a), so the thread viewport below it is never taller than
+   its own content and nothing in the app can scroll to the end of an answer. */
+.fl-shell__main { min-inline-size: 0; min-block-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .fl-shell__header { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-header); color: var(--fl-workspace-header-ink); }
 .fl-shell__header h1,
 .fl-shell__header p { margin: 0; }
@@ -144,8 +148,10 @@
     transition: transform 160ms ease, visibility 0s linear 160ms;
   }
   .fl-shell[data-navigation-visible="true"] .fl-shell__sidebar { transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
+  /* inline-size: auto defends against a host-global `button { width: 100% }`
+     (mira-mobile app.css); without it the toggle spans 61% of a phone header. */
   .fl-shell__navigation-toggle,
-  .fl-shell__drawer-close { display: inline-flex; align-items: center; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
+  .fl-shell__drawer-close { display: inline-flex; align-items: center; inline-size: auto; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
   .fl-shell__drawer-close { margin-block-end: var(--fl-workspace-space-2); }
   .fl-shell__brand-mark { display: block; }
   .fl-shell__header h1 { font-size: var(--fl-workspace-fs-body); font-weight: 700; color: var(--fl-workspace-header-ink); }

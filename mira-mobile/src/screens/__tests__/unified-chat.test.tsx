@@ -7,6 +7,19 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { UnifiedChat } from "../UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
 import { _resetTransientLayersForTest, closeTopTransientLayer } from "../../lib/transient-layer";
+// jsdom ships no ResizeObserver or Element.scrollTo; the assistant-ui thread
+// viewport (ADR-0037) uses both to keep the scroll pinned as content grows.
+// The Android WebView has had them since Chrome 64 — test-environment shim only.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
+
 
 vi.mock("@capacitor/share", () => ({ Share: { share: vi.fn(async () => ({})) } }));
 

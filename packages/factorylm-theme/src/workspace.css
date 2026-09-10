@@ -125,3 +125,33 @@
   --fl-workspace-shadow-pop: var(--fl-shadow-pop);
   --fl-workspace-scrim: var(--fl-dark-scrim);
 }
+
+/* System dark with no explicit choice. The block above only fires when a host
+   sets data-theme="dark"; a Capacitor WebView sets nothing, so without this the
+   workspace layer fell back to the light block while the canonical --fl-* layer
+   had already gone dark -- warn/fault/off ink all collapsed onto ordinary ink and
+   the ok/warn tints stayed near-white. Measured on a Pixel 9a, see the patch header.
+
+   Deliberately state-only: surface/ink/line stay with the host palette so this
+   cannot repaint an app that already has its own dark surface. Mirrored values are
+   held identical to the block above by dark-cascade.test.ts. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fl-workspace-ok: var(--fl-dark-ok);
+    --fl-workspace-ok-tint: var(--fl-dark-ok-tint);
+    --fl-workspace-ok-line: var(--fl-dark-ok-line);
+    --fl-workspace-ok-ink: var(--fl-dark-ok);
+    --fl-workspace-warn: var(--fl-dark-warn);
+    --fl-workspace-warn-tint: var(--fl-dark-warn-tint);
+    --fl-workspace-warn-line: var(--fl-dark-warn-line);
+    --fl-workspace-warn-ink: var(--fl-dark-warn);
+    --fl-workspace-fault: var(--fl-dark-fault);
+    --fl-workspace-fault-tint: var(--fl-dark-fault-tint);
+    --fl-workspace-fault-line: var(--fl-dark-fault-line);
+    --fl-workspace-fault-ink: var(--fl-dark-fault);
+    --fl-workspace-off: var(--fl-dark-faint);
+    --fl-workspace-off-tint: var(--fl-dark-surface-hi);
+    --fl-workspace-off-line: var(--fl-dark-line-hi);
+    --fl-workspace-off-ink: var(--fl-dark-muted);
+  }
+}

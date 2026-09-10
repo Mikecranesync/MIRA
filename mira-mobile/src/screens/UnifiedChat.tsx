@@ -1,7 +1,9 @@
 /**
  * Unified conversation surface (FLM-UI-4000 Phase 2, mobile lane): the shared
  * FactoryLM shell rendering THIS notebook's real turns through the mobile
- * chat-adapter vocabulary. The screen keeps owning the send path, scope,
+ * chat-adapter vocabulary — on the assistant-ui thread (ADR-0037: the library
+ * owns viewport, autoscroll, jump-to-latest and run state; the shell's parts,
+ * composer, header and navigation are unchanged). The screen keeps owning the send path, scope,
  * riders, Retry body, uploads and the citation viewer — exactly as ChatV2 does
  * — so switching surfaces changes the shell, never the semantics.
  *
@@ -13,7 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import {
   PROFILES,
   createShellState,
@@ -24,7 +26,9 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
+import type { InteractionTurn } from "@factorylm/interaction";
 import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
+import { AnswerMarkdown } from "./AnswerMarkdown";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -111,8 +115,24 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
     onAttachFile: handlers.onAttachFile,
   }), [handlers.onAttachPhoto, handlers.onAttachFile]);
 
+  // The assistant surface renders text through the SAME markdown + inline
+  // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's
+  // own source parts so an unknown [7] stays literal text. A user turn is plain.
+  const onCitation = handlers.onCitation;
+  const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
+    if (turn.role === "user") return text;
+    const own: ChatCitation[] = [];
+    for (const part of turn.parts) {
+      if (part.type !== "source") continue;
+      const citation = citations.get(part.source.id);
+      if (citation) own.push(citation);
+    }
+    return <AnswerMarkdown text={text} citations={own} onCitation={onCitation} />;
+  }, [citations, onCitation]);
+
   const hooks: HostHooks = {
     onSend: handlers.onSend,
+    renderText,
     ...(canStop ? { onStop: handlers.onStop } : {}),
     ...(canRetry && handlers.onRetry ? { onRetry: () => handlers.onRetry?.() } : {}),
     onSource: (source) => {
@@ -136,6 +156,7 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
       dispatch={dispatch}
       adapter={adapter}
       hooks={hooks}
+      conversationSurface="assistant"
       onOpenItem={host?.onOpenItem}
       navigationFooter={host?.navigationFooter}
     />
