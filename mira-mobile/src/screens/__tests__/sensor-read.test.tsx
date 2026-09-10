@@ -213,4 +213,19 @@ describe("Sensor READ (S3)", () => {
     // The flow's own identity form appears — nothing re-implemented here.
     await screen.findByRole("button", { name: "Find the manual for this component" });
   });
+
+  it("can mount directly into the existing QR scanner for a shell Scan action", async () => {
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={{ current: null }}
+        onExit={() => {}}
+        onOpenNotebook={() => {}}
+        initialSensorStart="read-scan"
+      />,
+    );
+
+    expect(await screen.findByRole("dialog", { name: "Scan FactoryLM QR" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "READ" })).toBeTruthy();
+  });
 });

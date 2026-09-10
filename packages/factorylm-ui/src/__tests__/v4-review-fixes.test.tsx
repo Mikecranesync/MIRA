@@ -74,3 +74,15 @@ describe("Try again is never a dead button", () => {
     expect(detail).not.toContain("saved below");
   });
 });
+
+describe("assistant glance grammar stays visible on the assistant surface", () => {
+  it("keeps user turns visibly bubbled without changing assistant document text", () => {
+    expect(CONVERSATION_CSS).toMatch(/\.fl-turn\[data-role="user"\]\s+\.fl-part--text\s*\{[^}]*border:\s*1px solid var\(--fl-workspace-line\)/);
+    expect(CONVERSATION_CSS).toMatch(/\.fl-turn\[data-role="user"\]\s+\.fl-part--text\s*\{[^}]*background:\s*var\(--fl-workspace-surface-hi\)/);
+    expect(CONVERSATION_CSS).toMatch(/\.fl-turn--aui\[data-role="assistant"\]\s+\.fl-part--text\s*\{[^}]*max-inline-size:\s*75ch/);
+  });
+
+  it("reserves bottom space so Jump to latest does not cover the last answer/source row", () => {
+    expect(CONVERSATION_CSS).toMatch(/\.fl-thread__viewport\s*\{[^}]*padding:[^;]*calc\(var\(--fl-workspace-space-8\) \+ max\(2\.75rem,\s*44px\)\)/);
+  });
+});

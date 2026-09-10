@@ -61,7 +61,7 @@
 .fl-turn__action:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 .fl-turn__action:disabled { color: var(--fl-workspace-off-ink); opacity: 0.5; cursor: not-allowed; }
 .fl-turn__action-icon { inline-size: 1.25rem; block-size: 1.25rem; }
-.fl-turn[data-role="user"] .fl-part--text { max-inline-size: 78%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border-radius: var(--fl-workspace-radius-card) var(--fl-workspace-radius-card) var(--fl-workspace-radius-sm) var(--fl-workspace-radius-card); background: var(--fl-workspace-bg); }
+.fl-turn[data-role="user"] .fl-part--text { max-inline-size: 78%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card) var(--fl-workspace-radius-card) var(--fl-workspace-radius-sm) var(--fl-workspace-radius-card); background: var(--fl-workspace-surface-hi); box-shadow: var(--fl-workspace-shadow); }
 .fl-turn[data-lifecycle="failed"] .fl-turn__head,
 .fl-turn[data-lifecycle="stopped"] .fl-turn__head { color: var(--fl-workspace-fault-ink); }
 
@@ -236,17 +236,18 @@
   display: grid;
   align-content: start;
   gap: var(--fl-workspace-space-6);
-  padding: var(--fl-workspace-space-4) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) var(--fl-workspace-space-6);
+  padding: var(--fl-workspace-space-4) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) calc(var(--fl-workspace-space-8) + max(2.75rem, 44px));
   scroll-behavior: smooth;
 }
 @media (prefers-reduced-motion: reduce) { .fl-thread__viewport { scroll-behavior: auto; } }
 /* Assistant surface turns: user right/contained, assistant left/document
-   Speaker asymmetry is the core ChatGPT grammar: technician's voice is a bubble,
+   Speaker asymmetry is the core assistant grammar: technician's voice is a bubble,
    MIRA's voice is calm document text. CSS encodes the difference, no design overhead. */
 .fl-turn--aui { display: grid; gap: var(--fl-workspace-space-2); }
 .fl-turn--aui > .fl-turn__head { margin-block-end: 0; }
 .fl-turn--aui[data-role="user"] { justify-items: end; }
 .fl-turn--aui[data-role="user"] > .fl-part { justify-self: end; }
+.fl-turn--aui[data-role="user"] .fl-part--text { background: var(--fl-workspace-surface-hi); border-color: var(--fl-workspace-line-strong); }
 /* The user bubble is already specified once above at .fl-turn[data-role="user"]
    .fl-part--text, which --aui turns also match. Duplicating it here meant two
    places to change one shape. */

@@ -3,7 +3,7 @@
 // every action back to the screen-owned handlers (send, stop, citation viewer,
 // attach flows). Run: cd mira-mobile && npx vitest run src/screens/__tests__/unified-chat
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { UnifiedChat } from "../UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
 import { _resetTransientLayersForTest, closeTopTransientLayer } from "../../lib/transient-layer";
@@ -140,5 +140,39 @@ describe("UnifiedChat", () => {
       <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />,
     );
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("restores the host's failed question after the pending turn has been cleared", async () => {
+    const h = handlers();
+    const { rerender } = render(
+      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />,
+    );
+
+    rerender(
+      <UnifiedChat
+        turns={[]}
+        liveTurns={[]}
+        pending={null}
+        busy={false}
+        canStop={false}
+        canRetry={true}
+        chatError="Couldn't reach MIRA."
+        failedQuestion="what is P06.01"
+        handlers={h}
+        meta={META}
+      />,
+    );
+
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("what is P06.01"));
+  });
+
+  it("routes the shared shell Scan machine action to the host scanner", async () => {
+    const h = { ...handlers(), onScanMachine: vi.fn(async () => null) };
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan machine" }));
+
+    await waitFor(() => expect(h.onScanMachine).toHaveBeenCalledTimes(1));
   });
 });

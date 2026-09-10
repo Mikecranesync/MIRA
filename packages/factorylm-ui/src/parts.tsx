@@ -26,7 +26,7 @@ export interface HostHooks {
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
   /**
-   * Start a new thread. New chat is OFFERED as an enabled primary action only when the host
+   * Start a host-owned thread. The action is enabled only when the host
    * provides this; without it (the disconnected lab) the control is honestly disabled with a
    * visible reason — never a dead button (#3649 scope 4).
    */
@@ -46,6 +46,11 @@ export interface HostHooks {
    * renders the control only when this is provided.
    */
   readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
+  /**
+   * Open the host's real machine scanner. This keeps the shell's Scan affordance
+   * routed through the existing native scanner instead of a reducer-only mock.
+   */
+  readonly onScanMachine?: () => Promise<string | null> | string | null;
   /**
    * The one line under the first-run greeting saying what this conversation can
    * answer from. The shell's default claims only what any notebook can do; a host
