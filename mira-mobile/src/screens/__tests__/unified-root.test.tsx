@@ -33,8 +33,13 @@ vi.mock("../../api/resources", async () => {
   return {
     ...actual,
     listNotebooks: vi.fn(async () => [
-      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null } },
-      { id: "nb-b", displayName: "General notes", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null },
+      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
+        threads: [
+          { id: "thrd-a1", notebookId: "nb-a", title: "Intermittent fault", createdAt: "", updatedAt: "2026-09-10T12:00:00Z", turnCount: 2, sharedLegacy: false },
+          { id: "thrd-a2", notebookId: "nb-a", title: "Startup checks", createdAt: "", updatedAt: "2026-09-10T11:00:00Z", turnCount: 1, sharedLegacy: false },
+        ] },
+      { id: "nb-b", displayName: "General notes", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null,
+        threads: [{ id: "thrd-b1", notebookId: "nb-b", title: "General question", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false }] },
     ]),
   };
 });
@@ -42,6 +47,8 @@ vi.mock("@capacitor/share", () => ({ Share: { share: vi.fn(async () => ({})) } }
 vi.mock("../NotebookScreen", () => ({
   NotebookScreen: (props: {
     id: string;
+    threadId?: string | null;
+    openAddSources?: boolean;
     chromeless?: boolean;
     backRef: MutableRefObject<(() => boolean) | null>;
     unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void };
@@ -57,11 +64,13 @@ vi.mock("../NotebookScreen", () => ({
       <div
         data-testid="nb"
         data-id={props.id}
+        data-thread-id={props.threadId ?? ""}
+        data-open-add-sources={String(Boolean(props.openAddSources))}
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
         data-initial-sensor={props.initialSensorStart ?? ""}
       >
-        {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b", label: "General notes" })}>open-b</button> : null}
+        {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
     );
@@ -118,11 +127,13 @@ describe("UnifiedRoot", () => {
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
     expect(nb.getAttribute("data-chromeless")).toBe("true");
     expect(nb.getAttribute("data-initial-question")).toBe("Why did the conveyor stop?");
 
     fireEvent.click(screen.getByText("open-b"));
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-b"));
+    expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toBe("thrd-b1");
 
     expect(screen.getByTestId("footer").textContent).toContain("mike@example.com");
     fireEvent.click(screen.getByText("Use classic app"));
@@ -131,6 +142,52 @@ describe("UnifiedRoot", () => {
     expect(onSignOut).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("About & updates"));
     expect(await waitFor(() => screen.getByTestId("about"))).toBeTruthy();
+  });
+
+  it("New chat from the sidebar creates a clean thread in the selected project without destroying the old one", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    const firstThread = nb.getAttribute("data-thread-id");
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(firstThread).toMatch(/^thrd_/);
+
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toMatch(/^thrd_/));
+    expect(screen.getByTestId("nb").getAttribute("data-thread-id")).not.toBe(firstThread);
+  });
+
+  it("selecting an existing thread restores that thread id under its Project", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
+  });
+
+  it("home Add Photo opens a fresh thread with the existing add-sources sheet entry", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+    expect(nb.getAttribute("data-open-add-sources")).toBe("true");
   });
 
   it("routes home Scan machine into the selected notebook's direct scanner entry", async () => {

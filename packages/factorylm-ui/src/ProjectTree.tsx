@@ -8,6 +8,7 @@ interface ProjectTreeProps {
   readonly dispatch: Dispatch<ShellAction>;
   /** Host hook: open a thread/run/file/finding item. Absent = items are inert labels. */
   readonly onOpenItem?: (item: ProjectItem) => void;
+  readonly onSelectProject?: (projectId: string) => void;
   /** Case-insensitive label filter (the navigation Search box); ancestors of a match stay visible. */
   readonly filter?: string;
 }
@@ -114,7 +115,7 @@ function Row({ kind, current, onPath, disclosure, icon, label, meta, ...rest }: 
   </button>;
 }
 
-export function ProjectTree({ projects, state, dispatch, onOpenItem, filter }: ProjectTreeProps) {
+export function ProjectTree({ projects, state, dispatch, onOpenItem, onSelectProject, filter }: ProjectTreeProps) {
   if (projects.length === 0) return <p className="fl-shell__empty">No projects in this workspace.</p>;
   const current = currentTreeRowId(state, projects);
   const path = ancestorsOf(current, projects);
@@ -134,7 +135,7 @@ export function ProjectTree({ projects, state, dispatch, onOpenItem, filter }: P
           disclosure
           icon={<FolderIcon />}
           label={project.name}
-          onClick={() => selectAndCloseNavigation(dispatch, { type: "select-project", projectId: project.id })}
+          onClick={() => { onSelectProject?.(project.id); selectAndCloseNavigation(dispatch, { type: "select-project", projectId: project.id }); }}
         />
         <Nodes nodes={project.children} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} current={current} path={path} keep={keep} />
       </li>

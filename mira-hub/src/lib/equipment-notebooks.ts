@@ -114,6 +114,29 @@ export type NotebookSource = {
   readiness: Readiness;
 };
 
+export const LEGACY_THREAD_ID = "legacy";
+const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+
+export function normalizeNotebookThreadId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return THREAD_ID_RE.test(trimmed) ? trimmed : null;
+}
+
+function storedThreadId(threadId: string | null | undefined): string | null {
+  return threadId && threadId !== LEGACY_THREAD_ID ? threadId : null;
+}
+
+function publicThreadId(stored: unknown): string {
+  return stored == null ? LEGACY_THREAD_ID : String(stored);
+}
+
+function threadTitleFromQuestion(question: string): string {
+  const words = question.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  const title = words.slice(0, 8).join(" ");
+  return title || "New chat";
+}
+
 // Aliased for SELECTs that join the source-count subquery (needs `n.`).
 const NOTEBOOK_COLS = `
   n.id::text AS id, n.display_name, n.manufacturer, n.model, n.catalog_number,
@@ -1174,6 +1197,9 @@ export async function recordTurn(
      *  Required so no code path can persist an ownerless turn by omission;
      *  ownerless rows exist only as pre-086 legacy history. */
     ownerUserId: string;
+    /** 087 / THRD-0: conversation identity inside this notebook/project.
+     *  Omitted/null/legacy preserves the pre-thread default conversation. */
+    threadId?: string | null;
     /** 081 snapshot: which asset this specific answer was about. Point-in-time
      *  and never backfilled — rewriting it when a notebook is rebound would
      *  destroy the only record of what an answer was actually grounded on. */
@@ -1197,8 +1223,8 @@ export async function recordTurn(
       `INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path, basis, owner_user_id)
-       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12
+          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id)
+       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13
          FROM equipment_notebooks nb
         WHERE nb.id = $1::uuid AND nb.tenant_id = $2::uuid
        RETURNING id`,
@@ -1215,6 +1241,7 @@ export async function recordTurn(
         turn.assetUnsPath ?? null,
         turn.basis ?? null,
         owner,
+        storedThreadId(turn.threadId),
       ],
     );
     if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
@@ -1303,10 +1330,11 @@ export async function listTurns(
    *  legacy rows; another technician's owned turns are never returned. With
    *  no viewer only legacy rows are returned (fail closed), so a caller that
    *  forgets the session cannot leak a private conversation. */
-  opts: { viewerUserId?: string | null } = {},
+  opts: { viewerUserId?: string | null; threadId?: string | null } = {},
 ): Promise<
   {
     id: string;
+    threadId: string;
     question: string;
     answerStatus: string;
     answerText: string | null;
@@ -1320,6 +1348,7 @@ export async function listTurns(
   }[]
 > {
   const viewer = (opts.viewerUserId ?? "").trim() || null;
+  const threadId = opts.threadId === undefined ? undefined : storedThreadId(opts.threadId);
   const turns = await withTenantContext(tenantId, async (c) => {
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
@@ -1329,13 +1358,19 @@ export async function listTurns(
     const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
     const values: unknown[] = [tenantId, notebookId, limit];
     if (viewer) values.push(viewer);
+    const threadPredicate = opts.threadId === undefined
+      ? ""
+      : threadId === null
+        ? " AND thread_id IS NULL"
+        : ` AND thread_id = $${values.push(threadId)}`;
     const res = await c.query(
-      `SELECT id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
+      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
-           SELECT id::text AS id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
+           SELECT id::text AS id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
              FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
               AND ${ownerPredicate}
+              ${threadPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent
@@ -1344,6 +1379,7 @@ export async function listTurns(
     );
     return res.rows.map((r: Record<string, unknown>) => ({
       id: String(r.id),
+      threadId: publicThreadId(r.thread_id),
       question: String(r.question),
       answerStatus: String(r.answer_status),
       answerText: (r.answer_text as string) ?? null,
@@ -1382,4 +1418,52 @@ export async function listTurns(
     // take down history reads.
     return turns;
   }
+}
+
+export async function listThreads(
+  tenantId: string,
+  notebookId: string,
+  limit = 50,
+  opts: { viewerUserId?: string | null } = {},
+): Promise<
+  {
+    id: string;
+    notebookId: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    turnCount: number;
+    sharedLegacy: boolean;
+  }[]
+> {
+  const viewer = (opts.viewerUserId ?? "").trim() || null;
+  return withTenantContext(tenantId, async (c) => {
+    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    const values: unknown[] = [tenantId, notebookId, limit];
+    if (viewer) values.push(viewer);
+    const res = await c.query(
+      `SELECT thread_id,
+              min(created_at) AS created_at,
+              max(created_at) AS updated_at,
+              count(*)::int AS turn_count,
+              (array_agg(question ORDER BY created_at ASC))[1] AS first_question,
+              bool_or(owner_user_id IS NULL) AS shared_legacy
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND ${ownerPredicate}
+        GROUP BY thread_id
+        ORDER BY updated_at DESC
+        LIMIT $3`,
+      values,
+    );
+    return res.rows.map((r: Record<string, unknown>) => ({
+      id: publicThreadId(r.thread_id),
+      notebookId,
+      title: threadTitleFromQuestion(String(r.first_question ?? "")),
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+      turnCount: Number(r.turn_count ?? 0),
+      sharedLegacy: Boolean(r.shared_legacy),
+    }));
+  });
 }
