@@ -122,6 +122,25 @@ describe("POST /api/hub/ask — the surrounding contract the adapter relies on",
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores a client-supplied tenantId and still retrieves under the session tenant", async () => {
+    await POST(
+      req({
+        question: QUESTION,
+        tenantId: "99999999-9999-4999-8999-999999999999",
+      }),
+    );
+    expect(rag.retrieveManualChunks).toHaveBeenCalledWith(client, TENANT, QUESTION, {
+      manufacturer: null,
+      topK: 6,
+    });
+    expect(rag.retrieveManualChunks).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "99999999-9999-4999-8999-999999999999",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it("still answers (uncited) and releases the client when retrieval throws", async () => {
     rag.retrieveManualChunks.mockRejectedValue(new Error("neon down"));
     const res = await POST(req({ question: QUESTION }));

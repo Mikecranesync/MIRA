@@ -103,6 +103,25 @@ function approvalFilterSql(): string {
 }
 
 /**
+ * Hybrid-corpus admission under the approval gate — used ONLY by
+ * `retrieveManualChunks` (Hub /ask, asset-chat manufacturer lane, quickstart).
+ *
+ * Shared OEM rows stay verified-only. The caller's own private uploads are
+ * admitted by tenant ownership: the upload path never sets `verified = true`
+ * (#3437) and there is no notebook confirmation set on a general ask. Other
+ * tenants' private rows stay excluded by the hybrid WHERE
+ * `(is_private = false OR tenant_id = $1)`.
+ *
+ * Do NOT reuse this from `retrieveNodeChunks`. That surface admits
+ * tenant-private rows only via a server-derived approved doc set, not by
+ * tenant membership alone (approved-source-admission case 11).
+ */
+function hybridApprovalFilterSql(): string {
+  if (!approvalGateEnabled()) return "";
+  return "AND (verified = true OR (is_private = true AND tenant_id = $1))";
+}
+
+/**
  * Approval predicate for a v2 chunk read that carries a server-derived
  * approved source set. `$${approvedParam}` must be bound to that set (uuid[])
  * by the caller, on a query whose WHERE already pins `tenant_id = $1`.
@@ -376,7 +395,7 @@ async function runBm25Query(
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
-          ${approvalFilterSql()}
+          ${hybridApprovalFilterSql()}
           ${mfrClause}
           ${modelClause}
           AND content_tsv @@ ${tsquery}
