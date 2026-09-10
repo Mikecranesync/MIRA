@@ -449,13 +449,18 @@ function approvalFilterSql(): string {
 }
 
 /**
- * Hybrid-corpus approval for retrieveManualChunks (/api/hub/ask, asset chat,
- * quickstart). Shared OEM rows still require `verified = true`. The caller's
- * own private uploads (`is_private = true AND tenant_id = $1`) are admitted
- * without that flag — the tenant upload path never sets it, and blanket
- * `AND verified = true` made a stranger's just-uploaded manual invisible on
- * the general ask path (prod gate on). Does not widen past the hybrid
- * predicate; another tenant's private rows stay excluded.
+ * Hybrid-corpus admission under the approval gate — used ONLY by
+ * `retrieveManualChunks` (Hub /ask, asset-chat manufacturer lane, quickstart).
+ *
+ * Shared OEM rows stay verified-only. The caller's own private uploads are
+ * admitted by tenant ownership: the upload path never sets `verified = true`
+ * (#3437) and there is no notebook confirmation set on a general ask. Other
+ * tenants' private rows stay excluded by the hybrid WHERE
+ * `(is_private = false OR tenant_id = $1)`.
+ *
+ * Do NOT reuse this from `retrieveNodeChunks`. That surface admits
+ * tenant-private rows only via a server-derived approved doc set, not by
+ * tenant membership alone (approved-source-admission case 11).
  */
 function hybridApprovalFilterSql(): string {
   if (!approvalGateEnabled()) return "";
