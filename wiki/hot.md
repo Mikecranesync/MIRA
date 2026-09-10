@@ -8,6 +8,13 @@ surfaces and must not receive product work.
 
 Current delivery ledger:
 
+- [PR #3737](https://github.com/Mikecranesync/MIRA/pull/3737) Bravo Codex
+  remount owns the P0-1/2/4/5 remediation from base
+  `526a9aef8bcfa841f08a8d60179a0d59ce61260f`. Charlie remains stopped for
+  independent proof after the new commit. The remediation keeps P0-3 Copy and
+  the moat in scope for regression only; no merge, deploy, OTA, Charlie PATH
+  edit, conversation-creation work, external AI branding, or device PASS is claimed
+  without a Pixel rewalk.
 - [PR #3643](https://github.com/Mikecranesync/MIRA/pull/3643) passed Codex's
   exact-head product/code review and CI, then merged as current `main` commit
   `f5f994a78d6d2f2e9393381662804f375dc59209`. This is the new shared-UI

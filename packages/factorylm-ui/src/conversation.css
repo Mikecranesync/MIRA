@@ -26,12 +26,42 @@
 .fl-conversation__notice,
 .fl-conversation__empty { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
+/* First-run surface: greeting, grounding line, and optional suggestion chips. Centred and calm. */
+.fl-conversation__first-run { display: grid; place-items: center; min-block-size: max(100%, 600px); padding: var(--fl-workspace-space-6); }
+.fl-conversation__greeting { margin: 0 0 var(--fl-workspace-space-4) 0; font-size: var(--fl-workspace-fs-lg); font-weight: 600; color: var(--fl-workspace-ink); max-inline-size: 28rem; text-align: center; }
+.fl-conversation__grounding { margin: 0 0 var(--fl-workspace-space-6) 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-body); max-inline-size: 32rem; text-align: center; line-height: 1.6; }
+.fl-conversation__chips { display: flex; flex-direction: column; gap: var(--fl-workspace-space-3); max-inline-size: 28rem; }
+.fl-suggestion-chip { display: block; width: 100%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-body); text-align: start; cursor: pointer; transition: background 150ms, border-color 150ms; }
+.fl-suggestion-chip:hover { border-color: var(--fl-workspace-accent-line); background: var(--fl-workspace-accent-tint); }
+.fl-suggestion-chip:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
+
 .fl-conversation__log { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--fl-workspace-space-4); }
-.fl-turn__head { display: flex; align-items: baseline; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); }
-.fl-turn__role { font-weight: 700; }
+/* Head line: role + context. Quiet label, not a heading. Sits above the turn,
+   slightly smaller and muted to let content breathe. */
+.fl-turn__head { display: flex; align-items: baseline; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
+.fl-turn__role { font-weight: 600; }
 .fl-turn__parts { display: grid; gap: var(--fl-workspace-space-2); }
 .fl-turn[data-role="user"] .fl-turn__parts { justify-items: end; }
-.fl-turn[data-role="user"] .fl-part--text { max-inline-size: 78%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border-radius: var(--fl-workspace-radius-card) var(--fl-workspace-radius-card) var(--fl-workspace-radius-sm) var(--fl-workspace-radius-card); background: var(--fl-workspace-bg); }
+/* Per-message action row: rendered on assistant turns only. Subtle styling — muted icons,
+   no fill, appears without shouting. Touch targets >= 44px while staying visually small.
+   Calm: only show on hover for reading flow; fade in gently. */
+.fl-turn__actions { display: flex; gap: var(--fl-workspace-space-3); align-items: center; margin-block-start: var(--fl-workspace-space-2); opacity: 0; transition: opacity 200ms ease-in-out; }
+.fl-turn:hover .fl-turn__actions { opacity: 1; }
+.fl-turn__action:focus-visible { opacity: 1; }
+/* A touch screen has no hover, so the reveal-on-hover treatment hid the action
+   row completely on the device the P0 was written for — present in the DOM,
+   opacity 0, invisible to a technician and to any test that only queries nodes.
+   Where hover does not exist, the row is simply always visible. */
+@media (hover: none) {
+  .fl-turn__actions { opacity: 1; }
+}
+.fl-turn__action { display: inline-flex; align-items: center; justify-content: center; min-block-size: max(2.75rem, 44px); min-inline-size: max(2.75rem, 44px); padding: var(--fl-workspace-space-1); border: 1px solid transparent; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: var(--fl-workspace-muted); cursor: pointer; font: inherit; }
+.fl-turn__action:not(:disabled) { cursor: pointer; }
+.fl-turn__action:hover:not(:disabled) { color: var(--fl-workspace-ink); background: var(--fl-workspace-surface); }
+.fl-turn__action:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.fl-turn__action:disabled { color: var(--fl-workspace-off-ink); opacity: 0.5; cursor: not-allowed; }
+.fl-turn__action-icon { inline-size: 1.25rem; block-size: 1.25rem; }
+.fl-turn[data-role="user"] .fl-part--text { max-inline-size: 78%; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card) var(--fl-workspace-radius-card) var(--fl-workspace-radius-sm) var(--fl-workspace-radius-card); background: var(--fl-workspace-surface-hi); box-shadow: var(--fl-workspace-shadow); }
 .fl-turn[data-lifecycle="failed"] .fl-turn__head,
 .fl-turn[data-lifecycle="stopped"] .fl-turn__head { color: var(--fl-workspace-fault-ink); }
 
@@ -197,20 +227,36 @@
    scrolling viewport, so the section itself no longer scrolls. Tokens only. */
 .fl-conversation--aui { display: flex; flex-direction: column; overflow: hidden; padding: 0; position: relative; }
 .fl-conversation--aui .fl-conversation__bar { margin: 0; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); }
+/* Thread viewport: grid of turns with calm, generous spacing. Breathing room
+   between turns helps separate speaker voices and improves readability. */
 .fl-thread__viewport {
   flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;
   display: grid;
   align-content: start;
-  gap: var(--fl-workspace-space-4);
-  padding: var(--fl-workspace-space-4) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) var(--fl-workspace-space-6);
+  gap: var(--fl-workspace-space-6);
+  padding: var(--fl-workspace-space-4) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) calc(var(--fl-workspace-space-8) + max(2.75rem, 44px));
   scroll-behavior: smooth;
 }
 @media (prefers-reduced-motion: reduce) { .fl-thread__viewport { scroll-behavior: auto; } }
+/* Assistant surface turns: user right/contained, assistant left/document
+   Speaker asymmetry is the core assistant grammar: technician's voice is a bubble,
+   MIRA's voice is calm document text. CSS encodes the difference, no design overhead. */
 .fl-turn--aui { display: grid; gap: var(--fl-workspace-space-2); }
 .fl-turn--aui > .fl-turn__head { margin-block-end: 0; }
+.fl-turn--aui[data-role="user"] { justify-items: end; }
 .fl-turn--aui[data-role="user"] > .fl-part { justify-self: end; }
+.fl-turn--aui[data-role="user"] .fl-part--text { background: var(--fl-workspace-surface-hi); border-color: var(--fl-workspace-line-strong); }
+/* The user bubble is already specified once above at .fl-turn[data-role="user"]
+   .fl-part--text, which --aui turns also match. Duplicating it here meant two
+   places to change one shape. */
+.fl-turn--aui[data-role="assistant"] { justify-items: start; }
+.fl-turn--aui[data-role="assistant"] .fl-part--text {
+  /* Assistant text is NOT contained: reads as document. Maximum comfortable measure for
+     reading (~65-75ch at 15px base). No background, no border. */
+  max-inline-size: 75ch;
+}
 /* Jump-to-latest: the primitive disables itself at the bottom, so it only
    appears once the reader has scrolled away — it never fights the reader. */
 .fl-thread__jump {

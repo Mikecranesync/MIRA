@@ -6,7 +6,7 @@
  * updates, classic app, sign out). NotebookScreen keeps owning the send path,
  * scope, riders, uploads, and the citation viewer — it just renders chromeless.
  */
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
 import { listNotebooks, type Me, type Notebook } from "../api/resources";
 import { hasActiveApiMutations } from "../api/client";
@@ -20,6 +20,7 @@ import { apiErrorCopy } from "../lib/api-error-copy";
 import { notebookIdFromItem, notebookMachines, notebookProjects } from "../unified/notebook-tree";
 import { NotebookScreen } from "./NotebookScreen";
 import type { UnifiedShellHost } from "./UnifiedChat";
+import { UnifiedChat } from "./UnifiedChat";
 import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
 
 const LAST_NOTEBOOK_KEY = "flm.unified.notebook.v1";
@@ -35,6 +36,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   const [notebooks, setNotebooks] = useState<Notebook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [homeVisible, setHomeVisible] = useState(true);
+  const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
   const [showAbout, setShowAbout] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -47,6 +51,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         setNotebooks(list);
         const preferred = last && list.some((nb) => nb.id === last) ? last : (list[0]?.id ?? null);
         setSelected(preferred);
+        setHomeVisible(true);
       } catch (e) {
         if (live) setError(apiErrorCopy(e, "Could not load notebooks."));
       }
@@ -56,10 +61,23 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     };
   }, []);
 
-  const open = (id: string) => {
+  const open = useCallback((id: string) => {
     setSelected(id);
+    setHomeVisible(false);
     void withSessionLocalProducer(() => preferencesStore.set(LAST_NOTEBOOK_KEY, id));
-  };
+  }, []);
+
+  const preferredNotebookId = useCallback((): string | null => {
+    if (!notebooks || notebooks.length === 0) return null;
+    return selected && notebooks.some((nb) => nb.id === selected) ? selected : notebooks[0]?.id ?? null;
+  }, [notebooks, selected]);
+
+  const openPreferredNotebook = useCallback((): string | null => {
+    const id = preferredNotebookId();
+    if (!id) return null;
+    open(id);
+    return id;
+  }, [open, preferredNotebookId]);
 
   const host = useMemo<UnifiedShellHost | null>(() => {
     if (!notebooks) return null;
@@ -95,7 +113,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   // root-owned state must replace that handler explicitly: otherwise the
   // unmounted notebook leaves its last callback behind and About can minimize
   // the app instead of returning to the conversation.
-  const rootOwnsBack = showAbout || Boolean(error) || !notebooks || !host || !selected;
+  const rootOwnsBack = homeVisible || showAbout || Boolean(error) || !notebooks || !host || !selected;
   useEffect(() => {
     if (!rootOwnsBack) return;
     const previous = backRef.current;
@@ -104,13 +122,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         setShowAbout(false);
         return true;
       }
+      if (homeVisible) return true;
       return false;
     };
     backRef.current = handleBack;
     return () => {
       if (backRef.current === handleBack) backRef.current = previous;
     };
-  }, [backRef, rootOwnsBack, showAbout]);
+  }, [backRef, rootOwnsBack, homeVisible, showAbout]);
 
   if (showAbout) {
     return (
@@ -138,6 +157,53 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     );
   }
 
+  if (homeVisible) {
+    const suggestions = notebooks.slice(0, 3).map((notebook) => ({
+      id: `notebook-${notebook.id}`,
+      text: notebook.manufacturer || notebook.model
+        ? `Ask about ${[notebook.manufacturer, notebook.model].filter(Boolean).join(" ")}`
+        : `Ask about ${notebook.displayName}`,
+    }));
+    return (
+      <div className="unified-root" data-testid="unified-home">
+        <UnifiedChat
+          turns={[]}
+          liveTurns={[]}
+          pending={null}
+          busy={false}
+          canStop={false}
+          canRetry={false}
+          chatError={null}
+          handlers={{
+            onSend: (text) => {
+              const id = openPreferredNotebook();
+              if (id) setQueuedQuestion(text);
+            },
+            onStop: () => {},
+            onCitation: () => {},
+            onAttachPhoto: () => { openPreferredNotebook(); },
+            onAttachFile: () => { openPreferredNotebook(); },
+            onRetry: undefined,
+            onScanMachine: async () => {
+              const id = openPreferredNotebook();
+              if (id) setQueuedSensorStart("read-scan");
+              return null;
+            },
+          }}
+          host={host}
+          groundingLine={() => "Ask from your notebooks, or scan a machine to start with the equipment in front of you."}
+          suggestChips={() => suggestions}
+          meta={{
+            notebookId: "home",
+            title: "FactoryLM",
+            asset: null,
+            identityConfirmed: false,
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="unified-root" data-testid="unified-root" data-notebook-id={selected}>
       <NotebookScreen
@@ -146,8 +212,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         chromeless
         unifiedShell={host}
         backRef={backRef}
-        onExit={() => { /* the shell's drawer is the way between notebooks */ }}
+        onExit={() => setHomeVisible(true)}
         onOpenNotebook={open}
+        initialQuestion={queuedQuestion}
+        onInitialQuestionSent={() => setQueuedQuestion(null)}
+        initialSensorStart={queuedSensorStart}
+        onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}
       />
     </div>
   );

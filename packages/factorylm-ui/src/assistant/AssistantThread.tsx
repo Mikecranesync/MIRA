@@ -23,6 +23,7 @@ import {
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { createContext, useContext, useMemo, type Dispatch } from "react";
 import { ConversationBar, RunCard } from "../Conversation";
+import { CopyIcon, RegenerateIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
@@ -89,8 +90,13 @@ const partComponents = {
  *  both surfaces with one selector. */
 function TurnMessage() {
   const id = useAuiState((aui) => aui.message.id);
-  const { turns } = useEnvironment();
+  const { turns, hooks } = useEnvironment();
   const turn = turns.get(id);
+  // Copy/regenerate/rate belong to a FINISHED answer. On a running turn the
+  // copy is half an answer; on a failed one there is nothing to copy. A refusal
+  // (safety_stop) IS a real answer a technician may want to keep, so it counts.
+  const isAssistant = turn?.role === "assistant";
+  const isAnswered = turn?.lifecycle === "completed" || turn?.lifecycle === "safety_stop";
   return <MessagePrimitive.Root
     className="fl-turn fl-turn--aui"
     data-turn-id={id}
@@ -99,10 +105,98 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
+    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback) ? (
+      <div className="fl-turn__actions">
+        {hooks?.onCopy ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Copy"
+            title="Copy answer"
+            onClick={() => hooks.onCopy?.(id)}
+          >
+            <CopyIcon className="fl-turn__action-icon" />
+          </button>
+        ) : null}
+        {hooks?.onRegenerate ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Regenerate"
+            title="Regenerate answer"
+            onClick={() => hooks.onRegenerate?.(id)}
+          >
+            <RegenerateIcon className="fl-turn__action-icon" />
+          </button>
+        ) : null}
+        {hooks?.onFeedback ? (
+          <>
+            <button
+              type="button"
+              className="fl-turn__action"
+              aria-label="Good answer"
+              title="Good answer"
+              onClick={() => hooks.onFeedback?.(id, "up")}
+            >
+              <ThumbUpIcon className="fl-turn__action-icon" />
+            </button>
+            <button
+              type="button"
+              className="fl-turn__action"
+              aria-label="Bad answer"
+              title="Bad answer"
+              onClick={() => hooks.onFeedback?.(id, "down")}
+            >
+              <ThumbDownIcon className="fl-turn__action-icon" />
+            </button>
+          </>
+        ) : null}
+      </div>
+    ) : null}
   </MessagePrimitive.Root>;
 }
 
 const messageComponents = { UserMessage: TurnMessage, AssistantMessage: TurnMessage };
+
+/** First-run surface: greeting, grounding line, and optional suggestion chips. */
+/** Neutral default: claims only what a notebook can actually do. A host that
+ *  knows its scope (machine bound, sources loaded) should pass a truer line —
+ *  the first draft asserted live facility awareness the notebook does not have. */
+const DEFAULT_GROUNDING = "Ask about this notebook's documents and the equipment it covers.";
+
+function FirstRun() {
+  const { dispatch, hooks } = useEnvironment();
+  const chips = hooks?.suggestChips?.();
+  const grounding = hooks?.groundingLine?.() ?? DEFAULT_GROUNDING;
+  const handleChipClick = (text: string) => {
+    if (hooks?.onSend) {
+      hooks.onSend(text);
+    } else {
+      dispatch({ type: "set-draft", draft: text });
+      dispatch({ type: "mock-send" });
+    }
+  };
+  return <div className="fl-conversation__first-run">
+    <h2 className="fl-conversation__greeting">What can I help you with?</h2>
+    <p className="fl-conversation__grounding">
+      {grounding}
+    </p>
+    {chips && chips.length > 0 ? (
+      <div className="fl-conversation__chips">
+        {chips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className="fl-suggestion-chip"
+            onClick={() => handleChipClick(chip.text)}
+          >
+            {chip.text}
+          </button>
+        ))}
+      </div>
+    ) : null}
+  </div>;
+}
 
 export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantThreadProps) {
   const runtime = useInteractionRuntime({ state, dispatch, hooks });
@@ -129,7 +223,7 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
               : <p className="fl-conversation__notice" role="status">No diagnostic run exists for this thread in the lab.</p>)
             : null}
           {state.thread.turns.length === 0
-            ? <p className="fl-conversation__empty">No turns yet.</p>
+            ? <FirstRun />
             : null}
           <ThreadPrimitive.Messages components={messageComponents} />
           <ThreadPrimitive.ScrollToBottom className="fl-thread__jump" aria-label="Jump to latest">

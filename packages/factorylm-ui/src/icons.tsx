@@ -71,3 +71,19 @@ export function ClockIcon(props: IconProps) {
 export function MicIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" {...STROKE} /><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5M5.5 14.5h5" {...STROKE} /></svg>;
 }
+
+export function CopyIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" {...STROKE} /><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9A1.5 1.5 0 0 0 4 10.5h1.5" {...STROKE} /></svg>;
+}
+
+export function RegenerateIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" {...STROKE} /><path d="M13.5 2v3.5H10" {...STROKE} /></svg>;
+}
+
+export function ThumbUpIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M5.5 14V7l3-5a1.5 1.5 0 0 1 1.5 1.5V6h3a1.5 1.5 0 0 1 1.45 1.9l-1.2 4.5A1.5 1.5 0 0 1 11.8 14z" {...STROKE} /><path d="M5.5 7H3a.5.5 0 0 0-.5.5v6a.5.5 0 0 0 .5.5h2.5" {...STROKE} /></svg>;
+}
+
+export function ThumbDownIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M5.5 2v7l3 5a1.5 1.5 0 0 0 1.5-1.5V10h3a1.5 1.5 0 0 0 1.45-1.9l-1.2-4.5A1.5 1.5 0 0 0 11.8 2z" {...STROKE} /><path d="M5.5 9H3a.5.5 0 0 1-.5-.5v-6A.5.5 0 0 1 3 2h2.5" {...STROKE} /></svg>;
+}

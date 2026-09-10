@@ -150,6 +150,10 @@ export function NotebookScreen({
   onOpenNotebook,
   chromeless = false,
   unifiedShell,
+  initialQuestion,
+  onInitialQuestionSent,
+  initialSensorStart,
+  onInitialSensorStartConsumed,
 }: {
   id: string;
   chatV2Available?: boolean;
@@ -159,6 +163,12 @@ export function NotebookScreen({
   chromeless?: boolean;
   /** Host tree/footer for the unified shell when it owns the whole app. */
   unifiedShell?: UnifiedShellHost;
+  /** A composer-home send queued by UnifiedRoot before this notebook mounted. */
+  initialQuestion?: string | null;
+  onInitialQuestionSent?: () => void;
+  /** Direct Sensor entry queued by the unified home/shell Scan action. */
+  initialSensorStart?: "read-scan" | null;
+  onInitialSensorStartConsumed?: () => void;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
   /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
@@ -172,6 +182,7 @@ export function NotebookScreen({
   // Sensor (LOOK / READ / REPLAY) — a transient instrument in the same Sheet
   // chrome, never a panel. Opens from the header or the Add-sources sheet.
   const [sensorOpen, setSensorOpen] = useState(false);
+  const [sensorStart, setSensorStart] = useState<"menu" | "read-scan">("menu");
   // This session's last LOOK. Held HERE, not in the sheet, so closing Sensor
   // (to read the manual, to check a source) doesn't discard the observation
   // the technician just took. Deliberately NOT persisted: the observation text
@@ -213,16 +224,34 @@ export function NotebookScreen({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
-  const chatSurface = useChatUiChoice(chatV2Available);
+  const preferredChatSurface = useChatUiChoice(chatV2Available);
+  const chatSurface = chromeless && unifiedShell ? "unified" : preferredChatSurface;
   const chatV2 = chatSurface === null ? null : chatSurface === "v2";
+
+  const openSensor = (start: "menu" | "read-scan" = "menu") => {
+    setSensorStart(start);
+    setSensorOpen(true);
+  };
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
   // drains that stack BEFORE this handler runs (PRD §11 — one BACK model
   // instead of per-screen enumeration, which had already missed two surfaces).
   backRef.current = () => {
+    if (chromeless) {
+      onExit();
+      return true;
+    }
     return false; // let the tab pop back to home
   };
+
+  const initialSensorConsumed = useRef(false);
+  useEffect(() => {
+    if (initialSensorStart !== "read-scan" || initialSensorConsumed.current) return;
+    initialSensorConsumed.current = true;
+    openSensor("read-scan");
+    onInitialSensorStartConsumed?.();
+  }, [initialSensorStart, onInitialSensorStartConsumed]);
 
   const refresh = () => {
     void load(() => getNotebookDetail(id)).then(setDetail);
@@ -433,7 +462,7 @@ export function NotebookScreen({
         <button
           className="nb-appbar-icon"
           aria-label="Open Sensor"
-          onClick={() => setSensorOpen(true)}
+          onClick={() => openSensor()}
         >
           ⌕
         </button>
@@ -696,7 +725,7 @@ export function NotebookScreen({
         </div>
       )}
 
-      {/* ChatV2 (PRD 2026-08-30): the ChatGPT-class surface. Same send path,
+      {/* ChatV2 (PRD 2026-08-30): the assistant-grade surface. Same send path,
           same scope, same citation viewer, same evidence cards — only the
           conversation shell changes. `null` while the preference loads, so
           the technician never sees one surface flash into the other. */}
@@ -741,7 +770,20 @@ export function NotebookScreen({
             onAttachPhoto: () => void attachPhotoAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
+            onScanMachine: async () => {
+              openSensor("read-scan");
+              return null;
+            },
           }}
+          initialQuestion={initialQuestion}
+          onInitialQuestionSent={onInitialQuestionSent}
+          failedQuestion={failedSend?.question ?? null}
+          groundingLine={() =>
+            scope.length === 0
+              ? "Ask general questions now, or scan a machine to ground the notebook."
+              : "Answers cite this notebook's selected manuals."
+          }
+          suggestChips={() => QUICK_STARTS.map((text, index) => ({ id: `quick-${index}`, text }))}
           host={unifiedShell}
           meta={{
             notebookId: notebook.id,
@@ -1231,7 +1273,7 @@ export function NotebookScreen({
             // One sheet at a time: the Add-sources sheet hands off to Sensor,
             // so BACK from Sensor lands on the notebook, not on a stale sheet.
             setSheetOpen(false);
-            setSensorOpen(true);
+            openSensor();
           }}
         />
       )}
@@ -1253,6 +1295,8 @@ export function NotebookScreen({
           }}
           lastLook={lastLook}
           onLook={setLastLook}
+          initialMode={sensorStart === "read-scan" ? "read" : undefined}
+          initialReadState={sensorStart === "read-scan" ? "scan" : undefined}
           onAsk={(question, evidence) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.
