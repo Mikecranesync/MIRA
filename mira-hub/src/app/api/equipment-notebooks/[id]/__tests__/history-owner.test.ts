@@ -13,14 +13,16 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   deleteNotebook: vi.fn(),
   getNotebook: vi.fn(),
   listSources: vi.fn(),
+  listThreads: vi.fn(),
   listTurns: vi.fn(),
+  normalizeNotebookThreadId: (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null),
   updateNotebook: vi.fn(),
 }));
 vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn(async () => []) }));
 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, listSources, listTurns } from "@/lib/equipment-notebooks";
+import { getNotebook, listSources, listThreads, listTurns } from "@/lib/equipment-notebooks";
 
 const NB = "11111111-2222-3333-4444-555555555555";
 const TENANT = "00000000-0000-0000-0000-0000000000d1";
@@ -33,6 +35,9 @@ beforeEach(() => {
   vi.mocked(sessionOr401).mockResolvedValue({ userId: USER_A, tenantId: TENANT, email: "a@x", status: "trial", trialExpiresAt: null, role: "technician" } as never);
   vi.mocked(getNotebook).mockResolvedValue({ id: NB, displayName: "Conveyor 1" } as never);
   vi.mocked(listSources).mockResolvedValue([] as never);
+  vi.mocked(listThreads).mockResolvedValue([
+    { id: "thrd-a", notebookId: NB, title: "mine", createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z", turnCount: 1, sharedLegacy: false },
+  ] as never);
   vi.mocked(listTurns).mockResolvedValue([
     { id: "t-legacy", question: "old", answerStatus: "answered", answerText: "x", evidence: [], basis: null, createdAt: "2026-08-01T00:00:00Z", ownerUserId: null, sharedLegacy: true },
     { id: "t-a", question: "mine", answerStatus: "answered", answerText: "y", evidence: [], basis: null, createdAt: "2026-09-01T00:00:00Z", ownerUserId: USER_A, sharedLegacy: false },
@@ -49,6 +54,16 @@ describe("GET history — viewer-scoped turns", () => {
     expect(args[1]).toBe(NB);
     const opts = args.find((a) => typeof a === "object" && a !== null && "viewerUserId" in (a as object)) as { viewerUserId?: string } | undefined;
     expect(opts?.viewerUserId).toBe(USER_A);
+  });
+
+  it("filters turns by threadId while still returning the notebook's thread list", async () => {
+    const threadedReq = { nextUrl: new URL("https://hub.test/api/equipment-notebooks/nb?threadId=thrd-a") } as unknown as NextRequest;
+    const res = await GET(threadedReq, params);
+    const body = (await res.json()) as { threads: { id: string }[] };
+    expect(res.status).toBe(200);
+    expect(body.threads.map((t) => t.id)).toEqual(["thrd-a"]);
+    expect(listTurns).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: USER_A, threadId: "thrd-a" });
+    expect(listThreads).toHaveBeenCalledWith(TENANT, NB, 50, { viewerUserId: USER_A });
   });
 
   it("returns legacy ownerless turns explicitly labeled as shared history", async () => {

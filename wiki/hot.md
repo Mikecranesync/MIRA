@@ -15,6 +15,14 @@ Current delivery ledger:
   the moat in scope for regression only; no merge, deploy, OTA, Charlie PATH
   edit, conversation-creation work, external AI branding, or device PASS is claimed
   without a Pixel rewalk.
+- [Issue #3740](https://github.com/Mikecranesync/MIRA/issues/3740) is claimed on
+  Bravo branch `feat/ux-3740-projects-threads`, stacked from exact #3737 tip
+  `90dc21ea09e5de6b5b232d4b32bbe9a2d1e47b75`. Scope is convergence-only:
+  THRD-0 notebook turn thread identity, notebook-as-Project mobile navigation,
+  New chat/recent threads, BACK/cold-launch restore, and a fingerprinted debug
+  APK. Do not mutate #3737, merge, deploy, OTA, edit Charlie PATH, or claim
+  device PASS without a fresh Pixel walk; adb on Bravo timed out during device
+  discovery in this run, so physical device proof is not established.
 - [PR #3643](https://github.com/Mikecranesync/MIRA/pull/3643) passed Codex's
   exact-head product/code review and CI, then merged as current `main` commit
   `f5f994a78d6d2f2e9393381662804f375dc59209`. This is the new shared-UI

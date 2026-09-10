@@ -8,6 +8,7 @@ interface SidebarProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly onOpenItem?: (item: ProjectItem) => void;
+  readonly onSelectProject?: (projectId: string) => void;
   /** Host-owned controls at the bottom of navigation (account, updates, sign out). */
   readonly footer?: ReactNode;
   /** The drawer is closed on a layered (mobile) profile: out of the tab order immediately. */
@@ -41,9 +42,9 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pass). `data-active` now means exactly one thing: "this reference points at the
  * open object", so a whole-navigation assertion can hold it to exactly one.
  *
- * Left navigation, in the order the plan fixes for every surface
- * (part-2 §6.1): identity → New chat → Search → Recent → Projects →
- * pinned machines → host footer (settings / user menu). On mobile the same
+ * Left navigation, in the order #3740 fixes for every surface:
+ * identity → New chat → Projects → Recent → Search → pinned machines →
+ * host footer (settings / user menu). On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
 /**
@@ -57,7 +58,7 @@ function isOpenItem(state: ShellState, itemId: string): boolean {
   return openObjectId(state) === itemId;
 }
 
-export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: SidebarProps) {
+export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, inert, hooks }: SidebarProps) {
   const onNewChat = hooks?.onNewChat;
   const [query, setQuery] = useState("");
   const filter = query.trim() || undefined;
@@ -102,18 +103,12 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: S
         <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
       </>}
 
-    <label className="fl-shell__search">
-      <SearchIcon className="fl-shell__nav-icon" />
-      <input
-        type="search"
-        aria-label="Search navigation"
-        placeholder="Search"
-        value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-      />
-    </label>
-
     <div className="fl-shell__nav-scroll">
+      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-projects">
+        <h2 id="fl-nav-projects" className="fl-shell__section-title">Projects</h2>
+        <ProjectTree projects={state.projects} state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} filter={filter} />
+      </section>
+
       <section className="fl-shell__nav-section" aria-labelledby="fl-nav-recent">
         <h2 id="fl-nav-recent" className="fl-shell__section-title"><ClockIcon className="fl-shell__nav-icon" />Recent</h2>
         {recent.length === 0
@@ -140,10 +135,16 @@ export function Sidebar({ state, dispatch, onOpenItem, footer, inert, hooks }: S
           </ul>}
       </section>
 
-      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-projects">
-        <h2 id="fl-nav-projects" className="fl-shell__section-title">Projects</h2>
-        <ProjectTree projects={state.projects} state={state} dispatch={dispatch} onOpenItem={onOpenItem} filter={filter} />
-      </section>
+      <label className="fl-shell__search">
+        <SearchIcon className="fl-shell__nav-icon" />
+        <input
+          type="search"
+          aria-label="Search navigation"
+          placeholder="Search"
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+        />
+      </label>
 
       <section className="fl-shell__nav-section" aria-labelledby="fl-nav-machines">
         <h2 id="fl-nav-machines" className="fl-shell__section-title">Machines</h2>
