@@ -24,13 +24,13 @@ function must<T>(value: T | null | undefined, what: string): T {
 }
 
 describe("navigation order and sections", () => {
-  it("renders identity, New chat, Search, Recent, Projects, Machines, footer — in that order, on mobile and web", () => {
+  it("renders identity, New chat, Projects, Recent, Search, Machines, footer — in that order, on mobile and web", () => {
     for (const surface of ["mobile", "web"] as const) {
       const view = render({ surface, fixture: "project-tree", navigationFooter: <button type="button">Sign out</button> });
       const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
       const markers = Array.from(nav.querySelectorAll<HTMLElement>(".fl-shell__brand, .fl-shell__new-chat, .fl-shell__search, .fl-shell__section-title, .fl-shell__nav-footer"))
         .map((el) => el.textContent?.trim() || el.className);
-      expect(markers).toEqual(["FactoryLM", "New chat", "fl-shell__search", "Recent", "Projects", "Machines", "Sign out"]);
+      expect(markers).toEqual(["FactoryLM", "New chat", "Projects", "Recent", "fl-shell__search", "Machines", "Sign out"]);
     }
   });
 
@@ -118,6 +118,14 @@ describe("tree rows", () => {
     // A folder with no machine/thread selection below it is the current row itself.
     const current = Array.from(tree.querySelectorAll<HTMLElement>('[aria-current="page"]'));
     expect(current.length).toBe(1);
+  });
+
+  it("selecting a project notifies the host so the app can scope its thread list", () => {
+    const selected: string[] = [];
+    const view = render({ surface: "web", fixture: "project-tree", onSelectProject: (projectId) => selected.push(projectId) });
+    const project = must(view.container.querySelector<HTMLButtonElement>('button[data-project-id="project-launch-2"]'), "project");
+    view.click(project);
+    expect(selected).toEqual(["project-launch-2"]);
   });
 });
 

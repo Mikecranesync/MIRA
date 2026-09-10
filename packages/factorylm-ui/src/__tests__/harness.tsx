@@ -23,6 +23,7 @@ export interface HarnessProps {
   readonly adapter?: PlatformAdapter;
   readonly hooks?: HostHooks;
   readonly onOpenItem?: (item: ProjectItem) => void;
+  readonly onSelectProject?: (projectId: string) => void;
   readonly navigationFooter?: ReactNode;
   readonly dispatchRef?: MutableRefObject<Dispatch<ShellAction> | null>;
   readonly conversationSurface?: ConversationSurface;
@@ -74,7 +75,7 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
   };
 }
 
-export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, navigationFooter, dispatchRef, conversationSurface }: HarnessProps) {
+export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, onSelectProject, navigationFooter, dispatchRef, conversationSurface }: HarnessProps) {
   const [state, dispatch] = useReducer(
     shellReducer,
     createShellState(getFixture(fixture), PROFILES[surface]),
@@ -83,7 +84,7 @@ export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOp
 
   return (
     <>
-      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} onOpenItem={onOpenItem} navigationFooter={navigationFooter} conversationSurface={conversationSurface} />
+      <FactoryLMShell state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} onOpenItem={onOpenItem} onSelectProject={onSelectProject} navigationFooter={navigationFooter} conversationSurface={conversationSurface} />
       <output
         aria-label="Active context"
         data-folder-id={state.activeContext.folderId ?? ""}

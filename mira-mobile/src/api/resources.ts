@@ -322,6 +322,30 @@ export interface Notebook {
   createdAt: string | null;
   /** L2 machine binding, or null for a general (L0/L1) notebook. */
   asset: NotebookAssetBinding | null;
+  /** 087 / THRD-0: conversations inside this notebook-as-Project. */
+  threads?: NotebookThreadSummary[];
+}
+
+export interface NotebookThreadSummary {
+  id: string;
+  notebookId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  sharedLegacy: boolean;
+}
+
+function toNotebookThread(d: Record<string, unknown>, fallbackNotebookId = ""): NotebookThreadSummary {
+  return {
+    id: String(d.id ?? "legacy"),
+    notebookId: String(d.notebookId ?? d.notebook_id ?? fallbackNotebookId),
+    title: String(d.title ?? "New chat"),
+    createdAt: String(d.createdAt ?? d.created_at ?? ""),
+    updatedAt: String(d.updatedAt ?? d.updated_at ?? ""),
+    turnCount: Number(d.turnCount ?? d.turn_count ?? 0),
+    sharedLegacy: Boolean(d.sharedLegacy ?? d.shared_legacy),
+  };
 }
 
 export function toNotebook(d: Record<string, unknown>): Notebook {
@@ -347,6 +371,9 @@ export function toNotebook(d: Record<string, unknown>): Notebook {
             confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,
           }
         : null,
+    threads: Array.isArray(d.threads)
+      ? (d.threads as Record<string, unknown>[]).map((thread) => toNotebookThread(thread, String(d.id ?? "")))
+      : [],
   };
 }
 
@@ -465,6 +492,8 @@ export interface NotebookServerTurn {
   ownerUserId?: string | null;
   /** 086: true for a pre-ownership row every tenant user can read. */
   sharedLegacy?: boolean;
+  /** 087 / THRD-0: server conversation id. "legacy" means pre-thread rows. */
+  threadId?: string;
   id: string;
   question: string;
   answerStatus: string;
@@ -510,23 +539,27 @@ export interface NotebookDetail {
   notebook: Notebook;
   sources: NotebookSource[];
   turns: NotebookServerTurn[];
+  threads: NotebookThreadSummary[];
   /** Linked LOOK photographs. Absent on an older server → `[]`, never a
    *  fabricated row; the Photos group simply doesn't render. */
   photos: NotebookPhoto[];
 }
 
-export async function getNotebookDetail(id: string): Promise<NotebookDetail> {
-  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(id)}/`);
+export async function getNotebookDetail(id: string, opts: { threadId?: string | null } = {}): Promise<NotebookDetail> {
+  const query = opts.threadId ? `?threadId=${encodeURIComponent(opts.threadId)}` : "";
+  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(id)}/${query}`);
   const d = r.data as {
     notebook: Record<string, unknown>;
     sources?: Record<string, unknown>[];
     turns?: NotebookServerTurn[];
+    threads?: Record<string, unknown>[];
     photos?: Record<string, unknown>[];
   };
   return {
     notebook: toNotebook(d.notebook),
     sources: (d.sources ?? []).map(toNotebookSource),
     turns: d.turns ?? [],
+    threads: (d.threads ?? []).map((thread) => toNotebookThread(thread, String(d.notebook?.id ?? id))),
     // A photo row with no file id cannot be shown or opened, so it is dropped
     // rather than rendered as an untappable placeholder.
     photos: (d.photos ?? []).map(toNotebookPhoto).filter((p) => p.fileId !== ""),
@@ -1270,6 +1303,8 @@ export async function askNotebook(
   message: string,
   sourceDocIds: string[],
   opts: {
+    /** 087 / THRD-0: conversation identity inside the notebook-as-Project. */
+    threadId?: string | null;
     /**
      * "general" asks for an explicitly ungrounded answer (spec 1.1). It is
      * sent ONLY when the technician chose it — never as an automatic
@@ -1303,6 +1338,7 @@ export async function askNotebook(
       json: {
         message,
         sourceDocIds,
+        ...(opts.threadId ? { threadId: opts.threadId } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),

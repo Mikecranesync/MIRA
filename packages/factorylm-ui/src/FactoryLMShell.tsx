@@ -19,6 +19,8 @@ export interface FactoryLMShellProps {
   readonly hooks?: HostHooks;
   /** Host hook: open a project item (thread/run/file/finding) from the tree. */
   readonly onOpenItem?: (item: ProjectItem) => void;
+  /** Host hook: a project row was selected from the tree. */
+  readonly onSelectProject?: (projectId: string) => void;
   /** Host-owned controls rendered at the bottom of navigation. */
   readonly navigationFooter?: ReactNode;
   /**
@@ -66,7 +68,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
   // One scrim, for the top-most page-covering layer, in closing-precedence order.
@@ -120,7 +122,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>
-      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} footer={navigationFooter} inert={mobile && !state.navigationVisible} hooks={hooks} />
+      <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} footer={navigationFooter} inert={mobile && !state.navigationVisible} hooks={hooks} />
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />

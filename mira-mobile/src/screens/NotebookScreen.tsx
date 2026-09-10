@@ -143,6 +143,7 @@ const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
 
 export function NotebookScreen({
   id,
+  threadId = "legacy",
   chatV2Available = false,
   openAddSources,
   backRef,
@@ -154,8 +155,12 @@ export function NotebookScreen({
   onInitialQuestionSent,
   initialSensorStart,
   onInitialSensorStartConsumed,
+  onInitialAddSourcesConsumed,
+  onNewThread,
 }: {
   id: string;
+  /** 087 / THRD-0: selected conversation inside this notebook-as-Project. */
+  threadId?: string | null;
   chatV2Available?: boolean;
   openAddSources?: boolean;
   /** Unified root (FLM-UI-4000): the shared shell owns the app bar and
@@ -166,6 +171,10 @@ export function NotebookScreen({
   /** A composer-home send queued by UnifiedRoot before this notebook mounted. */
   initialQuestion?: string | null;
   onInitialQuestionSent?: () => void;
+  /** Root-owned Add Photo/File entry consumed by this mount's initial sheet state. */
+  onInitialAddSourcesConsumed?: () => void;
+  /** Root-owned THRD-0 creation, used by the shared shell's New chat control. */
+  onNewThread?: (notebookId?: string | null) => void;
   /** Direct Sensor entry queued by the unified home/shell Scan action. */
   initialSensorStart?: "read-scan" | null;
   onInitialSensorStartConsumed?: () => void;
@@ -246,6 +255,13 @@ export function NotebookScreen({
   };
 
   const initialSensorConsumed = useRef(false);
+  const initialAddSourcesConsumed = useRef(false);
+  useEffect(() => {
+    if (!openAddSources || initialAddSourcesConsumed.current) return;
+    initialAddSourcesConsumed.current = true;
+    onInitialAddSourcesConsumed?.();
+  }, [openAddSources, onInitialAddSourcesConsumed]);
+
   useEffect(() => {
     if (initialSensorStart !== "read-scan" || initialSensorConsumed.current) return;
     initialSensorConsumed.current = true;
@@ -254,13 +270,13 @@ export function NotebookScreen({
   }, [initialSensorStart, onInitialSensorStartConsumed]);
 
   const refresh = () => {
-    void load(() => getNotebookDetail(id)).then(setDetail);
+    void load(() => getNotebookDetail(id, { threadId })).then(setDetail);
   };
   useEffect(() => {
     setDetail({ state: "loading" });
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, threadId]);
 
   // `detail` belongs in these deps. Without it, opening a machine that already
   // has history landed on the OLDEST turn: on mount the component is still in
@@ -329,6 +345,7 @@ export function NotebookScreen({
     setPending({ q: question, a: EMPTY_TURN });
     try {
       const a = await askNotebook(id, body.question, body.scope, {
+        threadId,
         mode: body.mode,
         history: body.history,
         machineEvidence: body.machineEvidence,
@@ -774,6 +791,7 @@ export function NotebookScreen({
               openSensor("read-scan");
               return null;
             },
+            onNewChat: () => onNewThread?.(id),
           }}
           initialQuestion={initialQuestion}
           onInitialQuestionSent={onInitialQuestionSent}
@@ -787,6 +805,8 @@ export function NotebookScreen({
           host={unifiedShell}
           meta={{
             notebookId: notebook.id,
+            threadId: `notebook-${notebook.id}:thread-${threadId ?? "legacy"}`,
+            projectId: `project-${notebook.id}`,
             title: notebookDisplayName(notebook.displayName),
             asset: notebook.asset
               ? {
@@ -1077,7 +1097,7 @@ export function NotebookScreen({
           scope={scope}
           // Studio generators are one-shot scoped prompts — chat history
           // would contaminate them, so it is deliberately NOT sent here.
-          ask={(prompt) => askNotebook(id, prompt, scope)}
+          ask={(prompt) => askNotebook(id, prompt, scope, { threadId })}
           onCitation={setViewCitation}
         />
       )}
