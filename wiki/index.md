@@ -14,6 +14,12 @@
 | [[nodes/windows-dev]] | Windows 11 primary dev box — main Claude Code sessions |
 | [[nodes/wiki-sync]] | How the vault is shared across nodes + `~/MiraDrop/` auto-ingest |
 
+## Product architecture
+
+| Page | Summary |
+|------|---------|
+| [[architecture/chatgpt-first-maintenance-genie]] | ChatGPT-first Maintenance Genie (2026-09-10) — L0–L5 layers, entity linker, factory projection, competitor contrast |
+
 ## Gotchas
 
 | Page | Summary |
