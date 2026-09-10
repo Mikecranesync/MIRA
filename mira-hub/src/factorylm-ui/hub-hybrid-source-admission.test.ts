@@ -20,7 +20,8 @@ const DOC_A = "aaaaaaaa-0000-4000-8000-000000000001";
 
 const HYBRID_WHERE = "WHERE (is_private = false OR tenant_id = $1)";
 const HYBRID_ADMISSION_RE =
-  /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/;
+  /AND \(true AND verified = true OR \(is_private = true AND tenant_id = \$1\)\)/;
+const keRead = (sql: string) => sql.includes("knowledge_entries");
 
 type Call = { sql: string; params: unknown[] };
 
@@ -42,7 +43,7 @@ describe("retrieveManualChunks hybrid admission (Hub /ask)", () => {
     process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
     const { client, calls } = makeClient();
     await retrieveManualChunks(client, T, "what does F004 mean");
-    const reads = calls.filter((c) => /FROM knowledge_entries/.test(c.sql));
+    const reads = calls.filter((c) => keRead(c.sql));
     expect(reads.length).toBeGreaterThan(0);
     for (const r of reads) {
       expect(r.sql, r.sql).toContain(HYBRID_WHERE);
@@ -58,7 +59,7 @@ describe("retrieveManualChunks hybrid admission (Hub /ask)", () => {
     delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
     const { client, calls } = makeClient();
     await retrieveManualChunks(client, T, "what does F004 mean");
-    const reads = calls.filter((c) => /FROM knowledge_entries/.test(c.sql));
+    const reads = calls.filter((c) => keRead(c.sql));
     expect(reads.length).toBeGreaterThan(0);
     for (const r of reads) {
       expect(r.sql).toContain(HYBRID_WHERE);
@@ -77,7 +78,7 @@ describe("retrieveNodeChunks without an approved set (case 11 preserved)", () =>
       unsPath: null,
       docIds: [DOC_A],
     });
-    const reads = calls.filter((c) => /FROM knowledge_entries/.test(c.sql));
+    const reads = calls.filter((c) => keRead(c.sql));
     expect(reads.length).toBeGreaterThan(0);
     for (const r of reads) {
       expect(r.sql).toContain("AND verified = true");
