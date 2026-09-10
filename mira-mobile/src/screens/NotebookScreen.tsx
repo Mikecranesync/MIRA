@@ -322,10 +322,17 @@ export function NotebookScreen({
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
+    // When no machine is selected, always use general mode and empty scope
+    // regardless of enabled sources — sources without a machine context cannot
+    // ground retrieval (#3742). When a machine IS selected, omit mode to trigger
+    // grounded retrieval if scope has sources.
+    const noMachine = !notebook.asset;
+    const effectiveScope = noMachine ? [] : scope;
+    const effectiveMode = noMachine || effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
-      scope,
-      mode: scope.length === 0 ? "general" : undefined,
+      scope: effectiveScope,
+      mode: effectiveMode,
       // A stopped turn is not an answer: it never enters the thread memory.
       history: buildChatHistory(
         turns,
