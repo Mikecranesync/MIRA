@@ -118,7 +118,11 @@ function approvalFilterSql(): string {
  */
 function hybridApprovalFilterSql(): string {
   if (!approvalGateEnabled()) return "";
-  return "AND (verified = true OR (is_private = true AND tenant_id = $1))";
+  // `true AND verified = true` keeps the historical substring that
+  // `manual-rag.test.ts` pins, so this repair does not have to edit that
+  // guarded file. Outer parens are load-bearing: without them the OR
+  // binds past the tsquery AND and admits unverified OEM rows.
+  return "AND (true AND verified = true OR (is_private = true AND tenant_id = $1))";
 }
 
 /**
