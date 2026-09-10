@@ -122,12 +122,16 @@ describe("retrieveManualChunks", () => {
     expect(calls[0].sql).not.toContain("manufacturer ILIKE");
   });
 
-  it("adds the approved-only filter when approval-gated retrieval is enabled", async () => {
+  it("adds the hybrid admission filter when approval-gated retrieval is enabled", async () => {
     process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
     const { client, calls } = makeClient([[row({ verified: true })]]);
     const out = await retrieveManualChunks(client, "tenant-1", "torque");
     expect(out[0].verified).toBe(true);
-    expect(calls[0].sql).toContain("AND verified = true");
+    // Parentheses are load-bearing: a bare `AND verified = true OR …`
+    // would bind past the tsquery AND and admit unverified OEM rows.
+    expect(calls[0].sql).toMatch(
+      /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/,
+    );
   });
 });
 

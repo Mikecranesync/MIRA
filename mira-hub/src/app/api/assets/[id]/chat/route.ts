@@ -266,6 +266,32 @@ export async function POST(
     return NextResponse.json({ error: "No user message" }, { status: 400 });
   }
 
+  // Safety gate — hard stop before ownership or LLM. A LOTO phrase must not
+  // 503 because Neon blipped, and the canned stop does not disclose whether
+  // the asset exists.
+  const trigger = matchSafetyStop(lastUser.content);
+  if (trigger) {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const words = SAFETY_STOP.split(" ");
+        for (const word of words) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
+        }
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "X-Safety-Stop": trigger,
+      },
+    });
+  }
+
   // Ownership pre-check (#2374): verify the caller owns this asset before proceeding.
   // Returns 404 if the asset is not found for the caller's tenant (not owned).
   // A DB error is 503 — never 404 (would lie) and never fall-through (IDOR).
@@ -291,30 +317,6 @@ export async function POST(
       { error: "Asset ownership could not be verified" },
       { status: 503 },
     );
-  }
-
-  // Safety gate — hard stop before touching LLM
-  const trigger = matchSafetyStop(lastUser.content);
-  if (trigger) {
-    const enc = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const words = SAFETY_STOP.split(" ");
-        for (const word of words) {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
-        }
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "X-Safety-Stop": trigger,
-      },
-    });
   }
 
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works

@@ -1,3 +1,9 @@
+# Hot Cache — 2026-09-10 — Gate 1 Hub API security/source on draft #3738
+
+**Gate 1 (this session):** draft [PR #3738](https://github.com/Mikecranesync/MIRA/pull/3738) on `cursor/hub-api-security-source-g1-a166` (base `1f36620e`, #3718). Hybrid `retrieveManualChunks` admission (OEM verified **or** caller-private) + asset-chat ownership fail-closed 503. Targeted Hub vitest: 107 passed. No merge / deploy / OTA. Gate 2 THRD-0 stays with Charlie Codex on [#3737](https://github.com/Mikecranesync/MIRA/pull/3737). Hub version bump `2.32.0` → `2.33.0` waits for Gates 1–4. Codex exact-SHA IR is end-of-mission, not this turn.
+
+---
+
 # Hot Cache — 2026-09-07 — New shared UI merged; governance and fleet gated
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordinated durably in
