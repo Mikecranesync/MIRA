@@ -66,10 +66,14 @@ export function selectCitations(chunks: ManualChunk[], answer: string): ManualSo
  * `retrieveManualChunks` on the RAW owner pool, with the caller's tenant passed
  * as the predicate argument, applies the hybrid read law
  * (`.claude/rules/knowledge-entries-tenant-scoping.md`): the shared OEM library
- * plus this tenant's own private uploads. The quickstart route deliberately
- * runs as the public tenant and therefore cannot see a customer's uploads —
- * which is why pointing a signed-in user at it would have looked like an answer
- * while silently ignoring the manuals they uploaded themselves.
+ * plus this tenant's own private uploads. Under
+ * `MIRA_ENFORCE_APPROVED_RETRIEVAL` that still holds: OEM rows require
+ * `verified = true`; the caller's `is_private = true` uploads are admitted
+ * without that flag (the upload path never sets it). The quickstart route
+ * deliberately runs as the public tenant and therefore cannot see a
+ * customer's uploads — which is why pointing a signed-in user at it would
+ * have looked like an answer while silently ignoring the manuals they
+ * uploaded themselves.
  *
  * Read-only. No writes, no asset binding, no control.
  */
