@@ -114,4 +114,22 @@ describe("POST /api/assets/[id]/chat — ownership fail-closed", () => {
     expect(await res.json()).toEqual({ error: "Asset ownership could not be verified" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("still hard-stops a LOTO phrase when the ownership probe would throw", async () => {
+    poolMock.connect.mockRejectedValue(new Error("pool exhausted"));
+
+    const res = await POST(
+      req({
+        messages: [
+          { role: "user", content: "I see melted insulation on this panel, what should I do?" },
+        ],
+      }),
+      params,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(poolMock.connect).not.toHaveBeenCalled();
+  });
 });
