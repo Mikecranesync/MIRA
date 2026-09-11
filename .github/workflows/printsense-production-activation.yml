@@ -3,22 +3,12 @@ name: PrintSense Production Activation
 # ADR-0031 PR 8: make the staging-proven Together/MiniMax + required-Tesseract
 # profile the durable production PrintSense configuration for Telegram + Slack.
 #
-# This runs once on the activation merge and after every normal Deploy to VPS.
-# The post-deploy trigger is intentional: docker-compose.saas.yml still carries
-# legacy defaults while the deeper provider-config cleanup continues, so this
-# overlay is re-applied after a normal deploy instead of silently drifting back.
-
+# Runs ONLY on an explicit workflow_dispatch (#3709). It used to re-run after
+# every Deploy to VPS and on every push touching its files, which meant a
+# `--force-recreate` of the production Telegram + Slack bots on every merge —
+# an operational hazard with no upside once the overlay is applied. Re-applying
+# the overlay after a deploy is now a human decision: dispatch this workflow.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docker-compose.printsense-production.yml"
-      - ".github/workflows/printsense-production-activation.yml"
-      - "tests/print_of_day/test_production_activation_contract.py"
-  workflow_run:
-    workflows: ["Deploy to VPS"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch: {}
 
 concurrency:
@@ -55,9 +45,7 @@ jobs:
         id: authorize
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
-          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           fail() {
@@ -68,13 +56,7 @@ jobs:
           [ "$GITHUB_REF" = "refs/heads/main" ] || \
             fail "production activation controller must run from main"
           case "$GITHUB_EVENT_NAME" in
-            push|workflow_dispatch)
-              ;;
-            workflow_run)
-              [ "$WORKFLOW_RUN_CONCLUSION" = "success" ] || \
-                fail "the triggering production deploy did not succeed"
-              [ "$WORKFLOW_RUN_HEAD_BRANCH" = "main" ] || \
-                fail "the triggering production deploy was not for main"
+            workflow_dispatch)
               ;;
             *)
               fail "unsupported production activation event: $GITHUB_EVENT_NAME"
@@ -91,7 +73,6 @@ jobs:
           printf 'source_sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Verify source PR passed Staging Gate
-        if: github.event_name != 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_SHA: ${{ steps.authorize.outputs.source_sha }}
@@ -118,9 +99,6 @@ jobs:
   activate:
     name: Activate Together/MiniMax PrintSense in production
     needs: authorize-source
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
@@ -223,7 +201,7 @@ jobs:
               # so empty IS the intended production state (docker-compose.saas.yml
               # documents this). Asserting the raw var equalled the model id could
               # never pass and made this gate red for 100+ consecutive runs.
-              # ${VAR:-default} mirrors Python's `or` (unset AND empty both take
+              # ${VAR:-default} mirrors the Python or-form (unset AND empty both take
               # the default), so this still FAILS if someone pins a different model.
               test "${TOGETHERAI_VISION_MODEL:-MiniMaxAI/MiniMax-M3}" = "MiniMaxAI/MiniMax-M3"
               test "$PRINT_PROVIDER_POLICY" = "strict"
