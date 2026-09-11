@@ -1,0 +1,30 @@
+# Cloud Agent dev-environment dependencies.
+#
+# Scope: the offline, secret-free slice of the MIRA monorepo that runs without
+# Doppler / NeonDB / Ollama — primarily SimLab (the deterministic simulated
+# juice-bottling benchmark, `python -m simlab`) and its test suite
+# (`pytest tests/simlab/`), plus ruff for linting.
+#
+# The full platform (Open WebUI, mira-pipeline, mira-mcp, Atlas CMMS, bots) needs
+# Doppler-managed secrets and Docker Compose and is NOT provisioned here; see
+# docs/developer/local-setup.md for that path.
+#
+# Versions mirror the pins used by the in-repo service requirements
+# (mira-pipeline/requirements.txt) where they overlap.
+
+# SimLab FastAPI surface + server
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+httpx==0.27.*
+PyYAML==6.0.3
+
+# Imported at module load by shared.engine (pulled in by the SimLab runner
+# wiring test tests/simlab/test_runner_tenant.py)
+psycopg2-binary>=2.9
+sqlalchemy>=2.0
+
+# Test + lint tooling
+pytest>=8.0
+pytest-asyncio>=0.23
+hypothesis>=6.0
+ruff>=0.6
