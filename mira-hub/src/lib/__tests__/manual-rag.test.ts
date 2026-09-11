@@ -127,7 +127,22 @@ describe("retrieveManualChunks", () => {
     const { client, calls } = makeClient([[row({ verified: true })]]);
     const out = await retrieveManualChunks(client, "tenant-1", "torque");
     expect(out[0].verified).toBe(true);
-    expect(calls[0].sql).toContain("AND verified = true");
+    // Shared OEM stays verified-only; tenant-private uploads are admitted
+    // without knowledge_entries.verified (that flag is never set on upload).
+    expect(calls[0].sql).toMatch(
+      /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/,
+    );
+    expect(calls[0].sql).toContain("(is_private = false OR tenant_id = $1)");
+    // Blanket `AND verified = true` (pre-fix) hid fresh tenant uploads.
+    expect(calls[0].sql).not.toMatch(
+      /WHERE \(is_private = false OR tenant_id = \$1\)\s+AND verified = true\s/,
+    );
+  });
+
+  it("does not apply an approval clause when the gate is off", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "torque");
+    expect(calls[0].sql).not.toContain("verified = true");
   });
 });
 
