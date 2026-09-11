@@ -7,7 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
+import { canPickNatively, captureNameplatePhoto, capturePhoto, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -422,6 +422,42 @@ export function NotebookScreen({
   };
 
   /**
+   * ChatV2 camera capture (#3353): capture photo from native camera → the SAME
+   * LOOK path as attachPhotoAndAsk. The only difference is capturePhoto (opens
+   * viewfinder) vs pickPhoto (opens gallery).
+   */
+  const attachCameraAndAsk = async () => {
+    if (busy) return;
+    const file = await capturePhoto("photo.jpg");
+    if (!file) return; // backed out — draft untouched
+    const question = q.trim() || "What am I looking at, and what should I check?";
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
+    try {
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      refresh(); // the photo is now a linked file — refresh Photos
+      setBusy(false);
+      setPending(null);
+      if (!look.fileId) {
+        setChatError("The photo didn't upload — try again.");
+        return;
+      }
+      await sendQuestion(question, undefined, {
+        visualEvidence: {
+          fileId: look.fileId,
+          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      setBusy(false);
+      setPending(null);
+      setQ(question); // the draft survives a failed attachment
+      setChatError(apiErrorCopy(e, "The photo didn't upload — try again."));
+    }
+  };
+
+  /**
    * ChatV2 attachment: PDF → the EXISTING two-step source upload
    * (`uploadSourceToNotebook`), so the document becomes a CITABLE source in
    * this notebook's scope. Honest about the not-indexed case rather than
@@ -770,6 +806,7 @@ export function NotebookScreen({
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachCamera: () => void attachCameraAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
           }}
@@ -792,6 +829,7 @@ export function NotebookScreen({
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachCamera: () => void attachCameraAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
             onScanMachine: async () => {
@@ -1638,7 +1676,7 @@ function AddSourcesSheet({
   /** Nameplate photo: phone picker on device, hidden input on web. */
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    const f = await pickNameplatePhoto();
+    const f = await captureNameplatePhoto();
     if (!f) return; // backed out
     setNote(null);
     setPhoto(f);

@@ -44,6 +44,8 @@ export interface ChatV2Handlers {
   onCitation: (c: ChatCitation) => void;
   /** Attach a photo to this conversation (existing LOOK upload path). */
   onAttachPhoto: () => void;
+  /** Capture photo from native camera (not gallery). */
+  onAttachCamera: () => void;
   /** Attach a PDF as a citable source (existing two-step upload path). */
   onAttachFile: () => void;
   /** Retry the byte-identical failed body, when one is pending. */

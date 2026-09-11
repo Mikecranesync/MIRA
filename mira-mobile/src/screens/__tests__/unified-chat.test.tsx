@@ -51,6 +51,7 @@ function handlers() {
     onStop: vi.fn(),
     onCitation: vi.fn(),
     onAttachPhoto: vi.fn(),
+    onAttachCamera: vi.fn(),
     onAttachFile: vi.fn(),
     onRetry: vi.fn(),
   };

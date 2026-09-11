@@ -36,6 +36,7 @@ export interface RecordingAdapter extends PlatformAdapter {
 export interface FakeAdapterOptions {
   readonly photo?: Attachment | null;
   readonly file?: Attachment | null;
+  readonly camera?: Attachment | null;
   readonly scannedMachineId?: string | null;
   readonly share?: "shared" | "cancelled";
   readonly reject?: Error;
@@ -57,6 +58,11 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
       calls.push("attachFile");
       fail();
       return options.file ?? null;
+    },
+    attachCamera: async () => {
+      calls.push("attachCamera");
+      fail();
+      return options.camera ?? null;
     },
     scanMachine: async () => {
       calls.push("scanMachine");

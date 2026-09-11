@@ -13,6 +13,8 @@ import type { PlatformAdapter } from "@factorylm/interaction";
 export interface UnifiedAdapterHandlers {
   readonly onAttachPhoto: () => void;
   readonly onAttachFile: () => void;
+  /** Capture photo from native camera (not gallery). */
+  readonly onAttachCamera: () => void;
   /** Present when the notebook is not yet bound and the app can scan a machine QR. */
   readonly onScanMachine?: () => Promise<string | null> | string | null;
   /** Text to share for an artifact id (handoff/report) — the screen owns the content. */
@@ -27,6 +29,10 @@ export function createCapacitorAdapter(handlers: UnifiedAdapterHandlers): Platfo
     },
     attachFile: async () => {
       handlers.onAttachFile();
+      return null;
+    },
+    attachCamera: async () => {
+      handlers.onAttachCamera();
       return null;
     },
     scanMachine: async () => (handlers.onScanMachine ? await handlers.onScanMachine() : null),
