@@ -61,6 +61,9 @@ def test_inventory_exists_and_classifies_policy_categories() -> None:
     assert "Do not create another UI package" in text
     assert "CURRENT IMPLEMENTATION MAP" in text
     assert "FACTORYLM_UI_DESIGN_POLICY.md" in text
+    assert "Read-only consumer inspection" in text
+    assert "Button-like treatments" in text
+    assert "FactoryLMShell.tsx" in text
 
 
 def test_catalog_stub_does_not_invent_filenames_or_close_open_proofs() -> None:

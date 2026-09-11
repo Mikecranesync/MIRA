@@ -200,3 +200,51 @@ Provisional shared-core order **after #3737 releases** (change if archaeology sh
 | Token “CANONICAL” claimed in two paths | **Ownership text conflict, not a value conflict.** Docs file is the edit target; package copy is the lock-tested twin. Offline/legacy `*tokens.css` files have **already drifted** and are not SoT. |
 | Frozen legacy prettier | **Not attempted.** Classic Workorders stays evidence-only. |
 | Camera / VFD | Remain **OPEN**. Not claimed from screenshots. |
+
+---
+
+## 8. Read-only consumer inspection (`main` @ `52b6f13d`)
+
+Not an implementation. Re-inspect after #3737 CLEARED before any Button PR.
+
+### 8.1 Conversation renderer consumers
+
+On **this** checkout `FactoryLMShell` always mounts `Conversation` (`FactoryLMShell.tsx`). There is no `assistant/` tree and no `conversationSurface` prop on `main`.
+
+| Consumer | What it mounts | Notes |
+|---|---|---|
+| `packages/factorylm-ui/src/FactoryLMShell.tsx` | `<Conversation>` | Sole production mount on `main` |
+| `apps/factorylm-ui-lab/src/App.tsx` | `<FactoryLMShell>` | Lab |
+| `mira-mobile/src/screens/UnifiedChat.tsx` | `<FactoryLMShell>` | Canonical mobile host |
+| `packages/factorylm-ui/src/__tests__/harness.tsx` | `<FactoryLMShell>` | Tests |
+| #3731 / #3737 (not on `main`) | `conversationSurface: "classic" \| "assistant"` + `AssistantThread` | In-flight second renderer. Do not add a third. |
+
+### 8.2 Button-like treatments (no `Button` export)
+
+Every control inherits `.fl-shell button` (`shell.css`: 44px floor, transparent, `radius-sm`). Local classes then restyle:
+
+| Class / site | File | Likely future Button variant |
+|---|---|---|
+| `.fl-shell__new-chat` | `Sidebar.tsx` | quiet + bordered |
+| `.fl-tree__row` / `.fl-tree__item-button` | `ProjectTree.tsx`, `Sidebar.tsx` | quiet / nav row (maybe not Button) |
+| `.fl-shell__navigation-toggle`, `__drawer-close`, `__inspector-toggle` | `FactoryLMShell` / `shell.css` | quiet + bordered icon |
+| `.fl-conversation__modes button` | `Conversation.tsx` | segmented (Ask/Work) |
+| `.fl-composer__icon` | `Composer.tsx` | quiet icon (+ / extra) |
+| `.fl-composer__machine` | `Composer.tsx` | quiet (context, not a primary) |
+| `.fl-composer__send` | `Composer.tsx` | accent / primary |
+| `.fl-attachment-menu__item`, `__close` | `AttachmentMenu.tsx` | quiet row / icon |
+| `.fl-followups button` | `parts.tsx` | quiet + pill radius |
+| `.fl-error button`, `.fl-card__actions button` | `conversation.css` | quiet / destructive-adjacent |
+| Source viewer Close | `SourceViewer.tsx` | quiet (no extra class) |
+| Share / retry / source press | `parts.tsx` | quiet |
+| `ThreadHeader` buttons | `ThreadHeader.tsx` | quiet |
+
+Do **not** extract these while #3737 is ACTIVE. After it releases: confirm it did not already add a Button; then take the smallest API that covers **accent-send**, **quiet**, **quiet-bordered**, and leave nav rows / mode segmented / chips out of v1 if they are not buttons.
+
+### 8.3 Ownership (locked)
+
+| Lane | Owner | Do not |
+|---|---|---|
+| Catalog A + light B | Bravo `cao-UX-3746-CATALOG-AB-bfa06c06` | Launch a second catalog writer |
+| Inventory / denylist / token-authority tests | #3749 | Rewrite policy law; open a fourth UI writer |
+| Shared-core conversation/renderer | #3737 @ `90dc21ea` | Button / composer / AssistantThread work here |
