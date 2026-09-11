@@ -140,8 +140,9 @@ export function UnifiedChat({
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: handlers.onAttachPhoto,
     onAttachFile: handlers.onAttachFile,
+    onAttachCamera: handlers.onAttachCamera,
     onScanMachine: handlers.onScanMachine,
-  }), [handlers.onAttachPhoto, handlers.onAttachFile, handlers.onScanMachine]);
+  }), [handlers.onAttachPhoto, handlers.onAttachFile, handlers.onAttachCamera, handlers.onScanMachine]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's

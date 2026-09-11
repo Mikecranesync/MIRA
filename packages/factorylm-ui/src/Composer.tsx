@@ -41,11 +41,11 @@ interface PendingAttachment {
   readonly machineLabel: string;
 }
 
-type AdapterOperation = "photo" | "file" | "scan";
+type AdapterOperation = "photo" | "file" | "scan" | "camera";
 
 function describeFailure(operation: AdapterOperation, error: unknown): string {
   const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
-  const verb = operation === "scan" ? "Machine scan" : operation === "photo" ? "Photo capture" : "File attachment";
+  const verb = operation === "scan" ? "Machine scan" : operation === "camera" ? "Camera capture" : operation === "photo" ? "Photo capture" : "File attachment";
   return `${verb} failed${detail}. Try again.`;
 }
 
@@ -73,7 +73,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       .finally(() => setBusy(null));
   };
 
-  const attach = (operation: "photo" | "file", pick: () => Promise<Attachment | null>) => {
+  const attach = (operation: "photo" | "file" | "camera", pick: () => Promise<Attachment | null>) => {
     const captured = {
       threadId: state.thread.id,
       machineId: state.activeContext.machineId,
@@ -156,7 +156,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         busy={busy !== null}
         onPhoto={() => attach("photo", adapter.attachPhoto)}
         onFile={() => attach("file", adapter.attachFile)}
-        onCamera={() => attach("photo", adapter.attachPhoto)}
+        onCamera={() => attach("camera", adapter.attachCamera)}
         onScan={scan}
         onClose={() => dispatch({ type: "set-attachment-menu-visible", visible: false })}
       /> : null}
