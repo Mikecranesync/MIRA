@@ -25,6 +25,8 @@ import type { ChatCitation } from "../lib/sse";
 
 export interface UnifiedNotebookMeta {
   readonly notebookId: string;
+  readonly threadId?: string | null;
+  readonly projectId?: string | null;
   readonly title: string;
   readonly tenantId?: string | null;
   /** The notebook's confirmed machine binding, when it has one. */
@@ -36,14 +38,18 @@ export interface UnifiedNotebookMeta {
 }
 
 export function threadIdFor(meta: UnifiedNotebookMeta): string {
-  return `notebook-${meta.notebookId}`;
+  return meta.threadId ?? `notebook-${meta.notebookId}:thread-legacy`;
+}
+
+export function projectIdFor(meta: UnifiedNotebookMeta): string {
+  return meta.projectId ?? `project-${meta.notebookId}`;
 }
 
 export function contextFor(meta: UnifiedNotebookMeta, identityDisputed = false): ContextSnapshot {
   const asset = meta.asset ?? null;
   return {
     tenantId: meta.tenantId ?? "tenant",
-    projectId: "project-notebooks",
+    projectId: projectIdFor(meta),
     ...(asset ? { machineId: asset.id } : {}),
     machineIdentity: asset ? (identityDisputed || !meta.identityConfirmed ? "unconfirmed" : "confirmed") : "not_applicable",
     evidenceAuthorization: asset ? (identityDisputed || !meta.identityConfirmed ? "not_authorized" : "authorized") : "not_applicable",
@@ -60,8 +66,8 @@ export function machinesFor(meta: UnifiedNotebookMeta): readonly Machine[] {
 export function projectsFor(meta: UnifiedNotebookMeta): readonly Project[] {
   const asset = meta.asset ?? null;
   return [{
-    id: "project-notebooks",
-    name: "Notebooks",
+    id: projectIdFor(meta),
+    name: meta.title,
     children: [
       ...(asset ? [{ kind: "machine-link" as const, id: `link-${asset.id}`, label: asset.name, machineId: asset.id }] : []),
       { kind: "thread" as const, id: threadIdFor(meta), label: meta.title },
@@ -191,7 +197,7 @@ export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNoteb
   return {
     id: threadIdFor(meta),
     tenantId: meta.tenantId ?? "tenant",
-    projectId: "project-notebooks",
+    projectId: projectIdFor(meta),
     notebookId: meta.notebookId,
     ...(meta.asset ? { primaryAssetId: meta.asset.id } : {}),
     title: meta.title,

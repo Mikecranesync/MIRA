@@ -6,14 +6,19 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { createNotebook, listNotebooks } from "@/lib/equipment-notebooks";
+import { createNotebook, listNotebooks, listThreads } from "@/lib/equipment-notebooks";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  const notebooks = await listNotebooks(ctx.tenantId);
+  const notebooks = await Promise.all(
+    (await listNotebooks(ctx.tenantId)).map(async (notebook) => ({
+      ...notebook,
+      threads: await listThreads(ctx.tenantId, notebook.id, 20, { viewerUserId: ctx.userId }),
+    })),
+  );
   return NextResponse.json({ notebooks });
 }
 

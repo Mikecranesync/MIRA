@@ -198,4 +198,109 @@ describe("NotebookScreen composer", () => {
     await screen.findByText("Something went wrong answering that — try again.");
     expect(screen.queryByText("Stopped")).toBeNull();
   });
+
+  it("#3742: no asset + sources enabled → mode:general, scope:[] (not grounded)", async () => {
+    // Bug: When sources are enabled but NO machine is selected (!notebook.asset),
+    // the mode should be "general" and scope should be empty, even though sources exist.
+    // This prevents "I couldn't find anything about that in your sources" for general questions.
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "No machine", manufacturer: null, model: null, asset: null },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "A VFD is a Variable Frequency Drive", citations: [], status: "answered" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("A VFD is a Variable Frequency Drive");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBe("general");
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual([]);
+  });
+
+  it("#3742: asset + sources enabled → mode:undefined, scope:[docIds] (grounded)", async () => {
+    // When a machine IS selected (notebook.asset exists) AND sources are enabled,
+    // mode should be omitted (undefined) and scope should contain the enabled docIds.
+    getNotebookDetail.mockResolvedValue({
+      notebook: {
+        id: "nb1",
+        displayName: "CV-101",
+        manufacturer: "Acme",
+        model: "Conveyor",
+        asset: { entityId: "e1" },
+      },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({
+      answer: "Check the belt tension",
+      citations: [{ citationId: "1", sourceTitle: "Manual.pdf", docId: "d1" }],
+      status: "answered",
+    });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "How do I maintain the belt?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("Check the belt tension");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBeUndefined();
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual(["d1"]);
+  });
+
+  it("#3742: no asset + no sources → mode:general, scope:[] (general)", async () => {
+    // When NO machine and NO sources, mode should be "general" and scope empty.
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "Empty", manufacturer: null, model: null, asset: null },
+      sources: [],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "General answer", citations: [], status: "answered" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "Help me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("General answer");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBe("general");
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual([]);
+  });
+
+  it("#3742: asset exists + no sources → mode:general, scope:[] (general)", async () => {
+    // When a machine IS selected but NO sources are enabled, mode should be "general".
+    getNotebookDetail.mockResolvedValue({
+      notebook: {
+        id: "nb1",
+        displayName: "CV-101",
+        manufacturer: "Acme",
+        model: "Conveyor",
+        asset: { entityId: "e1" },
+      },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: false, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "General answer", citations: [], status: "answered" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is torque?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("General answer");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBe("general");
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual([]);
+  });
 });

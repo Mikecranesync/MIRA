@@ -7,6 +7,7 @@ import type { Attachment } from "./types";
 export interface PlatformAdapter {
   attachPhoto(): Promise<Attachment | null>;
   attachFile(): Promise<Attachment | null>;
+  attachCamera(): Promise<Attachment | null>;
   scanMachine(): Promise<string | null>;
   shareArtifact(artifactId: string): Promise<"shared" | "cancelled">;
   onBack(): "handled" | "pass";

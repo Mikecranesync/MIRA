@@ -3,7 +3,7 @@
 // equipment-notebook APIs: home card list → "+ Create new" pill / camera
 // (nameplate → EDITABLE candidate → confirm) → workspace (NotebookScreen).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto } from "../lib/native-pick";
+import { canPickNatively, captureNameplatePhoto } from "../lib/native-pick";
 import {
   listNotebooks,
   createNotebook,
@@ -127,13 +127,12 @@ function Home({
       : [];
 
   /**
-   * The nameplate shortcut. On device this is the phone's own image picker
-   * (#3353: the WebView turned capture="environment" into a chooser); on web
-   * the hidden input below still does the job.
+   * The nameplate shortcut. On device this is the phone's CAMERA (#3353: open
+   * viewfinder, not gallery); on web the hidden input below still does the job.
    */
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    await onCameraPick(await pickNameplatePhoto());
+    await onCameraPick(await captureNameplatePhoto());
   };
 
   const onCameraPick = async (file: File | null) => {

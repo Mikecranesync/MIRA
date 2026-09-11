@@ -31,6 +31,9 @@
       "@factorylm/ui/*": [
         "../packages/factorylm-ui/src/*"
       ],
+      "@assistant-ui/react": [
+        "./node_modules/@assistant-ui/react"
+      ],
       "react": [
         "./node_modules/@types/react"
       ],

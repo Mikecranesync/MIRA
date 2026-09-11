@@ -6,6 +6,8 @@ import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
 import { MicIcon } from "./icons";
 
+import { withoutStatusCode } from "./SendError";
+
 export interface ComposerProps {
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
@@ -39,11 +41,11 @@ interface PendingAttachment {
   readonly machineLabel: string;
 }
 
-type AdapterOperation = "photo" | "file" | "scan";
+type AdapterOperation = "photo" | "file" | "scan" | "camera";
 
 function describeFailure(operation: AdapterOperation, error: unknown): string {
   const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
-  const verb = operation === "scan" ? "Machine scan" : operation === "photo" ? "Photo capture" : "File attachment";
+  const verb = operation === "scan" ? "Machine scan" : operation === "camera" ? "Camera capture" : operation === "photo" ? "Photo capture" : "File attachment";
   return `${verb} failed${detail}. Try again.`;
 }
 
@@ -71,7 +73,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       .finally(() => setBusy(null));
   };
 
-  const attach = (operation: "photo" | "file", pick: () => Promise<Attachment | null>) => {
+  const attach = (operation: "photo" | "file" | "camera", pick: () => Promise<Attachment | null>) => {
     const captured = {
       threadId: state.thread.id,
       machineId: state.activeContext.machineId,
@@ -90,10 +92,20 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     const text = state.draft.trim();
     if (!text) return;
     if (hooks?.onSend) {
-      hooks.onSend(text);
-      dispatch({ type: "set-draft", draft: "" });
+      try {
+        hooks.onSend(text);
+        dispatch({ type: "set-draft", draft: "" });
+        dispatch({ type: "set-send-error", error: null });
+      } catch (error) {
+        // Preserve the question in the composer and show a plain-language error
+        // (no status codes or technical details).
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const plainMessage = withoutStatusCode(errorMessage);
+        dispatch({ type: "set-send-error", error: plainMessage.trim() || "Couldn't reach MIRA. Your message is saved." });
+      }
     } else {
       dispatch({ type: "mock-send" });
+      dispatch({ type: "set-send-error", error: null });
     }
   };
 
@@ -144,7 +156,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         busy={busy !== null}
         onPhoto={() => attach("photo", adapter.attachPhoto)}
         onFile={() => attach("file", adapter.attachFile)}
-        onCamera={() => attach("photo", adapter.attachPhoto)}
+        onCamera={() => attach("camera", adapter.attachCamera)}
         onScan={scan}
         onClose={() => dispatch({ type: "set-attachment-menu-visible", visible: false })}
       /> : null}
