@@ -228,9 +228,17 @@ describe("V3 — mounted without disturbing the existing product", () => {
         expect(css).toMatch(new RegExp(`\\${sel}\\{[^}]*position:relative`));
         expect(css).toContain(`${sel}::after`);
       }
-      for (const sel of [".v3-actions button", ".v3-noticerow button"]) {
+      // `.v3-noticerow a` joined this set when the Sign-in control stopped being
+      // a <button> nested in an <a> (invalid HTML, two overlapping controls for
+      // one action). The anchor must carry the SAME 48px expansion the button
+      // had, or the fix would have traded an accessibility defect for a
+      // touch-target one. Selectors may be grouped across lines, so match the
+      // declaration block that follows the group rather than a single selector
+      // immediately followed by `{`.
+      for (const sel of [".v3-actions button", ".v3-noticerow button", ".v3-noticerow a"]) {
         expect(css).toContain(`${sel}::after`);
-        expect(css).toMatch(new RegExp(`\\${sel.replace(" ", " ")}\\{[^}]*position:relative`));
+        const block = new RegExp(`\\${sel}[^{}]*\\{[^}]*position:relative`);
+        expect(css).toMatch(block);
       }
       // The insets must actually reach 48 from each visual height.
       for (const inset of ["-2px", "-5px", "-6px"]) {
@@ -398,5 +406,96 @@ describe("V3 — actions bind to their own request (round 2, F1/F2)", () => {
     expect(page).toContain("const alive = ()");
     expect((page.match(/if \(!alive\(\)\) return;/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(page).toContain("if (alive()) setBusy(false)");
+  });
+
+  /**
+   * No button in the V3 surface is missing an `onClick` attribute.
+   *
+   * The name is deliberately narrow. This proves an ATTRIBUTE IS PRESENT — it
+   * cannot prove a handler works, so `onClick={undefined}` passes. Reviewed
+   * adversarially (round-4 reviewer, 7 crafted cases); the earlier name, "every
+   * button carries a handler — no dead affordances", claimed more than the scan
+   * can see, which is the `notice={null}` failure in a different costume.
+   *
+   * Three defects it exists for, all shipped to production: the ＋ attachment
+   * and ◉ camera buttons had no onClick at all, and Sign-in was a <button>
+   * nested in an <a> — announced to assistive tech as controls that do nothing
+   * when activated.
+   *
+   * It derives its subject from source each run, so it fails for ANY future
+   * handler-less button rather than the three named.
+   */
+  function buttonTags(src: string): string[] {
+    // Why not a regex: `/<button[^>]*>/` truncates at the first `>`, and an
+    // arrow function puts one INSIDE the tag. On
+    // `<button onClick={() => setN(a > b)} className="x">` it captures exactly
+    // `<button onClick={() =>` — which still contains "onClick", so the tag
+    // passes for the wrong reason and a genuinely dead button written the same
+    // way could pass too. Walk the tag instead, tracking brace depth so only a
+    // top-level `>` closes it.
+    //
+    // It does NOT fix multi-line tags: `[^>]` matches newlines in JS, so the
+    // regex crossed them fine. An earlier version of this comment claimed 5 of
+    // 18 buttons were invisible to it. That was wrong — the count came from
+    // `grep -cE`, which is line-oriented and cannot match across newlines, while
+    // the JS regex can. Both instruments see all 18. Measured with the wrong
+    // tool, and the disagreement blamed on the code.
+    const tags: string[] = [];
+    const open = /<button\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = open.exec(src)) !== null) {
+      let depth = 0;
+      let i = m.index + m[0].length;
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+        else if (c === ">" && depth === 0) break;
+      }
+      tags.push(src.slice(m.index, i + 1));
+    }
+    return tags;
+  }
+
+  const surfaceFiles = {
+    "page.tsx": page,
+    "ScopePicker.tsx": readFileSync(resolve(here, "../../factorylm-ui/ScopePicker.tsx"), "utf8"),
+    "MoreSheet.tsx": readFileSync(resolve(here, "../../factorylm-ui/MoreSheet.tsx"), "utf8"),
+  };
+
+  it("no button in the V3 surface is missing an onClick attribute", () => {
+    const dead: string[] = [];
+    let seen = 0;
+    for (const [name, src] of Object.entries(surfaceFiles)) {
+      for (const tag of buttonTags(src)) {
+        seen += 1;
+        if (tag.includes("onClick")) continue;
+        // Exempt, each for a stated reason:
+        //  - `disabled` with no handler is the honestly-disabled pattern, inert
+        //    by design. Flagging it would fail the guard on CORRECT code, and a
+        //    guard that fails on correct code gets weakened by whoever is under
+        //    the most time pressure.
+        //  - a spread may carry onClick; we cannot see through it.
+        //  - type="submit" is a form's own handler — pinned as unused below.
+        if (/\bdisabled\b/.test(tag)) continue;
+        if (/\{\.\.\./.test(tag)) continue;
+        if (tag.includes('type="submit"')) continue;
+        dead.push(`${name}: ${tag.replace(/\s+/g, " ").slice(0, 70)}`);
+      }
+    }
+    // The scan must see a real population; one that finds nothing passes trivially.
+    expect(seen).toBeGreaterThanOrEqual(15);
+    expect(dead).toEqual([]);
+  });
+
+  it("the type=submit exemption is unused — a tripwire, not a dead allowance", () => {
+    // An exemption you cannot yet justify should assert it is unused, so it
+    // cannot quietly start being used. V3 has no forms today. When one arrives
+    // this fails, and the allowance gets re-decided deliberately rather than
+    // inherited.
+    const submits = Object.values(surfaceFiles)
+      .flatMap(buttonTags)
+      .filter((t) => t.includes('type="submit"'));
+    expect(submits).toEqual([]);
   });
 });

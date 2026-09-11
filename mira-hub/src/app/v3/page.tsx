@@ -618,7 +618,12 @@ export default function V3Page() {
           {signedOut && (
             <div className="v3-notice v3-notice-warn"><div>▤</div><div>
               <b>Sign in to ask</b>MIRA searches your own uploaded manuals as well as the shared library.
-              <div className="v3-noticerow"><a href={`${API_BASE}/login`}><button>Sign in</button></a></div>
+              {/* A link, not a <button> inside an <a>. Nested interactive content is
+                  invalid HTML and gives assistive tech two overlapping controls for
+                  one action; the inner button also had no handler, so it was the
+                  anchor doing the work all along. As an anchor it keeps what a link
+                  should do — middle-click, open in new tab, copy address. */}
+              <div className="v3-noticerow"><a href={`${API_BASE}/login`}>Sign in</a></div>
             </div></div>
           )}
 
@@ -641,9 +646,20 @@ export default function V3Page() {
         <div className="v3-cwrap">
           <div className="v3-composer">
             <button className="v3-ctx" onClick={() => setPicker(true)}>{scopeHint(scope)}</button>
+            {/* The attachment (＋) and camera (◉) controls that stood here had no
+                onClick. They rendered as enabled buttons and carried accessible
+                labels — so a screen reader announced "Add attachment, button" for
+                a control that did nothing when activated, which is worse than
+                absent. Removed rather than disabled: a permanently-disabled
+                control is a different lie, not a smaller one.
+
+                They come back with the photo→nameplate spine
+                (docs/V3_PATH_TO_SHIPPING.md §1b), which is wiring against
+                endpoints that already exist — /api/documents/upload, /api/files,
+                /api/equipment-notebooks/recognize-nameplate — plus the upload
+                progress and failure states that make an attachment honest. Until
+                that lands, the composer promises only what it delivers. */}
             <div className="v3-crow">
-              <button className="v3-icon" aria-label="Add attachment">＋</button>
-              <button className="v3-icon" aria-label="Take photo">◉</button>
               <textarea
                 ref={taRef} value={input} rows={1} maxLength={1000}
                 aria-label="Ask MIRA" placeholder="Ask MIRA…"
