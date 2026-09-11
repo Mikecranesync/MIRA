@@ -13,9 +13,7 @@ IR / onboarding must not guess the unified shell. This page is the short catalog
 
 **Bravo catalog session status (2026-09-11):** `cao-UX-3746-CATALOG-AB-bfa06c06` handed off + **stopped**. Gateway latch **clear** (`current_session=null`). Task still `done=false` (handoff file `UX-3746-CATALOG-AB.HANDOFF.md`; no `ls` fill landed on this branch). Catalog A is therefore **not PASS**. Light B frames were **not** attached to #3746.
 
-**Still BLOCKED:** Pixel USB. APK waiting on Bravo SHA prefix `b6f001da`…`8c6c` at tip `f8913760b814`. Next action when the phone is on `adb`: install that APK + Camera / VFD / nav smoke. Do not launch a second catalog writer.
-
-Do **not** claim Pixel-ready from this page.
+**First proof pass (2026-09-11, claimed on Bravo — unverified here):** Pixel was on `adb`. Installed #3746 tip `f8913760b814` SHA prefix `b6f001da`. Pack claimed at `/Users/bravonode/mira-dogfood/proofs-2026-09-11/`. This checkout **cannot `ls` that directory**, so Camera / VFD / nav stay **OPEN** until an itemized walk (PASS/FAIL per step) is posted. 12-screen walk still **NOT RUN**. Cron continues through 15:00 ET. Do **not** claim Pixel-ready. No merge / deploy / OTA.
 
 ## Build association
 
@@ -26,6 +24,7 @@ Do **not** claim Pixel-ready from this page.
 | Stack base | #3745 @ `41e8ecc80d9069e88611de70b5ff9ba6799600f1` |
 | Shell flag | restored `flm.chatui.v1=unified` |
 | Bravo pack | `/Users/bravonode/mira-dogfood/ui-catalog-2026-09-10/` (+ zip on Bravo only) |
+| First proof pack (claimed) | `/Users/bravonode/mira-dogfood/proofs-2026-09-11/` (Pixel #3746 `f8913760b814`; filenames PENDING `ls`) |
 | Policy | MIRA PR #3748 @ `58b36e2edc8270d9b0d610cab00c5567c1ad6b2a` |
 | Inventory | [[../docs/ux/FACTORYLM_UI_DESIGN_SYSTEM_INVENTORY]] (repo path `docs/ux/FACTORYLM_UI_DESIGN_SYSTEM_INVENTORY.md`) |
 
@@ -62,7 +61,8 @@ Attach only the six selected frames to #3746, captioned `#3746` / unified shell.
 
 ## Open acceptance (keep visible)
 
-- Camera human tap on **this exact #3746 build**: OPEN
-- `What is a VFD?` with **no machine**: OPEN
-- 12-screen regression walk: NOT RUN on this inventory pass
+- Camera human tap on **this exact #3746 build**: OPEN (first pass claimed; no itemized tap result on this checkout)
+- `What is a VFD?` with **no machine**: OPEN (same)
+- Nav smoke: OPEN (same)
+- 12-screen regression walk: NOT RUN
 - Merge / deploy / OTA / Pixel-ready: **not authorized**

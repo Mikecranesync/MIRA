@@ -3,6 +3,12 @@
 > Append-only chronological record. Each entry: `## [YYYY-MM-DD] type | description`
 > Types: `deploy`, `incident`, `config`, `session`, `ingest`, `lint`
 
+## [2026-09-11] session | Cloud — #3746 first Pixel proof pass claimed, itemized results not on this checkout
+- Tip `#3746` `f8913760b814` installed on Pixel (SHA prefix `b6f001da`, unified). Evidence claimed at `/Users/bravonode/mira-dogfood/proofs-2026-09-11/`.
+- Camera / VFD / nav remain OPEN until an `ls` + per-step PASS/FAIL is posted. 12-screen NOT RUN. Cron through 15:00 ET.
+- No merge / deploy / OTA. Gateway still Bravo V6 `cao-V6-SHELL-PROJECTS-001-0615690f`.
+- Machine: Cursor cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`
+
 ## [2026-09-11] session | Cloud — Bravo catalog A+B handed off empty; Pixel USB still blocked
 - Gateway latch clear: `cao-UX-3746-CATALOG-AB-bfa06c06` stopped; `current_session=null`. Task `done=false`.
 - Catalog A not PASS: [[references/unified-shell-catalog-2026-09-10]] filenames still `PENDING Bravo ls`. Light B frames not on #3746.
