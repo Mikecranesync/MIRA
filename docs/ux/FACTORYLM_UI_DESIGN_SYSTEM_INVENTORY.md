@@ -245,6 +245,6 @@ Do **not** extract these while #3737 is ACTIVE. After it releases: confirm it di
 
 | Lane | Owner | Do not |
 |---|---|---|
-| Catalog A + light B | Bravo catalog session **stopped** empty. First Pixel proof pass **claimed** on #3746 `f8913760b814` at `/Users/bravonode/mira-dogfood/proofs-2026-09-11/` (filenames PENDING `ls`; Camera/VFD/nav still OPEN from this checkout) | Launch a second catalog writer. Do not close Camera/VFD from a folder path. Cron through 15:00 ET; no merge/deploy |
+| Catalog A + light B | Bravo catalog session **stopped** empty. Pixel #3746 `f8913760b814` pack `/Users/bravonode/mira-dogfood/proofs-2026-09-11/` (filenames PENDING `ls`). 11:20 ET: Harrington bound Ask **PASS**; L0 VFD educational **PASS**; Camera `+`→Add sources **FAIL** | Launch a second catalog writer. Do not flip Camera to PASS. Cron through 14:46 ET; no merge/deploy |
 | Inventory / denylist / token-authority tests | #3749 | Rewrite policy law; open a fourth UI writer |
 | Shared-core conversation/renderer | #3737 @ `90dc21ea` | Button / composer / AssistantThread work here |

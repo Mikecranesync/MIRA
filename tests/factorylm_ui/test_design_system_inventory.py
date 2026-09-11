@@ -71,6 +71,9 @@ def test_catalog_stub_does_not_invent_filenames_or_close_open_proofs() -> None:
     assert "/Users/bravonode/mira-dogfood/ui-catalog-2026-09-10/" in text
     assert "PENDING Bravo ls" in text
     assert "f8913760b814d8edadf7375662605759215c7af6" in text
-    assert "**OPEN** until a human tap" in text
-    assert "**OPEN** until actually run" in text
+    assert "**FAIL** — human tap: `+` → Add sources, not Camera" in text
+    assert "**PASS** — L0 still educational on this tip" in text
+    assert "Harrington UMS3-0335" in text
     assert "not authorized" in text.lower() or "not authorized" in text
+    camera_row = next(line for line in text.splitlines() if line.startswith("| Camera-open"))
+    assert "FAIL" in camera_row and "PASS" not in camera_row

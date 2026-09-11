@@ -3,6 +3,12 @@
 > Append-only chronological record. Each entry: `## [YYYY-MM-DD] type | description`
 > Types: `deploy`, `incident`, `config`, `session`, `ingest`, `lint`
 
+## [2026-09-11] session | Cloud — #3746 11:20 ET dogfood: Harrington PASS, L0 VFD PASS, Camera FAIL
+- Tip `#3746` `f8913760b814`. Bound-machine Ask Harrington UMS3-0335 **PASS**. L0 VFD still educational **PASS**. Camera menu **FAIL** (`+` → Add sources).
+- Nav OPEN. 12-screen NOT RUN. Filenames still PENDING `ls` of `/Users/bravonode/mira-dogfood/proofs-2026-09-11/`. Cron through 14:46 ET.
+- No merge / deploy / OTA. Gateway still Bravo V6 `cao-V6-SHELL-PROJECTS-001-0615690f`.
+- Machine: Cursor cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`
+
 ## [2026-09-11] session | Cloud — #3746 first Pixel proof pass claimed, itemized results not on this checkout
 - Tip `#3746` `f8913760b814` installed on Pixel (SHA prefix `b6f001da`, unified). Evidence claimed at `/Users/bravonode/mira-dogfood/proofs-2026-09-11/`.
 - Camera / VFD / nav remain OPEN until an `ls` + per-step PASS/FAIL is posted. 12-screen NOT RUN. Cron through 15:00 ET.
