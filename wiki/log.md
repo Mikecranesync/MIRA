@@ -3,6 +3,13 @@
 > Append-only chronological record. Each entry: `## [YYYY-MM-DD] type | description`
 > Types: `deploy`, `incident`, `config`, `session`, `ingest`, `lint`
 
+## [2026-09-11] session | Cloud — FactoryLM UI policy Phase 1 inventory + catalog stub
+- Policy read from PR #3748 @ `58b36e2edc8270d9b0d610cab00c5567c1ad6b2a` (`docs/ux/FACTORYLM_UI_DESIGN_POLICY.md`).
+- Inventory: `docs/ux/FACTORYLM_UI_DESIGN_SYSTEM_INVENTORY.md` (canonical/duplicate/legacy/one-off/unknown + KEEP/CONSOLIDATE/RETIRE/DEFER). Shared-core not edited (#3737 ACTIVE).
+- Catalog wiki stub: [[references/unified-shell-catalog-2026-09-10]] — Bravo pack path recorded; filenames PENDING Bravo ls. Camera tap + VFD no-machine remain OPEN.
+- Claim: https://github.com/Mikecranesync/MIRA/issues/3626#issuecomment-5627879923
+- Machine: Cursor cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`
+
 ## [2026-05-02] session | Charlie — Linear board setup + YouTube transcript skill
 - Linear Cranesync workspace fully configured: 3 projects (MVP Build / Sales & GTM / Ops & Infra), 15 issues (CRA-5–CRA-19), 4 custom statuses (Shaping, Reviewed, Ready to Deploy, Pending Deployed), 3 labels (user-action, agent-action, customer-request)
 - Board cleanup: FactoryLM stale project cancelled; 3 active projects set to In Progress via MCP
