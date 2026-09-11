@@ -39,6 +39,7 @@
 |------|---------|
 | [[references/kanban]] | GitHub Projects board — commands for session start + commit |
 | [[references/coding-principles]] | Karpathy-adapted agent coding rules (moved from CLAUDE.md) |
+| [[references/unified-shell-catalog-2026-09-10]] | Unified-shell Pixel catalog index (2026-09-10); Bravo session stopped without `ls` fill; filenames still pending |
 
 ## Special Files
 
