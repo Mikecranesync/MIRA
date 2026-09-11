@@ -136,6 +136,8 @@ Inspected stylesheets that actually paint the unified shell on `main`: `packages
 
 **Count:** 9 systemic findings. **0** decorative gradient / glow / blur / sparkle occurrences in current `factorylm-ui` CSS.
 
+Guard: `tests/factorylm_ui/test_unified_shell_denylist.py` fails if `shell.css` / `conversation.css` gain gradient, backdrop-filter, blur, drop-shadow, glow, or sparkle, or if `workspace.css` binds `--fl-dark-bg-glass` or a hex literal.
+
 Indigo `--fl-accent: #4f46e5` is the **workspace action/selection** token, not a gradient. Changing it is a brand decision, not this inventory.
 
 ---
@@ -152,7 +154,7 @@ Indigo `--fl-accent: #4f46e5` is the **workspace action/selection** token, not a
 
 ## 6. First implementation slice (this PR)
 
-**Scope:** this inventory + catalog wiki stub + a completeness test under `tests/factorylm_ui/`.
+**Scope:** this inventory + catalog wiki stub + completeness and denylist tests under `tests/factorylm_ui/`.
 
 **Why:** Phase 1 must exist before token/primitive edits. Shared-core is already claimed. A docs lock prevents the next agent from inventing a second library.
 
