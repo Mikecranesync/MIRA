@@ -1,10 +1,18 @@
 # FactoryLM UI design-system inventory
 
+This file is the **CURRENT IMPLEMENTATION MAP** (archaeology). It is not design law.
+
+| Role | Path | Owner PR |
+|---|---|---|
+| **CONSTITUTION / durable design law** | `docs/ux/FACTORYLM_UI_DESIGN_POLICY.md` | #3748 @ `58b36e2edc8270d9b0d610cab00c5567c1ad6b2a` |
+| **CURRENT IMPLEMENTATION MAP** | this file | #3749 |
+
+Do **not** duplicate or rewrite constitutional rules here. When policy and this map disagree, **stop and report** — do not invent a third document. Do not create another design-policy file.
+
 **Status:** Phase 1 archaeology (policy §7–§8, §14 Phase 1). Not a restyle.
-**Policy:** `docs/ux/FACTORYLM_UI_DESIGN_POLICY.md` on PR #3748 @ `58b36e2edc8270d9b0d610cab00c5567c1ad6b2a` (working authority while draft).
 **Inspected head:** `origin/main` `52b6f13d5928caaeea5dcb00984c710e8fa89c1d` (this inventory branch base).
-**In-flight shared-core (read, not edited):** #3731 `feat/assistant-ui-shell-surface` @ `9469d9ba469bb683af1f2763ab85ed6f1dca0ee9`; #3737 `feat/v4-chatgpt-grammar` @ `90dc21ea09e5de6b5b232d4b32bbe9a2d1e47b75` (ACTIVE claim on #3626); #3746 camera remount @ `f8913760b814d8edadf7375662605759215c7af6`.
-**Writer:** Cursor Grok cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`. Docs/wiki only.
+**In-flight shared-core (read, not edited):** #3731 `feat/assistant-ui-shell-surface` @ `9469d9ba469bb683af1f2763ab85ed6f1dca0ee9`; #3737 `feat/v4-chatgpt-grammar` @ `90dc21ea09e5de6b5b232d4b32bbe9a2d1e47b75` (**ACTIVE** writer); #3746 camera remount @ `f8913760b814d8edadf7375662605759215c7af6`.
+**Writer:** Cursor Grok cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`. Docs/wiki/tests only.
 
 Do not create another UI package, theme, shell, or component library from this document.
 
@@ -50,15 +58,34 @@ Classification keys: **CANONICAL** · **DUPLICATE** · **LEGACY/FROZEN** · **ON
 
 These four roots are **one writer lane**. Active shared-core writer as of 2026-09-11: **#3737** (`charlie-disk-memory-reclamation`). #3731 released the lane to #3737. #3746 also edits `Composer.tsx` + `adapters.ts`.
 
-### Token source of truth (documentary conflict, files identical)
+### Token authority (do not change values until this is obvious)
 
-| Claim | File |
-|---|---|
-| `.claude/rules/ui-style.md` | `docs/design/factorylm-tokens.css` is canonical |
-| File header in both copies | “CANONICAL FILE” |
-| Package lock | `packages/factorylm-theme/src/__tests__/theme-contract.test.ts` requires the package copy to be **byte-identical** to `docs/design/factorylm-tokens.css` |
+**If you change FactoryLM radius / spacing / color for the unified shell, change it here:**
 
-**Disposition:** KEEP both files + the lock test. Edit `docs/design/factorylm-tokens.css` first, then sync the package copy. Do not fork a third token file.
+1. Edit **`docs/design/factorylm-tokens.css`** (AUTHORITATIVE SOURCE for `--fl-*` values).
+2. Sync **`packages/factorylm-theme/src/tokens.css`** (GENERATED/COPIED — must stay byte-identical; lock: `packages/factorylm-theme/src/__tests__/theme-contract.test.ts` and `tests/factorylm_ui/test_token_authority.py`).
+3. Unified-shell CSS reads **RUNTIME** aliases `--fl-workspace-*` from `packages/factorylm-theme/src/workspace.css` (no hex literals; already tested). Do not add a third token file.
+
+| Role | Path | SHA-256 prefix @ `52b6f13d` | Notes |
+|---|---|---|---|
+| AUTHORITATIVE SOURCE | `docs/design/factorylm-tokens.css` | `b51bd0e15d57` (5206 B) | `.claude/rules/ui-style.md` + theme-contract point here |
+| GENERATED/COPIED (locked) | `packages/factorylm-theme/src/tokens.css` | `b51bd0e15d57` (identical) | Package header also says “CANONICAL” — treat as the copy, not a second SoT |
+| RUNTIME OVERRIDES / aliases | `packages/factorylm-theme/src/workspace.css` | `635e0518002d` | Maps `--fl-*` → `--fl-workspace-*` for light + `[data-theme="dark"]` |
+| CONSUMERS (unified shell) | `packages/factorylm-ui/src/shell.css`, `conversation.css` | — | Must use `var(--fl-workspace-*)` only |
+| CONSUMERS (lab / adapters) | `apps/factorylm-ui-lab/**`, `mira-mobile/src/unified/**` | — | Import theme/workspace; do not invent hex |
+
+**Other files named like tokens — not the unified-shell SoT (do not edit them to “fix” the shell):**
+
+| Path | Bytes | Role |
+|---|---|---|
+| `mira-contextualizer/mira_contextualizer/gui/factorylm-tokens.css` | 2132 | Offline-tool COPY; **already drifted** vs 5206-byte SoT |
+| `tools/factorylm_ai/review_console/factorylm-tokens.css` | 4170 | Tool COPY; **drifted** |
+| `mira-web/public/_tokens.css` | 4943 | Public/marketing remap (`--fl-navy-*`, `--fl-orange-*`); **different vocabulary** |
+| `mira-mobile/src/tokens.css` | 8401 | Classic-mobile `--flm-*` / NotebookLM-adapted set; **different vocabulary**. Unified host uses `--fl-workspace-*` via the theme package |
+
+Style-guide §6 (`docs/design/factorylm-style.md`) still says every copy must match byte-for-byte. That is **not true today** for the four rows above. Do not silently “fix” those copies in this lane (legacy/tool trees). Do not change `--fl-radius-card` / `--fl-shadow-pop` values until a later value-normalization PR after #3737.
+
+Documentary tension (ownership text, not bytes): `ui-style.md` names the docs file; the package copy’s header also says CANONICAL. **Resolved for agents:** docs file is the edit target; package copy is the lock-tested twin.
 
 ### Canonical components on `main` (exported from `packages/factorylm-ui/src/index.ts`)
 
@@ -97,7 +124,7 @@ Guarded trees in `docs/architecture/convergence/REGISTRY.yaml` / `.claude/rules/
 1. **Control primitive** — extract variants from `.fl-shell button` (quiet / bordered / accent-send / destructive). One primitive fixes new-chat, inspector, followups, composer, errors.
 2. **Empty / loading / error** — one pattern each, replacing the current paragraph/notice/placeholder/failure set. Align Ask and Work.
 3. **Machine context** — one chip/control, not bar-chip plus composer `⌁` plus header title.
-4. **Conversation renderer** — `Conversation.tsx` **or** `assistant/AssistantThread.tsx`, not both forever. Wait for #3731/#3737. Do not add a third.
+4. **Conversation renderer** — there must be **one** canonical renderer. Do **not** introduce a third. Let #3737 finish its direction. After #3737 has a stable reviewed head, an explicit decision: **KEEP** the winner · **MIGRATE** consumers of the loser · **RETIRE** the loser when safe. Do not keep both indefinitely.
 
 ### RETIRE
 
@@ -127,14 +154,14 @@ Inspected stylesheets that actually paint the unified shell on `main`: `packages
 | 1 | No Button primitive; every control restyles `.fl-shell button` | one-off buttons | Fixes every chrome control once #3737 lands |
 | 2 | `--fl-radius-card` (16px) on composer, bubbles, cards, run, error, safety, attachment menu | excessive rounded cards | One token / one mapping decision |
 | 3 | `.fl-composer__row` always uses `--fl-workspace-shadow-pop` | arbitrary shadows | Composer is on every Ask/Work state |
-| 4 | `.fl-chip`, `.fl-pill`, follow-up `radius-pill` | unnecessary pills / badges | Machine chip is meaningful; follow-up pills are decorative shape |
+| 4 | `.fl-chip`, `.fl-pill`, follow-up `radius-pill` | unnecessary pills / badges | Machine chip is meaningful; follow-up pills are decorative shape. Style-guide §4 still *teaches* `.pill` as a default — that is runbook drift vs policy, not a new shell gradient |
 | 5 | `2px` mode-toggle padding and citation `row-gap` | arbitrary spacing | Small, mechanical, many states |
 | 6 | `--fl-dark-bg-glass` lives in the shared token file | glassmorphism (latent) | Keep off workspace; do not import into shell |
 | 7 | `Conversation` vs `AssistantThread` | duplicate navigation / message treatments | Competing systems — stop, do not invent a third |
 | 8 | Empty Ask / Work notice / shell empty / placeholder are four copy+class pairs | unrelated Ask vs Work / missing canonical empty | One EmptyState pattern |
 | 9 | Machine facts in breadcrumb chip **and** composer machine button | duplicate chrome | One MachineContext |
 
-**Count:** 9 systemic findings. **0** decorative gradient / glow / blur / sparkle occurrences in current `factorylm-ui` CSS.
+**Count:** 9 systemic findings. **0** decorative gradient / glow / blur / sparkle in current `factorylm-ui` CSS. Do not manufacture decorative problems that are not there. The disease is inconsistent primitives, local styling, duplication, radius/shadow treatment, renderer divergence, and missing shared states.
 
 Guard: `tests/factorylm_ui/test_unified_shell_denylist.py` fails if `shell.css` / `conversation.css` gain gradient, backdrop-filter, blur, drop-shadow, glow, or sparkle, or if `workspace.css` binds `--fl-dark-bg-glass` or a hex literal.
 
@@ -144,21 +171,23 @@ Indigo `--fl-accent: #4f46e5` is the **workspace action/selection** token, not a
 
 ## 5. Top 5 systemic cleanup opportunities
 
-1. **Keep a single token owner** (`docs/design/factorylm-tokens.css` → package copy + lock test). Prevents a second vocabulary.
-2. **Button / control primitive** derived from `.fl-shell button` after #3737. Highest consumer count.
-3. **Composer elevation + radius** (`shadow-pop` + `radius-card` on the always-visible row). Visible on every catalog Ask/Work frame.
-4. **One empty / loading / error pattern** shared by Ask and Work (and shell placeholders).
-5. **One conversation renderer** — finish or retire assistant-ui vs classic `Conversation`. Do not add a third surface.
+1. **Token ownership** — one edit path (above). Values unchanged until that path is followed.
+2. **Button / control primitive** after #3737 CLEARED — inspect the resulting tree first; do not duplicate anything #3737 already added.
+3. **Composer elevation + radius** (`shadow-pop` + `radius-card` on the always-visible row).
+4. **One empty / error pattern** shared by Ask and Work.
+5. **Conversation renderer convergence** (KEEP / MIGRATE / RETIRE after #3737).
+
+Provisional shared-core order **after #3737 releases** (change if archaeology shows a higher-leverage dependency): Button → composer radius/shadow → Empty/Error → renderer convergence → remaining token cleanup. Not a “design system rewrite.”
 
 ---
 
 ## 6. First implementation slice (this PR)
 
-**Scope:** this inventory + catalog wiki stub + completeness and denylist tests under `tests/factorylm_ui/`.
+**Scope:** inventory + catalog wiki stub + completeness / denylist / token-authority tests under `tests/factorylm_ui/`.
 
-**Why:** Phase 1 must exist before token/primitive edits. Shared-core is already claimed. A docs lock prevents the next agent from inventing a second library.
+**Held while #3737 is ACTIVE:** Button primitive, new Conversation renderer, AssistantThread replacement, composer structural refactor, shared-core component rewrites, token **value** changes.
 
-**Not in this slice:** any `packages/factorylm-*` edit, screen restyle, merge, deploy, OTA, Pixel-ready claim.
+**Not in this slice:** merge, deploy, OTA, Pixel-ready claim.
 
 ---
 
@@ -168,6 +197,6 @@ Indigo `--fl-accent: #4f46e5` is the **workspace action/selection** token, not a
 |---|---|
 | Two conversation systems compete (`Conversation` vs `AssistantThread`) | **STOP restyle.** Report only. |
 | Shared-core writer ACTIVE (#3737, also #3746 on Composer) | **STOP package edits.** |
-| Token “CANONICAL” claimed in two paths | **Not a value conflict** — files are identical and lock-tested. Documented, not forked. |
+| Token “CANONICAL” claimed in two paths | **Ownership text conflict, not a value conflict.** Docs file is the edit target; package copy is the lock-tested twin. Offline/legacy `*tokens.css` files have **already drifted** and are not SoT. |
 | Frozen legacy prettier | **Not attempted.** Classic Workorders stays evidence-only. |
 | Camera / VFD | Remain **OPEN**. Not claimed from screenshots. |

@@ -59,6 +59,8 @@ def test_inventory_exists_and_classifies_policy_categories() -> None:
     assert "packages/factorylm-ui" in text
     assert "docs/design/factorylm-tokens.css" in text
     assert "Do not create another UI package" in text
+    assert "CURRENT IMPLEMENTATION MAP" in text
+    assert "FACTORYLM_UI_DESIGN_POLICY.md" in text
 
 
 def test_catalog_stub_does_not_invent_filenames_or_close_open_proofs() -> None:
