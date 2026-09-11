@@ -9,7 +9,11 @@ tags: [ui, catalog, pixel, unified-shell]
 
 IR / onboarding must not guess the unified shell. This page is the short catalog index required by `docs/ux/FACTORYLM_UI_DESIGN_POLICY.md` §2 / §12 and the Foreman A+B note on [#3746](https://github.com/Mikecranesync/MIRA/pull/3746#issuecomment-5627490178).
 
-**This checkout cannot see Bravo disk.** Filenames below stay `PENDING Bravo ls` until the catalog owner or exactly one Bravo worker lists `/Users/bravonode/mira-dogfood/ui-catalog-2026-09-10/` and writes the real names here.
+**This checkout cannot see Bravo disk.** Filenames below stay `PENDING Bravo ls`. Do **not** invent names.
+
+**Bravo catalog session status (2026-09-11):** `cao-UX-3746-CATALOG-AB-bfa06c06` handed off + **stopped**. Gateway latch **clear** (`current_session=null`). Task still `done=false` (handoff file `UX-3746-CATALOG-AB.HANDOFF.md`; no `ls` fill landed on this branch). Catalog A is therefore **not PASS**. Light B frames were **not** attached to #3746.
+
+**Still BLOCKED:** Pixel USB. APK waiting on Bravo SHA prefix `b6f001da`…`8c6c` at tip `f8913760b814`. Next action when the phone is on `adb`: install that APK + Camera / VFD / nav smoke. Do not launch a second catalog writer.
 
 Do **not** claim Pixel-ready from this page.
 

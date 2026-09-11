@@ -3,6 +3,13 @@
 > Append-only chronological record. Each entry: `## [YYYY-MM-DD] type | description`
 > Types: `deploy`, `incident`, `config`, `session`, `ingest`, `lint`
 
+## [2026-09-11] session | Cloud — Bravo catalog A+B handed off empty; Pixel USB still blocked
+- Gateway latch clear: `cao-UX-3746-CATALOG-AB-bfa06c06` stopped; `current_session=null`. Task `done=false`.
+- Catalog A not PASS: [[references/unified-shell-catalog-2026-09-10]] filenames still `PENDING Bravo ls`. Light B frames not on #3746.
+- APK waiting Bravo SHA prefix `b6f001da` at #3746 tip `f8913760b814`. Next when Pixel is on `adb`: install + Camera/VFD/nav smoke.
+- #3737 still draft HOLD @ `90dc21ea09`. No merge / deploy / OTA. No new writer launched.
+- Machine: Cursor cloud `bc-17cf4256-ed62-4ffd-a19f-13b0a5f2cda5`
+
 ## [2026-09-11] session | Cloud — FactoryLM UI policy Phase 1 inventory + catalog stub
 - Policy read from PR #3748 @ `58b36e2edc8270d9b0d610cab00c5567c1ad6b2a` (`docs/ux/FACTORYLM_UI_DESIGN_POLICY.md`).
 - Inventory: `docs/ux/FACTORYLM_UI_DESIGN_SYSTEM_INVENTORY.md` (canonical/duplicate/legacy/one-off/unknown + KEEP/CONSOLIDATE/RETIRE/DEFER). Shared-core not edited (#3737 ACTIVE).

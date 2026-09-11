@@ -245,6 +245,6 @@ Do **not** extract these while #3737 is ACTIVE. After it releases: confirm it di
 
 | Lane | Owner | Do not |
 |---|---|---|
-| Catalog A + light B | Bravo `cao-UX-3746-CATALOG-AB-bfa06c06` | Launch a second catalog writer |
+| Catalog A + light B | Bravo `cao-UX-3746-CATALOG-AB-bfa06c06` **stopped** (handoff, latch clear, `done=false`; wiki filenames still `PENDING Bravo ls`; no #3746 frames) | Launch a second catalog writer. Next: Pixel on `adb` → install APK `b6f001da`…`8c6c` @ `f8913760b814` + Camera/VFD/nav smoke |
 | Inventory / denylist / token-authority tests | #3749 | Rewrite policy law; open a fourth UI writer |
 | Shared-core conversation/renderer | #3737 @ `90dc21ea` | Button / composer / AssistantThread work here |
