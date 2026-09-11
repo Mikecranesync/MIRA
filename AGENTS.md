@@ -59,7 +59,7 @@ See local AGENTS.md in each module for deep context.
 | mira-bot-telegram | — | bot-net, core-net |
 | mira-bot-slack | — | bot-net, core-net |
 | atlas-api | 8088→8080 | cmms-net, core-net |
-| atlas-db | 5433→5432 | cmms-net |
+| atlas-db | 5433 | cmms-net |
 | mira-web | 3200→3000 | core-net, cmms-net |
 
 ## Node Map
