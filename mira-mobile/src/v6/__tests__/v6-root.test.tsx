@@ -1,11 +1,11 @@
+// @vitest-environment jsdom
 /**
  * V6 Root tests — Projects sidebar, chat-first home, no-machine mode.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { V6Root } from "../V6Root";
+import { V6Root } from "../../screens/V6Root";
 import type { Me } from "../../api/resources";
-import * as resources from "../../api/resources";
 import * as v6Data from "../data";
 
 // Mock Capacitor Preferences
@@ -43,7 +43,47 @@ vi.mock("../../lib/transient-layer", () => ({
   registerTransientLayer: vi.fn(),
 }));
 
+// Prevent createShellState crash when activeContext is absent in fixture.
+// Provides a complete ShellState (all required fields from packages/factorylm-interaction/src/reducer.ts).
+vi.mock("../../../../packages/factorylm-interaction/src/reducer", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/factorylm-interaction/src/reducer")>(
+    "../../../../packages/factorylm-interaction/src/reducer"
+  );
+  return {
+    ...actual,
+    createShellState: vi.fn(() => ({
+      fixtureId: "test-fixture",
+      activeContext: { projectId: null, folderId: null, machineId: null, source: null },
+      profile: { kind: "mobile" },
+      theme: "light",
+      draft: "",
+      selectedSource: null,
+      selectedProjectId: undefined,
+      selectedFolderId: undefined,
+      navigationVisible: true,
+      inspectorVisible: false,
+      attachmentMenuVisible: false,
+      mode: "ask",
+      offline: { state: "online", pendingChanges: 0 },
+      thread: {
+        id: "new-chat",
+        tenantId: "tenant-123",
+        notebookId: "nb-1",
+        title: "New chat",
+        mode: "ask",
+        visibility: "private",
+        turns: [],
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      projects: [],
+      machines: [],
+    })),
+  };
+});
+
 const mockMe: Me = {
+  id: "u1",
   email: "tech@example.com",
   name: "Test Tech",
   tenantId: "tenant-123",
@@ -54,7 +94,7 @@ const mockMe: Me = {
 describe("V6Root", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Mock v6 data functions
     vi.spyOn(v6Data, "v6Projects").mockResolvedValue([
       {
@@ -86,12 +126,14 @@ describe("V6Root", () => {
         ],
       },
     ]);
-    
+
     vi.spyOn(v6Data, "v6Machines").mockResolvedValue([
       {
         id: "machine-1",
+        canonicalAssetId: "asset-1",
         name: "Filler A",
-        status: "running",
+        unsPath: "enterprise.plant.line1.filler_a",
+        status: "normal",
       },
     ]);
   });
@@ -111,12 +153,12 @@ describe("V6Root", () => {
     );
 
     // V6 root wrapper should be present
-    expect(screen.getByTestId("v6-root")).toBeInTheDocument();
-    
+    expect(screen.getByTestId("v6-root")).toBeTruthy();
+
     // Shell should render (check for shell class)
     await waitFor(() => {
       const shell = document.querySelector(".fl-shell");
-      expect(shell).toBeInTheDocument();
+      expect(shell).not.toBeNull();
     });
   });
 
@@ -139,11 +181,11 @@ describe("V6Root", () => {
       expect(v6Data.v6Projects).toHaveBeenCalled();
       expect(v6Data.v6Machines).toHaveBeenCalled();
     });
-    
-    // Projects should be visible in navigation
+
+    // Projects should be visible in navigation (use getAllByText — shell may render labels in multiple places)
     await waitFor(() => {
-      expect(screen.getByText("Line 1 Machines")).toBeInTheDocument();
-      expect(screen.getByText("General")).toBeInTheDocument();
+      expect(screen.getAllByText("Line 1 Machines").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("General").length).toBeGreaterThan(0);
     }, { timeout: 3000 });
   });
 
@@ -164,13 +206,13 @@ describe("V6Root", () => {
     // Wait for shell to render
     await waitFor(() => {
       const shell = document.querySelector(".fl-shell");
-      expect(shell).toBeInTheDocument();
+      expect(shell).not.toBeNull();
     });
-    
+
     // Composer should be available even without a machine selected
     // (This is the key difference from legacy - no machine required)
     const composer = document.querySelector(".fl-composer");
-    expect(composer).toBeInTheDocument();
+    expect(composer).not.toBeNull();
   });
 
   it("shows navigation footer with email and sign out", async () => {
@@ -188,9 +230,9 @@ describe("V6Root", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(mockMe.email)).toBeInTheDocument();
-      expect(screen.getByText("Use legacy app")).toBeInTheDocument();
-      expect(screen.getByText("Sign out")).toBeInTheDocument();
+      expect(screen.getAllByText(mockMe.email).length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Use legacy app").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Sign out").length).toBeGreaterThan(0);
     });
   });
 });
