@@ -55,6 +55,11 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
       files += 1;
       return attachment(FILE, `lab-file-${files}`);
     },
+    attachCamera: async () => {
+      record("attachCamera");
+      photos += 1;
+      return attachment(PHOTO, `lab-camera-${photos}`);
+    },
     scanMachine: async () => {
       record("scanMachine");
       const { activeMachineId, machineIds } = context();
