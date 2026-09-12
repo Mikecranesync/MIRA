@@ -239,15 +239,19 @@ type HistoryTurn = {
   content: string;
   status?: "answered" | "insufficient_evidence" | "error";
   stopped?: boolean;
+  safetyNotice?: SafetyNoticeEntry;
 };
 
 /** Recent thread → multi-turn memory for the server (the route caps it again
  *  at 12 / 2000 chars). Only completed turns with content. A stopped turn
  *  (Stop pressed mid-stream, live or rehydrated — see `persistedTurns`) is
- *  NOT an answer and never enters the history the model sees. */
+ *  NOT an answer and never enters the history the model sees — and neither
+ *  does a safety hard-stop turn (`safetyNotice` set): it's a LOTO/arc-flash
+ *  refusal, not a normal answer the model should treat as its own prior
+ *  reasoning on a later turn. */
 export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
   return turns
-    .filter((t) => t.content && !t.stopped && (t.role === "user" || t.role === "assistant"))
+    .filter((t) => t.content && !t.stopped && !t.safetyNotice && (t.role === "user" || t.role === "assistant"))
     .slice(-12)
     .map((t) => ({ role: t.role, content: t.content }));
 }
