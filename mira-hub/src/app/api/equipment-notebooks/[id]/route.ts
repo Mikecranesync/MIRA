@@ -11,7 +11,9 @@ import {
   deleteNotebook,
   getNotebook,
   listSources,
+  listThreads,
   listTurns,
+  normalizeNotebookThreadId,
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
@@ -20,18 +22,32 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+function requestSearchParams(req: NextRequest): URLSearchParams {
+  const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
+  if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
+  return new URL(maybe.url ?? "http://localhost/").searchParams;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   const { id } = await params;
+  const rawThreadId = requestSearchParams(req).get("threadId");
+  const threadId = rawThreadId === null ? undefined : normalizeNotebookThreadId(rawThreadId);
+  if (rawThreadId !== null && !threadId) {
+    return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  }
   const notebook = await getNotebook(ctx.tenantId, id);
   if (!notebook) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const [sources, turns, photos] = await Promise.all([
+  const [sources, turns, threads, photos] = await Promise.all([
     listSources(ctx.tenantId, id),
     // 086: history is read AS the authenticated technician — own turns plus
     // labeled legacy rows, never another user's. Same endpoint for Mobile and
     // Web, so this is where "your conversation on any device" is decided.
-    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
+    listTurns(ctx.tenantId, id, 50, { viewerUserId: ctx.userId, ...(threadId ? { threadId } : {}) }),
+    // 087 / THRD-0: the notebook is the Project; these are its conversations.
+    // Derived from rows the same viewer may read, so isolation matches history.
+    listThreads(ctx.tenantId, id, 50, { viewerUserId: ctx.userId }),
     // S5 D1 (hub half): linked LOOK photos (workspace_file_links role
     // "photo") as a SEPARATE additive array — reuses listFilesForTarget,
     // touches neither the sources semantics nor the trust gate. A failure
@@ -54,7 +70,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         return [];
       }),
   ]);
-  return NextResponse.json({ notebook, sources, turns, photos });
+  return NextResponse.json({ notebook, sources, turns, threads, photos });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

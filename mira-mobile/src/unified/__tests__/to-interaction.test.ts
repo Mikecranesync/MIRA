@@ -81,7 +81,7 @@ describe("turns and thread", () => {
 
   it("keeps ids, roles, lifecycles, and gives a disputed turn an unconfirmed context", () => {
     const thread = toThread(messages, META);
-    expect(thread.id).toBe("notebook-nb-1");
+    expect(thread.id).toBe("notebook-nb-1:thread-legacy");
     expect(thread.primaryAssetId).toBe("asset-1");
     expect(thread.turns.map((t) => [t.id, t.role, t.lifecycle])).toEqual([
       ["r1-q", "user", "completed"], ["r1-a", "assistant", "failed"], ["live-0-a", "assistant", "running"],

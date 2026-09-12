@@ -51,6 +51,7 @@ export interface UnifiedShellHost {
   readonly projects: readonly Project[];
   readonly machines: readonly Machine[];
   readonly onOpenItem: (item: ProjectItem) => void;
+  readonly onSelectProject?: (projectId: string) => void;
   readonly navigationFooter?: ReactNode;
 }
 
@@ -74,6 +75,7 @@ export interface UnifiedChatProps {
 
 export interface UnifiedChatHandlers extends ChatV2Handlers {
   readonly onScanMachine?: () => Promise<string | null> | string | null;
+  readonly onNewChat?: () => void;
 }
 
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
@@ -212,6 +214,7 @@ export function UnifiedChat({
     onCopy,
     ...(canStop ? { onStop: handlers.onStop } : {}),
     ...(canRetry && handlers.onRetry ? { onRetry: () => handlers.onRetry?.() } : {}),
+    ...(handlers.onNewChat ? { onNewChat: handlers.onNewChat } : {}),
     onSource: (source) => {
       const citation: ChatCitation | undefined = citations.get(source.id);
       if (citation) handlers.onCitation(citation);
@@ -233,6 +236,7 @@ export function UnifiedChat({
       hooks={hooks}
       conversationSurface="assistant"
       onOpenItem={host?.onOpenItem}
+      onSelectProject={host?.onSelectProject}
       navigationFooter={host?.navigationFooter}
     />
   </div>;
