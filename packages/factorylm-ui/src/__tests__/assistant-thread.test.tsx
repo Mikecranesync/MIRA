@@ -239,13 +239,22 @@ describe("assistant surface rendering", () => {
     }
   });
 
-  it("renders greeting and grounding line on first-run (empty thread)", () => {
+  it("renders the greeting alone on first-run; a grounding line only when the host provides one", () => {
+    // Default first-run is mostly empty (UI-replacement brief §6): greeting, no
+    // default grounding claim. A host that knows its scope may pass a line.
     const view = render({ surface: "mobile", fixture: "empty", conversationSurface: "assistant" });
     const greeting = view.container.querySelector<HTMLElement>(".fl-conversation__greeting");
-    const grounding = view.container.querySelector<HTMLElement>(".fl-conversation__grounding");
     expect(greeting).not.toBeNull();
-    expect(grounding).not.toBeNull();
     expect(greeting?.textContent).toContain("What can I help you with");
+    expect(view.container.querySelector(".fl-conversation__grounding")).toBeNull();
+
+    const hosted = render({
+      surface: "mobile",
+      fixture: "empty",
+      conversationSurface: "assistant",
+      hooks: { groundingLine: () => "Grounded in the Launch 2 notebook." },
+    });
+    expect(hosted.container.querySelector(".fl-conversation__grounding")?.textContent).toContain("Launch 2 notebook");
   });
 
   it("does not render first-run surface once a turn exists", () => {

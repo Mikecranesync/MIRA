@@ -1,10 +1,8 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
-import { breadcrumb } from "./Conversation";
 import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
-import { MicIcon } from "./icons";
 
 import { withoutStatusCode } from "./SendError";
 
@@ -56,8 +54,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const machine = machineName(state, state.activeContext.machineId);
   const native = state.profile.nativeDevice;
   const canSend = state.draft.trim().length > 0;
-  const crumbs = breadcrumb(state);
-  const using = [...crumbs, machine].filter((value): value is string => Boolean(value));
   // Pending attachments belong to the thread they were captured in; a loaded
   // thread never inherits another thread's pending evidence.
   const visiblePending = pending.filter((item) => item.threadId === state.thread.id);
@@ -132,10 +128,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       {state.offline.detail ? ` · ${state.offline.detail}` : ""}
     </p> : null}
 
-    <p className="fl-composer__context" title={using.length > 0 ? using.join(" / ") : "Workspace"}>
-      Using: {using.length > 0 ? using[using.length - 1] : "Workspace"}
-    </p>
-
     {failure ? <p className="fl-composer__failure" role="alert" aria-label="Attachment error">{failure}</p> : null}
 
     {visiblePending.length > 0 ? <ul className="fl-composer__pending" aria-label="Pending attachments">
@@ -183,29 +175,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onChange={(event) => dispatch({ type: "set-draft", draft: event.currentTarget.value })}
         onKeyDown={onKeyDown}
       />
-      <button
-        type="button"
-        className="fl-composer__machine"
-        aria-label="Machine"
-        aria-busy={busy === "scan"}
-        disabled={native && busy !== null}
-        title={native ? "Scan a machine QR code" : "Choose a machine in navigation"}
-        onClick={() => {
-          if (native) scan();
-          else dispatch({ type: "set-navigation-visible", visible: true });
-        }}
-      >
-        ⌁ {machine ? `${machine} · ${state.activeContext.machineIdentity.replace("_", " ")}` : "No machine"}
-      </button>
-      <button
-        type="button"
-        className="fl-composer__icon"
-        aria-label="Voice"
-        disabled
-        title="Voice input is not available in this lab"
-      >
-        <MicIcon />
-      </button>
       {hooks?.busy && hooks.onStop
         ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>
         : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}>↑</button>}

@@ -1,6 +1,6 @@
 import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factorylm/interaction";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
-import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, MachineIcon, RunIcon, SearchIcon } from "./icons";
+import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, RunIcon, SearchIcon } from "./icons";
 import { ProjectTree, openObjectId } from "./ProjectTree";
 import type { HostHooks } from "./parts";
 
@@ -42,9 +42,10 @@ function recentItems(state: ShellState, limit = 5): ProjectItem[] {
  * pass). `data-active` now means exactly one thing: "this reference points at the
  * open object", so a whole-navigation assertion can hold it to exactly one.
  *
- * Left navigation, in the order #3740 fixes for every surface:
- * identity → New chat → Projects → Recent → Search → pinned machines →
- * host footer (settings / user menu). On mobile the same
+ * Left navigation, ChatGPT hierarchy (UI-replacement brief §6):
+ * identity → New chat → Search → Projects (threads nested) → Recent →
+ * host footer (settings / user menu). Machines are reached through their
+ * Project, not a competing top-level section. On mobile the same
  * markup is the drawer; nothing is reordered or renamed per surface.
  */
 /**
@@ -63,7 +64,6 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
   const [query, setQuery] = useState("");
   const filter = query.trim() || undefined;
   const recent = recentItems(state).filter((item) => !filter || item.label.toLowerCase().includes(filter.toLowerCase()));
-  const machines = state.machines.filter((machine) => !filter || machine.name.toLowerCase().includes(filter.toLowerCase()));
 
   // `inert` removes the closed drawer from focus and the accessibility tree at once;
   // the stylesheet's visibility flip is the belt for the slide animation. Toggled on
@@ -103,6 +103,17 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
         <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
       </>}
 
+    <label className="fl-shell__search">
+      <SearchIcon className="fl-shell__nav-icon" />
+      <input
+        type="search"
+        aria-label="Search navigation"
+        placeholder="Search"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+      />
+    </label>
+
     <div className="fl-shell__nav-scroll">
       <section className="fl-shell__nav-section" aria-labelledby="fl-nav-projects">
         <h2 id="fl-nav-projects" className="fl-shell__section-title">Projects</h2>
@@ -135,39 +146,6 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
           </ul>}
       </section>
 
-      <label className="fl-shell__search">
-        <SearchIcon className="fl-shell__nav-icon" />
-        <input
-          type="search"
-          aria-label="Search navigation"
-          placeholder="Search"
-          value={query}
-          onChange={(event) => setQuery(event.currentTarget.value)}
-        />
-      </label>
-
-      <section className="fl-shell__nav-section" aria-labelledby="fl-nav-machines">
-        <h2 id="fl-nav-machines" className="fl-shell__section-title">Machines</h2>
-        {machines.length === 0
-          ? <p className="fl-shell__empty">{filter ? "No matches." : "No machines in this workspace."}</p>
-          : <ul className="fl-tree fl-tree--flat" aria-label="Machines">
-            {machines.map((machine) => <li key={machine.id}>
-              <button
-                type="button"
-                className="fl-tree__row fl-tree__machine"
-                data-kind="machine"
-                data-pinned-machine-id={machine.id}
-                data-machine-status={machine.status}
-                data-context={state.activeContext.machineId === machine.id ? "true" : undefined}
-                onClick={() => { dispatch({ type: "select-machine", machineId: machine.id }); dispatch({ type: "set-navigation-visible", visible: false }); }}
-              >
-                <span className="fl-tree__icon" aria-hidden="true"><MachineIcon /></span>
-                <span className="fl-tree__label">{machine.name}</span>
-                <span className="fl-tree__status" data-status={machine.status} aria-label={machine.status} />
-              </button>
-            </li>)}
-          </ul>}
-      </section>
     </div>
 
     {footer ? <div className="fl-shell__nav-footer">{footer}</div> : null}

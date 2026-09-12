@@ -93,29 +93,26 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
   </li>;
 }
 
-/** The bar above the turns: breadcrumb, Ask/Work, machine chip. Shared by both surfaces. */
-export function ConversationBar({ state, dispatch }: { readonly state: ShellState; readonly dispatch: Dispatch<ShellAction> }) {
-  const crumbs = breadcrumb(state);
+/**
+ * The bar above the turns: one quiet context line (project / folder / machine),
+ * shared by both surfaces. Mode stays reducer state a host can set; the always-on
+ * Ask/Work toggle and the machine status chip read as a dashboard, not a chat
+ * (ChatGPT-parity brief §14: no mode selectors above the conversation).
+ */
+export function ConversationBar({ state }: { readonly state: ShellState }) {
   const machine = machineName(state, state.activeContext.machineId);
+  const context = [...breadcrumb(state), ...(machine ? [machine] : [])];
+  if (context.length === 0) return null;
   return <div className="fl-conversation__bar">
-    <nav className="fl-conversation__crumbs" aria-label="Breadcrumb">
-      {crumbs.length > 0
-        ? crumbs.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)
-        : <span>Workspace</span>}
+    <nav className="fl-conversation__crumbs" aria-label="Context">
+      {context.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)}
     </nav>
-    <div className="fl-conversation__modes" role="group" aria-label="Mode">
-      <button type="button" aria-pressed={state.mode === "ask"} onClick={() => dispatch({ type: "set-mode", mode: "ask" })}>Ask</button>
-      <button type="button" aria-pressed={state.mode === "work"} onClick={() => dispatch({ type: "set-mode", mode: "work" })}>Work</button>
-    </div>
-    <span className="fl-chip" data-identity={state.activeContext.machineIdentity}>
-      ● {machine ? `${machine} · ${state.activeContext.machineIdentity.replace("_", " ")}` : "No machine"}
-    </span>
   </div>;
 }
 
 export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
   return <section className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
-    <ConversationBar state={state} dispatch={dispatch} />
+    <ConversationBar state={state} />
 
     {state.mode === "work"
       ? (state.run

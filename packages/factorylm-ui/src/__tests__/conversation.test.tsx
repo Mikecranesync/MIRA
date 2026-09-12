@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { act } from "react";
 import { FIXTURE_IDS, getFixture, type ContextSnapshot } from "@factorylm/interaction";
 import { contextDiffers } from "../parts";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
@@ -167,15 +168,15 @@ describe("Ask and Work share one shell", () => {
 
   it("switches Ask and Work through the reducer without a second chat tree", () => {
     const view = render({ fixture: "machine-ask", surface: "mobile" });
-    const work = view.buttonNamed("Work");
-    const ask = view.buttonNamed("Ask");
-    if (!work || !ask) throw new Error("mode switch must render on every surface");
+    // No always-on mode toggle above the conversation (ChatGPT parity,
+    // UI-replacement brief §14) — mode stays reducer state a host can set.
+    expect(view.buttonNamed("Work")).toBeNull();
+    expect(view.buttonNamed("Ask")).toBeNull();
 
-    expect(ask.getAttribute("aria-pressed")).toBe("true");
+    expect(view.outputs().mode).toBe("ask");
     expect(view.container.querySelector('[aria-label="Diagnostic Run"]')).toBeNull();
-    view.click(work);
+    act(() => { view.dispatch({ type: "set-mode", mode: "work" }); });
     expect(view.outputs().mode).toBe("work");
-    expect(work.getAttribute("aria-pressed")).toBe("true");
     expect(view.container.querySelectorAll('[aria-label="Conversation"]')).toHaveLength(1);
     expect(view.container.querySelectorAll('[aria-label="Composer"]')).toHaveLength(1);
     expect(view.container.querySelectorAll('[data-turn-id]')).toHaveLength(2);
