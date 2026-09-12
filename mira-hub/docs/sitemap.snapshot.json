@@ -36,6 +36,7 @@
     "/knowledge/manuals",
     "/knowledge/map",
     "/knowledge/suggestions",
+    "/labs/chat-spike",
     "/library",
     "/login",
     "/m/[assetTag]",
@@ -257,6 +258,7 @@
     "/api/work-orders",
     "/api/work-orders/[id]",
     "/api/work-orders/export.csv",
-    "/api/workflows"
+    "/api/workflows",
+    "/labs/chat-spike/stream"
   ]
 }
