@@ -33,6 +33,7 @@ import { createWorkOrder, getMe, signOut, type Me } from "../api/resources";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createV6Adapter, type V6AdapterHandlers } from "../v6/adapter";
 import { v6Projects, v6Machines, type V6Thread } from "../v6/data";
+import { hasActiveApiMutations } from "../api/client";
 import {
   beginSessionLocalPurge,
   drainQueueForSessionPurge,
