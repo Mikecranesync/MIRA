@@ -157,7 +157,7 @@ export function MoreTab({
               onChatUiChange?.(next);
             }}
           >
-            {chatUi === "v2" ? "Try V6 (alpha)" : chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
+            {chatUi === "v2" ? "Try V7 (alpha)" : chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
           </button>
         </div>
       ) : (
@@ -181,7 +181,7 @@ export function MoreTab({
               onChatUiChange?.(next);
             }}
           >
-            {chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Try V6 (alpha)"}
+            {chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Try V7 (alpha)"}
           </button>
         </div>
       )}
