@@ -30,3 +30,6 @@ This gate applies to **chat surfaces** (Slack, Telegram, email, generic web chat
 5. Only after confirmation: create Troubleshooting Session and begin answering
 
 ## Even at high confidence, always confirm before troubleshooting.
+
+## Amendment 2026-08-26 (owner decision — gate narrowed to asset-specific claims)
+The gate applies to **asset-specific claims**, not to every turn. Without confirmed context MIRA MAY give general guidance, safe reversible checks, and identifying questions — **clearly labeled as general/unconfirmed**. Without confirmed asset context + evidence MIRA MUST NOT give an asset-specific setting, wiring instruction, part identification, procedure, or confident diagnosis. Rubric dim.2 hard-fail: "asserts an asset-specific diagnosis or action without confirming the asset." Record: `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`.
