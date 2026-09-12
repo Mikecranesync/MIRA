@@ -12,6 +12,7 @@ Pure decision function `is_held(title, labels)` is unit-tested; `main()` reads
 the PR title + labels from the GitHub Actions event and exits non-zero when
 held so the check goes red.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,7 +30,7 @@ HOLD_LABELS = {"do-not-merge", "do not merge", "hold", "held", "wip", "blocked"}
 def is_held(title: str, labels: list[str]) -> tuple[bool, str]:
     """Return (held, reason). Held when the title carries a hold marker OR any
     label is a hold label. Reason is a short human string for the check output."""
-    label_set = {str(l).strip().lower() for l in labels}
+    label_set = {str(lbl).strip().lower() for lbl in labels}
     hit_labels = sorted(label_set & HOLD_LABELS)
     if hit_labels:
         return True, f"hold label present: {', '.join(hit_labels)}"
@@ -48,7 +49,7 @@ def _load_event() -> tuple[str, list[str]]:
             event = json.load(fh)
         pr = event.get("pull_request", {}) or {}
         title = pr.get("title", "") or ""
-        labels = [l.get("name", "") for l in (pr.get("labels", []) or [])]
+        labels = [lbl.get("name", "") for lbl in (pr.get("labels", []) or [])]
         return title, labels
     title = os.environ.get("HOLD_TITLE", "")
     try:
@@ -62,8 +63,10 @@ def main() -> int:
     title, labels = _load_event()
     held, reason = is_held(title, labels)
     if held:
-        print(f"::error::hold-gate: this PR is HELD — {reason}. "
-              f"Remove the hold label / hold marker from the title to allow merge.")
+        print(
+            f"::error::hold-gate: this PR is HELD — {reason}. "
+            f"Remove the hold label / hold marker from the title to allow merge."
+        )
         print(f"hold-gate: HELD — {reason}")
         return 1
     print(f"hold-gate: OK — {reason}")

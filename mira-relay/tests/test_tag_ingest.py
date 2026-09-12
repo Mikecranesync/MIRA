@@ -68,7 +68,9 @@ def _batch(source_system: str = "ignition", value: object = 8.3, value_type="flo
         "source_system": source_system,
         "source_connection_id": "conn-1",
         "tenant_id": "t-1",
-        "tags": [{"tag_path": tag_path, "value": value, "value_type": value_type, "quality": "good"}],
+        "tags": [
+            {"tag_path": tag_path, "value": value, "value_type": value_type, "quality": "good"}
+        ],
     }
 
 
@@ -76,7 +78,10 @@ def _batch(source_system: str = "ignition", value: object = 8.3, value_type="flo
 
 
 def test_normalize_collapses_separators():
-    assert normalize_tag_path("Mira_Monitored/Conveyor.Motor:Current") == "mira_monitored_conveyor_motor_current"
+    assert (
+        normalize_tag_path("Mira_Monitored/Conveyor.Motor:Current")
+        == "mira_monitored_conveyor_motor_current"
+    )
     assert normalize_tag_path("  A//B  ") == "a_b"
     assert normalize_tag_path("") == ""
 
@@ -338,13 +343,28 @@ def test_ingest_batch_opens_one_session_when_store_supports_it():
     inner = _store_with_tag()
 
     class SpyBound:
-        def __init__(self, s): self._s = s; self.calls = []
-        def load_allowlist(self, *a, **k): self.calls.append("allowlist"); return self._s.load_allowlist(*a, **k)
-        def current_state_simulated(self, *a, **k): self.calls.append("current_state"); return self._s.current_state_simulated(*a, **k)
-        def persist_batch(self, *a, **k): self.calls.append("persist"); return self._s.persist_batch(*a, **k)
+        def __init__(self, s):
+            self._s = s
+            self.calls = []
+
+        def load_allowlist(self, *a, **k):
+            self.calls.append("allowlist")
+            return self._s.load_allowlist(*a, **k)
+
+        def current_state_simulated(self, *a, **k):
+            self.calls.append("current_state")
+            return self._s.current_state_simulated(*a, **k)
+
+        def persist_batch(self, *a, **k):
+            self.calls.append("persist")
+            return self._s.persist_batch(*a, **k)
 
     class SpyStore:
-        def __init__(self, s): self._s = s; self.sessions = 0; self.bound = None
+        def __init__(self, s):
+            self._s = s
+            self.sessions = 0
+            self.bound = None
+
         @contextmanager
         def session(self, tenant_id):
             self.sessions += 1
