@@ -25,6 +25,7 @@ ignore = ["E501"]  # line length handled by formatter
 # Test files commonly insert sys.path before importing the target module.
 "tests/**/*.py" = ["E402", "I001"]
 "mira-*/tests/**/*.py" = ["E402", "I001"]
+"fleet-gateway/tests/**/*.py" = ["E402", "I001"]
 
 # mira-copy CLI: run with `python -m mira_copy` (no [project] table needed)
 
