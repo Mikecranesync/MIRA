@@ -43,7 +43,15 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(mes
 for _noisy in ("httpx", "httpcore", "urllib3", "asyncio", "httpx._client"):
     logging.getLogger(_noisy).setLevel(logging.ERROR)
 
-import httpx
+import httpx  # noqa: E402
+
+# Plain-output logger for benchmark CLI (no level prefix — readable as a report).
+_bench_logger = logging.getLogger("mira-benchmark")
+_bench_logger.setLevel(logging.INFO)
+_bench_logger.propagate = False
+_bench_handler = logging.StreamHandler()
+_bench_handler.setFormatter(logging.Formatter("%(message)s"))
+_bench_logger.addHandler(_bench_handler)
 
 # ---------------------------------------------------------------------------
 # Dimension weights (must sum to 1.0)
@@ -698,11 +706,7 @@ RESPONSE_QUALITY_CASES: list[BenchmarkCase] = [
 ]
 
 ALL_CASES: list[BenchmarkCase] = (
-    TECHNICAL_CASES
-    + CONVERSATIONAL_CASES
-    + WO_QUALITY_CASES
-    + FSM_CASES
-    + RESPONSE_QUALITY_CASES
+    TECHNICAL_CASES + CONVERSATIONAL_CASES + WO_QUALITY_CASES + FSM_CASES + RESPONSE_QUALITY_CASES
 )
 
 # ---------------------------------------------------------------------------
@@ -808,7 +812,11 @@ async def _score_technical(case: BenchmarkCase, api_key: str, model: str) -> Cas
 
     if not api_key:
         return CaseResult(
-            case_id=case.id, dimension="technical", score=0.5, latency_ms=engine_ms, turns=turns,
+            case_id=case.id,
+            dimension="technical",
+            score=0.5,
+            latency_ms=engine_ms,
+            turns=turns,
             reasoning="Groq judge disabled — neutral score",
         )
 
@@ -856,9 +864,7 @@ async def _score_conversational(case: BenchmarkCase, api_key: str, model: str) -
     t0 = time.monotonic()
     try:
         for msg in case.messages:
-            result = await asyncio.wait_for(
-                engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT
-            )
+            result = await asyncio.wait_for(engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT)
             turns.append({"user": msg, "bot": result["reply"]})
     except Exception as exc:
         return CaseResult(
@@ -873,13 +879,15 @@ async def _score_conversational(case: BenchmarkCase, api_key: str, model: str) -
 
     if not api_key:
         return CaseResult(
-            case_id=case.id, dimension="conversational", score=0.5, latency_ms=engine_ms, turns=turns,
+            case_id=case.id,
+            dimension="conversational",
+            score=0.5,
+            latency_ms=engine_ms,
+            turns=turns,
             reasoning="Groq judge disabled — neutral score",
         )
 
-    transcript = "\n".join(
-        f"[USER]: {t['user']}\n[BOT]: {t['bot']}" for t in turns
-    )
+    transcript = "\n".join(f"[USER]: {t['user']}\n[BOT]: {t['bot']}" for t in turns)
     system_prompt = (
         "You are evaluating an industrial maintenance AI chatbot for conversational quality. "
         "Score from 0 to 100. Return ONLY valid JSON: "
@@ -923,9 +931,7 @@ async def _score_wo_quality(case: BenchmarkCase, api_key: str, model: str) -> Ca
     t0 = time.monotonic()
     try:
         for msg in case.messages:
-            result = await asyncio.wait_for(
-                engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT
-            )
+            result = await asyncio.wait_for(engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT)
             turns.append({"user": msg, "bot": result["reply"]})
     except Exception as exc:
         return CaseResult(
@@ -940,13 +946,15 @@ async def _score_wo_quality(case: BenchmarkCase, api_key: str, model: str) -> Ca
 
     if not api_key:
         return CaseResult(
-            case_id=case.id, dimension="wo_quality", score=0.5, latency_ms=engine_ms, turns=turns,
+            case_id=case.id,
+            dimension="wo_quality",
+            score=0.5,
+            latency_ms=engine_ms,
+            turns=turns,
             reasoning="Groq judge disabled — neutral score",
         )
 
-    transcript = "\n".join(
-        f"[USER]: {t['user']}\n[BOT]: {t['bot']}" for t in turns
-    )
+    transcript = "\n".join(f"[USER]: {t['user']}\n[BOT]: {t['bot']}" for t in turns)
     expected = case.metadata.get("expected_fields", [])
     system_prompt = (
         "You are evaluating a work order created by an industrial maintenance AI. "
@@ -1015,9 +1023,7 @@ async def _score_fsm(case: BenchmarkCase) -> CaseResult:
     t0 = time.monotonic()
     try:
         for i, msg in enumerate(case.messages):
-            result = await asyncio.wait_for(
-                engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT
-            )
+            result = await asyncio.wait_for(engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT)
             last_state = result.get("next_state", "")
             turns.append({"user": msg, "bot": result["reply"], "state": last_state})
 
@@ -1034,7 +1040,7 @@ async def _score_fsm(case: BenchmarkCase) -> CaseResult:
                         score=0.0,
                         latency_ms=latency,
                         reasoning=(
-                            f"Turn {i+1}: expected '{expected_norm}' got '{actual_norm}'"
+                            f"Turn {i + 1}: expected '{expected_norm}' got '{actual_norm}'"
                             f" (raw: '{last_state}')"
                         ),
                         turns=turns,
@@ -1088,9 +1094,7 @@ async def _score_response_quality(case: BenchmarkCase) -> CaseResult:
     t0 = time.monotonic()
     try:
         for msg in case.messages:
-            result = await asyncio.wait_for(
-                engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT
-            )
+            result = await asyncio.wait_for(engine.process_full(chat_id, msg), timeout=MSG_TIMEOUT)
             reply = result["reply"]
             turns.append({"user": msg, "bot": reply})
     except Exception as exc:
@@ -1120,9 +1124,11 @@ async def _score_response_quality(case: BenchmarkCase) -> CaseResult:
         elif check == "min_length_50":
             (passed if len(reply) >= 50 else failed).append(check)
         elif check == "no_raw_json":
-            (failed if re.search(r'\{["\w]+:', reply) and len(reply) < 200 else passed).append(check)
+            (failed if re.search(r'\{["\w]+:', reply) and len(reply) < 200 else passed).append(
+                check
+            )
         elif check == "no_stack_trace":
-            (failed if "Traceback" in reply or "File \"/app/" in reply else passed).append(check)
+            (failed if "Traceback" in reply or 'File "/app/' in reply else passed).append(check)
         elif check == "no_apology_cant_help":
             lowered = reply.lower()
             cant = "i cannot" in lowered or "i can't help" in lowered or "i'm unable" in lowered
@@ -1132,7 +1138,17 @@ async def _score_response_quality(case: BenchmarkCase) -> CaseResult:
             has_dup = len(sentences) != len(set(sentences))
             (failed if has_dup else passed).append(check)
         elif check == "contains_safety_word":
-            safety_words = ["loto", "lockout", "de-energize", "ppe", "hazard", "arc flash", "safe", "danger", "warning"]
+            safety_words = [
+                "loto",
+                "lockout",
+                "de-energize",
+                "ppe",
+                "hazard",
+                "arc flash",
+                "safe",
+                "danger",
+                "warning",
+            ]
             found = any(w in reply.lower() for w in safety_words)
             (passed if found else failed).append(check)
         else:
@@ -1156,9 +1172,7 @@ async def _score_response_quality(case: BenchmarkCase) -> CaseResult:
 # ---------------------------------------------------------------------------
 
 
-async def _run_case(
-    case: BenchmarkCase, api_key: str, model: str
-) -> CaseResult:
+async def _run_case(case: BenchmarkCase, api_key: str, model: str) -> CaseResult:
     d = case.dimension
     if d == "technical":
         return await _score_technical(case, api_key, model)
@@ -1171,7 +1185,9 @@ async def _run_case(
     elif d == "response_quality":
         return await _score_response_quality(case)
     else:
-        return CaseResult(case_id=case.id, dimension=d, score=0.0, latency_ms=0, error=f"Unknown dimension {d}")
+        return CaseResult(
+            case_id=case.id, dimension=d, score=0.0, latency_ms=0, error=f"Unknown dimension {d}"
+        )
 
 
 async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) -> BenchmarkRun:
@@ -1187,10 +1203,12 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         total_cases=len(target_cases),
     )
 
-    print(f"\n{'='*60}")
-    print(f"MIRA Benchmark Suite v{version}")
-    print(f"Cases: {len(target_cases)} | Judge: {'Groq ' + model if api_key else 'DISABLED (neutral scores)'}")
-    print(f"{'='*60}\n")
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info(f"MIRA Benchmark Suite v{version}")
+    _bench_logger.info(
+        f"Cases: {len(target_cases)} | Judge: {'Groq ' + model if api_key else 'DISABLED (neutral scores)'}"
+    )
+    _bench_logger.info(f"{'=' * 60}\n")
 
     # Group by dimension for ordered output
     by_dim: dict[str, list[BenchmarkCase]] = {}
@@ -1204,8 +1222,6 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         dim_cases = by_dim.get(dim, [])
         if not dim_cases:
             continue
-        print(f"  [{dim.upper()}] {len(dim_cases)} cases", end="", flush=True)
-
         # Run all cases in this dimension concurrently
         dim_tasks = [_run_case(c, api_key, model) for c in dim_cases]
         dim_results = await asyncio.gather(*dim_tasks)
@@ -1214,7 +1230,9 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         scores = [r.score for r in dim_results]
         avg = sum(scores) / len(scores) if scores else 0.0
         errors = sum(1 for r in dim_results if r.error)
-        print(f"  →  avg {avg*100:.1f}%  ({errors} errors)")
+        _bench_logger.info(
+            f"  [{dim.upper()}] {len(dim_cases)} cases  →  avg {avg * 100:.1f}%  ({errors} errors)"
+        )
 
     run.case_results = results
 
@@ -1266,11 +1284,11 @@ DIM_LABELS = {
 
 def print_report(run: BenchmarkRun) -> None:
     bar_width = 30
-    print(f"\n{'='*60}")
-    print(f"  MIRA Quality Benchmark  v{run.version}  |  {run.timestamp}")
-    print(f"{'='*60}")
-    print(f"\n  {'DIMENSION':<28} {'SCORE':>6}  {'BAR'}")
-    print(f"  {'-'*54}")
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info(f"  MIRA Quality Benchmark  v{run.version}  |  {run.timestamp}")
+    _bench_logger.info(f"{'=' * 60}")
+    _bench_logger.info(f"\n  {'DIMENSION':<28} {'SCORE':>6}  {'BAR'}")
+    _bench_logger.info(f"  {'-' * 54}")
 
     dim_order = ["technical", "conversational", "wo_quality", "fsm", "response_quality"]
     for dim in dim_order:
@@ -1280,24 +1298,30 @@ def print_report(run: BenchmarkRun) -> None:
         filled = int(bar_width * score / 100)
         bar = "█" * filled + "░" * (bar_width - filled)
         label = DIM_LABELS.get(dim, dim)
-        print(f"  {label:<28} {score:>5.1f}%  {bar}")
+        _bench_logger.info(f"  {label:<28} {score:>5.1f}%  {bar}")
 
-    print(f"  {'-'*54}")
+    _bench_logger.info(f"  {'-' * 54}")
     overall_filled = int(bar_width * run.overall_score / 100)
     overall_bar = "█" * overall_filled + "░" * (bar_width - overall_filled)
-    print(f"  {'OVERALL SCORE':<28} {run.overall_score:>5.1f}%  {overall_bar}  [{run.grade}]")
-    print(f"\n  Cases: {run.passed_cases}/{run.total_cases} passed (≥70%)  |  "
-          f"Total time: {run.total_ms/1000:.1f}s  |  Judge: {run.groq_model}")
+    _bench_logger.info(
+        f"  {'OVERALL SCORE':<28} {run.overall_score:>5.1f}%  {overall_bar}  [{run.grade}]"
+    )
+    _bench_logger.info(
+        f"\n  Cases: {run.passed_cases}/{run.total_cases} passed (≥70%)  |  "
+        f"Total time: {run.total_ms / 1000:.1f}s  |  Judge: {run.groq_model}"
+    )
 
     # Low-score callouts
     failures = [r for r in run.case_results if r.score < 0.5]
     if failures:
-        print(f"\n  ⚠  LOW SCORES ({len(failures)} cases below 50%):")
+        _bench_logger.info(f"\n  ⚠  LOW SCORES ({len(failures)} cases below 50%):")
         for r in sorted(failures, key=lambda x: x.score)[:10]:
             err = f"  [{r.error[:60]}]" if r.error else ""
-            print(f"    {r.case_id:<12} {r.score*100:>4.0f}%  {r.reasoning[:60]}{err}")
+            _bench_logger.info(
+                f"    {r.case_id:<12} {r.score * 100:>4.0f}%  {r.reasoning[:60]}{err}"
+            )
 
-    print(f"\n{'='*60}\n")
+    _bench_logger.info(f"\n{'=' * 60}\n")
 
 
 def save_results(run: BenchmarkRun, output_dir: Path | None = None) -> Path:
@@ -1320,15 +1344,15 @@ def compare_runs(path_a: str, path_b: str) -> None:
     data_a = json.loads(Path(path_a).read_text())
     data_b = json.loads(Path(path_b).read_text())
 
-    print(f"\n{'='*60}")
-    print(f"  MIRA Benchmark Comparison")
-    print(f"  A: v{data_a['version']}  ({data_a['timestamp']})")
-    print(f"  B: v{data_b['version']}  ({data_b['timestamp']})")
-    print(f"{'='*60}")
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info("  MIRA Benchmark Comparison")
+    _bench_logger.info(f"  A: v{data_a['version']}  ({data_a['timestamp']})")
+    _bench_logger.info(f"  B: v{data_b['version']}  ({data_b['timestamp']})")
+    _bench_logger.info(f"{'=' * 60}")
 
     dim_order = ["technical", "conversational", "wo_quality", "fsm", "response_quality"]
-    print(f"\n  {'DIMENSION':<28} {'A':>6}  {'B':>6}  {'DELTA':>7}")
-    print(f"  {'-'*52}")
+    _bench_logger.info(f"\n  {'DIMENSION':<28} {'A':>6}  {'B':>6}  {'DELTA':>7}")
+    _bench_logger.info(f"  {'-' * 52}")
 
     for dim in dim_order:
         sa = data_a.get("dimension_scores", {}).get(dim)
@@ -1338,16 +1362,18 @@ def compare_runs(path_a: str, path_b: str) -> None:
         delta = sb - sa
         arrow = "▲" if delta > 0 else ("▼" if delta < 0 else "─")
         label = DIM_LABELS.get(dim, dim)
-        print(f"  {label:<28} {sa:>5.1f}%  {sb:>5.1f}%  {arrow}{abs(delta):>5.1f}%")
+        _bench_logger.info(f"  {label:<28} {sa:>5.1f}%  {sb:>5.1f}%  {arrow}{abs(delta):>5.1f}%")
 
     oa = data_a.get("overall_score", 0)
     ob = data_b.get("overall_score", 0)
     od = ob - oa
-    print(f"  {'-'*52}")
+    _bench_logger.info(f"  {'-' * 52}")
     arrow = "▲" if od > 0 else ("▼" if od < 0 else "─")
-    print(f"  {'OVERALL':<28} {oa:>5.1f}%  {ob:>5.1f}%  {arrow}{abs(od):>5.1f}%  "
-          f"[{data_a['grade']}→{data_b['grade']}]")
-    print(f"\n{'='*60}\n")
+    _bench_logger.info(
+        f"  {'OVERALL':<28} {oa:>5.1f}%  {ob:>5.1f}%  {arrow}{abs(od):>5.1f}%  "
+        f"[{data_a['grade']}→{data_b['grade']}]"
+    )
+    _bench_logger.info(f"\n{'=' * 60}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -1358,14 +1384,16 @@ def compare_runs(path_a: str, path_b: str) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MIRA Benchmark Suite")
     parser.add_argument("--version", default="dev", help="Version label for this run (e.g. 1.0.0)")
-    parser.add_argument("--compare", nargs=2, metavar=("FILE_A", "FILE_B"),
-                        help="Compare two result JSON files")
-    parser.add_argument("--dimension", choices=list(WEIGHTS.keys()),
-                        help="Run only one dimension")
-    parser.add_argument("--output-dir", default=None,
-                        help="Directory to save results JSON (default: benchmarks/results/)")
-    parser.add_argument("--no-save", action="store_true",
-                        help="Skip saving results to disk")
+    parser.add_argument(
+        "--compare", nargs=2, metavar=("FILE_A", "FILE_B"), help="Compare two result JSON files"
+    )
+    parser.add_argument("--dimension", choices=list(WEIGHTS.keys()), help="Run only one dimension")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory to save results JSON (default: benchmarks/results/)",
+    )
+    parser.add_argument("--no-save", action="store_true", help="Skip saving results to disk")
     return parser.parse_args()
 
 
@@ -1379,7 +1407,7 @@ async def _main() -> None:
     cases: list[BenchmarkCase] | None = None
     if args.dimension:
         cases = [c for c in ALL_CASES if c.dimension == args.dimension]
-        print(f"Running {len(cases)} cases for dimension: {args.dimension}")
+        _bench_logger.info(f"Running {len(cases)} cases for dimension: {args.dimension}")
 
     run = await run_benchmark(args.version, cases)
     print_report(run)
@@ -1387,7 +1415,7 @@ async def _main() -> None:
     if not args.no_save:
         out_dir = Path(args.output_dir) if args.output_dir else None
         out_path = save_results(run, out_dir)
-        print(f"Results saved → {out_path}")
+        _bench_logger.info(f"Results saved → {out_path}")
 
     # Exit non-zero if grade is F
     if run.grade == "F":

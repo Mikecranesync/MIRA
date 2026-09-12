@@ -27,7 +27,6 @@ Usage
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -238,7 +237,6 @@ async def _llm_call(
     max_tokens: int = 150,
 ) -> str:
     """Call an LLM provider and return the text response."""
-    import httpx
 
     if provider == "auto":
         provider = _pick_provider()
@@ -324,7 +322,7 @@ async def _call_gemini(messages: list[dict], max_tokens: int) -> str:
     import httpx
 
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             url,
