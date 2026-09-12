@@ -10,12 +10,13 @@ import { useEffect, useState } from "react";
 
 export const CHAT_UI_KEY = "flm.chatui.v1";
 
-/** "v2" (default), "legacy", or "unified" (the shared FactoryLM shell,
- *  FLM-UI-4000 Phase 2). Unknown/absent values read as v2. */
-export type ChatUiChoice = "v2" | "legacy" | "unified";
+/** "v2" (default), "legacy", "unified" (the shared FactoryLM shell,
+ *  FLM-UI-4000 Phase 2), or "v6" (ChatGPT-like industrial shell). 
+ *  Unknown/absent values read as v2. */
+export type ChatUiChoice = "v2" | "legacy" | "unified" | "v6";
 
 export function parseChoice(raw: string | null | undefined): ChatUiChoice {
-  return raw === "legacy" ? "legacy" : raw === "unified" ? "unified" : "v2";
+  return raw === "legacy" ? "legacy" : raw === "unified" ? "unified" : raw === "v6" ? "v6" : "v2";
 }
 
 export async function readChatUiChoice(): Promise<ChatUiChoice> {
@@ -48,9 +49,9 @@ export function useChatUiChoice(available: boolean): ChatUiChoice | null {
       live = false;
     };
   }, []);
-  // The unified shell is a device-local BETA opt-in that uses the classic
-  // send path; it needs no server capability. v2 still requires `chat_v2`.
-  if (!available) return choice === null ? null : choice === "unified" ? "unified" : "legacy";
+  // The unified and v6 shells are device-local BETA opt-ins that use the classic
+  // send path; they need no server capability. v2 still requires `chat_v2`.
+  if (!available) return choice === null ? null : choice === "unified" || choice === "v6" ? choice : "legacy";
   return choice;
 }
 

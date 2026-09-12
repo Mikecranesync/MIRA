@@ -142,6 +142,32 @@ export function MoreTab({
           <div className="meta" style={{ marginBottom: 8 }}>
             {chatUi === "v2"
               ? "New conversation (streaming, attachments, cited answers)."
+              : chatUi === "v6"
+                ? "V6 ChatGPT-like interface (alpha): chat-first, Projects, no-machine mode."
+                : chatUi === "unified"
+                  ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+                  : "Classic chat screen."}
+          </div>
+          <button
+            data-testid="chat-style-toggle"
+            onClick={() => {
+              const next: ChatUiChoice = chatUi === "v2" ? "v6" : chatUi === "v6" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
+              setChatUi(next);
+              void writeChatUiChoice(next);
+              onChatUiChange?.(next);
+            }}
+          >
+            {chatUi === "v2" ? "Try V6 (alpha)" : chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
+          </button>
+        </div>
+      ) : (
+        /* Without the chat_v2 capability only the classic screen and the
+           device-local unified/V6 BETAs are offered; nothing here grants v2. */
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="title">Chat style</div>
+          <div className="meta" style={{ marginBottom: 8 }}>
+            {chatUi === "v6"
+              ? "V6 ChatGPT-like interface (alpha): chat-first, Projects, no-machine mode."
               : chatUi === "unified"
                 ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
                 : "Classic chat screen."}
@@ -149,35 +175,13 @@ export function MoreTab({
           <button
             data-testid="chat-style-toggle"
             onClick={() => {
-              const next: ChatUiChoice = chatUi === "v2" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
+              const next: ChatUiChoice = chatUi === "v6" ? "unified" : chatUi === "unified" ? "legacy" : "v6";
               setChatUi(next);
               void writeChatUiChoice(next);
               onChatUiChange?.(next);
             }}
           >
-            {chatUi === "v2" ? "Try the unified interface (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
-          </button>
-        </div>
-      ) : (
-        /* Without the chat_v2 capability only the classic screen and the
-           device-local unified BETA are offered; nothing here grants v2. */
-        <div className="card" style={{ marginTop: 10 }}>
-          <div className="title">Chat style</div>
-          <div className="meta" style={{ marginBottom: 8 }}>
-            {chatUi === "unified"
-              ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
-              : "Classic chat screen."}
-          </div>
-          <button
-            data-testid="chat-style-toggle"
-            onClick={() => {
-              const next: ChatUiChoice = chatUi === "unified" ? "legacy" : "unified";
-              setChatUi(next);
-              void writeChatUiChoice(next);
-              onChatUiChange?.(next);
-            }}
-          >
-            {chatUi === "unified" ? "Use classic chat" : "Try the unified interface (beta)"}
+            {chatUi === "v6" ? "Try unified (beta)" : chatUi === "unified" ? "Use classic chat" : "Try V6 (alpha)"}
           </button>
         </div>
       )}
