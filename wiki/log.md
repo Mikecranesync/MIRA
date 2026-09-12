@@ -246,3 +246,16 @@ Changed: `wiki/log.md`
 - **Cluster SSH proven + persistent.** Shells on bravo/charlie/ultron; added `ControlMaster auto` + `ControlPath ~/.ssh/cm/%r@%h:%p` + `ControlPersist 10m` to `~/.ssh/config` `Host *`. PLC laptop (`laptop-0ka3c70h` 100.72.2.99) reachable (TCP 22/3389) but SSH-blocked: alpha pubkey not in hharp's authorized_keys; no PLC key in Doppler. Added `plc-laptop` alias; key-add pending user RDP.
 - **Wiki divergence reconciled.** This frozen Alpha clone had drifted to **218 behind / 12 ahead** origin/main (all 12 ahead = `wiki:` auto-commits). Root cause: the doctrine's hourly `git pull --rebase` cron (`install_wiki_pull_cron.sh`) was **not installed** here → silent drift. Fix: backup tag `backup/wiki-2026-06-08` → `git reset --hard origin/main` → replayed conflict-free deltas (this `log.md` is a clean superset — origin never touched log.md since 622ce505, so all 4 days of stranded Alpha session logs are preserved) + the tailscale gotcha (new file). Left origin's newer CLOUD `hot.md` untouched (no cross-node clobber). Dropped `PROGRESS.local.md` churn (+1014 lines, the tracked-but-should-be-gitignored CI-flood file).
 - Machine: Alpha
+
+## 2026-09-10 21:36 UTC — ChatGPT-first Maintenance Genie architecture lock
+
+Mike Harper (CEO) approved architecture document merge.
+
+- Created `wiki/architecture/chatgpt-first-maintenance-genie.md` — L0–L5 layered runtime, entity linker, factory projection from notes, competitor contrast (MaintainX/Fiix), open-source patterns (Open WebUI, LangGraph, LlamaIndex, etc.), delivery sequence, GTM line
+- Updated `wiki/index.md` — added Product architecture section
+- Added `wiki/hot.d/2026-09-10-chatgpt-first-maintenance-genie.md` stub
+
+**Tracks:** #3735 #3742 #3743
+
+**Key insight:** MIRA is ChatGPT that knows your plant when you need it to — general genie first, opportunistic machine binding, not fail-closed RAG.
+
