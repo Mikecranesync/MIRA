@@ -26,7 +26,7 @@ const defaultMigrationFiles = [
   "072_hub_uploads_content_sha256.sql",
   // Equipment Notebook turns + ownership (086): the notebook lineage is
   // 073 → 081 (asset snapshot) → 084 (basis; FK to 027 namespace_direct_uploads)
-  // → 085 (provenance) → 086 (owner_user_id).
+  // → 085 (provenance) → 086 (owner_user_id) → 087 (thread_id).
   "027_namespace_direct_uploads.sql",
   "059_namespace_filing_cabinet.sql",
   "073_equipment_notebooks.sql",
@@ -35,6 +35,7 @@ const defaultMigrationFiles = [
   "084_notebook_turn_basis_and_source_origin.sql",
   "085_notebook_source_canonical_provenance.sql",
   "086_notebook_turn_owner.sql",
+  "087_notebook_thread_identity.sql",
 ];
 
 function requireEnv(name) {
