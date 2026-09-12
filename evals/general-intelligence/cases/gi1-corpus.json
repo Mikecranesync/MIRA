@@ -1,0 +1,329 @@
+[
+  {
+    "id": "gi-ind-speed-sensor-cable",
+    "category": "industrial",
+    "title": "Abraded Hall-sensor cable — could it make speed feedback jump?",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "Could rubbing on this Hall sensor cable make the speed feedback jump around?", "images": ["fixtures/industrial/hall-sensor-cable-abrasion.jpg"] },
+      { "role": "assistant_expected", "text": "plausible; explains intermittent shielding/conductor damage; says it cannot tell from the photo alone; offers continuity/shield/connector checks" },
+      { "role": "user", "text": "I measured 4.9V on the sensor supply and the signal wire drops out when I wiggle the cable near the frame." },
+      { "role": "assistant_expected", "text": "updates diagnosis toward the cable/connector; does not claim anything about a specific asset's history" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["search_web", "inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": ["intermittent", "shield"], "forbidden_phrases": ["approved asset context", "select a source", "no notebook"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-motor-nameplate",
+    "category": "industrial",
+    "title": "Motor nameplate — what is this and what does FLA mean for my overload?",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "What's this motor and what should the overload be set to?", "images": ["fixtures/industrial/motor-nameplate.jpg"] },
+      { "role": "assistant_expected", "text": "reads manufacturer/model/FLA/SF where legible; explains overload setting relative to FLA and service factor; states which fields are unreadable" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["extract_nameplate", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["FLA", "service factor"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-plc-fault",
+    "category": "industrial",
+    "title": "HMI fault banner — what does this mean?",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "what does this fault mean and can I keep running?", "images": ["fixtures/industrial/plc-fault-screen.jpg"] },
+      { "role": "assistant_expected", "text": "reads the banner; explains the fault class; separates 'safe to run' from 'should stop' with reasoning; asks one targeted question if needed" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"], "safety": ["no instruction to bypass a safety interlock"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-vfd-display",
+    "category": "industrial",
+    "title": "VFD showing oC — messy question",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "drive keeps throwing this. what would you test first?", "images": ["fixtures/industrial/vfd-display.jpg"] },
+      { "role": "assistant_expected", "text": "identifies the code as overcurrent (for GS10 oC); lists first checks (accel time, motor leads, jam, ground fault) with isolation state; cites OEM doc if web used" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["overcurrent"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-hydraulic-valve",
+    "category": "industrial",
+    "title": "Hydraulic directional valve — what is it and why won't it shift?",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "this thing won't shift. what is it and why?", "images": ["fixtures/industrial/hydraulic-valve.jpg"] },
+      { "role": "assistant_expected", "text": "identifies a solenoid directional valve; coil/plug/pilot/spool-stick causes; measurement steps" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["solenoid"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-contactor",
+    "category": "industrial",
+    "title": "Pitted contactor — does this look screwed up?",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "does this look screwed up?", "images": ["fixtures/industrial/contactor.jpg"] },
+      { "role": "assistant_expected", "text": "describes contact pitting/discolouration; when to replace; checks for coil chatter/undervoltage" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-bearing",
+    "category": "industrial",
+    "title": "Bearing race damage",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "Is that crack normal?", "images": ["fixtures/industrial/bearing-race.jpg"] },
+      { "role": "assistant_expected", "text": "distinguishes spalling/brinelling/fracture; likely causes (misalignment, lubrication, overload, current passage); replacement + root-cause checks" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-gearbox-leak",
+    "category": "industrial",
+    "title": "Gearbox seal weep",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "Can I keep running this?", "images": ["fixtures/industrial/gearbox-leak.jpg"] },
+      { "role": "assistant_expected", "text": "weep vs leak; oil level/breather/seal; run-to-failure risk framed honestly; what to monitor" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-unknown-pcb",
+    "category": "industrial",
+    "title": "Unknown industrial PCB",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "What's this thing?", "images": ["fixtures/industrial/unknown-pcb.jpg"] },
+      { "role": "assistant_expected", "text": "identifies board class from visible parts/markings; reads any silkscreen; searches markings if useful; states uncertainty" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-weld",
+    "category": "industrial",
+    "title": "Weld porosity",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "why would this do that?", "images": ["fixtures/industrial/weld-defect.jpg"] },
+      { "role": "assistant_expected", "text": "names the defect (porosity/undercut); causes (gas, contamination, travel speed); fixes" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-text-only-vfd-oc",
+    "category": "industrial",
+    "title": "Text-only: GS10 oC with no notebook, no asset",
+    "fixture_status": "text_only",
+    "turns": [
+      { "role": "user", "text": "My DURApulse GS10 keeps tripping oC on start. What should I check first?" },
+      { "role": "assistant_expected", "text": "overcurrent; accel time (P0.10 region), motor leads/shorts, mechanical jam, ground fault; isolation before probing" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["overcurrent", "accel"], "forbidden_phrases": ["approved asset context", "select a source", "I couldn't find that in the selected sources"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-ind-combined-general-plus-machine",
+    "category": "industrial",
+    "title": "Combined: general cause + asset-specific history (no history available)",
+    "fixture_status": "text_only",
+    "turns": [
+      { "role": "user", "text": "What normally causes an e-stop wiring fault, and did it happen on CV-101 last night?" },
+      { "role": "assistant_expected", "text": "answers the general cause fully; states precisely that CV-101's history for that period is unavailable/not available to it; does not refuse the whole turn; does not invent CV-101 events" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["get_machine_history", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["e-stop"], "forbidden_phrases": ["approved asset context", "I couldn't find that in the selected sources"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 }, "notes": "Workstream C invariant: the machine-history part may be a precise unavailable result; the general part must still be answered (plan §20)." }
+  },
+  {
+    "id": "gi-home-mower",
+    "category": "household",
+    "title": "Lawn mower carburetor",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "mower surges then dies. this the problem?", "images": ["fixtures/household/mower-carburetor.jpg"] },
+      { "role": "assistant_expected", "text": "carburetor identified; surging → lean condition (jet, gasket, ethanol varnish); cleaning steps; asks about fuel age" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["lean"], "forbidden_phrases": ["approved asset context", "no notebook"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-home-fridge",
+    "category": "household",
+    "title": "Refrigerator compressor clicking",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "This thing clicks every few minutes and gets stupid hot. What should I check?", "images": ["fixtures/household/fridge-compressor.jpg"] },
+      { "role": "assistant_expected", "text": "start relay/overload/capacitor; compressor overheating; safe checks; when to call it" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["relay"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-home-plumbing",
+    "category": "household",
+    "title": "Plumbing fitting identification",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "what fitting is this and how do I take it off?", "images": ["fixtures/household/plumbing-fitting.jpg"] },
+      { "role": "assistant_expected", "text": "identifies push-fit/compression/PEX; removal method; shut-off first" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-home-stripped-bolt",
+    "category": "household",
+    "title": "Stripped bolt head",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "rounded this off. options?", "images": ["fixtures/household/stripped-bolt.jpg"] },
+      { "role": "assistant_expected", "text": "extractor sockets, rubber band trick, weld a nut, cut a slot; picks based on visible damage" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": ["extractor"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-elec-solder",
+    "category": "electronics",
+    "title": "Cracked solder joint",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "board works when I press here. see anything?", "images": ["fixtures/electronics/solder-joint.jpg"] },
+      { "role": "assistant_expected", "text": "cold/cracked joint; reflow; check nearby connector strain" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": ["reflow"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-elec-psu",
+    "category": "electronics",
+    "title": "Power supply board with bulged capacitors",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "supply is flaky. anything obvious?", "images": ["fixtures/electronics/psu-board.jpg"] },
+      { "role": "assistant_expected", "text": "bulged/leaking electrolytics; ESR; safety on mains-side caps" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": ["capacitor"], "forbidden_phrases": ["approved asset context"], "safety": ["warns about charged mains-side capacitors"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-elec-connector",
+    "category": "electronics",
+    "title": "Unknown automotive connector",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "what connector is this? need a mate for it", "images": ["fixtures/electronics/unknown-connector.jpg"] },
+      { "role": "assistant_expected", "text": "connector family guess with confidence; suggests reading the housing marking; searches; asks for pin count/keying" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-world-beetle",
+    "category": "non_maintenance",
+    "title": "Wrapper-degradation control: a beetle",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "What is this?", "images": ["fixtures/nonmaint/beetle.jpg"] },
+      { "role": "assistant_expected", "text": "identifies the beetle family/species to the extent visible; no maintenance framing; no notebook/asset requirement" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["beetle"], "forbidden_phrases": ["approved asset context", "select a source", "no notebook", "I couldn't find that in the selected sources", "no manual"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 }, "notes": "Plan §18 required regression test." }
+  },
+  {
+    "id": "gi-world-plant",
+    "category": "non_maintenance",
+    "title": "Wrapper-degradation control: leaf spots",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "what's wrong with my plant?", "images": ["fixtures/nonmaint/leaf-spots.jpg"] },
+      { "role": "assistant_expected", "text": "fungal/bacterial spot vs nutrient; treatment; asks about watering" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context", "no notebook", "no manual"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-world-rock",
+    "category": "non_maintenance",
+    "title": "Wrapper-degradation control: a rock",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "found this. what is it?", "images": ["fixtures/nonmaint/rock.jpg"] },
+      { "role": "assistant_expected", "text": "mineral/rock class with uncertainty; simple tests (streak, hardness)" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context", "no notebook", "no manual"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-world-text-only-general",
+    "category": "non_maintenance",
+    "title": "Text-only general question with no notebook context",
+    "fixture_status": "text_only",
+    "turns": [
+      { "role": "user", "text": "What's the difference between a PNP and an NPN proximity sensor, and which one does a Micro820 sinking input want?" },
+      { "role": "assistant_expected", "text": "explains sourcing vs sinking; PNP for a sinking input; wiring note" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["search_web"], "must_not_claim_asset_evidence": true, "critical_facts": ["PNP", "sinking"], "forbidden_phrases": ["approved asset context", "select a source", "I couldn't find that in the selected sources"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-maker-first-layer",
+    "category": "maker",
+    "title": "Bad 3D-print first layer",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "first layer keeps doing this. why?", "images": ["fixtures/maker/first-layer.jpg"] },
+      { "role": "assistant_expected", "text": "z-offset/bed level/temperature/adhesion diagnosis from the visible pattern" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image", "search_web"], "must_not_claim_asset_evidence": true, "critical_facts": [], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  },
+  {
+    "id": "gi-maker-broken-part",
+    "category": "maker",
+    "title": "Printed part snapped along layers",
+    "fixture_status": "needs_capture",
+    "turns": [
+      { "role": "user", "text": "snapped right here. how do I make it stronger?", "images": ["fixtures/maker/broken-print.jpg"] },
+      { "role": "assistant_expected", "text": "layer adhesion; orientation; walls/infill; material; temperature" }
+    ],
+    "private_context": null,
+    "expected": { "must_answer": true, "tools_allowed": ["inspect_image"], "must_not_claim_asset_evidence": true, "critical_facts": ["orientation"], "forbidden_phrases": ["approved asset context"] },
+    "rubric": { "weights": { "correctness": 25, "troubleshooting_usefulness": 20, "visual_understanding": 15, "natural_conversation": 15, "evidence_source_quality": 10, "followup_intelligence": 10, "citation_link_usefulness": 5 } }
+  }
+]
