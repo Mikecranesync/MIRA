@@ -6,9 +6,9 @@
  * updates, classic app, sign out). NotebookScreen keeps owning the send path,
  * scope, riders, uploads, and the citation viewer — it just renders chromeless.
  */
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
-import { listNotebooks, type Me, type Notebook } from "../api/resources";
+import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -34,9 +34,11 @@ export interface UnifiedRootProps {
 export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: UnifiedRootProps) {
   const [notebooks, setNotebooks] = useState<Notebook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [showAbout, setShowAbout] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const creatingRef = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -48,7 +50,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         const preferred = last && list.some((nb) => nb.id === last) ? last : (list[0]?.id ?? null);
         setSelected(preferred);
       } catch (e) {
-        if (live) setError(apiErrorCopy(e, "Could not load notebooks."));
+        if (live) setError(apiErrorCopy(e, "Could not load projects."));
       }
     })();
     return () => {
@@ -61,6 +63,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     void withSessionLocalProducer(() => preferencesStore.set(LAST_NOTEBOOK_KEY, id));
   };
 
+  const startNewChat = async () => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreateError(null);
+    try {
+      const created = await createNotebook({
+        displayName: "New chat",
+        identityStatus: "candidate",
+        identitySourceType: "user",
+      });
+      setNotebooks((current) => {
+        const list = current ?? [];
+        return [created, ...list.filter((row) => row.id !== created.id)];
+      });
+      open(created.id);
+    } catch (e) {
+      setCreateError(apiErrorCopy(e, "Could not start a new chat."));
+    } finally {
+      creatingRef.current = false;
+    }
+  };
+
   const host = useMemo<UnifiedShellHost | null>(() => {
     if (!notebooks) return null;
     return {
@@ -69,6 +93,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
       onOpenItem: (item: ProjectItem) => {
         const id = notebookIdFromItem(item.id);
         if (id) open(id);
+      },
+      onNewChat: () => {
+        void startNewChat();
       },
       navigationFooter: (
         <>
@@ -130,9 +157,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   if (!selected) {
     return (
       <div className="unified-root">
-        <p className="unified-root__empty">
-          No notebooks yet. Use the classic app to create one, then come back.
-        </p>
+        {createError ? <p className="unified-root__empty" role="alert">{createError}</p> : null}
+        <p className="unified-root__empty">No projects yet.</p>
+        <button type="button" onClick={() => void startNewChat()}>New chat</button>
         <div className="fl-shell__nav-footer">{host.navigationFooter}</div>
       </div>
     );
@@ -140,6 +167,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
 
   return (
     <div className="unified-root" data-testid="unified-root" data-notebook-id={selected}>
+      {createError ? <p className="unified-root__empty" role="alert">{createError}</p> : null}
       <NotebookScreen
         key={selected}
         id={selected}

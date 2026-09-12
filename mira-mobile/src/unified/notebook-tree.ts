@@ -1,18 +1,27 @@
 /**
- * Notebooks → the shell's project tree. One project ("Notebooks"); a notebook
- * bound to a machine contributes a machine link and its thread; an unbound
- * notebook contributes just its thread. Ids are the notebook ids so opening an
- * item maps straight back to a notebook.
+ * Notebooks → the shell's project tree (V6 chat-first IA).
+ *
+ * Persistence remains Equipment Notebooks. The technician-facing tree is
+ * **one Project per notebook** (a machine / job / general chat), each
+ * containing its thread. The old single "Notebooks" bucket is gone.
  */
 import type { Machine, Project, ProjectNode } from "@factorylm/interaction";
 import type { Notebook } from "../api/resources";
 
-function canonicalNotebookLabel(nb: Pick<Notebook, "displayName">): string {
-  return nb.displayName.trim() || "Untitled notebook";
+export function projectIdForNotebook(notebookId: string): string {
+  return `project-${notebookId}`;
+}
+
+function canonicalChatLabel(nb: Pick<Notebook, "displayName">): string {
+  return nb.displayName.trim() || "Untitled chat";
 }
 
 export function machineNameFor(nb: Notebook): string {
-  return [nb.manufacturer, nb.model].filter(Boolean).join(" ") || canonicalNotebookLabel(nb);
+  return [nb.manufacturer, nb.model].filter(Boolean).join(" ") || canonicalChatLabel(nb);
+}
+
+export function projectNameFor(nb: Notebook): string {
+  return nb.asset ? machineNameFor(nb) : canonicalChatLabel(nb);
 }
 
 export function threadItemId(notebookId: string): string {
@@ -39,12 +48,17 @@ export function notebookMachines(notebooks: readonly Notebook[]): readonly Machi
 }
 
 export function notebookProjects(notebooks: readonly Notebook[]): readonly Project[] {
-  const children: ProjectNode[] = [];
-  for (const nb of notebooks) {
+  return notebooks.map((nb) => {
+    const children: ProjectNode[] = [];
     if (nb.asset) {
-      children.push({ kind: "machine-link", id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId });
+      children.push({
+        kind: "machine-link",
+        id: `link-${nb.id}`,
+        label: machineNameFor(nb),
+        machineId: nb.asset.entityId,
+      });
     }
-    children.push({ kind: "thread", id: threadItemId(nb.id), label: canonicalNotebookLabel(nb) });
-  }
-  return [{ id: "project-notebooks", name: "Notebooks", children }];
+    children.push({ kind: "thread", id: threadItemId(nb.id), label: canonicalChatLabel(nb) });
+    return { id: projectIdForNotebook(nb.id), name: projectNameFor(nb), children };
+  });
 }

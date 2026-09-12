@@ -43,7 +43,7 @@ export function contextFor(meta: UnifiedNotebookMeta, identityDisputed = false):
   const asset = meta.asset ?? null;
   return {
     tenantId: meta.tenantId ?? "tenant",
-    projectId: "project-notebooks",
+    projectId: `project-${meta.notebookId}`,
     ...(asset ? { machineId: asset.id } : {}),
     machineIdentity: asset ? (identityDisputed || !meta.identityConfirmed ? "unconfirmed" : "confirmed") : "not_applicable",
     evidenceAuthorization: asset ? (identityDisputed || !meta.identityConfirmed ? "not_authorized" : "authorized") : "not_applicable",
@@ -60,11 +60,11 @@ export function machinesFor(meta: UnifiedNotebookMeta): readonly Machine[] {
 export function projectsFor(meta: UnifiedNotebookMeta): readonly Project[] {
   const asset = meta.asset ?? null;
   return [{
-    id: "project-notebooks",
-    name: "Notebooks",
+    id: `project-${meta.notebookId}`,
+    name: asset?.name || meta.title || "Untitled chat",
     children: [
       ...(asset ? [{ kind: "machine-link" as const, id: `link-${asset.id}`, label: asset.name, machineId: asset.id }] : []),
-      { kind: "thread" as const, id: threadIdFor(meta), label: meta.title },
+      { kind: "thread" as const, id: threadIdFor(meta), label: meta.title || "Untitled chat" },
     ],
   }];
 }
@@ -191,7 +191,7 @@ export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNoteb
   return {
     id: threadIdFor(meta),
     tenantId: meta.tenantId ?? "tenant",
-    projectId: "project-notebooks",
+    projectId: `project-${meta.notebookId}`,
     notebookId: meta.notebookId,
     ...(meta.asset ? { primaryAssetId: meta.asset.id } : {}),
     title: meta.title,

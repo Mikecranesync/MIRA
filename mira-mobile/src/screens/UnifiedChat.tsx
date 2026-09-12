@@ -47,6 +47,7 @@ export interface UnifiedShellHost {
   readonly projects: readonly Project[];
   readonly machines: readonly Machine[];
   readonly onOpenItem: (item: ProjectItem) => void;
+  readonly onNewChat?: () => void;
   readonly navigationFooter?: ReactNode;
 }
 
@@ -119,6 +120,7 @@ export function UnifiedChat({ turns, liveTurns, pending, busy, canStop, canRetry
       const citation: ChatCitation | undefined = citations.get(source.id);
       if (citation) handlers.onCitation(citation);
     },
+    ...(host?.onNewChat ? { onNewChat: host.onNewChat } : {}),
     busy,
   };
 

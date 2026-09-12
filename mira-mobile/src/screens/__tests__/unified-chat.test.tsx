@@ -128,4 +128,36 @@ describe("UnifiedChat", () => {
     );
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("enables New chat only when the host supplies the create path", () => {
+    const h = handlers();
+    const onNewChat = vi.fn();
+    const { rerender } = render(
+      <UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect((screen.getByRole("button", { name: "New chat" }) as HTMLButtonElement).disabled).toBe(true);
+
+    rerender(
+      <UnifiedChat
+        turns={[TURN]}
+        liveTurns={[]}
+        pending={null}
+        busy={false}
+        canStop={false}
+        canRetry={false}
+        chatError={null}
+        handlers={h}
+        meta={META}
+        host={{
+          projects: [],
+          machines: [],
+          onOpenItem: () => {},
+          onNewChat,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    expect(onNewChat).toHaveBeenCalledTimes(1);
+  });
 });
