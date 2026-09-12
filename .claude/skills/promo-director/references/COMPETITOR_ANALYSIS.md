@@ -1,8 +1,24 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-31
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-31
+
+### Most actionable change for the playbook
+MaintainX (acquired by Autodesk for $3.6B, Aug 2026) is no longer an independent CMMS competitor — it is Autodesk's operations layer. Maintenance intelligence is now marketed as part of the design-make-operate continuum. MIRA's positioning as an independent, sensor-agnostic context layer that works on any UNS is sharpened by contrast.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX → Autodesk** — $3.6B acquisition announced May 28, 2026; closed August 3, 2026. MaintainX ARR >$135M, growing >50%. Now branded Autodesk Operations Solutions (AOS). No dedicated acquisition launch video found; covered via Bloomberg, PRNewswire, and Autodesk newsroom. This is the largest acquisition in Autodesk's history and directly collapses the "CMMS startup" framing MaintainX previously occupied. [transcript not verified — no video]
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" (May 18, 2026): pivoted from machine-health insight to autonomous AI agents. Role-specific agents (Maintenance Agent, Reliability Agent, Scheduler Agent) now autonomously detect faults and create CMMS work orders — no human trigger required. Technology stack: Augury Machine Health + AVEVA CONNECT + Google Gemini. Previewed at AVEVA World, Milan. Editorial video at Machine Design (not official channel): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- **Augury + Rockwell Automation** — Strategic partnership announced July 23, 2026. Augury Reliability Agent integrates with Rockwell Fiix MAX (AI maintenance assistant); joint product expected September 2026. First channel-level bridge combining Rockwell's SCADA/ControlLogix install base with autonomous predictive-maintenance agentics. No dedicated video found.
 
 ---
 
@@ -88,6 +104,8 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**⚠️ ACQUISITION (Aug 3, 2026):** Autodesk acquired MaintainX for $3.6B. Now operates as Autodesk Operations Solutions (AOS). Positioning has shifted from "CMMS startup" to "design-make-operate continuum." MaintainX ARR >$135M (2026 est.), growing >50%. This is the largest deal in Autodesk history — MaintainX is no longer an independent competitor.
+
 ---
 
 ### Fiix
@@ -145,6 +163,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Industrial AI Workforce (May 18, 2026)**
+- Announced at AVEVA World, Milan
+- Pivot: from insight-delivery to autonomous maintenance action. When a machine fault is detected, the Maintenance Agent automatically creates and populates a CMMS work order — no human trigger.
+- Technology stack: Augury Machine Health + AVEVA CONNECT + Google Gemini
+- Role-based agents: Maintenance Agent (fault detection → work order creation), Reliability Agent (integrates with Rockwell Fiix MAX), Scheduler Agent
+- Editorial video (Machine Design, not official channel): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- **Rockwell Automation partnership** (July 23, 2026): Augury Reliability Agent + Fiix MAX joint integration; September 2026 availability. First SCADA-vendor-backed predictive-maintenance agentic offering.
+- **Style drift:** Augury moved from hardware+insight to autonomous-action platform. Now directly competing on the "AI that acts, not just analyzes" claim (same territory as UpKeep Nova). New hook framing: "from insight to action."
 
 ---
 
@@ -395,6 +422,7 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. **Now an Autodesk subsidiary (Aug 2026)** — positioning will migrate toward design-make-operate lifecycle, not standalone CMMS. Independent-competitor framing is dead.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **In 2026 pivoted again** — now positioning as autonomous-agent platform (Industrial AI Workforce), directly competing on "AI that acts, not just analyzes."
+- **Rockwell + Augury** (Jul 2026): SCADA vendor (Rockwell) now co-marketing predictive-maintenance agentics (Augury). First SCADA+PdM bundle with autonomous work-order creation. Signals that the "sensor data → CMMS action" loop is becoming a table-stakes expectation in the industrial automation channel.
