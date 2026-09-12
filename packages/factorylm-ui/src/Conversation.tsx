@@ -41,7 +41,7 @@ export function breadcrumb(state: ShellState): readonly string[] {
   return crumbs;
 }
 
-function RunCard({ run, state }: { readonly run: InteractionRun; readonly state: ShellState }) {
+export function RunCard({ run, state }: { readonly run: InteractionRun; readonly state: ShellState }) {
   const completed = run.plan.filter((step) => step.status === "completed").length;
   return <section className="fl-run" aria-label="Diagnostic Run" data-run-status={run.status}>
     <div className="fl-run__head">
@@ -93,25 +93,29 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
   </li>;
 }
 
-export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
+/** The bar above the turns: breadcrumb, Ask/Work, machine chip. Shared by both surfaces. */
+export function ConversationBar({ state, dispatch }: { readonly state: ShellState; readonly dispatch: Dispatch<ShellAction> }) {
   const crumbs = breadcrumb(state);
   const machine = machineName(state, state.activeContext.machineId);
-
-  return <section className="fl-conversation" aria-label="Conversation" data-mode={state.mode}>
-    <div className="fl-conversation__bar">
-      <nav className="fl-conversation__crumbs" aria-label="Breadcrumb">
-        {crumbs.length > 0
-          ? crumbs.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)
-          : <span>Workspace</span>}
-      </nav>
-      <div className="fl-conversation__modes" role="group" aria-label="Mode">
-        <button type="button" aria-pressed={state.mode === "ask"} onClick={() => dispatch({ type: "set-mode", mode: "ask" })}>Ask</button>
-        <button type="button" aria-pressed={state.mode === "work"} onClick={() => dispatch({ type: "set-mode", mode: "work" })}>Work</button>
-      </div>
-      <span className="fl-chip" data-identity={state.activeContext.machineIdentity}>
-        ● {machine ? `${machine} · ${state.activeContext.machineIdentity.replace("_", " ")}` : "No machine"}
-      </span>
+  return <div className="fl-conversation__bar">
+    <nav className="fl-conversation__crumbs" aria-label="Breadcrumb">
+      {crumbs.length > 0
+        ? crumbs.map((crumb, index) => <span key={`${index}-${crumb}`}>{index > 0 ? " / " : ""}{crumb}</span>)
+        : <span>Workspace</span>}
+    </nav>
+    <div className="fl-conversation__modes" role="group" aria-label="Mode">
+      <button type="button" aria-pressed={state.mode === "ask"} onClick={() => dispatch({ type: "set-mode", mode: "ask" })}>Ask</button>
+      <button type="button" aria-pressed={state.mode === "work"} onClick={() => dispatch({ type: "set-mode", mode: "work" })}>Work</button>
     </div>
+    <span className="fl-chip" data-identity={state.activeContext.machineIdentity}>
+      ● {machine ? `${machine} · ${state.activeContext.machineIdentity.replace("_", " ")}` : "No machine"}
+    </span>
+  </div>;
+}
+
+export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
+  return <section className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
+    <ConversationBar state={state} dispatch={dispatch} />
 
     {state.mode === "work"
       ? (state.run

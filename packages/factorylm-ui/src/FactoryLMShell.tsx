@@ -1,5 +1,6 @@
 import type { PlatformAdapter, ProjectItem, ShellAction, ShellState } from "@factorylm/interaction";
 import { useEffect, useRef, type Dispatch, type ReactNode } from "react";
+import { AssistantThread } from "./assistant/AssistantThread";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { Inspector } from "./Inspector";
@@ -19,7 +20,16 @@ export interface FactoryLMShellProps {
   readonly onOpenItem?: (item: ProjectItem) => void;
   /** Host-owned controls rendered at the bottom of navigation. */
   readonly navigationFooter?: ReactNode;
+  /**
+   * Which conversation surface renders the turns. `classic` (default) is the
+   * package's own list; `assistant` is the same bar, run card and parts on
+   * assistant-ui primitives (viewport, autoscroll, jump-to-latest, run state).
+   * The composer, header, navigation and layers are identical for both.
+   */
+  readonly conversationSurface?: ConversationSurface;
 }
+
+export type ConversationSurface = "classic" | "assistant";
 
 /** Custom DOM event a host dispatches on `document` for a hardware Back press. */
 export const BACK_EVENT = "factorylm:back";
@@ -55,7 +65,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, navigationFooter }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
   // One scrim, for the top-most page-covering layer, in closing-precedence order.
@@ -105,6 +115,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
     data-mode={state.mode}
     data-navigation-visible={state.navigationVisible}
     data-top-layer={topLayer(state) ?? ""}
+    data-conversation-surface={conversationSurface}
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>
@@ -112,7 +123,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, na
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
-      <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+      {conversationSurface === "assistant"
+        ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+        : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
       <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={mobile} trapsTab={top === "inspector"}>

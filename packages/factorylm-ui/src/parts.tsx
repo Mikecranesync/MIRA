@@ -31,6 +31,13 @@ export interface HostHooks {
    * visible reason — never a dead button (#3649 scope 4).
    */
   readonly onNewChat?: () => void;
+  /**
+   * Render a turn's text part. The package renders plain text; a host whose
+   * text carries markdown and inline citation marks (mobile AnswerMarkdown)
+   * supplies its own renderer here so the same text reads the same on every
+   * surface. Absent = plain paragraph.
+   */
+  readonly renderText?: (text: string, turn: InteractionTurn) => ReactNode;
   readonly busy?: boolean;
 }
 
@@ -189,7 +196,9 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
 export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
   switch (part.type) {
     case "text":
-      return <p className="fl-part fl-part--text" data-part-type="text">{part.text}</p>;
+      return <div className="fl-part fl-part--text" data-part-type="text">
+        {hooks?.renderText ? hooks.renderText(part.text, turn) : part.text}
+      </div>;
 
     case "attachment": {
       const { attachment } = part;

@@ -14,7 +14,8 @@
     "test:e2e": "\"$npm_execpath\" x playwright test",
     "licenses": "\"$npm_execpath\" scripts/check-dependency-licenses.ts",
     "verify": "\"$npm_execpath\" run test && \"$npm_execpath\" run build && \"$npm_execpath\" run budget && \"$npm_execpath\" run licenses",
-    "budget": "\"$npm_execpath\" scripts/check-build-budget.ts"
+    "budget": "\"$npm_execpath\" scripts/check-build-budget.ts",
+    "notices": "\"$npm_execpath\" scripts/generate-third-party-notices.ts"
   },
   "dependencies": {
     "@factorylm/interaction": "workspace:*",

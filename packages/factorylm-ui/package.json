@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@factorylm/interaction": "workspace:*",
-    "@factorylm/theme": "workspace:*"
+    "@factorylm/theme": "workspace:*",
+    "@assistant-ui/react": "0.15.17"
   },
   "peerDependencies": {
     "react": ">=18 <20",
