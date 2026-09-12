@@ -146,3 +146,5 @@ This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops
 - Delete rules Codex follows naturally. Audit monthly.
 - Deep content lives in: `docs/`, `wiki/references/`, `tests/eval/`.
 - Line count as of last audit: see `wc -l AGENTS.md`
+
+> New here? Read `docs/peer-network/START_HERE.md` to join the peer-network protocol.

@@ -376,3 +376,5 @@ Pocock canonical names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 ### Domain docs
 
 Multi-context. Root `CONTEXT-MAP.md` lists per-module contexts. Primary doctrine: `docs/THEORY_OF_OPERATIONS.md`. See `docs/agents/domain.md`.
+
+> New here? Read `docs/peer-network/START_HERE.md` to join the peer-network protocol.

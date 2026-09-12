@@ -1,0 +1,190 @@
+# Peer development network — START HERE
+
+**Mission:** FLEET-PEER-NETWORK-001 (`../prd/2026-09-07-fleet-peer-network-001.md`, record: issue #3648).
+**Status:** Slice A — contract and onboarding. **Advisory / shadow mode.** The existing manual
+workflow (`.claude/rules/multi-session-protocol.md`) stays authoritative until Slices B–F pass and
+Mike accepts the drill. Nothing here changes runtime behaviour for customers or the current UI.
+
+If you are a new Claude or Codex session in this repository, read this page before you edit
+anything. It tells you how to discover the network, say who you are, ask for work, hold an
+exclusive claim, work in isolation, hand off before your context degrades, and leave without
+colliding with another session.
+
+## 1. One controller, many peers
+
+- **Foreman on the VPS** is the single mission controller (queue, policy, durable state, Slack
+  summaries). It never implements product code. Until Slice B lands it is in **shadow mode**:
+  the durable authority is GitHub — the canonical issue or draft PR for the mission.
+- The five computers are execution peers. **Nodes are computers, never personas.** A worker is
+  named by provider, session number and node: `Claude Session 2 on Travel`.
+
+| Node | Default role (not a permission) | Typical work | Must actually hold |
+|---|---|---|---|
+| VPS / Foreman | mission controller | queue, policy, state, Slack, scheduling | — (no product edits) |
+| Alpha | integration | shared contracts, integration branches, combined gates, RC prep | bash, git, gh, write |
+| Bravo | primary implementation | bounded backend / infra / reliability | bash, git, gh, write |
+| Charlie | adversarial review | read-only Codex review of an exact SHA; dev-environment checks | codex-cli; gates need bash, git, gh |
+| Travel laptop | secondary implementation | disjoint infra, UI-supporting tooling, docs, test harness | bash, git, gh, write |
+| PLC laptop | industrial verifier | PLC, Ignition, Factory I/O, hardware acceptance | plc, ignition, factory-io |
+
+**A default role is a routing hint, not a permission.** Law 10 decides who implements and who
+reviews (Claude implements and remediates; Codex reviews read-only); a node's sessions may take any
+lane their tools cover — a Claude session on Charlie can implement, a Codex session on Bravo can
+review — as long as reviewer and verifier stay independent of the implementer.
+
+**Available is not equipped.** Every session record carries its own `capabilities`
+(`schemas/session.schema.json`) — what that session is actually equipped with, not what its node
+offers — and dispatch reads the session's list, validated as a SUBSET of the node inventory in
+`deployment/network.yml` (`tools/peer_network/capabilities.py`: a travel session cannot claim `adb`).
+A session that lacks Bash, git, gh or file-write tools cannot own
+an implementation slice, however idle it is. Say so when dispatched to; the dispatcher falls back
+(PRD §14). Node metadata lives in `deployment/network.yml` (`peer_network` keys); the shape is
+`schemas/node.schema.json`.
+
+## 2. The twelve operating laws (PRD §6)
+
+1. One mission controller; many execution peers.
+2. One active writer per claimed resource.
+3. Every writer uses a dedicated branch and an isolated worktree.
+4. Every substantial task has one durable mission ID and one canonical PR or issue.
+5. Claims are atomic leases, not announcements.
+6. A session without a valid lease is read-only.
+7. Every heartbeat, claim, commit, handoff, verdict and release is recorded as an event.
+8. Reviews and verification bind to one immutable 40-character SHA.
+9. A changed SHA invalidates every previous approval.
+10. Claude implements and remediates; Codex reviews read-only by default.
+11. Foreman manages; it never opens a product worktree or commits product code.
+12. Merge, production deploy, secrets, protected infrastructure and physical acceptance are
+    human-gated unless Mike creates a narrower authorization.
+
+## 3. Session lifecycle — manual (shadow) procedure for v1
+
+Each step names the future Foreman operation it stands in for (`schemas/README.md`).
+
+**Join** (`join_network`)
+1. Read this page. Identify your physical node and your provider session id.
+2. `git fetch --all`; `gh pr list --state open --limit 60`; read the open `[WORK-CLAIM]` blocks on
+   mission issues and draft PRs. Note the tools you hold (see §1).
+
+**Request work** (`request_work`)
+3. Do **not** pick an unclaimed-looking task yourself. Ask the dispatcher (today: the session that
+   holds the mission record; later: Foreman) or take the next `PROPOSED` slice on the mission
+   record whose dependencies are met and whose authorization is standing.
+
+**Claim** (`claim_work`)
+4. Post a `[WORK-CLAIM]` block (`.claude/rules/multi-session-protocol.md` §2) on the canonical
+   issue/PR with `Status: ACTIVE`, **`Claimed at: <UTC ISO-8601>`**, the base SHA, branch, worktree
+   and the **resource keys** you need (`schemas/claim.schema.json`). Claim states: `ACTIVE` (held, working), `BLOCKED` (held, waiting on a human gate or
+   dependency), `LEASE_AT_RISK` (renewal missed — stop before the next edit or push), `RELEASED`,
+   `COMPLETE`. `ACTIVE` and `BLOCKED` hold the lease: you may keep editing under either, but a
+   `BLOCKED` claim may not push past the gate it is blocked on. The other three are read-only.
+   Resource keys are **canonical** (`tools/peer_network/resource_keys.py`): trimmed, single
+   slashes, no trailing slash, no `.`/`..` segments; two keys **overlap** when equal or when one
+   path is an ancestor of the other (`docs/peer-network` covers `docs/peer-network/schemas/x`).
+   A claim never widens silently — a key outside yours is a NEW claim in the same race
+   (`scope_expansion`). Coverage is asymmetric: a held parent covers a wanted child, a held
+   child never covers its parent. The race is scoped to OVERLAPPING keys — disjoint claims are not
+   in the same race — and its ordering fields (`created_at`, `event_id`) are part of the durable
+   claim record, server-issued. Every lease operation (`claim_work`, `renew_claim`,
+   `release_claim`, `submit_checkpoint`, `request_handoff`, `accept_handoff`, `submit_result`)
+   carries `generation`. The race itself is executable: `tools/peer_network/claims.py`. **Wait at least 60 seconds, then re-read the whole
+   thread** (a settling interval, so two near-simultaneous posts both see each other). The
+   ordering key is the same as `.claude/rules/multi-session-protocol.md` §2: the ACTIVE claim with
+   the **earliest GitHub creation time / event id** overlapping your keys wins — a server-issued
+   value no session can back-date. `claimed_at` is recorded for the ledger (Foreman will use it
+   as the lease's start) but is self-reported and is **never** the tiebreak. A claim inserted by
+   editing an older comment does not count: only a comment created after the mission record
+   existed is a claim. If you lost, set yours to `RELEASED` and make no edits.
+5. Only then create the worktree (detached from `origin/main`, never holding `main`) and the
+   branch. Publish the branch early.
+
+**Work and heartbeat** (`heartbeat`, `renew_claim`, `submit_checkpoint`)
+6. Renew by activity: a push, or a `Last updated:` bump on the claim, at least every 60 minutes.
+   Silence for 24 h on both the claim and the branch makes the claim stale (protocol §2). If you
+   cannot renew, stop before your next edit or push (`LEASE_AT_RISK`).
+
+**Handoff** (`request_handoff` → `accept_handoff`)
+7. At ~70 % context, 200 turns, a hard blocker or a human gate: commit the checkpoint, write
+   `docs/missions/<MISSION-ID>/HANDOFF.md` (tests, changed files, HEAD SHA, remaining work, exact
+   resume command), post a `request_handoff` comment on the record, and **stay owner** until the
+   replacement posts `accept_handoff`. Acceptance transfers the same claim and increments its
+   `generation`; it never creates a second mission.
+
+**Review and verification** (`request_review`, `submit_verdict`)
+8. Implementation stops at a committed, pushed SHA. Send the **40-character** SHA and the full
+   changed-path list to the reviewer (Codex on Charlie, read-only) and then to a separate verifier
+   session (different node when the task allows). Both must PASS on the current SHA; any new
+   commit voids both.
+
+**Leave** (`release_claim`, `leave_network`)
+9. Set the claim to `COMPLETE` or `RELEASED`, remove your worktree, post the session closeout
+   (protocol §9).
+
+**Rule for every guard:** a guard is not verified until it has been made to fail on the regression
+it names. Reading a check proves nothing; mutate the thing it protects and watch it go red — with
+the full test count intact, so a load failure is not mistaken for a control. (Five instances on
+Slice A alone were caught this way and none by reading.)
+
+**Rule against green-by-skipping:** a suite that can pass by not running is not a gate, and the
+test count is the tell. Two instances in two days: a Slice A step ran `pytest.importorskip("jsonschema")`
+on a job that never installed it, so five rejection proofs *skipped* and the step reported green;
+and the beta gate read a pytest exit code as its verdict, and a run whose only tests skip exits 0 —
+green having proven nothing. Different mechanisms, same species: the artifact ran, the behaviour did
+not, and nothing distinguished them from outside. So: imports the assertions need are **hard** (a
+missing dependency is a RED step, never a skip); a gate reads the pass/fail *count and names*, never
+a bare exit code; and any expected skip is asserted to be zero. This sits beside the guard rule
+above — that one covers guards that never fire, this one covers suites that never run.
+
+**Rule for every record:** a field that carries an authority claim — a SHA, a verdict, a gate
+decision, a lease state — needs a pattern or an enum, never prose. `claim.base_sha`,
+`artifact.sha`, `claim.status` and the per-kind `event.payload` proofs are the examples; a verdict
+that names no 40-character SHA is invalid by schema, not merely discouraged.
+
+## 4. Resource keys
+
+Claims name explicit canonical keys and acquire all of them or none:
+`packages/factorylm-ui` · `packages/factorylm-theme` · `apps/factorylm-ui-lab` · `mira-mobile` ·
+`mira-hub` · `mira-web` · `migration:next` · `device:pixel9a` · `environment:staging` ·
+`environment:prod` · `root:CLAUDE.md` · `root:AGENTS.md` · `docs/<path>` · `deployment/<path>`.
+Pattern in `schemas/claim.schema.json`. Two claims with disjoint keys may run at once.
+
+## 5. Human gates
+
+Merge, production deployment, secrets, Gateway/tunnel/Tailscale/Cloudflare changes, physical
+tests. Record them as `human_gate` records (today: a comment naming the gate and who decided).
+Whenever a required gate is incomplete, report **PARTIAL** or **BLOCKED** — never green.
+
+## 6. Missions, handoffs and the `.fleet/` notice
+
+New missions keep their files under `docs/missions/<MISSION-ID>/` (`../missions/README.md`).
+The global `.fleet/TASK.md` and `.fleet/HANDOFF.md` are **deprecated for new missions**: they were
+overwritten by unrelated missions. **Do not add new files under `.fleet/` from a branch created
+after this page merges.** Exempt: every branch that already had `.fleet/` files in flight before
+that merge — the FLEET-PRD-P1 set (#3549–#3554, #3558), BOOTSTRAP-001 (#3533) and
+`docs/pixel-acceptance-and-merge-plan` — which keep theirs until they close; nothing is moved.
+For new branches the rule is enforced by the devops path gate (check 4a: no added files under
+`.fleet/`), not remembered.
+
+## 7. Root pointers — status gate
+
+Root `CLAUDE.md` and `AGENTS.md` get a short pointer to this page so every new Claude and Codex
+session discovers the contract (PRD §8 step 1). Those two files are inside an active claim
+(#3626, five open PRs), so the pointers land **only after #3647 merges**, on a rebase of this
+branch. `pointers.status` holds the state: `pending:#3647` now, `landed` afterwards.
+`tests/peer_network/test_contract.py` fails if the pointers appear while pending **and** if they
+are missing once landed — the dependency is enforced, not remembered. The suite runs in its own
+always-run `peer-contract` job of `ci.yml` (no `changes:` filter, `fetch-depth: 0`, in `ci-gate`'s
+`needs:`); the `tests/` sweep in `test-eval-offline` is advisory — it is not in `ci-gate`'s
+`needs:`, so a step there could go red and merge anyway.
+
+## 8. Feature flag and rollback
+
+`FLEET_PEER_NETWORK_ENABLED` (default `0`, read by Foreman from Slice B on). With it off, the
+manual protocol above is the whole process and every GitHub record stays valid — disabling the
+network loses no evidence (PRD acceptance #12).
+
+## 9. What this slice does not do
+
+No Foreman code, no Slack changes, no Gateway/tunnel/Tailscale/Cloudflare changes, no product
+paths (`packages/factorylm-*`, `apps/factorylm-ui-lab`, `mira-mobile`, `mira-hub`, `mira-web`),
+no merges, no deploys. Slice B (Foreman shadow state) is the next dependency-ready item on #3648.
