@@ -85,6 +85,8 @@ export function SensorSheet({
   onUploadInstead,
   lastLook,
   onLook,
+  initialMode,
+  initialReadState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
   onClose: () => void;
@@ -106,9 +108,13 @@ export function SensorSheet({
   lastLook?: RememberedLook | null;
   /** A new LOOK landed; the caller remembers it for the session. */
   onLook?: (look: RememberedLook) => void;
+  /** Optional direct entry for a host control that already named the mode. */
+  initialMode?: SensorMode;
+  /** Optional direct READ sub-state, used by the shared shell Scan action. */
+  initialReadState?: "scan";
 }) {
   const notebookId = notebook.id;
-  const [mode, setMode] = useState<SensorMode | null>(null);
+  const [mode, setMode] = useState<SensorMode | null>(initialMode ?? null);
   const current = SENSOR_MODES.find((m) => m.id === mode) ?? null;
 
   return (
@@ -166,6 +172,7 @@ export function SensorSheet({
               onChanged={onChanged}
               onOpenNotebook={onOpenNotebook}
               onUploadInstead={onUploadInstead}
+              initialState={initialReadState}
             />
           )}
           {current.id === "replay" && (
@@ -386,13 +393,15 @@ function ReadPanel({
   onChanged,
   onOpenNotebook,
   onUploadInstead,
+  initialState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
   onChanged: () => void;
   onOpenNotebook: (notebookId: string) => void;
   onUploadInstead: () => void;
+  initialState?: "scan";
 }) {
-  const [state, setState] = useState<ReadState>({ name: "menu", note: null });
+  const [state, setState] = useState<ReadState>(initialState === "scan" ? { name: "scan" } : { name: "menu", note: null });
   const cameraRef = useRef<HTMLInputElement | null>(null);
 
   const onScanned = async (text: string, via: ScanVia) => {
