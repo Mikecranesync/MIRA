@@ -32,7 +32,7 @@ import { Preferences } from "@capacitor/preferences";
 import { createWorkOrder, getMe, signOut, type Me } from "../api/resources";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createV6Adapter, type V6AdapterHandlers } from "../v6/adapter";
-import { v6Projects, v6Machines, type V6Thread } from "../v6/data";
+import { v6Projects, v6Machines, v6SendNoMachine, type V6Thread } from "../v6/data";
 import { hasActiveApiMutations } from "../api/client";
 import {
   beginSessionLocalPurge,
@@ -154,15 +154,31 @@ export function V6Root({ me, backRef, onSignOut, onSwitchLegacy }: V6RootProps) 
     }
   }, []);
 
-  const onSend = useCallback((text: string) => {
-    // TODO: Implement send logic that supports no-machine mode
-    console.log("[V6] sending:", text, "machine:", state.activeContext.machineId || "none");
+  const onSend = useCallback(async (text: string) => {
+    const machineId = state.activeContext.machineId;
     
-    // Mock response for now
-    dispatch({
-      type: "mock-send",
-    });
-  }, [state.activeContext.machineId]);
+    try {
+      if (!machineId) {
+        // No-machine mode: use general ask endpoint
+        const result = await v6SendNoMachine(text, selectedThreadId || undefined);
+        
+        // TODO: Update shell state with response
+        // For now, just log
+        console.log("[V6] no-machine response:", result.answer);
+        
+        // Mock the dispatch for now - will wire proper message handling next
+        dispatch({ type: "mock-send" });
+      } else {
+        // Machine-scoped mode: use equipment notebook endpoint
+        // TODO: Implement machine-scoped send
+        console.log("[V6] machine-scoped send:", text, "machine:", machineId);
+        dispatch({ type: "mock-send" });
+      }
+    } catch (error) {
+      console.error("[V6] send failed:", error);
+      // TODO: Show error to user
+    }
+  }, [state.activeContext.machineId, selectedThreadId]);
 
   const handlers = useMemo<V6AdapterHandlers>(() => ({
     onAttachPhoto: () => {

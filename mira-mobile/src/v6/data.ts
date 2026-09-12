@@ -118,16 +118,51 @@ export async function v6LoadThread(threadId: string): Promise<V6Thread | null> {
 /**
  * Send a message in no-machine mode.
  * 
- * Supports asking general questions like "What is a VFD?" without selecting
- * a machine first.
+ * Uses `/api/hub/ask` which is designed for general questions from signed-in
+ * technicians without a specific machine context. Searches tenant's own
+ * uploads plus shared OEM library.
  */
 export async function v6SendNoMachine(
   text: string,
   threadId?: string,
-): Promise<{ threadId: string; message: Message }> {
-  // TODO: Implement no-machine send to backend
-  console.log("[V6] no-machine send:", text, "thread:", threadId);
-  throw new Error("Not implemented");
+): Promise<{ threadId: string; message: Message; answer: string; citations: unknown[] }> {
+  const { request } = await import("../api/client");
+  
+  try {
+    const response = await request("/api/hub/ask/", {
+      method: "POST",
+      json: { question: text },
+    });
+    
+    const data = (response.data || {}) as Record<string, unknown>;
+    const answer = String(data.answer || "");
+    const citations = (data.citations as unknown[]) || [];
+    
+    // Generate or use existing thread ID
+    const finalThreadId = threadId || `thread-${Date.now()}`;
+    
+    // Create message object (simplified for now)
+    const message: Message = {
+      type: "turn",
+      id: `msg-${Date.now()}`,
+      parts: [
+        {
+          type: "text",
+          value: answer,
+        },
+      ],
+    };
+    
+    return {
+      threadId: finalThreadId,
+      message,
+      answer,
+      citations,
+    };
+  } catch (error) {
+    console.error("[V6] no-machine send failed:", error);
+    throw error;
+  }
 }
 
 /**
