@@ -1,8 +1,41 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-29
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-29
+
+### Most actionable change for MIRA playbook
+
+**Rockwell + Augury are building MIRA's thesis from the top down.** The July 2026 partnership directly integrates Augury's Reliability Agent with Rockwell's Fiix MAX CMMS — detection → diagnosis → work order, agentic and automated. Their constraint: hardware sensors required, Rockwell ecosystem dependency, no OEM-manual-native answer layer. MIRA's counterplay: sensor-agnostic (no hardware install), OEM-manual-native (cited answers from docs), and independent. "MIRA works on the machine you already have, with the manual you already own" is the wedge.
+
+**MaintainX disappears as an independent competitor.** Autodesk acquired it for $3.6B (May 28, closed Aug 3, 2026). MaintainX is now Autodesk's maintenance arm for the built environment (construction → operations). Industrial manufacturing buyers should feel the difference: MaintainX is moving toward buildings and facilities, not factory floors. Reposition accordingly.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Acquired by Autodesk for $3.6B (May 28, 2026, closed Aug 3): https://investors.autodesk.com/news-releases/news-release-details/autodesk-acquire-maintainx-advancing-unified-platform-operations — Bloomberg CEO interview video: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — new positioning: "connected operations" from design through maintenance; industrial manufacturing focus diluted
+- **MaintainX** — Report Builder AI (April 2026): natural language → custom reports, no spreadsheets. Root Cause Analysis natively in workflow. https://www.getmaintainx.com/blog/whats-new-at-maintainx-april-2026
+- **MaintainX** — Maintenance Plans (August 2026): all PM cycles for an asset in one plan, nested PMs (weekly/monthly/quarterly/annual). https://www.getmaintainx.com/blog/whats-new-at-maintainx-august-2026
+- **Limble** — Technician-first mobile app launch (March 2026): purpose-built for field execution speed, not admin: https://www.prnewswire.com/news-releases/limble-launches-technician-first-mobile-app-for-speed-reliability-and-maintenance-execution-302699061.html. AI PM Builder + MCP integration to link CMMS with enterprise AI tools (new category: "AI-connectable CMMS")
+- **Fiix (Rockwell)** — Fiix MAX launched: conversational AI assistant inside Fiix CMMS, translates Augury Reliability Agent recommendations into work orders. Fiix Forward 2026 conference: Oct 5–8, St. Louis.
+
+**Predictive maintenance**
+- **Augury** — Industrial AI Workforce (May 18, 2026): https://www.augury.com/industrial-ai/ — role-based AI agents on top of Machine Health data, synthesizing AVEVA CONNECT + Google Gemini. "Insight to action" frame. Machine Design video interview: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- **Augury + Rockwell** — Strategic partnership (July 23, 2026): https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html — Augury Reliability Agent detects/recommends → Fiix MAX converts to work orders. Direct detection-to-action loop. First enterprise-integrated agentic maintenance stack announced publicly.
+- **Tractian** — AI inspection robots announced (2026): BNDES-funded, 421 new hires (150 R&D), 20 patents planned. Product launch event: September 18, 2026. New category: hardware inspection robots for critical asset inspection. Not yet launched.
+
+**Automation / SCADA**
+- **Inductive Automation** — ICC 2026 conference: September 22, 2026. "The Ignition Effect" series launched — CTO-led educational storytelling format, panoramic transformation view from Ignition users. Discover Gallery: 18 projects showcased.
+
+**B2B SaaS / dev-tools**
+- **Figma** — Config 2026 keynote (June 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — CEO Dylan Field; "rethinking product development from the ground up"; new: Figma Motion (timeline animation), Code Layers, Shaders, Weave Tools. Same conference-as-launch-vehicle pattern as 2025.
+- **Cursor** — Compile 2026 (June 2026): three major launches — Origin (GitHub competitor for agentic era, shipped beta Aug 17), new frontier model in training, Cursor Mobile (iOS beta). https://www.learncursor.dev/research/cursor-compile-2026-announcements — pattern shift: editor → platform (now competing with GitHub)
+- **Notion** — Developer Platform (May 13, 2026): Workers, Database sync, External Agent API — turns Notion into AI orchestration hub. https://techcrunch.com/2026/05/13/notion-just-turned-its-workspace-into-a-hub-for-ai-agents/ — 1M+ custom agents created. Agents iOS app (July 8, 2026): https://www.notion.com/releases/2026-07-08
+- **Replit** — Agent 4 launch: full workspace, idea to product without leaving. Vibe Code Videos: ship motion-style launch videos from inside the product. "Live from Replit HQ: Agent 4" format — the product is the promo vehicle.
 
 ---
 
@@ -55,7 +88,11 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff
 - No dedicated YouTube video confirmed
 
-**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
+**Nova Studio expansion (May–Jun 2026)**
+- May 2026: multi-entity Access Points, Compliance Calendar redesign, Safety Work Order visibility, two new Studio apps; June 2026: three more Studio apps (PM planning, condition-based maintenance, location data management). https://upkeep.com/product-releases/upkeep-product-release-june-12-2026/
+- No new promo video format — changelog-style releases only. Video-light quarter.
+
+**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA. Post-May 2026: expanding Studio app platform rather than new agent narrative.
 
 ---
 
@@ -86,19 +123,44 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Autodesk acquisition (May 28, 2026 — closed Aug 3, 2026)**
+- Deal value: $3.6B all-cash — largest acquisition in Autodesk's history
+- Bloomberg CEO video: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Autodesk CEO Andrew Anagnost frames deal as "design → make → operate" lifecycle completion
+- Positioning shift: MaintainX is now Autodesk's built-environment operations layer (construction + facilities). Industrial manufacturing focus diluted. YouTube channel now listed as "MaintainX (An Autodesk Company)."
+- **Competitive implication:** MaintainX is no longer competing as an independent CMMS in the industrial maintenance market — it is becoming a lifecycle product for the built environment (AEC-adjacent). Factory-floor customers will notice. MIRA counterplay: "not locked into your CAD vendor."
+
+**Report Builder AI (Apr 2026) + Root Cause Analysis + Maintenance Plans (Aug 2026)**
+- Report Builder AI: build custom reports via natural language, no spreadsheet export needed
+- Root Cause Analysis: structured failure analysis inside the work order, not an external tool
+- Maintenance Plans: all PM cycles for one asset in one plan; nested overlapping cycles
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-august-2026
+
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. Now Autodesk subsidiary.
 
 ---
 
 ### Fiix
 
-No dedicated promo/launch video found for 2025–2026. Product page positions AI-powered work orders. Starting at $45/mo. Rating: 4.5/5 (627 reviews). Rockwell Automation subsidiary — may be consolidating under Rockwell brand.
+**Fiix MAX (2026)**
+- Conversational AI assistant built into Fiix CMMS — "understanding maintenance data as easy as talking to a friend"
+- Key role: translates Augury Reliability Agent recommendations into maintenance workflows and work orders (see Rockwell-Augury partnership below)
+- No standalone launch video confirmed; positioned as an integrated capability, not a hero product
+- Fiix Forward 2026 conference: Oct 5–8, St. Louis — expected to feature Fiix MAX + Augury integration prominently
+- Rating: 4.5/5 (627 reviews). Rockwell Automation subsidiary.
 
 ---
 
 ### Limble CMMS
 
-No video content surfaced. $58M Series B (Goldman Sachs). Rating: 4.8/5 (729 reviews). SEO-dominant: ranks content marketing over video. Known for comparison pages targeting all competitors.
+**2026 launches (video-light but product-heavy)**
+- **New CEO Gary Specter** (Jan 2026) + **Asset Snap AI tool** (Winter 2026): AI to simplify daily maintenance tasks
+- **AI PM Builder** (Spring 2026): generate PM schedules from asset data, not manual entry
+- **Technician-first mobile app** (March 2026): purpose-built for field execution speed https://www.prnewswire.com/news-releases/limble-launches-technician-first-mobile-app-for-speed-reliability-and-maintenance-execution-302699061.html
+- **MCP integration**: links Limble CMMS with enterprise AI tools — "AI-connectable CMMS" positioning (new category vs. closed CMMS)
+- No dedicated YouTube launch videos found; Limble remains SEO + content-marketing dominant. Pattern: product-led growth, not video-led.
+- Competitive note: MCP integration is meaningful — Limble is positioning as infrastructure for an AI agent ecosystem, not just a standalone product.
+
+$58M Series B (Goldman Sachs). Rating: 4.8/5 (729 reviews).
 
 ---
 
@@ -119,6 +181,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - $120M Series C (Dec 2024, Sapphire + General Catalyst)
 - Oracle Cloud Infrastructure partnership (Mar 2025): adopted OCI to support Copilot scale
 - Competitive note: hardware-first (IoT sensors + software); MIRA's counterplay is sensor-agnostic + OEM-manual-native
+
+**AI inspection robots (announced 2026 — not yet launched)**
+- BNDES-funded (Brazil National Development Bank), 421 new hires planned (150 R&D), 20 patents
+- "First-of-its-kind product" for industrial inspection — advanced robotics + high-precision sensors + AI for critical asset inspection
+- Source: https://360mozambique.com/innovation/brazilian-startup-tractian-develops-ai-robots-for-industrial-maintenance/
+- Product launch event announced for September 18, 2026 — "the next step in your maintenance journey toward maximum reliability"
+- No launch video exists yet; watch their channel post Sept 18
+- Competitive note: Tractian is expanding from IoT sensors into robotics — building toward autonomous inspection. Longer-term threat; near-term still software-first.
 
 ---
 
@@ -144,7 +214,22 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Industrial AI Workforce (May 18, 2026)**
+- URL: https://www.augury.com/industrial-ai/ / PR: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html
+- Role-based AI agents on top of Machine Health data, synthesizing AVEVA CONNECT + Google Gemini models
+- Frame: "insight to action" — closing the gap between detection and maintenance execution
+- Previewed at AVEVA World, Milan; Machine Design video interview with CEO Elan Greenberg + CPO Anoop Mohan: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- VO register: executive interview, not polished promo
+- CTA: ecosystem/partnership play, not direct purchase
+
+**Rockwell Automation strategic partnership (July 23, 2026)**
+- Source: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+- Integration: Augury Reliability Agent (detects + recommends) → Fiix MAX (converts to work orders + execution)
+- This is the first publicly announced enterprise-grade agentic industrial maintenance loop: continuous condition monitoring → AI diagnosis → automated work order creation
+- Stack: Augury hardware + Augury AI + AVEVA CONNECT + Google Gemini + Rockwell Fiix — deeply integrated, deeply vendor-locked
+- **MIRA competitive position:** sensor-agnostic (no Augury hardware needed), OEM-manual-native (cites docs, not just sensor data), and independent of Rockwell's ecosystem. Augury requires upfront hardware installation and Rockwell CMMS commitment; MIRA works with existing equipment and any CMMS.
+
+**Pattern note (updated):** Augury's dual-track strategy (technical deep-dives + third-party credibility) is now combined with a *partnership announcement* track. The Rockwell partnership signals Augury is building a closed ecosystem rather than staying platform-agnostic. That's MIRA's opening.
 
 ---
 
@@ -187,6 +272,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Called "biggest LinkedIn post of all time" for the brand
 - Video format: release announcement, likely screen capture + narration
 - ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
+
+**"The Ignition Effect" series (2026)**
+- Format: CTO Carl Gould-led educational storytelling series; panoramic transformation view told by users
+- Continues the educational-top-of-funnel strategy that made "What Is SCADA?" the most-watched 2025 video
+- ICC 2026 conference: September 22, 2026 — 18 Discover Gallery projects to be showcased; six Firebrand Awards
+
+**Pattern note (updated):** Inductive Automation is consistently doubling down on long-form educational content + user-story format over product demos. The "effect" / "transformation" framing is different from "feature" framing. No aggressive CTA, no pricing, no trial.
 
 ---
 
@@ -317,6 +409,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
 
+**Compile 2026 conference + Origin launch (June–August 2026)**
+- Three major launches: **Origin** (agent-first git hosting / GitHub alternative for the agentic era), a new **frontier coding model** Cursor is training from scratch, and **Cursor Mobile** (iOS beta: prompt agents, edit code, control desktop from phone)
+- Source: https://www.learncursor.dev/research/cursor-compile-2026-announcements
+- Origin shipped in beta August 17–18, 2026: https://explainx.ai/blog/cursor-origin-git-hosting-github-alternative-ai-agents-2026
+- **Pattern shift:** Cursor is no longer just an editor — it's building the entire developer platform stack (editor + CI/CD + git hosting). Thesis: "primary users of version control are no longer human."
+- No promo video for Origin; announcement-driven (conference talk + blog post)
+
 ---
 
 ### Loom
@@ -355,15 +454,24 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Presenter: CEO Dylan Field
+- Hook: "rethinking product development from the ground up" [search-derived]
+- Launches: Figma Motion (timeline-based animation system), Code Layers, Shaders, Weave Tools, Generative Plugins
+- VO register: founder
+- CTA: none explicit; awareness
+- Pattern note: same conference-as-launch-vehicle as 2025. Hook shifted from "design won't happen by accident" to "rethink from scratch" — implies Figma sees design tooling as fundamentally changing, not incrementally improving.
+
 ---
 
 ### Replit
 
-**Replit Animation / "Vibe Code Videos" (2026)**
-- Blog: https://blog.replit.com/vibe-code-videos-in-replit
-- Product: create motion-style launch videos inside Replit via natural language prompts
-- Claim: "ship motion-style launch videos in minutes"
-- Pattern note: Replit is eating their own cooking — the product is the promotional vehicle
+**Agent 4 launch (2026)**
+- "Live from Replit HQ: Agent 4 Launch": https://replit.com/blog/live-from-hq-agent4-launch-pt2
+- Frame: full workspace — prototype to mobile app to marketing site to launch video to monetization, all in one place
+- Vibe Code Videos (inside Replit): ship motion-style launch videos without a motion graphics studio: https://blog.replit.com/vibe-code-videos-in-replit
+- Pattern note: Replit's "product is the promo vehicle" has matured — they now generate their own launch videos inside the product they're launching. Zero handoff from product to marketing. Strongest "eat your own cooking" play among B2B SaaS observed this cycle.
 
 ---
 
@@ -385,6 +493,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Insight to action" loop claim | Augury + Rockwell: detection → recommendation → work order, agentic | "MIRA gives you the answer before you open the work order" |
+| Ecosystem lock-in as competitive moat (2026 pattern) | Augury locked into Rockwell (Fiix); MaintainX absorbed into Autodesk | "sensor-agnostic, CMMS-agnostic, manual-native — your rules, not ours" |
+| Conference-as-launch-vehicle (mature pattern) | Figma Config 2026, IA ICC 2026, Cursor Compile 2026 | ProveIt! 2027 demo = MIRA's first conference moment |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +506,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX**: acquired by Autodesk (Aug 2026) — no longer an independent CMMS competitor in industrial manufacturing. Now part of AEC/built-environment lifecycle stack. The OEM-manual KB play remains, but the buyer profile is shifting toward facilities managers.
+- **Inductive Automation**: doubled down on educational content (SCADA 101 in 2025, "The Ignition Effect" series in 2026) — treating top-of-funnel education as the acquisition channel. ICC 2026 (Sept 22) will be the next major content moment.
+- **Augury**: moved from dual-track (technical demos + third-party credibility) to *ecosystem partnership announcements*. Rockwell partnership (Jul 2026) is a go-to-market pivot — Augury is building a closed stack (sensors + AI + Fiix CMMS) rather than staying platform-agnostic. Their "insight to action" frame is now a product architecture, not just a marketing claim.
+- **Limble**: added AI PM Builder + MCP integration in 2026 — moving from workflow CMMS toward "AI-connectable CMMS infrastructure." First CMMS to explicitly support MCP.
+- **Cursor**: editor → full developer platform (Compile 2026: Origin git hosting, Cursor Mobile). Pattern: start with the premium UX layer, then take the whole stack.
+- **Replit**: "product is the promo" fully matured — Vibe Code Videos generates launch video from inside the product itself. Strongest closed-loop promo model observed.
