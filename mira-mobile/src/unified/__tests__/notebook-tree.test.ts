@@ -13,7 +13,7 @@ describe("notebook tree", () => {
     expect(projects.map((p) => `${p.id}:${p.name}`)).toEqual([
       "project-a:Siemens G120",
       "project-b:General notes",
-      "project-c:Siemens G120",
+      "project-c:Drive A again",
     ]);
     expect(projects[0].children.map((c) => `${c.kind}:${c.id}`)).toEqual([
       "machine-link:link-a", "thread:notebook-a",
