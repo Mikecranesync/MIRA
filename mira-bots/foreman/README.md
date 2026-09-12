@@ -351,6 +351,26 @@ Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (73 test
 
 Mission spec: `docs/missions/AUTONOMOUS-FOREMAN-V1.md`
 
+### Continuous driver (proactive heartbeat)
+
+`mission_loop.py` is reactive — it only runs when a human sends a message.
+`mission_driver.py` makes it proactive: a persistent async heartbeat that, on a
+configurable interval, reads the current `MissionState`, asks the **same policy**
+for the single next action, and emits a `DriverIntent`
+(`WAIT` / `DISPATCH_IMPLEMENTER` / `DISPATCH_REVIEWER` / `DISPATCH_VERIFIER` / `REPORT`).
+The loop decides; the caller executes and updates durable state between ticks.
+
+- Reuses every `ForemanPolicy` guardrail verbatim — there is no `merge`/`deploy`
+  intent kind, so the driver cannot express one.
+- Re-wakes an idle worker (implementer stopped with no head SHA) and re-dispatches
+  a fix round after a FAIL, bounded by `max_fix_rounds` (a safety stop, in-memory —
+  seed it via `initial_fix_rounds` on restart).
+- Progress-only: it advances an already-dispatched mission but does not originate
+  the first implementer dispatch (#3566 "do not invent work").
+- Slack/HTTP-free and side-effect-free (`decide_next_intent` never mutates state).
+
+Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_driver.py -v` (26 tests)
+
 ## Support
 
 - **Logs:** `docker logs -f factorylm-foreman`
