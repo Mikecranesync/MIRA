@@ -80,6 +80,61 @@ export function lifecycleLabel(lifecycle: Lifecycle): string {
   return LIFECYCLE_LABEL[lifecycle];
 }
 
+/**
+ * Whether a groundedness part renders, given the lifecycle of the turn it sits on.
+ *
+ * `PartRenderer` consulted `turn.lifecycle` in exactly one place — the Retry
+ * button — so `source`, `evidence_basis` and `followups` rendered on any turn at
+ * all. `toTurn` (mira-mobile/src/unified/to-interaction.ts) maps parts and
+ * lifecycle independently, so a turn that FAILED still arrives carrying every
+ * citation and basis pill it had accumulated: see the fixture at
+ * `mira-mobile/src/unified/__tests__/to-interaction.test.ts:78`, an assistant
+ * message with `lifecycle: "failed"` whose parts include `basis`, `source` and
+ * `followups`. Rendered as-is, that is a full groundedness display attached to
+ * an answer that does not exist.
+ *
+ * The two rules are deliberately different, because the two things mean
+ * different things:
+ *
+ * - **Provenance** (`source`, `evidence_basis`) describes content that is on
+ *   screen. It survives a stop — a turn the technician interrupted still shows
+ *   the partial answer, and the citations are that text's provenance, so
+ *   suppressing them would strip attribution from words still being read. Only
+ *   `failed` leaves nothing for provenance to describe.
+ * - **An invitation** (`followups`) belongs only to a turn that finished.
+ *   "What next?" under an answer that stopped, failed, or is still streaming is
+ *   offering to continue from a place the conversation never reached.
+ *
+ * Note this keys on the lifecycle and never on whether parts are absent. A
+ * `completed` turn that legitimately has no sources must render normally; the
+ * gate exists to suppress a claim the turn cannot support, not to demand one.
+ *
+ * ON `safety_stop` (#3691, not yet in this union — decided here in advance so
+ * that when it lands the behaviour is a choice rather than a leftover of
+ * `!== "failed"`). It means MIRA REFUSED on safety grounds — distinct from
+ * `stopped` (a person interrupted) and `failed` (it broke). Both rules land
+ * the right way, and both matter more here than anywhere else:
+ *
+ * - **Follow-ups are hidden**, and this is the single most important case for
+ *   that rule. "What next?" underneath a refusal to guide an unsafe step is an
+ *   invitation to continue toward the hazard MIRA just declined to walk into.
+ * - **Provenance is kept.** A safety refusal that cites the procedure it is
+ *   refusing on behalf of is more trustworthy than a bare one, and this is the
+ *   last turn in the product where a technician should have to take MIRA's
+ *   word for it. Suppressing the citation here would strip attribution from
+ *   the most safety-critical turn the surface can render.
+ *
+ * The test for this arrives with the rebase onto #3691 — it cannot be written
+ * before the union member exists without casting a lie past the compiler.
+ */
+export function showsGroundedness(
+  part: "source" | "evidence_basis" | "followups",
+  lifecycle: Lifecycle,
+): boolean {
+  if (part === "followups") return lifecycle === "completed";
+  return lifecycle !== "failed";
+}
+
 export function machineName(state: ShellState, machineId: string | undefined): string | undefined {
   if (!machineId) return undefined;
   return state.machines.find((machine) => machine.id === machineId)?.name ?? machineId;
@@ -201,6 +256,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "source": {
+      if (!showsGroundedness("source", turn.lifecycle)) return null;
       const { source } = part;
       return <button
         type="button"
@@ -217,6 +273,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "evidence_basis": {
+      if (!showsGroundedness("evidence_basis", turn.lifecycle)) return null;
       const { basis } = part;
       return <span
         className={`fl-part fl-pill${basis.authorized ? " fl-pill--primary" : ""}`}
@@ -371,6 +428,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "followups":
+      if (!showsGroundedness("followups", turn.lifecycle)) return null;
       return <ul className="fl-part fl-followups" data-part-type="followups" aria-label="Suggested follow-ups">
         {part.suggestions.map((suggestion) => <li key={suggestion}>
           <button type="button" onClick={() => dispatch({ type: "set-draft", draft: suggestion })}>{suggestion}</button>
