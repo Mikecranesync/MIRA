@@ -23,14 +23,27 @@ vi.mock("../../api/resources", async () => {
       { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null } },
       { id: "nb-b", displayName: "General notes", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null },
     ]),
+    createNotebook: vi.fn(async () => ({
+      id: "nb-new",
+      displayName: "New chat",
+      manufacturer: null,
+      model: null,
+      equipmentType: null,
+      identityStatus: "candidate",
+      nodeId: "n",
+      sourceCount: 0,
+      createdAt: null,
+      asset: null,
+    })),
   };
 });
 vi.mock("../NotebookScreen", () => ({
-  NotebookScreen: (props: { id: string; chromeless?: boolean; backRef: MutableRefObject<(() => boolean) | null>; unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void } }) => {
+  NotebookScreen: (props: { id: string; chromeless?: boolean; backRef: MutableRefObject<(() => boolean) | null>; unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void; onNewChat?: () => void } }) => {
     props.backRef.current = () => false;
     return (
       <div data-testid="nb" data-id={props.id} data-chromeless={String(props.chromeless)}>
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b", label: "General notes" })}>open-b</button> : null}
+        {props.unifiedShell?.onNewChat ? <button onClick={() => props.unifiedShell?.onNewChat?.()}>new-chat</button> : null}
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
     );
@@ -63,6 +76,7 @@ vi.mock("../../unified/UnifiedAboutUpdates", () => ({
   ),
 }));
 
+import { createNotebook, listNotebooks } from "../../api/resources";
 import { UnifiedRoot } from "../UnifiedRoot";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
@@ -134,5 +148,34 @@ describe("UnifiedRoot", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Probe update readiness" }));
 
     await waitFor(() => expect(otaProbe.value).toBe(true));
+  });
+
+  it("creates a notebook and opens it when New chat runs", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("new-chat"));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-new"));
+    expect(createNotebook).toHaveBeenCalledWith({
+      displayName: "New chat",
+      identityStatus: "candidate",
+      identitySourceType: "user",
+    });
+  });
+
+  it("starts a project from the empty state instead of sending the technician to classic", async () => {
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    expect(await waitFor(() => screen.getByText("No projects yet."))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-new"));
+  });
+
+  it("keeps the current conversation and shows honest copy when New chat fails", async () => {
+    vi.mocked(createNotebook).mockRejectedValueOnce(new Error("offline"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("new-chat"));
+    expect((await waitFor(() => screen.getByRole("alert"))).textContent).toMatch(/Could not start a new chat/);
+    expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a");
   });
 });

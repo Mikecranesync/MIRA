@@ -7,22 +7,31 @@ const nb = (id: string, name: string, asset: string | null, mfr: string | null =
      asset: asset ? { entityId: asset, selectedVia: null, confirmedBy: null, confirmedAt: null } : null });
 
 describe("notebook tree", () => {
-  it("maps notebooks to one project with machine links and thread items, ids round-trip", () => {
+  it("maps each notebook to its own project with optional machine link and thread", () => {
     const list = [nb("a", "Drive A", "asset-1", "Siemens", "G120"), nb("b", "General notes", null), nb("c", "Drive A again", "asset-1")];
-    const [project] = notebookProjects(list);
-    expect(project.name).toBe("Notebooks");
-    expect(project.children.map((c) => `${c.kind}:${c.id}`)).toEqual([
-      "machine-link:link-a", "thread:notebook-a", "thread:notebook-b", "machine-link:link-c", "thread:notebook-c",
+    const projects = notebookProjects(list);
+    expect(projects.map((p) => `${p.id}:${p.name}`)).toEqual([
+      "project-a:Siemens G120",
+      "project-b:General notes",
+      "project-c:Siemens G120",
+    ]);
+    expect(projects[0].children.map((c) => `${c.kind}:${c.id}`)).toEqual([
+      "machine-link:link-a", "thread:notebook-a",
+    ]);
+    expect(projects[1].children.map((c) => `${c.kind}:${c.id}`)).toEqual([
+      "thread:notebook-b",
     ]);
     expect(notebookMachines(list)).toEqual([{ id: "asset-1", canonicalAssetId: "asset-1", name: "Siemens G120", unsPath: "", status: "unknown" }]);
     expect(notebookIdFromItem(threadItemId("b"))).toBe("b");
     expect(notebookIdFromItem("link-a")).toBeNull();
   });
 
-  it("gives unnamed notebooks a visible canonical-shell label", () => {
+  it("gives unnamed notebooks a visible chat label", () => {
     const [project] = notebookProjects([nb("blank", "", null)]);
+    expect(project.id).toBe("project-blank");
+    expect(project.name).toBe("Untitled chat");
     expect(project.children).toEqual([
-      { kind: "thread", id: "notebook-blank", label: "Untitled notebook" },
+      { kind: "thread", id: "notebook-blank", label: "Untitled chat" },
     ]);
   });
 });

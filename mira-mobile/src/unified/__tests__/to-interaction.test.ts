@@ -82,7 +82,10 @@ describe("turns and thread", () => {
   it("keeps ids, roles, lifecycles, and gives a disputed turn an unconfirmed context", () => {
     const thread = toThread(messages, META);
     expect(thread.id).toBe("notebook-nb-1");
+    expect(thread.projectId).toBe("project-nb-1");
     expect(thread.primaryAssetId).toBe("asset-1");
+    expect(contextFor(META).projectId).toBe("project-nb-1");
+    expect(projectsFor(META)[0]).toMatchObject({ id: "project-nb-1", name: "Launch 2 Drive A" });
     expect(thread.turns.map((t) => [t.id, t.role, t.lifecycle])).toEqual([
       ["r1-q", "user", "completed"], ["r1-a", "assistant", "failed"], ["live-0-a", "assistant", "running"],
     ]);
