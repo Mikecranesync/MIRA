@@ -25,6 +25,7 @@ import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
 import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
 import { UnifiedRoot } from "./screens/UnifiedRoot";
+import { V6Root } from "./screens/V6Root";
 import { readChatUiChoice, writeChatUiChoice, type ChatUiChoice } from "./lib/chat-ui-pref";
 import { closeTopTransientLayer } from "./lib/transient-layer";
 import { signOutSyncInProgressCopy, signOutWarningCopy } from "./lib/sign-out-copy";
@@ -310,6 +311,20 @@ export default function App({ onBundleReady }: AppProps) {
       throw error;
     }
   };
+
+  if (chatUi === "v6") {
+    return (
+      <V6Root
+        me={me}
+        backRef={backHandler}
+        onSignOut={signOutFlow}
+        onSwitchLegacy={() => {
+          void writeChatUiChoice("legacy");
+          setChatUi("legacy");
+        }}
+      />
+    );
+  }
 
   if (chatUi === "unified") {
     return (

@@ -10,8 +10,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // - OTA does NOT change any of the above: LiveUpdate unpacks to app-private storage and the
 //   WebView keeps serving from the LOCAL origin. It carries web assets only, never native code.
 const config: CapacitorConfig = {
-  appId: "com.factorylm.mira",
-  appName: "FactoryLM",
+  appId: "com.factorylm.mira.v7",
+  appName: "Mira V7",
   webDir: "dist",
   server: {
     androidScheme: "https",

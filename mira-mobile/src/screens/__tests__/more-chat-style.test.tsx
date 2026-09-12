@@ -58,10 +58,14 @@ describe("MoreTab chat style", () => {
     render(<MoreTab me={ME} chatV2Available={false} onChatUiChange={onChatUiChange} onSignOut={async () => {}} backRef={{ current: null }} />);
 
     const toggle = await screen.findByTestId("chat-style-toggle");
-    await waitFor(() => expect(toggle.textContent).toContain("Try the unified interface"));
+    // V7 dogfood: default is v2, so first label is "Try V7 (alpha)"; cycle is v2→v6→unified→legacy
+    await waitFor(() => expect(toggle.textContent).toContain("Try V7 (alpha)"));
     fireEvent.click(toggle);
-    expect(onChatUiChange).toHaveBeenCalledWith("unified");
-    await waitFor(() => expect(mem.get("flm.chatui.v1")).toBe("unified"));
+    expect(onChatUiChange).toHaveBeenCalledWith("v6");
+    await waitFor(() => expect(mem.get("flm.chatui.v1")).toBe("v6"));
+
+    fireEvent.click(screen.getByTestId("chat-style-toggle"));
+    expect(onChatUiChange).toHaveBeenLastCalledWith("unified");
 
     fireEvent.click(screen.getByTestId("chat-style-toggle"));
     expect(onChatUiChange).toHaveBeenLastCalledWith("legacy");
@@ -71,9 +75,10 @@ describe("MoreTab chat style", () => {
     const onChatUiChange = vi.fn();
     render(<MoreTab me={ME} chatV2Available={true} onChatUiChange={onChatUiChange} onSignOut={async () => {}} backRef={{ current: null }} />);
     const toggle = await screen.findByTestId("chat-style-toggle");
-    await waitFor(() => expect(toggle.textContent).toContain("Try the unified interface"));
+    // V7 dogfood: default is v2 → button shows "Try V7 (alpha)"; first click advances to v6
+    await waitFor(() => expect(toggle.textContent).toContain("Try V7 (alpha)"));
     fireEvent.click(toggle);
-    expect(onChatUiChange).toHaveBeenCalledWith("unified");
+    expect(onChatUiChange).toHaveBeenCalledWith("v6");
   });
 
   it("reports an unresolved work-order producer as busy to the update controller", async () => {
