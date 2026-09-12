@@ -341,6 +341,16 @@ export function splitEvidence(evidence: unknown[]): {
   return { citations, machineEvidence, visualEvidence, safetyNotice };
 }
 
+/** Copy for a turn that persisted with NO answer text. The status is the only
+ *  thing that distinguishes "we could not reach a model" from "your sources do
+ *  not cover this", and those are not interchangeable to a technician.
+ *  Exported so the live path and the reload path share one rule. */
+export function emptyTurnCopy(status: string): string {
+  return status === "insufficient_evidence"
+    ? "I couldn't find that in the selected sources."
+    : "No answer provider was available.";
+}
+
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
  *  change): the server persists a client-stopped turn as
  *  `answer_status='error'` + `answer_text=<partial>`, evidence=[], basis=null;
@@ -357,7 +367,13 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
       {
         id: `${t.id}-a`,
         role: "assistant" as const,
-        content: t.answerText ?? "I couldn't find that in the selected sources.",
+        // The fallback depends on WHY there is no text. `notebook-chat-types.ts`:
+        //   error + null text  ⇒ the error copy (every provider failed)
+        //   insufficient_evid. ⇒ the abstain copy (the sources do not cover it)
+        // A single abstain fallback told a technician their manual was missing
+        // the answer when the real cause was a provider outage — and it
+        // disagreed with the live path, which already gets this right.
+        content: t.answerText ?? emptyTurnCopy(t.answerStatus),
         status: t.answerStatus as HydratedTurn["status"],
         citations: stopped ? [] : citations,
         // 084 (#3387): the persisted basis — the badge survives reload.
