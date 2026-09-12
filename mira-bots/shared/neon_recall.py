@@ -462,6 +462,183 @@ def _like_search(
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Fault-clear procedure stream (RET-001)
+# ---------------------------------------------------------------------------
+#
+# "reset" is polysemous in a drive manual. For the production query
+# "Rockwell Automation PowerFlex 525 F004 How do I reset it?" every other stream
+# returns the WRONG sense — position reset, F111 safety-hardware reset, factory
+# defaults — while the actual fault-clear procedure, which IS in the corpus and
+# IS embedded, never enters the top 10.
+#
+# Measured on staging (docs/testing/campaign-reports/
+# 2026-08-09-reset-sense-option-b-falsified.md):
+#   * vector: the target rows sit at cosine rank ~119-2200 within PowerFlex 525
+#     and score below the 0.70 floor. A query that verbatim-quotes the chunk only
+#     reaches rank 5, so NO query rewrite can close the gap. This is why the
+#     spec's "sense disambiguation by query expansion" was abandoned.
+#   * bm25: OR-fanout ts_rank_cd rewards token REPETITION, so fault-history
+#     tables outrank the procedure. Scoping BM25 to the model does not help.
+#   * phrase: the only mechanism that reaches them.
+#
+# So: a deterministic, phrase-anchored, model-scoped lookup, injected the way the
+# existing structured_fault stream already is. Strictly ADDITIVE — it appends at
+# most _fault_clear_limit() rows and never suppresses or reorders anything else,
+# which is why it can default on. Kill switch: MIRA_FAULT_CLEAR_STREAM=0.
+
+# Ordered most-specific first. Chosen for LOW corpus frequency: the loose
+# phrasings are useless as anchors ("clear fault" alone matches 227 Rockwell
+# rows, overwhelmingly parameter tables), while these are procedure-bearing.
+# Public-corpus row counts at time of writing are in the report above.
+_FAULT_CLEAR_PHRASES: tuple[str, ...] = (
+    "clear the fault by one of these methods",
+    "clears the fault queue",
+    "resetting a fault",
+    "to reset the fault",
+    "clear the fault by",
+    "acknowledge the fault",
+    "cycle drive power",
+)
+
+_FAULT_CLEAR_VERB_RE = re.compile(r"\b(reset|resets|resetting|clear|clears|clearing)\b", re.I)
+
+# Deliberately NARROWER than _FAULT_CONTEXT_RE, which also matches "drive"/"vfd"
+# and would arm this stream on "reset the drive to start a new batch".
+_FAULT_STATE_RE = re.compile(r"\b(fault|faults|faulted|faulting|trip|tripped|alarm|alarms)\b", re.I)
+
+# A bare fault-code SHAPE (F004, CE10, A501). _extract_fault_codes is NOT reused
+# here: it requires a fault-context word within 3 tokens, which the real failing
+# query ("… PowerFlex 525 F004 How do I reset it?") does not have — it carries the
+# code but no context word. Product names are stripped before this runs so a model
+# ("GS10") is never mistaken for a fault code.
+_FAULT_CODE_SHAPE_RE = re.compile(r"\b[A-Za-z]{1,2}-?\d{2,4}\b")
+
+# The reset verb pointing at a DIFFERENT object. These are the negative controls:
+# injecting a fault-clear procedure into an answer about factory defaults or a
+# position counter would be exactly the fabricated-context bug this arc exists to
+# stop. Suppression wins over arming.
+_RESET_OTHER_OBJECT_RE = re.compile(
+    r"\b(factory|defaults?|position|rotor|counter|meter|elapsed|run\s*time|"
+    r"password|timer|encoder|parameters?|totali[sz]er|kwh)\b",
+    re.I,
+)
+
+
+def fault_clear_stream_enabled() -> bool:
+    """Read at call time (not import) so ops can flip it without a redeploy."""
+    return os.getenv("MIRA_FAULT_CLEAR_STREAM", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _fault_clear_limit() -> int:
+    try:
+        return max(1, int(os.getenv("MIRA_FAULT_CLEAR_LIMIT", "3")))
+    except ValueError:
+        return 3
+
+
+def _wants_fault_clear(query_text: str) -> bool:
+    """True when the technician is asking how to CLEAR A FAULT specifically.
+
+    Conjunction, not disjunction: a reset/clear verb AND a fault actually in play
+    (a fault word, or a fault-code-shaped token once product names are removed),
+    AND no competing reset object. All three are required — each one alone
+    false-positives on real technician phrasing.
+    """
+    if not query_text or not query_text.strip():
+        return False
+    if not _FAULT_CLEAR_VERB_RE.search(query_text):
+        return False
+    if _RESET_OTHER_OBJECT_RE.search(query_text):
+        return False
+    if _FAULT_STATE_RE.search(query_text):
+        return True
+    # Strip resolved product names so "GS10"/"PowerFlex 525" can't pose as a code.
+    stripped = _PRODUCT_NAME_RE.sub(" ", query_text)
+    return bool(_FAULT_CODE_SHAPE_RE.search(stripped))
+
+
+def _fault_clear_search(
+    conn,
+    text_fn,
+    tenant_id: Optional[str],
+    model_names: list[str],
+    limit: int,
+) -> list[dict]:
+    """Phrase-anchored fault-clear procedure lookup, scoped to the resolved model.
+
+    The model scope is load-bearing, not an optimisation: unscoped, these phrases
+    match 100+ rows spread across every vendor in the corpus, and the top hit for a
+    PowerFlex 525 question was measured to be a PowerFlex 40 chunk. No model, no
+    query — the caller must resolve one first.
+
+    Hybrid corpus read, same law as every other stream here: shared OEM
+    (is_private=false) plus the caller's own rows when a tenant is supplied; shared
+    OEM only for anonymous surfaces.
+    """
+    if not model_names or not limit:
+        return []
+
+    params: dict = {"lim": limit}
+    phrase_conds = []
+    prio_whens = []
+    for i, phrase in enumerate(_FAULT_CLEAR_PHRASES):
+        params[f"fc{i}"] = f"%{phrase}%"
+        phrase_conds.append(f"content ILIKE :fc{i}")
+        # Rank by how procedural the matched phrase is. Ordering by the content
+        # string instead spends the row budget on whatever sorts first — measured
+        # live: two near-copies of "1. Press Esc to acknowledge the fault" while
+        # "Clear fault. • Press Stop … • Cycle drive power" never came back.
+        prio_whens.append(f"WHEN content ILIKE :fc{i} THEN {i}")
+    model_conds = []
+    for i, name in enumerate(model_names[:3]):
+        params[f"fm{i}"] = f"%{name}%"
+        model_conds.append(f"model_number ILIKE :fm{i}")
+
+    if tenant_id:
+        tenant_filter = "(is_private = false OR tenant_id = :tid)"
+        params["tid"] = tenant_id
+    else:
+        tenant_filter = "is_private = false"
+
+    sql = text_fn(f"""
+        WITH matched AS (
+            SELECT
+                content, manufacturer, model_number, equipment_type,
+                source_type, source_url, source_page, metadata, verified,
+                CASE {" ".join(prio_whens)} ELSE 99 END AS prio
+            FROM knowledge_entries
+            WHERE {tenant_filter}
+              AND ({" OR ".join(model_conds)})
+              AND ({" OR ".join(phrase_conds)}){_approval_filter_sql()}
+        ), deduped AS (
+            SELECT DISTINCT ON (left(content, 120)) *
+            FROM matched
+            ORDER BY left(content, 120), prio, source_page
+        )
+        SELECT
+            content, manufacturer, model_number, equipment_type,
+            source_type, source_url, source_page, metadata, verified,
+            0.9 AS similarity, prio
+        FROM deduped
+        ORDER BY prio, source_page
+        LIMIT :lim
+    """)
+    rows = conn.execute(sql, params).mappings().fetchall()
+    out = []
+    for r in rows:
+        row = dict(r)
+        row.pop("prio", None)  # internal ranking column, not part of the chunk shape
+        row["retrieval_streams"] = ["fault_clear"]
+        out.append(row)
+    return out
+
+
 def _model_suffix_exclude_regex(name: str) -> str:
     """POSIX regex matching MODEL SUFFIX VARIANTS of `name` to exclude from a
     product search — for "PowerFlex 40" it matches "PowerFlex 400",
@@ -998,6 +1175,21 @@ def recall_knowledge(
                     conn, text, tenant_id, product_names, embedding, eff_limit
                 )
 
+            # Stage 3b: Fault-clear procedure stream (RET-001). Deterministic,
+            # phrase-anchored, scoped to the same product names stage 3 resolved
+            # — reusing that resolution rather than adding a second one. Fires
+            # only on a fault-clear question; fail-safe to [] so a broken stream
+            # degrades to today's behaviour instead of taking recall down.
+            fault_clear_results: list[dict] = []
+            if fault_clear_stream_enabled() and product_names and _wants_fault_clear(query_text):
+                try:
+                    fault_clear_results = _fault_clear_search(
+                        conn, text, tenant_id, product_names, _fault_clear_limit()
+                    )
+                except Exception as exc:
+                    logger.warning("Fault-clear stream failed: %s", exc)
+                    fault_clear_results = []
+
             # Stage 4: BM25 keyword stream (Unit 6). Pulled alongside vector
             # so RRF can fuse the ranks. Fetch 2x limit so the merge has
             # enough candidates for cross-stream agreement to surface.
@@ -1027,6 +1219,15 @@ def recall_knowledge(
                 retrieval_path = "eqrerank+" + retrieval_path
         if limit:
             results = results[:limit]
+
+        # Fault-clear procedure goes above the fused streams: it is a deterministic
+        # phrase match against the resolved model's own manual, and the measured
+        # failure mode is precisely that RRF buries it (rank 119-2200). Below the
+        # structured fault table, which answers what the code MEANS before how to
+        # clear it.
+        if fault_clear_results:
+            results = fault_clear_results + results
+            retrieval_path = "fault_clear+" + retrieval_path
 
         # Structured fault codes go at the very top (highest confidence,
         # deterministic — bypass RRF).
