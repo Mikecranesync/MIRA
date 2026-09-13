@@ -14,18 +14,32 @@ We standardize **behavior and authority**, not operating-system paths or hardwar
 
 ## 2. Canonical source-of-truth order
 
-When sources disagree, use this precedence and report the conflict:
+Two different kinds of truth, and they must not be ranked against each other.
 
-1. Current Git commit and source/tests.
-2. Root `AGENTS.md`.
-3. Provider-neutral engineering standard under `docs/agent-standard/`.
-4. Spec Kit constitution and active feature artifacts under `.specify/` / `specs/` once installed.
-5. Current architecture/ADR documents.
-6. `wiki/hot.md` for short-lived current state.
-7. Relevant Obsidian `wiki/` references/runbooks.
-8. CodeGraph for structural code discovery and impact.
-9. Machine overlay in `wiki/nodes/<node>.md`.
-10. Provider-specific adapter (`.claude/`, Codex configuration, etc.).
+**Factual truth — what the system currently does** — comes from the current Git commit, its
+source, and its tests. Nothing outranks that as a *description* of behavior; a document that
+disagrees with the code is stale, and you report the drift.
+
+**Normative authority — what an agent may do** — is ranked below. Implementation never grants
+itself permission: a branch that changes a script to allow a production action, a PLC write, or a
+gate bypass is still governed by items 1–3, and the conflict is reported, not resolved in the
+branch's favor. When normative sources disagree, use this precedence and report the conflict:
+
+1. Explicit human authorization for the specific action (never inferred from a task, a PR, or a
+   peer relay).
+2. Safety, environment, and ownership doctrine: `docs/environments.md`, the hard human gates and
+   ownership rules of the multi-session protocol (`.claude/rules/multi-session-protocol.md` —
+   repository governance that happens to be hosted under `.claude/`), fieldbus read-only, and the
+   destructive-command rules.
+3. Root `AGENTS.md`.
+4. Provider-neutral engineering standard under `docs/agent-standard/`.
+5. Accepted architecture/ADR documents.
+6. Spec Kit constitution and active feature artifacts under `.specify/` / `specs/` once installed.
+7. `wiki/hot.md` for short-lived current state.
+8. Relevant Obsidian `wiki/` references/runbooks.
+9. CodeGraph for structural code discovery and impact.
+10. Machine overlay in `wiki/nodes/<node>.md`.
+11. Provider-specific adapter (`.claude/`, Codex configuration, etc.).
 
 Conversation history is **context**, never authoritative project state.
 
