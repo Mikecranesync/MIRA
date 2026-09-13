@@ -7,6 +7,17 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Pin the Turbopack / file-tracing root to this app. The monorepo has
+  // lockfiles above mira-hub, so Next 16 otherwise infers the tracing root as
+  // the monorepo and pulls sibling packages — notably mira-bridge and its
+  // multi-hundred-MB SQLite WAL — into the standalone trace (#3762). Pinning the
+  // root here keeps the trace inside this self-contained app (prod code imports
+  // nothing above its own dir), and makes local builds match the Docker build,
+  // whose context is only mira-hub. That mismatch is why the earlier
+  // out-of-root `../mira-bridge/**` exclude compiled locally yet crashed the
+  // prod Turbopack build ("glob '../mira-bridge/**' is invalid, it has a prefix
+  // that navigates out of the project root") — see below.
+  turbopack: { root: import.meta.dirname },
   basePath,
   assetPrefix: basePath,
   // Dev-only (ignored by `next build`): allow phone/tablet testing over the
@@ -45,13 +56,15 @@ const nextConfig: NextConfig = {
   // /hub/ → /hub, producing an infinite redirect loop on the basePath root.
   // Forcing trailingSlash: true keeps Next.js consistent with nginx.
   trailingSlash: true,
-  // Exclude mira-bridge runtime data from the standalone output. The bridge's
-  // data directory contains SQLite WAL files that should never be baked into
-  // the build artifact (#3762). Use a catch-all route glob since the tracer
-  // includes these files for all pages that statically import anything from
-  // the monorepo root (even though no page directly imports from mira-bridge).
+  // Belt-and-suspenders for #3762: never bake a SQLite database (or its WAL/SHM
+  // sidecars) into the standalone output. With the tracing root pinned to
+  // mira-hub above, the sibling mira-bridge data directory is already outside
+  // the trace; this in-root `**/*.db*` glob additionally drops any DB file that
+  // ever lands under the app root. The former `../mira-bridge/**` entry was
+  // removed: an exclude glob may not navigate out of the (now pinned) project
+  // root — Turbopack rejects it, which broke every production deploy.
   outputFileTracingExcludes: {
-    "*": ["../mira-bridge/**", "**/*.db*"],
+    "*": ["**/*.db*"],
   },
   // Bare-domain friendliness when the hub fronts the whole host (tailscale
   // serve / phone testing): / is outside basePath and 404s. In prod nginx owns
