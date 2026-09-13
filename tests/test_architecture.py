@@ -1261,30 +1261,58 @@ _ACTIVE_INSTRUCTION_DOCS = (
     "docs/environments.md",
 )
 _BANNED_CASCADE = re.compile(r"Groq ?(\+|→|->|,) ?Cerebras ?(\+|→|->|,) ?Gemini", re.I)
-_TOOLING_CONTEXT = ("review", "judge", "workflow", ".yml", "staging-gate")
+# Provisioning a Gemini key "for prod" / "the cascade" is an operational instruction to
+# configure a banned provider (run-eval-suite.md and known-issues.md did exactly that —
+# #3761 round-10 review). A CI secret for a judge/review workflow is tooling, not the product.
+_BANNED_PROVISION = re.compile(
+    r"GEMINI_API_KEY[^\n]*(factorylm/prd|cascade|same as prod)"
+    r"|(factorylm/prd|cascade)[^\n]*GEMINI_API_KEY",
+    re.I,
+)
+_TOOLING_CONTEXT = (
+    "review",
+    "judge",
+    "workflow",
+    ".yml",
+    "staging-gate",
+    "pr_self_fix",
+    "gh secret set",
+)
 
 
 def _states_banned_cascade(line: str) -> bool:
     low = line.lower()
     if any(k in low for k in _TOOLING_CONTEXT):
         return False
-    return bool(_BANNED_CASCADE.search(line))
+    return bool(_BANNED_CASCADE.search(line) or _BANNED_PROVISION.search(line))
 
 
 def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
     assert _states_banned_cascade("2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only.")
     assert _states_banned_cascade("Always Groq → Cerebras → Gemini cascade for any LLM call")
+    assert _states_banned_cascade(
+        "- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` in Doppler `factorylm/prd`"
+    )
+    assert _states_banned_cascade("`GEMINI_API_KEY` — same as prod is fine")
     assert not _states_banned_cascade(
         "cascade review (Groq → Cerebras → Gemini) in code-review.yml"
     )
-    assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
-    docs = (
-        list(_ACTIVE_INSTRUCTION_DOCS)
-        + sorted(p.relative_to(_ROOT).as_posix() for p in (_ROOT / ".claude/rules").glob("*.md"))
-        + sorted(
-            p.relative_to(_ROOT).as_posix() for p in (_ROOT / "docs/agent-standard").rglob("*.md")
-        )
+    assert not _states_banned_cascade(
+        'gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"'
     )
+    assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
+    globs = (
+        ".claude/rules/*.md",
+        "docs/agent-standard/**/*.md",
+        "docs/runbooks/*.md",
+        "wiki/references/*.md",
+        "wiki/gotchas/*.md",
+        "docs/env-vars.md",
+        "docs/known-issues.md",
+    )
+    docs = list(_ACTIVE_INSTRUCTION_DOCS)
+    for g in globs:
+        docs += sorted(p.relative_to(_ROOT).as_posix() for p in _ROOT.glob(g))
     hits = []
     for rel in docs:
         path = _ROOT / rel

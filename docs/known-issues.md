@@ -25,7 +25,7 @@ Updated: 2026-06-21
   computed CSS visibility AND live tag value patterns. See issue #2064 and the
   disambiguation section in `docs/runbooks/hermes-find-convsimple-screen.md`.
 
-- **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
+- **Gemini key blocked → RESOLVED by removal.** `GEMINI_API_KEY` returned 403 in Doppler; Gemini was then dropped from the product cascade entirely and **Together** became the third provider (`TOGETHERAI_API_KEY`; `AGENTS.md` § Hard constraints — Gemini is banned). Do not provision a Gemini key for the product. CI review/judge workflows keep their own fallback lists in their `.yml`.
 - **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
 - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
 - **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`.
@@ -70,7 +70,7 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
-| Anthropic / Claude as cloud LLM provider | Groq → Cerebras → Gemini cascade | Removed PR #610. Do not reintroduce. |
+| Anthropic / Claude as cloud LLM provider | Groq → Cerebras → Together cascade (Gemini was the third leg at the time of #610 and was later banned too) | Removed PR #610. Do not reintroduce. |
 
 ## Open low-watch
 
