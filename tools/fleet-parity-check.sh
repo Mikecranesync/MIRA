@@ -52,6 +52,18 @@ for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; 
   fi
 done
 
+# 2b. Every docs/agent-standard/*.md path an entry point names must resolve. A pointer to a file
+#     that does not exist is the same defect as the old '.Codex/skills/' — green text, dead link.
+for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
+  [ -f "$f" ] || continue
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ -f "$p" ]; then pass "resolves: $f -> $p"; else flunk "dangling: $f -> $p" "UNIVERSAL DRIFT"; fi
+  done <<EOF
+$(grep -oE 'docs/agent-standard/[A-Za-z0-9_/.-]+\.md' "$f" | sort -u)
+EOF
+done
+
 # 3. Known-false statements that once lived in AGENTS.md (the April 2026 s/Claude/Codex/ fork).
 #    Each is a literal that contradicts root CLAUDE.md § Hard Constraints or names a path that
 #    does not exist. Re-appearance means the stale corpus came back.
