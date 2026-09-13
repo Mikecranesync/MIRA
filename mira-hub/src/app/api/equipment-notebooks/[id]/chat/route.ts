@@ -43,7 +43,12 @@ import {
   type ResolvedAsset,
   originFileIdsByDoc,
 } from "@/lib/equipment-notebooks";
-import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import {
+  ELECTRICAL_HAZARD_DIRECTIVE,
+  ENERGIZED_ELECTRICAL_HAZARD,
+  matchSafetyStop,
+  SAFETY_STOP,
+} from "@/lib/safety-classifier";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -113,6 +118,7 @@ ENERGY STATE — this rule outranks brevity:
 - If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus verified at 0 V, check continuity across terminals 07-08 [2]."
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
+- NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.
 
 GROUNDING & CITATIONS:
 - Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
@@ -156,7 +162,7 @@ HONESTY:
 - If the question genuinely cannot be answered without model-specific documentation, say that plainly and say which document would settle it.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
-SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step.`;
+SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -503,6 +509,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
   const safetyTrigger = matchSafetyStop(message);
+  // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
+  // The answer still streams, framed by the NFPA 70E directive injected below,
+  // and the turn persists a safety_notice evidence entry. Every other non-null
+  // trigger keeps the terminal SAFETY_STOP exactly as before.
+  const electricalHazardDirective = safetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
@@ -595,6 +606,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     identityDisputed && boundAsset.state === "resolved"
       ? [{ kind: "identity_dispute", requestedAssetId: disputedRequestedAssetId, boundAssetId: boundAsset.entityId, boundUnsPath: boundAsset.unsPath }]
       : [];
+  // #3763: a hazard-directive turn keeps its safety identity on reload the same
+  // way a hard stop does — a persisted safety_notice entry, never only prose.
+  const hazardEntries: SafetyNoticeEntry[] = electricalHazardDirective
+    ? [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]
+    : [];
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -608,7 +624,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
-  if (safetyTrigger) {
+  if (safetyTrigger && !electricalHazardDirective) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     await recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
@@ -991,7 +1007,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
   const basePrompt = general ? GENERAL_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
-  const withMachine = machineSection ? `${basePrompt}\n\n${machineSection}` : basePrompt;
+  // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
+  // no hazard the string is byte-identical to before.
+  const withHazard = electricalHazardDirective
+    ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
+    : basePrompt;
+  const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   const systemPrompt = general
     ? withMachine + machineContext
     : appendManualContext(withMachine, chunks) + machineContext + coverageDirective;
@@ -1250,7 +1271,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [...disputeEntries],
+            evidence: [...hazardEntries, ...disputeEntries],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -1430,8 +1451,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
           evidence: served
-            ? [...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...emittedCitations, ...disputeEntries],
+            ? [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
           // and only for a served answer. A failed turn makes no basis claim.

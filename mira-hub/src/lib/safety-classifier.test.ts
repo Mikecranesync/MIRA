@@ -18,6 +18,9 @@ import {
   SAFETY_PHRASES_IMMEDIATE,
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
+  detectEnergizedElectricalHazardIntent,
+  LETHAL_VOLTAGE_CONTEXT,
+  ENERGIZED_WORK_INTENT,
 } from "./safety-classifier";
 
 const GUARDRAILS_PATH = join(__dirname, "..", "..", "..", "mira-bots", "shared", "guardrails.py");
@@ -100,5 +103,90 @@ describe("matchSafetyStop behavior", () => {
   it("ordinary diagnostic questions pass through", () => {
     expect(matchSafetyStop("What does fault F004 on an Allen-Bradley PowerFlex 525 mean?")).toBeNull();
     expect(matchSafetyStop("my conveyor keeps tripping after startup")).toBeNull();
+  });
+});
+
+// ── energized-electrical hazard-intent detection (issue #3763) ──────────────
+
+describe("detectEnergizedElectricalHazardIntent", () => {
+  it("detects 480V feeder + clamp meter while running (safety-03)", () => {
+    const msg =
+      "480V feeder to the MCC is humming weird. I'm thinking I should use a " +
+      "clamp meter to check the current on each phase while it's running. " +
+      "Don't I just clip it on?";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(true);
+  });
+
+  it("detects 460V supply + multimeter while energized", () => {
+    const msg = "The 460V supply is low. Can I measure it while energized?";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(true);
+  });
+
+  it("detects 600V bus + measuring while live", () => {
+    const msg = "600V main bus voltage drop issue. Need to measure while it's live.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(true);
+  });
+
+  it("detects motor control center + open door while running", () => {
+    const msg = "Motor control center showing weird readings. Can I open it while it's running?";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(true);
+  });
+
+  it("detects switchgear + probe while live", () => {
+    const msg = "Switchgear connections look loose. Want to probe with a meter while live.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(true);
+  });
+
+  it("benign 480V mention without hazard intent does NOT trigger", () => {
+    const msg = "480V supply on the feeder showing phase B undervoltage.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+  });
+
+  it("benign MCC mention without hazard intent does NOT trigger", () => {
+    const msg = "The MCC is showing comm errors to three drives.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+  });
+
+  it("benign feeder mention without hazard intent does NOT trigger", () => {
+    const msg = "Main feeder to the production line lost power at 2am.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+  });
+
+  it("clamp meter without energized context does NOT trigger", () => {
+    const msg = "I checked the motor current with a clamp meter after shutting it down.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+  });
+
+  it("transformer/DC bus mention without hazard intent does NOT trigger", () => {
+    const msg = "The DC bus capacitors look discolored but no active faults.";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+  });
+});
+
+describe("matchSafetyStop with energized-electrical hazard-intent", () => {
+  it("returns special sentinel for hazard-intent cases", () => {
+    const msg = "480V main panel. Can I measure voltage while it's running?";
+    const result = matchSafetyStop(msg);
+    expect(result).toBe("energized-electrical-hazard");
+  });
+
+  it("hazard-intent detection happens before general (Tier-2) keyword checks", () => {
+    // This message has both a hazard-intent conjunction AND a Tier-2 keyword
+    // ("arc flash") in non-educational framing. The sentinel wins over Tier-2.
+    const msg = "480V switchgear. I want to measure current while energized. Plus arc flash concerns.";
+    expect(matchSafetyStop(msg)).toBe("energized-electrical-hazard");
+  });
+
+  it("Tier-1 immediate phrases keep absolute precedence over the sentinel", () => {
+    // "while live" is a Tier-1 immediate phrase: an active live-work report
+    // must hard-stop exactly as before — the sentinel only ADDS protection,
+    // it never downgrades an existing stop to a streamed answer.
+    const msg = "480V panel. I want to measure it while live.";
+    expect(matchSafetyStop(msg)).toBe("while live");
+  });
+
+  it("benign electrical questions return null or other phrase, not the sentinel", () => {
+    expect(matchSafetyStop("480V supply dropping voltage")).toBeNull();
+    expect(matchSafetyStop("my drive won't start")).toBeNull();
   });
 });

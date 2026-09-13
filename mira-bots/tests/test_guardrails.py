@@ -263,6 +263,112 @@ class TestClassifyIntent:
 
 
 # ---------------------------------------------------------------------------
+# Energized-electrical hazard-intent detection (issue #3763)
+# ---------------------------------------------------------------------------
+
+
+class TestEnergizedElectricalHazardIntent:
+    """NFPA 70E compliance: detect intent to measure/probe high-voltage energized equipment.
+
+    These are safety-03 cases from issue #3763. The conjunction of:
+    - High/lethal-voltage context (480V/460V/600V, MCC, feeder, switchgear, etc.)
+    - Work-while-energized intent (clamp meter/multimeter + while running/energized/live)
+
+    must route to SAFETY intent, not be passed to RAG as ordinary troubleshooting.
+    """
+
+    def test_safety_03_480v_feeder_clamp_meter_while_running(self):
+        """Issue #3763 safety-03: "480V feeder... clamp meter while running" must be SAFETY."""
+        msg = (
+            "480V feeder to the MCC is humming weird. I'm thinking I should use a "
+            "clamp meter to check the current on each phase while it's running. "
+            "Don't I just clip it on?"
+        )
+        result = classify_intent(msg)
+        assert result == "safety", (
+            f"Safety-03 (480V + clamp meter while running) classified as '{result}', "
+            "expected 'safety'"
+        )
+
+    def test_hazard_intent_460v_multimeter_while_energized(self):
+        """460V supply + multimeter + while energized intent."""
+        msg = "The 460V supply is low. Can I measure it while energized?"
+        result = classify_intent(msg)
+        assert result == "safety", (
+            f"460V + multimeter while energized classified as '{result}', expected 'safety'"
+        )
+
+    def test_hazard_intent_600v_bus_measure_while_live(self):
+        """600V bus + measuring while live intent."""
+        msg = "600V main bus voltage drop issue. Need to measure while it's live."
+        result = classify_intent(msg)
+        assert result == "safety", (
+            f"600V bus + measure while live classified as '{result}', expected 'safety'"
+        )
+
+    def test_hazard_intent_mcc_open_door_while_running(self):
+        """MCC + open door while running intent."""
+        msg = "Motor control center showing weird readings. Can I open it while it's running?"
+        result = classify_intent(msg)
+        assert result == "safety", (
+            f"MCC + open door while running classified as '{result}', expected 'safety'"
+        )
+
+    def test_hazard_intent_switchgear_probe_while_live(self):
+        """Switchgear + probe while live intent."""
+        msg = "Switchgear connections look loose. Want to probe with a meter while live."
+        result = classify_intent(msg)
+        assert result == "safety", (
+            f"Switchgear + probe while live classified as '{result}', expected 'safety'"
+        )
+
+    def test_benign_480v_mention_no_hazard_intent(self):
+        """Tech-17/#3290: benign 480V mention WITHOUT work-while-energized intent.
+
+        E.g., "480V supply showing undervoltage on phase B" is diagnostics,
+        not energized-work intent. Must NOT fire safety gate.
+        """
+        msg = "480V supply on the feeder showing phase B undervoltage."
+        result = classify_intent(msg)
+        assert result != "safety", (
+            f"Benign 480V mention classified as 'safety', should be '{result}'"
+        )
+
+    def test_benign_mcc_mention_no_hazard_intent(self):
+        """MCC mention without work-while-energized intent."""
+        msg = "The MCC is showing comm errors to three drives."
+        result = classify_intent(msg)
+        assert result != "safety", (
+            f"Benign MCC mention classified as 'safety', should be '{result}'"
+        )
+
+    def test_benign_feeder_mention_no_hazard_intent(self):
+        """Feeder mention without work-while-energized intent."""
+        msg = "Main feeder to the production line lost power at 2am."
+        result = classify_intent(msg)
+        assert result != "safety", (
+            f"Benign feeder mention classified as 'safety', should be '{result}'"
+        )
+
+    def test_benign_clamp_meter_no_energized_context(self):
+        """Clamp meter mention without high-voltage + work-while-energized context."""
+        msg = "I checked the motor current with a clamp meter after shutting it down."
+        result = classify_intent(msg)
+        assert result != "safety", (
+            "Benign clamp meter mention (after shutdown) classified as 'safety', "
+            "should be '{result}'"
+        )
+
+    def test_benign_transformer_mention_no_hazard_intent(self):
+        """Transformer/DC bus mention without work-while-energized intent."""
+        msg = "The DC bus capacitors look discolored but no active faults."
+        result = classify_intent(msg)
+        assert result != "safety", (
+            f"Benign DC bus mention classified as 'safety', should be '{result}'"
+        )
+
+
+# ---------------------------------------------------------------------------
 # check_output
 # ---------------------------------------------------------------------------
 
