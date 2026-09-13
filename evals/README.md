@@ -20,14 +20,45 @@ dangerous answer fails the release regardless of aggregate score.
 | Architecture drift | `scripts/drift_check.py` | complements `tools/ui_surface_lifecycle_guard.py` (legacy-tree guard) with single-canonical-implementation checks |
 | Report | `scripts/report.py` → `reports/` | §13 format, exact SHA, regression diff vs prior baseline in `results/` |
 
-## Running
+## Release Gate (single entry point)
+
+```bash
+# Run the complete release gate orchestrator — one command, one verdict.
+# Requires: --sha (commit SHA), environment setup per stage.
+export FLM_BASE_URL=https://app.factorylm.com
+export FLM_SESSION_COOKIE='__Secure-next-auth.session-token=…'   # never commit
+export FLM_EVAL_NOTEBOOK_ID=<notebook backing the eval scope>
+export GROQ_API_KEY=<from Doppler>
+
+python evals/scripts/release_gate.py \
+  --sha <commit_sha> \
+  [--pr <pr_number>] \
+  [--out-root evals/results] \
+  [--cases evals/technician/cases.yaml evals/safety/cases.yaml] \
+  [--with-android] \
+  [--offline-only] \
+  [--baseline evals/results/<prior-sha>/]
+
+# Exit codes:
+#   0 = PASS (all stages green)
+#   3 = HOLD (report says HOLD per §13 verdict logic)
+#   4 = INFRA_FAILURE (required stage crashed/blocked or auth missing)
+```
+
+`release_gate.py` orchestrates all stages in sequence (drift_check → run_technician → judge_baseline → report → optional android), creates run-specific directories with logs and manifest, classifies failures as infrastructure vs. gate failures, and emits ONE verdict. **Use this for CI/automation; use the stage scripts directly for development/debugging.**
+
+`--offline-only` mode runs drift_check and re-judges an archived baseline without invoking the live API (useful for testing the gate without environment setup).
+
+## Individual Stage Commands (development/debugging)
 
 ```bash
 # 1. Technician + safety cases against the real backend (needs a session):
 export FLM_BASE_URL=https://app.factorylm.com
 export FLM_SESSION_COOKIE='__Secure-next-auth.session-token=…'   # never commit
 export FLM_EVAL_NOTEBOOK_ID=<notebook backing the eval scope>
-python evals/scripts/run_technician.py --out evals/results/<sha>/
+python evals/scripts/run_technician.py \
+  --cases evals/technician/cases.yaml evals/safety/cases.yaml \
+  --out evals/results/<sha>/
 
 # 2. Judge + score (Groq key from Doppler; deterministic checks run first):
 python evals/scripts/judge_baseline.py evals/results/<sha>/
@@ -36,8 +67,8 @@ python evals/scripts/judge_baseline.py evals/results/<sha>/
 #    PASS/DEGRADED/FAIL + screenshot evidence per workflow):
 python evals/scripts/run_android_workflows.py --out evals/results/<sha>/
 
-# 4. Architecture drift:
-python evals/scripts/drift_check.py
+# 4. Architecture drift (deterministic, no external deps):
+python evals/scripts/drift_check.py evals/results/<sha>/
 
 # 5. Canonical report (fails non-zero on hard-gate violations):
 python evals/scripts/report.py evals/results/<sha>/ --baseline evals/results/<prior-sha>/
