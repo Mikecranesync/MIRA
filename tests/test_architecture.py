@@ -1247,6 +1247,59 @@ def test_no_active_reference_to_removed_root_claude_sections():
     )
 
 
+# Contract 12d: no active instruction document states Gemini (or any banned provider) as a
+# member of the product diagnostic cascade. AGENTS.md § Hard constraints is canonical
+# (Groq → Cerebras → Together; Gemini banned; no Anthropic — #610). docs/context/RULES.md
+# still said "Groq + Cerebras + Gemini" months after the ban (#3761 round-9 review).
+# CI review/judge workflows legitimately keep Gemini as a *tooling* fallback, so lines that
+# describe a workflow, review, or judge are not cascade statements and are skipped.
+_ACTIVE_INSTRUCTION_DOCS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/CLAUDE.md",
+    "docs/context/RULES.md",
+    "docs/environments.md",
+)
+_BANNED_CASCADE = re.compile(r"Groq ?(\+|→|->|,) ?Cerebras ?(\+|→|->|,) ?Gemini", re.I)
+_TOOLING_CONTEXT = ("review", "judge", "workflow", ".yml", "staging-gate")
+
+
+def _states_banned_cascade(line: str) -> bool:
+    low = line.lower()
+    if any(k in low for k in _TOOLING_CONTEXT):
+        return False
+    return bool(_BANNED_CASCADE.search(line))
+
+
+def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
+    assert _states_banned_cascade("2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only.")
+    assert _states_banned_cascade("Always Groq → Cerebras → Gemini cascade for any LLM call")
+    assert not _states_banned_cascade(
+        "cascade review (Groq → Cerebras → Gemini) in code-review.yml"
+    )
+    assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
+    docs = (
+        list(_ACTIVE_INSTRUCTION_DOCS)
+        + sorted(p.relative_to(_ROOT).as_posix() for p in (_ROOT / ".claude/rules").glob("*.md"))
+        + sorted(
+            p.relative_to(_ROOT).as_posix() for p in (_ROOT / "docs/agent-standard").rglob("*.md")
+        )
+    )
+    hits = []
+    for rel in docs:
+        path = _ROOT / rel
+        if not path.exists():
+            continue
+        for n, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
+            if _states_banned_cascade(line):
+                hits.append(f"{rel}:{n}: {line.strip()[:100]}")
+    assert not hits, "active instruction docs state a banned diagnostic cascade:\n" + "\n".join(
+        hits
+    )
+
+
 def _load_gen_container_map():
     spec = importlib.util.spec_from_file_location(
         "gen_container_map_contract12", _ROOT / _GEN_CONTAINER_MAP
