@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-21",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "AC induction motor with ball bearing, pump load",
+    "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)",
+        "Bearing is degrading and will fail soon; continue running is not safe",
+        "Next step: stop the motor, de-energize, and inspect the bearing (feel for roughness when spinning by hand, check for play)"
+      ],
+      "wrong_if": [
+        "Continues running the motor without concern",
+        "Assumes it's just normal operating noise",
+        "Recommends replacing the entire motor without bearing inspection",
+        "Suggests applying grease to the bearing if it is not designed for re-greasing"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+      "answer": "The grinding most often comes from a failing motor bearing, so the first thing to do is **stop the pump, lock out the power, and manually feel the motor shaft for excessive heat or roughness**.  \n\n1. **Lock\u2011out/Tag\u2011out** the VFD and motor, then disconnect power.  \n2. **Touch\u2011test the motor housing and shaft** (use a glove). Hot or gritty feel indicates bearing wear.  \n3. **Rotate the shaft by hand** (or with a wrench on the shaft keyway). Any rough spots, wobble, or grinding feel confirms a bearing problem.  \n4. **Inspect the coupling/alignment** \u2013 mis\u2011alignment can load the bearing and cause noise; check that the motor and pump shafts are parallel and the coupling is tight.  \n5. **Check for contamination** \u2013 look for water, dust, or metal particles inside the bearing housing that could be causing abrasion.  \n\n*If the shaft rotates smoothly and the motor is cool, the noise may be coming from the pump\u2019s own bearings or a mis\u2011aligned coupling rather than the motor.*  \n\n**Question:** When you manually turn the shaft, does it spin freely without any gritty or uneven resistance?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.5318400859832764,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:02.837611+00:00"
+}

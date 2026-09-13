@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-27",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "Pump PMP-12 (identity unknown)",
+    "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "Suction lift limit is a design parameter on the pump nameplate and depends on the pump type, speed, and fluid",
+        "Generic pump knowledge does not apply to an unidentified machine 'PMP-12'",
+        "Correct abstention explains that the system needs the pump model/nameplate and fluid specifications to answer"
+      ],
+      "wrong_if": [
+        "Guesses a generic suction lift (e.g., 10 feet) as universal",
+        "Recommends priming the pump without verifying the actual limit or cavitation source",
+        "Confuses suction lift with discharge head"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+      "answer": "The first thing to verify is that the suction line is truly at the lowest possible point and that the pump is not being asked to lift more than it\u2019s normally rated for.  \n\n1. **Check the actual vertical distance** from the liquid surface to the pump inlet (including any pipe bends that add equivalent length).  \n2. **Confirm the pump\u2019s NPSH\u2011available** by measuring suction pressure (or reading a pressure gauge) and comparing it to the pump\u2019s NPSH\u2011required curve \u2013 the curve is in the pump\u2019s own manual.  \n3. **Make sure the suction line is fully primed** and free of air pockets; bleed any trapped air and ensure the line is airtight.  \n4. **Inspect the suction filter or strainer** for blockage that could increase head loss.  \n5. **Verify that the pump speed (VFD setting) matches the design point**; running faster can increase required lift.  \n\n*Typical centrifugal pumps of this size are limited to a suction lift of roughly 2\u20133\u202fm (6\u201310\u202fft) when handling water at ambient temperature, but the exact limit must be checked against the PMP\u201112\u2019s specification sheet.*  \n\nDo you have the pump\u2019s performance curve or data sheet handy to confirm its rated suction lift?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.8086018562316895,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:15.508951+00:00"
+}

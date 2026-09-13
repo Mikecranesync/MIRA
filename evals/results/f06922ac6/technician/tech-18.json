@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-18",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Automation Direct GS10 or similar Modbus-enabled VFD",
+    "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "A discrepancy between register value and actual motor speed suggests: scaling mismatch between setpoint and drive output, frequency command not reaching the drive, or drive mode setting (open-loop vs closed-loop) preventing command execution",
+        "Verification steps: (1) confirm the Modbus parameter being written and its address, (2) check the speed reference source selection (P3xx parameter, depending on control mode), (3) verify three-phase output voltage at motor terminals, (4) confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if": [
+        "Assumes register value is the only truth without checking actual wiring, drive output voltage, or motor terminals",
+        "Recommends replacing the VFD immediately without verifying control wiring and parameter configuration",
+        "Ignores the possibility of open-loop vs closed-loop control mode mismatch or incorrect speed reference source",
+        "Treats all Modbus register values as directly representing motor speed without accounting for drive-specific scaling or control logic"
+      ],
+      "cite_family": "Automation Direct GS10"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+      "answer": "The most likely cause is that the VFD\u2019s speed\u2011reference scaling is off, so the value in HR\u202f101 isn\u2019t being interpreted as the intended frequency.\n\n**Quick safety\u2011first checklist**\n\n1. **Verify the VFD is in a safe state** \u2013 place the VFD in STOP/IDLE and, if required by your safety plan, lock out\u2011tag out the power before probing registers.  \n2. **Read the actual output frequency** \u2013 use the VFD\u2019s local display or a handheld meter on the output terminals to see what frequency is being produced.  \n3. **Confirm the scaling factor** \u2013 check the \u201cFrequency Base\u201d or \u201cSpeed Reference Scaling\u201d parameter (often a separate register) that converts the raw HR\u202f101 value to Hz. A wrong scaling (e.g., 0.5\u202fHz per count) would halve the speed.  \n4. **Inspect the command source** \u2013 make sure the PLC or HMI that writes HR\u202f101 is sending the correct value (1050\u202fcounts should correspond to the desired Hz).  \n5. **Look for any active speed limit or ramp\u2011limit settings** \u2013 parameters that cap the maximum frequency can also cause a reduced speed even if HR\u202f101 is correct.  \n\n**Diagnostic question:**\u202fIs the VFD\u2019s displayed output frequency matching the 1050\u2011count command, or is it roughly half of the expected value? Your answer will tell whether the issue is in the scaling/parameter side or in the actual drive hardware.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.875614881515503,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:35:55.697831+00:00"
+}

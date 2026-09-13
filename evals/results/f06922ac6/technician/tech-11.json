@@ -1,0 +1,63 @@
+{
+  "case_id": "tech-11",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-11",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "What is the correct procedure to manually reset a PowerFlex 525 fault, and which parameter controls automatic reset behavior?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Manual fault reset on PowerFlex 525: press Esc key to acknowledge the fault display",
+        "After addressing the root cause, initiate restart by pressing the Run button or cycling drive power",
+        "Automatic fault reset behavior is controlled by A541 (Auto Restart Tries) and A542 (Auto Restart Delay) parameters",
+        "To manually clear a fault from memory: Set A551 (Fault Clear) to '1' Reset Fault to acknowledge and prepare for restart"
+      ],
+      "wrong_if": [
+        "States that pressing the Run button automatically resets any fault without addressing root cause",
+        "Claims A551 is used only for clearing communication errors, not general faults",
+        "Recommends cycling input power as the primary fault reset method before attempting manual clear via Esc key",
+        "Confuses reset procedures between PowerFlex 40 and PowerFlex 525 parameter numbers and sequences"
+      ],
+      "must_cite": true,
+      "cite_family": "Allen-Bradley PowerFlex 525"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What is the correct procedure to manually reset a PowerFlex 525 fault, and which parameter controls automatic reset behavior?",
+      "answer": "Press the \u201cRESET\u201d key on the drive\u2019s keypad (or power\u2011off and re\u2011apply power for a hardware fault) to manually clear the fault\u202f[1]; the automatic\u2011reset behavior is governed by parameter\u202fP06.73\u202f[2].",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "GS10_UserManual.pdf",
+          "page": 359,
+          "quote": "\u2026(continued)\nDisplay\non GS10\nKeypad\nID No. Fault Name and\nDescription Action, Reset, and Corrective Action\nAuE6 150\nNo-load current IO\nmeasurement fault\n(AUE6)\nFault on measuring no-\nload current IO.\nAction Level Software detection\nAction Ti",
+          "docId": "c4c90216-5466-4d42-8572-183f45ba6249",
+          "fileId": "5fa8311c-a262-4e60-b723-947436397cb3"
+        },
+        {
+          "citationId": "2",
+          "sourceTitle": "GS10_UserManual.pdf",
+          "page": 350,
+          "quote": "\u2026cF2 acts immediately when the drive detects the fault\nFault setting\nparameter N/A\nReset method Manual reset\nReset condition Immediately reset\nRecord Yes\nCorrective\nActions\n1) Press \u201cRESET\u201d key or reset the parameter to the default setting.",
+          "docId": "c4c90216-5466-4d42-8572-183f45ba6249",
+          "fileId": "5fa8311c-a262-4e60-b723-947436397cb3"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 1.724571943283081,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:48.349472+00:00"
+}

@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-10",
+    "category": "troubleshooting",
+    "mode": "general",
+    "equipment": null,
+    "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "The jerking indicates a rapid change in acceleration or current draw during initialization",
+        "Soft-start ramp time parameter may be set too short (high acceleration jerk)",
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components",
+        "Motor mechanical connection may be loose or have slack in the coupling"
+      ],
+      "wrong_if": [
+        "States that jerking is normal on every startup and requires no investigation",
+        "Recommends immediately replacing the drive without checking acceleration time settings",
+        "Assumes the motor winding is shorted without evidence of electrical fault",
+        "Claims that reducing run command frequency will eliminate mechanical jerk"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+      "answer": "The most common cause is an improper start\u2011up ramp or torque limit setting in the VFD.  \n\n1. **Check the VFD start\u2011up parameters** \u2013 verify the acceleration time, ramp\u2011up rate, and any torque\u2011limit or \u201csoft\u2011start\u201d values; adjust them to a slower ramp and see if the jerk disappears.  \n2. **Confirm motor\u2011drive matching** \u2013 ensure the motor\u2019s rated voltage, current, and pole count match the VFD\u2019s selected motor data; a mismatch can cause a sudden torque surge.  \n3. **Inspect the feedback device** \u2013 if the motor uses an encoder or resolver, make sure it is correctly wired, powered, and configured; a missing or noisy feedback can make the drive apply full voltage until it locks onto speed.  \n4. **Look for mechanical binding** \u2013 manually rotate the motor shaft (with power off and locked out) to feel for any stiff points or mis\u2011aligned couplings that could cause a sudden load spike at start\u2011up.  \n5. **Verify supply quality** \u2013 measure line voltage for dips or spikes at power\u2011on; a poor supply can make the VFD apply a full voltage pulse.  \n\n*Diagnostic question*: Is the motor equipped with an encoder/feedback device that the VFD is set to use?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.542306661605835,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:46.303607+00:00"
+}

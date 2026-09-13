@@ -1,0 +1,77 @@
+{
+  "surface": "android",
+  "device": "Pixel 9a (55081JEBF07026)",
+  "build": "com.factorylm.mira 1.1.0 (10), debug cert 1A:E5:E1:79, sha256 a1bf60ae\u20266483",
+  "partial": true,
+  "workflows": [
+    {
+      "id": "wf-01",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/00-launch.png",
+      "notes": "Clean conversation-first shell, greeting-first, single composer, zero prior turns"
+    },
+    {
+      "id": "wf-02",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/03-answer-30s.png",
+      "notes": "General question answered without machine selection; honest 'not grounded' evidence label + follow-up chip + copy"
+    },
+    {
+      "id": "wf-03",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/01-composer-filled.png",
+      "notes": "Composer autogrows to multi-line as text is entered (Slice C field-sizing) \u2014 first on-device proof"
+    },
+    {
+      "id": "wf-04",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/04b-drawer.png",
+      "notes": "Threads findable by first-question title in the drawer's Projects tree"
+    },
+    {
+      "id": "wf-05",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/04b-drawer.png",
+      "notes": "Projects listed in drawer; canonical Projects>Threads>Conversation IA"
+    },
+    {
+      "id": "wf-09",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/05-attach-menu.png",
+      "notes": "Attach sheet: Photo/File/Camera/Scan machine"
+    },
+    {
+      "id": "wf-15",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/08-attachment-returned.png",
+      "notes": "Native Google Camera launches from composer +, capture round-trips back into the conversation as a turn (#3746) \u2014 device-only"
+    }
+  ],
+  "not_run": [
+    "wf-06",
+    "wf-07",
+    "wf-08",
+    "wf-10",
+    "wf-11",
+    "wf-12",
+    "wf-13",
+    "wf-14"
+  ],
+  "summary": {
+    "total": 15,
+    "recorded": 7,
+    "pass": 7,
+    "degraded": 0,
+    "fail": 0,
+    "skip": 0,
+    "not_run": 8
+  },
+  "note": "Baseline #1 device pass exercised 7/15 critical workflows with real on-device evidence; the remaining 8 (retry, edit-resubmit path, thread-switch isolation on-device, citation sheet, stop, force-close persistence, BACK ladder, create-project) are NOT RUN this pass and deferred to the next device session \u2014 recorded honestly per \u00a710.1 (no PASS from partial execution)."
+}

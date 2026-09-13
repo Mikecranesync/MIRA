@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 78,
+      "missing_points": [
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers most key points but omits explicit DC\u2011bus/inrush check."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Citations not required."
+    },
+    "diagnostic": {
+      "score": 30,
+      "note": "Provides a list of checks rather than a single discriminating test."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Clear step\u2011by\u2011step actions with where to look and expected outcome."
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Shows confidence but lacks quantified likelihood."
+    },
+    "context": {
+      "score": null,
+      "note": "No contextual grounding needed."
+    }
+  },
+  "case_score": 66.2
+}

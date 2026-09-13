@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-24",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-24",
+    "category": "sensors_instrumentation",
+    "mode": "general",
+    "equipment": "4-20 mA temperature transmitter, analog input, 500 ohm loop",
+    "question": "Transmitter outputting 4-20 mA for temperature is reading 8 mA but the actual temperature is 75\u00b0F. Loop resistance is 500 ohms. What's the likely issue?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "4 mA = 0\u00b0F (start), 20 mA = 100\u00b0F (end), linear; 8 mA should correspond to ~25\u00b0F, not 75\u00b0F",
+        "Discrepancy suggests transmitter calibration error, sensor failure, or PLC input card not reading correctly",
+        "Verify transmitter output with a calibrated loop meter (milliamp clamp meter), then compare to PLC reading to isolate the fault"
+      ],
+      "wrong_if": [
+        "Assumes the transmitter is working and blames the PLC without testing",
+        "Recommends replacing the transmitter without verification",
+        "Fails to ask for or verify the transmitter's output range (assumed 0-100\u00b0F in this case)"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Transmitter outputting 4-20 mA for temperature is reading 8 mA but the actual temperature is 75\u00b0F. Loop resistance is 500 ohms. What's the likely issue?",
+      "answer": "The most common cause is that the loop doesn\u2019t have enough voltage to drive 20\u202fmA through the 500\u202f\u03a9 loop resistance, so the transmitter is stuck near the low\u2011end of its range.\n\n**Quick check list (safest/cheapest first)**  \n1. **Verify the loop supply voltage** \u2013 measure the DC voltage at the source terminals with the loop powered; it must be at least\u202f\u2248\u202f10\u202fV\u202f+\u202fheadroom for the transmitter and any bias resistors.  \n2. **Inspect wiring for loose connections or corrosion** \u2013 a bad contact adds resistance and can drop voltage.  \n3. **Measure the actual loop resistance** (including wiring, bias resistor, and any termination) to confirm it\u2019s close to the 500\u202f\u03a9 you expect.  \n4. **Confirm the transmitter\u2019s power rating** \u2013 most 4\u201120\u202fmA transmitters need 12\u201324\u202fV supply; if you\u2019re using a lower voltage, the current will be limited.  \n5. **Check for a short or open** \u2013 with the supply off, disconnect the loop and measure continuity; a partial short can also limit current.\n\n**Diagnostic question:** What is the nominal DC supply voltage that powers this 4\u201120\u202fmA loop?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.6359107494354248,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:09.457775+00:00"
+}

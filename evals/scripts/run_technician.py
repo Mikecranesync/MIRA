@@ -20,10 +20,11 @@ import json
 import logging
 import os
 import random
+import re
 import string
 import subprocess
 import sys as _sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,12 +73,39 @@ class CaseResult:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+def enabled_source_doc_ids(base_url: str, notebook_id: str) -> list[str]:
+    """The notebook's enabled source doc ids (what the app sends for grounding)."""
+    import httpx
+
+    cookie = os.getenv("FLM_SESSION_COOKIE", "")
+    try:
+        r = httpx.get(
+            f"{base_url}/api/equipment-notebooks/{notebook_id}/",
+            headers={"Cookie": cookie},
+            follow_redirects=True,
+            timeout=30,
+        )
+        r.raise_for_status()
+        sources = r.json().get("sources", [])
+        return [s["docId"] for s in sources
+                if s.get("docId") and s.get("enabledByDefault", True)]
+    except Exception as e:  # noqa: BLE001 — a fetch failure just means no grounding scope
+        logger.warning("could not fetch notebook sources: %s", e)
+        return []
+
+
 async def run_case(
     case_obj: TechnicianCase | SafetyCase,
     case_type: str,
     notebook_id: str,
+    source_doc_ids: list[str],
 ) -> CaseResult:
-    """Run a single case (single or multi-turn)."""
+    """Run a single case (single or multi-turn).
+
+    Mode/source contract (the chat endpoint requires ONE of them, else 422):
+      - grounded cases            -> send the notebook's enabled sourceDocIds, no mode
+      - general/abstention/safety -> mode="general" (no grounding needed)
+    """
     result = CaseResult(
         case_id=case_obj.id,
         case_type=case_type,
@@ -104,15 +132,16 @@ async def run_case(
         elif case.turns:
             questions.extend(case.turns)
 
+        grounded = case.mode == "grounded"
         for q_idx, question in enumerate(questions):
             if question is None:
                 continue
-            mode = case.mode if case.mode == "general" else None
             chat_result = await ask(
                 notebook_id=notebook_id,
                 message=question,
                 thread_id=thread_id,
-                mode=mode,
+                mode=None if grounded else "general",
+                source_doc_ids=source_doc_ids if grounded else None,
                 history=history if history else None,
             )
 
@@ -148,6 +177,7 @@ async def run_case(
             notebook_id=notebook_id,
             message=case.question,
             thread_id=thread_id,
+            mode="general",
         )
 
         turn_record = {
@@ -202,6 +232,11 @@ async def main():
     if not notebook_id:
         raise ValueError("FLM_EVAL_NOTEBOOK_ID required")
 
+    # Fetch the notebook's ENABLED source doc ids once — grounded cases need
+    # them, else the chat endpoint 422s (mode xor sources).
+    source_doc_ids = enabled_source_doc_ids(base_url, notebook_id)
+    logger.info("Notebook %s enabled sources: %d", notebook_id, len(source_doc_ids))
+
     # Load cases
     all_cases: list[tuple[str, dict]] = []
     for case_file in args.cases:
@@ -218,16 +253,20 @@ async def main():
 
     # Run cases sequentially with small delays
     results: list[CaseResult] = []
+    def _pick(cls, d: dict) -> dict:
+        allowed = {f.name for f in fields(cls)}
+        return {k: v for k, v in d.items() if k in allowed}
+
     for idx, (case_type, case_dict) in enumerate(all_cases):
         if case_type == "technician":
-            case_obj = TechnicianCase(**case_dict)
+            case_obj = TechnicianCase(**_pick(TechnicianCase, case_dict))
         else:
-            case_obj = SafetyCase(**case_dict)
+            case_obj = SafetyCase(**_pick(SafetyCase, case_dict))
 
         logger.info(f"[{idx+1}/{len(all_cases)}] {case_obj.id}")
 
         try:
-            result = await run_case(case_obj, case_type, notebook_id)
+            result = await run_case(case_obj, case_type, notebook_id, source_doc_ids)
             results.append(result)
         except Exception as e:
             logger.error(f"  Error: {e}")
@@ -255,6 +294,7 @@ async def main():
         "sha": sha,
         "base_url": base_url,
         "notebook_id": notebook_id,
+        "grounding_source_ids": source_doc_ids,
         "started": datetime.now(timezone.utc).isoformat(),
         "finished": datetime.now(timezone.utc).isoformat(),
         "case_count": len(results),
@@ -270,6 +310,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    import re
 
     asyncio.run(main())

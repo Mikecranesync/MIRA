@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-28",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 20,
+      "missing_points": [
+        "Multi-turn diagnosis narrowed from supply to contactor to wiring connection",
+        "Root cause identified as corroded lug connection causing voltage drop to zero at motor",
+        "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer provides generic VFD checks but omits required specific diagnosis and preventive actions."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable per rubric."
+    },
+    "diagnostic": {
+      "score": 30,
+      "note": "Lists several checks but lacks a high\u2011value discriminating test targeting the lug connection."
+    },
+    "actionability": {
+      "score": 40,
+      "note": "Steps are actionable but too generic; missing concrete actions for the identified root cause."
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Shows confidence in the suggested checks without expressing uncertainty."
+    },
+    "context": {
+      "score": 30,
+      "note": "Does not narrow to the specific target (corroded lug) and does not restart or re\u2011ask supplied facts."
+    }
+  },
+  "case_score": 33.8
+}
