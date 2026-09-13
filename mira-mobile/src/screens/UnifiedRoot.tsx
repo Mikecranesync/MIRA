@@ -3,8 +3,9 @@
  * the whole app. Its drawer is the navigation (every notebook, every bound
  * machine), its header is the header, the conversation is the notebook's real
  * conversation, and the footer carries the host-owned controls (About &
- * updates, classic app, sign out). NotebookScreen keeps owning the send path,
- * scope, riders, uploads, and the citation viewer — it just renders chromeless.
+ * updates, sign out). This is the only authenticated experience — there is no
+ * classic switch. NotebookScreen keeps owning the send path, scope, riders,
+ * uploads, and the citation viewer — it just renders chromeless.
  */
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
@@ -17,6 +18,8 @@ import {
   withSessionLocalProducer,
 } from "../lib/offline-queue";
 import { apiErrorCopy } from "../lib/api-error-copy";
+import { getAssetByTag, openAssetNotebook } from "../api/resources";
+import { resolveScan } from "../lib/scan-landing";
 import {
   LEGACY_THREAD_ID,
   notebookIdFromProject,
@@ -42,16 +45,25 @@ function latestThreadId(notebook: Notebook | undefined): string {
   return notebook?.threads?.[0]?.id ?? LEGACY_THREAD_ID;
 }
 
+/** A deep link as the native layer delivers it: the extracted asset tag (null
+ * when the URL carried none) plus the raw URL for honest error copy. */
+export interface UnifiedDeepLink {
+  readonly tag: string | null;
+  readonly raw: string;
+}
+
 export interface UnifiedRootProps {
   readonly me: Me;
   readonly backRef: MutableRefObject<(() => boolean) | null>;
   readonly onSignOut: () => Promise<void> | void;
-  readonly onSwitchClassic: () => void;
+  readonly deepLink?: UnifiedDeepLink | null;
+  readonly onDeepLinkConsumed?: () => void;
 }
 
-export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: UnifiedRootProps) {
+export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsumed }: UnifiedRootProps) {
   const [notebooks, setNotebooks] = useState<Notebook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [draftThreadId, setDraftThreadId] = useState<string | null>(null);
@@ -97,6 +109,47 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
       await preferencesStore.set(LAST_THREAD_KEY(id), activeThread);
     });
   }, [notebooks]);
+
+  // A deep link resolves through the SAME decision the QR scanner uses
+  // (resolveScan): tag → asset → that machine's notebook, opened in place.
+  // Failures surface as a dismissible notice — never a dead screen, and never
+  // a route into a retired surface.
+  useEffect(() => {
+    if (!deepLink || !notebooks) return;
+    let live = true;
+    void (async () => {
+      try {
+        if (!deepLink.tag) {
+          if (live) setDeepLinkNotice(`Unrecognized link: ${deepLink.raw}`);
+          return;
+        }
+        const outcome = await resolveScan(deepLink.tag, { getAssetByTag, openAssetNotebook }, "qr");
+        if (!live) return;
+        if (outcome.kind === "notebook") {
+          setDeepLinkNotice(null);
+          open(outcome.notebookId);
+          // The notebook may be new (openAssetNotebook can create it); refresh
+          // the drawer so it lists what the technician is now inside.
+          try {
+            const list = await listNotebooks();
+            if (live) setNotebooks(list);
+          } catch {
+            // The conversation is already open; a stale drawer is tolerable.
+          }
+        } else if (outcome.kind === "notfound") {
+          setDeepLinkNotice(`No machine found for tag ${deepLink.tag}.`);
+        } else {
+          setDeepLinkNotice(outcome.message);
+        }
+      } finally {
+        if (live) onDeepLinkConsumed?.();
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLink, notebooks === null]);
 
   const preferredNotebookId = useCallback((): string | null => {
     if (!notebooks || notebooks.length === 0) return null;
@@ -170,7 +223,6 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
         <>
           <p className="fl-card__meta">{me.email}</p>
           <button type="button" onClick={() => setShowAbout(true)}>About &amp; updates</button>
-          <button type="button" onClick={onSwitchClassic}>Use classic app</button>
           <button
             type="button"
             disabled={signingOut}
@@ -239,14 +291,29 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     );
   }
 
+  const notice = deepLinkNotice ? (
+    <div className="unified-root__notice" role="alert">
+      <span>{deepLinkNotice}</span>
+      <button type="button" onClick={() => setDeepLinkNotice(null)}>
+        Dismiss
+      </button>
+    </div>
+  ) : null;
+
   if (error) return <div className="unified-root"><p className="unified-root__empty" role="alert">{error}</p></div>;
   if (!notebooks || !host) return <div className="unified-root"><p className="unified-root__empty">FactoryLM…</p></div>;
   if (!selected) {
     return (
       <div className="unified-root">
-        <p className="unified-root__empty">
-          No notebooks yet. Use the classic app to create one, then come back.
-        </p>
+        {notice}
+        <p className="unified-root__empty">No projects yet. Create one to start a conversation.</p>
+        <button
+          type="button"
+          className="unified-root__create"
+          onClick={() => setShowCreateProject(true)}
+        >
+          New project
+        </button>
         <div className="fl-shell__nav-footer">{host.navigationFooter}</div>
       </div>
     );
@@ -255,6 +322,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   if (homeVisible) {
     return (
       <div className="unified-root" data-testid="unified-home">
+        {notice}
         <UnifiedChat
           turns={[]}
           liveTurns={[]}
@@ -298,6 +366,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
 
   return (
     <div className="unified-root" data-testid="unified-root" data-notebook-id={selected}>
+      {notice}
       <NotebookScreen
         key={`${selected}:${selectedThreadId ?? LEGACY_THREAD_ID}`}
         id={selected}

@@ -69,11 +69,8 @@ describe("App OTA readiness deadline", () => {
     expect(screen.getByText("FactoryLM…")).toBeTruthy();
   });
 
-  it("defaults an unreadable saved tab instead of confirming an endless loading screen", async () => {
-    storage.get
-      .mockResolvedValueOnce({ value: null })
-      .mockRejectedValueOnce(new Error("saved tab unavailable"))
-      .mockResolvedValueOnce({ value: null });
+  it("acknowledges the committed Login shell once boot resolves signed-out", async () => {
+    storage.get.mockResolvedValue({ value: null });
     api.getMe.mockResolvedValue(null);
     const onBundleReady = vi.fn(async () => undefined);
 

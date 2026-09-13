@@ -1,7 +1,7 @@
-// Five-tab FactoryLM technician shell (ADR-0034 Phase 3) — renders the frozen
-// mobile contract from the ONE canonical nav model (src/nav.ts), capability-
-// filtered fail-closed. Per-tab navigation stacks; Android back pops the
-// active stack before backgrounding; active tab persists across launches.
+// Unified FactoryLM technician shell: the shared FactoryLM shell (UnifiedRoot)
+// owns the whole authenticated app — navigation drawer, conversation, evidence,
+// About & updates, sign out. The classic five-tab presentation is retired from
+// the runtime; rollback is by versioned release, not an in-app switch.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { App as CapApp } from "@capacitor/app";
 import { Preferences } from "@capacitor/preferences";
@@ -17,21 +17,11 @@ import {
   waitForSessionLocalProducers,
   waitForWorkOrderQueueProducers,
 } from "./lib/offline-queue";
-import { TABS, can, visibleTabs, type TabId } from "./nav";
 import { extractAssetTag } from "./lib/tags";
-import { openNotebookTransition } from "./lib/scan-landing";
 import { Login } from "./screens/Login";
-import { WorkordersTab } from "./screens/Workorders";
-import { ScheduleTab } from "./screens/Schedule";
-import { NotebooksTab, type NotebookRoute } from "./screens/NotebooksTab";
-import { UnifiedRoot } from "./screens/UnifiedRoot";
-import { readChatUiChoice, writeChatUiChoice, type ChatUiChoice } from "./lib/chat-ui-pref";
+import { UnifiedRoot, type UnifiedDeepLink } from "./screens/UnifiedRoot";
 import { closeTopTransientLayer } from "./lib/transient-layer";
 import { signOutSyncInProgressCopy, signOutWarningCopy } from "./lib/sign-out-copy";
-import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
-import { MoreTab } from "./screens/More";
-
-const TAB_KEY = "flm.activeTab.v1";
 const SECURE_CLEANUP_KEY = "flm.session.cleanup-required.v1";
 // Native LiveUpdate rolls an unconfirmed bundle back after 10 seconds. Give a
 // healthy local shell ample margin even when remote authentication is slow.
@@ -50,15 +40,9 @@ type AppProps = {
 export default function App({ onBundleReady }: AppProps) {
   const [me, setMe] = useState<Me | null>(null);
   const [booted, setBooted] = useState(false);
-  const [tab, setTab] = useState<TabId>("workorders");
-  const [assetsRoute, setAssetsRoute] = useState<AssetsRoute>({ name: "list" });
-  // Lifted for the same reason AssetsRoute is: a scan has to switch the tab AND
-  // set the route in one go. Doing only the first drops the technician on the
-  // notebook list, one tap away from the machine they are standing next to.
-  const [notebookRoute, setNotebookRoute] = useState<NotebookRoute>({ name: "home" });
-  // FLM-UI-4000 unified root: when the device prefers the unified shell, it
-  // owns the whole app (navigation, header, conversation) instead of the tabs.
-  const [chatUi, setChatUi] = useState<ChatUiChoice | null>(null);
+  // A deep link (QR sticker, app link) resolves inside the unified shell: the
+  // tag opens the machine's notebook in the drawer, not a retired tab route.
+  const [deepLink, setDeepLink] = useState<UnifiedDeepLink | null>(null);
   const [secureCleanupRequired, setSecureCleanupRequired] = useState(false);
   const [cleanupRetrying, setCleanupRetrying] = useState(false);
   const [cleanupRetryError, setCleanupRetryError] = useState<string | null>(null);
@@ -95,16 +79,7 @@ export default function App({ onBundleReady }: AppProps) {
         setBooted(true);
         return;
       }
-      const [{ value: savedTab }, m, choice] = await Promise.all([
-        Preferences.get({ key: TAB_KEY }).catch((error) => {
-          console.warn("[boot] saved tab unavailable; using default", error);
-          return { value: null };
-        }),
-        getMe(),
-        readChatUiChoice(),
-      ]);
-      if (savedTab && TABS.some((t) => t.id === savedTab)) setTab(savedTab as TabId);
-      setChatUi(choice);
+      const m = await getMe();
       setMe(m);
       setBooted(true);
     })();
@@ -139,13 +114,11 @@ export default function App({ onBundleReady }: AppProps) {
     [],
   );
 
-  // Deep links: land on the Assets tab's tag-resolution route.
+  // Deep links: hand the tag to the unified shell, which resolves it to the
+  // machine's notebook (the same resolveScan flow the QR scanner uses).
   useEffect(() => {
     deepLinkSink = (tag, raw) => {
-      setTab("assets");
-      setAssetsRoute(
-        tag ? { name: "tag", tag } : { name: "tag", tag: "", error: `Unrecognized link: ${raw}` },
-      );
+      setDeepLink({ tag, raw });
     };
     return () => {
       deepLinkSink = null;
@@ -166,11 +139,6 @@ export default function App({ onBundleReady }: AppProps) {
       void sub.then((s) => s.remove());
     };
   }, []);
-
-  const selectTab = (id: TabId) => {
-    setTab(id);
-    void Preferences.set({ key: TAB_KEY, value: id });
-  };
 
   const completeSecureSignOut = async (): Promise<boolean> => {
     let cleanupFailed = false;
@@ -263,8 +231,6 @@ export default function App({ onBundleReady }: AppProps) {
       />
     );
 
-  const tabs = visibleTabs(me.capabilities);
-
   const signOutFlow = async () => {
     // Phase 4: local data never outlives the session — but try to sync
     // queued work orders first, and warn before destroying any.
@@ -311,78 +277,13 @@ export default function App({ onBundleReady }: AppProps) {
     }
   };
 
-  if (chatUi === "unified") {
-    return (
-      <UnifiedRoot
-        me={me}
-        backRef={backHandler}
-        onSignOut={signOutFlow}
-        onSwitchClassic={() => {
-          void writeChatUiChoice("legacy");
-          setChatUi("legacy");
-        }}
-      />
-    );
-  }
-
   return (
-    <div className="shell">
-      <div className="topbar">
-        <span>
-          FactoryLM <small>{me.email}</small>
-        </span>
-      </div>
-
-      <div className="tabhost">
-        {tab === "workorders" && <WorkordersTab me={me} backRef={backHandler} />}
-        {tab === "schedule" && <ScheduleTab me={me} backRef={backHandler} />}
-        {tab === "chat" && (
-          <NotebooksTab
-            backRef={backHandler}
-            route={notebookRoute}
-            setRoute={setNotebookRoute}
-            capabilities={me.capabilities}
-          />
-        )}
-        {tab === "assets" && (
-          <AssetsTab
-            route={assetsRoute}
-            setRoute={setAssetsRoute}
-            backRef={backHandler}
-            openNotebook={(id) => {
-              // All three, together. See the note on notebookRoute above, and
-              // openNotebookTransition for why the assets route must be
-              // consumed rather than left armed.
-              const next = openNotebookTransition(id);
-              setNotebookRoute(next.notebookRoute);
-              setTab(next.tab);
-              setAssetsRoute(next.assetsRoute);
-            }}
-          />
-        )}
-        {tab === "more" && (
-          <MoreTab
-            me={me}
-            chatV2Available={can(me.capabilities, "chat_v2")}
-            onChatUiChange={setChatUi}
-            backRef={backHandler}
-            onSignOut={signOutFlow}
-          />
-        )}
-      </div>
-
-      <nav className="tabbar">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            className={`tab ${t.id === tab ? "tab-active" : ""}`}
-            onClick={() => selectTab(t.id)}
-          >
-            <span className="tab-icon">{t.icon}</span>
-            <span className="tab-title">{t.title}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
+    <UnifiedRoot
+      me={me}
+      backRef={backHandler}
+      onSignOut={signOutFlow}
+      deepLink={deepLink}
+      onDeepLinkConsumed={() => setDeepLink(null)}
+    />
   );
 }
