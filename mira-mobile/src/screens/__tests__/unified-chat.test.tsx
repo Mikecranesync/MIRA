@@ -84,7 +84,7 @@ describe("UnifiedChat", () => {
     expect(safetyParts).not.toContain("source");
     expect(safetyParts).not.toContain("evidence_basis");
     expect(screen.getByRole("alert").textContent).toMatch(/stop/i);
-    expect(document.querySelector(".fl-chip")?.textContent).toContain("Siemens G120");
+    expect(document.querySelector(".fl-conversation__bar")?.textContent).toContain("Siemens G120");
     expect(document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
   });
 

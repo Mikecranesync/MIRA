@@ -230,12 +230,6 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   }
 
   if (homeVisible) {
-    const suggestions = notebooks.slice(0, 3).map((notebook) => ({
-      id: `notebook-${notebook.id}`,
-      text: notebook.manufacturer || notebook.model
-        ? `Ask about ${[notebook.manufacturer, notebook.model].filter(Boolean).join(" ")}`
-        : `Ask about ${notebook.displayName}`,
-    }));
     return (
       <div className="unified-root" data-testid="unified-home">
         <UnifiedChat
@@ -265,8 +259,6 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
             },
           }}
           host={host}
-          groundingLine={() => "Ask from your notebooks, or scan a machine to start with the equipment in front of you."}
-          suggestChips={() => suggestions}
           meta={{
             notebookId: "home",
             threadId: "home",

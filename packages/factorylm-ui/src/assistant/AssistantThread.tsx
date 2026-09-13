@@ -158,16 +158,13 @@ function TurnMessage() {
 
 const messageComponents = { UserMessage: TurnMessage, AssistantMessage: TurnMessage };
 
-/** First-run surface: greeting, grounding line, and optional suggestion chips. */
-/** Neutral default: claims only what a notebook can actually do. A host that
- *  knows its scope (machine bound, sources loaded) should pass a truer line —
- *  the first draft asserted live facility awareness the notebook does not have. */
-const DEFAULT_GROUNDING = "Ask about this notebook's documents and the equipment it covers.";
-
+/** First-run surface: greeting, optional host grounding line, optional chips.
+ *  Default is the greeting alone — a mostly-empty new chat (UI-replacement
+ *  brief §6); a host that knows its scope may pass a truer grounding line. */
 function FirstRun() {
   const { dispatch, hooks } = useEnvironment();
   const chips = hooks?.suggestChips?.();
-  const grounding = hooks?.groundingLine?.() ?? DEFAULT_GROUNDING;
+  const grounding = hooks?.groundingLine?.();
   const handleChipClick = (text: string) => {
     if (hooks?.onSend) {
       hooks.onSend(text);
@@ -178,9 +175,7 @@ function FirstRun() {
   };
   return <div className="fl-conversation__first-run">
     <h2 className="fl-conversation__greeting">What can I help you with?</h2>
-    <p className="fl-conversation__grounding">
-      {grounding}
-    </p>
+    {grounding ? <p className="fl-conversation__grounding">{grounding}</p> : null}
     {chips && chips.length > 0 ? (
       <div className="fl-conversation__chips">
         {chips.map((chip) => (
@@ -215,7 +210,7 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
         data-mode={state.mode}
         data-conversation-surface="assistant"
       >
-        <ConversationBar state={state} dispatch={dispatch} />
+        <ConversationBar state={state} />
         <ThreadPrimitive.Viewport className="fl-thread__viewport" autoScroll>
           {state.mode === "work"
             ? (state.run

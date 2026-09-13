@@ -24,13 +24,15 @@ function must<T>(value: T | null | undefined, what: string): T {
 }
 
 describe("navigation order and sections", () => {
-  it("renders identity, New chat, Projects, Recent, Search, Machines, footer — in that order, on mobile and web", () => {
+  it("renders identity, New chat, Search, Projects, Recent, footer — in that order, on mobile and web", () => {
     for (const surface of ["mobile", "web"] as const) {
       const view = render({ surface, fixture: "project-tree", navigationFooter: <button type="button">Sign out</button> });
       const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
       const markers = Array.from(nav.querySelectorAll<HTMLElement>(".fl-shell__brand, .fl-shell__new-chat, .fl-shell__search, .fl-shell__section-title, .fl-shell__nav-footer"))
         .map((el) => el.textContent?.trim() || el.className);
-      expect(markers).toEqual(["FactoryLM", "New chat", "Projects", "Recent", "fl-shell__search", "Machines", "Sign out"]);
+      // ChatGPT hierarchy (UI-replacement brief §6): machines are reached through
+      // their Project links, not a competing top-level section.
+      expect(markers).toEqual(["FactoryLM", "New chat", "fl-shell__search", "Projects", "Recent", "Sign out"]);
     }
   });
 
@@ -42,7 +44,7 @@ describe("navigation order and sections", () => {
     expect(reason.textContent).toMatch(/not available/i);
   });
 
-  it("Search filters the tree, Recent and Machines by label and keeps a match's ancestors", () => {
+  it("Search filters the tree and Recent by label and keeps a match's ancestors", () => {
     const view = render({ surface: "web", fixture: "project-tree" });
     const input = must(view.container.querySelector<HTMLInputElement>('input[aria-label="Search navigation"]'), "search");
     const setter = must(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set, "value setter");
@@ -86,16 +88,15 @@ describe("tree rows", () => {
     for (const row of path) expect(row.getAttribute("aria-current")).toBeNull();
   });
 
-  it("across the WHOLE navigation exactly one element is aria-current; pins and Recent are references", () => {
+  it("across the WHOLE navigation exactly one element is aria-current; machine links and Recent are references", () => {
     const view = render({ surface: "mobile", fixture: "project-tree", onOpenItem: () => {} });
     const nav = must(view.container.querySelector<HTMLElement>('[aria-label="FactoryLM navigation"]'), "navigation");
     expect(nav.querySelectorAll('[aria-current="page"]').length).toBe(1);
-    // The active machine's pin points at the object the tree already selects: quiet, not selected.
-    const pin = must(nav.querySelector<HTMLElement>('[data-pinned-machine-id="machine-drive-a"]'), "pin");
-    expect(pin.getAttribute("aria-current")).toBeNull();
-    // Machine CONTEXT, not open-object selection — the two are different facts.
-    expect(pin.dataset.context).toBe("true");
-    expect(pin.dataset.active).toBeUndefined();
+    // Machine links live in the Projects tree now (no pinned Machines section);
+    // they are context references, never a second open-object selection.
+    const machineRows = Array.from(nav.querySelectorAll<HTMLElement>('[data-kind="machine"]'));
+    expect(machineRows.length).toBeGreaterThanOrEqual(1);
+    for (const row of machineRows) expect(row.dataset.active).toBeUndefined();
   });
 
   it("a search that does not match the current row keeps it rendered, so exactly one row stays current (P2)", () => {
@@ -271,7 +272,7 @@ describe("context lines only when context differs", () => {
     // the open object. Scoping this to Recent rows is what hid the pinned machine and made the
     // first version of this assertion vacuous (Codex P1, second pass).
     const activeIds = () => Array.from(nav().querySelectorAll<HTMLElement>('[data-active="true"]')).map(
-      (el) => el.dataset.recentId ?? el.dataset.pinnedMachineId ?? el.dataset.itemId ?? "unlabelled",
+      (el) => el.dataset.recentId ?? el.dataset.machineId ?? el.dataset.itemId ?? "unlabelled",
     );
     const threadTreeRow = () => must(nav().querySelector<HTMLElement>('[data-item-id="thread-drive-a"]'), "owning thread tree row");
     // Work + run: the run is the only reference weight and the only current row; the thread carries neither.
@@ -280,10 +281,10 @@ describe("context lines only when context differs", () => {
     expect(threadTreeRow().dataset.active).toBeUndefined();
     expect(nav().querySelector<HTMLElement>('[data-recent-id="thread-drive-a"]')?.dataset.active).toBeUndefined();
     expect(Array.from(nav().querySelectorAll<HTMLElement>('[aria-current="page"]')).map((el) => el.dataset.itemId)).toEqual(["run-drive-a-f30001"]);
-    // The machine the run is on is still context — it just is not a second selection.
-    const pin = must(nav().querySelector<HTMLElement>('[data-pinned-machine-id="machine-drive-a"]'), "pin");
-    expect(pin.dataset.context).toBe("true");
-    expect(pin.dataset.active).toBeUndefined();
+    // The machine the run is on is still context (its tree link) — never a second selection.
+    const machineRow = must(nav().querySelector<HTMLElement>('[data-machine-id="machine-drive-a"]'), "machine link");
+    expect(machineRow.getAttribute("aria-current")).toBeNull();
+    expect(machineRow.dataset.active).toBeUndefined();
     // Ask: the retained run is background; the open thread is the one active reference.
     act(() => { view.dispatch({ type: "set-mode", mode: "ask" }); });
     expect(activeIds()).toEqual(["thread-drive-a"]);

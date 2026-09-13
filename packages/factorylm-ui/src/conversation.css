@@ -159,7 +159,10 @@
    sheet's scrim (z-index 2): position: sticky is its own stacking context. */
 .fl-composer[data-menu-open="true"] { z-index: 3; }
 .fl-composer__row { display: flex; align-items: flex-end; min-block-size: max(3.25rem, 52px); gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); box-shadow: var(--fl-workspace-shadow-pop); }
-.fl-composer__row textarea { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.75rem; max-block-size: 7.5rem; padding: var(--fl-workspace-space-2); border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; resize: none; }
+/* field-sizing grows the box with its content between the min/max bounds —
+   the ChatGPT composer behavior — as a progressive enhancement: engines
+   without it (older iOS WebKit) keep the fixed height + inner scroll. */
+.fl-composer__row textarea { flex: 1 1 auto; min-inline-size: 0; field-sizing: content; min-block-size: 2.75rem; max-block-size: 7.5rem; padding: var(--fl-workspace-space-2); border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; resize: none; }
 .fl-composer__row textarea:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 .fl-composer__icon,
 .fl-composer__machine,
