@@ -1083,6 +1083,26 @@ def test_container_map_matches_compose():
     )
 
 
+def test_cu02_record_names_current_map_home():
+    """The CU-02 convergence record must name where the generated map actually lives.
+
+    #3761 round-4 review: the map moved to docs/environments.md while CU-02 still declared
+    root CLAUDE.md as canonical, so an agent repairing CU-02 from its record would operate on
+    the wrong file. The record's amendment and its active invariant must both name the real
+    destination, and the invariant must not present root CLAUDE.md as the current one.
+    """
+    record = (_ROOT / "docs/architecture/convergence/units/CU-02.md").read_text(encoding="utf-8")
+    assert "Amendment 2026-09-13" in record, "CU-02 lacks the amendment recording the map's move"
+    invariant = record.split("## Contracts/invariants", 1)[1].split("\n## ", 1)[0]
+    assert "docs/environments.md" in invariant, "CU-02 invariant does not name docs/environments.md"
+    assert "until 2026-09-13" in invariant, (
+        "CU-02 invariant must mark the CLAUDE.md destination as historical"
+    )
+    # And the record must agree with the generator it describes.
+    mod = _load_gen_container_map()
+    assert mod.CLAUDE_MD == "docs/environments.md"
+
+
 def _load_gen_container_map():
     spec = importlib.util.spec_from_file_location(
         "gen_container_map_contract12", _ROOT / _GEN_CONTAINER_MAP
