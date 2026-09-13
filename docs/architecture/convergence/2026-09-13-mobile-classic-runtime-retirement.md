@@ -70,3 +70,20 @@ surface is future scope under the charter, not a blocker for conversation-first 
 - Operational rollback: install the prior versioned APK (versionCode 10, versionName
   1.1.0) or OTA-roll back to the prior bundle. The frozen classic sources on disk make a
   code-level revert a single-commit operation if ever owner-directed.
+
+## Recorded bundle-grep output (review-requested evidence)
+
+Run at the cutover branch head on the release-lab machine (BRAVO), production build
+via bun run build (tsc plus vite):
+
+    Use classic app: 0
+    New work order: 0
+    Chat style: 0
+    tabbar: 0
+    Schedule: 0
+    unified-root: 1
+    New project: 2
+    About & updates: 1
+
+Counts are occurrences in dist/assets/index-*.js. Zero classic markers; unified
+markers present. Reproduce with: grep -c "MARKER" dist/assets/index-*.js
