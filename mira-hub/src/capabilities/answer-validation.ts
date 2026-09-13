@@ -53,8 +53,16 @@ export type AnswerValidation =
 // Negations are excluded by lookbehind or by requiring the affirmative form
 // contiguously. Tested against both directions in answer-validation.test.ts.
 const HAZARD_ACTIONS =
-  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+)";
+  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?)";
 const ENERGIZED_STATE = "(?:energized|live|hot|powered(?:\\s+on)?|running)";
+// Iteration-3: "when"/"whilst"/"during" work as energized connectors exactly
+// like "while"/"with" ("Reset the fault WHEN the machine is energized").
+const ENERGIZED_LINK = "(?:while|whilst|when|with|during)";
+// Iteration-3: performing a hazard action WITHOUT isolating is the same
+// instruction phrased through the missing safeguard ("Reset the fault
+// without shutting down the machine").
+const NO_ISOLATION =
+  "without\\s+(?:first\\s+)?(?:de[-\\s]?energiz\\w+|shutting\\s+(?:down|off)|powering\\s+(?:down|off)|turning\\s+(?:off|down)|lock(?:ing)?[-\\s]?(?:out|it\\s+out)|tag(?:ging)?[-\\s]?out|isolat\\w+|disconnect\\w+|verifying\\s+zero[-\\s]?energy|loto)";
 
 const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }[] = [
   // "yes, you can reset it while the machine is energized" /
@@ -64,7 +72,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     re: new RegExp(
       "\\b(?:yes,?\\s+)?(?:you\\s+(?:can|may)|it(?:'s|\\s+is)\\s+(?:safe|permitted|acceptable|fine|ok(?:ay)?)|(?<!\\bnot\\s)(?<!n't\\s)(?<!\\bnever\\s)(?<!\\bcannot\\s)safe(?:ly)?\\s+to)\\b[^.!?\\n]{0,50}\\b" +
         HAZARD_ACTIONS +
-        "\\b[^.!?\\n]{0,60}\\b(?:while|with)\\b[^.!?\\n]{0,40}\\b" +
+        "\\b[^.!?\\n]{0,60}\\b" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}\\b" +
         ENERGIZED_STATE +
         "\\b",
       "i",
@@ -77,7 +85,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     re: new RegExp(
       "\\b(?:permits?|allows?|supports?|is\\s+designed\\s+(?:for|to))\\b[^.!?\\n]{0,50}\\b" +
         HAZARD_ACTIONS +
-        "\\b[^.!?\\n]{0,60}\\b(?:while|with)\\b[^.!?\\n]{0,40}\\b" +
+        "\\b[^.!?\\n]{0,60}\\b" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}\\b" +
         ENERGIZED_STATE +
         "\\b",
       "i",
@@ -114,7 +122,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     // Verb set includes the perform/conduct/carry-out maintenance
     // constructions. "proceed with caution" is excluded — it is cautionary
     // prose, not an instruction to act on an energized machine.
-    re: /(?:^|[.!?:;]\s+|[—–]\s*|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed(?!\s+with\s+caution\b)|continue|work|perform|conduct|carry(?:\s+out)?|complete|begin|start)\b[^.!?\n]{0,60}\b(?:while|with)\s[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b/im,
+    re: /(?:^|[.!?:;]\s+|[—–]\s*|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed(?!\s+with\s+caution\b)|continue|work|perform|conduct|carry(?:\s+out)?|complete|begin|start)\b[^.!?\n]{0,60}\b(?:while|whilst|when|with|during)\s[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b/im,
   },
   // R3/F2 (Codex findings): "keep/leave … energized" is unsafe only when
   // coupled to a maintenance/hazard context — "Keep the machine energized
@@ -131,6 +139,39 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   {
     id: "must-remain-energized",
     re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|for|when)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
+  },
+  // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
+  // reset … while energized" / "It is advisable to perform maintenance while
+  // … live" / "You can clear the fault without de-energizing". The negated
+  // modal ("you should NOT reset") fails the head→verb adjacency naturally.
+  {
+    id: "modal-energized-action",
+    re: new RegExp(
+      "\\b(?:you\\s+(?:should|must|need\\s+to|have\\s+to|can|may|could|will\\s+want\\s+to)|it\\s+is\\s+(?:advisable|recommended|best|easiest|fastest|fine|acceptable|ok(?:ay)?)\\s+to|be\\s+sure\\s+to|make\\s+sure\\s+(?:to|you))\\s+(?:simply\\s+|just\\s+)?" +
+        HAZARD_ACTIONS +
+        "\\b[^.!?\\n]{0,60}\\b(?:" +
+        ENERGIZED_LINK +
+        "\\b[^.!?\\n]{0,40}\\b" +
+        ENERGIZED_STATE +
+        "|" +
+        NO_ISOLATION +
+        ")\\b",
+      "i",
+    ),
+  },
+  // Iteration-3 blocker: the hazard action instructed THROUGH the missing
+  // safeguard — "Reset the fault without shutting down the machine." Bare
+  // gerund subjects ("Resetting … without locking out is dangerous") do not
+  // match: the imperative verb list is bare-form only, and negations occupy
+  // the clause-initial slot ("Never reset without locking out…").
+  {
+    id: "imperative-no-isolation",
+    re: new RegExp(
+      "(?:^|[.!?:;]\\s+|[—–]\\s*|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|go\\s+ahead\\s+and\\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed|continue|work|perform|conduct|carry(?:\\s+out)?|complete|begin|start)\\b[^.!?\\n]{0,60}\\b" +
+        NO_ISOLATION +
+        "\\b",
+      "im",
+    ),
   },
 ];
 

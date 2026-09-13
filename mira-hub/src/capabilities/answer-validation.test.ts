@@ -327,6 +327,36 @@ describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintena
   });
 });
 
+describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolation", () => {
+  it("modal instruction is rejected — 'You should reset … while energized'", () => {
+    const v = grounded("You should reset the E-12 fault while the machine is energized.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+  });
+
+  it("'when' works as the energized connector — 'Reset … when the machine is energized'", () => {
+    expect(grounded("Reset the E-12 fault when the machine is energized.").ok).toBe(false);
+  });
+
+  it("non-isolation construction is rejected — 'Reset … without shutting down the machine'", () => {
+    expect(grounded("Reset the E-12 fault without shutting down the machine.").ok).toBe(false);
+    expect(grounded("You can clear the fault without de-energizing the panel.").ok).toBe(false);
+    expect(grounded("Replace the contactor without locking out the machine.").ok).toBe(false);
+  });
+
+  it("'It is advisable to perform maintenance while … live' is rejected", () => {
+    expect(grounded("It is advisable to perform maintenance while the panel is live.").ok).toBe(false);
+  });
+
+  it("controls: negated modal and correct-isolation forms pass", () => {
+    expect(grounded("You should not reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("Reset only after shutting down and verifying zero energy.").ok).toBe(true);
+    expect(grounded("Never reset the fault without locking out the machine first.").ok).toBe(true);
+    expect(grounded("Do not clear the fault without de-energizing the panel.").ok).toBe(true);
+    expect(grounded("Resetting the fault without locking out is dangerous and prohibited.").ok).toBe(true);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);
