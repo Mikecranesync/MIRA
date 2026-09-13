@@ -1269,15 +1269,6 @@ _BANNED_PROVISION = re.compile(
     r"|(factorylm/prd|cascade)[^\n]*GEMINI_API_KEY",
     re.I,
 )
-_TOOLING_CONTEXT = (
-    "review",
-    "judge",
-    "workflow",
-    ".yml",
-    "staging-gate",
-    "pr_self_fix",
-    "gh secret set",
-)
 
 
 # Order-independent membership check (#3761 round-13 review: docs/ARCHITECTURE.md said
@@ -1293,21 +1284,9 @@ _TOOLING_CONTEXT = (
 # not to this fence.
 _CASCADE_WORD = re.compile(r"cascad", re.I)
 _BANNED_MEMBER = re.compile(
-    r"\bGemini\b|\bAnthropic\b|(?<![./])\bClaude\b", re.I
-)  # not `.claude/` paths
+    r"\bGemini\b|\bAnthropic\b|(?<![./])\bClaude\b(?!\s+Code\b)", re.I
+)  # not `.claude/` paths, not the "Claude Code" tool
 _PROVIDER = r"(?:gemini|anthropic|claude)"
-# Provider-directed exclusions only: the negation must be attached to the banned provider.
-_PROVIDER_EXCLUDED = re.compile(
-    # "<provider> is banned / removed / dropped / excluded / out of …"
-    rf"\b{_PROVIDER}\b[^.;|]{{0,40}}?\b(?:is |are |was |were |now )?(?:banned|removed|dropped|excluded|out of|removal)"
-    # "never/no/not/without/do not <verb?> <provider>"  (never reintroduce Anthropic)
-    rf"|\b(?:never|no|not|without|excluding|minus|do not|don't)\s+(?:\w+\s+){{0,2}}?(?:the\s+|an?\s+)?{_PROVIDER}\b"
-    # "<provider> stays out / replaced by / was replaced"
-    rf"|\b{_PROVIDER}\b[^.;|]{{0,40}}?\b(?:stays out|replaced by|was replaced)"
-    # "remove / replace / drop / removed … <provider>"  (replace Anthropic call with …)
-    rf"|\b(?:remov(?:e|ed|ing|al)|replac(?:e|ed|ing)|drop(?:ped|ping)?|banned)\b[^.;|]{{0,30}}?\b{_PROVIDER}\b",
-    re.I,
-)
 # The print-vision carve-out exempts ONLY Anthropic/Claude, and only when the carve-out is
 # named next to that provider — never Gemini, never the rest of the line.
 _CARVEOUT_NEAR_ANTHROPIC = re.compile(
@@ -1315,12 +1294,34 @@ _CARVEOUT_NEAR_ANTHROPIC = re.compile(
     r"|\b(?:anthropic|claude)\b[^.;]{0,60}?(?:print[- _]?vision|printsense|printsynth)",
     re.I,
 )
-# Tooling exemption applies only when the tooling word is attached to the cascade clause.
+# Tooling exemption: the cascade being described must be a named CI instrument — a review or
+# judge cascade, a workflow file, a CI secret. The bare word "review" in prose ("After
+# review, the cascade is …") is not tooling (round-15 review).
 _TOOLING_NEAR_CASCADE = re.compile(
-    r"(?:review|judge|workflow|\.yml|staging-gate|pr_self_fix|gh secret set)[^.;]{0,40}?cascad"
-    r"|cascad[^.;]{0,40}?(?:review|judge|workflow|\.yml|staging-gate|pr_self_fix)",
+    r"(?:cascade review|review cascade|judge cascade|cascade judge|judge fallback"
+    r"|code-review\.yml|staging-gate\.yml|\.yml\b|staging-gate|pr_self_fix|gh secret set"
+    r"|github actions?|ci workflow|workflow'?s?\b)",
     re.I,
 )
+
+
+def _provider_excluded(name: str, window: str) -> bool:
+    """True only when the exclusion is stated about THIS provider (round-15 review:
+    'Anthropic is banned' must not exempt a separate Gemini membership)."""
+    p = re.escape(name)
+    pat = re.compile(
+        rf"\b{p}\b[^.;|]{{0,40}}?\b(?:is |are |was |were |now )?"
+        rf"(?:banned|removed|dropped|excluded|out of|removal)"
+        rf"|\b(?:never|no|not|without|excluding|minus|do not|don't)\s+(?:\w+\s+){{0,2}}?"
+        rf"(?:the\s+|an?\s+)?{p}\b"
+        rf"|\b{p}\b[^.;|]{{0,40}}?\b(?:stays out|replaced by|was replaced)"
+        # "remove/replace/drop … <provider>" — but NOT "replace X *with* <provider>", which
+        # installs it; the span must not contain "with" / "by" / "to"
+        rf"|\b(?:remov(?:e|ed|ing|al)|replac(?:e|ed|ing)|drop(?:ped|ping)?|banned)\b"
+        rf"(?:(?!\b(?:with|by|to)\b)[^.;|]){{0,30}}?\b{p}\b",
+        re.I,
+    )
+    return bool(pat.search(window))
 
 
 def _states_banned_cascade(line: str) -> bool:
@@ -1340,7 +1341,7 @@ def _states_banned_cascade(line: str) -> bool:
         if name in ("anthropic", "claude") and _CARVEOUT_NEAR_ANTHROPIC.search(norm):
             continue
         window = norm[max(0, match.start() - 100) : match.end() + 100]
-        if _PROVIDER_EXCLUDED.search(window):
+        if _provider_excluded(name, window):
             continue
         return True
     return False
@@ -1375,6 +1376,27 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
     )
     assert not _states_banned_cascade(
         "- Anthropic stays out of the diagnostic cascade (PRD §4 carve-outs unchanged)."
+    )
+    # rounds 14–15: an unrelated word elsewhere on the line, or an exclusion aimed at a
+    # DIFFERENT provider, must not exempt a mandate
+    assert _states_banned_cascade("After review, the diagnostic cascade is Gemini then Groq")
+    assert _states_banned_cascade("Replace Together with Gemini in the diagnostic cascade")
+    assert _states_banned_cascade("The cascade is not only Groq; it also falls back to Claude")
+    assert _states_banned_cascade(
+        "PrintSense uses its own local model; the diagnostic cascade falls back to Gemini"
+    )
+    assert _states_banned_cascade(
+        "The diagnostic cascade falls back to Gemini; Anthropic is banned"
+    )
+    # …while provider-directed exclusions, the carve-out, and real CI instruments still pass
+    assert not _states_banned_cascade(
+        "cascade: Groq → Cerebras → Together — Gemini and Anthropic banned"
+    )
+    assert not _states_banned_cascade(
+        "`ANTHROPIC_API_KEY` | Print-vision ONLY — the retained Claude path of PrintSense. NOT in the cascade"
+    )
+    assert not _states_banned_cascade(
+        "the staging-gate judge cascade falls back to Gemini (STAGING_GEMINI_API_KEY)"
     )
     globs = (
         ".claude/rules/*.md",
