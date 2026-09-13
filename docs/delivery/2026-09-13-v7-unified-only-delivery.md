@@ -50,8 +50,18 @@ Retirement is at the **runtime** layer, not a source deletion (charter Gate 8 no
   / More tabs are unreachable and tree-shaken out of the bundle (0 classic markers in the
   shipped bundle — grep-verified).
 - Classic source files stay frozen on disk under the Legacy UI Lifecycle Guard exactly as
-  the charter requires. Backend capabilities (auth, notebooks, evidence, citations, provider
-  routing) are untouched — this is a presentation cutover.
+  the charter requires. Auth, notebooks, evidence, citations, and provider routing are
+  untouched — this is a presentation cutover.
+- **CMMS capability disposition (goal §3):** the retired tabs were CMMS *management*
+  surfaces, so this needs an explicit call. Reads survive in V7 — asset & work-order lists
+  (via the attach-file picker, `AttachFileSheet` from `NotebookScreen`), work-order history
+  via chat (`check_equipment_history`), asset scan→notebook — and the full API adapter
+  (`resources.ts`) is preserved (frozen, not deleted). What is **retired from the mobile
+  runtime** is the *management* UI: changing a work-order status/priority, standalone
+  work-order create, and PM-schedule list/complete/create. See the capability-disposition
+  table in the retirement map. This aligns with train-before-deploy (Hub/Atlas web own CMMS
+  management; mobile is conversational) — but whether that's the intended V7 scope is an
+  **owner decision** (see §5.5), not something decided in this cutover.
 - **Rollback is by versioned release** (git tag + prior APK), never an in-app switch; a V7
   failure does not silently reactivate Classic.
 - Map: `docs/architecture/convergence/2026-09-13-mobile-classic-runtime-retirement.md`.
@@ -106,6 +116,18 @@ chromeless-aware `← Back` with two regression tests (shipped in #3779).
    (2026-09-13).** #3783 and #3779 landed under the severity-0-prod-break / explicit-owner-
    authorization / single-file-revert-safety path with Claude-side review; per the standing
    constraint those verdicts are **PARTIAL**, not a full independent-provider adversarial pass.
+
+### 5.5 Owner decision — mobile CMMS management scope
+
+V7 retires the mobile CMMS **management** UI (work-order status/priority change, standalone
+work-order create, PM-schedule list/complete/create). CMMS *reads* survive (attach-picker
+asset/WO lists, work-order history via chat, asset scan→notebook) and the API adapter is
+preserved, so re-homing any of these into V7 is a presentation task, not a backend rebuild.
+Per train-before-deploy doctrine this is the expected split (Hub Command Center + Atlas CMMS
+web own management; mobile is conversational) — **please confirm that is the intended V7
+scope.** If work-order status changes or PM completion are essential on the phone, name them
+and they get a V7 affordance; otherwise the disposition table in the retirement map is the
+record and the cutover is complete on this axis.
 
 ## 6. Status
 
