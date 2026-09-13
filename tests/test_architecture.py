@@ -1303,7 +1303,13 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
     assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
     globs = (
         ".claude/rules/*.md",
+        ".claude/skills/**/*.md",
+        ".claude/commands/*.md",
+        ".claude/agents/*.md",
+        ".agents/skills/**/*.md",
         "docs/agent-standard/**/*.md",
+        "docs/agents/*.md",
+        "docs/context/*.md",
         "docs/runbooks/*.md",
         "wiki/references/*.md",
         "wiki/gotchas/*.md",

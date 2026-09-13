@@ -39,7 +39,7 @@ Decision filter: *"Does this make the flywheel spin faster?"* If not, push it do
 
 ## Hard constraints (from `CLAUDE.md`)
 1. **Licenses:** Apache 2.0 or MIT only.
-2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (free tier, OpenAI-compat). NeonDB persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 + #649, never reintroduce).
+2. **Cloud LLMs:** Groq → Cerebras → Together cascade (Gemini banned) (free tier, OpenAI-compat). NeonDB persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 + #649, never reintroduce).
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler `factorylm/prd`. Never in committed `.env`.
 5. **Containers:** One per service, `restart: unless-stopped`, healthcheck, pinned image versions.

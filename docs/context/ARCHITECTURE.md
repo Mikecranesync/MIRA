@@ -27,7 +27,7 @@ Cross-cutting concerns: secrets (Doppler `factorylm/prd`), inference (`Inference
 ```
 User phone → Open WebUI → mira-pipeline:9099 → Supervisor (mira-bots/shared/engine.py) → cascade
 ```
-- Cloud cascade: Groq → Cerebras → Gemini (no Anthropic since PR #610 / #649).
+- Cloud cascade: Groq → Cerebras → Together (Gemini banned) (no Anthropic since PR #610 / #649).
 - Local fallback: Open WebUI → qwen2.5vl:7b on Ollama.
 - Picks vision-capable provider when an image is present; skips text-only providers for image requests.
 

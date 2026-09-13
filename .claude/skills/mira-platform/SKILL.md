@@ -103,7 +103,7 @@ Lines that cross these layers do so through the engine. New front doors must con
 
 ### 4.2 Inference + provider cascade
 
-- **PLT-010** `[FATAL]` Never reintroduce Anthropic as an LLM provider. Removed PR #610 (verified by memory). Provider cascade is **Groq → Cerebras → Gemini**.
+- **PLT-010** `[FATAL]` Never reintroduce Anthropic as an LLM provider. Removed PR #610 (verified by memory). Provider cascade is **Groq → Cerebras → Together (Gemini banned)**.
 - **PLT-011** `[WARNING]` Always go through `InferenceRouter.complete()` (`mira-bots/shared/inference/router.py`). Default behavior includes PII sanitization (IP/MAC/SN). Setting `sanitize=False` requires a justified comment in the PR.
 - **PLT-012** `[STYLE]` Single-provider direct calls are a code smell. If you find one in the codebase, file an issue or fix it in the same PR.
 
@@ -172,7 +172,7 @@ See `references/environment-doctrine.md` for the full table.
 
 | Error / symptom | Likely cause | Fix |
 |---|---|---|
-| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Gemini cascade (PLT-010) |
+| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Together (Gemini banned) cascade (PLT-010) |
 | Prod NeonDB write from a feature branch | `prod-guard.sh` bypassed via `MIRA_ALLOW_PROD=1` | Revert the write; rerun against staging |
 | Engine PR merged without smoke test | `smoke-test.yml` skipped | Run smoke against `factorylm.com` + `app.factorylm.com`; rollback if fails |
 | Grounding score drop after merge | A change weakened evidence requirements | Surface in PR, revert if not justified by a feature change |
@@ -185,7 +185,7 @@ Before declaring a feature proposal aligned with `mira-platform`, confirm all of
 
 - [ ] Aligned with the maintenance-intelligence wedge (or explicitly out-of-scope and routed to `mira-saas-scope-guard`).
 - [ ] Slack front door preserved (or new adapter routes through `shared/engine.py`).
-- [ ] Provider cascade preserved (Groq → Cerebras → Gemini; no Anthropic).
+- [ ] Provider cascade preserved (Groq → Cerebras → Together (Gemini banned); no Anthropic).
 - [ ] Environment boundaries respected (no prod psql, no direct VPS docker compose, no feature-branch traffic to `@FactoryLM_Diagnose`).
 - [ ] Secrets via Doppler.
 - [ ] UNS gate preserved (or explicitly evolved through `mira-uns-architecture`).
