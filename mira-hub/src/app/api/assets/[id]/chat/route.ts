@@ -266,28 +266,9 @@ export async function POST(
     return NextResponse.json({ error: "No user message" }, { status: 400 });
   }
 
-  // Ownership pre-check (#2374): verify the caller owns this asset before proceeding.
-  // Returns 404 if the asset is not found for the caller's tenant (not owned).
-  // DB errors do not convert to 404 — they fall through to graceful degradation.
-  try {
-    const c = await pool.connect();
-    try {
-      const ownershipRes = await c.query(
-        `SELECT 1 FROM cmms_equipment WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
-        [id, ctx.tenantId],
-      );
-      if (ownershipRes.rows.length === 0) {
-        return NextResponse.json({ error: "Asset not found" }, { status: 404 });
-      }
-    } finally {
-      c.release();
-    }
-  } catch {
-    // DB error during ownership check — do not convert to 404.
-    // Fall through to let the handler proceed with graceful degradation.
-  }
-
-  // Safety gate — hard stop before touching LLM
+  // Safety gate — hard stop before ownership or LLM. A LOTO phrase must not
+  // 503 because Neon blipped, and the canned stop does not disclose whether
+  // the asset exists.
   const trigger = matchSafetyStop(lastUser.content);
   if (trigger) {
     const enc = new TextEncoder();
@@ -309,6 +290,33 @@ export async function POST(
         "X-Safety-Stop": trigger,
       },
     });
+  }
+
+  // Ownership pre-check (#2374): verify the caller owns this asset before proceeding.
+  // Returns 404 if the asset is not found for the caller's tenant (not owned).
+  // A DB error is 503 — never 404 (would lie) and never fall-through (IDOR).
+  try {
+    const c = await pool.connect();
+    try {
+      const ownershipRes = await c.query(
+        `SELECT 1 FROM cmms_equipment WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [id, ctx.tenantId],
+      );
+      if (ownershipRes.rows.length === 0) {
+        return NextResponse.json({ error: "Asset not found" }, { status: 404 });
+      }
+    } finally {
+      c.release();
+    }
+  } catch {
+    // Fail closed. A DB blip is not proof of ownership — converting it to
+    // 404 would lie, and falling through (#2374 "graceful degradation")
+    // re-opens the IDOR the pre-check exists to close. 503 is retryable and
+    // does not enumerate foreign assets.
+    return NextResponse.json(
+      { error: "Asset ownership could not be verified" },
+      { status: 503 },
+    );
   }
 
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
