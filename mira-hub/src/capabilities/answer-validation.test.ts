@@ -194,6 +194,78 @@ describe("specificity negative controls (E11 — usefulness must survive)", () =
   });
 });
 
+describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () => {
+  it("R1: a disclaimer clause does not exempt an affirmative definition in the SAME sentence", () => {
+    const v = general(
+      "I can't verify the manual, but Q-447-Delta means a communication error.",
+      "What does fault code Q-447-Delta mean?",
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsupported_specificity");
+  });
+
+  it("R1 control: honest non-verification OF the code still passes", () => {
+    expect(
+      general(
+        "I can't verify what Q-447-Delta means on this controller — I don't have documentation for it.",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("R1 control: disclaimer followed by general (non-definition) guidance passes", () => {
+    expect(
+      general(
+        "I can't verify that code, but communication faults in general show up as bus timeouts — check the cable first.",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("R2: Markdown bold around the token does not disable specificity detection", () => {
+    const v = general("**Q-447-Delta** means a communication error.", "What does fault code Q-447-Delta mean?");
+    expect(v.ok).toBe(false);
+  });
+
+  it("R2: backtick code-span around the token does not disable detection", () => {
+    const v = general("`ZX-9987` indicates a lost encoder.", "What does fault code ZX-9987 mean?");
+    expect(v.ok).toBe(false);
+  });
+
+  it("R2: bold inside an unsafe answer does not disable the hazard floor", () => {
+    const v = grounded("It is **safe to reset** the fault while the machine is **energized**.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+  });
+
+  it("R3: a cross-sentence imperative to stay energized is rejected", () => {
+    const v = grounded("Yes, resetting is permitted [1]. Keep the machine energized during the reset.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+  });
+
+  it("R3: 'leave it powered on while you work' is rejected", () => {
+    const v = grounded("Leave the panel powered on while you clear the fault.");
+    expect(v.ok).toBe(false);
+  });
+
+  it("R3: 'the machine must remain energized during the reset' is rejected", () => {
+    const v = grounded("The machine must remain energized during the reset procedure [1].");
+    expect(v.ok).toBe(false);
+  });
+
+  it("R3 control: the prohibition form passes", () => {
+    expect(grounded("Do not keep the machine energized during the reset — lock it out first.").ok).toBe(true);
+    expect(grounded("Never leave the panel powered on while you work inside it.").ok).toBe(true);
+  });
+
+  it("R3 control: educational framing about why energized work is dangerous passes", () => {
+    expect(
+      grounded(
+        "The machine must not remain energized during the reset; NFPA 70E requires isolation and verified zero energy.",
+      ).ok,
+    ).toBe(true);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);

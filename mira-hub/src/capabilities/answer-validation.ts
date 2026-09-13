@@ -99,6 +99,21 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     id: "bypass-safety-device",
     re: /\b(?:(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)safe|fine|ok(?:ay)?|acceptable|permitted|you\s+(?:can|may)|go\s+ahead)\b[^.!?\n]{0,50}\b(?:bypass|defeat|jumper|disable|overrid\w+)\w*\b[^.!?\n]{0,40}\b(?:interlock|guard|safety|light\s+curtain|e[-\s]?stop)\b/i,
   },
+  // R3 (Codex finding, PR #3792 review): the unsafe instruction phrased as an
+  // IMPERATIVE, possibly in a different sentence from the affirmation —
+  // "Yes, resetting is permitted. Keep the machine energized during the
+  // reset." Negations ("do not keep…", "never leave…") are excluded by
+  // lookbehind; the temporal tail keeps the pattern bounded.
+  {
+    id: "imperative-stay-energized",
+    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b/i,
+  },
+  // "the machine must/should/can remain energized …" — the prohibition form
+  // ("must NOT remain") fails the adjacency naturally and passes.
+  {
+    id: "must-remain-energized",
+    re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b/i,
+  },
 ];
 
 /* ------------------------------------------------------------------------ *
@@ -164,24 +179,33 @@ function codeMeaningViolation(
   // (research §"Correct the specificity gate": no uncontrolled splitting).
   const sentences = answer.split(/(?<=[.!?])\s+|\n+/);
   for (const s of sentences) {
-    if (NON_VERIFICATION.test(s)) continue;
     const inFaultContext = FAULT_CONTEXT.test(s);
-    for (const tok of s.match(FAULT_CODE_TOKEN) ?? []) {
-      if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
-      const esc = escapeRe(tok);
-      // "Q-447-Delta (usually) means/indicates/is a …" — a definition, hedged
-      // or not. Hedges do not rescue an invented meaning.
-      const defFrame = new RegExp(
-        `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
-        "i",
-      );
-      // "the most likely reason you're seeing 'Q-447-Delta' is …"
-      const causeFrame = new RegExp(
-        `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
-        "i",
-      );
-      if (defFrame.test(s) || causeFrame.test(s)) {
-        return { code: tok, excerpt: s.slice(0, 160) };
+    // R1 (Codex finding, PR #3792 review): the honest-uncertainty exemption is
+    // CLAUSE-scoped, not sentence-scoped. "I can't verify the manual, but
+    // Q-447-Delta means a communication error" contains a disclaimer AND a
+    // separate affirmative definition — the disclaimer must not exempt it.
+    // "I can't verify what Q-447-Delta means" keeps its exemption because the
+    // non-verification and the definition frame share one clause.
+    const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
+    for (const clause of clauses) {
+      if (NON_VERIFICATION.test(clause)) continue;
+      for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
+        if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
+        const esc = escapeRe(tok);
+        // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
+        // hedged or not. Hedges do not rescue an invented meaning.
+        const defFrame = new RegExp(
+          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          "i",
+        );
+        // "the most likely reason you're seeing 'Q-447-Delta' is …"
+        const causeFrame = new RegExp(
+          `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
+          "i",
+        );
+        if (defFrame.test(clause) || causeFrame.test(clause)) {
+          return { code: tok, excerpt: s.slice(0, 160) };
+        }
       }
     }
   }
@@ -219,10 +243,17 @@ export function validateAnswer(opts: {
   const { answerText, question, general, served, refused } = opts;
   if (!served || !answerText.trim()) return { ok: true };
 
+  // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
+  // Markdown emphasis cannot break token adjacency ("**Q-447-Delta** means").
+  // Asterisks and backticks appear in no fault-code token and no safety
+  // phrase; underscores are left alone (they occur inside real tokens).
+  // Detection-only — the displayed/persisted text is never this copy.
+  const scanText = answerText.replace(/[*`]/g, "");
+
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
   for (const p of HAZARD_AFFIRMATIONS) {
-    const m = p.re.exec(answerText);
+    const m = p.re.exec(scanText);
     if (m) {
       return {
         ok: false,
@@ -239,7 +270,7 @@ export function validateAnswer(opts: {
   if (!general || refused) return { ok: true };
 
   for (const p of FABRICATED_DOC_PATTERNS) {
-    const m = p.re.exec(answerText);
+    const m = p.re.exec(scanText);
     if (m) {
       return {
         ok: false,
@@ -251,7 +282,7 @@ export function validateAnswer(opts: {
     }
   }
 
-  const cm = codeMeaningViolation(answerText, question);
+  const cm = codeMeaningViolation(scanText, question);
   if (cm) {
     return {
       ok: false,
