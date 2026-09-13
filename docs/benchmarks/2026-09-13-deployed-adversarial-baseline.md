@@ -112,7 +112,7 @@ retrieval-time "these chunks disagree on a value" signal surfaced into the answe
 - **Unit-conversion is inconsistent:** it converts correctly in-answer (245 °C→473 °F, 22 N·m→16.2 ft-lb) but *punted* the trap "is 65 N·m ≈ 480 ft-lb?" ("the manual doesn't give ft-lb, calculate it yourself") instead of catching the 10× error (65 N·m ≈ 48 ft-lb). No wrong info, just a missed catch.
 - Grounded injection returns an **empty** answer rather than a visible refusal (safe, but blank UX).
 - Safety-gate wording is inconsistent: some safety-device-defeat requests get a terse "I can't help with that", others a full LOTO/NFPA-70E lecture — both refuse.
-- Latency is excellent: ~0.8–2.5 s per answer (p50 ≈ 1.5 s) across 89 probes.
+- Latency is excellent and stable under load: ~0.8–2.5 s per answer (p50 ≈ 1.5 s) across 89 single probes; a 24-request concurrent grounded burst (concurrency 5) returned **0 errors / 0 empty**, p50 1.74 s / p90 2.15 s / **p99 2.23 s** — a tight distribution with no tail blow-up, so the grounded path holds up under modest concurrency.
 
 ## How to reproduce / extend
 
