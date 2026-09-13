@@ -2,12 +2,16 @@
 # fleet-parity-check.sh — read-only drift check for the FactoryLM fleet standard.
 #
 # Inspects; never owns or mutates (docs/agent-standard/rollout.md Phase 5: "a future shared
-# parity check should inspect, not own, the system"). It verifies that the canonical standard
-# exists and that every provider entry point links to it, then prints the §11 verdict at an
-# exact commit so a closeout can cite it.
+# parity check should inspect, not own, the system"). It verifies ONE thing: that the canonical
+# standard exists and that every provider entry point in the repository links to it — the
+# adapter WIRING. That is one input to the FLEET_STANDARD.md §11 machine verdict
+# (STANDARD / PARTIAL / FAIL), never that verdict itself: §11 also needs a health-checked
+# CodeGraph, wiki access, Git identity/auth, worktree compliance, verification commands, and
+# managed secrets, none of which a file scan can prove. So this script deliberately uses a
+# vocabulary that cannot be mistaken for §11:
 #
 #   usage: tools/fleet-parity-check.sh [--repo <path>] [--node <alpha|bravo|charlie|...>]
-#   exit:  0 = STANDARD   2 = PARTIAL (only node-overlay checks differ)   1 = FAIL
+#   exit:  0 = WIRING-OK   2 = WIRING-OK-NODE-GAPS (only node-overlay files differ)   1 = WIRING-BROKEN
 #
 # Bash 3.2-compatible on purpose (macOS ships 3.2); no associative arrays, no mapfile.
 # Fixed-string greps only — `grep -E '\b'` matches nothing on this platform.
@@ -124,7 +128,8 @@ else
   soft "node overlay: node not identified (pass --node)" "NODE OVERLAY"
 fi
 
-# 5. Verdict at an exact commit (§11: parity evidence is recorded at an exact commit).
+# 5. Verdict at an exact commit (§11 asks that parity evidence be recorded at an exact commit;
+#    this is the wiring slice of that evidence).
 #    Floor: sections 1–4 always emit at least this many checks on a real tree (5 canonical +
 #    4 entry points + 2 budgets + ≥4 resolved paths + 5 markers + 2 node = 22). Fewer means a
 #    section was skipped, and a checker that can pass by skipping is not a checker.
@@ -136,10 +141,11 @@ echo "---"
 echo "repo:   $REPO"
 echo "head:   $HEAD_SHA"
 echo "checks: $total  fail: $fail  node-diff: $partial"
+echo "scope:  repository adapter wiring only — one input to FLEET_STANDARD.md §11, not the §11 machine verdict"
 if [ "$fail" -gt 0 ]; then
-  echo "VERDICT: FAIL"; exit 1
+  echo "VERDICT: WIRING-BROKEN"; exit 1
 elif [ "$partial" -gt 0 ]; then
-  echo "VERDICT: PARTIAL"; exit 2
+  echo "VERDICT: WIRING-OK-NODE-GAPS"; exit 2
 else
-  echo "VERDICT: STANDARD"; exit 0
+  echo "VERDICT: WIRING-OK"; exit 0
 fi

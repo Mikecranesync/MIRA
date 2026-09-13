@@ -52,7 +52,8 @@ tags: [charlie, bots, paperclip, qdrant, vision-zta]
 Evidence recorded at PR #3755 head `e852f1229` by Claude `mira-23`; re-run
 `tools/fleet-parity-check.sh --node charlie` to refresh.
 
-- **Parity checker:** `STANDARD` on the Phase-2 branch (16/16). CodeGraph preflight `READY`
+- **Wiring checker:** `WIRING-OK` on the Phase-2 branch (adapter wiring only — one §11 input, not the
+  §11 verdict; this node is **not** §11-STANDARD while the drift below is open). CodeGraph preflight `READY`
   (CLI 0.9.5, 55,038 nodes / 112,103 edges, canary healthy). `AGENTS.md` present, `wiki/hot.md`
   readable, `gh auth` PASS.
 - **Disk headroom is the live constraint, not RAM.** `/` had **29 GiB** free on 2026-07-18,

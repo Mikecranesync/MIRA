@@ -27,8 +27,10 @@ This rule is the Claude adapter's pointer to it. It links; it does not restate.
 ## Mechanical check
 
 `tools/fleet-parity-check.sh` verifies, read-only, that the canonical files exist and that the
-adapter entry points (`AGENTS.md`, root `CLAUDE.md`, this rule) point at them. It inspects; it
-never owns or mutates. Run it in a closeout when the task touched any instruction file.
+adapter entry points (`AGENTS.md`, root `CLAUDE.md`, this rule) point at them. Its verdict is
+`WIRING-OK` / `WIRING-OK-NODE-GAPS` / `WIRING-BROKEN` — adapter wiring only, one input to the §11
+machine verdict and never a substitute for it. It inspects; it never owns or mutates. Run it in a
+closeout when the task touched any instruction file.
 
 ## When this applies
 
