@@ -1,6 +1,6 @@
 # MIRA — Product & Architecture Operating Guide
 
-> Companion to root `CLAUDE.md` (which is the **build-state + repo map**). This file is the **product rules** Claude Code must honor while editing this codebase.
+> Companion to root `AGENTS.md` (the **provider-neutral project map**, imported by the thin root `CLAUDE.md` adapter). This file is the **product rules** Claude Code must honor while editing this codebase.
 >
 > **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
@@ -212,7 +212,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Cross-references
 
 - `docs/agent-standard/FLEET_STANDARD.md` + `providers/claude.md` — provider-neutral fleet standard; this file is a Claude adapter under it (`.claude/rules/fleet-standard.md`)
-- Root `CLAUDE.md` — build state, ports, env vars, repo map
+- Root `AGENTS.md` — the provider-neutral project map (root `CLAUDE.md` is a thin adapter that imports it); ports/containers → compose files, nodes → `deployment/network.yml`, env vars → `docs/env-vars.md`, system-wide references → `CONTEXT-MAP.md`
 - `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)

@@ -6,7 +6,7 @@ Updated: 2026-06-21
 ## Beta Gate (North Star) — status
 
 - **Gate:** a stranger uploads their own equipment manual, asks a real troubleshooting question, and gets a grounded, cited answer — zero manual fixing.
-- **Status (2026-06-17): PASSING on deploy truth.** xfail removed (#2077); `tests/beta/beta_ready_upload_retrieval_citation.py` is now a real assertion, CI-enforced by `beta-gate.yml` (weekly Mon 07:00 UTC + gate-path PRs) against a real stranger provisioned on staging Neon. Upload→retrieval gap (#1592) closed.
+- **Status (2026-09-07): MET on the retrieval path; NOT MET on the product surface.** (Was "PASSING on deploy truth", 2026-06-17.) The backend half still holds — the upload→retrieval gap is closed (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077), and `tests/beta/beta_ready_upload_retrieval_citation.py` is a real assertion CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. **But a green CI run is not the gate.** Observed on the live product 2026-09-07: no composer on the home screen to ask anything; the first message returns `Chat unavailable (412)` in a permanent banner with no retry; on mobile, cold launch drops into the last thread and `New chat` is disabled. A stranger cannot reach a cited answer through the interface — the test measures the pipe, not the product. **The gate is met again only when the stranger walk passes on a real device** (`docs/prd/2026-09-07-factorylm-ui-ux-v1.md` §2; evidence `wiki/reviews/2026-09-07-app.factorylm.com-ux-recon-off-base.md`, `docs/audits/2026-09-07-mobile-recon-companion.md`). Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path; `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. See `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
 
 ## Known Broken / Incomplete
 
@@ -45,6 +45,20 @@ Updated: 2026-06-21
 | NVIDIA Nemotron reranker     | **Active**  | Enabled when NVIDIA_API_KEY set (feature-flagged) |
 | Kokoro TTS                   | Post-MVP    | Nice-to-have                |
 | CMMS integration             | **Active**  | Atlas CMMS (mira-cmms/)     |
+
+## Deferred / Archived Modules
+
+(Moved here from root `CLAUDE.md` 2026-09-13; this is the canonical list.)
+
+| Module | Status | Why | Where to find it |
+|---|---|---|---|
+| `mira-hud` | **Archived 2026-04-19** | AR HMI demo, hardware-gated (Ignition + MCI badge reader), not in any compose, not customer-shippable in MVP window | branch `archive/mira-hud-2026-04` |
+| `mira-prototype` | **Archived 2026-04-19** | Pre-VIM Flask MJPEG prototype, replaced by mira-pipeline + qwen2.5vl | branch `archive/mira-prototype-2026-04` |
+| `mira-sidecar` | **Removed from prod 2026-05-20** | ChromaDB RAG, superseded by mira-pipeline (ADR-0008); not in `docker-compose.saas.yml`. Directory deletion tracked separately (convergence Gate 11). | still in repo |
+| `mira-connect` | **Deferred to "Config 4"** (post-MVP) | Modbus TCP / PLC drivers; not in MVP critical path | still in repo, dormant |
+| `mira-relay` | **Active SaaS infrastructure** (NOT deferred) | Cloud endpoint for Ignition factory→cloud tag streaming; powers MIRA Connect activation flow on `factorylm.com`. Lives in `docker-compose.saas.yml` only. | still in repo + saas.yml |
+
+To restore an archived module: `git checkout archive/<branch> -- <module-dir>` then commit on a new branch.
 
 ## Abandoned Approaches
 

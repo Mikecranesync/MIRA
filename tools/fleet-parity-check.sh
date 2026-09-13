@@ -41,8 +41,11 @@ for f in "$STD" docs/agent-standard/rollout.md docs/agent-standard/README.md \
   if [ -f "$f" ]; then pass "canonical: $f"; else flunk "canonical: $f missing" "UNIVERSAL DRIFT"; fi
 done
 
-# 2. Entry points link to the standard ("link, do not duplicate" — rollout.md Phase 2)
-for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
+# 2. Entry points link to the standard ("link, do not duplicate" — rollout.md Phase 2).
+#    AGENTS.md is the provider-neutral root map and must link the standard itself; root
+#    CLAUDE.md is a thin adapter that reaches it by importing AGENTS.md (`@AGENTS.md`), so the
+#    check there is the import, not a second copy of the link.
+for f in AGENTS.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
   if [ ! -f "$f" ]; then
     flunk "entry point: $f missing" "UNIVERSAL DRIFT"
   elif grep -qF "$STD" "$f"; then
@@ -51,6 +54,22 @@ for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; 
     flunk "entry point: $f does not link to $STD" "UNIVERSAL DRIFT"
   fi
 done
+if [ ! -f CLAUDE.md ]; then
+  flunk "entry point: CLAUDE.md missing" "UNIVERSAL DRIFT"
+elif grep -qxF '@AGENTS.md' CLAUDE.md; then
+  if [ -f AGENTS.md ]; then
+    pass "entry point: CLAUDE.md imports AGENTS.md (@AGENTS.md)"
+  else
+    flunk "entry point: CLAUDE.md imports AGENTS.md but AGENTS.md is missing" "UNIVERSAL DRIFT"
+  fi
+else
+  flunk "entry point: CLAUDE.md does not import AGENTS.md (expected a line reading exactly '@AGENTS.md')" "UNIVERSAL DRIFT"
+fi
+# A thin adapter that grows back into a map is the drift this whole layout exists to prevent.
+n=$(wc -l < CLAUDE.md | tr -d ' ')
+if [ "$n" -le 80 ]; then pass "CLAUDE.md is a thin adapter ($n lines)"; else flunk "CLAUDE.md is $n lines — adapter budget is 80; project truth belongs in AGENTS.md or its targets" "UNIVERSAL DRIFT"; fi
+n=$(wc -l < AGENTS.md | tr -d ' ')
+if [ "$n" -le 160 ]; then pass "AGENTS.md is a bootloader ($n lines)"; else flunk "AGENTS.md is $n lines — bootloader budget is 160; deep detail belongs in canonical docs" "UNIVERSAL DRIFT"; fi
 
 # 2b. Every docs/agent-standard/*.md path an entry point names must resolve. A pointer to a file
 #     that does not exist is the same defect as the old '.Codex/skills/' — green text, dead link.

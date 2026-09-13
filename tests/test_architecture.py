@@ -1053,21 +1053,22 @@ def test_tag_regex_extractor_catches_desync():
 
 
 # ---------------------------------------------------------------------------
-# Contract 12: the CLAUDE.md Container Map matches the compose files
+# Contract 12: the docs/environments.md Container Map matches the compose files
 # ---------------------------------------------------------------------------
 # Drift finding D-2 (CU-02): the hand-kept container map rotted (phantom
 # mira-docling, wrong mira-mcp ports) and agents planned against it. CU-02 made
 # the map GENERATED (tools/gen_container_map.py, doctrine section 11 — prefer
 # machine-validated facts); this contract is the permanent re-drift fence CU-06
 # wires into CI: any compose change that is not re-rendered into CLAUDE.md
-# fails here. Runs the script's --check mode via subprocess (sys.executable,
+# fails here. (The map lived in root CLAUDE.md until 2026-09-13, when CLAUDE.md became a
+# thin adapter over AGENTS.md; it now renders into docs/environments.md.) Runs the script's --check mode via subprocess (sys.executable,
 # the repo's established cross-platform shape — see tests/test_machine_print_pack.py).
 
 _GEN_CONTAINER_MAP = "tools/gen_container_map.py"
 
 
 def test_container_map_matches_compose():
-    """CLAUDE.md's generated Container Map is byte-identical to regeneration."""
+    """docs/environments.md's generated Container Map is byte-identical to regeneration."""
     result = subprocess.run(
         [sys.executable, str(_ROOT / _GEN_CONTAINER_MAP), "--check"],
         capture_output=True,
@@ -1076,7 +1077,7 @@ def test_container_map_matches_compose():
         cwd=str(_ROOT),
     )
     assert result.returncode == 0, (
-        "The root CLAUDE.md Container Map disagrees with the compose files. "
+        "The docs/environments.md Container Map disagrees with the compose files. "
         "Regenerate it (never hand-edit): python3 tools/gen_container_map.py --write\n\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
@@ -1094,10 +1095,10 @@ def _load_gen_container_map():
 def test_container_map_checker_catches_drift():
     """The Contract 12 comparison must FAIL on a mutated map (red-first proof)."""
     mod = _load_gen_container_map()
-    text = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    text = (_ROOT / "docs/environments.md").read_text(encoding="utf-8")
     section = mod.generate_section()
     parts = mod._split_claude_md(text)
-    assert parts is not None, "CLAUDE.md lost its Container Map section/markers"
+    assert parts is not None, "docs/environments.md lost its Container Map section/markers"
     _, current, _ = parts
     # The committed section matches regeneration (same equality --check uses)...
     assert current.strip("\n") == section.strip("\n")
