@@ -1262,22 +1262,25 @@ _ACTIVE_INSTRUCTION_DOCS = (
 )
 # CONTRACT — read this before "improving" it. This fence is SYNTACTIC, deliberately.
 #
-# It catches the two forms in which a banned provider has actually re-entered this
-# repository's instructions (#3761 rounds 9–13: RULES.md, THEORY_OF_OPERATIONS.md,
+# It catches the three forms in which a banned provider has actually re-entered this
+# repository's instructions (#3761 rounds 9–17: RULES.md, THEORY_OF_OPERATIONS.md,
 # ARCHITECTURE.md, the master plan, the mira-platform skill, six docs/context files, four
 # runbooks — every one of them was one of these):
 #   (1) a PROVIDER LIST — two or more provider names joined by → -> + , / or "then" — that
 #       contains Gemini, Anthropic, or Claude, e.g. "Groq → Cerebras → Gemini",
 #       "cascade: Gemini→Groq→Cerebras→Claude", "Groq + Cerebras + Gemini";
-#   (2) a PROVISIONING instruction that puts GEMINI_API_KEY in prod or in the cascade.
-# It does NOT interpret prose. "The diagnostic cascade falls back to Gemini" is a sentence a
-# human reads; a regex that claims to judge English contradictions ("Gemini is banned. The
-# cascade falls back to Gemini") is a false instrument, and rounds 14–16 of #3761 showed that
-# each such heuristic is defeated by the next crafted sentence. The list form is unambiguous:
-# a banned name inside a provider list is a mandate, full stop, and no word elsewhere on the
-# line can exempt it. The only exemption is a list that belongs to a NAMED CI instrument in
-# the same clause (code-review.yml / staging-gate / pr_self_fix / a "review cascade" or
-# "judge cascade"), because those instruments legitimately keep Gemini as a tooling fallback.
+#   (2) a PROVISIONING instruction that puts GEMINI_API_KEY in prod or in the cascade;
+#   (3) a SENTENCE-FORM membership statement using a bounded, enumerated set of verb patterns:
+#       falls-back-to, use-X-as, routes-to — e.g. "the cascade falls back to Gemini",
+#       "use Gemini as the fallback", "route the cascade to Claude".
+#       This is NOT general English parsing. Only these three verb forms are caught;
+#       any novel phrasing outside the enumerated set is out of scope by design.
+# ALL three forms use the same CLAUSE-SCOPED exemption: when the provider name sits in a
+# clause that also contains a NAMED CI instrument (code-review.yml / staging-gate /
+# pr_self_fix / adversarial-review) or a generic CI phrase ("judge cascade", "review
+# cascade"), that clause is exempted — because those instruments legitimately keep Gemini as
+# a tooling fallback. A CI name in a DIFFERENT clause (separated by . ; |) does NOT exempt
+# the clause that contains the product diagnostic statement.
 _PROVIDER_NAME = r"(?<![./\w-])(?:groq|cerebras|together|gemini|anthropic|claude(?!\s+code\b)|openai|ollama|open webui)(?![\w./-])"
 _LIST_JOIN = r"\s*(?:→|->|⇒|\+|,|\bthen\b)\s*"  # no "/" — it is a path separator far more often than a list joiner
 _PROVIDER_LIST = re.compile(rf"{_PROVIDER_NAME}(?:{_LIST_JOIN}{_PROVIDER_NAME})+", re.I)
@@ -1298,6 +1301,14 @@ _BANNED_PROVISION = re.compile(
     r"|(factorylm/prd|cascade)[^\n]*GEMINI_API_KEY",
     re.I,
 )
+# Sentence-form membership (form 3). Bounded enumeration: falls-back-to / use-X-as /
+# routes-to. Exemption is identical to the list form — clause-scoped CI instrument check.
+_BANNED_FALLBACK_SENTENCE = re.compile(
+    r"falls?\s+back\s+to\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))"
+    r"|use\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))\s+as"
+    r"|route(?:s|d)?\s+(?:[a-z]+\s+){0,4}to\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))",
+    re.I,
+)
 
 
 def _states_banned_cascade(line: str) -> bool:
@@ -1313,7 +1324,15 @@ def _states_banned_cascade(line: str) -> bool:
         end_candidates = [norm.find(c, m.end()) for c in ".;|"]
         end = min([x for x in end_candidates if x != -1] or [len(norm)])
         clause = norm[start:end]
-        if _CI_NAMED_INSTRUMENT.search(norm) or _CI_PHRASE_IN_CLAUSE.search(clause):
+        if _CI_NAMED_INSTRUMENT.search(clause) or _CI_PHRASE_IN_CLAUSE.search(clause):
+            continue
+        return True
+    for m in _BANNED_FALLBACK_SENTENCE.finditer(norm):
+        start = max(norm.rfind(c, 0, m.start()) for c in ".;|") + 1
+        end_candidates = [norm.find(c, m.end()) for c in ".;|"]
+        end = min([x for x in end_candidates if x != -1] or [len(norm)])
+        clause = norm[start:end]
+        if _CI_NAMED_INSTRUMENT.search(clause) or _CI_PHRASE_IN_CLAUSE.search(clause):
             continue
         return True
     return False
@@ -1339,7 +1358,18 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
         "`GEMINI_API_KEY` — same as prod is fine",
     ):
         assert _states_banned_cascade(line), line
-    # negatives: no list, or a list that belongs to a named CI instrument, or a CI secret
+    # (3) sentence-form membership — falls-back/use/route verb forms; exemption is clause-scoped
+    # so a CI name in an UNRELATED clause does NOT exempt the product diagnostic statement
+    for line in (
+        "The diagnostic cascade falls back to Gemini",
+        "The diagnostic cascade falls back to Claude when Together is unavailable",
+        "Use Gemini as the final diagnostic fallback",
+        "Update code-review.yml; set the product diagnostic cascade to Groq -> Gemini",
+        "Route the diagnostic cascade to Gemini when Together fails",
+    ):
+        assert _states_banned_cascade(line), line
+    # negatives: no list, or a list/sentence whose CI-instrument exemption sits in the SAME
+    # clause as the provider name; a CI name in a different clause does NOT exempt (see (3) above)
     for line in (
         "Groq → Cerebras → Together cascade; Gemini is banned",
         "cascade: Groq → Cerebras → Together — Gemini and Anthropic banned",
@@ -1351,8 +1381,6 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
         "- `.claude/rules/...` / memory `feedback_llm_cascade_default.md`",
         "`ANTHROPIC_API_KEY` | Print-vision ONLY — the retained Claude path of PrintSense. NOT in the cascade",
         "Claude Code is for engineering, not for production diagnostic responses",
-        # prose, by contract, is not this fence's job — a human reads it:
-        "The diagnostic cascade falls back to Gemini",
     ):
         assert not _states_banned_cascade(line), line
     globs = (
