@@ -17,7 +17,7 @@ This is the **master plan that ties the existing specs and execution plans toget
 
 1. Postgres-first. No Neo4j, no Memgraph, no TerminusDB until Phase 13 and only if proven necessary.
 2. No LangChain, no TensorFlow, no n8n. PRD §4.
-3. Inference cascade: Groq → Cerebras → Gemini. **Never Anthropic** (removed PR #610).
+3. Inference cascade: Groq → Cerebras → Together (Gemini banned). **Never Anthropic** (removed PR #610).
 4. UNS compliance: ISA-95 ltree paths via `mira-crawler/ingest/uns.py` builders. No hand-formatted paths.
 5. Ignition-first for PLC data. **No customer-shipped MIRA container opens a Modbus / OPC-UA / EtherNet-IP socket** to the plant. `plc/live_monitor.py` and `plc/live-plc-bridge/bridge.py` are bench-only. See `docs/mira-ignition-secure-architecture.md` §8 and `.claude/rules/fieldbus-readonly.md`.
 6. UNS Location-Confirmation Gate is non-negotiable on chat surfaces (Slack, Telegram, email, generic web). Direct connections (Ignition cloud-chat, MQTT/Sparkplug, PLC bridge, Hub display, QR deep-link) skip the gate but MUST reject turns missing a UNS identifier. See `.claude/rules/direct-connection-uns-certified.md`.

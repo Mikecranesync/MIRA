@@ -1319,6 +1319,16 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
     docs = list(_ACTIVE_INSTRUCTION_DOCS)
     for g in globs:
         docs += sorted(p.relative_to(_ROOT).as_posix() for p in _ROOT.glob(g))
+    # Everything the bootloader points at is, by definition, active doctrine — derive it so a
+    # newly required document cannot escape the guard (#3761 round-12 review).
+    bootloader = (_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    docs += sorted(
+        p
+        for p in set(re.findall(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*\.md)`", bootloader))
+        if (_ROOT / p).is_file()
+    )
+    historical = {"docs/CHANGELOG.md", "wiki/hot.md"}  # frozen archive; running session log
+    docs = [d for d in dict.fromkeys(docs) if d not in historical]
     hits = []
     for rel in docs:
         path = _ROOT / rel
