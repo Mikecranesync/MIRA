@@ -45,6 +45,14 @@ const nextConfig: NextConfig = {
   // /hub/ → /hub, producing an infinite redirect loop on the basePath root.
   // Forcing trailingSlash: true keeps Next.js consistent with nginx.
   trailingSlash: true,
+  // Exclude mira-bridge runtime data from the standalone output. The bridge's
+  // data directory contains SQLite WAL files that should never be baked into
+  // the build artifact (#3762). Use a catch-all route glob since the tracer
+  // includes these files for all pages that statically import anything from
+  // the monorepo root (even though no page directly imports from mira-bridge).
+  outputFileTracingExcludes: {
+    "*": ["../mira-bridge/**", "**/*.db*"],
+  },
   // Bare-domain friendliness when the hub fronts the whole host (tailscale
   // serve / phone testing): / is outside basePath and 404s. In prod nginx owns
   // / (mira-web), so this redirect is never reached there.
