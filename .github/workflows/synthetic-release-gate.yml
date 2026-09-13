@@ -119,40 +119,30 @@ jobs:
           FLM_EVAL_NOTEBOOK_ID: ${{ secrets.FLM_EVAL_NOTEBOOK_ID || 'offline' }}
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
           JUDGE_MODEL: groq
+        id: gate
         run: |
+          set +e
           python evals/scripts/release_gate.py \
             --sha "${{ steps.resolve.outputs.target_sha }}" \
             --pr "${{ steps.resolve.outputs.pr_number }}" \
             --offline-only \
             --baseline evals/results/f06922ac6-cov100/ \
             --run-id "gh-${{ github.run_number }}"
-
-      # Report on the gate result
-      - name: Capture gate verdict
-        if: always()
-        id: verdict
-        run: |
-          set -euo pipefail
-          # The gate creates evals/results/<sha>-gate-<runid>/report.txt
-          # Find the most recent report and extract the verdict line
-          latest_report="$(find evals/results -name 'report.txt' -type f -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)"
-          if [ -z "$latest_report" ] || [ ! -f "$latest_report" ]; then
-            echo "verdict=UNKNOWN" >> "$GITHUB_OUTPUT"
-            echo "No report found"
-            exit 0
-          fi
-
-          verdict_line="$(grep -oP '^HOLD|^RELEASE' "$latest_report" || echo 'UNKNOWN')"
-          if [ "$verdict_line" = "HOLD" ]; then
-            verdict="HOLD"
-          elif [ "$verdict_line" = "RELEASE" ]; then
-            verdict="PASS"
-          else
-            verdict="UNKNOWN"
-          fi
-
+          code=$?
+          set -e
+          # The gate's EXIT CODE is the canonical verdict channel (0 PASS /
+          # 3 HOLD / 4 INFRA_FAILURE) — never re-derived by parsing report text.
+          case "$code" in
+            0) verdict="PASS" ;;
+            3) verdict="HOLD" ;;
+            *) verdict="INFRA_FAILURE" ;;
+          esac
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-          echo "Verdict: $verdict"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "Gate exit $code -> $verdict"
+          # HOLD is a successful MEASUREMENT of a gated product — the advisory
+          # job stays green on 0/3 and fails loudly only on infrastructure.
+          if [ "$code" != "0" ] && [ "$code" != "3" ]; then exit "$code"; fi
 
       - name: Post PR comment (if PR number known)
         if: always() && steps.resolve.outputs.pr_number != '' && hashFiles('evals/results/*/report.txt') != ''
@@ -184,7 +174,7 @@ jobs:
           cat > /tmp/release_gate_comment.md << 'EOF'
           ## Synthetic Release Gate
 
-          **Verdict:** ${{ steps.verdict.outputs.verdict }}
+          **Verdict:** ${{ steps.gate.outputs.verdict }}
 
           **SHA:** ${{ steps.resolve.outputs.target_sha }}
 

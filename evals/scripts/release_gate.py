@@ -272,28 +272,39 @@ def main() -> int:
         planned_stages=planned_stages,
     )
 
-    # Stage execution
+    # Stage execution — every stage records a status; the verdict below is
+    # refused when execution was partial (§19: never convert INFRA/partial to PASS).
+    # ok | gate_fail | blocked | infra_fail | skipped_offline
+    stage_status: dict[str, str] = {}
     report_exit_code = None
 
     # STAGE 1: drift_check
     logger.info("--- Stage 1: drift_check ---")
     cmd = build_drift_check_cmd(run_dir)
     exit_code, _ = run_stage("drift_check", cmd, logs_dir, offline_only)
+    stage_status["drift_check"] = "ok" if exit_code == 0 else "infra_fail"
     if exit_code != 0:
         logger.error(f"drift_check failed with exit {exit_code}")
 
     # STAGE 2: run_technician + safety
     if offline_only:
-        logger.info("--- Stage 2: run_technician (OFFLINE, skipped) ---")
-        logger.info("Using archived results from baseline")
+        logger.info("--- Stage 2: run_technician (OFFLINE, skipped by design) ---")
+        if baseline:
+            logger.info("Using archived results from baseline")
+            stage_status["technician_safety"] = "skipped_offline"
+        else:
+            logger.error("offline mode without --baseline: nothing to score")
+            stage_status["technician_safety"] = "blocked"
     else:
         logger.info("--- Stage 2: run_technician + safety ---")
         can_run, infra_err = run_technician_infra_check()
         if not can_run:
             logger.error(f"run_technician BLOCKED: {infra_err}")
+            stage_status["technician_safety"] = "blocked"
         else:
             cmd = build_run_technician_cmd(run_dir, cases)
             exit_code, _ = run_stage("run_technician", cmd, logs_dir, offline_only)
+            stage_status["technician_safety"] = "ok" if exit_code == 0 else "infra_fail"
             if exit_code != 0:
                 logger.error(f"run_technician failed with exit {exit_code}")
 
@@ -315,45 +326,73 @@ def main() -> int:
     can_run, infra_err = judge_baseline_infra_check()
     if not can_run and not offline_only:
         logger.error(f"judge_baseline BLOCKED: {infra_err}")
+        stage_status["judge_baseline"] = "blocked"
     else:
         cmd = build_judge_baseline_cmd(run_dir)
         exit_code, _ = run_stage("judge_baseline", cmd, logs_dir, offline_only)
-        if exit_code != 0:
+        if exit_code == 0:
+            stage_status["judge_baseline"] = "ok"
+        elif offline_only and (run_dir / "scores" / "_summary.json").exists():
+            # Offline: the archived scores ARE the judged corpus. A judge that
+            # cannot re-judge (e.g. no API key) is acceptable here ONLY because
+            # the summary it would produce already exists in the run dir.
+            logger.info(
+                f"judge_baseline exited {exit_code}; archived scores/_summary.json present (offline) — accepted"
+            )
+            stage_status["judge_baseline"] = "ok"
+        else:
             logger.error(f"judge_baseline failed with exit {exit_code}")
+            stage_status["judge_baseline"] = "infra_fail"
 
     # STAGE 4: report
     logger.info("--- Stage 4: report ---")
     cmd = build_report_cmd(run_dir, baseline)
     exit_code, _ = run_stage("report", cmd, logs_dir, offline_only)
     report_exit_code = exit_code
-    if exit_code not in (0, 3):
+    if exit_code == 0:
+        stage_status["report"] = "ok"
+    elif exit_code == 3:
+        stage_status["report"] = "gate_fail"
+    else:
         logger.error(f"report failed with exit {exit_code}")
+        stage_status["report"] = "infra_fail"
 
     # STAGE 5 (optional): android
     if with_android:
         logger.info("--- Stage 5: run_android_workflows ---")
         cmd = build_android_cmd(run_dir)
         exit_code, _ = run_stage("android", cmd, logs_dir, offline_only)
+        stage_status["android"] = "ok" if exit_code == 0 else "infra_fail"
         if exit_code != 0:
             logger.error(f"android failed with exit {exit_code}")
 
-    # VERDICT LOGIC (§13)
-    # The verdict comes from report.py exit code (which reads scores and emits the §13
-    # verdict). Only report to INFRA if report couldn't run at all. Never convert
-    # INFRA_FAILURE or partial execution to PASS.
-    if report_exit_code not in (0, 3):
-        # Report didn't run cleanly (exit not 0 or 3 means it crashed/infra issue)
-        logger.error("VERDICT: INFRA_FAILURE (report could not emit verdict)")
+    # Persist per-stage outcomes into the manifest next to the plan.
+    manifest_path = run_dir / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        manifest = {}
+    manifest["stages_result"] = stage_status
+    manifest["timestamp_end"] = datetime.now(timezone.utc).isoformat()
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    # VERDICT (§13/§19): required-stage trouble ALWAYS wins over the report exit.
+    # A report that scored stale, partial, or missing inputs must never green
+    # (or even HOLD) the gate — partial execution is an infrastructure verdict.
+    bad_stages = [s for s, st in stage_status.items() if st in ("blocked", "infra_fail")]
+    for stage_name, st in stage_status.items():
+        logger.info(f"stage {stage_name}: {st}")
+    if bad_stages:
+        logger.error(f"VERDICT: INFRA_FAILURE (stages not cleanly executed: {', '.join(bad_stages)})")
         print("\nVERDICT: INFRA_FAILURE (exit 4)")
         return 4
-    elif report_exit_code == 3:
+    if report_exit_code == 3:
         logger.info("VERDICT: HOLD (from report §13 verdict logic)")
         print("\nVERDICT: HOLD (exit 3)")
         return 3
-    else:
-        logger.info("VERDICT: PASS (from report §13 verdict logic)")
-        print("\nVERDICT: PASS (exit 0)")
-        return 0
+    logger.info("VERDICT: PASS (from report §13 verdict logic)")
+    print("\nVERDICT: PASS (exit 0)")
+    return 0
 
 
 if __name__ == "__main__":
