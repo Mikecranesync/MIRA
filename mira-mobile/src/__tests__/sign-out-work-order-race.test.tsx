@@ -2,6 +2,11 @@
 // A work-order create can become an offline-queue write only after its request
 // fails. Sign-out must therefore wait for the whole mutation, not merely inspect
 // the queue at one instant, before it ends the session and purges device data.
+//
+// The classic Workorders tab is retired from the runtime; the mutation seam it
+// used (withWorkOrderQueueProducer + enqueueCreate + drainQueue) is unchanged
+// and still guards sign-out, so these tests drive that seam directly and reach
+// Sign out through the unified shell's footer.
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,8 +14,7 @@ const { api, preferenceData, preferenceFailures } = vi.hoisted(() => ({
   api: {
     createWorkOrder: vi.fn(),
     getMe: vi.fn(),
-    listAssets: vi.fn(),
-    listWorkOrders: vi.fn(),
+    listNotebooks: vi.fn(),
     signOut: vi.fn(),
   },
   preferenceData: new Map<string, string>(),
@@ -60,16 +64,22 @@ vi.mock("../api/resources", async (importOriginal) => {
     ...actual,
     createWorkOrder: api.createWorkOrder,
     getMe: api.getMe,
-    listAssets: api.listAssets,
-    listWorkOrders: api.listWorkOrders,
+    listNotebooks: api.listNotebooks,
     signOut: api.signOut,
   };
 });
 
 import App from "../App";
 import { ApiError } from "../api/client";
-import type { WorkOrder } from "../api/resources";
-import { resumeSessionLocalWrites, withSessionLocalProducer } from "../lib/offline-queue";
+import { createWorkOrder } from "../api/resources";
+import {
+  drainQueue,
+  enqueueCreate,
+  preferencesStore,
+  resumeSessionLocalWrites,
+  withSessionLocalProducer,
+  withWorkOrderQueueProducer,
+} from "../lib/offline-queue";
 
 const ME = {
   id: "user-1",
@@ -80,20 +90,32 @@ const ME = {
   capabilities: ["work_orders.create"],
 };
 
-const CREATED_WORK_ORDER: WorkOrder = {
-  id: "wo-1",
-  work_order_number: "WO-1",
-  title: "Conveyor jam",
-  description: "Conveyor is jammed",
-  asset: "Line 1 Conveyor",
+const CREATE_INPUT = {
   equipment_id: "asset-1",
-  status: "open",
+  description: "Conveyor is jammed",
   priority: "medium",
-  source_label: "mobile",
-  suggested_actions: [],
-  safety_warnings: [],
-  created_at: "2026-09-07T00:00:00.000Z",
+  client_key: "client-key-1",
 };
+
+/** The exact producer shape the work-order composer wraps its mutation in:
+ *  request first, offline-queue fallback second, both inside the barrier. */
+function startWorkOrderMutation(): Promise<boolean> {
+  return withWorkOrderQueueProducer(async () => {
+    try {
+      await createWorkOrder(CREATE_INPUT);
+    } catch (err) {
+      if (err instanceof ApiError && err.kind === "network") {
+        await enqueueCreate(preferencesStore, ME.tenantId, CREATE_INPUT);
+        return;
+      }
+      throw err;
+    }
+  });
+}
+
+async function signOutFromUnifiedFooter(): Promise<void> {
+  fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+}
 
 afterEach(() => {
   cleanup();
@@ -113,10 +135,9 @@ beforeEach(() => {
 
   api.createWorkOrder.mockReset();
   api.getMe.mockReset().mockResolvedValue(ME);
-  api.listAssets.mockReset().mockResolvedValue([
-    { id: "asset-1", name: "Line 1 Conveyor", tag: "CV-101", location: "Line 1" },
-  ]);
-  api.listWorkOrders.mockReset().mockResolvedValue([]);
+  // Zero notebooks renders the unified empty state, whose footer carries the
+  // real Sign out control — the shortest honest path to the barrier.
+  api.listNotebooks.mockReset().mockResolvedValue([]);
   api.signOut.mockReset().mockResolvedValue(undefined);
 });
 
@@ -128,21 +149,13 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
     });
     api.createWorkOrder
       .mockImplementationOnce(() => pendingCreate)
-      .mockResolvedValue({ workOrder: CREATED_WORK_ORDER, replayed: false });
+      .mockResolvedValue({ workOrder: { id: "wo-1" }, replayed: false });
 
-    const { container } = render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /New work order/i }));
+    render(<App onBundleReady={() => {}} />);
+    await screen.findByRole("button", { name: "Sign out" });
+    const producer = startWorkOrderMutation();
 
-    await waitFor(() => expect(container.querySelectorAll("select")).toHaveLength(2));
-    const [asset] = Array.from(container.querySelectorAll("select"));
-    const [, description] = Array.from(container.querySelectorAll("input"));
-    fireEvent.change(asset, { target: { value: "asset-1" } });
-    fireEvent.change(description, { target: { value: "Conveyor is jammed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create work order" }));
-    await screen.findByRole("button", { name: "Creating…" });
-
-    fireEvent.click(screen.getByRole("button", { name: /More/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await signOutFromUnifiedFooter();
 
     await act(async () => {
       await Promise.resolve();
@@ -156,7 +169,7 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
 
     await act(async () => {
       rejectCreate(new ApiError("network", null, "offline"));
-      await pendingCreate.catch(() => undefined);
+      await producer;
     });
 
     await waitFor(() => expect(api.signOut).toHaveBeenCalledTimes(1));
@@ -176,25 +189,14 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
           finishSignOut = resolve;
         }),
     );
-    api.createWorkOrder.mockResolvedValue({ workOrder: CREATED_WORK_ORDER, replayed: false });
+    api.createWorkOrder.mockResolvedValue({ workOrder: { id: "wo-1" }, replayed: false });
 
-    const { container } = render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /More/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    render(<App onBundleReady={() => {}} />);
+    await signOutFromUnifiedFooter();
     await waitFor(() => expect(api.signOut).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: /Workorders/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /New work order/i }));
-    await waitFor(() => expect(container.querySelectorAll("select")).toHaveLength(2));
-    const [asset] = Array.from(container.querySelectorAll("select"));
-    const [, description] = Array.from(container.querySelectorAll("input"));
-    fireEvent.change(asset, { target: { value: "asset-1" } });
-    fireEvent.change(description, { target: { value: "Conveyor is jammed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create work order" }));
-
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Create work order" })).toBeTruthy(),
-    );
+    const admitted = await startWorkOrderMutation();
+    expect(admitted).toBe(false);
     expect(api.createWorkOrder).not.toHaveBeenCalled();
     expect(
       Array.from(preferenceData.keys()).some((key) => key.startsWith("flm.woqueue.v1.")),
@@ -205,7 +207,6 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
   });
 
   it("does not let a post-barrier background drain recreate a purged tenant queue", async () => {
-    preferenceData.set("flm.activeTab.v1", "more");
     preferenceData.set(
       "flm.woqueue.v1.tenant-a",
       JSON.stringify([
@@ -227,34 +228,20 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
     api.signOut.mockImplementationOnce(
       () => new Promise<void>((resolve) => { finishSignOut = resolve; }),
     );
-    let rejectLateDrain!: (error: unknown) => void;
-    const lateDrain = new Promise<never>((_resolve, reject) => {
-      rejectLateDrain = reject;
-    });
-    void lateDrain.catch(() => undefined);
-    api.createWorkOrder
-      .mockRejectedValueOnce(new ApiError("network", null, "offline"))
-      .mockImplementationOnce(() => lateDrain);
+    api.createWorkOrder.mockRejectedValueOnce(new ApiError("network", null, "offline"));
 
     render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await signOutFromUnifiedFooter();
     await waitFor(() => expect(api.signOut).toHaveBeenCalledTimes(1));
     expect(api.createWorkOrder).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: /Workorders/i }));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    // The background drain any surface may attempt post-barrier (the classic
+    // tab did this on mount) must be refused at admission, not merely fail.
+    const drained = await drainQueue(preferencesStore, ME.tenantId, createWorkOrder);
+    expect(drained).toBeNull();
 
     finishSignOut();
     await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy());
-    rejectLateDrain(new ApiError("network", null, "offline"));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
 
     expect(api.createWorkOrder).toHaveBeenCalledTimes(1);
     expect(preferenceData.has("flm.woqueue.v1.tenant-a")).toBe(false);
@@ -271,8 +258,7 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
     });
 
     render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /More/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await signOutFromUnifiedFooter();
 
     await act(async () => {
       await Promise.resolve();
@@ -293,8 +279,7 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
     const producerBody = vi.fn(async () => undefined);
 
     render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /More/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await signOutFromUnifiedFooter();
 
     expect(
       await screen.findByRole("alert", { name: "Secure cleanup required" }),
@@ -327,8 +312,7 @@ describe("sign-out versus an enqueue-producing work-order mutation", () => {
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
 
     render(<App onBundleReady={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /More/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await signOutFromUnifiedFooter();
 
     await waitFor(() =>
       expect(alert).toHaveBeenCalledWith(

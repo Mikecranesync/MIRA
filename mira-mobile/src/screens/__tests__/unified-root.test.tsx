@@ -22,6 +22,10 @@ const otaProbe = vi.hoisted(() => ({
 const prefStore = vi.hoisted(() => ({
   mem: new Map<string, string>(),
 }));
+const scanApi = vi.hoisted(() => ({
+  getAssetByTag: vi.fn(),
+  openAssetNotebook: vi.fn(),
+}));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -32,6 +36,8 @@ vi.mock("../../api/resources", async () => {
   const actual = await vi.importActual<typeof import("../../api/resources")>("../../api/resources");
   return {
     ...actual,
+    getAssetByTag: scanApi.getAssetByTag,
+    openAssetNotebook: scanApi.openAssetNotebook,
     listNotebooks: vi.fn(async () => [
       { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
         threads: [
@@ -116,8 +122,7 @@ afterEach(() => {
 describe("UnifiedRoot", () => {
   it("loads notebooks into a composer-first home, then opens the preferred notebook when the user sends", async () => {
     const onSignOut = vi.fn(async () => {});
-    const onSwitchClassic = vi.fn();
-    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={onSignOut} onSwitchClassic={onSwitchClassic} />);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={onSignOut} />);
 
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
     expect(screen.queryByTestId("nb")).toBeNull();
@@ -136,8 +141,8 @@ describe("UnifiedRoot", () => {
     expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toBe("thrd-b1");
 
     expect(screen.getByTestId("footer").textContent).toContain("mike@example.com");
-    fireEvent.click(screen.getByText("Use classic app"));
-    expect(onSwitchClassic).toHaveBeenCalledTimes(1);
+    // The unified shell is the only experience: no classic escape hatch.
+    expect(screen.queryByText("Use classic app")).toBeNull();
     fireEvent.click(screen.getByText("Sign out"));
     expect(onSignOut).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("About & updates"));
@@ -146,7 +151,7 @@ describe("UnifiedRoot", () => {
 
   it("New chat from the sidebar creates a clean thread in the selected project without destroying the old one", async () => {
     const backRef = { current: null as (() => boolean) | null };
-    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
@@ -167,7 +172,7 @@ describe("UnifiedRoot", () => {
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {
-    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
@@ -179,7 +184,7 @@ describe("UnifiedRoot", () => {
   });
 
   it("home Add Photo opens a fresh thread with the existing add-sources sheet entry", async () => {
-    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
@@ -191,7 +196,7 @@ describe("UnifiedRoot", () => {
   });
 
   it("routes home Scan machine into the selected notebook's direct scanner entry", async () => {
-    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
@@ -209,7 +214,6 @@ describe("UnifiedRoot", () => {
         me={ME}
         backRef={backRef}
         onSignOut={async () => {}}
-        onSwitchClassic={() => {}}
       />,
     );
 
@@ -230,7 +234,7 @@ describe("UnifiedRoot", () => {
 
   it("hardware Back from a conversation root returns to the in-app composer home", async () => {
     const backRef = { current: null as (() => boolean) | null };
-    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "open" } });
@@ -248,7 +252,7 @@ describe("UnifiedRoot", () => {
 
   it("hardware Back on the composer home stays inside the unified root", async () => {
     const backRef = { current: null as (() => boolean) | null };
-    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} onSwitchClassic={() => {}} />);
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
 
@@ -263,7 +267,6 @@ describe("UnifiedRoot", () => {
         me={ME}
         backRef={{ current: null }}
         onSignOut={async () => {}}
-        onSwitchClassic={() => {}}
       />,
     );
 
@@ -275,5 +278,47 @@ describe("UnifiedRoot", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Probe update readiness" }));
 
     await waitFor(() => expect(otaProbe.value).toBe(true));
+  });
+
+  it("a deep-link tag resolves through resolveScan and opens that machine's notebook", async () => {
+    scanApi.getAssetByTag.mockResolvedValue({ id: "asset-b" });
+    scanApi.openAssetNotebook.mockResolvedValue({ id: "nb-b" });
+    const onDeepLinkConsumed = vi.fn();
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={{ current: null }}
+        onSignOut={async () => {}}
+        deepLink={{ tag: "CV-101", raw: "factorylm://m/CV-101" }}
+        onDeepLinkConsumed={onDeepLinkConsumed}
+      />,
+    );
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
+    expect(scanApi.getAssetByTag).toHaveBeenCalledWith("CV-101");
+    expect(scanApi.openAssetNotebook).toHaveBeenCalledWith("asset-b", "qr");
+    await waitFor(() => expect(onDeepLinkConsumed).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("an unrecognized deep link surfaces a dismissible notice instead of a dead screen", async () => {
+    const onDeepLinkConsumed = vi.fn();
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={{ current: null }}
+        onSignOut={async () => {}}
+        deepLink={{ tag: null, raw: "factorylm://bogus" }}
+        onDeepLinkConsumed={onDeepLinkConsumed}
+      />,
+    );
+
+    const notice = await waitFor(() => screen.getByRole("alert"));
+    expect(notice.textContent).toContain("Unrecognized link: factorylm://bogus");
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    await waitFor(() => expect(onDeepLinkConsumed).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText("Dismiss"));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

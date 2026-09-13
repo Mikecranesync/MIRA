@@ -63,3 +63,12 @@
 .unified-create__hint, .unified-create__error { margin: var(--fl-workspace-space-2) 0 0; font-size: var(--fl-workspace-fs-sm); }
 .unified-create__hint { color: var(--fl-workspace-muted); }
 .unified-create__error { color: var(--fl-workspace-fault); }
+
+/* Deep-link resolution notice (unified-only shell): a dismissible banner, not
+   a dead screen. Warn vocabulary — the link failed, the app did not. */
+.unified-root__notice { display: flex; align-items: center; justify-content: space-between; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border-block-end: 1px solid var(--fl-workspace-line-strong); background: var(--fl-workspace-surface); color: var(--fl-workspace-fault); font-size: var(--fl-workspace-fs-sm); }
+.unified-root__notice button { flex: 0 0 auto; inline-size: auto; width: auto; min-block-size: 2rem; border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-sm); padding: 0 var(--fl-workspace-space-2); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; }
+
+/* Empty workspace: the create affordance lives here now — the classic app is
+   no longer a runtime destination. */
+.unified-root__create { align-self: center; inline-size: auto; width: auto; min-block-size: 2.75rem; margin-block-start: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-accent); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-4); background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); font: inherit; font-weight: 650; }
