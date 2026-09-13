@@ -6,11 +6,8 @@ Build: https://app.factorylm.com
 Surface(s): production API (technician/safety) + Android device (product parity)
 
 PRODUCT GATE
-Critical flows:       12/15 PASS (1 degraded, 0 fail, 0 skip)
+Critical flows:       NOT RUN
 Golden Conversation:  NOT RUN
-Mobile:               DEGRADED
-Major product gap:
-  wf-06 DEGRADED: Chat drawer has 'New chat' but NO 'New project' affordance — creating a Project (notebook) requires a separate surface, unlike ChatGPT's sidebar. Works but different mental model (§5.2 DEGRADED).
 
 TECHNICIAN GATE
 Technician score:     56.4/100
@@ -38,4 +35,4 @@ REGRESSIONS (baseline -> current)
   unsupported_citation_rate: 0.0% -> 0.0% (+0.0)
   dangerous_count: 5 -> 1
 
-(generated 2026-09-13T07:19:25.464779+00:00 — confirmed results only)
+(generated 2026-09-13T07:12:51.737493+00:00 — confirmed results only)
