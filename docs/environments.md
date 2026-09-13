@@ -2,7 +2,7 @@
 
 **Owner doctrine. Read before:** changing infra, running a migration, restarting a container, deploying a bot, seeding the KB, or wiring a new workflow.
 
-This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
+This doctrine is referenced from `AGENTS.md` (via root `CLAUDE.md`, which is a thin adapter that imports it) and `.claude/CLAUDE.md`. Every agent session, any provider, is expected to honor it.
 
 > **Status note (refreshed 2026-09-07):** The full staging stack is defined by `/opt/mira-staging/docker-compose.staging-vps.yml`, uses offset `stg-*` services and the staging Neon branch, and has its own Telegram bot token. Its deploy contract is now manual and exact-current-main only: `.github/workflows/deploy-staging.yml` accepts `target_ref=refs/heads/main` plus the current 40-character `target_sha`, then revalidates both before protected credentials are exposed. Push-triggered and feature-ref deploys are retired. The workflow remains on operational HOLD until the protected `staging-deploy` environment, scoped non-root user, and dedicated SSH key are provisioned. The HTTPS/login gap remains tracked in `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
@@ -101,7 +101,7 @@ The point isn't process for its own sake. The point is: when a customer hits a r
 
 ## Pointers
 
-- `CLAUDE.md` § **Environments** — short rule card every session loads
+- `AGENTS.md` § **Environment and deployment safety** — short rule card every agent loads (root `CLAUDE.md` is a thin adapter that imports it)
 - `.claude/CLAUDE.md` § **Environment boundaries** — product-rule angle
 - `tools/hooks/prod-guard.sh` — PreToolUse enforcement
 - `.github/workflows/{smoke-test,deploy-vps,apply-migrations,apply-seeds}.yml` — the deploy pipeline

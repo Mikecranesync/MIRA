@@ -1108,20 +1108,37 @@ def test_cu02_record_names_current_map_home():
 # Environments / Hard Constraints / Container Map / Security / Verification sections moved to
 # docs/environments.md, AGENTS.md, and .claude/rules/. A guide that still cites the old anchor
 # reads as authoritative and points at nothing (found by the #3761 round-5 review).
+_REMOVED_ROOT_SECTIONS = r"(Environments|Hard Constraints|Security|Container Map|Verification Workflow|Deferred / Archived Modules|Node Map|Pointers|Gotchas)"
 _REMOVED_ROOT_SECTION_PATTERNS = (
-    re.compile(r"root `?CLAUDE\.md`? ?§", re.I),
-    re.compile(r"CLAUDE\.md`? ?§ ?(Environments|Hard Constraints|Security|Container|Verification)"),
-    re.compile(r"PRD §4 in root"),
+    re.compile(r"root CLAUDE\.md ?§", re.I),
+    re.compile(r"CLAUDE\.md ?§ ?" + _REMOVED_ROOT_SECTIONS, re.I),
+    re.compile(r"PRD §4 in root", re.I),
     re.compile(
-        r"root `?CLAUDE\.md`?[^\n]*(Container Map|Hard Constraints|Environments hard rule|env vars)"
+        r"root CLAUDE\.md[^\n]*(Container Map|Hard Constraints|Environments hard rule|env vars)",
+        re.I,
     ),
 )
+
+
+def _normalize_md(line: str) -> str:
+    """Strip Markdown emphasis/code markers so `CLAUDE.md` § **Environments** matches
+    the same as CLAUDE.md § Environments (the #3761 round-6 miss)."""
+    return line.replace("`", "").replace("**", "").replace("__", "").replace("*", "")
+
+
+def _cites_removed_root_section(line: str) -> bool:
+    norm = _normalize_md(line)
+    return any(p.search(norm) for p in _REMOVED_ROOT_SECTION_PATTERNS)
+
+
 # Historical records keep their pre-change wording on purpose; product source comments are
 # out of this docs/control-plane contract's scope (tracked separately).
 _REMOVED_ROOT_SECTION_HISTORICAL = {
     "docs/architecture/convergence/units/CU-02.md",  # amended; pre-change section retained as history
     "docs/architecture/convergence/units/CU-06.md",  # DONE record
     "docs/architecture/convergence/BACKLOG.md",
+    "docs/architecture/convergence/DRIFT_REPORT.md",  # Gate 0 record (2026-08), pre-change by definition
+    "docs/architecture/convergence/GATE0_SUMMARY.md",  # Gate 0 record
     "docs/CHANGELOG.md",  # frozen archive
     "wiki/hot.md",
 }
@@ -1136,6 +1153,26 @@ _REMOVED_ROOT_SECTION_SKIP_DIRS = (
     ".claude/worktrees/",
     "node_modules/",
 )
+
+
+def test_removed_root_section_matcher_catches_markdown_formatted_links():
+    """Negative fixtures for the matcher itself — including the exact line the #3761
+    round-6 review found slipping through (bold markers between § and the section name)."""
+    for line in (
+        "- `CLAUDE.md` § **Environments** — short rule card every session loads",
+        "Root `CLAUDE.md` § **Environments** is the rule card.",
+        "see PRD §4 in root CLAUDE.md",
+        "(root CLAUDE.md Environments hard rule #1)",
+        "per root `CLAUDE.md` § Deferred / Archived Modules",
+        "(see root CLAUDE.md Container Map)",
+    ):
+        assert _cites_removed_root_section(line), line
+    for line in (
+        "root `CLAUDE.md` is a thin adapter that imports it",
+        "`docs/environments.md` § Container Map (generated)",
+        "`AGENTS.md` § Hard constraints (PRD §4)",
+    ):
+        assert not _cites_removed_root_section(line), line
 
 
 def test_no_active_reference_to_removed_root_claude_sections():
@@ -1154,7 +1191,7 @@ def test_no_active_reference_to_removed_root_claude_sections():
                 "is a thin adapter" in line
             ):  # the one sentence that legitimately names root CLAUDE.md
                 continue
-            if any(p.search(line) for p in _REMOVED_ROOT_SECTION_PATTERNS):
+            if _cites_removed_root_section(line):
                 hits.append(f"{rel}:{n}: {line.strip()[:110]}")
     assert not hits, "active documents still cite removed root CLAUDE.md sections:\n" + "\n".join(
         hits
