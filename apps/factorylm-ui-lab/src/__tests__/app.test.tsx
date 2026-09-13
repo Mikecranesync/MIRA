@@ -74,14 +74,16 @@ function must<T>(value: T | null | undefined, what: string): T {
 
 describe("lab state from the URL", () => {
   it("defaults to the web surface, grounded answer, light theme, fluid viewport", () => {
-    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false });
+    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
   });
 
   it("reads every control from the query string and rejects unknown values", () => {
     expect(parseLabState("?surface=hub&scenario=work-run&theme=dark&viewport=412x915&embed=1"))
-      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true });
+      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true, thread: "classic" });
+    expect(parseLabState("?thread=assistant").thread).toBe("assistant");
+    expect(parseLabState("?thread=nope").thread).toBe("classic");
     expect(parseLabState("?surface=nope&scenario=nope&theme=nope&viewport=nope"))
-      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false });
+      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
   });
 
   it("offers exactly the plan's viewport set", () => {

@@ -33,6 +33,7 @@ export interface ShellState {
   readonly inspectorVisible: boolean;
   readonly attachmentMenuVisible: boolean;
   readonly mode: "ask" | "work";
+  readonly sendError: string | null;
 }
 
 /** Live data a host feeds into the shell without resetting UI state (drawer, draft, mode, source). */
@@ -59,6 +60,7 @@ export type ShellAction =
   | { readonly type: "select-source"; readonly sourceId: string | null }
   | { readonly type: "set-draft"; readonly draft: string }
   | { readonly type: "mock-send" }
+  | { readonly type: "set-send-error"; readonly error: string | null }
   | { readonly type: "set-theme"; readonly theme: ThemeName }
   | { readonly type: "set-profile"; readonly profile: SurfaceProfile };
 
@@ -193,6 +195,7 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
     inspectorVisible: false,
     attachmentMenuVisible: false,
     mode: copy.thread.mode,
+    sendError: null,
   });
 }
 
@@ -319,6 +322,11 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       });
     }
 
+
+    case "set-send-error": {
+      const error = action.error ?? null;
+      return state.sendError === error ? state : freezeState({ ...state, sendError: error });
+    }
 
     case "set-theme":
       return state.theme === action.theme ? state : freezeState({ ...state, theme: action.theme });

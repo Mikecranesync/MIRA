@@ -27,10 +27,13 @@ describe("universal composer", () => {
       const view = render({ surface, fixture: "machine-ask" });
       composer(view);
 
+      // The ChatGPT grammar: attachment, message field, send — and nothing else
+      // competing in the row (no voice stub, no machine picker; scan lives in
+      // the attachment menu, machine context in the conversation bar).
       expect(view.buttonNamed("Add attachment")).not.toBeNull();
-      expect(view.buttonNamed("Voice")).not.toBeNull();
       expect(view.buttonNamed("Send")).not.toBeNull();
-      expect(view.container.querySelector('[aria-label="Machine"]')).not.toBeNull();
+      expect(view.buttonNamed("Voice")).toBeNull();
+      expect(view.container.querySelector('[aria-label="Machine"]')).toBeNull();
       expect(view.container.querySelectorAll('form[aria-label="Composer"]')).toHaveLength(1);
     });
   }
@@ -53,16 +56,15 @@ describe("universal composer", () => {
     expect(last?.textContent).toContain("How is preload measured?");
   });
 
-  it("uses the prototype placeholder and names the active machine", () => {
+  it("uses the prototype placeholder and shows machine context in the conversation bar", () => {
     const machine = render({ surface: "web", fixture: "machine-ask" });
     const general = render({ surface: "web", fixture: "general-ask" });
 
     expect(composer(machine).textarea.placeholder).toBe("Ask MIRA about this machine…");
-    expect(machine.container.querySelector('[aria-label="Machine"]')?.textContent).toContain("Drive A");
-    expect(machine.container.querySelector('[aria-label="Machine"]')?.textContent).toMatch(/confirmed/i);
+    // Machine context is the quiet context line above the turns, not a composer control.
+    expect(machine.container.querySelector(".fl-conversation__bar")?.textContent).toContain("Drive A");
     expect(composer(general).textarea.placeholder).toBe("Ask MIRA…");
-    expect(general.container.querySelector('[aria-label="Machine"]')?.textContent).toMatch(/no machine/i);
-    // Phone width: the short form, so the placeholder never wraps beside the four controls (Slice D).
+    // Phone width: the short form, so the placeholder never wraps beside the controls (Slice D).
     expect(composer(render({ surface: "mobile", fixture: "machine-ask" })).textarea.placeholder).toBe("Ask MIRA");
   });
 
@@ -102,9 +104,6 @@ describe("universal composer", () => {
     expect(web.buttonNamed("Scan machine")?.disabled).toBe(true);
     expect(mobile.buttonNamed("Camera")?.disabled).toBe(false);
     expect(mobile.buttonNamed("Scan machine")?.disabled).toBe(false);
-    expect(web.buttonNamed("Voice")?.disabled).toBe(true);
-    expect(mobile.buttonNamed("Voice")?.disabled).toBe(true);
-    expect(mobile.buttonNamed("Voice")?.title).toMatch(/not available/i);
   });
 
   it("scans a machine through the adapter and selects it only through the reducer", async () => {
@@ -121,21 +120,7 @@ describe("universal composer", () => {
     await view.flush();
     expect(adapter.calls).toEqual(["scanMachine"]);
     expect(view.activeContext().machineId).toBe("machine-drive-b");
-    expect(view.container.querySelector('[aria-label="Machine"]')?.textContent).toContain("Drive B");
-    expect(view.container.querySelector('[aria-label="Machine"]')?.textContent).toMatch(/unconfirmed/i);
-  });
-
-  it("opens navigation to change the machine when the surface cannot scan", () => {
-    const view = render({ surface: "web", fixture: "machine-ask" });
-    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
-    const close = view.buttonNamed("Close navigation");
-    const machine = view.container.querySelector<HTMLButtonElement>('button[aria-label="Machine"]');
-    if (!shell || !close || !machine) throw new Error("machine control must be a button");
-
-    view.click(close);
-    expect(shell.dataset.navigationVisible).toBe("false");
-    view.click(machine);
-    expect(shell.dataset.navigationVisible).toBe("true");
+    expect(view.container.querySelector(".fl-conversation__bar")?.textContent).toContain("Drive B");
   });
 
   it("keeps a pending attachment labelled with the machine it was captured for", async () => {
@@ -203,7 +188,6 @@ describe("universal composer", () => {
     expect(adapter.calls).toEqual(["attachPhoto", "scanMachine"]);
     expect(view.container.querySelector('[aria-label="Attachment error"]')?.textContent).toMatch(/machine scan failed/i);
     expect(view.activeContext().machineId).toBe("machine-drive-a");
-    expect(view.container.querySelector<HTMLButtonElement>('button[aria-label="Machine"]')?.disabled).toBe(false);
   });
 
   it("ignores duplicate activation while an adapter operation is pending", async () => {

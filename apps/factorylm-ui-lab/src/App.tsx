@@ -9,13 +9,14 @@ import {
   type SurfaceKind,
   type ThemeName,
 } from "@factorylm/interaction";
-import { FactoryLMShell } from "@factorylm/ui";
+import { FactoryLMShell, type ConversationSurface } from "@factorylm/ui";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
 
 export const LAB_SURFACES = ["public", "web", "mobile", "hub"] as const satisfies readonly SurfaceKind[];
 export const LAB_THEMES = ["light", "dark"] as const satisfies readonly ThemeName[];
 export const LAB_VIEWPORTS = ["fluid", "390x844", "412x915", "768x1024", "1440x900", "1720x1000"] as const;
+export const LAB_THREADS = ["classic", "assistant"] as const satisfies readonly ConversationSurface[];
 export type LabViewport = (typeof LAB_VIEWPORTS)[number];
 
 export interface LabState {
@@ -25,9 +26,11 @@ export interface LabState {
   readonly viewport: LabViewport;
   /** Shell-only rendering, used inside the fixed-viewport frame. */
   readonly embed: boolean;
+  /** Which conversation surface renders the turns (blueprint: classic list vs assistant-ui primitives). */
+  readonly thread: ConversationSurface;
 }
 
-const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false };
+const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" };
 
 function pick<T extends string>(allowed: readonly T[], value: string | null, fallback: T): T {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -42,11 +45,13 @@ export function parseLabState(search: string): LabState {
     theme: pick(LAB_THEMES, params.get("theme"), DEFAULT_LAB.theme),
     viewport: pick(LAB_VIEWPORTS, params.get("viewport"), DEFAULT_LAB.viewport),
     embed: params.get("embed") === "1",
+    thread: pick(LAB_THREADS, params.get("thread"), DEFAULT_LAB.thread),
   };
 }
 
 export function labSearch(lab: LabState, options: { readonly embed?: boolean } = {}): string {
   const params = new URLSearchParams({ surface: lab.surface, scenario: lab.scenario, theme: lab.theme });
+  if (lab.thread !== "classic") params.set("thread", lab.thread);
   if (!options.embed && lab.viewport !== "fluid") params.set("viewport", lab.viewport);
   if (options.embed) params.set("embed", "1");
   return `?${params.toString()}`;
@@ -107,6 +112,7 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     dispatch={dispatch}
     adapter={adapter}
     hooks={{ onRetry: (turnId) => adapter.note(`onRetry:${turnId}`) }}
+    conversationSurface={lab.thread}
     navigationFooter={<>
       <button type="button" onClick={() => adapter.note("openSettings")}>Settings</button>
       <button type="button" onClick={() => adapter.note("openAccount")}>Account · lab technician</button>
@@ -134,6 +140,9 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
       <label>Viewport
         <select aria-label="Viewport" value={lab.viewport} onChange={(event) => update({ viewport: event.currentTarget.value as LabViewport })}>
           {LAB_VIEWPORTS.map((viewport) => <option key={viewport} value={viewport}>{viewport}</option>)}
+        </select>
+        <select aria-label="Thread" value={lab.thread} onChange={(event) => update({ thread: event.currentTarget.value as ConversationSurface })}>
+          {LAB_THREADS.map((thread) => <option key={thread} value={thread}>{thread}</option>)}
         </select>
       </label>
       <button type="button" aria-label={`Theme: ${lab.theme}`} aria-pressed={lab.theme === "dark"} onClick={() => update({ theme: lab.theme === "light" ? "dark" : "light" })}>

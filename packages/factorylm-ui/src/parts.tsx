@@ -26,11 +26,49 @@ export interface HostHooks {
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
   /**
-   * Start a new thread. New chat is OFFERED as an enabled primary action only when the host
+   * Start a host-owned thread. The action is enabled only when the host
    * provides this; without it (the disconnected lab) the control is honestly disabled with a
    * visible reason — never a dead button (#3649 scope 4).
    */
   readonly onNewChat?: () => void;
+  /**
+   * Copy the answer. The host implements the copy sink; the shell renders the
+   * control only when this is provided. Copy text carries sources and page numbers.
+   */
+  readonly onCopy?: (turnId: string) => void;
+  /**
+   * Regenerate the answer. The host re-sends the original question; the shell renders
+   * the control only when this is provided.
+   */
+  readonly onRegenerate?: (turnId: string) => void;
+  /**
+   * Feedback on the answer. The host records a thumbs-up or thumbs-down; the shell
+   * renders the control only when this is provided.
+   */
+  readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
+  /**
+   * Open the host's real machine scanner. This keeps the shell's Scan affordance
+   * routed through the existing native scanner instead of a reducer-only mock.
+   */
+  readonly onScanMachine?: () => Promise<string | null> | string | null;
+  /**
+   * The one line under the first-run greeting saying what this conversation can
+   * answer from. The shell's default claims only what any notebook can do; a host
+   * that knows its scope (machine bound, sources loaded) should say so truthfully.
+   */
+  readonly groundingLine?: () => string | undefined;
+  /**
+   * Suggest initial questions for first-run. The host provides up to three
+   * suggested questions that send on tap; absent = no suggestions rendered.
+   */
+  readonly suggestChips?: () => readonly { id: string; text: string }[] | undefined;
+  /**
+   * Render a turn's text part. The package renders plain text; a host whose
+   * text carries markdown and inline citation marks (mobile AnswerMarkdown)
+   * supplies its own renderer here so the same text reads the same on every
+   * surface. Absent = plain paragraph.
+   */
+  readonly renderText?: (text: string, turn: InteractionTurn) => ReactNode;
   readonly busy?: boolean;
 }
 
@@ -189,7 +227,9 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
 export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
   switch (part.type) {
     case "text":
-      return <p className="fl-part fl-part--text" data-part-type="text">{part.text}</p>;
+      return <div className="fl-part fl-part--text" data-part-type="text">
+        {hooks?.renderText ? hooks.renderText(part.text, turn) : part.text}
+      </div>;
 
     case "attachment": {
       const { attachment } = part;

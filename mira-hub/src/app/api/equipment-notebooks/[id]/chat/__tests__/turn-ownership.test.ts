@@ -37,6 +37,7 @@ const nbMock = vi.hoisted(() => ({
   resolveBoundAsset: vi.fn(async (): Promise<Record<string, unknown>> => ({ state: "unbound" })),
   recordTurn: vi.fn(async (..._args: unknown[]) => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
+  normalizeNotebookThreadId: vi.fn((value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => nbMock);
@@ -206,6 +207,19 @@ describe("every persisted turn is owned by the authenticated technician", () => 
     expect(tenantId).toBe(TENANT);
     expect(notebookId).toBe(NB);
     expect(turn.ownerUserId).toBe(USER_A);
+  });
+
+  it("general turn: thread id is persisted from the request, isolated from ownership", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const res = await POST(
+      req({ message: "What is a VFD?", sourceDocIds: [], mode: "general", threadId: "thrd_a" }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    await frames(res);
+    const turn = (nbMock.recordTurn.mock.calls[0] as unknown[])[2] as { ownerUserId?: string; threadId?: string };
+    expect(turn.ownerUserId).toBe(USER_A);
+    expect(turn.threadId).toBe("thrd_a");
   });
 
   it("safety-stop turn (no sources) is owned by the session user", async () => {

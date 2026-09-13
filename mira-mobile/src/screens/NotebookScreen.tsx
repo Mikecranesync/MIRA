@@ -7,7 +7,7 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
+import { canPickNatively, captureNameplatePhoto, capturePhoto, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -143,6 +143,7 @@ const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
 
 export function NotebookScreen({
   id,
+  threadId = "legacy",
   chatV2Available = false,
   openAddSources,
   backRef,
@@ -150,8 +151,16 @@ export function NotebookScreen({
   onOpenNotebook,
   chromeless = false,
   unifiedShell,
+  initialQuestion,
+  onInitialQuestionSent,
+  initialSensorStart,
+  onInitialSensorStartConsumed,
+  onInitialAddSourcesConsumed,
+  onNewThread,
 }: {
   id: string;
+  /** 087 / THRD-0: selected conversation inside this notebook-as-Project. */
+  threadId?: string | null;
   chatV2Available?: boolean;
   openAddSources?: boolean;
   /** Unified root (FLM-UI-4000): the shared shell owns the app bar and
@@ -159,6 +168,16 @@ export function NotebookScreen({
   chromeless?: boolean;
   /** Host tree/footer for the unified shell when it owns the whole app. */
   unifiedShell?: UnifiedShellHost;
+  /** A composer-home send queued by UnifiedRoot before this notebook mounted. */
+  initialQuestion?: string | null;
+  onInitialQuestionSent?: () => void;
+  /** Root-owned Add Photo/File entry consumed by this mount's initial sheet state. */
+  onInitialAddSourcesConsumed?: () => void;
+  /** Root-owned THRD-0 creation, used by the shared shell's New chat control. */
+  onNewThread?: (notebookId?: string | null) => void;
+  /** Direct Sensor entry queued by the unified home/shell Scan action. */
+  initialSensorStart?: "read-scan" | null;
+  onInitialSensorStartConsumed?: () => void;
   backRef: MutableRefObject<(() => boolean) | null>;
   onExit: () => void;
   /** Sensor READ resolved a DIFFERENT machine: open its notebook (the same
@@ -172,6 +191,7 @@ export function NotebookScreen({
   // Sensor (LOOK / READ / REPLAY) — a transient instrument in the same Sheet
   // chrome, never a panel. Opens from the header or the Add-sources sheet.
   const [sensorOpen, setSensorOpen] = useState(false);
+  const [sensorStart, setSensorStart] = useState<"menu" | "read-scan">("menu");
   // This session's last LOOK. Held HERE, not in the sheet, so closing Sensor
   // (to read the manual, to check a source) doesn't discard the observation
   // the technician just took. Deliberately NOT persisted: the observation text
@@ -213,25 +233,50 @@ export function NotebookScreen({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Which conversation surface (PRD §12.4). `null` = still loading.
-  const chatSurface = useChatUiChoice(chatV2Available);
+  const preferredChatSurface = useChatUiChoice(chatV2Available);
+  const chatSurface = chromeless && unifiedShell ? "unified" : preferredChatSurface;
   const chatV2 = chatSurface === null ? null : chatSurface === "v2";
+
+  const openSensor = (start: "menu" | "read-scan" = "menu") => {
+    setSensorStart(start);
+    setSensorOpen(true);
+  };
 
   // Sheets/dialogs no longer appear here: every open transient surface
   // registers in lib/transient-layer.ts, and the app-level backButton listener
   // drains that stack BEFORE this handler runs (PRD §11 — one BACK model
   // instead of per-screen enumeration, which had already missed two surfaces).
   backRef.current = () => {
+    if (chromeless) {
+      onExit();
+      return true;
+    }
     return false; // let the tab pop back to home
   };
 
+  const initialSensorConsumed = useRef(false);
+  const initialAddSourcesConsumed = useRef(false);
+  useEffect(() => {
+    if (!openAddSources || initialAddSourcesConsumed.current) return;
+    initialAddSourcesConsumed.current = true;
+    onInitialAddSourcesConsumed?.();
+  }, [openAddSources, onInitialAddSourcesConsumed]);
+
+  useEffect(() => {
+    if (initialSensorStart !== "read-scan" || initialSensorConsumed.current) return;
+    initialSensorConsumed.current = true;
+    openSensor("read-scan");
+    onInitialSensorStartConsumed?.();
+  }, [initialSensorStart, onInitialSensorStartConsumed]);
+
   const refresh = () => {
-    void load(() => getNotebookDetail(id)).then(setDetail);
+    void load(() => getNotebookDetail(id, { threadId })).then(setDetail);
   };
   useEffect(() => {
     setDetail({ state: "loading" });
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, threadId]);
 
   // `detail` belongs in these deps. Without it, opening a machine that already
   // has history landed on the OLDEST turn: on mount the component is still in
@@ -277,10 +322,17 @@ export function NotebookScreen({
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
+    // When no machine is selected, always use general mode and empty scope
+    // regardless of enabled sources — sources without a machine context cannot
+    // ground retrieval (#3742). When a machine IS selected, omit mode to trigger
+    // grounded retrieval if scope has sources.
+    const noMachine = !notebook.asset;
+    const effectiveScope = noMachine ? [] : scope;
+    const effectiveMode = noMachine || effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
-      scope,
-      mode: scope.length === 0 ? "general" : undefined,
+      scope: effectiveScope,
+      mode: effectiveMode,
       // A stopped turn is not an answer: it never enters the thread memory.
       history: buildChatHistory(
         turns,
@@ -300,6 +352,7 @@ export function NotebookScreen({
     setPending({ q: question, a: EMPTY_TURN });
     try {
       const a = await askNotebook(id, body.question, body.scope, {
+        threadId,
         mode: body.mode,
         history: body.history,
         machineEvidence: body.machineEvidence,
@@ -340,6 +393,42 @@ export function NotebookScreen({
   const attachPhotoAndAsk = async () => {
     if (busy) return;
     const file = await pickPhoto("photo.jpg");
+    if (!file) return; // backed out — draft untouched
+    const question = q.trim() || "What am I looking at, and what should I check?";
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
+    try {
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      refresh(); // the photo is now a linked file — refresh Photos
+      setBusy(false);
+      setPending(null);
+      if (!look.fileId) {
+        setChatError("The photo didn't upload — try again.");
+        return;
+      }
+      await sendQuestion(question, undefined, {
+        visualEvidence: {
+          fileId: look.fileId,
+          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      setBusy(false);
+      setPending(null);
+      setQ(question); // the draft survives a failed attachment
+      setChatError(apiErrorCopy(e, "The photo didn't upload — try again."));
+    }
+  };
+
+  /**
+   * ChatV2 camera capture (#3353): capture photo from native camera → the SAME
+   * LOOK path as attachPhotoAndAsk. The only difference is capturePhoto (opens
+   * viewfinder) vs pickPhoto (opens gallery).
+   */
+  const attachCameraAndAsk = async () => {
+    if (busy) return;
+    const file = await capturePhoto("photo.jpg");
     if (!file) return; // backed out — draft untouched
     const question = q.trim() || "What am I looking at, and what should I check?";
     setChatError(null);
@@ -433,7 +522,7 @@ export function NotebookScreen({
         <button
           className="nb-appbar-icon"
           aria-label="Open Sensor"
-          onClick={() => setSensorOpen(true)}
+          onClick={() => openSensor()}
         >
           ⌕
         </button>
@@ -696,7 +785,7 @@ export function NotebookScreen({
         </div>
       )}
 
-      {/* ChatV2 (PRD 2026-08-30): the ChatGPT-class surface. Same send path,
+      {/* ChatV2 (PRD 2026-08-30): the assistant-grade surface. Same send path,
           same scope, same citation viewer, same evidence cards — only the
           conversation shell changes. `null` while the preference loads, so
           the technician never sees one surface flash into the other. */}
@@ -717,6 +806,7 @@ export function NotebookScreen({
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachCamera: () => void attachCameraAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
           }}
@@ -739,12 +829,29 @@ export function NotebookScreen({
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
+            onAttachCamera: () => void attachCameraAndAsk(),
             onAttachFile: () => void attachPdfSource(),
             onRetry: () => failedSend && void sendQuestion("", failedSend),
+            onScanMachine: async () => {
+              openSensor("read-scan");
+              return null;
+            },
+            onNewChat: () => onNewThread?.(id),
           }}
+          initialQuestion={initialQuestion}
+          onInitialQuestionSent={onInitialQuestionSent}
+          failedQuestion={failedSend?.question ?? null}
+          groundingLine={() =>
+            scope.length === 0
+              ? "Ask general questions now, or scan a machine to ground the notebook."
+              : "Answers cite this notebook's selected manuals."
+          }
+          suggestChips={() => QUICK_STARTS.map((text, index) => ({ id: `quick-${index}`, text }))}
           host={unifiedShell}
           meta={{
             notebookId: notebook.id,
+            threadId: `notebook-${notebook.id}:thread-${threadId ?? "legacy"}`,
+            projectId: `project-${notebook.id}`,
             title: notebookDisplayName(notebook.displayName),
             asset: notebook.asset
               ? {
@@ -1035,7 +1142,7 @@ export function NotebookScreen({
           scope={scope}
           // Studio generators are one-shot scoped prompts — chat history
           // would contaminate them, so it is deliberately NOT sent here.
-          ask={(prompt) => askNotebook(id, prompt, scope)}
+          ask={(prompt) => askNotebook(id, prompt, scope, { threadId })}
           onCitation={setViewCitation}
         />
       )}
@@ -1231,7 +1338,7 @@ export function NotebookScreen({
             // One sheet at a time: the Add-sources sheet hands off to Sensor,
             // so BACK from Sensor lands on the notebook, not on a stale sheet.
             setSheetOpen(false);
-            setSensorOpen(true);
+            openSensor();
           }}
         />
       )}
@@ -1253,6 +1360,8 @@ export function NotebookScreen({
           }}
           lastLook={lastLook}
           onLook={setLastLook}
+          initialMode={sensorStart === "read-scan" ? "read" : undefined}
+          initialReadState={sensorStart === "read-scan" ? "scan" : undefined}
           onAsk={(question, evidence) => {
             // One conversation (§2.3): the observation goes through the same
             // send path as the composer — same scope, same history, same route.
@@ -1567,7 +1676,7 @@ function AddSourcesSheet({
   /** Nameplate photo: phone picker on device, hidden input on web. */
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    const f = await pickNameplatePhoto();
+    const f = await captureNameplatePhoto();
     if (!f) return; // backed out
     setNote(null);
     setPhoto(f);

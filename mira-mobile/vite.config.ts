@@ -23,11 +23,17 @@ export default defineConfig({
   // resolves these at build time, so the code still lands in the web bundle.
   // React is pinned to THIS app's copy (React 18) so the peer-dependent
   // packages never pull a second React from their own toolchain directories.
+  // `@assistant-ui/react` is pinned to THIS app's copy for the same reason as
+  // React: the shared package (`@factorylm/ui`) imports it, and resolved from
+  // `packages/factorylm-ui/src` it would walk up into the Bun workspace tree
+  // (React 19) or into nothing at all on a checkout without `bun install`.
+  // ADR-0037 pins one version (0.15.17) across mobile, lab and Hub by convention.
   resolve: {
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "@assistant-ui/react"],
     alias: [
       { find: /^@factorylm\/(theme|interaction|ui)$/, replacement: path.join(packagesRoot, "factorylm-$1", "src", "index.ts") },
       { find: /^@factorylm\/(theme|interaction|ui)\/(.+)$/, replacement: path.join(packagesRoot, "factorylm-$1", "src", "$2") },
+      { find: /^@assistant-ui\/react$/, replacement: path.join(nodeModules, "@assistant-ui", "react") },
       { find: /^react$/, replacement: path.join(nodeModules, "react") },
       { find: /^react\/(.+)$/, replacement: path.join(nodeModules, "react", "$1") },
       { find: /^react-dom$/, replacement: path.join(nodeModules, "react-dom") },
