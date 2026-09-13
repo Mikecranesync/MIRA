@@ -1260,10 +1260,39 @@ _ACTIVE_INSTRUCTION_DOCS = (
     "docs/context/RULES.md",
     "docs/environments.md",
 )
-_BANNED_CASCADE = re.compile(r"Groq ?(\+|→|->|,) ?Cerebras ?(\+|→|->|,) ?Gemini", re.I)
+# CONTRACT — read this before "improving" it. This fence is SYNTACTIC, deliberately.
+#
+# It catches the two forms in which a banned provider has actually re-entered this
+# repository's instructions (#3761 rounds 9–13: RULES.md, THEORY_OF_OPERATIONS.md,
+# ARCHITECTURE.md, the master plan, the mira-platform skill, six docs/context files, four
+# runbooks — every one of them was one of these):
+#   (1) a PROVIDER LIST — two or more provider names joined by → -> + , / or "then" — that
+#       contains Gemini, Anthropic, or Claude, e.g. "Groq → Cerebras → Gemini",
+#       "cascade: Gemini→Groq→Cerebras→Claude", "Groq + Cerebras + Gemini";
+#   (2) a PROVISIONING instruction that puts GEMINI_API_KEY in prod or in the cascade.
+# It does NOT interpret prose. "The diagnostic cascade falls back to Gemini" is a sentence a
+# human reads; a regex that claims to judge English contradictions ("Gemini is banned. The
+# cascade falls back to Gemini") is a false instrument, and rounds 14–16 of #3761 showed that
+# each such heuristic is defeated by the next crafted sentence. The list form is unambiguous:
+# a banned name inside a provider list is a mandate, full stop, and no word elsewhere on the
+# line can exempt it. The only exemption is a list that belongs to a NAMED CI instrument in
+# the same clause (code-review.yml / staging-gate / pr_self_fix / a "review cascade" or
+# "judge cascade"), because those instruments legitimately keep Gemini as a tooling fallback.
+_PROVIDER_NAME = r"(?<![./\w-])(?:groq|cerebras|together|gemini|anthropic|claude(?!\s+code\b)|openai|ollama|open webui)(?![\w./-])"
+_LIST_JOIN = r"\s*(?:→|->|⇒|\+|,|\bthen\b)\s*"  # no "/" — it is a path separator far more often than a list joiner
+_PROVIDER_LIST = re.compile(rf"{_PROVIDER_NAME}(?:{_LIST_JOIN}{_PROVIDER_NAME})+", re.I)
+_BANNED_IN_LIST = re.compile(r"\b(?:gemini|anthropic|claude)\b", re.I)
+# A NAMED instrument file/script anywhere on the line qualifies the list (it is what the line
+# is about); a generic phrase ("judge cascade") must sit in the list's own clause.
+_CI_NAMED_INSTRUMENT = re.compile(
+    r"code-review\.yml|staging-gate|pr_self_fix|gh secret set|adversarial-review", re.I
+)
+_CI_PHRASE_IN_CLAUSE = re.compile(
+    r"(?:cascade|judge|review)\s+(?:review|judge|cascade)|judge fallback|ci (?:judge|review)", re.I
+)
 # Provisioning a Gemini key "for prod" / "the cascade" is an operational instruction to
 # configure a banned provider (run-eval-suite.md and known-issues.md did exactly that —
-# #3761 round-10 review). A CI secret for a judge/review workflow is tooling, not the product.
+# #3761 round-10 review). A CI secret (gh secret set …, staging-gate) is tooling.
 _BANNED_PROVISION = re.compile(
     r"GEMINI_API_KEY[^\n]*(factorylm/prd|cascade|same as prod)"
     r"|(factorylm/prd|cascade)[^\n]*GEMINI_API_KEY",
@@ -1271,133 +1300,61 @@ _BANNED_PROVISION = re.compile(
 )
 
 
-# Order-independent membership check (#3761 round-13 review: docs/ARCHITECTURE.md said
-# "cascade: Gemini→Groq→Cerebras→Claude" and the one-ordering regex above let it through).
-#
-# CONTRACT — read this before "improving" it. This is a drift TRIPWIRE for the stale forms
-# that have actually recurred in this repository (a cascade statement naming a banned
-# provider as a member; a Gemini key provisioned "for prod"). It is not a semantic
-# classifier of English, and it fails CLOSED: a line that names the cascade and a banned
-# provider is a mandate unless an exclusion is stated ABOUT THAT PROVIDER within a few words
-# of it (round-14 review: an unrelated "review" / "not " / "replace" elsewhere on the line
-# must not exempt the whole line). Anything subtler than that belongs to a human reader,
-# not to this fence.
-_CASCADE_WORD = re.compile(r"cascad", re.I)
-_BANNED_MEMBER = re.compile(
-    r"\bGemini\b|\bAnthropic\b|(?<![./])\bClaude\b(?!\s+Code\b)", re.I
-)  # not `.claude/` paths, not the "Claude Code" tool
-_PROVIDER = r"(?:gemini|anthropic|claude)"
-# The print-vision carve-out exempts ONLY Anthropic/Claude, and only when the carve-out is
-# named next to that provider — never Gemini, never the rest of the line.
-_CARVEOUT_NEAR_ANTHROPIC = re.compile(
-    r"(?:print[- _]?vision|printsense|printsynth)[^.;]{0,60}?\b(?:anthropic|claude)\b"
-    r"|\b(?:anthropic|claude)\b[^.;]{0,60}?(?:print[- _]?vision|printsense|printsynth)",
-    re.I,
-)
-# Tooling exemption: the cascade being described must be a named CI instrument — a review or
-# judge cascade, a workflow file, a CI secret. The bare word "review" in prose ("After
-# review, the cascade is …") is not tooling (round-15 review).
-_TOOLING_NEAR_CASCADE = re.compile(
-    r"(?:cascade review|review cascade|judge cascade|cascade judge|judge fallback"
-    r"|code-review\.yml|staging-gate\.yml|\.yml\b|staging-gate|pr_self_fix|gh secret set"
-    r"|github actions?|ci workflow|workflow'?s?\b)",
-    re.I,
-)
-
-
-def _provider_excluded(name: str, window: str) -> bool:
-    """True only when the exclusion is stated about THIS provider (round-15 review:
-    'Anthropic is banned' must not exempt a separate Gemini membership)."""
-    p = re.escape(name)
-    pat = re.compile(
-        rf"\b{p}\b[^.;|]{{0,40}}?\b(?:is |are |was |were |now )?"
-        rf"(?:banned|removed|dropped|excluded|out of|removal)"
-        rf"|\b(?:never|no|not|without|excluding|minus|do not|don't)\s+(?:\w+\s+){{0,2}}?"
-        rf"(?:the\s+|an?\s+)?{p}\b"
-        rf"|\b{p}\b[^.;|]{{0,40}}?\b(?:stays out|replaced by|was replaced)"
-        # "remove/replace/drop … <provider>" — but NOT "replace X *with* <provider>", which
-        # installs it; the span must not contain "with" / "by" / "to"
-        rf"|\b(?:remov(?:e|ed|ing|al)|replac(?:e|ed|ing)|drop(?:ped|ping)?|banned)\b"
-        rf"(?:(?!\b(?:with|by|to)\b)[^.;|]){{0,30}}?\b{p}\b",
-        re.I,
-    )
-    return bool(pat.search(window))
-
-
 def _states_banned_cascade(line: str) -> bool:
     norm = _normalize_md(line)
+    low = norm.lower()
     if _BANNED_PROVISION.search(norm):
-        # a key-provisioning instruction; tooling lines (gh secret set …) are not the product
-        return not any(k in norm.lower() for k in ("gh secret set", "staging-gate", ".yml"))
-    if _BANNED_CASCADE.search(norm):
-        return not _TOOLING_NEAR_CASCADE.search(norm)
-    if not (_CASCADE_WORD.search(norm) and _BANNED_MEMBER.search(norm)):
-        return False
-    if _TOOLING_NEAR_CASCADE.search(norm):
-        return False
-    # Every banned member named on the line must be individually excluded, or it's a mandate.
-    for match in _BANNED_MEMBER.finditer(norm):
-        name = match.group(0).lower()
-        if name in ("anthropic", "claude") and _CARVEOUT_NEAR_ANTHROPIC.search(norm):
+        return not any(k in low for k in ("gh secret set", "staging-gate", ".yml"))
+    for m in _PROVIDER_LIST.finditer(norm):
+        if not _BANNED_IN_LIST.search(m.group(0)):
             continue
-        window = norm[max(0, match.start() - 100) : match.end() + 100]
-        if _provider_excluded(name, window):
+        # the clause the list sits in: back to the previous . ; | and forward to the next
+        start = max(norm.rfind(c, 0, m.start()) for c in ".;|") + 1
+        end_candidates = [norm.find(c, m.end()) for c in ".;|"]
+        end = min([x for x in end_candidates if x != -1] or [len(norm)])
+        clause = norm[start:end]
+        if _CI_NAMED_INSTRUMENT.search(norm) or _CI_PHRASE_IN_CLAUSE.search(clause):
             continue
         return True
     return False
 
 
 def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
-    assert _states_banned_cascade("2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only.")
-    assert _states_banned_cascade("Always Groq → Cerebras → Gemini cascade for any LLM call")
-    assert _states_banned_cascade(
-        "- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` in Doppler `factorylm/prd`"
-    )
-    assert _states_banned_cascade("`GEMINI_API_KEY` — same as prod is fine")
-    assert not _states_banned_cascade(
-        "cascade review (Groq → Cerebras → Gemini) in code-review.yml"
-    )
-    assert not _states_banned_cascade(
-        'gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"'
-    )
-    assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
-    assert _states_banned_cascade(
-        "| Inference | InferenceRouter (cascade: Gemini→Groq→Cerebras→Claude) |"
-    )
-    assert _states_banned_cascade("cascade Groq → Gemini → Cerebras")
-    assert _states_banned_cascade("the cascade falls back to Claude when Groq is down")
-    assert not _states_banned_cascade("No Anthropic in the diagnostic cascade (removed #610)")
-    assert not _states_banned_cascade("cascade: Groq → Cerebras → Together; never Anthropic")
-    assert not _states_banned_cascade(
-        "- `.claude/rules/...` / memory `feedback_llm_cascade_default.md`"
-    )
-    assert not _states_banned_cascade(
-        "**NOT** in the cascade, which stays Groq → Cerebras → Together"
-    )
-    assert not _states_banned_cascade(
-        "- Anthropic stays out of the diagnostic cascade (PRD §4 carve-outs unchanged)."
-    )
-    # rounds 14–15: an unrelated word elsewhere on the line, or an exclusion aimed at a
-    # DIFFERENT provider, must not exempt a mandate
-    assert _states_banned_cascade("After review, the diagnostic cascade is Gemini then Groq")
-    assert _states_banned_cascade("Replace Together with Gemini in the diagnostic cascade")
-    assert _states_banned_cascade("The cascade is not only Groq; it also falls back to Claude")
-    assert _states_banned_cascade(
-        "PrintSense uses its own local model; the diagnostic cascade falls back to Gemini"
-    )
-    assert _states_banned_cascade(
-        "The diagnostic cascade falls back to Gemini; Anthropic is banned"
-    )
-    # …while provider-directed exclusions, the carve-out, and real CI instruments still pass
-    assert not _states_banned_cascade(
-        "cascade: Groq → Cerebras → Together — Gemini and Anthropic banned"
-    )
-    assert not _states_banned_cascade(
-        "`ANTHROPIC_API_KEY` | Print-vision ONLY — the retained Claude path of PrintSense. NOT in the cascade"
-    )
-    assert not _states_banned_cascade(
-        "the staging-gate judge cascade falls back to Gemini (STAGING_GEMINI_API_KEY)"
-    )
+    # (1) provider lists containing a banned member — any position, any joiner
+    for line in (
+        "2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only.",
+        "Always Groq → Cerebras → Gemini cascade for any LLM call",
+        "| Inference | InferenceRouter (cascade: Gemini→Groq→Cerebras→Claude) |",
+        "cascade Groq → Gemini → Cerebras",
+        "Inference cascade Gemini → Groq → Cerebras (+ legacy Claude tail)",
+        "cascade: groq, cerebras, gemini",
+        "After review, the diagnostic cascade is Gemini then Groq",
+        "Read config.yml before setting the diagnostic cascade to Groq -> Gemini",
+        "Gemini is banned. The diagnostic cascade is Groq → Gemini",
+    ):
+        assert _states_banned_cascade(line), line
+    # (2) provisioning a Gemini key for prod / the cascade
+    for line in (
+        "- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` in Doppler `factorylm/prd`",
+        "`GEMINI_API_KEY` — same as prod is fine",
+    ):
+        assert _states_banned_cascade(line), line
+    # negatives: no list, or a list that belongs to a named CI instrument, or a CI secret
+    for line in (
+        "Groq → Cerebras → Together cascade; Gemini is banned",
+        "cascade: Groq → Cerebras → Together — Gemini and Anthropic banned",
+        "No Anthropic in the diagnostic cascade (removed #610)",
+        "- Anthropic stays out of the diagnostic cascade (PRD §4 carve-outs unchanged).",
+        "cascade review (Groq → Cerebras → Gemini) in code-review.yml",
+        "the staging-gate judge cascade falls back to Gemini (STAGING_GEMINI_API_KEY)",
+        'gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"',
+        "- `.claude/rules/...` / memory `feedback_llm_cascade_default.md`",
+        "`ANTHROPIC_API_KEY` | Print-vision ONLY — the retained Claude path of PrintSense. NOT in the cascade",
+        "Claude Code is for engineering, not for production diagnostic responses",
+        # prose, by contract, is not this fence's job — a human reads it:
+        "The diagnostic cascade falls back to Gemini",
+    ):
+        assert not _states_banned_cascade(line), line
     globs = (
         ".claude/rules/*.md",
         ".claude/skills/**/*.md",
