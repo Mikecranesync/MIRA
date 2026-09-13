@@ -239,6 +239,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 ## Pointers
 
+- **Fleet standard (provider-neutral operating model — boot sequence, ownership, worktree rules, closeout schema):** `docs/agent-standard/FLEET_STANDARD.md`; Claude adapter `docs/agent-standard/providers/claude.md`; node overlays `docs/agent-standard/nodes/`. Rule: `.claude/rules/fleet-standard.md`. Where `.claude/` and the standard disagree, the standard's §2 precedence governs and the disagreement is reported as `PROVIDER DRIFT`, not silently resolved.
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
 - **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).

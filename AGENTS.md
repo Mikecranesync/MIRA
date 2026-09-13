@@ -1,9 +1,20 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-04-17
-**One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+## Fleet standard — start here (any provider)
+
+Provider-neutral operating model for every FactoryLM node and coding agent:
+`docs/agent-standard/FLEET_STANDARD.md` (canonical behavior) → `docs/agent-standard/rollout.md`
+(phases) → your node overlay under `docs/agent-standard/nodes/` → your provider adapter
+(`docs/agent-standard/providers/codex.md` or `providers/claude.md`). Source-of-truth precedence
+when files disagree is `FLEET_STANDARD.md` §2. Link to it; do not copy its text here.
+
+> **Staleness notice.** Everything below this section was forked from root `CLAUDE.md` on
+> 2026-04-17 and has not tracked it since. Where the two disagree, root `CLAUDE.md` is the
+> current build-state map; lines here that were provably false have been replaced with links.
+> The reconciliation and the proposed fix (one provider-neutral map, imported by both files)
+> are in the PR that added this section — see `docs/agent-standard/rollout.md` Phase 2.
+
+**Build state, inference cascade, and chat path:** root `CLAUDE.md` (header + § Hard Constraints).
 
 ---
 
@@ -15,9 +26,9 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only.
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Codex API call.
-4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
+2. **Cloud LLM providers, the diagnostic cascade, and framework bans:** the canonical statement is root `CLAUDE.md` § Hard Constraints (items 2–3). This file previously carried an April 2026 copy that named providers no longer in the cascade; it is not restated here so it cannot drift again.
+3. **Paid-training carve-out:** `docs/zta/together-governed-cloud-exception.md` (FactoryLM AI paid-training workstream only).
+4. **Secrets:** All via Doppler, env-scoped `factorylm/{dev,stg,prd}`. Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
 
@@ -44,7 +55,7 @@ MIRA/
 └── plc/             # PLC program files
 ```
 
-See local AGENTS.md in each module for deep context.
+See the local `CLAUDE.md` in each module for deep context (modules carry `CLAUDE.md`, not `AGENTS.md`; provider-neutral per-module files are not yet established — read them as the module map regardless of provider).
 
 ## Container Map
 
@@ -102,7 +113,6 @@ bash install/smoke_test.sh
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Codex.
 
 ---
 
@@ -117,7 +127,8 @@ bash install/smoke_test.sh
 - **ADRs:** `docs/adr/`
 - **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
 - **Wiki schema:** `wiki/SCHEMA.md`
-- **Skills:** `.Codex/skills/`
+- **Skills:** `.agents/skills/` (provider-neutral) · `.claude/skills/` (Claude adapter)
+- **Fleet standard + provider adapters:** `docs/agent-standard/` — see the "start here" section at the top of this file
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`

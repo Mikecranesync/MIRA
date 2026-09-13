@@ -210,6 +210,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 
 ## Cross-references
 
+- `docs/agent-standard/FLEET_STANDARD.md` + `providers/claude.md` — provider-neutral fleet standard; this file is a Claude adapter under it (`.claude/rules/fleet-standard.md`)
 - Root `CLAUDE.md` — build state, ports, env vars, repo map
 - `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
