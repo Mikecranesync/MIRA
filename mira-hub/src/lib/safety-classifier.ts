@@ -148,6 +148,13 @@ export function detectEnergizedElectricalHazardIntent(message: string): boolean 
 }
 
 /**
+ * Sentinel returned by matchSafetyStop for the energized-electrical
+ * hazard-intent conjunction (#3763). Callers route it to the NFPA 70E
+ * directive (answer streams, framed) instead of the terminal SAFETY_STOP.
+ */
+export const ENERGIZED_ELECTRICAL_HAZARD = "energized-electrical-hazard";
+
+/**
  * The phrase that triggers a safety stop, or null when the message should
  * take the normal chat path. Mirrors Python's two-tier short-circuit on the
  * lowercased, trimmed message.
@@ -156,15 +163,18 @@ export function matchSafetyStop(text: string): string | null {
   const msg = (text || "").toLowerCase().trim();
   if (!msg) return null;
 
+  // Tier-1 immediate phrases keep absolute precedence: a message that matches
+  // one must hard-stop exactly as before — the hazard-intent sentinel below
+  // only ADDS protection for prompts that previously flowed through unguarded.
+  for (const phrase of SAFETY_PHRASES_IMMEDIATE) {
+    if (msg.includes(phrase)) return phrase;
+  }
+
   // Energized-electrical hazard-intent detection (NFPA 70E, issue #3763).
   // Conjunction gate: high-voltage context + work-while-energized intent.
   // Returns special sentinel so caller can route to directive (not SAFETY_STOP).
   if (detectEnergizedElectricalHazardIntent(msg)) {
-    return "energized-electrical-hazard";
-  }
-
-  for (const phrase of SAFETY_PHRASES_IMMEDIATE) {
-    if (msg.includes(phrase)) return phrase;
+    return ENERGIZED_ELECTRICAL_HAZARD;
   }
 
   for (const phrase of SAFETY_PHRASES) {

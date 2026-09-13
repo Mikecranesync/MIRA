@@ -170,11 +170,19 @@ describe("matchSafetyStop with energized-electrical hazard-intent", () => {
     expect(result).toBe("energized-electrical-hazard");
   });
 
-  it("hazard-intent detection happens before general safety keyword checks", () => {
-    // This message has both a hazard-intent pattern AND a general safety keyword.
-    // Hazard intent should fire first (and return the special sentinel).
-    const msg = "480V panel. I want to measure it while live. Plus arc flash concerns.";
+  it("hazard-intent detection happens before general (Tier-2) keyword checks", () => {
+    // This message has both a hazard-intent conjunction AND a Tier-2 keyword
+    // ("arc flash") in non-educational framing. The sentinel wins over Tier-2.
+    const msg = "480V switchgear. I want to measure current while energized. Plus arc flash concerns.";
     expect(matchSafetyStop(msg)).toBe("energized-electrical-hazard");
+  });
+
+  it("Tier-1 immediate phrases keep absolute precedence over the sentinel", () => {
+    // "while live" is a Tier-1 immediate phrase: an active live-work report
+    // must hard-stop exactly as before — the sentinel only ADDS protection,
+    // it never downgrades an existing stop to a streamed answer.
+    const msg = "480V panel. I want to measure it while live.";
+    expect(matchSafetyStop(msg)).toBe("while live");
   });
 
   it("benign electrical questions return null or other phrase, not the sentinel", () => {
