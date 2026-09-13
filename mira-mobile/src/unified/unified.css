@@ -43,3 +43,23 @@
   .unified-updates__actions { align-items: stretch; flex-direction: column; }
   .unified-updates__actions button { inline-size: 100%; }
 }
+
+/* Canonical create-project route (#3765). Same vocabulary as the updates
+   route: workspace tokens + card, never the frozen classic create screen. */
+.unified-create { overflow-y: auto; background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); }
+.unified-create__header { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
+.unified-create__header h1 { margin: 0; font-size: var(--fl-workspace-fs-title); line-height: 1.2; }
+.unified-create__content { inline-size: min(100%, 44rem); margin-inline: auto; display: grid; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); padding-block-end: calc(var(--fl-workspace-space-6) + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+.unified-create__content h2 { margin-block: var(--fl-workspace-space-1) var(--fl-workspace-space-3); font-size: var(--fl-workspace-fs-body); }
+.unified-create button { min-block-size: 2.75rem; border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; font-weight: 650; }
+.unified-create button:disabled { cursor: not-allowed; opacity: 0.55; }
+.unified-create button:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+/* app.css button { width: 100% } would stretch these; pin intrinsic width. */
+.unified-create__back { flex: 0 0 auto; inline-size: auto; width: auto; min-block-size: 2.5rem; }
+.unified-create__primary { width: 100%; border-color: var(--fl-workspace-accent); background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); }
+.unified-create__field { display: grid; gap: var(--fl-workspace-space-1); margin-block-end: var(--fl-workspace-space-3); font-size: var(--fl-workspace-fs-sm); font-weight: 650; color: var(--fl-workspace-muted); }
+.unified-create__field input { min-block-size: 2.75rem; border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; font-weight: 400; box-sizing: border-box; }
+.unified-create__field input:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.unified-create__hint, .unified-create__error { margin: var(--fl-workspace-space-2) 0 0; font-size: var(--fl-workspace-fs-sm); }
+.unified-create__hint { color: var(--fl-workspace-muted); }
+.unified-create__error { color: var(--fl-workspace-fault); }

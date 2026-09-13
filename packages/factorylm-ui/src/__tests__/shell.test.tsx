@@ -124,4 +124,35 @@ describe("shared FactoryLM shell", () => {
     expect(inert.container.querySelector('button[data-item-id="thread-drive-a"]')).toBeNull();
     expect(inert.container.querySelector(".fl-shell__nav-footer")).toBeNull();
   });
+
+  it("renders and gates the New project button when hook is present", () => {
+    const created: string[] = [];
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+      hooks: { onCreateProject: () => created.push("create") },
+    });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const button = view.buttonNamed("New project");
+    if (!shell || !button) throw new Error("New project button must be rendered when hook is provided");
+
+    expect(button.disabled).toBe(false);
+    view.click(button);
+    expect(created).toEqual(["create"]);
+    expect(shell.dataset.navigationVisible).toBe("false");
+  });
+
+  it("disables New project button with aria-describedby hint when hook is absent", () => {
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+    });
+    const button = view.buttonNamed("New project");
+    if (!button) throw new Error("New project button must exist even without hook");
+
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-describedby")).toBe("fl-new-project-reason");
+    const hint = view.container.querySelector("#fl-new-project-reason");
+    expect(hint?.textContent).toContain("Not available");
+  });
 });

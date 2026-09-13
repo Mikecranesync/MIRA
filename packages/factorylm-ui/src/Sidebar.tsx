@@ -1,6 +1,6 @@
 import type { ProjectItem, ProjectNode, ShellAction, ShellState } from "@factorylm/interaction";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
-import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, RunIcon, SearchIcon } from "./icons";
+import { ChatIcon, CloseIcon, ClockIcon, ComposeIcon, FolderIcon, RunIcon, SearchIcon } from "./icons";
 import { ProjectTree, openObjectId } from "./ProjectTree";
 import type { HostHooks } from "./parts";
 
@@ -61,6 +61,7 @@ function isOpenItem(state: ShellState, itemId: string): boolean {
 
 export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, inert, hooks }: SidebarProps) {
   const onNewChat = hooks?.onNewChat;
+  const onCreateProject = hooks?.onCreateProject;
   const [query, setQuery] = useState("");
   const filter = query.trim() || undefined;
   const recent = recentItems(state).filter((item) => !filter || item.label.toLowerCase().includes(filter.toLowerCase()));
@@ -101,6 +102,23 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
           <ComposeIcon className="fl-shell__nav-icon" />New chat
         </button>
         <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
+      </>}
+
+    {typeof onCreateProject === "function"
+      ? <button
+        className="fl-shell__new-project"
+        type="button"
+        onClick={() => { onCreateProject(); dispatch({ type: "set-navigation-visible", visible: false }); }}
+      >
+        <FolderIcon className="fl-shell__nav-icon" />New project
+      </button>
+      : <>
+        {/* No host to create a project (the disconnected lab): honestly disabled, with the reason
+            linked, instead of a dim input or a button that does nothing. */}
+        <button className="fl-shell__new-project" type="button" disabled aria-describedby="fl-new-project-reason">
+          <FolderIcon className="fl-shell__nav-icon" />New project
+        </button>
+        <p id="fl-new-project-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
       </>}
 
     <label className="fl-shell__search">

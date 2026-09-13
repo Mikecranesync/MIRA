@@ -76,6 +76,7 @@ export interface UnifiedChatProps {
 export interface UnifiedChatHandlers extends ChatV2Handlers {
   readonly onScanMachine?: () => Promise<string | null> | string | null;
   readonly onNewChat?: () => void;
+  readonly onCreateProject?: () => void;
 }
 
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
@@ -216,6 +217,7 @@ export function UnifiedChat({
     ...(canStop ? { onStop: handlers.onStop } : {}),
     ...(canRetry && handlers.onRetry ? { onRetry: () => handlers.onRetry?.() } : {}),
     ...(handlers.onNewChat ? { onNewChat: handlers.onNewChat } : {}),
+    ...(handlers.onCreateProject ? { onCreateProject: handlers.onCreateProject } : {}),
     onSource: (source) => {
       const citation: ChatCitation | undefined = citations.get(source.id);
       if (citation) handlers.onCitation(citation);
