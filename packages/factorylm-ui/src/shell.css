@@ -65,6 +65,8 @@
 .fl-tree__row[aria-current="page"] { background: var(--fl-workspace-accent-tint); color: var(--fl-workspace-accent-ink); font-weight: 600; }
 .fl-shell__new-chat { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); }
 .fl-shell__new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
+.fl-shell__new-project { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-2); inline-size: 100%; margin-block-end: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); }
+.fl-shell__new-project:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 
 .fl-tree,
 .fl-tree__children { margin: 0; padding: 0; list-style: none; }

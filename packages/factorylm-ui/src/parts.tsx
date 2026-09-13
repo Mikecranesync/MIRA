@@ -32,6 +32,11 @@ export interface HostHooks {
    */
   readonly onNewChat?: () => void;
   /**
+   * Create a new project. The action is enabled only when the host provides this;
+   * without it the control is honestly disabled with a visible reason.
+   */
+  readonly onCreateProject?: () => void;
+  /**
    * Copy the answer. The host implements the copy sink; the shell renders the
    * control only when this is provided. Copy text carries sources and page numbers.
    */

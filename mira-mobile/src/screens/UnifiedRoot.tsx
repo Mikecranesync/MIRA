@@ -25,6 +25,7 @@ import {
   threadRefFromItem,
 } from "../unified/notebook-tree";
 import { NotebookScreen } from "./NotebookScreen";
+import { CreateNotebook } from "./NotebooksTab";
 import type { UnifiedShellHost } from "./UnifiedChat";
 import { UnifiedChat } from "./UnifiedChat";
 import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
@@ -59,6 +60,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
   const [showAbout, setShowAbout] = useState(false);
+  const [showCreateProject, setShowCreateProject] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -124,6 +126,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     return id;
   }, [open, preferredNotebookId]);
 
+  const onCreateProject = useCallback(() => {
+    setShowCreateProject(true);
+  }, []);
+
   const navigationNotebooks = useMemo<Notebook[]>(() => {
     if (!notebooks) return [];
     return notebooks.map((notebook) => {
@@ -185,11 +191,15 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
   // root-owned state must replace that handler explicitly: otherwise the
   // unmounted notebook leaves its last callback behind and About can minimize
   // the app instead of returning to the conversation.
-  const rootOwnsBack = homeVisible || showAbout || Boolean(error) || !notebooks || !host || !selected;
+  const rootOwnsBack = homeVisible || showAbout || showCreateProject || Boolean(error) || !notebooks || !host || !selected;
   useEffect(() => {
     if (!rootOwnsBack) return;
     const previous = backRef.current;
     const handleBack = () => {
+      if (showCreateProject) {
+        setShowCreateProject(false);
+        return true;
+      }
       if (showAbout) {
         setShowAbout(false);
         return true;
@@ -201,7 +211,20 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
     return () => {
       if (backRef.current === handleBack) backRef.current = previous;
     };
-  }, [backRef, rootOwnsBack, homeVisible, showAbout]);
+  }, [backRef, rootOwnsBack, homeVisible, showAbout, showCreateProject]);
+
+  if (showCreateProject) {
+    return (
+      <CreateNotebook
+        onCancel={() => setShowCreateProject(false)}
+        onCreated={(nb) => {
+          setShowCreateProject(false);
+          open(nb.id);
+          setHomeVisible(false);
+        }}
+      />
+    );
+  }
 
   if (showAbout) {
     return (
@@ -252,6 +275,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
             onAttachFile: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
             onRetry: undefined,
             onNewChat: () => { startNewThread(); },
+            onCreateProject: () => { onCreateProject(); },
             onScanMachine: async () => {
               const id = openPreferredNotebook();
               if (id) setQueuedSensorStart("read-scan");
