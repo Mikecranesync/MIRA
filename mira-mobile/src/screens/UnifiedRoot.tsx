@@ -25,10 +25,10 @@ import {
   threadRefFromItem,
 } from "../unified/notebook-tree";
 import { NotebookScreen } from "./NotebookScreen";
-import { CreateNotebook } from "./NotebooksTab";
 import type { UnifiedShellHost } from "./UnifiedChat";
 import { UnifiedChat } from "./UnifiedChat";
 import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
+import { UnifiedCreateProject } from "../unified/UnifiedCreateProject";
 
 const LAST_NOTEBOOK_KEY = "flm.unified.notebook.v1";
 const LAST_THREAD_KEY = (notebookId: string) => `flm.unified.thread.v1.${notebookId}`;
@@ -215,7 +215,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
 
   if (showCreateProject) {
     return (
-      <CreateNotebook
+      <UnifiedCreateProject
         onCancel={() => setShowCreateProject(false)}
         onCreated={(nb) => {
           setShowCreateProject(false);

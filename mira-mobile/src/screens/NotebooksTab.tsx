@@ -216,7 +216,7 @@ function Home({
   );
 }
 
-export function CreateNotebook({
+function CreateNotebook({
   candidate,
   onCancel,
   onCreated,
