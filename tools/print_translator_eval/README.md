@@ -52,7 +52,7 @@ doppler run --project factorylm --config dev -- python \
 `TOGETHERAI_API_KEY` but does **not** define `INFERENCE_BACKEND` — the
 runner sets `INFERENCE_BACKEND=cloud` itself (via `setdefault`, so it never
 overrides a real value) to match how production actually runs
-(`INFERENCE_BACKEND=cloud` per root `CLAUDE.md`), since `InferenceRouter`
+(`INFERENCE_BACKEND=cloud` per `AGENTS.md` § Hard constraints), since `InferenceRouter`
 defaults to `"local"`/disabled otherwise.
 
 `VisionWorker`'s OCR call (`glm-ocr`, no cloud fallback) and its vision-model

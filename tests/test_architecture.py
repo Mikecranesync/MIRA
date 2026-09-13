@@ -1126,9 +1126,30 @@ def _normalize_md(line: str) -> str:
     return line.replace("`", "").replace("**", "").replace("__", "").replace("*", "")
 
 
+_ROOT_ADAPTER_ALLOWED = (
+    "thin adapter",
+    "imports it",
+    "imports `agents.md`",
+    "imports agents.md",
+    "@agents.md",
+)
+
+
 def _cites_removed_root_section(line: str) -> bool:
+    """True when an active line cites root CLAUDE.md as an authority for anything.
+
+    Root CLAUDE.md is a thin adapter since 2026-09-13; every fact and rule it held moved
+    (AGENTS.md, docs/environments.md, docs/known-issues.md, .claude/rules/). The only
+    legitimate statements about it are that it is the adapter that imports AGENTS.md
+    (#3761 round-7 review: section-anchor matching alone let generic "per root
+    CLAUDE.md, …" citations through)."""
     norm = _normalize_md(line)
-    return any(p.search(norm) for p in _REMOVED_ROOT_SECTION_PATTERNS)
+    low = norm.lower()
+    if any(a in low for a in _ROOT_ADAPTER_ALLOWED):
+        return False
+    if any(p.search(norm) for p in _REMOVED_ROOT_SECTION_PATTERNS):
+        return True
+    return "root claude.md" in low
 
 
 # Historical records keep their pre-change wording on purpose; product source comments are
@@ -1140,15 +1161,25 @@ _REMOVED_ROOT_SECTION_HISTORICAL = {
     "docs/architecture/convergence/DRIFT_REPORT.md",  # Gate 0 record (2026-08), pre-change by definition
     "docs/architecture/convergence/GATE0_SUMMARY.md",  # Gate 0 record
     "docs/CHANGELOG.md",  # frozen archive
+    "docs/agents/subagent-development-handbook.md",  # describes CLAUDE.md files as artifacts to author, not as authority
     "wiki/hot.md",
 }
 _REMOVED_ROOT_SECTION_SKIP_DIRS = (
+    # dated corpora — plans, audits, evaluations, ideation, superpowers specs/plans, DONE
+    # convergence units, histories — describe the state at their date; not operating instructions
     "docs/tech-debt/",
     "docs/xprize/",
     "docs/proofs/",
     "docs/audits/",
+    "docs/plans/",
+    "docs/discovery/",
+    "docs/evaluations/",
+    "docs/ideation/",
+    "docs/superpowers/",
+    "docs/architecture/convergence/units/",
     "wiki/hot.d/",
     "wiki/reviews/",
+    "wiki/orchestrator/",
     "mira-hub/src/",
     ".claude/worktrees/",
     "node_modules/",
@@ -1165,10 +1196,15 @@ def test_removed_root_section_matcher_catches_markdown_formatted_links():
         "(root CLAUDE.md Environments hard rule #1)",
         "per root `CLAUDE.md` § Deferred / Archived Modules",
         "(see root CLAUDE.md Container Map)",
+        'root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)"',
+        "root CLAUDE.md: sunset pending",
+        "per root CLAUDE.md, NEVER docker compose the VPS directly",
+        "root CLAUDE.md Screenshot Rule",
     ):
         assert _cites_removed_root_section(line), line
     for line in (
         "root `CLAUDE.md` is a thin adapter that imports it",
+        "Root `CLAUDE.md` becomes a thin Claude adapter that imports `@AGENTS.md`.",
         "`docs/environments.md` § Container Map (generated)",
         "`AGENTS.md` § Hard constraints (PRD §4)",
     ):

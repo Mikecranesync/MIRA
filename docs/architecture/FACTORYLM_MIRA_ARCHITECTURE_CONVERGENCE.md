@@ -477,11 +477,11 @@ Parallelize implementation only when dependency analysis proves the work does no
 
 ## 10. Context strategy
 
-Do not dump the entire Architecture Registry into root `CLAUDE.md`.
+Do not dump the entire Architecture Registry into root `AGENTS.md` (the provider-neutral map; root `CLAUDE.md` is a thin adapter that imports it).
 
 Use progressive disclosure.
 
-Add this or equivalent to root `CLAUDE.md`:
+Add this or equivalent to root `AGENTS.md`:
 
 > **Architecture changes:** Before any cross-module refactor, migration, consolidation, new service, dependency-direction change, canonical identity change, or legacy deletion, read and follow `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`. Query the Architecture Registry before planning. No architecture-affecting implementation may begin without an R0 known-good rollback point. Follow the gated workflow and independent adversarial-review requirements.
 

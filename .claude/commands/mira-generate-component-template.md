@@ -49,7 +49,7 @@ confidence:             # overall confidence: template (low until customer-valid
 ## Special cases
 
 - `photoeye` / `proximity_sensor` / `occupancy_sensor` — include the B16.2 scenario hints (see `/mira-create-demo-plant`) as a usage example.
-- `vfd` — include MODBUS holding-register hints (e.g. `HR100=speed_rpm`) from root `CLAUDE.md` industrial system map. Mark `confidence: proposed`.
+- `vfd` — include MODBUS holding-register hints (e.g. `HR100=speed_rpm`) from the cluster context (`~/factorylm/CLUSTER.md` § Industrial system). Mark `confidence: proposed`.
 - `contactor` / `relay` — include arc-flash safety note.
 
 ## Constraints

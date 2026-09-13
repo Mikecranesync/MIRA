@@ -84,7 +84,7 @@ gh pr checks <PR#> --watch
 - **All green** → proceed to merge.
 - **Red** → triage before touching anything: is it a real failure your rebase
   introduced, or pre-existing/flaky on `main`? Compare against `origin/main`'s
-  latest run (`gh run list --branch main`). Per root CLAUDE.md's CI & Merge
+  latest run (`gh run list --branch main`). Per the node-global `~/.claude/CLAUDE.md`'s CI & Merge
   Policy: if the failing checks are pre-existing on `main` and unrelated,
   **confirm with the user before merging** — never merge through new red
   checks you haven't explained.

@@ -48,7 +48,7 @@ Updated: 2026-06-21
 
 ## Deferred / Archived Modules
 
-(Moved here from root `CLAUDE.md` 2026-09-13; this is the canonical list.)
+(Moved here on 2026-09-13 when root `CLAUDE.md` became a thin adapter that imports `AGENTS.md`; this is the canonical list.)
 
 | Module | Status | Why | Where to find it |
 |---|---|---|---|

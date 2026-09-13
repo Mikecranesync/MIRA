@@ -35,7 +35,7 @@ This scenario MUST appear in the generated dataset.
    - Conveyor motor + VFD
    - Sortation diverter
 
-3. **PLC tags** — CSV / JSON tag exports covering ~30 tags across one Micro820 PLC. Includes `1.SOC_B16_2`, `Conveyor_B16_Run`, `Conveyor_B16_Fault`, VFD tags (`HR100..HR102` from root CLAUDE.md), with verified mappings to components.
+3. **PLC tags** — CSV / JSON tag exports covering ~30 tags across one Micro820 PLC. Includes `1.SOC_B16_2`, `Conveyor_B16_Run`, `Conveyor_B16_Fault`, VFD tags (`HR100..HR102` from the cluster context `~/factorylm/CLUSTER.md` § Industrial system), with verified mappings to components.
 
 4. **MQTT / Sparkplug topics** — sample topic strings matching the UNS paths (read-side; this is mock data, no live broker).
 

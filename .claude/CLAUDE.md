@@ -1,6 +1,6 @@
 # MIRA — Product & Architecture Operating Guide
 
-> Companion to root `AGENTS.md` (the **provider-neutral project map**, imported by the thin root `CLAUDE.md` adapter). This file is the **product rules** Claude Code must honor while editing this codebase.
+> Companion to root `AGENTS.md` (the **provider-neutral project map**; root `CLAUDE.md` is a thin adapter that imports it). This file is the **product rules** Claude Code must honor while editing this codebase.
 >
 > **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.

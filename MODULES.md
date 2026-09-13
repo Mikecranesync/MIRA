@@ -28,9 +28,9 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-mobile | BENCH | no compose (static Capacitor client, ADR-0034); `ci.yml` `mobile-unit-tests`; signed APK + OTA canary | Native iOS/Android app consuming prod Hub APIs; unified shell is an opt-in canary, not the production default |
 | mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
 | mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
-| mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
+| mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; `docs/known-issues.md` § Deferred / Archived Modules: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
 | mira-scan-monday | ORPHAN | no compose, workflow, or test reference found | |
-| mira-sidecar | LEGACY | root CLAUDE.md: sunset pending (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
+| mira-sidecar | LEGACY | `docs/known-issues.md` § Deferred / Archived Modules: removed from prod 2026-05-20 (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
 | mira-trend-viewer | ORPHAN | no compose, workflow, or test reference found | |
 | mira-web | DEPLOYED | saas.yml builds `./mira-web` | PLG funnel, factorylm.com |
 | nango-integrations | DEPLOYED | saas.yml mounts `./nango-integrations/providers.yaml` into `nango-server` | Config consumed by pinned nango image |

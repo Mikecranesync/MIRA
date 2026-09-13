@@ -57,7 +57,7 @@ doppler secrets set MIRA_IGNITION_HMAC_KEY --project factorylm --config prd
 # Confirm NEON_DATABASE_URL is already set (it backs several services):
 doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain | head -c 20; echo
 
-# Redeploy — per root CLAUDE.md, NEVER `docker compose` the VPS directly.
+# Redeploy — per `docs/environments.md` hard rule #2, NEVER `docker compose` the VPS directly.
 gh workflow run deploy-vps.yml -f services=mira-relay
 ```
 
@@ -292,7 +292,7 @@ SELECT plc_tag, uns_path::text, last_value_numeric, last_seen_at,
 -- expect: freshness_status='live', simulated=false, last_seen_at recent
 ```
 
-**Screenshot** (per root `CLAUDE.md` Screenshot Rule — desktop + mobile,
+**Screenshot** (per `AGENTS.md` § Verification and evidence, the screenshot rule — desktop + mobile,
 saved to `docs/promo-screenshots/`, never deleted):
 
 ```

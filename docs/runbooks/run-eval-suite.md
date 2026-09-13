@@ -173,7 +173,7 @@ Golden fixture files: `tests/golden_factorylm.csv`, `tests/golden_hybrid.csv`.
 
 ## Staging gate (before merging engine / RAG / classifier changes)
 
-From `docs/environments.md` and root `CLAUDE.md`:
+From `docs/environments.md` and `AGENTS.md` § Environment and deployment safety:
 
 ALL engine / RAG / retrieval / classifier changes MUST pass the staging gate:
 
