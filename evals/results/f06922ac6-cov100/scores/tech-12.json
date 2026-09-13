@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-12",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 30,
+      "missing_points": [
+        "Default parameters are reset by setting P053 (Reset Defaults) to value '2' 'Factory Reset'",
+        "After factory reset, all user parameters return to original defaults from the factory",
+        "The drive must be power-cycled to apply the factory reset completely",
+        "GS10 keypad will require re-entry of basic parameters after factory reset (Speed Reference, Control Source, etc.)"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer cites wrong parameter (P00.02) and omits required steps and details."
+    },
+    "grounding": {
+      "score": 50,
+      "note": "Citation confirms P00.02 controls resets but does not support specific codes or safety steps described."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 70,
+      "note": "Provides a concrete procedure, but missing power\u2011cycle and post\u2011reset configuration steps."
+    },
+    "uncertainty": {
+      "score": 30,
+      "note": "Answer is presented confidently despite mismatches with expected procedure."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 44.3
+}

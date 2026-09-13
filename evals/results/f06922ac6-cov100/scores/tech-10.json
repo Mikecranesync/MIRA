@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "The jerking indicates a rapid change in acceleration or current draw during initialization",
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers ramp\u2011up and coupling, but omits explicit mention of current surge and DC\u2011bus stability."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No grounding requirement for this grading."
+    },
+    "diagnostic": {
+      "score": 80,
+      "note": "Provides a clear discriminating question and ordered checklist, though still a list of multiple checks."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Offers concrete, step\u2011by\u2011step actions with expected outcomes."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence without over\u2011statement."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 77.3
+}

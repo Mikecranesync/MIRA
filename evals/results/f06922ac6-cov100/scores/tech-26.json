@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-26",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 55,
+      "missing_points": [
+        "A 2-amp increase alone is insufficient to diagnose bearing health without knowing the motor nameplate, starting condition (cold vs warm), load, and historical baseline",
+        "Abstention should acknowledge that trending requires baseline data and controlled conditions, which the system does not have for this specific machine",
+        "Correct response offers to help if the technician provides motor nameplate, historical current logs, temperature, and load conditions"
+      ],
+      "wrong_if_present": [],
+      "note": "Provides useful diagnostics but lacks required abstention and request for baseline data."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Offers clear step\u2011by\u2011step actions and a diagnostic question."
+    },
+    "uncertainty": {
+      "score": 20,
+      "note": "Does not explicitly flag missing information, but avoids definitive conclusions."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 55.5
+}

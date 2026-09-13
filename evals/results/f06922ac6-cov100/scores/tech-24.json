@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-24",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 30,
+      "missing_points": [
+        "4\u202fmA = 0\u00b0F (start), 20\u202fmA = 100\u00b0F (end), linear; 8\u202fmA should correspond to ~25\u00b0F, not 75\u00b0F",
+        "Discrepancy suggests transmitter calibration error, sensor failure, or PLC input card not reading correctly",
+        "Verify transmitter output with a calibrated loop meter (milliamp clamp meter), then compare to PLC reading to isolate the fault"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer omits linear scaling analysis and PLC\u2011input considerations; provides generic voltage/wiring checks instead."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Provides clear, step\u2011by\u2011step checks (voltage, wiring, resistance, calibration) with expected outcomes."
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Reasonably confident but acknowledges multiple possible causes."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 53.0
+}

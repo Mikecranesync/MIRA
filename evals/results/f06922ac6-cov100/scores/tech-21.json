@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 85,
+      "missing_points": [
+        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer covers inspection steps but omits explicit mention of spalling/contamination as cause"
+    },
+    "grounding": {
+      "score": null,
+      "note": "General guidance, not tied to specific machine documents"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "No diagnostic certainty required"
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, step\u2011by\u2011step actions with expected observations"
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence in steps, minimal hedging"
+    },
+    "context": {
+      "score": null,
+      "note": "No specific contextual information supplied"
+    }
+  },
+  "case_score": 85.5
+}

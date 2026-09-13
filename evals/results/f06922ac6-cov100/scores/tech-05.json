@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-05",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 75,
+      "missing_points": [
+        "Verify control power (24 VDC or equivalent) is present and within specification"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers run command, wiring, interlocks but omits checking control power presence."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations provided."
+    },
+    "diagnostic": {
+      "score": 90,
+      "note": "First check is a clear discriminating run command verification."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Provides concrete steps, locations, expected outcomes, and next actions."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence without overstatement."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 81.5
+}

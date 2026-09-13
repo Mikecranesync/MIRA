@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-24",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-24",
+    "category": "sensors_instrumentation",
+    "mode": "general",
+    "equipment": "4-20 mA temperature transmitter, analog input, 500 ohm loop",
+    "question": "Transmitter outputting 4-20 mA for temperature is reading 8 mA but the actual temperature is 75\u00b0F. Loop resistance is 500 ohms. What's the likely issue?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "4 mA = 0\u00b0F (start), 20 mA = 100\u00b0F (end), linear; 8 mA should correspond to ~25\u00b0F, not 75\u00b0F",
+        "Discrepancy suggests transmitter calibration error, sensor failure, or PLC input card not reading correctly",
+        "Verify transmitter output with a calibrated loop meter (milliamp clamp meter), then compare to PLC reading to isolate the fault"
+      ],
+      "wrong_if": [
+        "Assumes the transmitter is working and blames the PLC without testing",
+        "Recommends replacing the transmitter without verification",
+        "Fails to ask for or verify the transmitter's output range (assumed 0-100\u00b0F in this case)"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Transmitter outputting 4-20 mA for temperature is reading 8 mA but the actual temperature is 75\u00b0F. Loop resistance is 500 ohms. What's the likely issue?",
+      "answer": "The most likely cause is insufficient loop voltage (or a wiring fault) causing the transmitter to be unable to drive the full 4\u201120\u202fmA range, so you\u2019re seeing a low reading (8\u202fmA).  \n\n**Check list (cheapest/safest first):**  \n1. Verify the loop supply voltage at the transmitter terminals with a multimeter (ensure it meets the transmitter\u2019s minimum \u2013 typically 12\u201324\u202fV\u202fDC).  \n2. Inspect all wiring for loose connections, corrosion, or broken conductors that could add extra resistance.  \n3. Measure the actual loop resistance again with the supply off; 500\u202f\u03a9 is high but still okay if the supply can provide the required voltage.  \n4. Confirm the transmitter\u2019s calibration (compare its output at a known temperature or use a calibrated source).  \n5. If the supply voltage is adequate and wiring is sound, consider a faulty transmitter or a drift in its internal sensor.\n\n**Diagnostic question:** Is the measured supply voltage at the transmitter terminals at least the minimum required by the device (e.g., \u226512\u202fV\u202fDC)?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.9920001029968262,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:55.065017+00:00"
+}

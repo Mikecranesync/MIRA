@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-08",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "F013 indicates a current path to earth ground has been detected at one or more drive output terminals",
+        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer covers safety and inspection but omits explicit definition and insulation/moisture details."
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citation directly supports the ground fault definition and the need to check motor and wiring."
+    },
+    "diagnostic": {
+      "score": 85,
+      "note": "Provides a clear, discriminating check (inspect for unintended earth path) without vague cause lists."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Specifies what to do, where, safety steps, and expected hazard, giving a usable next step."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Answer is confident but lacks nuance about possible causes, reflecting moderate calibrated confidence."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 80.3
+}

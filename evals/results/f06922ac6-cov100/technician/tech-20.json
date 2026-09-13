@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-20",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Siemens 3RU2 overload relay, AC induction motor",
+    "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load",
+        "If motor is cold and load is normal, increase overload trip point to ~12A or verify that 3RU2 time-delay curve is appropriate for the motor"
+      ],
+      "wrong_if": [
+        "Assumes the motor is overloaded without checking startup conditions",
+        "Recommends replacing the motor before checking overload settings",
+        "Ignores the difference between FLA and inrush current"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+      "answer": "The most common reason is that the overload is set too close to the motor\u2019s full\u2011load current, so the normal inrush current on a cold start exceeds the 10\u202fA setting and trips the relay.  \n\n**Quick checks (cheapest & safest first):**  \n1. Verify the overload is actually set to 10\u202fA (adjustable knob or digital setting) and that the setting is locked in.  \n2. Confirm the motor is being started directly on line; a VFD or soft\u2011starter will reduce the inrush and usually prevents an immediate trip.  \n3. Measure the motor\u2019s starting current with a clamp\u2011on ammeter on the supply conductors during the next start \u2013 compare the peak to the 10\u202fA setting.  \n4. If the start current is consistently above 10\u202fA, increase the overload setting to the next higher standard range (e.g., 12\u202fA) as recommended for an 8\u202fA FLA motor, then re\u2011test.  \n5. Check that the overload\u2019s ambient temperature rating matches the installation environment; high ambient can make it trip earlier.  \n\n**Diagnostic question:** Is the motor being started directly on the line, or is it being driven by a VFD/soft\u2011starter? Your answer will determine whether adjusting the overload or adding a starter is the proper fix.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.7070882320404053,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:46.115668+00:00"
+}

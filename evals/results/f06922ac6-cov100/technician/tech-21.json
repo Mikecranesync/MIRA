@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-21",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "AC induction motor with ball bearing, pump load",
+    "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)",
+        "Bearing is degrading and will fail soon; continue running is not safe",
+        "Next step: stop the motor, de-energize, and inspect the bearing (feel for roughness when spinning by hand, check for play)"
+      ],
+      "wrong_if": [
+        "Continues running the motor without concern",
+        "Assumes it's just normal operating noise",
+        "Recommends replacing the entire motor without bearing inspection",
+        "Suggests applying grease to the bearing if it is not designed for re-greasing"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+      "answer": "The most likely cause is a failing motor bearing, so first verify that the motor is isolated and the shaft can turn freely with the pump disconnected.  \n\n1. **Power\u2011down and lockout** \u2013 turn off the VFD, lock out the circuit, and verify no voltage is present at the motor terminals.  \n2. **Manually rotate the motor shaft** (with the pump coupling removed if possible). Feel for rough spots, excessive play, or grinding.  \n3. **Check bearing temperature** \u2013 after a short run, carefully feel the motor housing near the bearings; a hot spot indicates bearing wear.  \n4. **Inspect for mis\u2011alignment** \u2013 visually confirm that the motor and pump shafts are collinear; use a straight\u2011edge or laser if available.  \n5. **Listen with the motor running** \u2013 re\u2011energize the VFD at low speed, keep a safe distance, and confirm whether the grinding comes from the motor side or the pump coupling.  \n\n*Diagnostic question:* When you manually turn the shaft with power off, does it spin smoothly or does it still feel gritty?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.6596179008483887,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:48.325041+00:00"
+}

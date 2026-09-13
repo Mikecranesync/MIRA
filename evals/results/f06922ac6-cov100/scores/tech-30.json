@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-30",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 20,
+      "missing_points": [
+        "Sensor performance degraded (range reduction from 50mm spec to intermittent detection), narrowed to contamination in the connector affecting signal integrity",
+        "Root cause: moisture or coolant ingress into the connector causing intermittent electrical contact or signal noise",
+        "Long-term fix: use sealed M12 connectors, cable management to route away from coolant spray, or relocate sensor to protected area"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer gives generic troubleshooting, omits required connector moisture/coolant focus."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable per rubric."
+    },
+    "diagnostic": {
+      "score": 20,
+      "note": "Provides a generic LED check; lacks the high\u2011value discriminating test for moisture/coolant ingress."
+    },
+    "actionability": {
+      "score": 30,
+      "note": "Steps are actionable but too generic; do not specify the targeted fix for connector sealing or relocation."
+    },
+    "uncertainty": {
+      "score": 50,
+      "note": "Moderate confidence; answer is plausible but not aligned with the specific failure mode."
+    },
+    "context": {
+      "score": 20,
+      "note": "Fails to narrow to the moisture/coolant ingress scenario; offers broad advice."
+    }
+  },
+  "case_score": 25.6
+}

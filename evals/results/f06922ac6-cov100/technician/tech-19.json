@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-19",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "480V three-phase system with contactor and AC motor",
+    "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Contactor coil energized and contacts pulled in, input voltage present, but output zero \u2192 contactor main contacts are open/pitted or connection failed post-contactor",
+        "Failure is in the contactor itself (welded open, burned contacts) or wiring/lugs from contactor to motor",
+        "Motor coil is likely OK; issue is between contactor and motor"
+      ],
+      "wrong_if": [
+        "Blames the motor as shorted without checking contactor status",
+        "Suggests the PLC control circuit is at fault when the contactor is already pulled in",
+        "Recommends checking upstream breaker without first verifying contactor contacts"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+      "answer": "The most common reason a locked\u2011rotor motor shows zero volts at its terminals while the 480\u202fV three\u2011phase supply is present and the contactor coil is pulling in is that the power path through the contactor is open (contacts welded open, burnt, or a downstream overload/fuse has opened).  \n\n**Check list (safest/cheapest first):**  \n1. **Verify contactor contact closure** \u2013 with the power off, remove the contactor and use a multimeter to test continuity across each of the three main contacts; any open indicates a failed contactor.  \n2. **Inspect the overload or fuse** protecting the motor \u2013 look for a blown fuse or a tripped thermal overload; replace or reset as required.  \n3. **Confirm wiring integrity** \u2013 check that the motor leads are securely connected to the contactor terminals and that there are no broken or loose wires.  \n4. **Measure voltage at the contactor output** (motor side) with the motor still stopped \u2013 if still zero, the fault is upstream of the motor (contactor or overload).  \n5. **If the contacts are good and overload is intact, test the motor windings** \u2013 with the motor isolated, measure resistance between each pair of motor leads; an open winding will also give zero volts under load.  \n\n**Diagnostic question:**\u202fWhen you measured the three\u2011phase supply at the contactor input, did you also see the correct 480\u202fV on each phase, or was one phase missing? This will tell us if the problem is upstream of the contactor or confined to the contactor/overload path.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.8454878330230713,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:43.767561+00:00"
+}

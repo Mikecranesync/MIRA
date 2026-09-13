@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-29",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 20,
+      "missing_points": [
+        "oH (overheat/over-temperature) = overtemp fault on GS10, narrowed to inadequate heat dissipation (blocked heat sink) rather than hardware failure",
+        "Immediate fix: clean heat sink; long-term fix: improved ventilation, environmental controls, or duty cycle adjustment",
+        "Recurrence after cleaning suggests ongoing thermal load; need to verify load is within VFD rating or improve airflow permanently"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer omits heat\u2011sink focus and required long\u2011term ventilation guidance."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No specific grounding to machine documents provided."
+    },
+    "diagnostic": {
+      "score": 30,
+      "note": "Provides generic checks but lacks a high\u2011value discriminating test (e.g., heat\u2011sink condition)."
+    },
+    "actionability": {
+      "score": 55,
+      "note": "Lists steps, but they are broad and not targeted to the oH cause."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence without qualifying uncertainty."
+    },
+    "context": {
+      "score": 30,
+      "note": "Does not narrow to the specific heat\u2011sink over\u2011temperature issue required."
+    }
+  },
+  "case_score": 37.8
+}

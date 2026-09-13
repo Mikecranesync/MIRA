@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-15",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": true,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 0,
+      "missing_points": [
+        "Method 1: Press the Stop button on the keypad or set control mode to Manual, then address the fault condition and restart",
+        "Method 2: Cycle the drive power completely OFF then back ON after confirming the fault condition has been corrected and load is secured",
+        "Method 3: Use a digital input terminal (e.g., terminal block inputs used for fault clear command via drive configuration) to signal fault clear after root cause is addressed",
+        "The safest method in production is Method 2 (power cycle) after confirming the fault condition has been corrected and the motor load is secured"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer provides no methods and claims information is unavailable."
+    },
+    "grounding": {
+      "score": 0,
+      "note": "must_cite but no citations (deterministic override)"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    },
+    "actionability": {
+      "score": 0,
+      "note": "No actionable guidance given."
+    },
+    "uncertainty": {
+      "score": 0,
+      "note": "Answer shows complete lack of relevant information."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 0.0
+}

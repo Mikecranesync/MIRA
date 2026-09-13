@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-14",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 0,
+      "missing_points": [
+        "Type 1 (Auto-Reset/Run) faults can be automatically reset if the fault condition clears; example: F002 Auxiliary Input",
+        "Type 2 (Non-Resettable) faults require drive or motor repair or wiring correction before the fault can be cleared; example: F006 Motor Stalled, F070 Power Unit failure",
+        "Type 1 faults show in the fault log but may not halt operation if auto-reset is enabled",
+        "Type 2 faults always halt the drive and require manual intervention to clear"
+      ],
+      "wrong_if_present": [],
+      "note": "Provides no required information"
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 0,
+      "note": "No actionable guidance provided"
+    },
+    "uncertainty": {
+      "score": 0,
+      "note": "Answer is not correct, confidence low"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 0.0
+}

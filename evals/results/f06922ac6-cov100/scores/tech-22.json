@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 85,
+      "missing_points": [
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
+      ],
+      "wrong_if_present": [],
+      "note": "Identifies misalignment and gives proper steps, but omits the 0.05\u202fin spec reference."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Citations not required for this general guidance."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for grading dimensions."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, concrete actions and next steps."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "Shows high confidence with no hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 88.5
+}

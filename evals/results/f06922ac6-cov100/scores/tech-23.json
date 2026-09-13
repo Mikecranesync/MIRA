@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 85,
+      "missing_points": [
+        "explicit statement that PNP switches to +24\u202fV and NPN switches to ground",
+        "verification that sensor common is tied to the PLC input common"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer covers most required checks but omits explicit mention of PNP/NPN behavior and common reference verification."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, step\u2011by\u2011step actions with expected outcomes."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence in the assessment."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    }
+  },
+  "case_score": 87.5
+}

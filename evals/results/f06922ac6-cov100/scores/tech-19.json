@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 95,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "Covers all key points without incorrect statements."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Citations not required."
+    },
+    "diagnostic": {
+      "score": 90,
+      "note": "Provides ordered, discriminating checks starting with contactor continuity."
+    },
+    "actionability": {
+      "score": 95,
+      "note": "Clear step\u2011by\u2011step actions with expected outcomes and next steps."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence expressed, minimal hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 93.1
+}

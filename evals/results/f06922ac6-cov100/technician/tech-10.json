@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-10",
+    "category": "troubleshooting",
+    "mode": "general",
+    "equipment": null,
+    "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "The jerking indicates a rapid change in acceleration or current draw during initialization",
+        "Soft-start ramp time parameter may be set too short (high acceleration jerk)",
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components",
+        "Motor mechanical connection may be loose or have slack in the coupling"
+      ],
+      "wrong_if": [
+        "States that jerking is normal on every startup and requires no investigation",
+        "Recommends immediately replacing the drive without checking acceleration time settings",
+        "Assumes the motor winding is shorted without evidence of electrical fault",
+        "Claims that reducing run command frequency will eliminate mechanical jerk"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+      "answer": "The motor \u201cjerk\u201d on start is most often caused by the drive\u2019s acceleration (ramp\u2011up) settings being too aggressive or by a loose mechanical coupling.\n\n**Check list (safest/cheapest first)**  \n1. **Verify the drive\u2019s ramp\u2011up (acceleration) and ramp\u2011down (deceleration) parameters** \u2013 lower the acceleration value and re\u2011start the drive (ensure the drive is in \u201crun\u201d mode, not \u201ctest\u201d).  \n2. **Inspect the motor\u2011to\u2011load coupling** \u2013 look for looseness, mis\u2011alignment, or worn keyways; tighten or re\u2011align as needed.  \n3. **Confirm the motor\u2019s supply voltage and line frequency** \u2013 measure with a multimeter while the drive is energized; large voltage dips can cause a sudden torque surge.  \n4. **Check for excessive motor torque demand at start** \u2013 is the load being engaged (e.g., a conveyor belt or pump) before the motor reaches a safe speed? If so, add a soft\u2011start or delay the load engagement.  \n5. **Review the drive\u2019s start\u2011up mode** \u2013 some VFDs have a \u201cdirect torque control\u201d or \u201copen\u2011loop\u201d start that can cause a brief torque spike; switching to a closed\u2011loop or vector mode may smooth the start.  \n\n**Diagnostic question:** Is the motor mechanically coupled to the load during the initial start, or does the load engage only after the motor reaches speed?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.540421962738037,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:31.254039+00:00"
+}

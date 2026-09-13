@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-09",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "Check that Acceleration Time parameter is sufficient for the motor load (increase if needed)"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers stall definition and load cause but omits acceleration time recommendation"
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citations support both stall definition and load-related cause"
+    },
+    "diagnostic": {
+      "score": 60,
+      "note": "Provides a generic load cause without discriminating checks like acceleration time"
+    },
+    "actionability": {
+      "score": 40,
+      "note": "Lacks concrete remedial steps such as adjusting acceleration time or inspecting mechanical binding"
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Answer is confident but could better reflect uncertainty about exact cause"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 68.8
+}

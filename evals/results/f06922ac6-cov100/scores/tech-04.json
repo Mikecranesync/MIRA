@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 100,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "All required key points are present and no prohibited statements."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations required; answer is general knowledge."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable."
+    },
+    "actionability": {
+      "score": 30,
+      "note": "Provides explanation but no concrete actions or next steps."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence with no hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 77.0
+}
