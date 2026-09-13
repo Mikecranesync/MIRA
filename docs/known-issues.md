@@ -70,7 +70,7 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
-| Anthropic / Claude as cloud LLM provider | Groq → Cerebras → Together cascade (Gemini was the third leg at the time of #610 and was later banned too) | Removed PR #610. Do not reintroduce. |
+| Anthropic / Claude (banned) as cloud LLM provider | Groq → Cerebras → Together cascade (Gemini was the third leg at the time of #610 and was later banned too) | Removed PR #610. Do not reintroduce. |
 
 ## Open low-watch
 

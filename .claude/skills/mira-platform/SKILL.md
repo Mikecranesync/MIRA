@@ -172,7 +172,7 @@ See `references/environment-doctrine.md` for the full table.
 
 | Error / symptom | Likely cause | Fix |
 |---|---|---|
-| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Together (Gemini banned) cascade (PLT-010) |
+| "Anthropic key not set" appears in logs | Someone reintroduced the banned Anthropic provider | Remove the provider; restore Groq → Cerebras → Together (Gemini banned) cascade (PLT-010) |
 | Prod NeonDB write from a feature branch | `prod-guard.sh` bypassed via `MIRA_ALLOW_PROD=1` | Revert the write; rerun against staging |
 | Engine PR merged without smoke test | `smoke-test.yml` skipped | Run smoke against `factorylm.com` + `app.factorylm.com`; rollback if fails |
 | Grounding score drop after merge | A change weakened evidence requirements | Surface in PR, revert if not justified by a feature change |

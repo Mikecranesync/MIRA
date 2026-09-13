@@ -1282,42 +1282,67 @@ _TOOLING_CONTEXT = (
 
 # Order-independent membership check (#3761 round-13 review: docs/ARCHITECTURE.md said
 # "cascade: Gemini→Groq→Cerebras→Claude" and the one-ordering regex above let it through).
-# A line that names the cascade AND names a banned provider as a member is a mandate — unless
-# the same line is the ban itself ("Gemini is banned", "never Anthropic", "removed PR #610").
+#
+# CONTRACT — read this before "improving" it. This is a drift TRIPWIRE for the stale forms
+# that have actually recurred in this repository (a cascade statement naming a banned
+# provider as a member; a Gemini key provisioned "for prod"). It is not a semantic
+# classifier of English, and it fails CLOSED: a line that names the cascade and a banned
+# provider is a mandate unless an exclusion is stated ABOUT THAT PROVIDER within a few words
+# of it (round-14 review: an unrelated "review" / "not " / "replace" elsewhere on the line
+# must not exempt the whole line). Anything subtler than that belongs to a human reader,
+# not to this fence.
 _CASCADE_WORD = re.compile(r"cascad", re.I)
 _BANNED_MEMBER = re.compile(
     r"\bGemini\b|\bAnthropic\b|(?<![./])\bClaude\b", re.I
 )  # not `.claude/` paths
-_NEGATION = (
-    "banned",
-    "never",
-    "removed",
-    "no anthropic",
-    "not ",
-    "dropped",
-    "without",
-    "out of",
-    "replace",
+_PROVIDER = r"(?:gemini|anthropic|claude)"
+# Provider-directed exclusions only: the negation must be attached to the banned provider.
+_PROVIDER_EXCLUDED = re.compile(
+    # "<provider> is banned / removed / dropped / excluded / out of …"
+    rf"\b{_PROVIDER}\b[^.;|]{{0,40}}?\b(?:is |are |was |were |now )?(?:banned|removed|dropped|excluded|out of|removal)"
+    # "never/no/not/without/do not <verb?> <provider>"  (never reintroduce Anthropic)
+    rf"|\b(?:never|no|not|without|excluding|minus|do not|don't)\s+(?:\w+\s+){{0,2}}?(?:the\s+|an?\s+)?{_PROVIDER}\b"
+    # "<provider> stays out / replaced by / was replaced"
+    rf"|\b{_PROVIDER}\b[^.;|]{{0,40}}?\b(?:stays out|replaced by|was replaced)"
+    # "remove / replace / drop / removed … <provider>"  (replace Anthropic call with …)
+    rf"|\b(?:remov(?:e|ed|ing|al)|replac(?:e|ed|ing)|drop(?:ped|ping)?|banned)\b[^.;|]{{0,30}}?\b{_PROVIDER}\b",
+    re.I,
 )
-_CARVEOUT_CONTEXT = (
-    "print-vision",
-    "printsense",
-    "printsynth",
-    "print_vision",
-)  # the one authorized Anthropic use
+# The print-vision carve-out exempts ONLY Anthropic/Claude, and only when the carve-out is
+# named next to that provider — never Gemini, never the rest of the line.
+_CARVEOUT_NEAR_ANTHROPIC = re.compile(
+    r"(?:print[- _]?vision|printsense|printsynth)[^.;]{0,60}?\b(?:anthropic|claude)\b"
+    r"|\b(?:anthropic|claude)\b[^.;]{0,60}?(?:print[- _]?vision|printsense|printsynth)",
+    re.I,
+)
+# Tooling exemption applies only when the tooling word is attached to the cascade clause.
+_TOOLING_NEAR_CASCADE = re.compile(
+    r"(?:review|judge|workflow|\.yml|staging-gate|pr_self_fix|gh secret set)[^.;]{0,40}?cascad"
+    r"|cascad[^.;]{0,40}?(?:review|judge|workflow|\.yml|staging-gate|pr_self_fix)",
+    re.I,
+)
 
 
 def _states_banned_cascade(line: str) -> bool:
-    low = line.lower()
-    if any(k in low for k in _TOOLING_CONTEXT):
+    norm = _normalize_md(line)
+    if _BANNED_PROVISION.search(norm):
+        # a key-provisioning instruction; tooling lines (gh secret set …) are not the product
+        return not any(k in norm.lower() for k in ("gh secret set", "staging-gate", ".yml"))
+    if _BANNED_CASCADE.search(norm):
+        return not _TOOLING_NEAR_CASCADE.search(norm)
+    if not (_CASCADE_WORD.search(norm) and _BANNED_MEMBER.search(norm)):
         return False
-    if _BANNED_CASCADE.search(line) or _BANNED_PROVISION.search(line):
+    if _TOOLING_NEAR_CASCADE.search(norm):
+        return False
+    # Every banned member named on the line must be individually excluded, or it's a mandate.
+    for match in _BANNED_MEMBER.finditer(norm):
+        name = match.group(0).lower()
+        if name in ("anthropic", "claude") and _CARVEOUT_NEAR_ANTHROPIC.search(norm):
+            continue
+        window = norm[max(0, match.start() - 100) : match.end() + 100]
+        if _PROVIDER_EXCLUDED.search(window):
+            continue
         return True
-    if any(k in low for k in _CARVEOUT_CONTEXT):
-        return False
-    if _CASCADE_WORD.search(line) and _BANNED_MEMBER.search(line):
-        norm = _normalize_md(line).lower()
-        return not any(n in norm for n in _NEGATION)
     return False
 
 
