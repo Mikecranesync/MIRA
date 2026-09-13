@@ -73,14 +73,26 @@ if [ "$n" -le 160 ]; then pass "AGENTS.md is a bootloader ($n lines)"; else flun
 
 # 2b. Every docs/agent-standard/*.md path an entry point names must resolve. A pointer to a file
 #     that does not exist is the same defect as the old '.Codex/skills/' — green text, dead link.
+#     No here-document and no temp file here on purpose: in a sandbox with no writable TMPDIR a
+#     here-document fails, bash skips the loop, and this section silently vanishes from the
+#     verdict (found by the #3761 round-1 review). The extracted charset cannot contain
+#     whitespace, so a newline-IFS for-loop over a variable is exact and needs no I/O.
 for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
   [ -f "$f" ] || continue
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
+  paths=$(grep -oE 'docs/agent-standard/[A-Za-z0-9_/.-]+\.md' "$f" | sort -u)
+  found=0
+  oldifs=$IFS; IFS='
+'
+  for p in $paths; do
+    found=$((found+1))
     if [ -f "$p" ]; then pass "resolves: $f -> $p"; else flunk "dangling: $f -> $p" "UNIVERSAL DRIFT"; fi
-  done <<EOF
-$(grep -oE 'docs/agent-standard/[A-Za-z0-9_/.-]+\.md' "$f" | sort -u)
-EOF
+  done
+  IFS=$oldifs
+  # A file that links the standard must yield at least that one path; zero means the scan itself
+  # failed (not "nothing to check"), and a scan that fails must not pass by producing nothing.
+  if grep -qF "$STD" "$f" && [ "$found" -eq 0 ]; then
+    flunk "scan produced no paths for $f although it links $STD — checker infrastructure failure" "UNIVERSAL DRIFT"
+  fi
 done
 
 # 3. Known-false statements that once lived in AGENTS.md (the April 2026 s/Claude/Codex/ fork).
@@ -112,7 +124,14 @@ else
   soft "node overlay: node not identified (pass --node)" "NODE OVERLAY"
 fi
 
-# 5. Verdict at an exact commit (§11: parity evidence is recorded at an exact commit)
+# 5. Verdict at an exact commit (§11: parity evidence is recorded at an exact commit).
+#    Floor: sections 1–4 always emit at least this many checks on a real tree (5 canonical +
+#    4 entry points + 2 budgets + ≥4 resolved paths + 5 markers + 2 node = 22). Fewer means a
+#    section was skipped, and a checker that can pass by skipping is not a checker.
+MIN_CHECKS=22
+if [ "$total" -lt "$MIN_CHECKS" ]; then
+  flunk "only $total checks ran (floor $MIN_CHECKS) — a section was skipped; infrastructure failure, not compliance" "UNIVERSAL DRIFT"
+fi
 echo "---"
 echo "repo:   $REPO"
 echo "head:   $HEAD_SHA"
