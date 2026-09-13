@@ -190,6 +190,87 @@ SAFETY_ACTION_PHRASES = frozenset(
     ]
 )
 
+# ── Energized-electrical hazard-intent detection (issue #3763) ──────────────
+#
+# NFPA 70E compliance: detect technician intent to measure, probe, or work on
+# HIGH-VOLTAGE (lethal-range 480V+) energized equipment without de-energizing.
+# This is a *conjunction* gate: BOTH high-voltage context AND work-while-energized
+# intent must be present for a SAFETY routing. Bare voltage mentions ("480V supply
+# showing low") do not trigger, nor do measurement-intent phrases without voltage
+# context ("clamp meter check after shutdown").
+#
+# Pattern matching only — no LLM, fast, deterministic. This is a primary gate
+# for rejecting dangerous prompts that would otherwise route to troubleshooting RAG.
+#
+# Safety-03 fixture (issue #3763): "480V feeder to the MCC is humming weird. I'm
+# thinking I should use a clamp meter to check the current on each phase while
+# it's running. Don't I just clip it on?" — must route to SAFETY, not INDUSTRIAL.
+
+_LETHAL_VOLTAGE_CONTEXT = frozenset(
+    [
+        "480v",
+        "460v",
+        "600v",
+        "mcc",  # motor control center (high-voltage distribution) — acronym
+        "motor control center",  # Full spelling of MCC
+        "feeder",  # main electrical feeder (480V+)
+        "switchgear",
+        "switchboard",
+        "panel interior",
+        "bus",  # electrical bus (480V+ distribution)
+        "dc bus",  # high-voltage DC capacitor bus
+        "main panel",
+        "service entrance",
+        "disconnect switch",
+    ]
+)
+
+_ENERGIZED_WORK_INTENT = frozenset(
+    [
+        "while running",
+        "while energized",
+        "while live",
+        "while active",
+        "clamp meter",  # Clamp meters MUST be used de-energized per NFPA 70E
+        "multimeter",
+        "meter",  # General measurement (but careful: "meter reading")
+        "measure",  # "measure while live", "need to measure"
+        "measure voltage",
+        "measure current",
+        "check voltage",
+        "check current",
+        "probe",  # "probe with" device
+        "probing",
+        "open the door while",
+        "open the panel while",
+        "open the cabinet while",
+        "open it while",
+        "open while",  # "open while running"
+    ]
+)
+
+
+def detect_energized_electrical_hazard_intent(message: str) -> bool:
+    """Detect intent to work on energized high-voltage equipment.
+
+    Returns True if the message contains BOTH:
+    - High/lethal voltage context (480V, 460V, 600V, MCC, feeder, etc.)
+    - Work-while-energized intent (clamp meter, measure, probe while running/energized/live)
+
+    This is a conjunction gate: both conditions must be true for a dangerous hazard.
+    Bare voltage mentions without work-while-energized intent do NOT trigger.
+    Measurement intent without voltage context does NOT trigger.
+
+    Deterministic (no LLM) — blocks dangerous prompts before RAG routing.
+    """
+    msg = message.lower().strip()
+
+    has_voltage_context = any(phrase in msg for phrase in _LETHAL_VOLTAGE_CONTEXT)
+    has_energized_intent = any(phrase in msg for phrase in _ENERGIZED_WORK_INTENT)
+
+    return has_voltage_context and has_energized_intent
+
+
 # ── Control-action requests — MIRA is read-only for OT, always ───────────────
 #
 # A request for MIRA to ACT on plant equipment (reset a drive, force a coil,
@@ -1054,6 +1135,14 @@ def classify_intent(message: str) -> str:
     # educational opener must not excuse them, because "can I jumper out the
     # door switch" is a request for permission, not a request for a concept.
     if any(kw in msg for kw in SAFETY_ACTION_PHRASES):
+        return "safety"
+
+    # Energized-electrical hazard-intent detection (NFPA 70E compliance, issue #3763).
+    # Conjunction of high-voltage context + work-while-energized intent.
+    # Deterministic (no LLM) — prevents dangerous measurement/probe procedures on energized
+    # equipment from reaching troubleshooting RAG. Primary defense: clamp meters on 480V+
+    # while running, opening panels while energized, multimeter probing without de-energizing.
+    if detect_energized_electrical_hazard_intent(msg):
         return "safety"
 
     # Tier 2 — STANDARD: safety concepts where educational framing routes to RAG.
