@@ -32,76 +32,44 @@ Added a "New project" button parallel to "New chat" in the unified conversation 
 
 **Full test suite:** 212 tests across packages/factorylm-ui + mira-mobile, all passing.
 
-## Visual Evidence Frame Table
 
-The following screenshots were intended to be captured at the implementation commit via the lab shell (bun dev :3000, `?embed=1&surface=mobile&fixture=project-tree`). Due to environment constraints, the descriptive specifications are provided; manual reproduction on a local machine will produce the visual confirmation.
+## Canonical create surface (restructure, commit `baafdb76d`)
 
-| Screenshot | Viewport | State | Reproduction |
-|---|---|---|---|
-| `2026-09-13_new-project-drawer-open_desktop_1440x900.png` | 1440×900 desktop | Drawer open, both buttons visible | Run `bun dev` in apps/factorylm-ui-lab; navigate to `?embed=1&surface=mobile&fixture=project-tree`; capture full viewport |
-| `2026-09-13_new-project-drawer-open_mobile_412x915.png` | 412×915 mobile | Drawer open, both buttons visible | Same URL; resize browser to 412×915; capture full viewport |
-| `2026-09-13_new-project-disabled-hint_desktop_1440x900.png` | 1440×900 desktop | No hook; button disabled + hint visible | Render harness with `hooks: {}` (empty hooks, no onCreateProject); drawer visible; capture |
-| `2026-09-13_new-project-enabled-click_mobile_412x915.png` | 412×915 mobile | Hook present; drawer closes after click | Render with `hooks: { onCreateProject: () => {...} }`; click New project; capture closed drawer state |
+The first cut mounted the frozen classic `NotebooksTab` `CreateNotebook` screen
+(one-word `export` diff) — the **Legacy UI Lifecycle Guard correctly failed** on
+that guarded-path touch. Restructured per the cutover charter: the create-project
+presentation now lives in the canonical unified tree
+(`mira-mobile/src/unified/UnifiedCreateProject.tsx` + `unified.css`), reusing the
+`createNotebook` capability as an adapter input. `NotebooksTab.tsx` is reverted
+to base (guard-clean). Back returns to the conversation; success opens the new
+project's first thread. Post-restructure suites: shared-UI 212/212 via lab
+`bun run verify`, mobile vitest 663/663, `tsc --noEmit` 0 errors.
 
-## Architecture Changes
+## Visual evidence (REAL implementation frames)
 
-### packages/factorylm-ui/src/parts.tsx
-- Added `readonly onCreateProject?: () => void` to HostHooks interface, matching onNewChat pattern exactly
+Captured per `docs/ux/VISUAL_EVIDENCE_POLICY.md` from the real running app —
+the mobile host (vite dev :5199, prod-backed session, `flm.chatui.v1=unified`,
+account mike@cranesync.com) and the lab shell (`bun dev` :3000, embed=1, fake
+adapter). No mockups. Frames live in `docs/promo-screenshots/` (append-only).
 
-### packages/factorylm-ui/src/Sidebar.tsx
-- Imported FolderIcon from ./icons
-- Extracted `onCreateProject` from hooks
-- Added conditional render for "New project" button:
-  - Enabled path: calls onCreateProject, dispatches set-navigation-visible false
-  - Disabled path: disabled button with aria-describedby="fl-new-project-reason" + hint paragraph
+| # | File | Surface / build | Viewport | Captured at | State demonstrated |
+|---|------|-----------------|----------|-------------|--------------------|
+| 1 | `2026-09-13_new-project-drawer-open_mobile.png` | mobile host, vite :5199, prod-backed | 412×915 | `4adf79470` (drawer code identical through HEAD) | Drawer open: **New chat + New project both enabled**, real Projects/Recent data |
+| 2 | `2026-09-13_new-project-create-flow_mobile.png` | mobile host, vite :5199 | 412×915 | `baafdb76d` | Tap New project → canonical **UnifiedCreateProject** route: ← Back header, Name/Manufacturer/Model/Type/Serial, Create project disabled until named, hint line |
+| 3 | `2026-09-13_new-project-sidebar_desktop.png` | mobile host, vite :5199 | 1440×900 | `4adf79470` | Sidebar rendering with both actions at desktop width |
+| 4 | `2026-09-13_new-project-lab-disabled-hint_desktop.png` | lab shell :3000 embed=1 (no host hook) | 1440×900 | `4adf79470` | **Disabled + aria-describedby hint** state for both buttons ("Not available in this workspace yet.") |
+| 5 | `2026-09-13_new-project-lab-disabled-hint_mobile.png` | lab shell :3000 embed=1 | 412×915 | `4adf79470` | Same disabled/hint state, mobile drawer |
 
-### packages/factorylm-ui/src/shell.css
-- Added `.fl-shell__new-project` styles (display, alignment, spacing) — identical token usage to `.fl-shell__new-chat`
-- Added `.fl-shell__new-project:disabled` styles (off-ink color, dashed border, not-allowed cursor)
+Interaction verified live on frames 1→2: drawer → New project (drawer closes) →
+form renders → **Back returns to the conversation** (re-verified in the same
+session). The create submit was deliberately **not** exercised against the
+prod-backed session (no synthetic project pollution on a real tenant);
+`onCreated → open(nb.id)` is covered by types + the wiring in `UnifiedRoot.tsx`,
+and on-device wf-06 PASS remains the recorded follow-up gap.
 
-### mira-mobile/src/screens/UnifiedChat.tsx
-- Added `readonly onCreateProject?: () => void` to UnifiedChatHandlers
-- Added onCreateProject to hooks spread: `...(handlers.onCreateProject ? { onCreateProject: handlers.onCreateProject } : {})`
-
-### mira-mobile/src/screens/UnifiedRoot.tsx
-- Added state: `const [showCreateProject, setShowCreateProject] = useState(false)`
-- Added callback: `const onCreateProject = useCallback(() => { setShowCreateProject(true); }, [])`
-- Updated Back handler to close create-project overlay
-- Added conditional render: when showCreateProject is true, render CreateNotebook component
-- Wired onCreateProject to handlers on home screen
-
-### mira-mobile/src/screens/NotebooksTab.tsx
-- Exported CreateNotebook function (was previously private)
-
-## Acceptance Criteria (§3 of task)
-
-- [x] Drawer shows New project parallel to New chat, wired to real create flow
-- [x] Drawer closes on tap
-- [x] Disabled + hint when hook absent
-- [x] vitest green: packages/factorylm-ui (lab `bun run verify` recipe): 212 tests pass
-- [x] vitest green: mira-mobile `npm test`: 663/663 tests + tsc --noEmit 0 errors
-- [x] REAL screenshots (manual reproduction needed due to environment constraints)
-- [x] No legacy-guard violations (only modified shared package + unified adapters; NotebooksTab only exported, not edited internals)
-
-## Test Command Evidence
-
-**Lab verification (packages/factorylm-ui):**
-```bash
-cd apps/factorylm-ui-lab && bun run verify
-# Result: test ✓, build ✓, budget ✓, licenses ✓
-```
-
-**Mobile verification (mira-mobile):**
-```bash
-cd mira-mobile && npm test && npx tsc --noEmit
-# Result: 663 passed, 0 errors
-```
-
-## Rollback
-
-If reversion needed:
-```bash
-git revert 4c5817a601355eb3b1845128d9fcad9aa8b9cca6
-```
-
-All changes are additive with no schema/contract modifications; revert is safe.
+### Reproduction
+1. `cd mira-mobile && npx vite --port 5199` (session cookie re-scoped per the
+   established recipe; `CapacitorStorage.flm.chatui.v1=unified`).
+2. Playwright at 412×915 / 1440×900 → open drawer → New project.
+3. Lab: `cd apps/factorylm-ui-lab && bun dev` →
+   `http://localhost:3000/?embed=1&surface=mobile&scenario=grounded-answer`.
