@@ -254,6 +254,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, onSwitchClassic }: Unified
             onStop: () => {},
             onCitation: () => {},
             onAttachPhoto: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
+            onAttachCamera: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
             onAttachFile: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
             onRetry: undefined,
             onNewChat: () => { startNewThread(); },

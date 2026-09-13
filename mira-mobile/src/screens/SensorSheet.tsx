@@ -15,7 +15,7 @@ import { BackDismiss, Sheet } from "./Sheet";
 import { SourceThumb } from "./FilePreview";
 import { ScanView, type ScanVia } from "./ScanView";
 import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
-import { canPickNatively, pickPhoto } from "../lib/native-pick";
+import { canPickNatively, capturePhoto, pickPhoto } from "../lib/native-pick";
 import {
   bindNotebookAsset,
   getAssetByTag,
@@ -443,7 +443,7 @@ function ReadPanel({
 
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    const f = await pickPhoto("nameplate.jpg");
+    const f = await capturePhoto("nameplate.jpg");
     if (f) setState({ name: "nameplate", photo: f });
   };
 

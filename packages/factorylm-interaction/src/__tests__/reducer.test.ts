@@ -293,12 +293,14 @@ describe("shared shell reducer", () => {
     const adapter: PlatformAdapter = {
       attachPhoto: async () => attachment,
       attachFile: async () => null,
+      attachCamera: async () => null,
       scanMachine: async () => "machine-drive-a",
       shareArtifact: async () => "cancelled",
       onBack: () => "pass",
     };
 
     expect(Object.keys(adapter).sort()).toEqual([
+      "attachCamera",
       "attachFile",
       "attachPhoto",
       "onBack",
