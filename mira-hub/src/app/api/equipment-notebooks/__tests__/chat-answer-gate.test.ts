@@ -275,6 +275,28 @@ describe("E13 — buffering and Stop semantics", () => {
   });
 });
 
+describe("F1 (Codex review) — bare imperative unsafe instruction through the real handler", () => {
+  it("'Reset the E-12 fault while the machine is energized' → SAFETY_STOP, safety frame, zero citations, no basis", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => completingProvider("Reset the E-12 fault while the machine is energized. This clears the error [1].")),
+    );
+    const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+
+    const released = contentOf(frames);
+    expect(released.replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+    expect(released).not.toContain("while the machine is energized");
+    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:imperative-energized-action" });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().basis).toBeNull();
+    expect(lastTurn().answerText).toBe(SAFETY_STOP);
+  });
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(

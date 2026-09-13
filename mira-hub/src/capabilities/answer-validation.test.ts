@@ -266,6 +266,42 @@ describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () =
   });
 });
 
+describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () => {
+  it("F1: a bare imperative unsafe instruction is rejected — 'Reset the fault while energized'", () => {
+    const v = grounded("Reset the E-12 fault while the machine is energized. This clears the error.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+  });
+
+  it("F1: 'Proceed with maintenance while the panel is live' is rejected, including after an affirmation sentence", () => {
+    expect(grounded("Proceed with maintenance while the panel is live.").ok).toBe(false);
+    expect(grounded("Yes, this model supports it [1]. Proceed with maintenance while the panel is live.").ok).toBe(false);
+  });
+
+  it("F1: imperative in a numbered step is rejected", () => {
+    expect(grounded("1. Press STOP. 2. Reset the fault while the machine is energized.").ok).toBe(false);
+  });
+
+  it("F1 controls: prohibitions and unrelated imperatives pass", () => {
+    expect(grounded("Do not reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("Never work on the panel while it is live.").ok).toBe(true);
+    expect(grounded("Avoid resetting while energized — lock out first.").ok).toBe(true);
+    expect(grounded("Lock out the machine first. Then reset the fault.").ok).toBe(true);
+  });
+
+  it("F2: benign operating/monitoring guidance passes", () => {
+    expect(grounded("Keep the machine energized during normal production.").ok).toBe(true);
+    expect(grounded("Leave the machine running while monitoring temperature.").ok).toBe(true);
+    expect(grounded("The drive may remain powered during normal operation.").ok).toBe(true);
+  });
+
+  it("F2: energized-state coupled to maintenance/hazard context still fails", () => {
+    expect(grounded("Keep the machine energized during the reset.").ok).toBe(false);
+    expect(grounded("Leave the panel live while servicing the contactor.").ok).toBe(false);
+    expect(grounded("The machine must remain energized during the reset procedure [1].").ok).toBe(false);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);

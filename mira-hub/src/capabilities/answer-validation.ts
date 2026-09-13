@@ -99,20 +99,33 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     id: "bypass-safety-device",
     re: /\b(?:(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)safe|fine|ok(?:ay)?|acceptable|permitted|you\s+(?:can|may)|go\s+ahead)\b[^.!?\n]{0,50}\b(?:bypass|defeat|jumper|disable|overrid\w+)\w*\b[^.!?\n]{0,40}\b(?:interlock|guard|safety|light\s+curtain|e[-\s]?stop)\b/i,
   },
-  // R3 (Codex finding, PR #3792 review): the unsafe instruction phrased as an
-  // IMPERATIVE, possibly in a different sentence from the affirmation —
-  // "Yes, resetting is permitted. Keep the machine energized during the
-  // reset." Negations ("do not keep…", "never leave…") are excluded by
-  // lookbehind; the temporal tail keeps the pattern bounded.
+  // F1 (Codex adversarial review, iteration 1 — BLOCKER): the unsafe
+  // instruction as a BARE clause-initial imperative — "Reset the E-12 fault
+  // while the machine is energized." / "Proceed with maintenance while the
+  // panel is live." No affirmation head to match, so the hazard action verb
+  // itself is treated as first-class when it opens a sentence, list item, or
+  // step. Negated forms ("Do not reset…", "Never work…", "Avoid resetting…")
+  // put the negation word in the clause-initial slot, so they fail this
+  // pattern structurally.
+  {
+    id: "imperative-energized-action",
+    re: /(?:^|[.!?]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed|continue|work)\b[^.!?\n]{0,60}\b(?:while|with)\s[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b/im,
+  },
+  // R3/F2 (Codex findings): "keep/leave … energized" is unsafe only when
+  // coupled to a maintenance/hazard context — "Keep the machine energized
+  // during the reset" is rejected; "Keep the machine energized during normal
+  // production" is ordinary operating guidance and passes. Negations
+  // ("do not keep…", "never leave…") are excluded by lookbehind.
   {
     id: "imperative-stay-energized",
-    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b/i,
+    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
-  // "the machine must/should/can remain energized …" — the prohibition form
-  // ("must NOT remain") fails the adjacency naturally and passes.
+  // "the machine must/should/can remain energized … during the reset" — the
+  // prohibition form ("must NOT remain") fails the adjacency naturally, and
+  // the same hazard-context tail keeps normal-operation statements out (F2).
   {
     id: "must-remain-energized",
-    re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b/i,
+    re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|for|when)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
 ];
 
