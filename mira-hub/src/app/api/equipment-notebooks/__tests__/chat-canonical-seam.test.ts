@@ -116,6 +116,9 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
   process.env.GEMINI_API_KEY = "kg";
+  // Pins the UNBUFFERED wire contract — the kill-switch path of the B2
+  // pre-display gate (#3790, PR #3791). Gate-ON contract: chat-answer-gate.test.ts.
+  process.env.NOTEBOOK_ANSWER_GATE = "0";
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT_A, userId: "u1" } as never);
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);

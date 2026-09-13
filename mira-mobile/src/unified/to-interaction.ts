@@ -75,18 +75,27 @@ export function projectsFor(meta: UnifiedNotebookMeta): readonly Project[] {
   }];
 }
 
-const BASIS_KINDS: readonly { readonly match: RegExp; readonly kind: EvidenceBasisKind }[] = [
-  { match: /live/i, kind: "live_machine_evidence" },
-  { match: /machine|history|replay|sensor/i, kind: "machine_history" },
-  { match: /oem|manual|document|source|cited|kb|knowledge/i, kind: "oem_documentation" },
-  { match: /workspace|file|upload|notebook/i, kind: "workspace_evidence" },
-  { match: /component|nameplate|identified/i, kind: "identified_component" },
-];
+/** The server's basis enum (mira-hub migration 084) mapped 1:1. Exact match
+ *  only — plus a conservative space→underscore normalization so legacy
+ *  spaced forms ("live machine evidence") keep resolving. */
+const BASIS_BY_VALUE: Readonly<Record<string, EvidenceBasisKind>> = {
+  live_machine_evidence: "live_machine_evidence",
+  machine_history: "machine_history",
+  oem_documentation: "oem_documentation",
+  workspace_evidence: "workspace_evidence",
+  identified_component: "identified_component",
+  general_reasoning: "general_reasoning",
+};
 
-/** Server basis strings are free text; map by keyword, fall back to general reasoning (never over-claim). */
+/** Map a server basis value to a client kind. An UNKNOWN value must never
+ *  become a STRONGER evidence claim: the old keyword heuristic mapped any
+ *  string containing "knowledge" (e.g. a hypothetical `general_knowledge`)
+ *  to `oem_documentation` — a provenance upgrade invented client-side
+ *  (PR #3791 research, two-lane assessment). Unknown → general_reasoning
+ *  (never over-claim). */
 export function basisKind(basis: string): EvidenceBasisKind {
-  for (const entry of BASIS_KINDS) if (entry.match.test(basis)) return entry.kind;
-  return "general_reasoning";
+  const normalized = basis.trim().toLowerCase().replace(/\s+/g, "_");
+  return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
 }
 
 export function sourceFor(citation: ChatCitation): SourceReference {
