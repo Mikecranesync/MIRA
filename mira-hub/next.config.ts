@@ -50,8 +50,11 @@ const nextConfig: NextConfig = {
   // the build artifact (#3762). Use a catch-all route glob since the tracer
   // includes these files for all pages that statically import anything from
   // the monorepo root (even though no page directly imports from mira-bridge).
+  // ../mira-bridge/** is invalid under Turbopack (navigates above project root);
+  // the Docker build context is ./mira-hub so mira-bridge is never in the image
+  // anyway. **/*.db* is sufficient to exclude SQLite WAL files from standalone.
   outputFileTracingExcludes: {
-    "*": ["../mira-bridge/**", "**/*.db*"],
+    "*": ["**/*.db*"],
   },
   // Bare-domain friendliness when the hub fronts the whole host (tailscale
   // serve / phone testing): / is outside basePath and 404s. In prod nginx owns
