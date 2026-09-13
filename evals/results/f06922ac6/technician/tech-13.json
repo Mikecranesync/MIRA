@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-13",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-13",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "What does fault code F048 (Params Defaulted) indicate on a PowerFlex 525, and what is the required corrective action?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "F048 indicates the drive was commanded to write default values to EEPROM but the operation failed",
+        "This is a Type 1 (auto-resettable) fault that can clear if the condition is no longer present",
+        "Corrective action: clear the fault by cycling power to the drive or setting A551 (Fault Clear) to '1' 'Reset Fault'",
+        "Program the drive parameters as needed after the fault is cleared"
+      ],
+      "wrong_if": [
+        "Confuses F048 with F100 or F101 (parameter checksum or storage errors)",
+        "States that F048 requires replacing the drive control module",
+        "Claims F048 means the drive EEPROM is permanently corrupted and cannot store parameters",
+        "Recommends operating the drive continuously to 'test' if it clears F048 without confirming root cause"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What does fault code F048 (Params Defaulted) indicate on a PowerFlex 525, and what is the required corrective action?",
+      "answer": "Fault\u202fF048 (Params\u202fDefaulted) means the drive was commanded to write its default values to EEPROM.\u202fClear the fault by cycling power to the drive and then re\u2011program any required parameters [1].",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 162,
+          "quote": "\u2026cannot be\ncleared.\nF042 Phase UW Short\nF043 Phase VW Short\nF048 Params Defaulted 1 The drive was commanded to write\ndefault values to EEPROM.\n\u2022 Clear the fault or cycle power to the\ndrive.\n\u2022 Program the drive parameters as\nneeded.\nF059(3) S",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 2.5440070629119873,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:53.334951+00:00"
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-08",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-08",
+    "category": "troubleshooting",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "PowerFlex 525 displays fault F013 (Ground Fault) immediately after startup. What must be checked and what is the safety risk?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "F013 indicates a current path to earth ground has been detected at one or more drive output terminals",
+        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture",
+        "Ground faults present an electric shock hazard to personnel; LOTO and de-energization recommended before inspection",
+        "Check wiring between drive output terminals (T1, T2, T3) and motor leads for damaged insulation or loose connections"
+      ],
+      "wrong_if": [
+        "Recommends operating the drive with a ground fault present to 'warm up the motor'",
+        "States F013 can be safely ignored if the drive is 480V three-phase only",
+        "Claims ground faults only occur in wet environments, not in dry industrial settings",
+        "Suggests immediately replacing the motor without measuring the actual insulation resistance"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "PowerFlex 525 displays fault F013 (Ground Fault) immediately after startup. What must be checked and what is the safety risk?",
+      "answer": "With the drive isolated, locked out and the DC bus verified at\u202f0\u202fV, check the motor and external wiring to the drive output terminals for a grounded condition [1].  \nA ground fault creates an unintended current path to earth, risking electric shock to personnel and possible damage to the drive or motor.",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 161,
+          "quote": "\u2026volts set too high or\nother causes of excess current.\nF013 Ground Fault 1(2) A current path to earth ground has\nbeen detected at one or more of\nthe drive output terminals.\nCheck the motor and external wiring to\nthe drive output terminals fo",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 1.9009771347045898,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:41.504371+00:00"
+}

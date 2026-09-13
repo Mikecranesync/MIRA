@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-16",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": true,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 0,
+      "missing_points": [
+        "F2 = overcurrent fault",
+        "Overcurrent indicates load exceeding drive's rated current capacity or phase loss on input",
+        "Must check for stalled motor, mechanical jam, or undersized drive"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer provides no required information."
+    },
+    "grounding": {
+      "score": 0,
+      "note": "must_cite but no citations (deterministic override)"
+    },
+    "diagnostic": {
+      "score": 0,
+      "note": "No discriminating diagnostic steps offered."
+    },
+    "actionability": {
+      "score": 0,
+      "note": "No actionable guidance given."
+    },
+    "uncertainty": {
+      "score": 10,
+      "note": "Expresses uncertainty but does not reflect the known answer."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 1.2
+}

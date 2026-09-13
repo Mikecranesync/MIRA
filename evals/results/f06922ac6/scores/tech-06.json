@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-06",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 75,
+      "missing_points": [
+        "verify connections between motor and load and verify level and time requirements"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers most key points but omits connection and timing checks."
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citation supports overload nature, P033 and A530 references for F007."
+    },
+    "diagnostic": {
+      "score": 60,
+      "note": "Provides generic checks without clear prioritization or discriminating steps."
+    },
+    "actionability": {
+      "score": 70,
+      "note": "Gives actionable steps but lacks detail on where to perform checks."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Confident statements with no hedging, appropriate for factual answer."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 75.6
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-01",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-01",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "What is the primary function of an AC drive in a motor control system?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "AC drives convert incoming AC power to DC, then synthesize it back to variable-frequency AC output",
+        "The output frequency directly controls motor speed",
+        "AC drives provide soft-start capability, reducing inrush current compared to across-the-line starters",
+        "Provides motor protection functions including overload and thermal monitoring"
+      ],
+      "wrong_if": [
+        "Claims drives are only used for emergency stop or lock rotor protection",
+        "States that AC drives increase motor speed beyond nameplate rating without load reduction",
+        "Confuses AC drive output with a capacitor-based reactive power compensation device"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What is the primary function of an AC drive in a motor control system?",
+      "answer": "The primary function of an AC drive (variable\u2011frequency drive, VFD) is to control the speed and torque of an AC motor by varying the frequency and voltage of the power supplied to it.  \n\n- It converts incoming AC line voltage to DC, then inverts it back to a controlled\u2011frequency AC waveform.  \n- By adjusting that frequency, the drive sets motor speed; the accompanying voltage adjustment maintains the proper V/Hz ratio to produce the desired torque.  \n- It also provides soft start/stop, overload protection, and can enable precise positioning or process control when integrated with a controller.  \n\nIn short, the drive acts as an electronic \u201cgearbox,\u201d letting you command motor speed and torque without mechanical gear changes.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.214789867401123,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:10.504038+00:00"
+}

@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-13",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 60,
+      "missing_points": [
+        "F048 indicates the drive was commanded to write default values to EEPROM but the operation failed",
+        "This is a Type 1 (auto-resettable) fault that can clear if the condition is no longer present",
+        "Corrective action: set A551 (Fault Clear) to '1' 'Reset Fault'"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer covers basic meaning and cycling power, but omits failure nuance, fault type, and A551 reset."
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citation directly supports the meaning and the need to clear fault or cycle power and re\u2011program parameters."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Provides clear steps (cycle power, re\u2011program) but lacks the optional A551 reset detail."
+    },
+    "uncertainty": {
+      "score": 85,
+      "note": "High confidence with no hedging, appropriate for the information given."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 76.4
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-04",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Constant-torque loads require the same torque output across all speeds (conveyors, punch presses, hoists)",
+        "Variable-torque loads require less torque at lower speeds (centrifugal fans, centrifugal pumps)",
+        "AC drives can be sized more conservatively for variable-torque because power demand scales with speed",
+        "Constant-torque applications may require larger drives due to full torque requirement at low speeds"
+      ],
+      "wrong_if": [
+        "Confuses constant-torque with constant-speed operation",
+        "Claims all HVAC and pump applications are constant-torque",
+        "States that variable-torque drives cannot be used for hoists or lifting"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+      "answer": "A constant\u2011torque load requires the motor to deliver the same torque at all speeds (e.g., conveyors, mixers), so the motor\u2019s power demand rises linearly with speed. A variable\u2011torque load needs full torque only at low speed and less torque as speed increases (e.g., fans, pumps); its power demand varies with the cube of speed, so the motor sees much lower power at higher speeds.  \n\n**Key practical differences**\n\n1. **VFD programming** \u2013 Constant\u2011torque applications usually use a \u201cspeed\u2011control\u201d (V/Hz) curve that keeps torque constant; variable\u2011torque applications use a \u201cpump\u2011/fan\u2011curve\u201d that reduces torque with speed.  \n2. **Motor sizing** \u2013 Constant\u2011torque loads often require a motor sized for the full rated torque at the highest speed; variable\u2011torque loads can be sized for the peak torque at low speed, saving cost.  \n3. **Energy use** \u2013 Variable\u2011torque loads save energy when run at reduced speed because power drops dramatically; constant\u2011torque loads save less energy because power follows speed linearly.  \n\nIf you\u2019re setting up a VFD, confirm whether the driven equipment is a constant\u2011torque or variable\u2011torque type; the appropriate V/Hz or torque\u2011limit curve must be selected in the VFD parameters (see the PowerFlex\u202f525 manual for the specific parameter numbers).",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.7486159801483154,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:31.186716+00:00"
+}

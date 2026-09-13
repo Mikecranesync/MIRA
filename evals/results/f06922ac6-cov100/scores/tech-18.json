@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 35,
+      "missing_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "Verification steps: (1) confirm the Modbus parameter being written and its address, (2) check the speed reference source selection (P3xx parameter, depending on control mode), (3) verify three-phase output voltage at motor terminals, (4) confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if_present": [
+        "Ignores the possibility of open-loop vs closed-loop control mode mismatch or incorrect speed reference source"
+      ],
+      "note": "Covers scaling and limits but omits register mapping, source selection, output voltage, and mechanical checks; also ignores open/closed-loop mode."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations required; answer is general guidance."
+    },
+    "diagnostic": {
+      "score": 60,
+      "note": "Provides several checks but does not clearly prioritize the highest\u2011value discriminating check."
+    },
+    "actionability": {
+      "score": 55,
+      "note": "Lists actions but lacks specific parameter locations and concrete expected outcomes."
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Answer is presented confidently without hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 50.8
+}

@@ -1,0 +1,13 @@
+{
+  "sha": "f06922ac6",
+  "base_url": "https://app.factorylm.com",
+  "notebook_id": "a299a2af-5285-4de2-ba43-9c48d85edbad",
+  "grounding_source_ids": [
+    "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+    "c4c90216-5466-4d42-8572-183f45ba6249"
+  ],
+  "started": "2026-09-13T07:02:07.714381+00:00",
+  "finished": "2026-09-13T07:02:07.714397+00:00",
+  "case_count": 40,
+  "infra_failures": 0
+}

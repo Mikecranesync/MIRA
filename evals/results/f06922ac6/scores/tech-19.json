@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 15,
+      "missing_points": [
+        "Contactor coil energized and contacts pulled in, input voltage present, but output zero \u2192 contactor main contacts are open/pitted or connection failed post-contactor",
+        "Failure is in the contactor itself (welded open, burned contacts) or wiring/lugs from contactor to motor",
+        "Motor coil is likely OK; issue is between contactor and motor"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer focuses on VFD rather than contactor/wiring, missing all required key points."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "diagnostic": {
+      "score": 20,
+      "note": "Checklist emphasizes VFD checks; does not prioritize the most discriminating check (contactor contacts)"
+    },
+    "actionability": {
+      "score": 30,
+      "note": "Provides steps, but they target the wrong subsystem (VFD) and miss the direct contactor inspection"
+    },
+    "uncertainty": {
+      "score": 20,
+      "note": "Answer presents conclusions with confidence despite lacking supporting evidence"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 20.4
+}

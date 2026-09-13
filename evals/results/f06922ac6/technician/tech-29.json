@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-29",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-29",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "Automation Direct GS10 VFD, AC motor load",
+    "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+    "turns": [
+      "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "Checked the manual: oH is overtemp. VFD enclosure temperature is 85\u00b0C. Ambient is 40\u00b0C. Fan is running. What should you look for?",
+      "Checked heat sink fins\u2014caked with dust and debris. Cleaned fins with compressed air. Temps dropped to 60\u00b0C. oH cleared and motor starts. What was the problem?",
+      "Motor ran for 30 min then oH came back. Temp at 80\u00b0C again. What's the long-term fix?"
+    ],
+    "expected": {
+      "key_points": [
+        "oH (overheat/over-temperature) = overtemp fault on GS10, narrowed to inadequate heat dissipation (blocked heat sink) rather than hardware failure",
+        "Immediate fix: clean heat sink; long-term fix: improved ventilation, environmental controls, or duty cycle adjustment",
+        "Recurrence after cleaning suggests ongoing thermal load; need to verify load is within VFD rating or improve airflow permanently"
+      ],
+      "wrong_if": [
+        "Assumes heat sink cleaning permanently solves the problem without addressing root cause (ambient, load, ventilation)",
+        "Recommends VFD replacement after one cleaning cycle",
+        "Ignores the 40\u00b0C ambient temperature as a factor in thermal design"
+      ],
+      "final_turn_must_narrow_to": "VFD overtemp (oH code) due to blocked heat sink; long-term solution requires permanent ventilation/cooling improvement"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "answer": "The most common reason a GS10 VFD trips an **oH (over\u2011heat/over\u2011load) fault** is that the motor or drive is exceeding its current or temperature limits.  \n\n**Quick safety\u2011first checklist**\n\n1. **Verify isolation** \u2013 lock out and tag out the VFD power before touching any terminals.  \n2. **Check motor temperature** \u2013 feel the motor housing (or use a temperature probe) after a short run; is it unusually hot?  \n3. **Inspect motor wiring** \u2013 look for loose, corroded, or undersized conductors on the motor leads and VFD output terminals; tighten or replace as needed.  \n4. **Confirm VFD current limit settings** \u2013 compare the drive\u2019s programmed current limit to the motor\u2019s rated full\u2011load current (typical setting is about 110\u202f% of motor rating, but verify in the GS10 manual).  \n5. **Look for external overload devices** \u2013 ensure any external motor overload relay or thermal protector is set correctly and not tripping.  \n6. **Run a short test** \u2013 with the VFD in manual jog mode, run the motor for a few seconds and watch the drive display for temperature or current warnings.\n\n**Diagnostic question:**\u202fWhen you feel the motor after a brief run, does it feel hot (above ambient by more than a few degrees) or is it cool?  \n\n- If hot \u2192 focus on cooling, ventilation, and possible over\u2011current settings.  \n- If cool \u2192 the fault may be a mis\u2011set current limit or a wiring issue.  \n\nAdjust the current limit or correct any wiring problems, then reset the VFD and retry. If the oH fault persists, the full GS10 user manual\u2019s fault\u2011code section will be needed for deeper troubleshooting.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.7886509895324707,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:20.124973+00:00"
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-12",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-12",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "Describe the default factory reset procedure for the GS10 drive and what parameter controls this.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Default parameters are reset by setting P053 (Reset Defaults) to value '2' 'Factory Reset'",
+        "After factory reset, all user parameters return to original defaults from the factory",
+        "The drive must be power-cycled to apply the factory reset completely",
+        "GS10 keypad will require re-entry of basic parameters after factory reset (Speed Reference, Control Source, etc.)"
+      ],
+      "wrong_if": [
+        "States that holding the Esc key for 10 seconds performs a factory reset",
+        "Claims factory reset clears stored fault history but retains custom parameter values",
+        "Recommends factory reset as the first troubleshooting step before checking control wiring",
+        "Confuses parameter P053 with P051 or P052 (which are backfill or recovery functions)"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Describe the default factory reset procedure for the GS10 drive and what parameter controls this.",
+      "answer": "Use parameter\u202fP00.02 to perform a factory reset; setting it to\u202f9 restores all parameters to the 50\u202fHz defaults, and setting it to\u202f10 restores them to the 60\u202fHz defaults\u202f[1]. No physical contact is required\u2014simply write the desired reset code to P00.02 via the drive\u2019s keypad or communication interface.",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "GS10_UserManual.pdf",
+          "page": 117,
+          "quote": "\u2026user-defined\nparameter values P13.01~P13.50)\n12: Reset all parameters to 60Hz defaults (retain user-defined\nparameter values P13.01~P13.50)\n0\nP00.02 allows the resetting of various parameter sets and drive functions.\nSetting Explanations",
+          "docId": "c4c90216-5466-4d42-8572-183f45ba6249",
+          "fileId": "5fa8311c-a262-4e60-b723-947436397cb3"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 2.2561261653900146,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:50.576817+00:00"
+}

@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-01",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 90,
+      "missing_points": [
+        "thermal monitoring"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers main points but omits explicit mention of thermal monitoring"
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations required"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 20,
+      "note": "Provides information only, no actionable guidance"
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence, no hedging"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 70.0
+}

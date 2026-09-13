@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 40,
+      "missing_points": [
+        "Explicit statement that generic pump knowledge does not apply to PMP\u201112",
+        "Clear abstention without providing generic lift estimate"
+      ],
+      "wrong_if_present": [
+        "Provides a generic suction lift estimate (2\u20133\u202fm) as typical"
+      ],
+      "note": "Partially addresses need for spec sheet but gives a generic lift guess, violating abstention requirement."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not evaluated for this task."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Diagnostic not applicable."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Offers concrete steps to check suction line, NPSH, priming, etc., but mixes with generic estimate."
+    },
+    "uncertainty": {
+      "score": 30,
+      "note": "Provides a specific generic lift value rather than fully abstaining, showing over\u2011confidence."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not required."
+    }
+  },
+  "case_score": 50.0
+}

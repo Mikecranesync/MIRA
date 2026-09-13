@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-03",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-03",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "What does a Modbus TCP communication link require to function reliably with an industrial drive?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Network switch or hub with proper Ethernet cabling and RJ45 connectors",
+        "Consistent IP addressing and no address conflicts on the network segment",
+        "Drive firmware must support Modbus TCP protocol version used by the master",
+        "Network latency and packet loss must be within drive specification (typically <100 ms typical response)"
+      ],
+      "wrong_if": [
+        "Suggests that Modbus TCP requires a dedicated industrial protocol license",
+        "Claims that adding a second network card to a drive automatically improves redundancy without configuration",
+        "States that UDP is preferred over TCP for real-time Modbus on factory networks"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What does a Modbus TCP communication link require to function reliably with an industrial drive?",
+      "answer": "The first thing to verify is that the drive and the PLC/PC are on the same Ethernet network segment with matching IP settings and a proper subnet mask.\n\n1. **Network basics** \u2013 Confirm both devices have unique, static IP addresses in the same subnet (e.g., 192.168.0.x/255.255.255.0) and that the gateway is set only if a router is needed.  \n2. **Physical layer** \u2013 Check that the Ethernet cable is Category\u202f5e or better, terminated correctly, and that link LEDs on both ends are solid (no intermittent flashes).  \n3. **Switch/port configuration** \u2013 Ensure any intervening switch is set to \u201cauto\u2011negotiate\u201d or the same speed/duplex as the drive (usually 100\u202fMbps full\u2011duplex) and that no VLANs or port security are blocking the traffic.  \n4. **Drive settings** \u2013 Verify the drive\u2019s Modbus TCP server is enabled, the listening port is the standard 502 (or the one you intend to use), and that the device ID matches what the master expects. These parameters must be confirmed in the drive\u2019s manual.  \n5. **Firewall/ACLs** \u2013 Make sure no firewall or access\u2011control list on the PC, PLC, or network equipment is blocking TCP port\u202f502.  \n6. **Power\u2011up sequence** \u2013 Power the drive and controller after the network is stable; some drives require a brief warm\u2011up before they accept connections.  \n\n**Diagnostic question:** Are you seeing any link\u2011layer errors (e.g., \u201cconnection timed out\u201d or \u201cno response\u201d) when you ping the drive\u2019s IP address?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 2.3369810581207275,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:28.348029+00:00"
+}

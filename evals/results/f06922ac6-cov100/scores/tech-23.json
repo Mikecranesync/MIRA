@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 95,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "Answer covers all key points, provides appropriate checks without incorrect statements."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear step\u2011by\u2011step checks, expected readings, and next actions."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence in the assessment."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    }
+  },
+  "case_score": 93.5
+}

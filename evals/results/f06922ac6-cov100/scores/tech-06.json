@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-06",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "verify connections between motor and load and verify level and time requirements",
+        "check that the motor load is not excessively high or jammed"
+      ],
+      "wrong_if_present": [],
+      "note": "Main fault meaning and load reduction are correct, but omits connection checks and jam condition."
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citation directly supports load reduction and A530 check for F007."
+    },
+    "diagnostic": {
+      "score": 80,
+      "note": "Provides specific checks (load, A530) but lacks broader discriminating steps like connection verification."
+    },
+    "actionability": {
+      "score": 75,
+      "note": "Gives clear actions to reduce load and verify a setting, but missing details on where/how to inspect."
+    },
+    "uncertainty": {
+      "score": 85,
+      "note": "Answer is confident and appropriate for the information provided."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 79.1
+}

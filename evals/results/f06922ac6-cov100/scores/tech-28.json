@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-28",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 30,
+      "missing_points": [
+        "Multi-turn diagnosis narrowed from supply to contactor to wiring connection",
+        "Root cause identified as corroded lug connection causing voltage drop to zero at motor",
+        "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer omits required root cause and preventive actions"
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not grounded in specific machine documentation"
+    },
+    "diagnostic": {
+      "score": 40,
+      "note": "Provides a list of checks but lacks a single highest\u2011value discriminating test"
+    },
+    "actionability": {
+      "score": 55,
+      "note": "Steps are given but lack clear expected outcomes and implications"
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Shows confidence without qualifying uncertainty"
+    },
+    "context": {
+      "score": 30,
+      "note": "Does not narrow to corroded lug connection; stays generic"
+    }
+  },
+  "case_score": 41.6
+}

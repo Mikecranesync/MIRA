@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-22",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "Flexible coupling, motor-pump shaft pair",
+    "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Flexible couplings are designed to accommodate minor misalignment; 0.5 inch is significant and suggests either parallel misalignment or axial offset",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.002-0.005 inch for modern systems)",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
+      ],
+      "wrong_if": [
+        "Claims any flexible coupling can handle 0.5 inch without consequence",
+        "Assumes smooth running means proper alignment",
+        "Recommends replacement without re-alignment attempt"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+      "answer": "The 0.5\u202fin offset almost certainly indicates a mis\u2011alignment problem that should be corrected.  \n\n1. **Visually inspect** the coupling and both shafts; confirm the measured offset is consistent along the entire length, not just a one\u2011time reading.  \n2. **Check for vibration** or abnormal noise while the motor and pump run; increased vibration is a strong sign of mis\u2011alignment.  \n3. **Verify coupling preload** (if it\u2019s a flexible type) \u2013 too loose or too tight can allow the shafts to shift.  \n4. **Power down and lock out** the machine, then use a dial\u2011indicator or laser alignment tool to measure angular and parallel mis\u2011alignment against the manufacturer\u2019s tolerance (typically a few thousandths of an inch per inch of shaft length).  \n5. **Adjust the motor or pump mounting** (shim, shift, or re\u2011position) to bring the shafts into proper alignment, then re\u2011torque the coupling bolts to the values given in the coupling\u2019s manual.  \n\nIs the equipment showing any noticeable vibration or bearing wear that could be related to this offset?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.446324110031128,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:04.871616+00:00"
+}
