@@ -109,7 +109,12 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // pattern structurally.
   {
     id: "imperative-energized-action",
-    re: /(?:^|[.!?]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed|continue|work)\b[^.!?\n]{0,60}\b(?:while|with)\s[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b/im,
+    // Clause boundaries include ':' ';' and dashes (iteration-2 blocker:
+    // "Follow these steps: Reset … while energized" / "…; then reset …").
+    // Verb set includes the perform/conduct/carry-out maintenance
+    // constructions. "proceed with caution" is excluded — it is cautionary
+    // prose, not an instruction to act on an energized machine.
+    re: /(?:^|[.!?:;]\s+|[—–]\s*|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed(?!\s+with\s+caution\b)|continue|work|perform|conduct|carry(?:\s+out)?|complete|begin|start)\b[^.!?\n]{0,60}\b(?:while|with)\s[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b/im,
   },
   // R3/F2 (Codex findings): "keep/leave … energized" is unsafe only when
   // coupled to a maintenance/hazard context — "Keep the machine energized

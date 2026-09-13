@@ -297,6 +297,29 @@ describe("F1 (Codex review) — bare imperative unsafe instruction through the r
   });
 });
 
+describe("F1 iteration-2 probes — clause boundaries and maintenance verbs through the real handler", () => {
+  for (const candidate of [
+    "Follow these steps: Reset the E-12 fault while the machine is energized.",
+    "Check the display; then reset the fault while the panel is live.",
+    "Perform maintenance while the panel is live.",
+  ]) {
+    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
+      const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+      expect(frames.find((f) => f.kind === "safety")).toMatchObject({
+        trigger: "unsafe-answer:imperative-energized-action",
+      });
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+      expect(lastTurn().basis).toBeNull();
+      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    });
+  }
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(

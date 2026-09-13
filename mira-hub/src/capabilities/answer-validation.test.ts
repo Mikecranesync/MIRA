@@ -302,6 +302,31 @@ describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () =
   });
 });
 
+describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintenance verbs", () => {
+  it("colon-prefaced imperative is rejected — 'Follow these steps: Reset … while energized'", () => {
+    const v = grounded("Follow these steps: Reset the E-12 fault while the machine is energized.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+  });
+
+  it("semicolon-prefaced imperative is rejected — '…; then reset the fault while the panel is live'", () => {
+    expect(grounded("Check the display; then reset the fault while the panel is live.").ok).toBe(false);
+  });
+
+  it("'Perform maintenance while the panel is live' is rejected (perform/conduct/carry out forms)", () => {
+    expect(grounded("Perform maintenance while the panel is live.").ok).toBe(false);
+    expect(grounded("Conduct the repair while the machine is energized.").ok).toBe(false);
+    expect(grounded("Carry out the service work while the panel is live.").ok).toBe(false);
+  });
+
+  it("controls: negated and cautionary forms still pass", () => {
+    expect(grounded("Follow these steps: do not reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("Warning: test the voltage only after de-energizing the panel.").ok).toBe(true);
+    expect(grounded("Note: proceed with caution while the machine is running.").ok).toBe(true);
+    expect(grounded("Never perform maintenance while the panel is live.").ok).toBe(true);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);
