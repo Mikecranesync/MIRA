@@ -20,28 +20,28 @@
         "Long-term fix: use sealed M12 connectors, cable management to route away from coolant spray, or relocate sensor to protected area"
       ],
       "wrong_if_present": [],
-      "note": "Answer gives generic troubleshooting, omits required connector moisture/coolant focus."
+      "note": "Provides generic troubleshooting but omits the specific connector moisture/coolant cause and long\u2011term fix."
     },
     "grounding": {
       "score": null,
       "note": "Grounding not applicable per rubric."
     },
     "diagnostic": {
-      "score": 20,
-      "note": "Provides a generic LED check; lacks the high\u2011value discriminating test for moisture/coolant ingress."
+      "score": 30,
+      "note": "Only a generic LED check; lacks a high\u2011value discriminating test for moisture or connector ingress."
     },
     "actionability": {
-      "score": 30,
-      "note": "Steps are actionable but too generic; do not specify the targeted fix for connector sealing or relocation."
+      "score": 50,
+      "note": "Lists general steps but no targeted actions for the identified root cause."
     },
     "uncertainty": {
-      "score": 50,
-      "note": "Moderate confidence; answer is plausible but not aligned with the specific failure mode."
+      "score": 70,
+      "note": "Shows confidence in steps but does not acknowledge uncertainty about the specific failure mode."
     },
     "context": {
-      "score": 20,
-      "note": "Fails to narrow to the moisture/coolant ingress scenario; offers broad advice."
+      "score": 30,
+      "note": "Fails to narrow focus to connector moisture/coolant issue; remains overly generic."
     }
   },
-  "case_score": 25.6
+  "case_score": 35.6
 }

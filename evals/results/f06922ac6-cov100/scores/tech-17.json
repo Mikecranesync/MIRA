@@ -28,11 +28,11 @@
     },
     "diagnostic": {
       "score": 0,
-      "note": "No diagnostic reasoning or discriminating checks provided."
+      "note": "No discriminating diagnostic check provided."
     },
     "actionability": {
       "score": 0,
-      "note": "No actionable steps related to the PLC behavior were given."
+      "note": "No actionable steps related to the PLC behavior."
     },
     "uncertainty": {
       "score": 0,

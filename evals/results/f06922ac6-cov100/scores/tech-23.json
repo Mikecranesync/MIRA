@@ -13,13 +13,10 @@
   },
   "judge": {
     "correctness": {
-      "score": 85,
-      "missing_points": [
-        "explicit statement that PNP switches to +24\u202fV and NPN switches to ground",
-        "verification that sensor common is tied to the PLC input common"
-      ],
+      "score": 95,
+      "missing_points": [],
       "wrong_if_present": [],
-      "note": "Answer covers most required checks but omits explicit mention of PNP/NPN behavior and common reference verification."
+      "note": "Answer covers all key points, provides appropriate checks without incorrect statements."
     },
     "grounding": {
       "score": null,
@@ -31,10 +28,10 @@
     },
     "actionability": {
       "score": 90,
-      "note": "Provides clear, step\u2011by\u2011step actions with expected outcomes."
+      "note": "Provides clear step\u2011by\u2011step checks, expected readings, and next actions."
     },
     "uncertainty": {
-      "score": 90,
+      "score": 95,
       "note": "High confidence in the assessment."
     },
     "context": {
@@ -42,5 +39,5 @@
       "note": "Not applicable for this grading."
     }
   },
-  "case_score": 87.5
+  "case_score": 93.5
 }

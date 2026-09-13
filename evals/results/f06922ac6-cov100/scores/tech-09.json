@@ -13,7 +13,7 @@
   },
   "judge": {
     "correctness": {
-      "score": 70,
+      "score": 75,
       "missing_points": [
         "Check that Acceleration Time parameter is sufficient for the motor load (increase if needed)"
       ],
@@ -22,24 +22,24 @@
     },
     "grounding": {
       "score": 90,
-      "note": "Citations support both stall definition and load-related cause"
+      "note": "Citations support both stall definition and load reduction suggestion"
     },
     "diagnostic": {
-      "score": 60,
-      "note": "Provides a generic load cause without discriminating checks like acceleration time"
+      "score": 70,
+      "note": "Provides a single likely cause without a discriminating diagnostic hierarchy"
     },
     "actionability": {
-      "score": 40,
-      "note": "Lacks concrete remedial steps such as adjusting acceleration time or inspecting mechanical binding"
+      "score": 50,
+      "note": "Mentions cause but lacks concrete remedial steps like adjusting acceleration time or checking mechanical binding"
     },
     "uncertainty": {
       "score": 80,
-      "note": "Answer is confident but could better reflect uncertainty about exact cause"
+      "note": "Answer is confident; appropriate for the information provided"
     },
     "context": {
       "score": null,
       "note": "Not applicable"
     }
   },
-  "case_score": 68.8
+  "case_score": 73.8
 }

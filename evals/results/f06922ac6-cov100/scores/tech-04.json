@@ -13,31 +13,33 @@
   },
   "judge": {
     "correctness": {
-      "score": 100,
-      "missing_points": [],
+      "score": 60,
+      "missing_points": [
+        "Variable-torque loads require less torque at lower speeds (centrifugal fans, centrifugal pumps)"
+      ],
       "wrong_if_present": [],
-      "note": "All required key points are present and no prohibited statements."
+      "note": "Mostly correct but reverses variable\u2011torque behavior"
     },
     "grounding": {
       "score": null,
-      "note": "No citations required; answer is general knowledge."
+      "note": "No citations required"
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable"
     },
     "actionability": {
-      "score": 30,
-      "note": "Provides explanation but no concrete actions or next steps."
+      "score": 20,
+      "note": "Provides explanation only, no actionable guidance"
     },
     "uncertainty": {
-      "score": 90,
-      "note": "High confidence with no hedging."
+      "score": 80,
+      "note": "Moderate confidence in assessment"
     },
     "context": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable"
     }
   },
-  "case_score": 77.0
+  "case_score": 52.0
 }

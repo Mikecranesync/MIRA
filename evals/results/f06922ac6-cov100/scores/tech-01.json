@@ -18,27 +18,27 @@
         "thermal monitoring"
       ],
       "wrong_if_present": [],
-      "note": "Answer covers most key points, missing explicit mention of thermal monitoring."
+      "note": "Covers main points but omits explicit mention of thermal monitoring"
     },
     "grounding": {
       "score": null,
-      "note": "No citations required."
+      "note": "No citations required"
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable"
     },
     "actionability": {
       "score": 20,
-      "note": "Provides description but no actionable guidance."
+      "note": "Provides information only, no actionable guidance"
     },
     "uncertainty": {
       "score": 95,
-      "note": "High confidence in correctness."
+      "note": "High confidence, no hedging"
     },
     "context": {
       "score": null,
-      "note": "Context not evaluated."
+      "note": "Not applicable"
     }
   },
   "case_score": 70.0

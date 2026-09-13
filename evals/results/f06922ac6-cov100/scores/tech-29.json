@@ -20,28 +20,28 @@
         "Recurrence after cleaning suggests ongoing thermal load; need to verify load is within VFD rating or improve airflow permanently"
       ],
       "wrong_if_present": [],
-      "note": "Answer omits heat\u2011sink focus and required long\u2011term ventilation guidance."
+      "note": "Answer mentions overheat but omits heat\u2011sink focus and required fixes."
     },
     "grounding": {
       "score": null,
-      "note": "No specific grounding to machine documents provided."
+      "note": "No grounding to specific GS10 documentation."
     },
     "diagnostic": {
-      "score": 30,
-      "note": "Provides generic checks but lacks a high\u2011value discriminating test (e.g., heat\u2011sink condition)."
+      "score": 20,
+      "note": "Provides a list of generic checks without a single discriminating test."
     },
     "actionability": {
-      "score": 55,
-      "note": "Lists steps, but they are broad and not targeted to the oH cause."
+      "score": 40,
+      "note": "Lists steps, but they are generic and miss the key heat\u2011sink action."
     },
     "uncertainty": {
-      "score": 80,
-      "note": "Shows confidence without qualifying uncertainty."
+      "score": 70,
+      "note": "Shows confidence despite lacking required specifics."
     },
     "context": {
-      "score": 30,
-      "note": "Does not narrow to the specific heat\u2011sink over\u2011temperature issue required."
+      "score": 20,
+      "note": "Fails to narrow to the target cause (blocked heat sink) and offers broad advice."
     }
   },
-  "case_score": 37.8
+  "case_score": 30.0
 }

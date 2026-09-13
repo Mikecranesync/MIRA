@@ -13,34 +13,34 @@
   },
   "judge": {
     "correctness": {
-      "score": 70,
+      "score": 60,
       "missing_points": [
         "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
-        "verify that 3RU2 time-delay curve is appropriate for the motor"
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load"
       ],
       "wrong_if_present": [],
-      "note": "Covers main cause and remedy but lacks quantitative inrush detail and time\u2011delay curve check."
+      "note": "Answer covers overload setting and increase to 12\u202fA but omits quantitative inrush factor and time\u2011delay curve discussion."
     },
     "grounding": {
       "score": null,
-      "note": "Not applicable (general guidance)."
+      "note": "Based on general guidance, not tied to specific machine documents."
     },
     "diagnostic": {
       "score": 80,
-      "note": "Provides discriminating check (direct\u2011on\u2011line vs VFD/soft\u2011starter) and concrete measurements, though ordering could be clearer."
+      "note": "Provides a clear discriminating question about direct\u2011on\u2011line start vs VFD/soft\u2011starter."
     },
     "actionability": {
       "score": 85,
-      "note": "Lists concrete steps, expected outcomes, and next actions."
+      "note": "Lists concrete steps: verify setting, confirm start method, measure current, adjust setting, check ambient."
     },
     "uncertainty": {
       "score": 80,
-      "note": "Shows reasonable confidence without over\u2011assertion."
+      "note": "Shows confidence with practical checks, no hedging."
     },
     "context": {
       "score": null,
-      "note": "No specific product context required."
+      "note": "Context not applicable."
     }
   },
-  "case_score": 77.3
+  "case_score": 73.5
 }

@@ -20,7 +20,7 @@
         "Must check for stalled motor, mechanical jam, or undersized drive"
       ],
       "wrong_if_present": [],
-      "note": "Answer provides no key points and does not address the fault code."
+      "note": "Answer provides no required information."
     },
     "grounding": {
       "score": 0,
@@ -28,20 +28,20 @@
     },
     "diagnostic": {
       "score": 0,
-      "note": "No diagnostic reasoning or discriminating checks were offered."
+      "note": "No discriminating diagnostic steps offered."
     },
     "actionability": {
       "score": 0,
-      "note": "No actionable steps or guidance were given."
+      "note": "No actionable guidance given."
     },
     "uncertainty": {
-      "score": 20,
-      "note": "Expresses uncertainty but without supporting evidence; low confidence."
+      "score": 10,
+      "note": "Expresses uncertainty but does not reflect the known answer."
     },
     "context": {
       "score": null,
       "note": "Context dimension not applicable."
     }
   },
-  "case_score": 2.4
+  "case_score": 1.2
 }

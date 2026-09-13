@@ -16,31 +16,31 @@
       "score": 70,
       "missing_points": [
         "verify connections between motor and load and verify level and time requirements",
-        "explicitly mention checking for a jammed motor or excessive load condition"
+        "check that the motor load is not excessively high or jammed"
       ],
       "wrong_if_present": [],
-      "note": "Main fault meaning and load reduction covered, but missing connection checks and jammed load detail."
+      "note": "Main fault meaning and load reduction are correct, but omits connection checks and jam condition."
     },
     "grounding": {
-      "score": 85,
-      "note": "Citation supports load reduction and A530 check; implies F007 is motor overload."
+      "score": 90,
+      "note": "Citation directly supports load reduction and A530 check for F007."
     },
     "diagnostic": {
-      "score": 60,
-      "note": "Provides generic load check but lacks discriminating diagnostic steps."
+      "score": 80,
+      "note": "Provides specific checks (load, A530) but lacks broader discriminating steps like connection verification."
     },
     "actionability": {
-      "score": 70,
-      "note": "Gives clear actions to reduce load and verify boost setting, but could be more detailed."
+      "score": 75,
+      "note": "Gives clear actions to reduce load and verify a setting, but missing details on where/how to inspect."
     },
     "uncertainty": {
-      "score": 80,
-      "note": "Answer is stated confidently with appropriate citations."
+      "score": 85,
+      "note": "Answer is confident and appropriate for the information provided."
     },
     "context": {
       "score": null,
       "note": "Not applicable."
     }
   },
-  "case_score": 72.9
+  "case_score": 79.1
 }

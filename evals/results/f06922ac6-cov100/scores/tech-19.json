@@ -16,28 +16,28 @@
       "score": 95,
       "missing_points": [],
       "wrong_if_present": [],
-      "note": "Covers all key points without incorrect statements."
+      "note": "Covers all key points without prohibited statements"
     },
     "grounding": {
       "score": null,
-      "note": "Citations not required."
+      "note": "Not applicable"
     },
     "diagnostic": {
       "score": 90,
-      "note": "Provides ordered, discriminating checks starting with contactor continuity."
+      "note": "Provides ordered, discriminating checks starting with contactor continuity"
     },
     "actionability": {
       "score": 95,
-      "note": "Clear step\u2011by\u2011step actions with expected outcomes and next steps."
+      "note": "Clear steps, locations, expected outcomes, and next actions"
     },
     "uncertainty": {
-      "score": 90,
-      "note": "High confidence expressed, minimal hedging."
+      "score": 85,
+      "note": "High confidence but some implicit assumptions"
     },
     "context": {
       "score": null,
-      "note": "Context not applicable."
+      "note": "Not applicable"
     }
   },
-  "case_score": 93.1
+  "case_score": 92.3
 }

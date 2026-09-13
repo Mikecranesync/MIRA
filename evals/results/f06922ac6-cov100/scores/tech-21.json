@@ -13,33 +13,34 @@
   },
   "judge": {
     "correctness": {
-      "score": 85,
+      "score": 70,
       "missing_points": [
-        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)"
+        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)",
+        "Bearing is degrading and will fail soon; continue running is not safe"
       ],
       "wrong_if_present": [],
-      "note": "Answer covers inspection steps but omits explicit mention of spalling/contamination as cause"
+      "note": "Provides correct next steps but omits explicit cause details and safety warning."
     },
     "grounding": {
       "score": null,
-      "note": "General guidance, not tied to specific machine documents"
+      "note": "General guidance, not tied to specific documentation."
     },
     "diagnostic": {
       "score": null,
-      "note": "No diagnostic certainty required"
+      "note": "Not applicable for this grading."
     },
     "actionability": {
       "score": 90,
-      "note": "Provides clear, step\u2011by\u2011step actions with expected observations"
+      "note": "Clear, concrete steps with expected outcomes and next diagnostic question."
     },
     "uncertainty": {
-      "score": 80,
-      "note": "Shows confidence in steps, minimal hedging"
+      "score": 85,
+      "note": "Answer is presented confidently with minimal hedging."
     },
     "context": {
       "score": null,
-      "note": "No specific contextual information supplied"
+      "note": "Context dimension not required for this item."
     }
   },
-  "case_score": 85.5
+  "case_score": 79.0
 }

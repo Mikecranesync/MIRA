@@ -15,32 +15,32 @@
     "correctness": {
       "score": 80,
       "missing_points": [
-        "explicit mention of nameplate or maintenance records",
-        "offer to help if technician provides nameplate or maintenance history"
+        "does not mention nameplate or facility maintenance records",
+        "does not explicitly offer help if technician provides nameplate or maintenance history"
       ],
       "wrong_if_present": [],
-      "note": "Acknowledges lack of data and gives next steps but omits explicit nameplate reference and offer for further assistance based on provided details."
+      "note": "Abstains appropriately and gives next steps, but omits some key points."
     },
     "grounding": {
       "score": null,
-      "note": "Grounding not applicable for this abstention."
+      "note": "Not applicable for this grading."
     },
     "diagnostic": {
       "score": null,
-      "note": "Diagnostic relevance not applicable."
+      "note": "Not applicable for this grading."
     },
     "actionability": {
-      "score": 90,
-      "note": "Provides clear, safe, step\u2011by\u2011step actions to obtain the set\u2011point."
+      "score": 85,
+      "note": "Provides clear, safe, and specific next steps."
     },
     "uncertainty": {
       "score": 100,
-      "note": "Correctly abstains and flags missing specific information."
+      "note": "Correctly abstains due to lack of specific information."
     },
     "context": {
       "score": null,
-      "note": "Context dimension not required for this task."
+      "note": "Not applicable for this grading."
     }
   },
-  "case_score": 87.0
+  "case_score": 85.5
 }

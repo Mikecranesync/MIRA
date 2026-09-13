@@ -31,11 +31,11 @@
     },
     "actionability": {
       "score": 85,
-      "note": "Provides clear step\u2011by\u2011step checks and a diagnostic question"
+      "note": "Provides clear, step\u2011by\u2011step checks and a diagnostic question"
     },
     "uncertainty": {
       "score": 80,
-      "note": "Answer is confident but lacks mention of alternative causes"
+      "note": "Answer is confident but lacks coverage of some possible causes"
     },
     "context": {
       "score": null,

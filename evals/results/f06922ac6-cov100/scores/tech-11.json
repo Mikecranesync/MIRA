@@ -21,19 +21,19 @@
         "To manually clear a fault from memory: Set A551 (Fault Clear) to '1' Reset Fault to acknowledge and prepare for restart"
       ],
       "wrong_if_present": [],
-      "note": "Answer does not include any required key points."
+      "note": "Answer does not include any required key points and cites an unsupported parameter."
     },
     "grounding": {
       "score": 50,
-      "note": "Citation supports the manual RESET key action, but provides no evidence for parameter P06.73 controlling automatic reset."
+      "note": "Citation supports the manual RESET key action but does not support the claim about parameter P06.73."
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable"
     },
     "actionability": {
       "score": 40,
-      "note": "Provides a usable manual reset step, but incorrect/unsupported automatic\u2011reset parameter."
+      "note": "Provides a usable manual reset step, but the automatic\u2011reset parameter is incorrect."
     },
     "uncertainty": {
       "score": 30,
@@ -41,7 +41,7 @@
     },
     "context": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable"
     }
   },
   "case_score": 27.1

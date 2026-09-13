@@ -18,27 +18,27 @@
         "Drive firmware must support Modbus TCP protocol version used by the master"
       ],
       "wrong_if_present": [],
-      "note": "Covers network, IP, cabling, latency but omits firmware version requirement."
+      "note": "Covers network hardware, IP consistency, and latency but omits firmware version requirement."
     },
     "grounding": {
       "score": null,
-      "note": "Not applicable for this grading."
+      "note": "Not applicable for this grading task."
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable for this grading."
+      "note": "Not applicable for this grading task."
     },
     "actionability": {
       "score": 85,
-      "note": "Provides clear, step\u2011by\u2011step checks and expected outcomes."
+      "note": "Provides clear what/where/expected/implication/next steps for verification."
     },
     "uncertainty": {
       "score": 90,
-      "note": "High confidence in the provided guidance."
+      "note": "High confidence; answer is definitive without hedging."
     },
     "context": {
       "score": null,
-      "note": "Not applicable for this grading."
+      "note": "Not applicable for this grading task."
     }
   },
   "case_score": 81.0

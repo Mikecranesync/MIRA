@@ -29,20 +29,20 @@
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable for this grading task."
+      "note": "Diagnostic not applicable for this grading task."
     },
     "actionability": {
       "score": 0,
-      "note": "No actionable guidance given."
+      "note": "No actionable guidance is given."
     },
     "uncertainty": {
-      "score": 0,
-      "note": "Answer shows complete lack of relevant information."
+      "score": 20,
+      "note": "Answer expresses uncertainty and lacks supporting evidence."
     },
     "context": {
       "score": null,
       "note": "Context not applicable."
     }
   },
-  "case_score": 0.0
+  "case_score": 2.9
 }

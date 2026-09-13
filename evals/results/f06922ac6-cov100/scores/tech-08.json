@@ -16,26 +16,27 @@
       "score": 70,
       "missing_points": [
         "F013 indicates a current path to earth ground has been detected at one or more drive output terminals",
-        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture"
+        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture",
+        "Check wiring between drive output terminals (T1, T2, T3) and motor leads for damaged insulation or loose connections"
       ],
       "wrong_if_present": [],
-      "note": "Answer covers safety and inspection but omits explicit definition and insulation/moisture details."
+      "note": "Answer covers safety lockout and general wiring check but omits specific definition and detailed insulation inspection."
     },
     "grounding": {
       "score": 90,
-      "note": "Citation directly supports the ground fault definition and the need to check motor and wiring."
+      "note": "Citation directly supports the ground fault definition and the need to check motor and external wiring."
     },
     "diagnostic": {
       "score": 85,
-      "note": "Provides a clear, discriminating check (inspect for unintended earth path) without vague cause lists."
+      "note": "Provides a clear, discriminating check (inspect motor and wiring) without vague cause lists."
     },
     "actionability": {
       "score": 80,
-      "note": "Specifies what to do, where, safety steps, and expected hazard, giving a usable next step."
+      "note": "Specifies what to do, where, expected hazard, and safety steps, though could be more detailed."
     },
     "uncertainty": {
       "score": 80,
-      "note": "Answer is confident but lacks nuance about possible causes, reflecting moderate calibrated confidence."
+      "note": "Answer is confident but lacks nuance about possible variations, leading to moderate calibrated confidence."
     },
     "context": {
       "score": null,

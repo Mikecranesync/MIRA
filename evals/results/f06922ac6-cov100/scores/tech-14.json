@@ -21,7 +21,7 @@
         "Type 2 faults always halt the drive and require manual intervention to clear"
       ],
       "wrong_if_present": [],
-      "note": "Provides no required information"
+      "note": "Answer provides no required information."
     },
     "grounding": {
       "score": null,
@@ -33,16 +33,16 @@
     },
     "actionability": {
       "score": 0,
-      "note": "No actionable guidance provided"
+      "note": "No actionable guidance given."
     },
     "uncertainty": {
-      "score": 0,
-      "note": "Answer is not correct, confidence low"
+      "score": 100,
+      "note": "Clearly states lack of information."
     },
     "context": {
       "score": null,
       "note": "Not applicable"
     }
   },
-  "case_score": 0.0
+  "case_score": 20.0
 }

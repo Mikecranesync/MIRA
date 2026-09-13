@@ -13,35 +13,35 @@
   },
   "judge": {
     "correctness": {
-      "score": 40,
+      "score": 35,
       "missing_points": [
         "Check that the speed reference input (analog or digital terminal) is actually changing and is wired correctly per the manual's wiring diagram",
         "If using terminal inputs, verify the terminal block connector is fully seated and the input signal is present with a voltmeter",
         "Review the Speed Reference Control chart to ensure the correct parameter settings for the input source in use"
       ],
       "wrong_if_present": [],
-      "note": "Covers source selection but omits wiring verification and chart review required by rubric."
+      "note": "Only one of four required key points addressed; no prohibited statements."
     },
     "grounding": {
-      "score": 30,
-      "note": "Citations do not clearly substantiate the claims about preset\u2011frequency reference or MOP limiting."
+      "score": 20,
+      "note": "Citations do not clearly support the claims about preset\u2011frequency reference or MOP limiting speed."
     },
     "diagnostic": {
-      "score": 40,
-      "note": "Provides two generic causes without clear prioritisation or discriminating detail."
+      "score": 70,
+      "note": "Provides two specific checks, ordered with the most likely cause first, but includes a less discriminating MOP check."
     },
     "actionability": {
-      "score": 30,
-      "note": "Mentions what to verify but lacks where to check, expected values, implications, or next steps."
+      "score": 40,
+      "note": "Mentions what to verify but lacks detailed steps, locations, expected results, and next actions."
     },
     "uncertainty": {
-      "score": 50,
-      "note": "No explicit confidence statement; moderate calibrated confidence."
+      "score": 80,
+      "note": "High confidence in the grading assessment."
     },
     "context": {
       "score": null,
-      "note": "Not applicable."
+      "note": "No contextual information required."
     }
   },
-  "case_score": 37.1
+  "case_score": 43.8
 }

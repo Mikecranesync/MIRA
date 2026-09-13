@@ -13,34 +13,33 @@
   },
   "judge": {
     "correctness": {
-      "score": 70,
+      "score": 80,
       "missing_points": [
-        "The jerking indicates a rapid change in acceleration or current draw during initialization",
         "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components"
       ],
       "wrong_if_present": [],
-      "note": "Covers ramp\u2011up and coupling, but omits explicit mention of current surge and DC\u2011bus stability."
+      "note": "Covers acceleration and coupling but omits DC\u2011bus stability point."
     },
     "grounding": {
       "score": null,
-      "note": "No grounding requirement for this grading."
+      "note": "General guidance, no specific source grounding required."
     },
     "diagnostic": {
-      "score": 80,
-      "note": "Provides a clear discriminating question and ordered checklist, though still a list of multiple checks."
+      "score": 70,
+      "note": "Provides a prioritized checklist but still lists multiple possible causes rather than a single discriminating test."
     },
     "actionability": {
       "score": 85,
-      "note": "Offers concrete, step\u2011by\u2011step actions with expected outcomes."
+      "note": "Clear step\u2011by\u2011step actions with what to check, where, and expected outcome."
     },
     "uncertainty": {
       "score": 80,
-      "note": "Shows confidence without over\u2011statement."
+      "note": "Confident recommendations with limited hedging."
     },
     "context": {
       "score": null,
       "note": "Context not applicable."
     }
   },
-  "case_score": 77.3
+  "case_score": 78.8
 }

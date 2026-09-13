@@ -13,33 +13,31 @@
   },
   "judge": {
     "correctness": {
-      "score": 85,
-      "missing_points": [
-        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
-      ],
+      "score": 95,
+      "missing_points": [],
       "wrong_if_present": [],
-      "note": "Identifies misalignment and gives proper steps, but omits the 0.05\u202fin spec reference."
+      "note": "Answer covers key points about significance of 0.5\u202fin offset and required alignment tolerances"
     },
     "grounding": {
       "score": null,
-      "note": "Citations not required for this general guidance."
+      "note": "No citations required"
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable for grading dimensions."
+      "note": "Not applicable"
     },
     "actionability": {
       "score": 90,
-      "note": "Provides clear, concrete actions and next steps."
+      "note": "Provides clear step\u2011by\u2011step actions and next checks"
     },
     "uncertainty": {
-      "score": 95,
-      "note": "Shows high confidence with no hedging."
+      "score": 90,
+      "note": "Shows high confidence with no hedging"
     },
     "context": {
       "score": null,
-      "note": "Context dimension not applicable."
+      "note": "Not applicable"
     }
   },
-  "case_score": 88.5
+  "case_score": 92.5
 }

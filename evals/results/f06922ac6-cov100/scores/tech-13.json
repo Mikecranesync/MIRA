@@ -20,28 +20,28 @@
         "Corrective action: clear the fault by cycling power to the drive or setting A551 (Fault Clear) to '1' 'Reset Fault'"
       ],
       "wrong_if_present": [],
-      "note": "Answer covers basic meaning and clearing, but omits failure nuance, fault type, and A551 detail."
+      "note": "Answer covers basic meaning and basic clear/reprogram steps but omits failure nuance, fault type, and A551 method."
     },
     "grounding": {
-      "score": 100,
+      "score": 90,
       "note": "All statements are directly supported by the cited manual excerpt."
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Not applicable for this grading."
     },
     "actionability": {
       "score": 70,
-      "note": "Provides clear steps (clear fault, power\u2011cycle, re\u2011program) but lacks specific location (A551) and expected outcome details."
+      "note": "Provides clear actions (clear fault, power\u2011cycle, re\u2011program) but lacks detail on where to set fault\u2011clear (A551)."
     },
     "uncertainty": {
-      "score": 90,
-      "note": "Answer is presented confidently with no hedging."
+      "score": 80,
+      "note": "Answer is presented confidently with no hedging, appropriate for the supported content."
     },
     "context": {
       "score": null,
-      "note": "Not applicable."
+      "note": "Context dimension not required."
     }
   },
-  "case_score": 77.9
+  "case_score": 73.6
 }

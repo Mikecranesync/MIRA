@@ -20,28 +20,28 @@
         "Correct response offers to help if the technician provides motor nameplate, historical current logs, temperature, and load conditions"
       ],
       "wrong_if_present": [],
-      "note": "Provides useful diagnostics but lacks required abstention and request for baseline data."
+      "note": "Provides useful diagnostics but lacks explicit abstention and request for baseline data."
     },
     "grounding": {
       "score": null,
-      "note": "Not applicable"
+      "note": "Not applicable (no grounding requirement)"
     },
     "diagnostic": {
       "score": null,
-      "note": "Not applicable"
+      "note": "Diagnostic dimension not evaluated"
     },
     "actionability": {
       "score": 80,
-      "note": "Offers clear step\u2011by\u2011step actions and a diagnostic question."
+      "note": "Clear step-by-step actions provided."
     },
     "uncertainty": {
-      "score": 20,
-      "note": "Does not explicitly flag missing information, but avoids definitive conclusions."
+      "score": 30,
+      "note": "Does not explicitly acknowledge missing baseline data, thus low uncertainty handling."
     },
     "context": {
       "score": null,
-      "note": "Not applicable"
+      "note": "Context dimension not applicable"
     }
   },
-  "case_score": 55.5
+  "case_score": 57.5
 }

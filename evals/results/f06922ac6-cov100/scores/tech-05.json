@@ -13,12 +13,12 @@
   },
   "judge": {
     "correctness": {
-      "score": 75,
+      "score": 80,
       "missing_points": [
         "Verify control power (24 VDC or equivalent) is present and within specification"
       ],
       "wrong_if_present": [],
-      "note": "Covers run command, wiring, interlocks but omits checking control power presence."
+      "note": "Covers most key points but omits checking control power voltage."
     },
     "grounding": {
       "score": null,
@@ -26,11 +26,11 @@
     },
     "diagnostic": {
       "score": 90,
-      "note": "First check is a clear discriminating run command verification."
+      "note": "Starts with the most discriminating check (run command) and avoids vague cause lists."
     },
     "actionability": {
       "score": 85,
-      "note": "Provides concrete steps, locations, expected outcomes, and next actions."
+      "note": "Provides clear steps, locations, expected outcomes, and next actions."
     },
     "uncertainty": {
       "score": 80,
@@ -41,5 +41,5 @@
       "note": "Context not applicable."
     }
   },
-  "case_score": 81.5
+  "case_score": 83.5
 }

@@ -20,28 +20,28 @@
         "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
       ],
       "wrong_if_present": [],
-      "note": "Answer provides generic VFD checks but omits required root\u2011cause and preventive actions."
+      "note": "Answer omits required root cause and preventive actions"
     },
     "grounding": {
       "score": null,
-      "note": "Not grounded in specific machine documentation."
+      "note": "Not grounded in specific machine documentation"
     },
     "diagnostic": {
-      "score": 50,
-      "note": "Lists several checks, starting with VFD fault LED, but includes undifferentiated steps and lacks a clear highest\u2011value discriminating order."
+      "score": 40,
+      "note": "Provides a list of checks but lacks a single highest\u2011value discriminating test"
     },
     "actionability": {
-      "score": 60,
-      "note": "Provides actionable steps and a diagnostic question, but lacks detailed expected outcomes and implications."
+      "score": 55,
+      "note": "Steps are given but lack clear expected outcomes and implications"
     },
     "uncertainty": {
-      "score": 80,
-      "note": "Shows confidence in the suggested checks without expressing uncertainty."
+      "score": 70,
+      "note": "Shows confidence without qualifying uncertainty"
     },
     "context": {
-      "score": 20,
-      "note": "Fails to narrow to the specific corroded lug scenario and does not build on prior turns; remains generic."
+      "score": 30,
+      "note": "Does not narrow to corroded lug connection; stays generic"
     }
   },
-  "case_score": 43.8
+  "case_score": 41.6
 }
