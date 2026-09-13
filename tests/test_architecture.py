@@ -1103,6 +1103,64 @@ def test_cu02_record_names_current_map_home():
     assert mod.CLAUDE_MD == "docs/environments.md"
 
 
+# Contract 12c: no ACTIVE document sends a reader to a root CLAUDE.md section that no longer
+# exists. Root CLAUDE.md became a thin adapter over AGENTS.md on 2026-09-13 (#3761); its
+# Environments / Hard Constraints / Container Map / Security / Verification sections moved to
+# docs/environments.md, AGENTS.md, and .claude/rules/. A guide that still cites the old anchor
+# reads as authoritative and points at nothing (found by the #3761 round-5 review).
+_REMOVED_ROOT_SECTION_PATTERNS = (
+    re.compile(r"root `?CLAUDE\.md`? ?§", re.I),
+    re.compile(r"CLAUDE\.md`? ?§ ?(Environments|Hard Constraints|Security|Container|Verification)"),
+    re.compile(r"PRD §4 in root"),
+    re.compile(
+        r"root `?CLAUDE\.md`?[^\n]*(Container Map|Hard Constraints|Environments hard rule|env vars)"
+    ),
+)
+# Historical records keep their pre-change wording on purpose; product source comments are
+# out of this docs/control-plane contract's scope (tracked separately).
+_REMOVED_ROOT_SECTION_HISTORICAL = {
+    "docs/architecture/convergence/units/CU-02.md",  # amended; pre-change section retained as history
+    "docs/architecture/convergence/units/CU-06.md",  # DONE record
+    "docs/architecture/convergence/BACKLOG.md",
+    "docs/CHANGELOG.md",  # frozen archive
+    "wiki/hot.md",
+}
+_REMOVED_ROOT_SECTION_SKIP_DIRS = (
+    "docs/tech-debt/",
+    "docs/xprize/",
+    "docs/proofs/",
+    "docs/audits/",
+    "wiki/hot.d/",
+    "wiki/reviews/",
+    "mira-hub/src/",
+    ".claude/worktrees/",
+    "node_modules/",
+)
+
+
+def test_no_active_reference_to_removed_root_claude_sections():
+    hits = []
+    for path in sorted(_ROOT.rglob("*.md")):
+        rel = path.relative_to(_ROOT).as_posix()
+        if rel in _REMOVED_ROOT_SECTION_HISTORICAL or rel.startswith(
+            _REMOVED_ROOT_SECTION_SKIP_DIRS
+        ):
+            continue
+        if not (rel.startswith(("docs/", ".claude/", "wiki/", "tools/")) or "/" not in rel):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for n, line in enumerate(text.splitlines(), 1):
+            if (
+                "is a thin adapter" in line
+            ):  # the one sentence that legitimately names root CLAUDE.md
+                continue
+            if any(p.search(line) for p in _REMOVED_ROOT_SECTION_PATTERNS):
+                hits.append(f"{rel}:{n}: {line.strip()[:110]}")
+    assert not hits, "active documents still cite removed root CLAUDE.md sections:\n" + "\n".join(
+        hits
+    )
+
+
 def _load_gen_container_map():
     spec = importlib.util.spec_from_file_location(
         "gen_container_map_contract12", _ROOT / _GEN_CONTAINER_MAP

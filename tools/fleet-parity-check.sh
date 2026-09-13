@@ -104,7 +104,7 @@ for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md \
 done
 
 # 3. Known-false statements that once lived in AGENTS.md (the April 2026 s/Claude/Codex/ fork).
-#    Each is a literal that contradicts root CLAUDE.md § Hard Constraints or names a path that
+#    Each is a literal that contradicts AGENTS.md § Hard constraints or names a path that
 #    does not exist. Re-appearance means the stale corpus came back.
 if [ -f AGENTS.md ]; then
   for marker in "Anthropic Codex API" "Gemini → Groq" ".Codex/skills" "→ Anthropic API" "Groq/Codex"; do

@@ -6,7 +6,7 @@ Status of every top-level module directory. Guarded by `tests/test_modules_manif
 Statuses: **DEPLOYED** (built/mounted by a production compose — `docker-compose.saas.yml`,
 `.observability.yml`, `.hub.yml`, or a module-owned prod compose), **BENCH** (dev/staging/
 fault-detective/pathb composes only), **CI** (exercised only by `.github/workflows/`),
-**DEFERRED** / **LEGACY** (per root `CLAUDE.md` § Deferred / Archived Modules), **ORPHAN**
+**DEFERRED** / **LEGACY** (per `docs/known-issues.md` § Deferred / Archived Modules), **ORPHAN**
 (no compose, no workflow reference found).
 
 | Module | Status | Evidence | Note |
@@ -14,7 +14,7 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-bots | DEPLOYED | saas.yml builds `mira-bot-telegram`, `mira-bot-slack`, `mira-ask` | Telegram/Slack adapters + ask_api + shared engine |
 | mira-bridge | BENCH | only in docker-compose.yml / .override.yml / .fault-detective.yml | saas.yml references only `/opt/mira/mira-bridge/data` host volumes, not the module |
 | mira-cmms | DEPLOYED | own prod compose `mira-cmms/docker-compose.yml` (atlas-api/atlas-db, PR #1439); included by root docker-compose.yml; staging mirror in .staging-vps.yml | Not in saas.yml directly — saas `mira-hub`/`mira-web` proxy to `cmms-backend:8080` |
-| mira-connect | DEFERRED | root CLAUDE.md § Deferred ("Config 4", post-MVP); no compose or workflow | Modbus/PLC drivers, dormant |
+| mira-connect | DEFERRED | `docs/known-issues.md` § Deferred / Archived Modules ("Config 4", post-MVP); no compose or workflow | Modbus/PLC drivers, dormant |
 | mira-connectors | DEPLOYED | `mira-pipeline/Dockerfile` COPYs + pip-installs `mira-connectors/`; own pytest job in ci.yml | Ships inside mira-pipeline-saas image |
 | mira-contextualizer | ORPHAN | no compose, workflow, or test reference found | Desktop GUI tool; runs outside docker |
 | mira-core | DEPLOYED | saas.yml `mira-core` (Open WebUI image + entrypoint) and `mira-ingest` (builds `mira-core/mira-ingest/Dockerfile`) | |

@@ -18,7 +18,7 @@ that writes the verified `kg_relationships` row (copying
 This module is the engine/ingest-side create helper that ADR-0017 calls
 for. It lives in `mira-crawler` (not `mira_bots/shared`) because every
 create-path caller is in this service/container — a cross-service runtime
-import would break container isolation (root CLAUDE.md § Hard Constraints).
+import would break container isolation (AGENTS.md § Hard constraints).
 The ADR-0017 `mira_bots/shared/proposal_transition.py` engine-side
 *transition* helper (status changes on `kg_*.approval_state`) is a
 separate concern with no Python caller today; out of scope here.

@@ -114,7 +114,7 @@ step). For a manual check:
 
 ```sql
 -- run via db-inspect.yml (read-only) or psql against staging/dev directly —
--- NEVER psql prod ad hoc (root CLAUDE.md Environments hard rule #1)
+-- NEVER psql prod ad hoc (`docs/environments.md` hard rule #1)
 SELECT count(*) AS total, count(*) FILTER (WHERE enabled = true) AS enabled_rows
   FROM approved_tags
  WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'::uuid

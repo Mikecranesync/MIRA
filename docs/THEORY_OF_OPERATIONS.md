@@ -270,7 +270,7 @@ CLAUDE.md files (root + `.claude/CLAUDE.md`) point at this doc as the primary No
 - **Scope classifier:** `.claude/skills/mira-saas-scope-guard/SKILL.md`
 - **UNS gate UX:** `.claude/skills/uns-location-gate-designer/SKILL.md`, `.claude/skills/slack-technician-ux-writer/SKILL.md`
 - **Layer rules:** `docs/ARCHITECTURE.md`
-- **Container map + env vars:** root `CLAUDE.md`
+- **Container map:** `docs/environments.md` § Container Map (generated) · **env vars:** `docs/env-vars.md` · **project map:** `AGENTS.md`
 
 ## Change Log
 

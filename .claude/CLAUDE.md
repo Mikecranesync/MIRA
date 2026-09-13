@@ -133,7 +133,7 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 ## Environment boundaries (Dev / Staging / Prod)
 
-**Doctrine:** `docs/environments.md`. Three environments, promoted in order. Root `CLAUDE.md` § **Environments** is the rule card. Product-side implications:
+**Doctrine:** `docs/environments.md`. Three environments, promoted in order. `AGENTS.md` § **Environment and deployment safety** is the rule card. Product-side implications:
 
 - **Never** test bot changes against the production Telegram bot (`@FactoryLM_Diagnose`). The UNS gate, citation compliance, and groundedness scorers log episodes — a feature-branch reply on the prod bot contaminates the truth set.
 - **Never** point a feature-branch engine build at the prod NeonDB. `kg_entities` / `kg_relationships` writes are append-only-with-status; a misfire pollutes the verified set and forces a manual cleanup.
@@ -162,7 +162,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
-- **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
+- **No LangChain, TensorFlow, n8n** — see `AGENTS.md` § Hard constraints (PRD §4).
 - **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).

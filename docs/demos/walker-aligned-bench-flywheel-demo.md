@@ -309,7 +309,7 @@ sqlite3 mira-bridge/data/mira.db "DELETE FROM events WHERE rule_id LIKE 'rule_pe
 # 5. PLC: leave the ladder + v4 map deployed. Do NOT re-flash for a demo reset.
 ```
 
-> ⚠️ Never run rollback SQL against prod NeonDB from a code session (`prod-guard.sh`, root CLAUDE.md Environments). Demo data lives on dev/staging; the bench SQLite is local.
+> ⚠️ Never run rollback SQL against prod NeonDB from a code session (`prod-guard.sh`, `docs/environments.md` hard rule #1). Demo data lives on dev/staging; the bench SQLite is local.
 
 ---
 

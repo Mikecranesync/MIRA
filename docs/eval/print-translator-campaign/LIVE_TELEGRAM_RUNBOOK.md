@@ -20,7 +20,7 @@ staging first if validating a not-yet-merged classifier fix.
 
 Deploy the current `mira-bot-telegram` build (with Print Translator, and ideally with the
 classifier-gate fix from `RANKED_REPORT.md` #1 once it lands) to the target bot instance. See
-root `CLAUDE.md` § "Verification Workflow" and `docs/environments.md` for the promotion path.
+`AGENTS.md` § Verification and evidence and `docs/environments.md` for the promotion path.
 
 ### b. For each of the 25 corpus prints, send a real photo + theory-of-operation caption
 
