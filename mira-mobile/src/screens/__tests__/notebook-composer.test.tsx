@@ -303,4 +303,24 @@ describe("NotebookScreen composer", () => {
     const scopeArg = askNotebook.mock.calls[0][2] as string[];
     expect(scopeArg).toEqual([]);
   });
+
+  // Unified-only cutover: the detail-load error boundary is reachable in the
+  // unified shell (e.g. offline), where "Notebooks" is a retired tab — onExit
+  // lands on the composer home. It must not surface classic vocabulary.
+  it("detail-error boundary says '← Back' in the unified (chromeless) shell, not '← Notebooks'", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockRejectedValue(new Error("offline"));
+    const backRef = { current: null as (() => boolean) | null };
+    render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} chromeless />);
+    expect(await screen.findByRole("button", { name: "← Back" })).toBeTruthy();
+    expect(screen.queryByText("← Notebooks")).toBeNull();
+  });
+
+  it("detail-error boundary keeps '← Notebooks' in the classic host", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockRejectedValue(new Error("offline"));
+    const backRef = { current: null as (() => boolean) | null };
+    render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} />);
+    expect(await screen.findByRole("button", { name: "← Notebooks" })).toBeTruthy();
+  });
 });

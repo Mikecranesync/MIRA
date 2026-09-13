@@ -3,8 +3,9 @@
  * the whole app. Its drawer is the navigation (every notebook, every bound
  * machine), its header is the header, the conversation is the notebook's real
  * conversation, and the footer carries the host-owned controls (About &
- * updates, classic app, sign out). NotebookScreen keeps owning the send path,
- * scope, riders, uploads, and the citation viewer — it just renders chromeless.
+ * updates, sign out). This is the only authenticated experience — there is no
+ * classic switch. NotebookScreen keeps owning the send path, scope, riders,
+ * uploads, and the citation viewer — it just renders chromeless.
  */
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";

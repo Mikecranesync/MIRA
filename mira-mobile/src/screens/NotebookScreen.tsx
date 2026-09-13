@@ -295,7 +295,9 @@ export function NotebookScreen({
     return (
       <div className="content">
         <button className="btn-link" onClick={onExit}>
-          ← Notebooks
+          {/* The unified shell has no "Notebooks" tab to return to — onExit
+              lands on the composer home. Only the classic host says "Notebooks". */}
+          {chromeless ? "← Back" : "← Notebooks"}
         </button>
         <ErrorState error={detail.error} onRetry={refresh} />
       </div>
