@@ -3,7 +3,7 @@
 
 Every rule that any agent or human contributor must follow, consolidated from `CLAUDE.md`, `.claude/rules/*`, and the cluster's 7 Laws. Anything in conflict with this file is wrong unless explicitly amended here in the same change.
 
-## Hard product constraints (CLAUDE.md §4)
+## Hard product constraints (PRD §4 — canonical statement: `AGENTS.md` § Hard constraints)
 1. **Licenses:** Apache 2.0 or MIT only. GPL upstream allowed for opaque images (`mira-cmms` Atlas) where no code is imported.
 2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only. NeonDB persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 + #649; never reintroduce — runtime silently ignores any `ANTHROPIC_API_KEY`).
 3. **No frameworks that abstract the LLM call:** No LangChain, LlamaIndex, n8n, TensorFlow.

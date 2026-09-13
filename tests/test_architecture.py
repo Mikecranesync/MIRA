@@ -1112,6 +1112,9 @@ _REMOVED_ROOT_SECTIONS = r"(Environments|Hard Constraints|Security|Container Map
 _REMOVED_ROOT_SECTION_PATTERNS = (
     re.compile(r"root CLAUDE\.md ?§", re.I),
     re.compile(r"CLAUDE\.md ?§ ?" + _REMOVED_ROOT_SECTIONS, re.I),
+    # any section of the ROOT file: "CLAUDE.md §" not preceded by a path character, so
+    # `.claude/CLAUDE.md § …` and `mira-hub/CLAUDE.md § …` (files that still have sections) pass
+    re.compile(r"(?<![\w/.-])CLAUDE\.md ?§", re.I),
     re.compile(r"PRD §4 in root", re.I),
     re.compile(
         r"root CLAUDE\.md[^\n]*(Container Map|Hard Constraints|Environments hard rule|env vars)",
@@ -1162,6 +1165,7 @@ _REMOVED_ROOT_SECTION_HISTORICAL = {
     "docs/architecture/convergence/GATE0_SUMMARY.md",  # Gate 0 record
     "docs/CHANGELOG.md",  # frozen archive
     "docs/agents/subagent-development-handbook.md",  # describes CLAUDE.md files as artifacts to author, not as authority
+    "docs/sales-github-issues-2026-04-26.md",  # dated sales draft (2026-04)
     "wiki/hot.md",
 }
 _REMOVED_ROOT_SECTION_SKIP_DIRS = (
@@ -1200,12 +1204,15 @@ def test_removed_root_section_matcher_catches_markdown_formatted_links():
         "root CLAUDE.md: sunset pending",
         "per root CLAUDE.md, NEVER docker compose the VPS directly",
         "root CLAUDE.md Screenshot Rule",
+        '`CLAUDE.md` § "Unification Program"',
     ):
         assert _cites_removed_root_section(line), line
     for line in (
         "root `CLAUDE.md` is a thin adapter that imports it",
         "Root `CLAUDE.md` becomes a thin Claude adapter that imports `@AGENTS.md`.",
         "`docs/environments.md` § Container Map (generated)",
+        '`.claude/CLAUDE.md` § "Do not do" — no engine forks',
+        "`mira-hub/CLAUDE.md` § Auth",
         "`AGENTS.md` § Hard constraints (PRD §4)",
     ):
         assert not _cites_removed_root_section(line), line
@@ -1213,13 +1220,19 @@ def test_removed_root_section_matcher_catches_markdown_formatted_links():
 
 def test_no_active_reference_to_removed_root_claude_sections():
     hits = []
-    for path in sorted(_ROOT.rglob("*.md")):
-        rel = path.relative_to(_ROOT).as_posix()
+    # Universe = TRACKED Markdown. Untracked scratch (.adversarial-review/, worktrees,
+    # node_modules) is neither active doctrine nor ours to police; git decides what counts.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.md"],
+        capture_output=True,
+        cwd=str(_ROOT),
+        check=True,
+    ).stdout.decode("utf-8", "replace")
+    for rel in sorted(r for r in tracked.split("\0") if r):
+        path = _ROOT / rel
         if rel in _REMOVED_ROOT_SECTION_HISTORICAL or rel.startswith(
             _REMOVED_ROOT_SECTION_SKIP_DIRS
         ):
-            continue
-        if not (rel.startswith(("docs/", ".claude/", "wiki/", "tools/")) or "/" not in rel):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for n, line in enumerate(text.splitlines(), 1):
