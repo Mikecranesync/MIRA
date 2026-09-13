@@ -41,7 +41,7 @@ Status badges: ✅ shipped · ⚠️ partial · 🔲 not built · 🟦 bench-onl
 | UNS confirmation gate (vendor/model/fault scope) | ✅ | Merged via PRs #1220, #1280, #1295, #1314 |
 | Direct-connection UNS bypass (`source="direct_connection"`) | ⚠️ | Rule documented in `.claude/rules/direct-connection-uns-certified.md`. `ignition_chat.py` sets per-asset `chat_id` but does **not** explicitly set `source="direct_connection"` on `state["uns_context"]` yet. **Gap: Phase 6 must close this.** |
 | Citation compliance hook (observational) | ⚠️ | `mira-bots/shared/citation_compliance.py` logs; does not yet enforce |
-| Inference cascade Gemini → Groq → Cerebras (+ legacy Claude tail) | ✅ | `mira-bots/shared/inference/router.py` — `sanitize_context()` PII strip default-on |
+| Inference cascade Groq → Cerebras → Together (Gemini and the legacy Claude tail removed) | ✅ | `mira-bots/shared/inference/router.py` — `sanitize_context()` PII strip default-on |
 | KB retrieval (BM25 + pgvector) | ✅ | `mira-bots/shared/neon_recall.py` — `recall_knowledge`, `recall_fault_code`, `kb_has_coverage`. Recently fixed in PR #1385 (embedding-gate killed BM25). |
 | RAG worker (chunk retrieve → prompt → LLM) | ✅ | `mira-bots/shared/workers/rag_worker.py` — `kb_status` property for KB-gap scoring |
 | LLM-based conversation router (intent) | ✅ | `mira-bots/shared/conversation_router.py` |

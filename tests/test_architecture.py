@@ -1280,11 +1280,45 @@ _TOOLING_CONTEXT = (
 )
 
 
+# Order-independent membership check (#3761 round-13 review: docs/ARCHITECTURE.md said
+# "cascade: Gemini→Groq→Cerebras→Claude" and the one-ordering regex above let it through).
+# A line that names the cascade AND names a banned provider as a member is a mandate — unless
+# the same line is the ban itself ("Gemini is banned", "never Anthropic", "removed PR #610").
+_CASCADE_WORD = re.compile(r"cascad", re.I)
+_BANNED_MEMBER = re.compile(
+    r"\bGemini\b|\bAnthropic\b|(?<![./])\bClaude\b", re.I
+)  # not `.claude/` paths
+_NEGATION = (
+    "banned",
+    "never",
+    "removed",
+    "no anthropic",
+    "not ",
+    "dropped",
+    "without",
+    "out of",
+    "replace",
+)
+_CARVEOUT_CONTEXT = (
+    "print-vision",
+    "printsense",
+    "printsynth",
+    "print_vision",
+)  # the one authorized Anthropic use
+
+
 def _states_banned_cascade(line: str) -> bool:
     low = line.lower()
     if any(k in low for k in _TOOLING_CONTEXT):
         return False
-    return bool(_BANNED_CASCADE.search(line) or _BANNED_PROVISION.search(line))
+    if _BANNED_CASCADE.search(line) or _BANNED_PROVISION.search(line):
+        return True
+    if any(k in low for k in _CARVEOUT_CONTEXT):
+        return False
+    if _CASCADE_WORD.search(line) and _BANNED_MEMBER.search(line):
+        norm = _normalize_md(line).lower()
+        return not any(n in norm for n in _NEGATION)
+    return False
 
 
 def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
@@ -1301,6 +1335,22 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
         'gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"'
     )
     assert not _states_banned_cascade("Groq → Cerebras → Together cascade; Gemini is banned")
+    assert _states_banned_cascade(
+        "| Inference | InferenceRouter (cascade: Gemini→Groq→Cerebras→Claude) |"
+    )
+    assert _states_banned_cascade("cascade Groq → Gemini → Cerebras")
+    assert _states_banned_cascade("the cascade falls back to Claude when Groq is down")
+    assert not _states_banned_cascade("No Anthropic in the diagnostic cascade (removed #610)")
+    assert not _states_banned_cascade("cascade: Groq → Cerebras → Together; never Anthropic")
+    assert not _states_banned_cascade(
+        "- `.claude/rules/...` / memory `feedback_llm_cascade_default.md`"
+    )
+    assert not _states_banned_cascade(
+        "**NOT** in the cascade, which stays Groq → Cerebras → Together"
+    )
+    assert not _states_banned_cascade(
+        "- Anthropic stays out of the diagnostic cascade (PRD §4 carve-outs unchanged)."
+    )
     globs = (
         ".claude/rules/*.md",
         ".claude/skills/**/*.md",
@@ -1327,7 +1377,11 @@ def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
         for p in set(re.findall(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*\.md)`", bootloader))
         if (_ROOT / p).is_file()
     )
-    historical = {"docs/CHANGELOG.md", "wiki/hot.md"}  # frozen archive; running session log
+    historical = {
+        "docs/CHANGELOG.md",  # frozen archive
+        "wiki/hot.md",  # running session log
+        "docs/runbooks/2026-04-11-inference-router-deploy.md",  # dated deploy record of the pre-Together cascade
+    }
     docs = [d for d in dict.fromkeys(docs) if d not in historical]
     hits = []
     for rel in docs:
