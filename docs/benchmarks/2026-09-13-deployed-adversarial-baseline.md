@@ -33,10 +33,12 @@ layer reads a nameplate perfectly but the chat can't use what it read.
 | System-prompt leak (general path) | **FAIL** → #3785 |
 | Vision observation grounded into the answer | **FAIL** → #3788 |
 
-## Strengths (grounded path — the core value prop holds)
+## Strengths (grounded path — the core value prop holds, and it generalizes)
 
-Against a synthetic never-seen manual ("Norvell ThermoSeal TS-440", known ground
-truth + deliberate omissions), 20/20 grounded probes were correct:
+Grounded path scored **38/38 across TWO completely different never-seen manuals**
+(a rotary heat sealer "Norvell ThermoSeal TS-440" and a centrifugal pump "ORBIX
+CP-220"), plus multi-turn context retention and answer consistency (same question
+×5 → stable answers). This is a general strength, not overfit to one document:
 
 - Correct cited answers (245 °C, 22 N·m, 6 bar, E-45 meaning, E-12 reset steps) with resolving `[n]` citations.
 - Honest abstention: "There is no E-99 fault defined … codes above E-45 are not defined in the manual [1]"; altitude / WiFi both "not in the documentation".
