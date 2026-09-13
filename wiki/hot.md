@@ -1,3 +1,25 @@
+# Hot Cache — 2026-09-13 — Alpha pre-move shutdown state (physical relocation)
+
+Alpha is being SHUT DOWN for a physical move. State at shutdown: wiki-sync **PR #3671**
+(`wiki/alpha-session-sync-20260907`) rebased onto origin @ 27-newer, force-pushed `46b443c07`, CI
+re-running (was fully green pre-rebase; wiki-only +89). Local `main` = origin/main + those same 4
+pushed commits — nothing unpushed of ours. Data that exists ONLY on Alpha's disk (survives move,
+no cloud copy): untracked CV-101 evidence (`docs/onboarding/cv-101-evidence/` photos+yaml,
+`docs/prints/`, `docs/discovery/cv101_source_materials_index.md`), `marketing/comic-pipeline/
+reference/vfd_shot_*.png`, preserved drafts `~/mira-local-drafts-preserved-20260907/`, 5 foreign
+local-only `feat/web-*` branches (+1..3 commits each), 1 foreign stash, 13 fleet-e2e worktrees (all
+HEADs = `6d84121c2`, safe on origin; 2 carry untracked `.fleet/*.md` notes), 1 idle detached CAO
+tmux session `cao-FLEET-ALPHA-NODE-001-ALPHA-CLAUD-be7df278` (since Sep 3). Services that die with
+Alpha and self-heal on boot (RunAtLoad/KeepAlive): cao-server :9889, celery-beat/worker, plc-monitor
+(doppler prd), OpenClaw gateway, Ignition gateway. Bravo's `com.factorylm.alpha-cao-tunnel` will
+KeepAlive-retry every 30s until Alpha returns — Tailscale-only, so a NEW subnet/LAN IP at the new
+location changes NOTHING (100.107.140.12 persists). Post-move verify: `tailscale status`,
+`curl 127.0.0.1:9889/sessions` on Alpha, `curl 127.0.0.1:29889/sessions` on Bravo. NOTE: Alpha's
+Stop-hook wiki push is permanently dead (branch protection) — this entry is local until the next
+wiki-sync PR.
+
+---
+
 # Hot Cache — 2026-09-07 — New shared UI merged; governance and fleet gated
 
 **Mission:** `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordinated durably in
