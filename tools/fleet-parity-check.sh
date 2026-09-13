@@ -49,7 +49,10 @@ done
 #    AGENTS.md is the provider-neutral root map and must link the standard itself; root
 #    CLAUDE.md is a thin adapter that reaches it by importing AGENTS.md (`@AGENTS.md`), so the
 #    check there is the import, not a second copy of the link.
-for f in AGENTS.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
+#    The two provider adapters are entry points too: rollout.md requires them to LINK the
+#    standard, so existence alone (section 1) is not wiring (found by the #3761 round-3 review).
+for f in AGENTS.md .claude/CLAUDE.md .claude/rules/fleet-standard.md \
+         docs/agent-standard/providers/claude.md docs/agent-standard/providers/codex.md; do
   if [ ! -f "$f" ]; then
     flunk "entry point: $f missing" "UNIVERSAL DRIFT"
   elif grep -qF "$STD" "$f"; then
@@ -81,7 +84,8 @@ if [ "$n" -le 160 ]; then pass "AGENTS.md is a bootloader ($n lines)"; else flun
 #     here-document fails, bash skips the loop, and this section silently vanishes from the
 #     verdict (found by the #3761 round-1 review). The extracted charset cannot contain
 #     whitespace, so a newline-IFS for-loop over a variable is exact and needs no I/O.
-for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md; do
+for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .claude/rules/fleet-standard.md \
+         docs/agent-standard/providers/claude.md docs/agent-standard/providers/codex.md; do
   [ -f "$f" ] || continue
   paths=$(grep -oE 'docs/agent-standard/[A-Za-z0-9_/.-]+\.md' "$f" | sort -u)
   found=0
@@ -131,9 +135,9 @@ fi
 # 5. Verdict at an exact commit (§11 asks that parity evidence be recorded at an exact commit;
 #    this is the wiring slice of that evidence).
 #    Floor: sections 1–4 always emit at least this many checks on a real tree (5 canonical +
-#    4 entry points + 2 budgets + ≥4 resolved paths + 5 markers + 2 node = 22). Fewer means a
+#    6 entry points + 2 budgets + ≥6 resolved paths + 5 markers + 2 node = 26). Fewer means a
 #    section was skipped, and a checker that can pass by skipping is not a checker.
-MIN_CHECKS=22
+MIN_CHECKS=26
 if [ "$total" -lt "$MIN_CHECKS" ]; then
   flunk "only $total checks ran (floor $MIN_CHECKS) — a section was skipped; infrastructure failure, not compliance" "UNIVERSAL DRIFT"
 fi
