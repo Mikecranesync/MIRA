@@ -37,8 +37,10 @@ never owns or mutates. Run it in a closeout when the task touched any instructio
 
 ## When this does NOT apply
 
-- The standard's own status is **Proposed** until PR #3755 lands; until then honor its
-  behavior as doctrine but do not claim it is ratified.
+- Nothing here is optional once you are doing a coding task. The standard landed on `main` in
+  #3755 (merge `99257d85e`, 2026-09-13) after a three-round independent review; its header still
+  reads "Proposed" only because `rollout.md` Phase 1 reserves "canonical" for after cross-provider
+  parity is proven — that proof is the parity table in #3761.
 
 ## Cross-references
 
