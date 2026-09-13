@@ -52,26 +52,38 @@
       "verdict": "PASS",
       "evidence": "product-parity/08-attachment-returned.png",
       "notes": "Native Google Camera launches from composer +, capture round-trips back into the conversation as a turn (#3746) \u2014 device-only"
+    },
+    {
+      "id": "wf-08",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/12-thread-selected.png",
+      "notes": "Selecting a thread shows that thread's own turns (feeder-jam conversation); combined with New-chat-blank = isolation both directions"
+    },
+    {
+      "id": "wf-13",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/11-after-relaunch.png",
+      "notes": "force-stop + relaunch reopens to clean sane state, notebook context preserved, threads intact in drawer"
     }
   ],
   "not_run": [
     "wf-06",
     "wf-07",
-    "wf-08",
     "wf-10",
     "wf-11",
     "wf-12",
-    "wf-13",
     "wf-14"
   ],
   "summary": {
     "total": 15,
-    "recorded": 7,
-    "pass": 7,
+    "recorded": 9,
+    "pass": 9,
     "degraded": 0,
     "fail": 0,
     "skip": 0,
-    "not_run": 8
+    "not_run": 6
   },
-  "note": "Baseline #1 device pass exercised 7/15 critical workflows with real on-device evidence; the remaining 8 (retry, edit-resubmit path, thread-switch isolation on-device, citation sheet, stop, force-close persistence, BACK ladder, create-project) are NOT RUN this pass and deferred to the next device session \u2014 recorded honestly per \u00a710.1 (no PASS from partial execution)."
+  "note": "Baseline device pass exercised 9/15 critical workflows with real on-device evidence (Pixel 9a, build 1.1.0/10). NOT RUN (6): wf-06 create-project, wf-07 new-thread-in-project, wf-10 ask-about-attachment, wf-11 citation-sheet, wf-12 stop-generation (Android CapacitorHttp buffers SSE #3453 \u2014 Stop window is client-side/short), wf-14 BACK-ladder. Deferred to next device session; recorded honestly per \u00a710.1 (no PASS from partial execution)."
 }
