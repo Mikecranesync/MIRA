@@ -272,6 +272,7 @@ async function uploadMultipartRequest(
   opts: { acceptStatuses?: number[] } = {},
 ): Promise<ApiResponse> {
   await loadJar();
+  const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = {};
   if (native) {
@@ -296,7 +297,7 @@ async function uploadMultipartRequest(
   } catch {
     data = null;
   }
-  if (res.status === 401 && !suppressAuthEvents) {
+  if (res.status === 401 && !suppressAuthEvents && requestEpoch === localSessionEpoch) {
     for (const fn of authExpiredListeners) fn();
   }
   if ((res.status >= 200 && res.status < 300) || opts.acceptStatuses?.includes(res.status))
@@ -379,7 +380,7 @@ async function requestStreamRequest(path: string, opts: StreamOpts): Promise<Api
     }
     status = res.status;
     if (native) responseHeaders = Object.fromEntries(res.headers.entries());
-    if (status === 401 && !suppressAuthEvents) {
+    if (status === 401 && !suppressAuthEvents && requestEpoch === localSessionEpoch) {
       for (const fn of authExpiredListeners) fn();
     }
     if (status < 200 || status >= 300) {
@@ -483,7 +484,9 @@ export async function requestBinary(
       throw new ApiError("network", null, String(e));
     }
     await applyResponseCookies((res.headers ?? {}) as Record<string, string>, requestEpoch);
-    if (res.status === 401 && !suppressAuthEvents) {
+    // Epoch-scoped (#3799): a stale binary read retired by a new sign-in must
+    // not fire auth-expiry against the fresh session.
+    if (res.status === 401 && !suppressAuthEvents && requestEpoch === localSessionEpoch) {
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
@@ -500,7 +503,7 @@ export async function requestBinary(
   } catch (e) {
     throw new ApiError("network", null, String(e));
   }
-  if (res.status === 401 && !suppressAuthEvents) {
+  if (res.status === 401 && !suppressAuthEvents && requestEpoch === localSessionEpoch) {
     for (const fn of authExpiredListeners) fn();
   }
   if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
@@ -514,7 +517,13 @@ export async function requestBinary(
 
 /** Core request: throws typed ApiError on non-2xx; retries transport failures
  *  once for GETs and keyed mutations. 401s notify the auth-expired listeners
- *  (unless suppressed) AND still throw, so callers always see the failure. */
+ *  (unless suppressed) AND still throw, so callers always see the failure.
+ *  The auth-expired signal is epoch-scoped: a request retired by
+ *  invalidateLocalSessionRequests() (a boot getMe() still in flight when a new
+ *  sign-in begins) must NOT fire auth-expiry — its 401 belongs to the OLD
+ *  session and would otherwise sign the freshly-authenticated technician back
+ *  out (#3799). Scoping cookies alone was not enough; the event is a third
+ *  channel by which a stale response can reach the new session. */
 async function requestWithRetries(path: string, opts: RequestOpts = {}): Promise<ApiResponse> {
   const method = opts.method ?? "GET";
   const retryable = method === "GET" || Boolean(opts.idempotencyKey);
@@ -528,7 +537,7 @@ async function requestWithRetries(path: string, opts: RequestOpts = {}): Promise
       lastNetworkErr = e;
       continue; // transport failure — retry if permitted
     }
-    if (res.status === 401 && !suppressAuthEvents) {
+    if (res.status === 401 && !suppressAuthEvents && requestEpoch === localSessionEpoch) {
       for (const fn of authExpiredListeners) fn();
     }
     if (res.status >= 200 && res.status < 300) return res;

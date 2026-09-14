@@ -23,6 +23,7 @@ vi.mock("@capacitor/preferences", () => ({
 
 import {
   clearAllLocalState,
+  onAuthExpired,
   request,
   requestBinary,
   requestStream,
@@ -212,6 +213,62 @@ describe("native session-cookie purge barrier", () => {
     validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
     expect(await attempt).toEqual({ ok: true });
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+  });
+
+  // #3799 F1 (Codex r5): the retired boot getMe() can return a 401 AFTER a new
+  // sign-in succeeds. Its cookies are already ignored by epoch, but the
+  // auth-expired EVENT is a third channel — if it fires, App's listener does
+  // setMe(null) and the freshly-authenticated technician is bounced to Login.
+  // A stale-epoch 401 must NOT fire auth-expiry; a current-epoch 401 still must.
+  it("a stale (retired) 401 does not fire auth-expiry against the fresh session", async () => {
+    const authExpired = vi.fn();
+    const off = onAuthExpired(authExpired);
+    try {
+      const boot = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+      const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+      let meCalls = 0;
+      state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+        if (url.endsWith("/api/me/")) {
+          meCalls += 1;
+          return meCalls === 1 ? boot.promise : validating.promise;
+        }
+        if (url.endsWith("/api/auth/csrf/")) {
+          return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+        }
+        if (url.endsWith("/api/auth/callback/credentials/")) {
+          return { status: 200, data: "{}", headers: { "Set-Cookie": "session-token=fresh; Path=/" } };
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+
+      const bootMe = request("/api/me/"); // boot check, still pending
+      await vi.waitFor(() => expect(meCalls).toBe(1));
+
+      const attempt = signIn("tech@example.com", "pw"); // retires the boot request
+      await vi.waitFor(() => expect(meCalls).toBe(2));
+      validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+      expect(await attempt).toEqual({ ok: true });
+
+      // The retired boot request now returns 401. It must be a no-op for auth events.
+      boot.resolve({ status: 401, data: "{}", headers: {} });
+      await bootMe.catch(() => {});
+      expect(authExpired).not.toHaveBeenCalled();
+      expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+    } finally {
+      off();
+    }
+  });
+
+  it("a current-epoch 401 still fires auth-expiry (the guard did not disable expiry)", async () => {
+    const authExpired = vi.fn();
+    const off = onAuthExpired(authExpired);
+    try {
+      state.httpRequest.mockResolvedValueOnce({ status: 401, data: "{}", headers: {} });
+      await request("/api/me/").catch(() => {});
+      expect(authExpired).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
   });
 
   it("serializes a purge behind a cookie save that was already writing", async () => {
