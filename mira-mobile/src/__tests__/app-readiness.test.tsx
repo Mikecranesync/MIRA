@@ -154,6 +154,85 @@ describe("App OTA readiness deadline", () => {
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
+  // #3799 F1 (Codex r4): with a session persisted for tenant A, a boot getMe()
+  // that answers LATE must never render tenant A while a DIFFERENT sign-in is
+  // still pending — otherwise the boot answer exposes the previous account.
+  it("does not render the previous account when a late boot answer lands during a pending sign-in", async () => {
+    const tenantA = {
+      id: "ownerA",
+      email: "owner@example.com",
+      name: "Owner A",
+      role: "owner",
+      tenantId: "tenantA",
+      capabilities: [],
+    };
+    let answerBoot: (me: unknown) => void = () => {};
+    api.getMe.mockReturnValueOnce(new Promise((resolve) => (answerBoot = resolve)));
+    // Tenant B's sign-in never resolves within the test — it stays pending.
+    api.signIn.mockReturnValue(new Promise(() => {}));
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_100);
+    });
+    const [email, password] = Array.from(document.querySelectorAll("input"));
+    fireEvent.change(email, { target: { value: "carlos@example.com" } });
+    fireEvent.change(password, { target: { value: "pw" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await Promise.resolve();
+    });
+
+    // The boot getMe() for tenant A resolves LATE while tenant B is still authenticating.
+    await act(async () => {
+      answerBoot(tenantA);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Tenant A must NOT be rendered — the shell stays on the sign-in surface.
+    expect(document.body.textContent).not.toContain("Owner A");
+    expect(document.body.textContent).not.toContain("owner@example.com");
+    expect(document.querySelector("input")).toBeTruthy(); // still the Login form
+  });
+
+  it("does not render the previous account when a late boot answer lands after a failed sign-in", async () => {
+    const tenantA = {
+      id: "ownerA",
+      email: "owner@example.com",
+      name: "Owner A",
+      role: "owner",
+      tenantId: "tenantA",
+      capabilities: [],
+    };
+    let answerBoot: (me: unknown) => void = () => {};
+    api.getMe.mockReturnValueOnce(new Promise((resolve) => (answerBoot = resolve)));
+    api.signIn.mockResolvedValue({ ok: false, reason: "invalid_credentials" });
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_100);
+    });
+    const [email, password] = Array.from(document.querySelectorAll("input"));
+    fireEvent.change(email, { target: { value: "carlos@example.com" } });
+    fireEvent.change(password, { target: { value: "wrong" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Sign-in failed; the boot getMe() for tenant A then resolves late.
+    await act(async () => {
+      answerBoot(tenantA);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).not.toContain("Owner A");
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
   it("does not wait for the deadline when auth answers promptly", async () => {
     api.getMe.mockResolvedValue(null);
 

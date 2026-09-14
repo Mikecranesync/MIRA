@@ -248,10 +248,18 @@ export default function App({ onBundleReady }: AppProps) {
   if (!me)
     return (
       <Login
+        onSignInStarted={() => {
+          // The instant a sign-in is committed, retire the boot-time getMe():
+          // advancing the generation NOW (not on success) means a late success
+          // body for the previously-persisted session is ignored whether the
+          // new sign-in is still pending or ends up failing (#3799 F1). The
+          // transport epoch is separately retired inside signIn().
+          authGeneration.current += 1;
+        }}
         onSignedIn={async () => {
-          // A boot-time getMe() still in flight was retired at the transport
-          // when signIn() started (it can no longer touch the cookie jar); this
-          // keeps its late answer from replacing the session state too.
+          // A boot-time getMe() still in flight was retired both at the
+          // transport (signIn) and by the generation bump above; keep its late
+          // answer from replacing the session state too.
           authGeneration.current += 1;
           const signedIn = await getMe();
           resumeSessionLocalWrites();
