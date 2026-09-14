@@ -440,6 +440,10 @@ describe("Iteration-5 blocker — the exemption binds to the hazardous clause", 
       (c) => `${c.charAt(0).toUpperCase()}${c.slice(1)}, despite the risk.`,
       (c) => `This is not ideal — ${c}.`,
       (c) => `Safety matters. However, ${c}.`,
+      // Iteration-6: in-clause negations that bind a DIFFERENT predicate.
+      (c) => `${c.charAt(0).toUpperCase()}${c.slice(1)} and not postponed.`,
+      (c) => `${c.charAt(0).toUpperCase()}${c.slice(1)}, and it should not be delayed.`,
+      (c) => `Do not wait — ${c}.`,
     ];
     const leaks: string[] = [];
     for (const core of cores) {
@@ -456,6 +460,37 @@ describe("Iteration-5 blocker — the exemption binds to the hazardous clause", 
     expect(grounded("While the machine is energized, never reset the E-12 fault.").ok).toBe(true);
     expect(grounded("Follow these steps: do not reset the fault while the machine is energized.").ok).toBe(true);
     expect(grounded("Resetting while energized is dangerous and prohibited.").ok).toBe(true);
+  });
+});
+
+describe("Iteration-6 blocker — negation must bind the hazardous instruction", () => {
+  it("a trailing negation of another predicate does not exempt — '… energized and not postponed'", () => {
+    const v = grounded("The E-12 fault should be reset while the machine is energized and not postponed.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+    }
+  });
+
+  it("an inverted negation does not exempt — 'Do not hesitate to reset … while energized'", () => {
+    expect(grounded("Do not hesitate to reset the E-12 fault while the machine is energized.").ok).toBe(false);
+    expect(grounded("Do not forget to reset the fault while the machine is energized.").ok).toBe(false);
+  });
+
+  it("negation binding a non-hazard verb does not exempt — 'should not skip the reset while energized'", () => {
+    expect(grounded("You should not skip the reset while the machine is energized.").ok).toBe(false);
+  });
+
+  it("controls: negations that bind the hazard still pass", () => {
+    expect(grounded("The E-12 fault should not be reset while the machine is energized.").ok).toBe(true);
+    // (Clause-initial "Reset … never while energized" is conservatively
+    // stopped by the iteration-1 imperative head grammar — a documented
+    // near-miss stop. The non-imperative form pins the binding behavior.)
+    expect(grounded("The fault may be reset only after de-energizing, never while the machine is energized.").ok).toBe(true);
+    expect(grounded("Do not attempt to reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("You cannot safely work on the contactor while it is energized.").ok).toBe(true);
+    expect(grounded("It is not safe to open the cabinet while the drive is powered on.").ok).toBe(true);
   });
 });
 

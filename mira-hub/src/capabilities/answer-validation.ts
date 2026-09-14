@@ -192,27 +192,47 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
 // are tested BEFORE the prohibitive exemption and never exempt. The head
 // grammars above are kept and run first — their specific violation ids are
 // pinned in tests and in the safety-frame contract.
-const HAZARD_ACTION_ANY = new RegExp(
-  "\\b" + HAZARD_ACTIONS + "\\b|\\b(?:continue|complete|begin|start)\\b|\\bproceed\\b(?!\\s+with\\s+caution\\b)",
-  "i",
-);
+const HAZARD_ACTION_ANY_SRC =
+  "(?:" + HAZARD_ACTIONS + "|continue|complete|begin|start|proceed(?!\\s+with\\s+caution\\b))";
+const HAZARD_ACTION_ANY = new RegExp("\\b" + HAZARD_ACTION_ANY_SRC + "\\b", "i");
 // `(?<![\w-])energized` keeps "de-energized"/"re-energized" out — a hyphen
 // before the state word means isolation prose, not an energized instruction.
-const ENERGIZED_RELATION = new RegExp(
-  "\\b" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)",
-  "i",
-);
+const ENERGIZED_RELATION_SRC =
+  ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)";
+const ENERGIZED_RELATION = new RegExp("\\b" + ENERGIZED_RELATION_SRC, "i");
 const NO_ISOLATION_RELATION = new RegExp("\\b" + NO_ISOLATION, "i");
 // Safety-affirming negations — sentences that use a negation word to say the
 // hazard is FINE. These must reject, so they are carved out of the
 // prohibitive exemption below, never into it.
 const REASSURANCE_AFFIRMATION =
   /\b(?:don'?t\s+worry|no\s+(?:risk|danger|harm|worries)|not?\s+(?:dangerous|unsafe|hazardous|risky|harmful)|isn'?t\s+(?:dangerous|unsafe|hazardous|risky)|perfectly\s+(?:safe|fine|normal)|nothing\s+to\s+worry)\b/i;
-// Demonstrably prohibitive or cautionary context, sentence-scoped. Broad on
-// purpose: the inversion errs toward the safety stop, and this list is the
-// false-negative surface — every entry is a way of saying "don't".
-const PROHIBITIVE_OR_CAUTIONARY =
-  /\b(?:not|no|never|don'?t|do\s+not|doesn'?t|does\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|mustn'?t|avoid\w*|prohibit\w*|forbidden|forbids?|unsafe|dangerous|hazardous|caution\w*|warn(?:ing|ed|s)?|instead|rather\s+than|only\s+after|risk\w*)\b/i;
+// Iteration-6 F1: word-presence prohibition failed open — "… energized and
+// not postponed" exempted because "not" appeared in the bearing clause while
+// negating a DIFFERENT predicate. The exemption is now a bounded grammar in
+// which the negation must BIND the hazardous instruction itself:
+//   (1) negation reaching the hazard verb through auxiliaries only
+//       ("do not reset", "should not be reset", "avoid resetting",
+//       "cannot safely work", "do not attempt to reset"). Verbs that INVERT
+//       the negation ("do not hesitate/forget/fail to reset") are excluded
+//       structurally: they are not in the auxiliary allowlist.
+//   (2) negation directly before the energized/no-isolation relation
+//       ("never while the machine is energized", "never without locking out").
+//   (3) the hazard as subject of a prohibitive predicate
+//       ("resetting while energized is dangerous/prohibited/not allowed").
+//   (4) explicit caution framing ("use extreme caution", "under no
+//       circumstances").
+const NEG_HEAD_SRC =
+  "(?:not|no|never|don'?t|do\\s+not|doesn'?t|does\\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|should\\s+not|must\\s+not|mustn'?t|may\\s+not|avoid|refrain\\s+from)";
+const NEG_AUX_GAP_SRC =
+  "(?:\\s+(?:be|being|been|get|ever|even|again|simply|just|safe|safely|to|attempt\\s+to|try\\s+to)){0,3}";
+const BOUND_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + HAZARD_ACTION_ANY_SRC + "\\b" +
+    "|\\b" + NEG_HEAD_SRC + "\\s+(?:" + ENERGIZED_RELATION_SRC + "|" + NO_ISOLATION + ")" +
+    "|\\b" + HAZARD_ACTION_ANY_SRC +
+    "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|banned|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended|advisable)|never\\s+(?:safe|allowed|permitted|acceptable)|against\\s)" +
+    "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b",
+  "i",
+);
 
 // Iteration-5 F1: the exemption must bind to the clause(s) that carry the
 // hazardous instruction. Same boundary set as the R1 honesty-exemption
@@ -240,9 +260,11 @@ function clauseHazardViolation(text: string): string | null {
       );
     // Fail-closed: no identifiable instruction-bearing clause (pathological
     // splitting) means no exemption is possible — the sentence-level match
-    // above already established the hazardous coupling.
+    // above already established the hazardous coupling. The exemption must
+    // GRAMMATICALLY bind the hazard (iteration-6 F1) — bare negation of some
+    // other predicate in the same clause never exempts.
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
-    const prohibited = bearing.some((c) => PROHIBITIVE_OR_CAUTIONARY.test(c));
+    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
     return sentence;
   }
