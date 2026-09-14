@@ -55,6 +55,9 @@ in prod compose or Doppler prd — both layers default ON.
 | Confined spaces / atmospheres | confined-entry-untested (testing waived, entry-without) | `confined` |
 | Fire / gas / ignition | flame-near-gas | `fire-gas` |
 | Falls / elevated work | (semantic layer only today) | `height` |
+| Thermal (steam, hot surfaces, molten) | (semantic layer only today) | `thermal` |
+| Chemical (caustic, acid, solvent, fumes) | (semantic layer only today) | `chemical` |
+| Body contact with equipment (touch/reach/pour/by-hand instructions) | clause-hazard-motion covers moving-state wording; otherwise semantic | `contact-action` (catch-all) |
 | Claims of verified safety | claims-verified-safety (first-person verification claims) | judged in every class |
 | Exact machine settings (general lane) | exact-setting → controlled fallback | n/a (concern 2) |
 

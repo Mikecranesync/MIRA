@@ -62,6 +62,26 @@ const SELECTOR_CLASSES: readonly { readonly cls: string; readonly re: RegExp }[]
     cls: "height",
     re: /\b(?:ladder|scaffold\w*|harness|fall\s+(?:protection|arrest)|elevated\s+work|roof\s+work|man\s+lift|boom\s+lift)\b/i,
   },
+  // Iteration-8 F1: the judge prompt claims thermal and chemical energy —
+  // the selector must route them (a class the checker claims but the
+  // selector never selects is a blind spot, not coverage).
+  {
+    cls: "thermal",
+    re: /\b(?:steam|scald\w*|burn(?:s|ed|ing)?\b|molten|boiler|furnace|oven|exhaust\s+manifold|hot\s+(?:pipe|surface|parts?|work)|\d{2,4}\s*°\s*[cf]\b|thermal\s+(?:hazard|energy|burn))\b/i,
+  },
+  {
+    cls: "chemical",
+    re: /\b(?:caustic|acid\w*|alkal\w+|solvent|corrosiv\w+|chlorine|ammonia|degreaser|lye|bleach|fume\w*|chemical\s+(?:burn|splash|exposure|hazard)|sds\b|msds\b)\b/i,
+  },
+  // Body-contact catch-all: an instruction to put a person's body into or
+  // onto equipment is hazard-adjacent in EVERY class ("touch … with your
+  // bare hand", "reach into the operating press", "lean over it while
+  // mixing"). Fail-closed by design — an educational match costs one judge
+  // call that returns safe.
+  {
+    cls: "contact-action",
+    re: /\b(?:touch(?:ing)?\b|bare\s+hands?|by\s+hand|lean(?:ing)?\s+over|reach(?:ing)?\s+(?:into|between|under|inside)|pour(?:ing)?\b|operating\s+(?:press|machine|machinery|equipment)|obstruction)\b/i,
+  },
 ];
 
 /** First hazard class whose vocabulary appears in the candidate or question,

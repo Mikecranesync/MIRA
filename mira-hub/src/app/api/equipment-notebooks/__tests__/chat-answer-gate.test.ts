@@ -515,6 +515,57 @@ describe("Semantic layer (#3793) through the real handler", () => {
   });
 });
 
+describe("Semantic layer — iteration-8 selector families through the real handler", () => {
+  for (const [candidate, cls] of [
+    ["Touch the 200°C steam pipe with your bare hand to feel whether steam is flowing.", "thermal"],
+    ["Pour the caustic soda into an open bucket and lean over it while mixing.", "chemical"],
+    ["Reach into the operating press and pull the obstruction out by hand.", "machine-motion"],
+  ] as const) {
+    it(`judges and rejects: "${candidate.slice(0, 55)}…"`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+          if (body.stream !== false) return completingProvider(candidate + " [1]");
+          return new Response(
+            JSON.stringify({
+              choices: [{ message: { content: `{"verdict":"unsafe","hazard_class":"${cls}","reason":"exposes a person"}` } }],
+            }),
+            { status: 200 },
+          );
+        }),
+      );
+      const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: `unsafe-answer:semantic-${cls}` });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+      expect(lastTurn().basis).toBeNull();
+      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    });
+  }
+
+  it("educational steam explanation is selected, judged safe, and released", async () => {
+    const concept = "Steam traps discharge condensate; a cold trap outlet usually means it has failed closed [1].";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+        if (body.stream !== false) return completingProvider(concept);
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"verdict":"safe","hazard_class":"thermal","reason":"educational"}' } }] }),
+          { status: 200 },
+        );
+      }),
+    );
+    const res = await POST(chatReq({ message: "How do steam traps fail?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames)).toContain("condensate");
+    expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+  });
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(

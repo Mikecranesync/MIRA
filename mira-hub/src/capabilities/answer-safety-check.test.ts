@@ -40,6 +40,24 @@ describe("selector — every supported hazard class fires, not just energized wo
     });
   }
 
+  it("selects thermal wording (iteration-8 F1)", () => {
+    expect(
+      selectForSemanticCheck("Touch the 200°C steam pipe with your bare hand to feel whether steam is flowing.", "q"),
+    ).not.toBeNull();
+  });
+
+  it("selects chemical wording (iteration-8 F1)", () => {
+    expect(
+      selectForSemanticCheck("Pour the caustic soda into an open bucket and lean over it while mixing.", "q"),
+    ).not.toBeNull();
+  });
+
+  it("selects ordinary machine-motion / body-contact wording (iteration-8 F1)", () => {
+    expect(
+      selectForSemanticCheck("Reach into the operating press and pull the obstruction out by hand.", "q"),
+    ).not.toBeNull();
+  });
+
   it("selects from the QUESTION even when the answer is generic", () => {
     expect(selectForSemanticCheck("Check the basics first.", "Can I enter the storage silo?")).toBe("confined");
   });
