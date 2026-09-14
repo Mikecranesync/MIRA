@@ -83,3 +83,20 @@ def test_parse_step_log_without_a_pid_keeps_every_guard_line():
     guard, _ = launch_matrix.parse_step_log(_LOG)
     assert len(guard) == 3
     assert any(launch_matrix.GUARD_BAD.search(ln) for ln in guard)
+
+
+_UI = """\
+<node index="0" text="" class="android.webkit.WebView" package="com.factorylm.mira" bounds="[0,0][1080,2424]">
+<node index="0" text="FactoryLM…" class="android.widget.TextView" package="com.factorylm.mira" bounds="[400,120][680,150]"/>
+<node index="1" text="Claude" class="android.widget.TextView" package="com.anthropic.claude" bounds="[0,0][10,10]"/>
+</node>
+"""
+
+
+def test_count_ui_text_nodes_ignores_the_boot_placeholder_and_other_packages():
+    assert launch_matrix.count_ui_text_nodes(_UI) == 0
+    rendered = _UI.replace(
+        'text="FactoryLM…"',
+        'text="Sign in"',
+    )
+    assert launch_matrix.count_ui_text_nodes(rendered) == 1

@@ -6,7 +6,8 @@ transitions a technician actually performs and, after each one, asserts two thin
 the emulator harness never checks:
 
   1. the screen is NOT a uniform blank (pixel sampling of the app's content area), and
-  2. the DOM is built (uiautomator sees at least one text node inside the WebView),
+  2. the DOM is built (uiautomator sees at least one text node inside the WebView
+     other than the `FactoryLM…` boot placeholder),
 
 so "blank" is distinguished from "still booting" and from "crashed". It also records
 the native guard's own verdicts (`MiraWebViewRecovery` logcat lines) per step, and
@@ -89,12 +90,7 @@ class Device:
             self.sh(
                 "rm -f /data/local/tmp/flm-ui.xml; uiautomator dump /data/local/tmp/flm-ui.xml >/dev/null 2>&1"
             )
-            xml = self.sh("cat /data/local/tmp/flm-ui.xml 2>/dev/null")
-            n = 0
-            for m in re.finditer(r"<node [^>]*>", xml):
-                node = m.group(0)
-                if f'package="{PKG}"' in node and re.search(r'text="[^"]+"', node):
-                    n += 1
+            n = count_ui_text_nodes(self.sh("cat /data/local/tmp/flm-ui.xml 2>/dev/null"))
             if n:
                 break
             time.sleep(1.5)
@@ -163,6 +159,22 @@ def uniform(png: bytes, box: tuple[int, int, int, int], step: int = 40) -> tuple
 
 
 CRASH_RE = re.compile(r"FATAL EXCEPTION|ANR in|has died|Force finishing")
+# The shell's boot placeholder (App.tsx `if (!booted)`). A DOM that holds nothing
+# but this is the #3799 screen, not a rendered surface — it never counts as content.
+BOOT_PLACEHOLDER_TEXT = "FactoryLM…"
+
+
+def count_ui_text_nodes(xml: str) -> int:
+    """Text-bearing nodes of our package in a uiautomator dump, minus the boot placeholder."""
+    n = 0
+    for m in re.finditer(r"<node [^>]*>", xml):
+        node = m.group(0)
+        if f'package="{PKG}"' not in node:
+            continue
+        t = re.search(r'text="([^"]+)"', node)
+        if t and t.group(1) != BOOT_PLACEHOLDER_TEXT:
+            n += 1
+    return n
 
 
 def parse_step_log(text: str, pid: str = "") -> tuple[list[str], list[str]]:
