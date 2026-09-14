@@ -51,14 +51,44 @@ them fail closed via `disabled://recovery` / unresolvable hostnames (same patter
    ```
 2. **VPS** — ✅ exists (table above): VPS-3 2027, $14.50/month, no engagement. Nothing to buy.
    (For reference the storefront's "from $4.54 / $8.50" for VPS-1/VPS-2 are annual-upfront rates.)
-3. **SSH access — ⏳ human step.** The OVH account has **no SSH key registered** (`GET /me/sshKey`
-   → 0), so the box was installed with OVH's emailed initial credentials and CHARLIE's keys
-   (`SHA256:9QDf…` charlienode, `SHA256:JrWP…` github-actions-deploy) are not on it. Mike logs in
-   once from his own machine with the OVH credentials, **compares the host key fingerprint to the
-   ones in the table above** (they were scanned straight after creation from the API-reported IP),
-   then adds CHARLIE's public key to `/root/.ssh/authorized_keys`. Only then add a **new**
-   `~/.ssh/known_hosts` line on CHARLIE — never `StrictHostKeyChecking=no`, never touch the existing
-   `prod`/`factorylm-prod` aliases.
+3. **SSH access — ⛔ BLOCKED on an account-expiry loop; one console action needed from Mike.**
+
+   Investigated 2026-09-14 ~23:05Z. The credential is identified and works, but the account cannot
+   reach a shell over SSH:
+   - **Doppler secret that held the initial credential:** `OVH_VPS_INITIAL_ROOT_PASSWORD` (the working
+     user is **`ubuntu`**, the OVH default — **not** `OVH_ROOT_USER`, which is `root` and is rejected;
+     `root` and `debian` both give `Permission denied`). ⚠️ **This value is now DEAD** — the password
+     was changed away from it during this investigation; anyone trying it now gets `Permission denied`
+     and must use `OVH_VPS_UBUNTU_PASSWORD` instead. Do not conclude the box is unreachable from that.
+   - Host key **verified**: server ED25519 == `SHA256:yslCH8KRVJu0281ztiTXYxD9o8Ogg32OQ2rZ5pn8FrY`,
+     pinned via `-o UserKnownHostsFile` + `StrictHostKeyChecking=yes` on every call.
+   - `ubuntu` + the initial password **authenticates**, but the account is **password-expired** and
+     the image closes the session after the forced change ("you must change your password now and
+     login again"). It was changed **twice** (each `passwd: password updated successfully`), and
+     **every** subsequent login re-expires — i.e. a password change does **not** clear the aging
+     (consistent with `chage -M 0` / `PASS_MAX_DAYS 0`). A password login therefore **never** reaches
+     a shell, so the key cannot be installed and `chage` cannot be run from here. With `UsePAM yes`
+     an expired account also blocks non-interactive **pubkey** command execution, so installing a key
+     without clearing the aging would not help.
+   - The live `ubuntu` password now lives in Doppler as **`OVH_VPS_UBUNTU_PASSWORD`** (all three
+     configs; the transient `_NEXT` staging secret was deleted). `OVH_VPS_INITIAL_ROOT_PASSWORD` is
+     now historical (superseded by two changes).
+
+   **The one action needed (OVH web KVM console — not a service change, not destructive):** open the
+   VPS console in the OVH panel, log in as `ubuntu` with `OVH_VPS_UBUNTU_PASSWORD` (completing the
+   forced change on the local TTY drops you to a shell, unlike SSH), then paste CHARLIE's key onto
+   **root** and clear the aging so pubkey works:
+   ```bash
+   sudo install -d -m 700 /root/.ssh
+   echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB8r+WjEIGtY3MM3/SDEvaWL/ELtO8MMflBLf2hU+N5 charlienode@CharlieNodes-Mac-mini.local' | sudo tee -a /root/.ssh/authorized_keys
+   sudo chmod 600 /root/.ssh/authorized_keys
+   sudo chage -M -1 -d "$(date +%F)" ubuntu   # stop the re-expiry loop for ubuntu
+   sudo passwd -S root ubuntu                  # (optional) show password status for the record
+   ```
+   Then tell CHARLIE. I verify `ssh -i ~/.ssh/id_ed25519 -o PreferredAuthentications=publickey root@40.160.141.61 id`
+   from a fresh forced-pubkey connection, add a **new** `~/.ssh/known_hosts` line (never
+   `StrictHostKeyChecking=no`, never touch the `prod`/`factorylm-prod` aliases), and continue the
+   inspection → bootstrap → private Hub stages below.
 4. **Scoped Doppler service tokens**: one for `factorylm/stg` (private test) and, only at cutover,
    one for `factorylm/prd`. Never a personal token on the host.
 5. **Tailscale auth key** (optional, for the Bravo embedder + private testing over the tailnet).
