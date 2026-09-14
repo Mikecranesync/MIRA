@@ -69,6 +69,61 @@ describe("App OTA readiness deadline", () => {
     expect(screen.getByText("FactoryLM…")).toBeTruthy();
   });
 
+  // #3799: with the Hub unreachable, getMe() takes 30 s to 3 min. The placeholder
+  // must not be the whole UI for that long — boot signed-out at the deadline.
+  it("boots signed-out when auth has not answered by the boot deadline", async () => {
+    api.getMe.mockReturnValue(new Promise(() => {}));
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7_900);
+    });
+    expect(screen.getByText("FactoryLM…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.queryByText("FactoryLM…")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
+  it("still signs the session in when auth answers after the boot deadline", async () => {
+    let answer: (me: unknown) => void = () => {};
+    api.getMe.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_100);
+    });
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+
+    await act(async () => {
+      answer({
+        id: "u1",
+        email: "tech@example.com",
+        name: "Tech",
+        role: "technician",
+        tenantId: "t1",
+        capabilities: [],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+  });
+
+  it("does not wait for the deadline when auth answers promptly", async () => {
+    api.getMe.mockResolvedValue(null);
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
   it("acknowledges the committed Login shell once boot resolves signed-out", async () => {
     storage.get.mockResolvedValue({ value: null });
     api.getMe.mockResolvedValue(null);

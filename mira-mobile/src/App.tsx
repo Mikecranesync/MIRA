@@ -26,6 +26,11 @@ const SECURE_CLEANUP_KEY = "flm.session.cleanup-required.v1";
 // Native LiveUpdate rolls an unconfirmed bundle back after 10 seconds. Give a
 // healthy local shell ample margin even when remote authentication is slow.
 const BUNDLE_READY_FALLBACK_MS = 5_000;
+// Longest the boot placeholder may wait for getMe() before the UI boots
+// signed-out (#3799). A healthy check answers in well under a second; a slow
+// cell link in a few. Past this the placeholder is indistinguishable from a
+// dead app to the technician, and the request keeps running underneath.
+const BOOT_AUTH_DEADLINE_MS = 8_000;
 
 let deepLinkSink: ((tag: string | null, raw: string) => void) | null = null;
 export function handleDeepLink(url: string): void {
@@ -79,7 +84,20 @@ export default function App({ onBundleReady }: AppProps) {
         setBooted(true);
         return;
       }
+      // #3799: never hold the whole UI on the auth round-trip. With the Hub
+      // unreachable this call takes ≥30 s (15 s connect timeout × the GET retry)
+      // and up to 3 min when a server accepts and never answers — measured on the
+      // Pixel 9a 2026-09-14: every cold launch sat on the "FactoryLM…" placeholder
+      // for 20–30 s, which the technician read as a dead app. Past the deadline
+      // the app boots signed-out (the same state a failed getMe() already yields),
+      // and a late successful answer still signs the session in.
+      let authAnswered = false;
+      const deadline = setTimeout(() => {
+        if (!authAnswered) setBooted(true);
+      }, BOOT_AUTH_DEADLINE_MS);
       const m = await getMe();
+      authAnswered = true;
+      clearTimeout(deadline);
       setMe(m);
       setBooted(true);
     })();
