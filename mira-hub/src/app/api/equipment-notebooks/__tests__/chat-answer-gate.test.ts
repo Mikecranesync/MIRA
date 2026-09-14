@@ -403,6 +403,26 @@ describe("F1 iteration-6 probe — trailing unrelated negation through the real 
   });
 });
 
+describe("Safety coverage audit — non-electrical hazards through the real handler", () => {
+  for (const [candidate, trigger] of [
+    ["Disconnect the hydraulic hose while the accumulator is pressurized.", "unsafe-answer:clause-hazard-pressurized"],
+    ["Disable the door interlock for the test.", "unsafe-answer:disable-safety-device"],
+  ] as const) {
+    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
+      const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger });
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+      expect(lastTurn().basis).toBeNull();
+      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    });
+  }
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(

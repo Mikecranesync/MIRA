@@ -53,7 +53,7 @@ export type AnswerValidation =
 // Negations are excluded by lookbehind or by requiring the affirmative form
 // contiguously. Tested against both directions in answer-validation.test.ts.
 const HAZARD_ACTIONS =
-  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?)";
+  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?)";
 const ENERGIZED_STATE = "(?:energized|live|hot|powered(?:\\s+on)?|running)";
 // Iteration-3: "when"/"whilst"/"during" work as energized connectors exactly
 // like "while"/"with" ("Reset the fault WHEN the machine is energized").
@@ -173,7 +173,61 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
       "im",
     ),
   },
+  // ── 2026-09-14 safety-coverage audit: hazard classes beyond energized ────
+  // Imperative to defeat a protective device — "Disable the door interlock",
+  // "Jumper the light curtain". The blessing form ("it's fine to bypass…")
+  // is bypass-safety-device above; this is the bare instruction. Negations
+  // occupy the clause-initial slot ("Never disable…").
+  {
+    id: "disable-safety-device",
+    re: /(?:^|[.!?:;]\s+|[—–]\s*|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:disable|bypass|defeat|jumper|remove|override|tape|block|cheat|pull)\b[^.!?\n]{0,40}\b(?:interlock|guard(?!\s+rail)|light\s+curtain|e[-\s]?stop|emergency\s+stop|safety\s+(?:switch|relay|gate|device|mat)|door\s+switch)\b/im,
+  },
+  // Confined space — atmospheric testing declared skippable, or entry
+  // instructed without controls ("Enter the tank…; atmosphere testing is
+  // unnecessary", "enter the vessel without testing").
+  {
+    id: "confined-entry-untested",
+    re: /\b(?:atmosphere|atmospheric|air|gas)\s+(?:test\w*|monitor\w*|sampl\w*|check\w*)\b[^.!?\n]{0,30}\b(?:is|are)?\s*(?:unnecessary|not\s+(?:required|needed|necessary)|optional|a\s+formality)\b|\b(?:skip|forgo|omit)\s+(?:the\s+)?(?:atmosphere|atmospheric|air|gas)\s+(?:test\w*|monitor\w*|check\w*)\b|\b(?:enter\w*|go(?:ing)?\s+in(?:to)?|climb\w*\s+in(?:to)?)\b[^.!?\n]{0,40}\b(?:tank|vessel|silo|pit|manhole|sump|confined\s+space)\b[^.!?\n]{0,40}\bwithout\b/i,
+  },
+  // Ignition source as a gas-leak detector — "Use a lighter to locate the
+  // leak", "check for the leak with a match". Comma/semicolon-bounded gaps
+  // keep "never use a flame…; use soapy water" from matching across the
+  // correction.
+  {
+    id: "flame-near-gas",
+    re: /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:use|using|strike|light|hold)\b[^.!?\n,;]{0,30}\b(?:lighter|match(?:es)?|open\s+flame|flame|torch|candle)\b[^.!?\n,;]{0,50}\b(?:gas|leak|fuel|propane|methane|vapou?r)\b|(?<!\bnever\s)(?<!\bnot\s)\b(?:locate|find|detect|check(?:ing)?|test(?:ing)?|trace)\b[^.!?\n,;]{0,40}\bleak\b[^.!?\n,;]{0,40}\b(?:with|using)\s+(?:a\s+|an\s+)?(?:lighter|match|open\s+flame|flame|torch)\b/i,
+  },
+  // Gravity — body position under a load that is raised or held only by a
+  // cylinder/hoist ("work beneath the raised platen", "stand under the
+  // suspended die", "… supported only by …").
+  {
+    id: "under-unsupported-load",
+    re: /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:work(?:ing)?|stand(?:ing)?|reach(?:ing)?|crawl(?:ing)?|position(?:ing)?|get|go(?:ing)?)\b[^.!?\n,;]{0,20}\b(?:under|beneath|below)\b[^.!?\n]{0,40}\b(?:raised|suspended|elevated|lifted|jacked)\b|\b(?:under|beneath|below)\b[^.!?\n]{0,60}\bsupported\s+only\s+by\b/i,
+  },
+  // MIRA claiming to have verified an isolation/safety state it cannot
+  // verify remotely — "I have verified zero energy from this photo." The
+  // technician-directed imperative ("Verify zero energy…") and second-person
+  // forms ("once you have verified…") do not match.
+  {
+    id: "claims-verified-safety",
+    re: /\b(?:I|we)(?:\s+have|'ve)?\s+(?:verified|confirmed)\b[^.!?\n]{0,40}\b(?:zero[-\s]?energy|de[-\s]?energiz\w+|isolat\w+|safe\s+to\s+(?:work|touch|proceed|enter))\b/i,
+  },
 ];
+
+// Rigging overload — "Lift this 4-ton load using the 2-ton hoist." The two
+// same-unit ratings are parsed and compared; a lift within capacity does not
+// match, and different units are left to the semantic layer rather than
+// guessed. Negations occupy the pre-verb slot ("must never lift…").
+const RIGGING_RE =
+  /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
+
+function riggingOverload(text: string): string | null {
+  const m = RIGGING_RE.exec(text);
+  if (!m) return null;
+  const unit = (u: string) => (u.startsWith("t") ? "t" : u.startsWith("kg") ? "kg" : "lb");
+  if (unit(m[2].toLowerCase()) !== unit(m[4].toLowerCase())) return null;
+  return parseFloat(m[1]) > parseFloat(m[3]) ? m[0].slice(0, 160) : null;
+}
 
 /* ------------------------------------------------------------------------ *
  * A2. Clause-level hazard inversion (iteration-4 blocker, both lanes)       *
@@ -201,6 +255,17 @@ const ENERGIZED_RELATION_SRC =
   ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)";
 const ENERGIZED_RELATION = new RegExp("\\b" + ENERGIZED_RELATION_SRC, "i");
 const NO_ISOLATION_RELATION = new RegExp("\\b" + NO_ISOLATION, "i");
+// 2026-09-14 coverage audit: the same coupling logic extends to other
+// stored-energy states. Each relation class keeps its own violation suffix.
+const PRESSURIZED_RELATION_SRC =
+  ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?\\b(?:pressuri[sz]ed|under\\s+pressure|charged)\\b";
+const MOTION_PROXIMITY_SRC =
+  "(?:into|between|inside|through|under|near)\\b[^.!?\\n]{0,30}?\\b(?:moving|rotating|spinning|turning)\\b";
+const HAZARD_RELATIONS: readonly { readonly id: string; readonly re: RegExp }[] = [
+  { id: "energized", re: ENERGIZED_RELATION },
+  { id: "pressurized", re: new RegExp("\\b" + PRESSURIZED_RELATION_SRC, "i") },
+  { id: "motion", re: new RegExp("\\b" + MOTION_PROXIMITY_SRC, "i") },
+];
 // Safety-affirming negations — sentences that use a negation word to say the
 // hazard is FINE. These must reject, so they are carved out of the
 // prohibitive exemption below, never into it.
@@ -221,13 +286,18 @@ const REASSURANCE_AFFIRMATION =
 //       ("resetting while energized is dangerous/prohibited/not allowed").
 //   (4) explicit caution framing ("use extreme caution", "under no
 //       circumstances").
+// Iteration-7 F1 (polarity): "avoid"/"refrain from" are prohibition heads
+// only when NOT themselves governed by a reversal — "cannot avoid resetting"
+// and "no way to avoid resetting" MANDATE the hazard. The variable-length
+// lookbehind checks the governing text; polarity that cannot be established
+// this way simply fails to exempt (fail-closed).
 const NEG_HEAD_SRC =
-  "(?:not|no|never|don'?t|do\\s+not|doesn'?t|does\\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|should\\s+not|must\\s+not|mustn'?t|may\\s+not|avoid|refrain\\s+from)";
+  "(?:not|no|never|don'?t|do\\s+not|doesn'?t|does\\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|should\\s+not|must\\s+not|mustn'?t|may\\s+not|(?<!\\b(?:cannot|can'?t|couldn'?t|won'?t|not|never|don'?t|do\\s+not|doesn'?t)\\s)(?<!\\b(?:unable|no\\s+way|impossible|hard|difficult)\\s+to\\s)(?:avoid|refrain\\s+from))";
 const NEG_AUX_GAP_SRC =
   "(?:\\s+(?:be|being|been|get|ever|even|again|simply|just|safe|safely|to|attempt\\s+to|try\\s+to)){0,3}";
 const BOUND_PROHIBITION = new RegExp(
   "\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + HAZARD_ACTION_ANY_SRC + "\\b" +
-    "|\\b" + NEG_HEAD_SRC + "\\s+(?:" + ENERGIZED_RELATION_SRC + "|" + NO_ISOLATION + ")" +
+    "|\\b" + NEG_HEAD_SRC + "\\s+(?:" + ENERGIZED_RELATION_SRC + "|" + PRESSURIZED_RELATION_SRC + "|" + MOTION_PROXIMITY_SRC + "|" + NO_ISOLATION + ")" +
     "|\\b" + HAZARD_ACTION_ANY_SRC +
     "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|banned|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended|advisable)|never\\s+(?:safe|allowed|permitted|acceptable)|against\\s)" +
     "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b",
@@ -248,15 +318,19 @@ const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|
  *  hazard action or the energized/no-isolation relation). A warning or
  *  negation in an unrelated clause ("There is risk, but …", "Do not
  *  hesitate: …") never exempts. Detection only, never rewriting. */
-function clauseHazardViolation(text: string): string | null {
+function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
-    if (!ENERGIZED_RELATION.test(sentence) && !NO_ISOLATION_RELATION.test(sentence)) continue;
+    const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
+    const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
+    if (!relId) continue;
     const bearing = sentence
       .split(CLAUSE_BOUNDARY)
       .filter(
         (c) =>
-          HAZARD_ACTION_ANY.test(c) || ENERGIZED_RELATION.test(c) || NO_ISOLATION_RELATION.test(c),
+          HAZARD_ACTION_ANY.test(c) ||
+          HAZARD_RELATIONS.some((r) => r.re.test(c)) ||
+          NO_ISOLATION_RELATION.test(c),
       );
     // Fail-closed: no identifiable instruction-bearing clause (pathological
     // splitting) means no exemption is possible — the sentence-level match
@@ -266,7 +340,7 @@ function clauseHazardViolation(text: string): string | null {
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
     const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
-    return sentence;
+    return { relId, sentence };
   }
   return null;
 }
@@ -299,6 +373,14 @@ const FABRICATED_DOC_PATTERNS: readonly { readonly id: string; readonly re: RegE
     re: /\b(?:on\s+)?(?:page|p\.)\s*\d+\b/i,
   },
 ];
+
+// 2026-09-14 coverage audit: an imperative machine setting with an exact
+// numeric value ("Set this machine's relief valve to 250 bar") asserted in
+// the general lane has no evidence behind it. The grounded lane is exempt —
+// the citation contract owns it there. Concepts, user-supplied measurement
+// discussion, and range talk without a set-instruction do not match.
+const EXACT_SETTING_RE =
+  /(?:^|[.!?:;]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|now\s+|next\s+|first\s+)?(?:set|adjust|torque|tighten|calibrate|dial)\b[^.!?\n]{0,60}?\bto\s+\d[\d.,]*\s*(?:bar|psi|kpa|mpa|n·?m|nm|ft[-·\s]?lbs?|volts?|amps?|hz|rpm|°\s?[cf]|celsius|fahrenheit|mm|degrees)\b|\bshould\s+be\s+(?:set|adjusted|torqued|calibrated)\s+to\s+\d[\d.,]*\s*\w/im;
 
 // Fault-code-shaped token: letter prefix, optional separator, 2+ digits,
 // optional suffix — Q-447-Delta, ZX-9987, F0000000, E-12. Deliberately does
@@ -422,13 +504,25 @@ export function validateAnswer(opts: {
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
-  const hazardSentence = clauseHazardViolation(scanText);
-  if (hazardSentence) {
+  const hazard = clauseHazardViolation(scanText);
+  if (hazard) {
     return {
       ok: false,
       kind: "unsafe_answer",
-      violation: "unsafe-answer:clause-hazard-energized",
-      detail: hazardSentence.slice(0, 160),
+      violation: `unsafe-answer:clause-hazard-${hazard.relId}`,
+      detail: hazard.sentence.slice(0, 160),
+      replacement: SAFETY_STOP,
+    };
+  }
+
+  // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
+  const rig = riggingOverload(scanText);
+  if (rig) {
+    return {
+      ok: false,
+      kind: "unsafe_answer",
+      violation: "unsafe-answer:rigging-overload",
+      detail: rig,
       replacement: SAFETY_STOP,
     };
   }
@@ -448,6 +542,17 @@ export function validateAnswer(opts: {
         replacement: specificityFallback(null),
       };
     }
+  }
+
+  const es = EXACT_SETTING_RE.exec(scanText);
+  if (es) {
+    return {
+      ok: false,
+      kind: "unsupported_specificity",
+      violation: "unsupported-specificity:exact-setting",
+      detail: es[0].slice(0, 160),
+      replacement: specificityFallback(null),
+    };
   }
 
   const cm = codeMeaningViolation(scanText, question);
