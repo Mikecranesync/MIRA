@@ -180,9 +180,15 @@ function isMutationMethod(method: string): boolean {
   return normalized !== "GET" && normalized !== "HEAD";
 }
 
-async function rawRequest(path: string, opts: RequestOpts): Promise<ApiResponse> {
+async function rawRequest(
+  path: string,
+  opts: RequestOpts,
+  // The epoch belongs to the LOGICAL request: a retry attempt started after
+  // invalidateLocalSessionRequests() must not rejoin the new session's epoch,
+  // or its stale response could rewrite cookies a sign-in just stored (#3799).
+  requestEpoch: number = localSessionEpoch,
+): Promise<ApiResponse> {
   await loadJar();
-  const requestEpoch = localSessionEpoch;
   const method = opts.method ?? "GET";
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -513,10 +519,11 @@ async function requestWithRetries(path: string, opts: RequestOpts = {}): Promise
   const method = opts.method ?? "GET";
   const retryable = method === "GET" || Boolean(opts.idempotencyKey);
   let lastNetworkErr: unknown;
+  const requestEpoch = localSessionEpoch; // captured once for every attempt
   for (let attempt = 0; attempt < (retryable ? 2 : 1); attempt++) {
     let res: ApiResponse;
     try {
-      res = await rawRequest(path, opts);
+      res = await rawRequest(path, opts, requestEpoch);
     } catch (e) {
       lastNetworkErr = e;
       continue; // transport failure — retry if permitted

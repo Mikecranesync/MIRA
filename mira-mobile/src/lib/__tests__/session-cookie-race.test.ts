@@ -160,6 +160,60 @@ describe("native session-cookie purge barrier", () => {
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
   });
 
+  // Codex r3: the boot GET retries once on a transport failure. If the first
+  // attempt fails AFTER sign-in retired it, the retry must keep the retired
+  // epoch — not rejoin the new one — so its stale 401 still cannot delete the
+  // fresh cookie.
+  it("a boot getMe retry started after sign-in began keeps the retired epoch", async () => {
+    let failFirst!: (reason: Error) => void;
+    const first = new Promise<never>((_, reject) => {
+      failFirst = reject;
+    });
+    const retry = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        if (meCalls === 1) return first; // boot attempt 1 (will fail at transport)
+        if (meCalls === 2) return validating.promise; // signIn's validating call
+        return retry.promise; // boot attempt 2 (the automatic retry, started last)
+      }
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/credentials/")) {
+        return {
+          status: 200,
+          data: "{}",
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const bootMe = request("/api/me/");
+    await vi.waitFor(() => expect(meCalls).toBe(1));
+
+    const attempt = signIn("tech@example.com", "pw");
+    await vi.waitFor(() => expect(meCalls).toBe(2)); // CSRF + callback done; validating pending
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    failFirst(new Error("socket reset")); // transport failure → automatic retry
+    await vi.waitFor(() => expect(meCalls).toBe(3));
+    retry.resolve({
+      status: 401,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=; Max-Age=0; Path=/" },
+    });
+    await bootMe.catch(() => {});
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+    expect(await attempt).toEqual({ ok: true });
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+  });
+
   it("serializes a purge behind a cookie save that was already writing", async () => {
     const writeStarted = deferred<void>();
     const releaseWrite = deferred<void>();
