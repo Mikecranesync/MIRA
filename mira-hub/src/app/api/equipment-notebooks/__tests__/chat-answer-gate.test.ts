@@ -423,6 +423,98 @@ describe("Safety coverage audit — non-electrical hazards through the real hand
   }
 });
 
+describe("Semantic layer (#3793) through the real handler", () => {
+  // The provider call streams (body.stream=true); the judge call is
+  // non-streaming (body.stream=false). One stub serves both by shape.
+  function stubProviderAndJudge(candidate: string, judgeContent: string | "hang" | "malformed-all") {
+    return vi.fn(async (_url: unknown, init?: { body?: unknown; signal?: AbortSignal }) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (body.stream !== false) return completingProvider(candidate);
+      if (judgeContent === "hang")
+        return new Promise<Response>((_res, rej) => {
+          init?.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
+        });
+      if (judgeContent === "malformed-all")
+        return new Response(JSON.stringify({ choices: [{ message: { content: "looks fine to me" } }] }), { status: 200 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: judgeContent } }] }), { status: 200 });
+    });
+  }
+  const hazardCandidate = "Crack the fitting a quarter turn to vent the hydraulic accumulator down before removal.";
+
+  it("an unsafe semantic verdict replaces the candidate with SAFETY_STOP, zero citations, basis NULL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubProviderAndJudge(hazardCandidate, '{"verdict":"unsafe","hazard_class":"pressure","reason":"vents under load"}'),
+    );
+    const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-pressure" });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().basis).toBeNull();
+    expect(lastTurn().answerText).toBe(SAFETY_STOP);
+  });
+
+  it("a safe semantic verdict releases the candidate byte-identical with its citations and basis", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubProviderAndJudge(
+        "Relieve the accumulator pressure to zero on the gauge before disconnecting the hose [1].",
+        '{"verdict":"safe","hazard_class":"pressure","reason":"relieve-first guidance"}',
+      ),
+    );
+    const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames)).toContain("Relieve the accumulator pressure");
+    expect(frames.find((f) => f.kind === "evidence")).toMatchObject({ basis: "oem_documentation" });
+    expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+  });
+
+  it("an unverifiable flagged candidate is withheld with the controlled fallback — never silently released", async () => {
+    vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "malformed-all"));
+    const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    const released = contentOf(frames);
+    expect(released).toContain("safety review that could not be completed");
+    expect(released).not.toContain("Crack the fitting");
+    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-unverified" });
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().basis).toBeNull();
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("Crack the fitting");
+  });
+
+  it("a judge timeout also withholds the flagged candidate (fail-closed)", async () => {
+    process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS = "40";
+    vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "hang"));
+    const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames)).toContain("safety review that could not be completed");
+    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-unverified" });
+  });
+
+  it("a hazard-free turn never invokes the judge (selector miss = zero inference)", async () => {
+    const fetchMock = stubProviderAndJudge("Check the display contrast setting first [1].", "malformed-all");
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "The display is dim, what should I look at?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames)).toContain("display contrast");
+    expect(fetchMock.mock.calls.length).toBe(1); // provider only
+  });
+
+  it("NOTEBOOK_SEMANTIC_CHECK=0 disables the layer without touching the deterministic gate", async () => {
+    process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+    const fetchMock = stubProviderAndJudge(hazardCandidate + " [1]", "malformed-all");
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(contentOf(frames)).toContain("Crack the fitting");
+    expect(fetchMock.mock.calls.length).toBe(1); // provider only, no judge
+  });
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(

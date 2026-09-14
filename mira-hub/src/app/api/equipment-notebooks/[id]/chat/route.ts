@@ -105,6 +105,12 @@ import type {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import {
+  SEMANTIC_UNVERIFIED_FALLBACK,
+  selectForSemanticCheck,
+  semanticCheckEnabled,
+  semanticSafetyCheck,
+} from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
 
@@ -1345,8 +1351,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         return;
       }
-      req.signal?.removeEventListener("abort", onClientGone);
-
       let answerText = responseBuffer.join("");
 
       // Determine the honest status + which citations to ship. A refusal ships
@@ -1376,6 +1380,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerText = validation.replacement;
         }
       }
+
+      // #3793 semantic layer (2026-09-14 coverage audit): meaning-aware check
+      // on the ACCEPTED candidate, for turns the selector flags in any
+      // supported hazard class. Fail-closed: a flagged candidate that cannot
+      // be judged (timeout, provider failure, malformed verdict) is withheld
+      // behind the controlled unverified fallback — never silently released.
+      // Lives inside the gate: gate-off stays byte-identical legacy with zero
+      // inference spend. Class/verdict/latency are logged so the real
+      // invocation rate is measured, not assumed.
+      if (gate && !outputRejected && served && !refused && answerText && semanticCheckEnabled()) {
+        const selectedClass = selectForSemanticCheck(answerText, message);
+        if (selectedClass) {
+          const semStart = Date.now();
+          const sv = await semanticSafetyCheck({ question: message, answerText, general, selectedClass });
+          console.log(
+            `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
+          );
+          if (sv.verdict === "unsafe") {
+            const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+            console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
+            outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+            answerText = SAFETY_STOP;
+          } else if (sv.verdict !== "safe") {
+            console.error(
+              `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding flagged candidate`,
+            );
+            outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+            answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          }
+        } else {
+          console.log(`[notebook-chat] semantic-check skipped (no hazard vocabulary)`);
+        }
+      }
+
+      // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
+      // made once, above; validation (deterministic AND semantic) is complete;
+      // from here to the write the tail is synchronous and never re-reads the
+      // abort signal. The semantic await lives BEFORE this detach on purpose —
+      // a disconnect during the judge falls into the same designed bucket as a
+      // disconnect after commit (the turn stays answered).
+      req.signal?.removeEventListener("abort", onClientGone);
 
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.

@@ -88,6 +88,11 @@ beforeEach(() => {
   domainMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
   process.env.GROQ_API_KEY = "test-key";
+  // This suite pins the INPUT-side directive mechanics (#3763): prompt
+  // composition and exactly one provider call. The output-side semantic
+  // layer (#3793) adds its own judge call on hazard turns and is pinned in
+  // chat-answer-gate.test.ts — disable it here so each suite owns one seam.
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   stubProvider();
 });
 
