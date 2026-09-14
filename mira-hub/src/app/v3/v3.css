@@ -85,7 +85,9 @@
 .v3-notice-stop{background:var(--v3-stopbg);border:1px solid #fecaca;color:var(--v3-stop)}
 .v3-notice b{display:block;margin-bottom:3px}
 .v3-noticerow{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
-.v3-noticerow button{border:1px solid currentColor;background:transparent;border-radius:8px;padding:0 12px;min-height:38px;font-size:12px;position:relative}
+.v3-noticerow button,
+.v3-noticerow a{border:1px solid currentColor;background:transparent;border-radius:8px;padding:0 12px;
+  min-height:38px;font-size:12px;position:relative;display:inline-flex;align-items:center;text-decoration:none}
 
 .v3-cwrap{position:absolute;left:0;right:0;bottom:0;padding:14px max(16px,calc((100% - 720px)/2));
   background:linear-gradient(transparent,var(--v3-panel) 30%)}
@@ -207,7 +209,8 @@ button.v3-ctx:hover { opacity: 1; }
 }
 
 .v3-actions button::after,
-.v3-noticerow button::after {
+.v3-noticerow button::after,
+.v3-noticerow a::after {
   content: "";
   position: absolute;
   inset: -5px;              /* 38 + 5 + 5 = 48 */
