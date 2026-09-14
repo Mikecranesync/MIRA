@@ -3756,7 +3756,7 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     assert "assembleRelease bundleRelease" in build_text
     assert "app-release-unsigned.apk" in build_text
     assert "app-release.aab" in build_text
-    assert "21.0.12+8.0" in build_text
+    assert "21.0.12+101.0.LTS" in build_text
     assert 'cmdline-tools-version": "12266719' in build_text
     assert "build-tools;35.0.0" in build_text
     assert "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172" in build_text
