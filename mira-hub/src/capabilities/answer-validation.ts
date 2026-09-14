@@ -176,6 +176,57 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
 ];
 
 /* ------------------------------------------------------------------------ *
+ * A2. Clause-level hazard inversion (iteration-4 blocker, both lanes)       *
+ * ------------------------------------------------------------------------ */
+
+// Post-cap review F1: passive ("The fault should be reset while … energized"),
+// gerund-subject ("Resetting … while energized is recommended"), polite
+// ("Please reset …"), and further modal heads ("You ought to reset …") all
+// slipped the enumerated affirmation-head grammars above — the fourth
+// consecutive round to find a new head family. Enumerating sentence heads
+// does not converge on English, so this check inverts the model: a SENTENCE
+// that couples a hazard ACTION to an energized-state RELATION (connector +
+// state, or a without-isolation construction) is unsafe BY DEFAULT unless it
+// is demonstrably prohibitive or cautionary. Reassurance idioms ("don't
+// worry", "not dangerous") are affirmations wearing negation words, so they
+// are tested BEFORE the prohibitive exemption and never exempt. The head
+// grammars above are kept and run first — their specific violation ids are
+// pinned in tests and in the safety-frame contract.
+const HAZARD_ACTION_ANY = new RegExp(
+  "\\b" + HAZARD_ACTIONS + "\\b|\\b(?:continue|complete|begin|start)\\b|\\bproceed\\b(?!\\s+with\\s+caution\\b)",
+  "i",
+);
+// `(?<![\w-])energized` keeps "de-energized"/"re-energized" out — a hyphen
+// before the state word means isolation prose, not an energized instruction.
+const ENERGIZED_RELATION = new RegExp(
+  "\\b" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)",
+  "i",
+);
+const NO_ISOLATION_RELATION = new RegExp("\\b" + NO_ISOLATION, "i");
+// Safety-affirming negations — sentences that use a negation word to say the
+// hazard is FINE. These must reject, so they are carved out of the
+// prohibitive exemption below, never into it.
+const REASSURANCE_AFFIRMATION =
+  /\b(?:don'?t\s+worry|no\s+(?:risk|danger|harm|worries)|not?\s+(?:dangerous|unsafe|hazardous|risky|harmful)|isn'?t\s+(?:dangerous|unsafe|hazardous|risky)|perfectly\s+(?:safe|fine|normal)|nothing\s+to\s+worry)\b/i;
+// Demonstrably prohibitive or cautionary context, sentence-scoped. Broad on
+// purpose: the inversion errs toward the safety stop, and this list is the
+// false-negative surface — every entry is a way of saying "don't".
+const PROHIBITIVE_OR_CAUTIONARY =
+  /\b(?:not|no|never|don'?t|do\s+not|doesn'?t|does\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|mustn'?t|avoid\w*|prohibit\w*|forbidden|forbids?|unsafe|dangerous|hazardous|caution\w*|warn(?:ing|ed|s)?|instead|rather\s+than|only\s+after|risk\w*)\b/i;
+
+/** Returns the offending sentence, or null. Sentence-scoped like the head
+ *  grammars above ([^.!?\n] windows) — detection only, never rewriting. */
+function clauseHazardViolation(text: string): string | null {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!HAZARD_ACTION_ANY.test(sentence)) continue;
+    if (!ENERGIZED_RELATION.test(sentence) && !NO_ISOLATION_RELATION.test(sentence)) continue;
+    if (!REASSURANCE_AFFIRMATION.test(sentence) && PROHIBITIVE_OR_CAUTIONARY.test(sentence)) continue;
+    return sentence;
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
  * ------------------------------------------------------------------------ */
 
@@ -322,6 +373,19 @@ export function validateAnswer(opts: {
         replacement: SAFETY_STOP,
       };
     }
+  }
+
+  // A2 — the clause-level inversion, both lanes, refusals included. Runs
+  // AFTER the head grammars so their pinned violation ids are preserved.
+  const hazardSentence = clauseHazardViolation(scanText);
+  if (hazardSentence) {
+    return {
+      ok: false,
+      kind: "unsafe_answer",
+      violation: "unsafe-answer:clause-hazard-energized",
+      detail: hazardSentence.slice(0, 160),
+      replacement: SAFETY_STOP,
+    };
   }
 
   // B — general lane only. The grounded lane's specificity discipline is the

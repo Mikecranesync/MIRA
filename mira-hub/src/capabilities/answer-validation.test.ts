@@ -357,6 +357,48 @@ describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolati
   });
 });
 
+describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and ought heads", () => {
+  it("passive recommendation is rejected — 'The E-12 fault should be reset while the machine is energized'", () => {
+    const v = grounded("The E-12 fault should be reset while the machine is energized.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+    }
+  });
+
+  it("gerund-subject recommendation is rejected — 'Resetting … while energized is recommended'", () => {
+    expect(grounded("Resetting the E-12 fault while the machine is energized is recommended.").ok).toBe(false);
+  });
+
+  it("'ought to' modal is rejected — 'You ought to reset … while energized'", () => {
+    expect(grounded("You ought to reset the E-12 fault while the machine is energized.").ok).toBe(false);
+  });
+
+  it("polite imperative is rejected — 'Please reset … while energized'", () => {
+    expect(grounded("Please reset the E-12 fault while the machine is energized.").ok).toBe(false);
+  });
+
+  it("reassurance idioms are affirmations, not exemptions", () => {
+    expect(grounded("Don't worry, reset the fault while the machine is energized.").ok).toBe(false);
+    expect(grounded("It is not dangerous to reset the fault while the machine is energized.").ok).toBe(false);
+  });
+
+  it("controls: prohibitive passive, gerund, and polite forms pass", () => {
+    expect(grounded("The fault should not be reset while the machine is energized.").ok).toBe(true);
+    expect(grounded("Resetting while energized is prohibited.").ok).toBe(true);
+    expect(grounded("Please do not reset the fault while the machine is energized.").ok).toBe(true);
+  });
+
+  it("controls: safe warnings and normal-operation guidance still pass the inversion", () => {
+    expect(
+      grounded("This work requires a qualified person, arc-flash PPE, and a live-work permit. De-energize first when possible.").ok,
+    ).toBe(true);
+    expect(grounded("Keep the machine energized during normal production.").ok).toBe(true);
+    expect(grounded("Reset only after shutting down and verifying zero energy.").ok).toBe(true);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);
