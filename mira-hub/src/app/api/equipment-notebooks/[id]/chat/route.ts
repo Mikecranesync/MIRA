@@ -104,8 +104,23 @@ import type {
   IdentityDisputeEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
+import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import {
+  SEMANTIC_UNVERIFIED_FALLBACK,
+  selectForSemanticCheck,
+  semanticCheckEnabled,
+  semanticSafetyCheck,
+} from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
+
+/** B2 (#3790, PR #3791 research): the pre-display validation boundary.
+ *  Default ON — `NOTEBOOK_ANSWER_GATE=0` is the emergency rollback lever,
+ *  under which content streams delta-by-delta exactly as before and the
+ *  validator runs detection-only (logged, never enforced). */
+function answerGateEnabled(): boolean {
+  return process.env.NOTEBOOK_ANSWER_GATE !== "0";
+}
 
 const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
@@ -1074,6 +1089,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Only used in general mode; constructing it unconditionally keeps the
       // grounded delta path byte-identical to before.
       const stripBrackets = makeGeneralBracketStripper();
+      // B2: with the gate on, candidate deltas accumulate in responseBuffer
+      // and are NOT enqueued — the full answer is validated first, then the
+      // accepted text is released through the same frame grammar. The client
+      // keeps its existing "working" state until the first content frame.
+      const gate = answerGateEnabled();
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -1185,8 +1205,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   const norm = general ? stripBrackets.push(normalize.push(delta)) : normalize.push(delta);
                   if (norm) {
                     responseBuffer.push(norm);
-                    const frame: NotebookContentFrame = { kind: "content", content: norm };
-                    controller.enqueue(enc.encode(sse(frame)));
+                    // B2: under the gate the candidate is buffered, not shown.
+                    if (!gate) {
+                      const frame: NotebookContentFrame = { kind: "content", content: norm };
+                      controller.enqueue(enc.encode(sse(frame)));
+                    }
                   }
                   // Cost cap. Chars/4 is a deliberately cheap proxy: a real
                   // tokenizer here would cost more than the tokens it guards,
@@ -1209,7 +1232,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               : normalize.flush();
             if (tail) {
               responseBuffer.push(tail);
-              controller.enqueue(enc.encode(sse({ kind: "content", content: tail } as NotebookContentFrame)));
+              if (!gate) {
+                controller.enqueue(enc.encode(sse({ kind: "content", content: tail } as NotebookContentFrame)));
+              }
             }
             served = true;
             servedModel = `${provider.name}:${provider.model}`;
@@ -1267,7 +1292,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // Same second bracket guard as the answered path: a general partial
         // must not carry [n] markers that resolve to no document.
         if (general) partial = partial.replace(/\s*\[\d+\]/g, "");
-        const partialText = partial.length ? partial : null;
+        // B2: under the gate no candidate byte was released to the client — an
+        // unvalidated, undisplayed buffer is not a partial answer and must not
+        // be stored (a Stop before validation never flushes unchecked text).
+        const partialText = gate ? null : partial.length ? partial : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         try {
           await recordTurn(ctx.tenantId, notebookId, {
@@ -1323,8 +1351,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         return;
       }
-      req.signal?.removeEventListener("abort", onClientGone);
-
       let answerText = responseBuffer.join("");
 
       // Determine the honest status + which citations to ship. A refusal ships
@@ -1336,13 +1362,90 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // render as a citation chip in mira-mobile. Strip the markers rather than
       // ship a chip that resolves to no document.
       if (general) answerText = answerText.replace(/\s*\[\d+\]/g, "");
+
+      // B2/B3 (#3790/#3787, PR #3791): pre-display validation on the COMPLETE
+      // candidate. Under the gate nothing has been released yet, so a rejected
+      // candidate is replaced before the technician sees a byte of it. The
+      // rejected draft is never persisted and never re-enters chat context —
+      // only its bounded excerpt reaches the server log. With the gate off the
+      // validator still runs detection-only so rejected shapes stay observable.
+      const validation = validateAnswer({ answerText, question: message, general, served, refused });
+      let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      if (!validation.ok) {
+        console.error(
+          `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
+        );
+        if (gate) {
+          outputRejected = { kind: validation.kind, violation: validation.violation };
+          answerText = validation.replacement;
+        }
+      }
+
+      // #3793 semantic layer (2026-09-14 coverage audit): meaning-aware check
+      // on the ACCEPTED candidate, for turns the selector flags in any
+      // supported hazard class. Fail-closed: a flagged candidate that cannot
+      // be judged (timeout, provider failure, malformed verdict) is withheld
+      // behind the controlled unverified fallback — never silently released.
+      // Lives inside the gate: gate-off stays byte-identical legacy with zero
+      // inference spend. Class/verdict/latency are logged so the real
+      // invocation rate is measured, not assumed.
+      if (gate && !outputRejected && served && !refused && answerText && semanticCheckEnabled()) {
+        // Iteration-9 F1: no finite vocabulary bounds English hazard
+        // descriptions, so classification is TELEMETRY (a class hint for the
+        // judge and the logs) — never a selection boundary. EVERY served,
+        // non-refused answer is judged while the gate is on.
+        const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
+        const semStart = Date.now();
+        const sv = await semanticSafetyCheck({ question: message, answerText, general, selectedClass });
+        console.log(
+          `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
+        );
+        if (sv.verdict === "unsafe") {
+          const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+          console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
+          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+          answerText = SAFETY_STOP;
+        } else if (sv.verdict !== "safe") {
+          console.error(
+            `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
+          );
+          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+        }
+      }
+
+      // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
+      // made once, above; validation (deterministic AND semantic) is complete;
+      // from here to the write the tail is synchronous and never re-reads the
+      // abort signal. The semantic await lives BEFORE this detach on purpose —
+      // a disconnect during the judge falls into the same designed bucket as a
+      // disconnect after commit (the turn stays answered).
+      req.signal?.removeEventListener("abort", onClientGone);
+
+      // A rejected turn ships ZERO citations — the retrieved content that drove
+      // the rejected draft must not be presented as the replacement's authority.
       const emittedCitations =
-        general || !served || refused ? [] : citationsUsedInAnswer(answerText, citations);
+        general || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
           ? "insufficient_evidence"
           : "answered";
+
+      // B2: release the ACCEPTED answer. Content precedes sources/evidence/
+      // status exactly as in the unbuffered grammar; chunked on whitespace so
+      // clients keep their incremental-render path. Time-to-first-accepted-
+      // content is logged — the gate trades first-token latency for the
+      // guarantee that no unvalidated byte is ever displayed.
+      if (gate && served && answerText) {
+        for (const piece of chunkForRelease(answerText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
+        }
+        console.log(
+          `[notebook-chat] gate released ${answerText.length} chars at +${Date.now() - turnStartedAt}ms` +
+            (outputRejected ? ` (replacement for ${outputRejected.violation})` : ""),
+        );
+      }
 
       const sourcesFrame: NotebookSourcesFrame = {
         kind: "sources",
@@ -1394,7 +1497,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
-      controller.enqueue(enc.encode(sse(evidenceFrame)));
+      if (outputRejected?.kind === "unsafe_answer") {
+        // The replacement IS the safety stop: same grammar as the input-side
+        // stop — a `safety` frame, no basis-bearing evidence frame. The
+        // rejected candidate's lane must not certify the replacement.
+        controller.enqueue(
+          enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
+        );
+      } else {
+        controller.enqueue(enc.encode(sse(evidenceFrame)));
+      }
 
       const statusFrame: NotebookStatusFrame =
         answerStatus === "answered"
@@ -1424,7 +1536,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
-      if (answerStatus === "answered" && !identityDisputed) {
+      if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]
               .filter(([, pages]) => pages.length)
@@ -1457,13 +1569,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // D5: the machine window rides INSIDE evidence[] next to the
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
+          // B2: an unsafe-rejected turn persists like an input-side safety stop
+          // — a safety_notice entry, no citations, no machine/visual entries,
+          // and NO basis claim. The rejected draft itself is never stored.
           evidence: served
-            ? [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            ? outputRejected?.kind === "unsafe_answer"
+              ? [
+                  ...hazardEntries,
+                  { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
+                  ...disputeEntries,
+                ]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
           // 084 (#3387): persist EXACTLY what the evidence frame streamed —
-          // and only for a served answer. A failed turn makes no basis claim.
-          basis: served ? evidenceFrame.basis : null,
+          // and only for a served answer. A failed turn makes no basis claim,
+          // and an unsafe-rejected turn makes none either (its evidence frame
+          // was replaced by the safety frame above).
+          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
         });
       } catch (err) {

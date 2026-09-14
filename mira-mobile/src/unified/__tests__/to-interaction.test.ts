@@ -27,7 +27,7 @@ const META: UnifiedNotebookMeta = {
 const CITATION = { citationId: "c1", sourceTitle: "G120 Operating Instructions", page: 418, quote: "Check the supply.", fileId: null };
 
 const PARTS: MessagePart[] = [
-  { type: "basis", basis: "documents", label: "Cited from the manual" },
+  { type: "basis", basis: "oem_documentation", label: "Cited from the manual" },
   { type: "text", text: "Check the supply first.", knownCitationIds: ["c1"] },
   { type: "source", citation: CITATION },
   { type: "machine_evidence", entry: { kind: "machine_evidence", assetId: "asset-1", anchorAt: "2026-09-06T17:00:00Z", pre: 120, post: 120, rowCount: 23, freshness: "stale", reason: null } },
@@ -61,6 +61,14 @@ describe("toInteractionPart", () => {
     expect(basisKind("something new")).toBe("general_reasoning");
     expect(basisKind("live machine evidence")).toBe("live_machine_evidence");
     expect(basisKind("machine history")).toBe("machine_history");
+    // PR #3791 regression: an unknown value containing an evidence-flavoured
+    // keyword must NOT upgrade to a stronger claim (the old substring
+    // heuristic mapped these to oem_documentation via /…|knowledge/).
+    expect(basisKind("general_knowledge")).toBe("general_reasoning");
+    expect(basisKind("knowledge base entry")).toBe("general_reasoning");
+    expect(basisKind("oem_documentation")).toBe("oem_documentation");
+    expect(basisKind("workspace_evidence")).toBe("workspace_evidence");
+    expect(basisKind("identified_component")).toBe("identified_component");
     expect(toInteractionPart({ type: "basis", basis: "general", label: null })).toEqual({
       type: "evidence_basis", basis: { kind: "general_reasoning", label: "general", authorized: false },
     });

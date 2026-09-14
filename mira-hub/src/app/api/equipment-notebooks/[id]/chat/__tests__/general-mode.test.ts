@@ -102,6 +102,10 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
 }
 
 beforeEach(() => {
+  // This suite pins its own seam (not the semantic judge, which is owned by
+  // chat-answer-gate.test.ts). Iteration-9 judges EVERY served answer, so
+  // disable the layer here rather than stub a judge in every test.
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   vi.clearAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test";
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unknown machine" });
