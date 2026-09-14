@@ -1,7 +1,21 @@
 # Runbook — Low-cost OVH recovery of MIRA (incident #3800)
 
-**Status (2026-09-14):** prepared and tested locally; **no VPS identified yet, no DNS changed, no
-production write made.** The DigitalOcean droplet `factorylm-prod` (165.245.138.91) was powered off
+**Status (2026-09-14 22:05Z):** prepared and tested locally; **VPS identified (read-only), SSH not yet
+verified, no DNS changed, no production write made.** Preflight with the re-issued `GET *` key:
+
+| Field | Value (from the OVH API, GET only) |
+|---|---|
+| Service | `vps-2d884531.vps.ovh.us` — the only VPS on the account (0 Public Cloud projects, 0 dedicated) |
+| Plan | **VPS-3 2027** — 6 vCore, 12 GB RAM, 100 GB NVMe, `offerType=ssd` |
+| Region | Hillsboro, US-WEST-OR-2 (`os-us-west-or-2`) |
+| IPv4 / IPv6 | `40.160.141.61` / `2604:2dc0:202:300::1fc6` |
+| State | `running`, created 2026-09-14 21:09Z, order 8863121 **delivered** |
+| OS | "Linux" on the order; exact image not exposed on this API version — read it over SSH |
+| Actual billing | **$14.50 USD / month**, `rental`, `P1M`, automatic renewal, **no engagement**; next billing 2026-10-14 |
+| Included options | Automated Backup Standard (enabled, rotation 1, 17:10 daily) + Local Storage — $0.00 |
+| Ports from CHARLIE | 22 open; 80/443 closed (nothing serving yet) |
+| Host keys seen on first scan (unverified) | ED25519 `SHA256:yslCH8KRVJu0281ztiTXYxD9o8Ogg32OQ2rZ5pn8FrY` · RSA `SHA256:Uv/uhxnk/jHBbp2Ew8CFXE+SeAdVpwn4EmMdGXknmms` · ECDSA `SHA256:jsd5uFks1PCxwEYrv6Gv4wjYh9Fg/qa2uxk5+FX9MGI` |
+| API credential | `GET *` only, expires 2026-09-15 18:37 -04:00 | The DigitalOcean droplet `factorylm-prod` (165.245.138.91) was powered off
 by DigitalOcean on 2026-09-14 10:12Z because the DO account is locked (#3800). This runbook rebuilds
 the *technician surface* on a small OVH VPS from the existing repo components, without touching DO.
 
@@ -28,25 +42,22 @@ them fail closed via `disabled://recovery` / unresolvable hostnames (same patter
 
 ## 1. Prerequisites (human)
 
-1. **OVH consumer key with real rules.** The key saved in Doppler on 2026-09-14 (`OVH_KEY`,
-   `OVH_SECRET_KEY`, `OVH_CONSUMER_KEY`, all three configs) is *validated* but every rule has an
-   **empty `path`**, so `GET /me`, `GET /vps`, `/cloud/project`, `/dedicated/server` all return
-   `This call has not been granted`. Re-create it at <https://api.us.ovhcloud.com/createToken/> with
-   **`GET /*` only** (read-only is enough for the preflight), optionally an IP allowlist and an
-   expiry, and save it as `OVH_CONSUMER_KEY`. Then run:
+1. **OVH consumer key** — ✅ done 2026-09-14: re-issued with `GET *` only (the first key had
+   empty-path rules and granted nothing), saved to Doppler as `OVH_APPLICATION_KEY` /
+   `OVH_APPLICATION_SECRET` / `OVH_CONSUMER_KEY`, old key revoked. Expires 2026-09-15 18:37 -04:00;
+   re-issue the same way when it lapses. Preflight, any time:
    ```bash
    doppler run -p factorylm -c prd -- python3 tools/ovh/preflight.py        # GET-only
    ```
-   Expected: `auth: AUTH_OK`, then `VPS_LISTED (n)` with model/RAM/disk/IP/OS/expiry/**billing**,
-   or `VPS_NONE` (nothing purchased yet — API keys are not a purchase).
-2. **If `VPS_NONE`:** buy one at <https://us.ovhcloud.com/vps/> — **VPS-2 (4 vCores / 8 GB / 75 GB
-   NVMe, "starting at $8.50/mo")** matches the droplet's 8 GB; **VPS-1 (2 vCores / 4 GB / 40 GB,
-   "$4.54/mo")** is enough for the Hub-only minimum (measured idle 66–69 MiB, 1 GiB limit). The
-   "starting at" price is the annual-upfront rate; monthly billing is higher — read the actual
-   monthly total from `serviceInfos`/`/services/{id}` in the preflight, not the storefront.
-3. **SSH key** for root on the new box (API keys are not SSH credentials). Get the host key
-   fingerprint from the OVH control panel / installation email and add the host to a **new**
-   `~/.ssh/known_hosts` line — never `StrictHostKeyChecking=no`, never edit the existing
+2. **VPS** — ✅ exists (table above): VPS-3 2027, $14.50/month, no engagement. Nothing to buy.
+   (For reference the storefront's "from $4.54 / $8.50" for VPS-1/VPS-2 are annual-upfront rates.)
+3. **SSH access — ⏳ human step.** The OVH account has **no SSH key registered** (`GET /me/sshKey`
+   → 0), so the box was installed with OVH's emailed initial credentials and CHARLIE's keys
+   (`SHA256:9QDf…` charlienode, `SHA256:JrWP…` github-actions-deploy) are not on it. Mike logs in
+   once from his own machine with the OVH credentials, **compares the host key fingerprint to the
+   ones in the table above** (they were scanned straight after creation from the API-reported IP),
+   then adds CHARLIE's public key to `/root/.ssh/authorized_keys`. Only then add a **new**
+   `~/.ssh/known_hosts` line on CHARLIE — never `StrictHostKeyChecking=no`, never touch the existing
    `prod`/`factorylm-prod` aliases.
 4. **Scoped Doppler service tokens**: one for `factorylm/stg` (private test) and, only at cutover,
    one for `factorylm/prd`. Never a personal token on the host.
