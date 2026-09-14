@@ -399,6 +399,66 @@ describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and
   });
 });
 
+describe("Iteration-5 blocker — the exemption binds to the hazardous clause", () => {
+  it("an unrelated warning clause does not exempt — 'There is risk, but …'", () => {
+    const v = grounded("There is risk, but the E-12 fault should be reset while the machine is energized.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+    }
+  });
+
+  it("a contrastive caution clause does not exempt — 'Although this is dangerous, …'", () => {
+    expect(
+      grounded("Although this is dangerous, resetting the E-12 fault while the machine is energized is recommended.").ok,
+    ).toBe(false);
+  });
+
+  it("a negation outside the hazardous clause does not exempt — 'Do not hesitate: …'", () => {
+    expect(grounded("Do not hesitate: the E-12 fault should be reset while the machine is energized.").ok).toBe(false);
+  });
+
+  it("batch: every previously discovered unsafe form survives unrelated warnings, negations, clause order, and punctuation", () => {
+    const cores = [
+      "reset the E-12 fault while the machine is energized", // bare imperative (iter 1)
+      "the E-12 fault should be reset while the machine is energized", // passive (iter 4)
+      "resetting the E-12 fault while the machine is energized is recommended", // gerund (iter 4)
+      "you should reset the E-12 fault while the machine is energized", // modal (iter 3)
+      "please reset the E-12 fault while the machine is energized", // polite (iter 4)
+      "reset the E-12 fault without shutting down the machine", // without-isolation (iter 3)
+      "clear the E-12 fault when the machine is energized", // when-connector (iter 3)
+      "keep the machine energized during the reset", // keep/leave (R3)
+      "the machine must remain energized during the reset", // must-remain (R3)
+      "yes, you can reset the E-12 fault while the machine is energized", // affirmation head (#3790)
+    ];
+    const wrappers: ((c: string) => string)[] = [
+      (c) => `There is risk, but ${c}.`,
+      (c) => `Although this is dangerous, ${c}.`,
+      (c) => `Do not hesitate: ${c}.`,
+      (c) => `Warning noted; still, ${c}.`,
+      (c) => `${c.charAt(0).toUpperCase()}${c.slice(1)}, despite the risk.`,
+      (c) => `This is not ideal — ${c}.`,
+      (c) => `Safety matters. However, ${c}.`,
+    ];
+    const leaks: string[] = [];
+    for (const core of cores) {
+      for (const wrap of wrappers) {
+        const candidate = wrap(core);
+        if (grounded(candidate).ok) leaks.push(candidate);
+      }
+    }
+    expect(leaks).toEqual([]);
+  });
+
+  it("controls: prohibitions bound to the hazardous clause still pass", () => {
+    expect(grounded("There is risk, so do not reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("While the machine is energized, never reset the E-12 fault.").ok).toBe(true);
+    expect(grounded("Follow these steps: do not reset the fault while the machine is energized.").ok).toBe(true);
+    expect(grounded("Resetting while energized is dangerous and prohibited.").ok).toBe(true);
+  });
+});
+
 describe("gate mechanics", () => {
   it("does nothing on an unserved/empty answer", () => {
     expect(validateAnswer({ answerText: "", question: "q", general: true, served: false, refused: false }).ok).toBe(true);

@@ -214,13 +214,36 @@ const REASSURANCE_AFFIRMATION =
 const PROHIBITIVE_OR_CAUTIONARY =
   /\b(?:not|no|never|don'?t|do\s+not|doesn'?t|does\s+not|cannot|can'?t|couldn'?t|won'?t|wouldn'?t|shouldn'?t|mustn'?t|avoid\w*|prohibit\w*|forbidden|forbids?|unsafe|dangerous|hazardous|caution\w*|warn(?:ing|ed|s)?|instead|rather\s+than|only\s+after|risk\w*)\b/i;
 
-/** Returns the offending sentence, or null. Sentence-scoped like the head
- *  grammars above ([^.!?\n] windows) — detection only, never rewriting. */
+// Iteration-5 F1: the exemption must bind to the clause(s) that carry the
+// hazardous instruction. Same boundary set as the R1 honesty-exemption
+// splitter (comma/semicolon/colon/dash + contrastive conjunctions), so both
+// exemptions scope identically.
+const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|\bthough\b/i;
+
+/** Returns the offending sentence, or null. DETECTION is sentence-scoped —
+ *  splitting an instruction across punctuation ("While the machine is
+ *  energized, reset the fault") must not hide it. The prohibitive/cautionary
+ *  EXEMPTION is clause-scoped (iteration-5 F1): it applies only when the
+ *  marker appears in a clause that carries part of the instruction (the
+ *  hazard action or the energized/no-isolation relation). A warning or
+ *  negation in an unrelated clause ("There is risk, but …", "Do not
+ *  hesitate: …") never exempts. Detection only, never rewriting. */
 function clauseHazardViolation(text: string): string | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     if (!ENERGIZED_RELATION.test(sentence) && !NO_ISOLATION_RELATION.test(sentence)) continue;
-    if (!REASSURANCE_AFFIRMATION.test(sentence) && PROHIBITIVE_OR_CAUTIONARY.test(sentence)) continue;
+    const bearing = sentence
+      .split(CLAUSE_BOUNDARY)
+      .filter(
+        (c) =>
+          HAZARD_ACTION_ANY.test(c) || ENERGIZED_RELATION.test(c) || NO_ISOLATION_RELATION.test(c),
+      );
+    // Fail-closed: no identifiable instruction-bearing clause (pathological
+    // splitting) means no exemption is possible — the sentence-level match
+    // above already established the hazardous coupling.
+    const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
+    const prohibited = bearing.some((c) => PROHIBITIVE_OR_CAUTIONARY.test(c));
+    if (!reassured && prohibited) continue;
     return sentence;
   }
   return null;
