@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { api, storage } = vi.hoisted(() => ({
@@ -8,6 +8,8 @@ const { api, storage } = vi.hoisted(() => ({
   },
   api: {
   getMe: vi.fn(),
+    signIn: vi.fn(),
+    invalidateLocalSessionRequests: vi.fn(),
   },
 }));
 
@@ -36,7 +38,12 @@ vi.mock("@capacitor/preferences", () => ({
 
 vi.mock("../api/resources", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/resources")>();
-  return { ...actual, getMe: api.getMe };
+  return { ...actual, getMe: api.getMe, signIn: api.signIn };
+});
+
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, invalidateLocalSessionRequests: api.invalidateLocalSessionRequests };
 });
 
 import App from "../App";
@@ -44,6 +51,8 @@ import App from "../App";
 beforeEach(() => {
   vi.useFakeTimers();
   api.getMe.mockReset();
+  api.signIn.mockReset();
+  api.invalidateLocalSessionRequests.mockReset();
   storage.get.mockReset().mockResolvedValue({ value: null });
 });
 
@@ -107,6 +116,47 @@ describe("App OTA readiness deadline", () => {
         tenantId: "t1",
         capabilities: [],
       });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+  });
+
+  it("does not let a late boot answer undo a sign-in made after the deadline", async () => {
+    const me = {
+      id: "u1",
+      email: "tech@example.com",
+      name: "Tech",
+      role: "technician",
+      tenantId: "t1",
+      capabilities: [],
+    };
+    let answerBoot: (me: unknown) => void = () => {};
+    api.getMe
+      .mockReturnValueOnce(new Promise((resolve) => (answerBoot = resolve)))
+      .mockResolvedValueOnce(me);
+    api.signIn.mockResolvedValue({ ok: true });
+
+    render(<App onBundleReady={vi.fn(async () => undefined)} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_100);
+    });
+    const [email, password] = Array.from(document.querySelectorAll("input"));
+    fireEvent.change(email, { target: { value: "tech@example.com" } });
+    fireEvent.change(password, { target: { value: "pw" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    // The in-flight boot request was retired before the post-sign-in getMe().
+    expect(api.invalidateLocalSessionRequests).toHaveBeenCalledTimes(1);
+    expect(api.getMe).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      answerBoot(null); // the stale pre-login answer (or a stale 401)
       await Promise.resolve();
       await Promise.resolve();
     });

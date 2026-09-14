@@ -53,6 +53,11 @@ export default function App({ onBundleReady }: AppProps) {
   const [cleanupRetryError, setCleanupRetryError] = useState<string | null>(null);
   // Each tab exposes a back-handler ref the shell calls on Android back.
   const backHandler = useRef<(() => boolean) | null>(null);
+  // Bumped by every auth transition (sign-in, sign-out). The boot-time getMe()
+  // applies its answer only if no transition happened while it was in flight —
+  // after the boot deadline exposed Login, a technician can sign in before the
+  // original request returns, and its late null must not undo that (#3799).
+  const authGeneration = useRef(0);
   const bundleAcknowledged = useRef(false);
   const bundleReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -95,9 +100,11 @@ export default function App({ onBundleReady }: AppProps) {
       const deadline = setTimeout(() => {
         if (!authAnswered) setBooted(true);
       }, BOOT_AUTH_DEADLINE_MS);
+      const bootGeneration = authGeneration.current;
       const m = await getMe();
       authAnswered = true;
       clearTimeout(deadline);
+      if (authGeneration.current !== bootGeneration) return; // superseded by a sign-in/out
       setMe(m);
       setBooted(true);
     })();
@@ -242,6 +249,10 @@ export default function App({ onBundleReady }: AppProps) {
     return (
       <Login
         onSignedIn={async () => {
+          // Retire a boot-time getMe() still in flight: its late answer may
+          // neither replace this session nor write to the cookie jar.
+          authGeneration.current += 1;
+          invalidateLocalSessionRequests();
           const signedIn = await getMe();
           resumeSessionLocalWrites();
           setMe(signedIn);
@@ -252,6 +263,7 @@ export default function App({ onBundleReady }: AppProps) {
   const signOutFlow = async () => {
     // Phase 4: local data never outlives the session — but try to sync
     // queued work orders first, and warn before destroying any.
+    authGeneration.current += 1;
     beginSessionLocalPurge();
     invalidateLocalSessionRequests();
     let canResumeCurrentSession = true;

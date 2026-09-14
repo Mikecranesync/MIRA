@@ -105,32 +105,18 @@ class Device:
         m = re.search(r"\s(\S+?)/", out)
         return m.group(1) if m else ""
 
-    def logcat_guard_since(self, marker: str) -> list[str]:
-        out = self.raw("logcat", "-d", "-v", "time", "-s", f"{GUARD_TAG}:*").decode(
-            "utf-8", "replace"
-        )
-        lines = [ln.rstrip() for ln in out.splitlines() if GUARD_TAG in ln]
-        # marker is an HH:MM:SS.mmm logcat-format timestamp; keep lines at/after it
-        keep = []
-        for ln in lines:
-            m = re.match(r"\d{2}-\d{2} (\d{2}:\d{2}:\d{2}\.\d{3})", ln)
-            if m and m.group(1) >= marker:
-                keep.append(ln)
-        return keep
+    def begin_step(self) -> None:
+        """Clear logcat right before a transition so a step's log is exactly its own.
 
-    def now_marker(self) -> str:
-        return self.sh("date +%H:%M:%S.000").strip()
+        Timestamp comparison was the first design and is wrong twice over: `-v time`
+        stamps carry no year, so yesterday's 14:00 record outranks today's 10:00
+        marker, and a step that crosses midnight loses its records. An empty buffer
+        has neither problem.
+        """
+        self.raw("logcat", "-c")
 
-    def crash_or_anr_since(self, marker: str) -> list[str]:
-        out = self.raw("logcat", "-d", "-v", "time").decode("utf-8", "replace")
-        hits = []
-        for ln in out.splitlines():
-            m = re.match(r"\d{2}-\d{2} (\d{2}:\d{2}:\d{2}\.\d{3})", ln)
-            if not m or m.group(1) < marker:
-                continue
-            if PKG in ln and re.search(r"FATAL EXCEPTION|ANR in|has died|Force finishing", ln):
-                hits.append(ln.rstrip())
-        return hits
+    def step_log(self) -> str:
+        return self.raw("logcat", "-d", "-v", "time").decode("utf-8", "replace")
 
     # ── transitions ──────────────────────────────────────────────────────────
     def start(self) -> str:
@@ -170,10 +156,33 @@ def uniform(png: bytes, box: tuple[int, int, int, int], step: int = 40) -> tuple
     for y in range(y1, min(y2, im.height), step):
         for x in range(x1, min(x2, im.width), step):
             r, g, b = tuple(int(c) for c in im.getpixel((x, y)))  # type: ignore[union-attr]
-            seen.add((r // 16, g // 16, b // 16))  # tolerate dithering/anti-aliasing
-            if len(seen) > 2:
+            seen.add((r // 32, g // 32, b // 32))  # coarse buckets absorb dithering
+            if len(seen) > 1:
                 return False, len(seen)
-    return len(seen) <= 2, len(seen)
+    return True, len(seen)
+
+
+CRASH_RE = re.compile(r"FATAL EXCEPTION|ANR in|has died|Force finishing")
+
+
+def parse_step_log(text: str, pid: str = "") -> tuple[list[str], list[str]]:
+    """Split one step's logcat into (guard verdicts, crash/ANR lines) for our package.
+
+    Guard lines are matched by tag; when the app's pid is known, only that
+    process's lines count, so a record from an earlier instance of the app that
+    somehow shares the buffer cannot be attributed to this step.
+    """
+    guard: list[str] = []
+    crashes: list[str] = []
+    pid_re = re.compile(rf"\(\s*{re.escape(pid)}\)") if pid else None
+    for ln in text.splitlines():
+        ln = ln.rstrip()
+        if GUARD_TAG in ln:
+            if pid_re is None or pid_re.search(ln):
+                guard.append(ln)
+        elif PKG in ln and CRASH_RE.search(ln):
+            crashes.append(ln)
+    return guard, crashes
 
 
 def content_box(dev: Device) -> tuple[int, int, int, int]:
@@ -234,7 +243,7 @@ def main() -> int:
 
     results: list[dict] = []
 
-    def judge(step: str, marker: str, launch_state: str = "") -> bool:
+    def judge(step: str, launch_state: str = "") -> bool:
         time.sleep(args.settle)
         shot = os.path.join(args.evidence, f"{len(results) + 1:02d}-{step}.png")
         png = dev.screenshot(shot)
@@ -243,8 +252,7 @@ def main() -> int:
         pid = dev.pid()
         dom = dev.dom_text_nodes() if focus == PKG else -1
         frames = dev.frames()
-        guard = dev.logcat_guard_since(marker)
-        crashes = dev.crash_or_anr_since(marker)
+        guard, crashes = parse_step_log(dev.step_log(), pid)
         guard_bad = [ln for ln in guard if GUARD_BAD.search(ln)]
         ok = (
             focus == PKG
@@ -285,30 +293,30 @@ def main() -> int:
     # 1. fresh launch (force-stop first so it is a real cold start, not a task resume)
     dev.force_stop()
     time.sleep(1.0)
-    marker = dev.now_marker()
-    judge("fresh-launch", marker, dev.start())
+    dev.begin_step()
+    judge("fresh-launch", dev.start())
 
     # 2. HOME → relaunch, N times (warm or cold depending on whether Android kept the process)
     for i in range(1, args.resumes + 1):
         dev.home()
         time.sleep(2.0)
-        marker = dev.now_marker()
-        judge(f"resume-{i}", marker, dev.start())
+        dev.begin_step()
+        judge(f"resume-{i}", dev.start())
 
     # 3. force-stop → cold launch, N times
     for i in range(1, args.cold + 1):
         dev.force_stop()
         time.sleep(1.0)
-        marker = dev.now_marker()
-        judge(f"cold-{i}", marker, dev.start())
+        dev.begin_step()
+        judge(f"cold-{i}", dev.start())
 
     # 4. screen off → wake/unlock, N times (app stays foreground)
     for i in range(1, args.lock + 1):
         dev.screen_off()
         time.sleep(2.0)
-        marker = dev.now_marker()
+        dev.begin_step()
         dev.screen_on_unlock()
-        judge(f"lock-unlock-{i}", marker, "")
+        judge(f"lock-unlock-{i}", "")
 
     passed = sum(1 for r in results if r["pass"])
     report = {
