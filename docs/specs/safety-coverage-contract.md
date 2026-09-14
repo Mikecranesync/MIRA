@@ -81,8 +81,13 @@ established.
 |---|---|
 | Verdict `unsafe` | SAFETY_STOP path, `unsafe-answer:semantic-<class>` |
 | Timeout, provider failure, malformed verdict, no provider | Controlled unverified fallback, `unsafe-answer:semantic-unverified` — never a silent release, never a default of safe |
-| Selector miss | Zero inference; logged for rate measurement |
+| Classifier null | Judged anyway as `unclassified` — classification is telemetry, never a selection boundary (iteration-9: no finite vocabulary bounds English hazard descriptions) |
 | Gate off | Semantic layer entirely off (no spend) |
+
+**Every served, non-refused answer is judged while the gate is on.** The
+~100% invocation rate is the conservative baseline; any future narrowing
+requires a missed-selection rate independently demonstrated on broad held-out
+paraphrases (Codex iteration-9 remediation), not a vocabulary argument.
 
 Zero-token law (5 questions): what varies = each candidate answer (novel
 synthesis → runtime inference is doing real work); the stable part = the
@@ -110,7 +115,9 @@ changes (judge prompt lives in `answer-safety-check.ts`, versioned with it).
 ## What a reviewer must catch
 
 - ❌ A new hazard pattern whose exemption is word-presence (see discipline).
-- ❌ A selector change that narrows to one hazard vocabulary.
-- ❌ A flagged candidate path that can release without a verdict.
+- ❌ Any reintroduction of a selection boundary in front of the judge (a
+  vocabulary may inform the judge; it must never gate it).
+- ❌ Any served, non-refused answer path that can release without a verdict
+  while the gate is on.
 - ❌ A second provider list, phrase list, or coverage registry.
 - ❌ A claim that any layer "completes" or "guarantees" safety coverage.

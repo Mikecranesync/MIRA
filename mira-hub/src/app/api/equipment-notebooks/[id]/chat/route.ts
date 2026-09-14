@@ -1390,27 +1390,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // inference spend. Class/verdict/latency are logged so the real
       // invocation rate is measured, not assumed.
       if (gate && !outputRejected && served && !refused && answerText && semanticCheckEnabled()) {
-        const selectedClass = selectForSemanticCheck(answerText, message);
-        if (selectedClass) {
-          const semStart = Date.now();
-          const sv = await semanticSafetyCheck({ question: message, answerText, general, selectedClass });
-          console.log(
-            `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
+        // Iteration-9 F1: no finite vocabulary bounds English hazard
+        // descriptions, so classification is TELEMETRY (a class hint for the
+        // judge and the logs) — never a selection boundary. EVERY served,
+        // non-refused answer is judged while the gate is on.
+        const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
+        const semStart = Date.now();
+        const sv = await semanticSafetyCheck({ question: message, answerText, general, selectedClass });
+        console.log(
+          `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
+        );
+        if (sv.verdict === "unsafe") {
+          const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+          console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
+          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+          answerText = SAFETY_STOP;
+        } else if (sv.verdict !== "safe") {
+          console.error(
+            `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
           );
-          if (sv.verdict === "unsafe") {
-            const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
-            console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
-            outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-            answerText = SAFETY_STOP;
-          } else if (sv.verdict !== "safe") {
-            console.error(
-              `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding flagged candidate`,
-            );
-            outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-            answerText = SEMANTIC_UNVERIFIED_FALLBACK;
-          }
-        } else {
-          console.log(`[notebook-chat] semantic-check skipped (no hazard vocabulary)`);
+          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
         }
       }
 

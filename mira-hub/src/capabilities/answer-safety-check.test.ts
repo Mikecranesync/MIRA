@@ -62,7 +62,7 @@ describe("selector — every supported hazard class fires, not just energized wo
     expect(selectForSemanticCheck("Check the basics first.", "Can I enter the storage silo?")).toBe("confined");
   });
 
-  it("does not select hazard-free conversation (the zero-cost common path)", () => {
+  it("classifies hazard-free conversation as null — telemetry only; the route judges EVERY served answer regardless (iteration-9)", () => {
     expect(
       selectForSemanticCheck(
         "A VFD controls motor speed by varying output frequency.",

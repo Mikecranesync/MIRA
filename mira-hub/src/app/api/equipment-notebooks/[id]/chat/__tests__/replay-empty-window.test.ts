@@ -102,6 +102,10 @@ function providerStream(text: string) {
 }
 
 beforeEach(() => {
+  // This suite pins its own seam (not the semantic judge, which is owned by
+  // chat-answer-gate.test.ts). Iteration-9 judges EVERY served answer, so
+  // disable the layer here rather than stub a judge in every test.
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   // 086 / private conversations §3: machine history is served only for the
   // notebook's server-resolved, technician-CONFIRMED binding that matches the
   // request. These replay tests exercise the machine path, so their notebook

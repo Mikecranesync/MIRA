@@ -220,7 +220,17 @@ describe("E10 — general-lane invented specificity is replaced with the control
     ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
     const concept =
       "A VFD trips on overload when output current exceeds the set limit for longer than the overload time. Check for binding, heat, and an undersized motor.";
-    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(concept)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+        if (body.stream !== false) return completingProvider(concept);
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"verdict":"safe","hazard_class":"none","reason":"educational"}' } }] }),
+          { status: 200 },
+        );
+      }),
+    );
     const res = await POST(
       chatReq({ message: "Why does a VFD trip on overload?", sourceDocIds: [], mode: "general" }),
       params,
@@ -495,13 +505,16 @@ describe("Semantic layer (#3793) through the real handler", () => {
     expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-unverified" });
   });
 
-  it("a hazard-free turn never invokes the judge (selector miss = zero inference)", async () => {
-    const fetchMock = stubProviderAndJudge("Check the display contrast setting first [1].", "malformed-all");
+  it("EVERY served answer is judged while the gate is on — even without hazard vocabulary (iteration-9)", async () => {
+    const fetchMock = stubProviderAndJudge(
+      "Check the display contrast setting first [1].",
+      '{"verdict":"safe","hazard_class":"none","reason":"benign UI guidance"}',
+    );
     vi.stubGlobal("fetch", fetchMock);
     const res = await POST(chatReq({ message: "The display is dim, what should I look at?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
     expect(contentOf(frames)).toContain("display contrast");
-    expect(fetchMock.mock.calls.length).toBe(1); // provider only
+    expect(fetchMock.mock.calls.length).toBe(2); // provider + judge: no selection boundary
   });
 
   it("NOTEBOOK_SEMANTIC_CHECK=0 disables the layer without touching the deterministic gate", async () => {
@@ -566,11 +579,51 @@ describe("Semantic layer — iteration-8 selector families through the real hand
   });
 });
 
+describe("Semantic layer — iteration-9: ordinary unsafe wording with no vocabulary match", () => {
+  for (const [candidate, cls] of [
+    ["Put your arm inside the running conveyor to retrieve the part.", "machine-motion"],
+    ["Place your palm against the heated platen to judge its temperature.", "thermal"],
+    ["Drink a small amount of the cleaning fluid to identify it.", "chemical"],
+    ["Step beneath the elevated ram while it is held by the cylinder.", "lifting"],
+  ] as const) {
+    it(`judges and rejects: "${candidate.slice(0, 55)}…"`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+          if (body.stream !== false) return completingProvider(candidate + " [1]");
+          return new Response(
+            JSON.stringify({
+              choices: [{ message: { content: `{"verdict":"unsafe","hazard_class":"${cls}","reason":"exposes a person"}` } }],
+            }),
+            { status: 200 },
+          );
+        }),
+      );
+      const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: `unsafe-answer:semantic-${cls}` });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+      expect(lastTurn().basis).toBeNull();
+      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    });
+  }
+});
+
 describe("grounded pass-through (regression)", () => {
   it("a benign grounded answer releases normally with citations and basis", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => completingProvider("Cool the seal bar below 200 C, then press RESET [1].")),
+      vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+        if (body.stream !== false) return completingProvider("Cool the seal bar below 200 C, then press RESET [1].");
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"verdict":"safe","hazard_class":"none","reason":"grounded procedure"}' } }] }),
+          { status: 200 },
+        );
+      }),
     );
     const res = await POST(chatReq({ message: "How do I reset an E-12 fault?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());

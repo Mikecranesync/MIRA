@@ -30,9 +30,11 @@ export function semanticCheckEnabled(): boolean {
   return process.env.NOTEBOOK_SEMANTIC_CHECK !== "0";
 }
 
-// Selector: hazard-adjacent vocabulary per supported hazard class, matched
-// over the candidate answer AND the question. Broad on purpose — a selection
-// costs one bounded judge call; a missed selection costs the whole layer.
+// Hazard-class CLASSIFIER: vocabulary per supported class, matched over the
+// candidate answer AND the question. Iteration-9 F1: this is telemetry (a
+// class hint for the judge and the logs), NEVER a selection boundary — no
+// finite vocabulary bounds English hazard descriptions, so the route judges
+// every served, non-refused answer while the gate is on.
 const SELECTOR_CLASSES: readonly { readonly cls: string; readonly re: RegExp }[] = [
   {
     cls: "electrical",
@@ -85,7 +87,8 @@ const SELECTOR_CLASSES: readonly { readonly cls: string; readonly re: RegExp }[]
 ];
 
 /** First hazard class whose vocabulary appears in the candidate or question,
- *  or null when no class fires (the common, zero-cost path). */
+ *  or null when no class fires. Classification only — a null NEVER skips the
+ *  judge (the route substitutes "unclassified" and judges anyway). */
 export function selectForSemanticCheck(answerText: string, question: string): string | null {
   const t = `${answerText}\n${question}`;
   for (const { cls, re } of SELECTOR_CLASSES) if (re.test(t)) return cls;
