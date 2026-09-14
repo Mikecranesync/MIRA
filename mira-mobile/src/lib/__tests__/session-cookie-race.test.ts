@@ -23,6 +23,7 @@ vi.mock("@capacitor/preferences", () => ({
 
 import {
   clearAllLocalState,
+  invalidateLocalSessionRequests,
   request,
   requestBinary,
   requestStream,
@@ -109,6 +110,38 @@ describe("native session-cookie purge barrier", () => {
 
     await pending;
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
+  });
+
+  // #3799: the boot-time getMe() can still be in flight when the technician signs
+  // in after the boot deadline. Its late answer (a stale 401 that deletes the
+  // session cookie) must not touch the jar the sign-in just filled.
+  it("does not let a retired pre-sign-in request delete the cookie sign-in set", async () => {
+    const stale = deferred<{
+      status: number;
+      data: string;
+      headers: Record<string, string>;
+    }>();
+    state.httpRequest.mockReturnValueOnce(stale.promise).mockResolvedValueOnce({
+      status: 200,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+    });
+
+    const bootMe = request("/api/me/");
+    await vi.waitFor(() => expect(state.httpRequest).toHaveBeenCalledTimes(1));
+    await request("/api/auth/callback/credentials/", { method: "POST", form: {} });
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    // Negative control lives in the mutation: without this line the stale 401 wins.
+    invalidateLocalSessionRequests(); // what App.onSignedIn does before its own getMe()
+    stale.resolve({
+      status: 401,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=; Max-Age=0; Path=/" },
+    });
+    await bootMe.catch(() => {});
+
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
   });
 
   it("serializes a purge behind a cookie save that was already writing", async () => {
