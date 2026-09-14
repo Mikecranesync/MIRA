@@ -9,7 +9,6 @@ const { api, storage } = vi.hoisted(() => ({
   api: {
   getMe: vi.fn(),
     signIn: vi.fn(),
-    invalidateLocalSessionRequests: vi.fn(),
   },
 }));
 
@@ -41,18 +40,12 @@ vi.mock("../api/resources", async (importOriginal) => {
   return { ...actual, getMe: api.getMe, signIn: api.signIn };
 });
 
-vi.mock("../api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../api/client")>();
-  return { ...actual, invalidateLocalSessionRequests: api.invalidateLocalSessionRequests };
-});
-
 import App from "../App";
 
 beforeEach(() => {
   vi.useFakeTimers();
   api.getMe.mockReset();
   api.signIn.mockReset();
-  api.invalidateLocalSessionRequests.mockReset();
   storage.get.mockReset().mockResolvedValue({ value: null });
 });
 
@@ -151,8 +144,6 @@ describe("App OTA readiness deadline", () => {
       await Promise.resolve();
     });
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
-    // The in-flight boot request was retired before the post-sign-in getMe().
-    expect(api.invalidateLocalSessionRequests).toHaveBeenCalledTimes(1);
     expect(api.getMe).toHaveBeenCalledTimes(2);
 
     await act(async () => {

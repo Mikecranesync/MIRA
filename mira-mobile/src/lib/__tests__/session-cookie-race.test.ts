@@ -23,11 +23,11 @@ vi.mock("@capacitor/preferences", () => ({
 
 import {
   clearAllLocalState,
-  invalidateLocalSessionRequests,
   request,
   requestBinary,
   requestStream,
 } from "../../api/client";
+import { signIn } from "../../api/resources";
 
 const JAR_KEY = "flm.cookiejar.v1";
 
@@ -112,35 +112,51 @@ describe("native session-cookie purge barrier", () => {
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
   });
 
-  // #3799: the boot-time getMe() can still be in flight when the technician signs
-  // in after the boot deadline. Its late answer (a stale 401 that deletes the
-  // session cookie) must not touch the jar the sign-in just filled.
-  it("does not let a retired pre-sign-in request delete the cookie sign-in set", async () => {
-    const stale = deferred<{
-      status: number;
-      data: string;
-      headers: Record<string, string>;
-    }>();
-    state.httpRequest.mockReturnValueOnce(stale.promise).mockResolvedValueOnce({
-      status: 200,
-      data: "{}",
-      headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+  // #3799: the boot-time getMe() can still be in flight when the technician
+  // signs in after the boot deadline. signIn() retires it at entry, so its late
+  // answer — a stale 401 carrying a session-cookie deletion, landing between the
+  // credentials callback and signIn's validating /api/me — cannot erase the
+  // cookie the callback just stored. Real signIn flow, ordering controlled here.
+  it("a stale pre-sign-in 401 cannot delete the cookie the credentials callback stored", async () => {
+    const boot = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        return meCalls === 1 ? boot.promise : validating.promise;
+      }
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/credentials/")) {
+        return {
+          status: 200,
+          data: "{}",
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      throw new Error(`unexpected ${url}`);
     });
 
-    const bootMe = request("/api/me/");
-    await vi.waitFor(() => expect(state.httpRequest).toHaveBeenCalledTimes(1));
-    await request("/api/auth/callback/credentials/", { method: "POST", form: {} });
+    const bootMe = request("/api/me/"); // App's boot-time check, still pending
+    await vi.waitFor(() => expect(meCalls).toBe(1));
+
+    const attempt = signIn("tech@example.com", "pw");
+    // CSRF + callback have run once signIn's validating /api/me is requested.
+    await vi.waitFor(() => expect(meCalls).toBe(2));
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
 
-    // Negative control lives in the mutation: without this line the stale 401 wins.
-    invalidateLocalSessionRequests(); // what App.onSignedIn does before its own getMe()
-    stale.resolve({
+    boot.resolve({
       status: 401,
       data: "{}",
       headers: { "Set-Cookie": "session-token=; Max-Age=0; Path=/" },
     });
     await bootMe.catch(() => {});
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
 
+    validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+    expect(await attempt).toEqual({ ok: true });
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
   });
 

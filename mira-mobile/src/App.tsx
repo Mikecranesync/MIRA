@@ -249,10 +249,10 @@ export default function App({ onBundleReady }: AppProps) {
     return (
       <Login
         onSignedIn={async () => {
-          // Retire a boot-time getMe() still in flight: its late answer may
-          // neither replace this session nor write to the cookie jar.
+          // A boot-time getMe() still in flight was retired at the transport
+          // when signIn() started (it can no longer touch the cookie jar); this
+          // keeps its late answer from replacing the session state too.
           authGeneration.current += 1;
-          invalidateLocalSessionRequests();
           const signedIn = await getMe();
           resumeSessionLocalWrites();
           setMe(signedIn);

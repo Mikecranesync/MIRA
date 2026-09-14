@@ -9,6 +9,7 @@ import {
   withAuthEventsSuppressed,
   clearAllLocalState,
   requestStream,
+  invalidateLocalSessionRequests,
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
 import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
@@ -35,6 +36,12 @@ export async function signIn(
   email: string,
   password: string,
 ): Promise<{ ok: true } | { ok: false; reason: SignInFailureReason }> {
+  // Retire every request already in flight (the boot-time getMe() that may
+  // still be pending after the boot deadline, #3799) BEFORE the CSRF/callback
+  // requests establish a new session in the jar: a stale 401 answering later
+  // carries a cookie deletion, and it must not be able to erase what this
+  // sign-in just stored.
+  invalidateLocalSessionRequests();
   return withAuthEventsSuppressed(async () => {
     try {
       const csrfRes = await request("/api/auth/csrf/");
