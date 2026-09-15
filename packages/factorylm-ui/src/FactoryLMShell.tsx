@@ -25,6 +25,13 @@ export interface FactoryLMShellProps {
   /** Host-owned controls rendered at the bottom of navigation. */
   readonly navigationFooter?: ReactNode;
   /**
+   * Host-owned panel rendered between the demo notice and the conversation —
+   * the public demo's machine view. A slot rather than a shell feature: the
+   * shell should not know what a live machine looks like, and the component
+   * that does (`MachineView`) enforces its own public-only rule.
+   */
+  readonly machinePanel?: ReactNode;
+  /**
    * Which conversation surface renders the turns. `classic` (default) is the
    * package's own list; `assistant` is the same bar, run card and parts on
    * assistant-ui primitives (viewport, autoscroll, jump-to-latest, run state).
@@ -69,7 +76,7 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, machinePanel, conversationSurface = "classic" }: FactoryLMShellProps) {
   const mobile = navigationIsLayer(state);
   const sourceOpen = state.selectedSource !== null;
   // One scrim, for the top-most page-covering layer, in closing-precedence order.
@@ -120,6 +127,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     data-navigation-visible={state.navigationVisible}
     data-top-layer={topLayer(state) ?? ""}
     data-conversation-surface={conversationSurface}
+    /* Lets the stylesheet move the flexible grid row onto the conversation
+       when a host inserts a machine panel above it — see shell.css. */
+    data-machine-panel={machinePanel ? "true" : undefined}
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>
@@ -130,6 +140,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       {/* Public surface only; a no-op elsewhere. Inside <main>, above the
           conversation, so it is read before any answer it qualifies. */}
       <DemoNotice state={state} hooks={hooks} />
+      {/* The machine the conversation is about, above the conversation and
+          smaller than it. */}
+      {machinePanel}
       {conversationSurface === "assistant"
         ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
