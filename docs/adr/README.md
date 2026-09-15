@@ -22,5 +22,7 @@ decision, the options considered, what was chosen and why, and the consequences.
 | [0025](0025-drive-intelligence-packs-and-drive-commander.md) | Single Sellable Product — VFD Drive-Intelligence Packs via "Drive Commander" | Accepted — 2026-07-05 |
 | [0027](0027-mira-visual-technician-architecture.md) | MIRA Visual Technician — architecture, canonical contracts, and reuse map | Draft — 2026-07-11 |
 | [0028](0028-vision-zero-token-architecture.md) | Vision Zero-Token Architecture and FactoryLM-Owned Model Program | Accepted — 2026-07-18 |
+| [0038](0038-conversation-streaming-protocol.md) | Streaming/Turn-Event Protocol for the Conversation Surface | Proposed — 2026-08-30 |
+| [0039](0039-assistant-ui-adoption-boundary.md) | assistant-ui Adoption Boundary and MIRA Runtime Adapter | Proposed — 2026-08-30 |
 
 (Index is currently incomplete — ADRs 0009, 0011–0020 exist on disk; cleanup tracked separately.)
