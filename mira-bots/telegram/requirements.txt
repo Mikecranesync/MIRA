@@ -7,7 +7,7 @@ langfuse>=2.50.0,<3.0.0
 sqlalchemy>=2.0.50
 psycopg2-binary>=2.9.12
 deepeval>=4.0.5
-praw>=7.8.1
+praw>=8.0.2
 youtube-transcript-api>=1.2.4
 # PrintSense print interpreter (ISOLATED paid print-vision path only — NOT the
 # Groq->Cerebras->Together cascade in shared/inference). pydantic backs the
