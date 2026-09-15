@@ -201,6 +201,16 @@
    Doctrine (.claude/rules/ui-style.md + industrial-hmi-scada-design): muted
    normal, colour reserved for state, no blink, no gradients, no fake 3D. The
    conversation stays the page; this strip is bounded so it cannot outgrow it. */
+/* The shell's main grid makes its SECOND row flexible. With a demo notice and a
+   machine panel stacked above the conversation, that row is the NOTICE, which
+   stretched into a blank band between the notice and the machine. When a host
+   supplies a machine panel the conversation is the row that should grow, and
+   the marker on .fl-shell says so without this stylesheet having to count
+   optional children. */
+.fl-shell[data-machine-panel="true"] .fl-shell__main {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
 .fl-machine {
   display: grid;
   gap: var(--fl-workspace-space-3);
@@ -234,7 +244,10 @@
 .fl-machine__empty code { font-family: var(--fl-workspace-mono); }
 
 /* Diagram: bounded so the conversation stays dominant on every viewport. */
-.fl-machine__diagram { inline-size: 100%; max-block-size: 7rem; block-size: auto; }
+/* Width capped to the diagram's own aspect at the height cap. Left at 100% it
+   letterboxed: the SVG box filled a 1150 px column while the drawing scaled to
+   the 7rem height limit and sat in the middle of 470 px of empty space. */
+.fl-machine__diagram { inline-size: 100%; max-inline-size: 42rem; max-block-size: 7rem; block-size: auto; margin-inline: auto; }
 .fl-machine__belt { fill: var(--fl-workspace-bg); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
 .fl-machine__belt-run { stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 2; stroke-dasharray: 6 6; }
 .fl-machine__case { fill: var(--fl-workspace-surface); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
@@ -278,6 +291,7 @@
 .fl-machine__asset[data-condition="faulted"] { border-color: var(--fl-workspace-fault-line); }
 .fl-machine__asset-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--fl-workspace-space-2); margin: 0; }
 .fl-machine__asset-name { font-size: var(--fl-workspace-fs); font-weight: 600; }
+.fl-machine__asset-fault { padding: 0 var(--fl-workspace-space-1); border: 1px solid var(--fl-workspace-fault-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault); font-family: var(--fl-workspace-mono); font-size: var(--fl-workspace-fs-xs); font-weight: 600; }
 .fl-machine__asset-state { font-size: var(--fl-workspace-fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fl-workspace-muted); }
 .fl-machine__asset-state[data-condition="running"] { color: var(--fl-workspace-ok-ink); }
 .fl-machine__asset-state[data-condition="blocked"] { color: var(--fl-workspace-warn); }
@@ -298,7 +312,17 @@
 .fl-machine__alarm-since { color: var(--fl-workspace-muted); }
 
 @media (max-width: 48rem) {
-  .fl-machine { gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2); }
+  /* On a phone the three stacked cards plus the alarm list fill the screen and
+     push the conversation off the bottom — and the conversation is the point of
+     the page, not the diagram. Capping the panel and letting it scroll inside
+     itself keeps every signal reachable while the answer stays on screen.
+     Observed on a 412x915 capture; the cards are unabridged, just bounded. */
+  .fl-machine {
+    gap: var(--fl-workspace-space-2);
+    padding: var(--fl-workspace-space-2);
+    max-block-size: 52dvh;
+    overflow-y: auto;
+  }
   .fl-machine__diagram { max-block-size: 5rem; }
   .fl-machine__assets { grid-template-columns: 1fr; }
 }

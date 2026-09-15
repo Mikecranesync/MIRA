@@ -31,7 +31,7 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import { FactoryLMShell, MachineView, useSimLabDemo } from "@factorylm/ui";
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
 
 export interface PublicDemoConfig {
@@ -116,6 +116,28 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
   );
   const [asking, setAsking] = useState(false);
   const [conversions, setConversions] = useState<string[]>([]);
+
+  /**
+   * On a narrow viewport the visitor must land on the machine, not on a drawer.
+   *
+   * `createShellState` opens navigation for every surface, and shell.css turns
+   * the sidebar into a fixed overlay below 48rem regardless of surface — so a
+   * public demo on a phone opens with the nav covering the whole page. The
+   * browser proof failed on exactly that: the Inject control was visible and
+   * enabled but the drawer intercepted every click.
+   *
+   * Closing it here is a HOST decision and touches no shell semantics. The
+   * underlying mismatch is wider than this demo — `navigationIsLayer` keys on
+   * `profile.kind === "mobile"` while the stylesheet keys on viewport width, so
+   * a narrow `public`/`web`/`hub` surface gets a drawer with no scrim and no
+   * Escape-to-close. That belongs to the shell owner; see HANDOFF.md.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    if (window.matchMedia("(max-width: 48rem)").matches) {
+      dispatch({ type: "set-navigation-visible", visible: false });
+    }
+  }, []);
 
   const adapter = useMemo(() => createLabAdapter(
     () => ({ activeMachineId: undefined, machineIds: [] }),
