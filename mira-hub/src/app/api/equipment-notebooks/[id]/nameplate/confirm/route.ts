@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { nameplateDocTitle } from "@/lib/citation-identity";
 import {
   getNotebook,
   attachSource,
@@ -230,7 +231,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     rawObservation: body.rawObservation ?? null,
   });
   const textBuffer = Buffer.from(text, "utf8");
-  const nameplateFilename = `nameplate-${fileId}.txt`;
+  const nameplateFilename = nameplateDocTitle({
+    identity,
+    notebookName: notebook.displayName,
+  });
 
   // Idempotent + raced-safe (Codex P1, 2026-08-16): the nameplate text is
   // deterministic bytes, so it goes through the SAME canonical-file dedup +
