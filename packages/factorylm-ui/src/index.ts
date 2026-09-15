@@ -5,6 +5,7 @@ export { FactoryLMShell, type FactoryLMShellProps, type ConversationSurface, BAC
 export { focusableWithin, trapTab, useFocusReturn } from "./focus";
 export { Inspector } from "./Inspector";
 export { MachineView, type MachineViewProps } from "./MachineView";
+export { pollOnce, readStatics, useSimLabDemo, type SimLabDemoController, type UseSimLabDemoOptions } from "./useSimLabDemo";
 export { Overlay, type LayerName, type OverlayProps } from "./Overlay";
 export { PartRenderer, type PartRendererProps, type HostHooks, assertNever, describeContext, lifecycleLabel, machineName } from "./parts";
 export { ProjectTree } from "./ProjectTree";
