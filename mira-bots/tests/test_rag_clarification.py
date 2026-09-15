@@ -22,7 +22,9 @@ class TestBuildClarificationRequestBrandNeutral:
         in gs3_ground_fault_14 (forbidden=['PowerFlex','Rockwell']).
         """
         result = _build_clarification_request("ground fault", "")
-        assert result is not None, "Expected a clarification request for 'ground fault' with no asset"
+        assert result is not None, (
+            "Expected a clarification request for 'ground fault' with no asset"
+        )
         for brand in FORBIDDEN_TEMPLATE_BRANDS:
             assert brand not in result, (
                 f"'{brand}' found in clarification template — will trip forbidden-keyword "
@@ -63,3 +65,22 @@ class TestBuildClarificationRequestBrandNeutral:
         """Messages without fault signals should not trigger the clarification template."""
         result = _build_clarification_request("how do I set the speed", "")
         assert result is None, "Generic config question should not trigger clarification request"
+
+
+class TestNamedProductSuppressesReask:
+    """A named product is information the user just provided (#3334).
+
+    `test_vendor_plus_fault_returns_none` used to pass BY ACCIDENT: `GS10` was
+    itself mis-extracted as a fault code, so `attempted_codes` was non-empty and
+    the vendor branch fired. Fixing that over-extraction exposed the real gap the
+    function's docstring already described — "never re-ask for info the user just
+    provided" — so the product check is now explicit rather than incidental.
+    """
+
+    def test_model_without_an_extractable_code_still_suppresses(self):
+        assert _build_clarification_request("GS10 overcurrent fault", "") is None
+        assert _build_clarification_request("PowerFlex 525 keeps faulting", "") is None
+
+    def test_a_fault_with_no_product_still_asks(self):
+        """The clarification must still fire when there is genuinely nothing to go on."""
+        assert _build_clarification_request("it keeps throwing a fault code", "") is not None
