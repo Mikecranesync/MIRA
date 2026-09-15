@@ -103,6 +103,20 @@ function approvalFilterSql(): string {
 }
 
 /**
+ * Hybrid-corpus approval for retrieveManualChunks (/api/hub/ask, asset chat,
+ * quickstart). Shared OEM rows still require `verified = true`. The caller's
+ * own private uploads (`is_private = true AND tenant_id = $1`) are admitted
+ * without that flag — the tenant upload path never sets it, and blanket
+ * `AND verified = true` made a stranger's just-uploaded manual invisible on
+ * the general ask path (prod gate on). Does not widen past the hybrid
+ * predicate; another tenant's private rows stay excluded.
+ */
+function hybridApprovalFilterSql(): string {
+  if (!approvalGateEnabled()) return "";
+  return "AND (verified = true OR (is_private = true AND tenant_id = $1))";
+}
+
+/**
  * Approval predicate for a v2 chunk read that carries a server-derived
  * approved source set. `$${approvedParam}` must be bound to that set (uuid[])
  * by the caller, on a query whose WHERE already pins `tenant_id = $1`.
@@ -376,7 +390,7 @@ async function runBm25Query(
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
-          ${approvalFilterSql()}
+          ${hybridApprovalFilterSql()}
           ${mfrClause}
           ${modelClause}
           AND content_tsv @@ ${tsquery}
