@@ -20,6 +20,8 @@ Alpha | Bravo | Charlie
 Claude | Codex
 ```
 
+**Specialist dispatch (design, not implemented):** Foreman stays the only Slack face. Claude/Codex are workers; Alpha/Bravo/Charlie are computers. Role cards, proof rules, and implementation slices: [`docs/agents/foreman-specialist-roles.md`](../../docs/agents/foreman-specialist-roles.md). Do not add Gateway node names or extra Slack bots for those roles.
+
 ### Warm Session Management
 
 - **One agent, many messages:** Foreman creates a single Cursor cloud agent on the first accepted message, then reuses it for subsequent messages
