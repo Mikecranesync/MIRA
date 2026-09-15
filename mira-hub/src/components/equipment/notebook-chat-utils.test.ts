@@ -277,6 +277,28 @@ describe("historyFromTurns (stopped turns never reach the model)", () => {
       history: historyFromTurns(turns),
     });
   });
+  it("excludes a safety hard-stop turn even when it has content and stopped is falsy (FLEET-003)", () => {
+    const withSafety = [
+      { role: "user" as const, content: "Is the panel live?" },
+      {
+        role: "assistant" as const,
+        content: "I can't help with that — this involves LOTO/arc-flash risk. Contact a qualified electrician.",
+        status: "answered" as const,
+        safetyNotice: { kind: "safety_notice" as const, trigger: "arc flash" },
+      },
+      { role: "user" as const, content: "Ok, what about F004 then?" },
+      { role: "assistant" as const, content: "F004 is undervoltage. [1]", status: "answered" as const },
+    ];
+    const h = historyFromTurns(withSafety);
+    expect(h).toEqual([
+      { role: "user", content: "Is the panel live?" },
+      { role: "user", content: "Ok, what about F004 then?" },
+      { role: "assistant", content: "F004 is undervoltage. [1]" },
+    ]);
+    // The SAFETY_STOP prose never reaches the model on a later turn.
+    expect(JSON.stringify(h)).not.toContain("LOTO");
+    expect(JSON.stringify(h)).not.toContain("arc-flash");
+  });
 });
 
 describe("CMPS-2 — failure keeps the question, Retry re-posts the identical body", () => {
@@ -652,5 +674,133 @@ describe("safety_notice round-trip (FLEET-001)", () => {
     const assistant = turns.find((t: { role: string }) => t.role === "assistant");
     expect(assistant!.safetyNotice).toBeUndefined();
     expect(assistant!.citations).toHaveLength(1);
+  });
+});
+// #3521 — exhaustive proof for the safety_stop history exclusion.
+// The change is two lines, so the risk is not complexity but coverage: prove
+// EVERY safety case is excluded and that no other turn class is affected.
+describe("historyFromTurns — exhaustive turn-class matrix (#3521)", () => {
+  const user = (content: string, extra = {}) => ({ role: "user" as const, content, ...extra });
+  const asst = (content: string, extra = {}) => ({ role: "assistant" as const, content, ...extra });
+  const SAFETY = { kind: "safety_notice" as const, trigger: "loto" };
+
+  describe("safety_stop turns are ALWAYS excluded", () => {
+    it("excludes an assistant safety turn", () => {
+      expect(historyFromTurns([asst("STOP: LOTO required", { safetyNotice: SAFETY })])).toEqual([]);
+    });
+
+    it("excludes a user turn carrying a safety notice", () => {
+      expect(historyFromTurns([user("is it safe?", { safetyNotice: SAFETY })])).toEqual([]);
+    });
+
+    it("excludes it regardless of trigger value", () => {
+      for (const trigger of ["loto", "arc_flash", "confined_space", "", "unknown_future_trigger"]) {
+        const turns = [asst("refusal", { safetyNotice: { kind: "safety_notice", trigger } })];
+        expect(historyFromTurns(turns), `trigger=${JSON.stringify(trigger)}`).toEqual([]);
+      }
+    });
+
+    it("excludes it even when the notice carries NO trigger at all (ADR-0040 §2)", () => {
+      // safety_stop alone must be sufficient — optional metadata is never required
+      const turns = [asst("refusal", { safetyNotice: { kind: "safety_notice" } })];
+      expect(historyFromTurns(turns)).toEqual([]);
+    });
+
+    it("excludes it when stopped is explicitly false (not reliant on the stopped flag)", () => {
+      const turns = [asst("refusal", { safetyNotice: SAFETY, stopped: false })];
+      expect(historyFromTurns(turns)).toEqual([]);
+    });
+
+    it("excludes it when the turn also claims status:answered", () => {
+      // the server emits status:"answered" even for a hard stop — the notice wins
+      const turns = [asst("refusal", { safetyNotice: SAFETY, status: "answered" as const })];
+      expect(historyFromTurns(turns)).toEqual([]);
+    });
+
+    it("excludes ONLY the safety turn, keeping the surrounding thread intact", () => {
+      const turns = [
+        user("q1"), asst("a1"),
+        user("q2"), asst("refusal", { safetyNotice: SAFETY }),
+        user("q3"), asst("a3"),
+      ];
+      expect(historyFromTurns(turns).map((t) => t.content)).toEqual(["q1", "a1", "q2", "q3", "a3"]);
+    });
+
+    it("excludes every safety turn when several are present", () => {
+      const turns = [
+        asst("r1", { safetyNotice: SAFETY }),
+        user("q"),
+        asst("r2", { safetyNotice: SAFETY }),
+      ];
+      expect(historyFromTurns(turns).map((t) => t.content)).toEqual(["q"]);
+    });
+  });
+
+  describe("no other turn class is affected", () => {
+    it("an ordinary answered turn still reaches the model", () => {
+      const turns = [user("q"), asst("a", { status: "answered" as const })];
+      expect(historyFromTurns(turns).map((t) => t.content)).toEqual(["q", "a"]);
+    });
+
+    it("an insufficient_evidence turn still reaches the model", () => {
+      const turns = [asst("I could not find that.", { status: "insufficient_evidence" as const })];
+      expect(historyFromTurns(turns)).toHaveLength(1);
+    });
+
+    it("an error turn with content still reaches the model", () => {
+      const turns = [asst("partial", { status: "error" as const })];
+      expect(historyFromTurns(turns)).toHaveLength(1);
+    });
+
+    it("a stopped turn is still excluded (pre-existing behaviour, unchanged)", () => {
+      expect(historyFromTurns([asst("partial", { stopped: true })])).toEqual([]);
+    });
+
+    it("a truncated turn (error status, no safety) still reaches the model", () => {
+      // truncation is represented as stopped by the client; a bare error-status
+      // turn with content is ordinary history and must NOT be swept up by #3521
+      const turns = [asst("partial text", { status: "error" as const })];
+      expect(historyFromTurns(turns).map((t) => t.content)).toEqual(["partial text"]);
+    });
+
+    it("an empty-content turn is still excluded (pre-existing)", () => {
+      expect(historyFromTurns([asst("")])).toEqual([]);
+    });
+
+    it("the 12-turn window still applies after safety turns are removed", () => {
+      const many = Array.from({ length: 20 }, (_, i) =>
+        i % 5 === 0 ? asst(`s${i}`, { safetyNotice: SAFETY }) : user(`q${i}`),
+      );
+      const h = historyFromTurns(many);
+      expect(h).toHaveLength(12);
+      expect(h.every((t) => !t.content.startsWith("s"))).toBe(true);
+    });
+  });
+
+  describe("combinatorial sweep — safetyNotice is decisive in every combination", () => {
+    it("across stopped x status x role, a safetyNotice always excludes and its absence never does", () => {
+      const roles = ["user", "assistant"] as const;
+      const stoppeds = [undefined, false, true];
+      const statuses = [undefined, "answered", "insufficient_evidence", "error"] as const;
+      let checked = 0;
+
+      for (const role of roles) {
+        for (const stopped of stoppeds) {
+          for (const status of statuses) {
+            const base = { role, content: "c", ...(stopped === undefined ? {} : { stopped }), ...(status ? { status } : {}) };
+            const withSafety = { ...base, safetyNotice: SAFETY };
+
+            // with a safety notice: ALWAYS excluded
+            expect(historyFromTurns([withSafety]), JSON.stringify(withSafety)).toEqual([]);
+
+            // without one: included unless stopped (the pre-existing rule)
+            const expected = stopped === true ? 0 : 1;
+            expect(historyFromTurns([base]), JSON.stringify(base)).toHaveLength(expected);
+            checked++;
+          }
+        }
+      }
+      expect(checked).toBe(24);
+    });
   });
 });
