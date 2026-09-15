@@ -89,6 +89,62 @@ them fail closed via `disabled://recovery` / unresolvable hostnames (same patter
    from a fresh forced-pubkey connection, add a **new** `~/.ssh/known_hosts` line (never
    `StrictHostKeyChecking=no`, never touch the `prod`/`factorylm-prod` aliases), and continue the
    inspection → bootstrap → private Hub stages below.
+
+   **➡️ SUPERSEDED 2026-09-14 by rescue-mode recovery — see § 1a.** Mike booted the VPS into OVH
+   rescue mode instead of using the KVM console, which is the cleaner fix (offline chroot, no
+   forced-change dance). The console path above stays only as a fallback.
+
+### 1a. Rescue-mode account-aging fix (the chosen path)
+
+The VPS is in OVH rescue mode (`netbootMode=rescue`, `state=rescued`, confirmed via the GET API).
+Rescue is a **temporary OS with its own host key and its own one-time root password** — the
+production disk is attached but not booted.
+
+**Host-key trust — two distinct pins, do not conflate:**
+- Rescue OS ED25519 `SHA256:uT8BMh04K3wLfJlfFAvQfAshizpd3zC+gQFhxXvZw4A` — **TOFU only, unverified**
+  against any provider-published value (OVH does not publish the rescue key). Pinned in a *separate*
+  `rescue_known_hosts`, never the production pin.
+- Production OS ED25519 `SHA256:yslCH8KRVJu0281ztiTXYxD9o8Ogg32OQ2rZ5pn8FrY` — **verified** (Mike-supplied),
+  unchanged by rescue, and is the strong pin for the **post-reboot** proof.
+
+**Rescue credential:** OVH emails a one-time Secret-as-a-Service link; the password is **not** in
+Doppler and neither existing secret opens rescue (both `Permission denied`), nor does CHARLIE's key
+(account has 0 registered keys). Mike retrieves it and stores it as **`OVH_VPS_RESCUE_PASSWORD`**
+(`factorylm/prd`). Do **not** open the link from tooling — it's a hash-route SPA WebFetch can't read,
+opening it starts the 7-day clock, and pulling a credential into the session context is disallowed.
+
+**Procedure once `OVH_VPS_RESCUE_PASSWORD` exists (run from CHARLIE, secret injected by Doppler):**
+```bash
+# 1. Authenticate to rescue (host key pinned to the rescue TOFU file), identify the disk BY CONTENT.
+ssh ... root@40.160.141.61 'lsblk -f'                 # find the ext4 partition with the real OS
+# 2. Mount READ-ONLY and inspect before any write.
+mkdir -p /mnt/sys; mount -o ro /dev/<part> /mnt/sys
+cat /mnt/sys/etc/os-release; cat /mnt/sys/etc/hostname
+getent -s files:/mnt/sys/etc/shadow ubuntu 2>/dev/null || awk -F: '/^ubuntu:/' /mnt/sys/etc/shadow
+#    STOP if the disk shows unexpected app/customer state: /opt/mira present, docker volumes with
+#    data, non-empty /var/www. This box was delivered today and never bootstrapped → expect none.
+# 3. Diagnose the exact aging field, then apply the MINIMUM fix (chroot so chage reads the disk's files).
+mount -o remount,rw /mnt/sys
+for m in dev dev/pts proc sys; do mount --bind /$m /mnt/sys/$m; done
+chroot /mnt/sys /bin/bash -c '
+  getent shadow ubuntu | awk -F: "{print \"lstchg=\"\$3\" min=\"\$4\" max=\"\$5\" warn=\"\$6\" inact=\"\$7\" expire=\"\$8}"
+  chage -l ubuntu; passwd -S ubuntu; grep -E "^PASS_(MAX|MIN)_DAYS" /etc/login.defs
+  # Apply ONLY what the fields show is wrong:
+  #   max==0            -> chage -M -1 ubuntu
+  #   lstchg==0/expired -> chage -d "$(date +%F)" ubuntu
+  # 4. Install CHARLIE key for ubuntu (chown resolves via the disk /etc/passwd inside chroot).
+  install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB8r+WjEIGtY3MM3/SDEvaWL/ELtO8MMflBLf2hU+N5 charlienode@CharlieNodes-Mac-mini.local" >> /home/ubuntu/.ssh/authorized_keys
+  chmod 600 /home/ubuntu/.ssh/authorized_keys; chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+'
+# 5. Unmount in REVERSE, verify clean, sync.
+for m in sys proc dev/pts dev; do umount /mnt/sys/$m 2>/dev/null; done; umount /mnt/sys; mount | grep /mnt/sys && echo "STILL MOUNTED"; sync
+```
+**Then:** Mike sets netboot back to **hard disk (normal)** in the OVH panel (a write my `GET *` key
+can't make) and reboots. CHARLIE then proves `ssh -i ~/.ssh/id_ed25519 -o PreferredAuthentications=publickey
+-o UserKnownHostsFile=<prod pin> ubuntu@40.160.141.61 id` against the **production** host key, and
+continues § 2 → § 3.
+
 4. **Scoped Doppler service tokens**: one for `factorylm/stg` (private test) and, only at cutover,
    one for `factorylm/prd`. Never a personal token on the host.
 5. **Tailscale auth key** (optional, for the Bravo embedder + private testing over the tailnet).
