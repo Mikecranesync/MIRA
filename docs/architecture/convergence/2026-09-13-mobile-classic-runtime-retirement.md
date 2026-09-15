@@ -87,3 +87,38 @@ via bun run build (tsc plus vite):
 
 Counts are occurrences in dist/assets/index-*.js. Zero classic markers; unified
 markers present. Reproduce with: grep -c "MARKER" dist/assets/index-*.js
+
+## Capability disposition (goal §3 — preserve/port before retiring presentation)
+
+The owner goal requires porting *essential* legacy-only capability before retiring a
+surface, and preserving backend capabilities. The classic Workorders / Schedule / Assets
+tabs were CMMS **management** surfaces, so their retirement needs an explicit disposition —
+not just "the tab is gone."
+
+| Capability (classic tab) | V7 runtime status | Where it lives in V7 |
+|---|---|---|
+| Work-order **list / status+priority mutation / standalone create** (`Workorders.tsx`) | **Retired from runtime** | No dedicated management affordance in the unified shell |
+| PM-schedule **list / complete / create** (`Schedule.tsx`) | **Retired from runtime** | No affordance in the unified shell |
+| Asset-registry **browse** (`AssetsTab.tsx`) | **Retired from runtime** | No management affordance |
+| Work-order **list (read)** | **Reachable** | `AttachFileSheet` → `listWorkOrders()` (attach a file to a work order) — mounted from `NotebookScreen` |
+| Asset **list (read)** | **Reachable** | `AttachFileSheet` → `listAssets()` (attach picker) — mounted from `NotebookScreen` |
+| Work-order / asset **query** (history, "is WO on line 3 done?") | **Reachable** | Chat → engine CMMS tools (`check_equipment_history`; covered by the `cmms-context-followup` staging-gate eval) |
+| Asset **scan → notebook** | **Reachable** | `resolveScan` → `getAssetByTag` / `openAssetNotebook` |
+| API adapter — `listWorkOrders` / `getWorkOrder` / `createWorkOrder` / `updateWorkOrder` / `listPmSchedules` / `completePmSchedule` / `listAssets` | **Preserved** | `src/api/resources.ts` (frozen; the offline-queue drain in `App.tsx` still runs — the only *producer*, classic `Workorders.tsx`, is retired, so no new creates are enqueued) |
+
+**What survives:** all CMMS *reads* a technician needs from the conversational shell — asset
+and work-order lists (as attach targets), work-order history via chat, asset scan→notebook —
+plus the full API adapter (nothing deleted).
+
+**What is retired from the mobile runtime:** the dedicated CMMS **management** UI — changing a
+work order's status/priority, creating a work order from a standalone form, and listing /
+completing / creating PM schedules from the phone.
+
+**Open decision for the owner (product scope, not a code gap):** this aligns with the
+train-before-deploy doctrine (the Hub Command Center + Atlas CMMS web own management; mobile is
+the technician's conversational/troubleshooting surface). If that is the intended V7 scope,
+this table *is* the record and the retirement is complete. If mobile work-order status changes
+or PM completion are considered essential on the phone, they are a capability to **re-home into
+the V7 shell** (e.g. a work-order action from a chat/asset context) — the API adapter is already
+present, so this is a presentation task, not a backend rebuild. Flagged to the owner rather than
+decided here.
