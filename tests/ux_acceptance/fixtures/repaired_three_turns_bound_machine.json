@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000009",
+  "surface": "mobile",
+  "route": "/notebook/cv-101",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "styleProperties": [
+    "color",
+    "background-color"
+  ],
+  "_provenance": "The case that exposes spatial-vs-temporal conflation. Three turns with a BOUND machine: Conversation.tsx renders one .fl-turn__head > .fl-card__meta context line per li.fl-turn, so 'CV-101 \u00b7 confirmed' legitimately appears three times. This is the REPAIRED product \u2014 D-5 satisfied by binding a machine. A detector counting nodes fails it, and a gate that fails the repaired product gets muted.",
+  "nodes": [
+    {
+      "id": "turn1",
+      "tag": "li",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-head",
+      "tag": "div",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn__head"
+      },
+      "parentId": "turn1",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-role",
+      "tag": "span",
+      "text": "MIRA",
+      "attrs": {
+        "class": "fl-turn__role"
+      },
+      "parentId": "turn1-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-ctx",
+      "tag": "span",
+      "text": "CV-101 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "turn1-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-parts",
+      "tag": "div",
+      "text": "Answer number 1 about the conveyor.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "parentId": "turn1",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn2",
+      "tag": "li",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn2-head",
+      "tag": "div",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn__head"
+      },
+      "parentId": "turn2",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn2-role",
+      "tag": "span",
+      "text": "MIRA",
+      "attrs": {
+        "class": "fl-turn__role"
+      },
+      "parentId": "turn2-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn2-ctx",
+      "tag": "span",
+      "text": "CV-101 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "turn2-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn2-parts",
+      "tag": "div",
+      "text": "Answer number 2 about the conveyor.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "parentId": "turn2",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn3",
+      "tag": "li",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn3-head",
+      "tag": "div",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn__head"
+      },
+      "parentId": "turn3",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn3-role",
+      "tag": "span",
+      "text": "MIRA",
+      "attrs": {
+        "class": "fl-turn__role"
+      },
+      "parentId": "turn3-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn3-ctx",
+      "tag": "span",
+      "text": "CV-101 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "turn3-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn3-parts",
+      "tag": "div",
+      "text": "Answer number 3 about the conveyor.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "parentId": "turn3",
+      "rendered": true,
+      "hittable": true
+    }
+  ]
+}
