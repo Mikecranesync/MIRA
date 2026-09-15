@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-27
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-27
+
+### Most actionable change for the playbook
+
+MaintainX is now an Autodesk company ($3.6B, May 28 2026). MIRA's closest analogue — knowledge-retrieval CMMS with OEM manual ingestion — is now backed by a $50B design-to-operate platform (Autodesk Operations Solutions: Tandem + FlexSim + Fusion Ops + MaintainX). MIRA's wedge must sharpen to what the Autodesk stack can't replicate at the floor: industrial-native grounding with live UNS context, OEM fault libraries, and technician-centric citations — not just document retrieval.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Acquired by Autodesk for $3.6B (announced May 28, 2026; deal closed). Now rebranded as "MaintainX (An Autodesk Company)." Integrated into Autodesk Operations Solutions alongside Tandem, FlexSim, Fusion Operations. ARR >$135M, growing >50% YoY. No standalone launch video; the Autodesk news announcement is the primary artifact: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — framing: "connecting design, make, and operate workflows across the asset lifecycle."
+- **UpKeep** — "The Platform Evolution: From Maintenance to Asset Operations Management" webinar + live demo (post-May 2026): https://www.youtube.com/watch?v=_qOqkr1nJHE — UpKeep is reframing its entire product category from CMMS to "Asset Operations Management." May 29, 2026 release (Safety AI + expanded Studio Nova credits). Framing drift: Studio is no longer "build custom apps" — it's the on-ramp to a platformized AOM suite.
+- **Limble** — Winter Release 2026 (January 2026, missed from initial cache): three new AI tools — Asset Snap (photo → structured asset record via AI image recognition), AI Resource Planning (schedule balancing), and MCP integration (Limble data into Claude Code / Cursor). New CEO Gary Specter (Jan 21, 2026). No launch video confirmed; announcement: https://limble.com/releases/winter-release
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" campaign announced May 18, 2026 at AVEVA World Milan: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — CEO Elan Greenberg + CPO Anoop Mohan video at Machine Design (not YouTube-indexed). Framing shift: from "Machine Health AI" to "Industrial AI Workforce" with role-based agents (Reliability Agent → Maintenance Agent → Operations Agent). Backend: Google Gemini + AVEVA CONNECT. New tagline: "From intelligence to action." Also: Augury + MaintainX closed-loop integration (March 24, 2026): predictive fault → auto-creates MaintainX work order in real time.
+
+**B2B SaaS (pattern transfer)**
+- **Figma** — Config 2026 keynote (June 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — CEO Dylan Field. Hook: "Code is material for design." [transcript not verified] Launches: Code Layers (GitHub import into canvas), native Motion/Animation, Shaders (mesh gradients, particle effects via Figma Agent), and Weave (generative AI + video + VFX on open canvas). Footage: on-stage keynote, conference format. VO: founder. CTA: none explicit. Pattern: design tool absorbing the entire production pipeline (video + generative content). Most interesting for MIRA: the "code as material" framing maps cleanly to "factory data as context material."
+- **Notion** — AgentOS developer platform (May 13, 2026): extended Notion 3.0 Agents into an open developer platform with external agent connections and multi-step automated workflows. Livestreamed product announcement. July 31, 2026: AI Meeting Notes now trigger Custom Agents automatically. Framing evolved from "You assign. Agents do." → "Your workspace is a hub for AI agents." Source: https://techcrunch.com/2026/05/13/notion-just-turned-its-workspace-into-a-hub-for-ai-agents/
 
 ---
 
@@ -86,7 +108,7 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. **[Updated 2026-08-27]** Acquired by Autodesk for $3.6B (May 28, 2026). Now "MaintainX (An Autodesk Company)." ARR >$135M, >50% growth. Integrated into Autodesk Operations Solutions (AOS) alongside Tandem, FlexSim, Fusion Operations. The competitive frame for MIRA changed: manual-ingestion + cited troubleshooting answers is no longer competing against a standalone CMMS — it is competing against Autodesk's full design-to-operate platform. MIRA's differentiation: live UNS context + technician-native grounding that a PLM vendor cannot replicate at the floor.
 
 ---
 
@@ -145,6 +167,8 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**[Updated 2026-08-27]** Augury pivoted brand framing May 18, 2026: "Machine Health AI" → "Industrial AI Workforce." Key press at AVEVA World Milan (CEO Greenberg + CPO Mohan video at Machine Design — not YouTube-indexed). Role-based agents: Reliability Agent surfaces fault → Maintenance Agent schedules fix → Operations Agent manages production commitments. Backend: Google Gemini + AVEVA CONNECT. New tagline: "From intelligence to action." Also launched closed-loop integration with MaintainX (March 24, 2026): fault detected → work order created in MaintainX in real time, no human bridge. Pattern transfer for MIRA: "reliability agent → maintenance agent → operations agent" role ladder is a concrete hook structure; MIRA's differentiator is that our agents are grounded in the *customer's actual OEM manuals + UNS*, not generic manufacturing data.
 
 ---
 
@@ -340,6 +364,12 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**AgentOS developer platform (May 13, 2026)**
+- Source: https://techcrunch.com/2026/05/13/notion-just-turned-its-workspace-into-a-hub-for-ai-agents/
+- Framing evolution: Notion 3.0 (Sep 2025) → "You assign tasks. Agents do the work." → AgentOS (May 2026) → "Your workspace is a hub for AI agents." External agents connectable; multi-step automated workflows via developer platform.
+- July 31, 2026: AI Meeting Notes trigger Custom Agents automatically (no manual handoff). Source: https://www.notion.com/releases/2026-07-31
+- Pattern note: Notion's arc from Sep 2025 to mid-2026 shows the evolution path — product agents → platform agents. MIRA's path: diagnostic agent → UNS-grounding platform that other surface agents (Slack / Telegram / Ignition) pull from. The "hub" framing is already MIRA's north-star architecture.
+
 ---
 
 ### Figma
@@ -354,6 +384,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Hook: "Code is material for design." [search-derived; transcript not verified]
+- Launches: Code Layers (GitHub import + multi-codebase comparison on canvas), native Motion/Animation (transitions, 3D transforms), Shaders (mesh gradients, particle effects via Figma Agent), Weave (generative AI + video + VFX on open canvas)
+- Footage style: on-stage keynote, Moscone Center, San Francisco (June 23–25, 2026)
+- VO register: founder
+- CTA: none explicit; awareness
+- Pattern note: Figma is absorbing the full production pipeline (design → code → video → generative content). The "code as material" framing is interesting for MIRA — "factory data as context material" is a parallel framing worth owning before a larger platform does.
 
 ---
 
@@ -394,7 +434,8 @@ No video content surfaced for 2025–2026.
 
 ### Vendor style drift (notable shifts)
 
-- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement. **[2026-08-27]** Rebranding category from CMMS → "Asset Operations Management"; Studio + Nova AI credits = platform play, not point-tool play.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **[2026-08-27]** Acquired by Autodesk ($3.6B, May 2026) — now competes as part of a full design-to-operate PLM platform; no longer a standalone CMMS competitor.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **[2026-08-27]** Shifted brand from "Machine Health AI" → "Industrial AI Workforce" (May 2026). Now pitching role-based agents (reliability → maintenance → operations) as a coordinated AI team, not a detection tool.
+- **Figma** **[2026-08-27]**: absorbed video, generative AI, and code into its canvas in one Config keynote (June 2026). "Code is material for design" signals that SaaS design tools are expanding to own the full production pipeline — not just screens.
