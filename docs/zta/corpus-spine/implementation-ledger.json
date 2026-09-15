@@ -1,0 +1,111 @@
+{
+ "schema": "factorylm.corpus-spine.implementation-ledger.v1",
+ "reconciled": "2026-07-29",
+ "baseline": "d54d67abe (== main HEAD at reconciliation)",
+ "prd": "uploads/8ed93cbe-20260729mirageneralmaintenanceintelligencecorpusspineprd.md",
+ "slices": {
+  "A": {
+   "title": "Resource and lineage audit",
+   "status": "in_progress",
+   "deliverables": [
+    "implementation-ledger.md/.json",
+    "knowledge_entries_touchpoints.jsonl",
+    "rights-tenant-gap-report",
+    "duplicate-legacy-path-report",
+    "unprovable-origin-groups"
+   ],
+   "constraints": [
+    "read-only",
+    "no-db-writes",
+    "no-prod"
+   ]
+  },
+  "B": {
+   "title": "Typed evidence adapters",
+   "status": "pending",
+   "new": [
+    "HISTORIAN_WINDOW adapter",
+    "WORK_ORDER adapter",
+    "PRIOR_DECISION adapter",
+    "TECHNICIAN_CORRECTION adapter (immutable events)",
+    "coordinate fields on document-backed items"
+   ],
+   "existing": [
+    "context_contract.py 10 kinds + 7 adapters"
+   ]
+  },
+  "C": {
+   "title": "PrintSense graph provenance",
+   "status": "pending",
+   "new": [
+    "graph.json $id/version",
+    "compat loader",
+    "lineage/source-hash fields",
+    "PRINT_OBSERVATION regression tests"
+   ]
+  },
+  "D": {
+   "title": "Public/gov/textbook registry",
+   "status": "pending",
+   "new": [
+    "curated registry via corpus-source.v1",
+    "source_type=package convention",
+    "textbook classes",
+    "quarantine workflow",
+    "SCU2 + real-photo fail-closed registration"
+   ],
+   "check": "curriculum crawler must not inherit OEM trust"
+  },
+  "E": {
+   "title": "Dataset candidate expansion",
+   "status": "pending",
+   "new": [
+    "domain/task/representation axes",
+    "multi-turn + hard negatives expansion",
+    "coverage/rejection reports",
+    "review package"
+   ],
+   "gate": "no approved training without the sitting"
+  },
+  "F": {
+   "title": "Evaluation expansion",
+   "status": "pending",
+   "new": [
+    "sealed families: unreadable-image, wrong-identity, cross-sheet, unseen-OEM, multi-turn corrections, cross-domain",
+    "lineage freeze files",
+    "per-domain scorecards",
+    "leakage tests"
+   ]
+  },
+  "G": {
+   "title": "Parquet exporters",
+   "status": "designed",
+   "refs": [
+    "docs/zta/2026-07-29-parquet-pretokenized-path-design.md",
+    "docs/zta/2026-07-29-together-parquet-contract.md"
+   ],
+   "gate": "$0 probes at ceremony boundary; no signing consumption"
+  },
+  "H": {
+   "title": "Docs + retirement plan",
+   "status": "pending",
+   "retire": [
+    "review_console v1",
+    "flywheel export bypass",
+    "technician_v1_1 builder"
+   ],
+   "rule": "retire nothing load-bearing without parity proof"
+  }
+ },
+ "standing_constraints": [
+  "no merges without Mike",
+  "no paid events",
+  "no prod mutations",
+  "no KG schema-family changes",
+  "no oem_trusted broadening",
+  "no origin backfill from row shape",
+  "frozen eval families never train",
+  "customer-private tenant-isolated",
+  "unknown rights = quarantine"
+ ]
+}
