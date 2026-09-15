@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.0.1/node.schema.json",
+  "title": "peer-network node",
+  "version": "1.0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "node_id",
+    "hostname",
+    "os",
+    "role",
+    "capabilities",
+    "availability",
+    "last_heartbeat"
+  ],
+  "properties": {
+    "node_id": {
+      "type": "string",
+      "enum": [
+        "alpha",
+        "bravo",
+        "charlie",
+        "travel",
+        "plc",
+        "vps"
+      ]
+    },
+    "hostname": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "os": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "mission-controller",
+        "integration",
+        "primary-implementation",
+        "adversarial-review",
+        "secondary-implementation",
+        "industrial-verifier"
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "bash",
+          "git",
+          "gh",
+          "write",
+          "worktree",
+          "codex-cli",
+          "adb",
+          "bun",
+          "docker",
+          "plc",
+          "ignition",
+          "factory-io",
+          "read-only"
+        ]
+      },
+      "description": "Tool capabilities the sessions on this node actually hold. 'available' is not 'equipped' (FLEET-PEER-NETWORK-001 fallback #2, 2026-09-07)."
+    },
+    "availability": {
+      "type": "string",
+      "enum": [
+        "online",
+        "offline",
+        "unknown"
+      ]
+    },
+    "last_heartbeat": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
