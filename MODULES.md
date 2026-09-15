@@ -6,7 +6,7 @@ Status of every top-level module directory. Guarded by `tests/test_modules_manif
 Statuses: **DEPLOYED** (built/mounted by a production compose — `docker-compose.saas.yml`,
 `.observability.yml`, `.hub.yml`, or a module-owned prod compose), **BENCH** (dev/staging/
 fault-detective/pathb composes only), **CI** (exercised only by `.github/workflows/`),
-**DEFERRED** / **LEGACY** (per root `CLAUDE.md` § Deferred / Archived Modules), **ORPHAN**
+**DEFERRED** / **LEGACY** (per `docs/known-issues.md` § Deferred / Archived Modules), **ORPHAN**
 (no compose, no workflow reference found).
 
 | Module | Status | Evidence | Note |
@@ -14,7 +14,7 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-bots | DEPLOYED | saas.yml builds `mira-bot-telegram`, `mira-bot-slack`, `mira-ask` | Telegram/Slack adapters + ask_api + shared engine |
 | mira-bridge | BENCH | only in docker-compose.yml / .override.yml / .fault-detective.yml | saas.yml references only `/opt/mira/mira-bridge/data` host volumes, not the module |
 | mira-cmms | DEPLOYED | own prod compose `mira-cmms/docker-compose.yml` (atlas-api/atlas-db, PR #1439); included by root docker-compose.yml; staging mirror in .staging-vps.yml | Not in saas.yml directly — saas `mira-hub`/`mira-web` proxy to `cmms-backend:8080` |
-| mira-connect | DEFERRED | root CLAUDE.md § Deferred ("Config 4", post-MVP); no compose or workflow | Modbus/PLC drivers, dormant |
+| mira-connect | DEFERRED | `docs/known-issues.md` § Deferred / Archived Modules ("Config 4", post-MVP); no compose or workflow | Modbus/PLC drivers, dormant |
 | mira-connectors | DEPLOYED | `mira-pipeline/Dockerfile` COPYs + pip-installs `mira-connectors/`; own pytest job in ci.yml | Ships inside mira-pipeline-saas image |
 | mira-contextualizer | ORPHAN | no compose, workflow, or test reference found | Desktop GUI tool; runs outside docker |
 | mira-core | DEPLOYED | saas.yml `mira-core` (Open WebUI image + entrypoint) and `mira-ingest` (builds `mira-core/mira-ingest/Dockerfile`) | |
@@ -28,9 +28,9 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-mobile | BENCH | no compose (static Capacitor client, ADR-0034); `ci.yml` `mobile-unit-tests`; signed APK + OTA canary | Native iOS/Android app consuming prod Hub APIs; unified shell is an opt-in canary, not the production default |
 | mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
 | mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
-| mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
+| mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; `docs/known-issues.md` § Deferred / Archived Modules: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
 | mira-scan-monday | ORPHAN | no compose, workflow, or test reference found | |
-| mira-sidecar | LEGACY | root CLAUDE.md: sunset pending (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
+| mira-sidecar | LEGACY | `docs/known-issues.md` § Deferred / Archived Modules: removed from prod 2026-05-20 (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
 | mira-trend-viewer | ORPHAN | no compose, workflow, or test reference found | |
 | mira-web | DEPLOYED | saas.yml builds `./mira-web` | PLG funnel, factorylm.com |
 | nango-integrations | DEPLOYED | saas.yml mounts `./nango-integrations/providers.yaml` into `nango-server` | Config consumed by pinned nango image |

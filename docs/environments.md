@@ -2,7 +2,7 @@
 
 **Owner doctrine. Read before:** changing infra, running a migration, restarting a container, deploying a bot, seeding the KB, or wiring a new workflow.
 
-This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
+This doctrine is referenced from `AGENTS.md` (via root `CLAUDE.md`, which is a thin adapter that imports it) and `.claude/CLAUDE.md`. Every agent session, any provider, is expected to honor it.
 
 > **Status note (refreshed 2026-09-07):** The full staging stack is defined by `/opt/mira-staging/docker-compose.staging-vps.yml`, uses offset `stg-*` services and the staging Neon branch, and has its own Telegram bot token. Its deploy contract is now manual and exact-current-main only: `.github/workflows/deploy-staging.yml` accepts `target_ref=refs/heads/main` plus the current 40-character `target_sha`, then revalidates both before protected credentials are exposed. Push-triggered and feature-ref deploys are retired. The workflow remains on operational HOLD until the protected `staging-deploy` environment, scoped non-root user, and dedicated SSH key are provisioned. The HTTPS/login gap remains tracked in `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
@@ -101,9 +101,69 @@ The point isn't process for its own sake. The point is: when a customer hits a r
 
 ## Pointers
 
-- `CLAUDE.md` § **Environments** — short rule card every session loads
+- `AGENTS.md` § **Environment and deployment safety** — short rule card every agent loads (root `CLAUDE.md` is a thin adapter that imports it)
 - `.claude/CLAUDE.md` § **Environment boundaries** — product-rule angle
 - `tools/hooks/prod-guard.sh` — PreToolUse enforcement
 - `.github/workflows/{smoke-test,deploy-vps,apply-migrations,apply-seeds}.yml` — the deploy pipeline
 - `docs/env-vars.md` — which env var lives in which Doppler config
 - `~/factorylm/CLUSTER.md` Law 1 — evidence-only completion (this doc's parent principle)
+
+## Container Map
+
+<!-- BEGIN GENERATED container-map — tools/gen_container_map.py; regenerate: `python3 tools/gen_container_map.py --write`; verify: `--check`. Do not hand-edit. -->
+
+**Dev** — `docker-compose.yml` include set + `docker-compose.override.yml` (env-var ports shown at their defaults):
+
+| Container | Port(s) | Network(s) |
+|-----------|---------|------------|
+| mira-core | 3000→8080 | core-net, bot-net |
+| mira-mcpo | 8000 | core-net |
+| mira-ingest | 127.0.0.1:8002→8001 | core-net |
+| mira-tika | 127.0.0.1:9998 | core-net |
+| mira-pipeline | 127.0.0.1:9099 | core-net |
+| mira-bridge | 1880 | core-net |
+| mira-bot-telegram | — | bot-net, core-net |
+| mira-bot-slack *(profile: slack-dev)* | — | bot-net, core-net |
+| mira-bot-teams *(profile: dormant)* | 8030 | bot-net, core-net |
+| mira-bot-whatsapp *(profile: dormant)* | 8010 | bot-net, core-net |
+| mira-bot-reddit *(profile: dormant)* | — | bot-net, core-net |
+| mira-telegram-test-runner *(profile: test)* | — | core-net |
+| mira-mcp | 127.0.0.1:8009→8000, 127.0.0.1:8010→8002, 127.0.0.1:8001 | core-net |
+| atlas-db | 5433→5432 | cmms-net |
+| atlas-minio | 9000, 9001 | cmms-net |
+| atlas-api | 8088→8080 | cmms-net, core-net |
+| atlas-frontend | 3100→3000 | cmms-net |
+| mira-web | 3200→3000 | core-net, cmms-net |
+| mira-redis | — | core-net |
+| mira-celery-worker | — | core-net |
+| mira-task-bridge | 8003 | core-net |
+| mira-relay | 127.0.0.1:8765 | core-net |
+
+**Prod (VPS)** — `docker-compose.saas.yml` (env-var ports shown at their defaults; container names differ from dev; Atlas CMMS runs as a separate compose project reached via external `cmms-ext`):
+
+| Container | Port(s) | Network(s) |
+|-----------|---------|------------|
+| mira-redis-saas | — | mira-net |
+| mira-ingest-saas | 127.0.0.1:8002→8001 | mira-net |
+| mira-mcp-saas | 127.0.0.1:8009→8000, 127.0.0.1:8001 | mira-net |
+| mira-web | 127.0.0.1:3200→3000 | mira-net, cmms-ext |
+| mira-pipeline-saas | 127.0.0.1:9099 | mira-net |
+| mira-bot-telegram | — | mira-net |
+| mira-bot-slack | — | mira-net |
+| factorylm-foreman | — | mira-net |
+| mira-ask-saas | 100.68.120.99:8011 | mira-net |
+| mira-tika-saas | 127.0.0.1:9998 | mira-net |
+| mira-relay | 127.0.0.1:8765 | mira-net |
+| mira-sparkplug-consumer *(profile: sparkplug)* | — | mira-net, mosquitto-ext |
+| nango-db | — | mira-net |
+| nango-server | 127.0.0.1:3003, 127.0.0.1:3009 | mira-net |
+| mira-hub | 127.0.0.1:3101→3000 | mira-net, cmms-ext |
+| mira-synthetic-dogfood-worker | — | mira-net |
+| mira-synthetic-dogfood-beat | — | mira-net |
+| mira-historian-worker | — | mira-net |
+| mira-historian-beat | — | mira-net |
+| mira-cmms-sync | — | mira-net, cmms-ext |
+
+Profile-gated rows start only with `docker compose --profile <name> up`. Staging: `docker-compose.staging-vps.yml` (`stg-*` names) — see `docs/environments.md`.
+
+<!-- END GENERATED container-map -->

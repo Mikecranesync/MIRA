@@ -13,7 +13,7 @@ doesn't exist, that is stated as a gap with a smallest-addition proposal (a `db-
 land, not this file's).
 
 **Environments:** run against `staging` first (`factorylm/stg`), then `prod` (`factorylm/prd`) via the existing
-`workflow_dispatch` input — never psql prod directly (root `CLAUDE.md` § Environments).
+`workflow_dispatch` input — never psql prod directly (`docs/environments.md` hard rule #1).
 
 ---
 

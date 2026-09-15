@@ -64,4 +64,4 @@ Especially watch for conflicts with:
 
 ## Marketplace objective lock
 
-Per `~/.claude/CLAUDE.md` (global) and root `CLAUDE.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.
+Per `~/.claude/CLAUDE.md` (global) and root `AGENTS.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.

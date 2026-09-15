@@ -57,7 +57,7 @@ doppler secrets set MIRA_IGNITION_HMAC_KEY --project factorylm --config prd
 # Confirm NEON_DATABASE_URL is already set (it backs several services):
 doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain | head -c 20; echo
 
-# Redeploy — per root CLAUDE.md, NEVER `docker compose` the VPS directly.
+# Redeploy — per `docs/environments.md` hard rule #2, NEVER `docker compose` the VPS directly.
 gh workflow run deploy-vps.yml -f services=mira-relay
 ```
 
@@ -114,7 +114,7 @@ step). For a manual check:
 
 ```sql
 -- run via db-inspect.yml (read-only) or psql against staging/dev directly —
--- NEVER psql prod ad hoc (root CLAUDE.md Environments hard rule #1)
+-- NEVER psql prod ad hoc (`docs/environments.md` hard rule #1)
 SELECT count(*) AS total, count(*) FILTER (WHERE enabled = true) AS enabled_rows
   FROM approved_tags
  WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'::uuid
@@ -292,7 +292,7 @@ SELECT plc_tag, uns_path::text, last_value_numeric, last_seen_at,
 -- expect: freshness_status='live', simulated=false, last_seen_at recent
 ```
 
-**Screenshot** (per root `CLAUDE.md` Screenshot Rule — desktop + mobile,
+**Screenshot** (per `AGENTS.md` § Verification and evidence, the screenshot rule — desktop + mobile,
 saved to `docs/promo-screenshots/`, never deleted):
 
 ```

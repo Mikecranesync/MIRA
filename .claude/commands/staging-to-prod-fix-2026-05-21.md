@@ -257,7 +257,7 @@ the post-deploy smoke + E2E from the readiness doc.
 
 ## Hard rules (do not violate)
 
-- Never `psql` prod NeonDB from this session (CLAUDE.md §Environments).
+- Never `psql` prod NeonDB from this session (`docs/environments.md` hard rule #1).
 - Never `docker compose` on the VPS directly (use `deploy-vps.yml`).
 - Never test feature-branch builds against `@FactoryLM_Diagnose` — use
   `@Mira_stagong_bot`.

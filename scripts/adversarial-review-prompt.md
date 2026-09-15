@@ -27,7 +27,7 @@ git diff --stat {{MERGE_BASE}}..HEAD
 4. Contracts, types, and schemas the change touches.
 5. Migrations, if any are touched (`mira-hub/db/migrations/`, `docs/migrations/`)
    — and `.claude/rules/mira-hub-migrations.md` for the house rules.
-6. Repository architecture guidance: root `CLAUDE.md`, `.claude/CLAUDE.md`, and
+6. Repository architecture guidance: root `AGENTS.md` (root `CLAUDE.md` is a thin adapter that imports it), `.claude/CLAUDE.md`, and
    any `.claude/rules/*.md` relevant to the touched area.
 7. Call sites and dependents of changed symbols where the change could
    propagate.

@@ -4,7 +4,7 @@
 relying on it. Pairs with PR #2280 (`feat/simlab-relay-ingest-emit`) and the roadmap
 `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md` (Lanes 1–2, Gaps A/B/C).
 
-**Environment law (`docs/environments.md`, root `CLAUDE.md` § Environments):**
+**Environment law (`docs/environments.md`; rule card `AGENTS.md` § Environment and deployment safety):**
 - dev → **staging** → prod, in that order. **Never** psql prod; **never** seed prod first.
 - Migrations via `apply-migrations.yml` (`dry-run` then `apply`). Seeds staging-first.
 - Read-only schema inspection via `db-inspect.yml` or psql against `factorylm/stg`.

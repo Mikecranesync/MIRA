@@ -45,7 +45,7 @@ all?"**
 
 A dependency is evaluated for: active maintenance, React 18 compatibility, Capacitor/WebView
 (Android) behavior, iOS viability, accessibility, touch support, bundle impact, license
-(Apache-2.0/MIT ONLY — PRD §4 root CLAUDE.md), TypeScript support, testability, API
+(Apache-2.0/MIT ONLY — PRD §4, `AGENTS.md` § Hard constraints), TypeScript support, testability, API
 stability, adoption, dependency-chain risk. Smaller-custom is not automatically better than a
 maintained dependency; popular is not automatically acceptable.
 

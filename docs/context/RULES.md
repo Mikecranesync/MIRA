@@ -1,11 +1,11 @@
 # MIRA — Rules & Constraints
 **Last Updated:** 2026-05-05
 
-Every rule that any agent or human contributor must follow, consolidated from `CLAUDE.md`, `.claude/rules/*`, and the cluster's 7 Laws. Anything in conflict with this file is wrong unless explicitly amended here in the same change.
+A consolidation, for orientation, of rules that live canonically in `AGENTS.md` (the provider-neutral project map), `.claude/rules/*`, `docs/agent-standard/FLEET_STANDARD.md`, and the cluster's 7 Laws. **This file is subordinate to those sources under `FLEET_STANDARD.md` §2 precedence: where it disagrees with them, they are right and this file is stale — report the drift, don't follow the copy.** Last reconciled against `AGENTS.md` on 2026-09-13.
 
-## Hard product constraints (CLAUDE.md §4)
+## Hard product constraints (PRD §4 — canonical statement: `AGENTS.md` § Hard constraints)
 1. **Licenses:** Apache 2.0 or MIT only. GPL upstream allowed for opaque images (`mira-cmms` Atlas) where no code is imported.
-2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only. NeonDB persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 + #649; never reintroduce — runtime silently ignores any `ANTHROPIC_API_KEY`).
+2. **Cloud LLMs:** Groq → Cerebras → Together cascade only (free-tier, OpenAI-compatible). **Gemini is banned.** NeonDB persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 + #649; never reintroduce — runtime silently ignores any `ANTHROPIC_API_KEY`).
 3. **No frameworks that abstract the LLM call:** No LangChain, LlamaIndex, n8n, TensorFlow.
 4. **Secrets in Doppler only:** `factorylm/prd`. Never in committed `.env`. `.env.template` carries placeholders only.
 5. **Containers:** One per service. `restart: unless-stopped`. Healthcheck. Pinned image versions (`:latest` is forbidden).
@@ -55,7 +55,7 @@ Every rule that any agent or human contributor must follow, consolidated from `C
 - **Promo screenshot rule:** Every Playwright proof-of-work screenshot must also be saved to `docs/promo-screenshots/` as `YYYY-MM-DD_feature-name_viewport.png`, capturing both desktop (1440 × 900) and mobile (412 × 915). Append-only archive — never delete.
 - **Design screenshot rule (memory `feedback_design_screenshot_routine`):** Any visible mira-web UI change ships a before/after screenshot pair via `bun run snapshot:before/after` and commits to `docs/design-history/`.
 - **Doppler secrets memory (`feedback_doppler_secrets_just_use`):** When keys are in Doppler `factorylm/prd` and Mike's authorized the purpose, pull and apply directly — don't re-ask.
-- **LLM cascade memory (`feedback_llm_cascade_default`):** Always Groq → Cerebras → Gemini cascade for any LLM call; never single-provider, never Anthropic.
+- **LLM cascade memory (`feedback_llm_cascade_default`):** Always the Groq → Cerebras → Together cascade for any product LLM call; never single-provider, never Anthropic, never Gemini (banned). CI review/judge workflows keep their own fallback lists in their `.yml`; they are instruments, not the product cascade.
 - **RESOLVED → new fault memory (`feedback_resolved_state_wo_rebuild`):** Clearing `cmms_pending` alone is insufficient when leaving `RESOLVED`; `_clear_diagnostic_carryover` must reset `state["state"]` too.
 
 ## Code review (automated pipeline, installed 2026-04-20)

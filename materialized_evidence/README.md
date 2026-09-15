@@ -3,7 +3,8 @@
 > **Status: PROPOSED doctrine.** The governing decision (`docs/adr/0033-one-technician-brain.md`)
 > is **awaiting sign-off**. The contract is wired into the serving path behind a
 > **default-off** flag (`MIRA_CONTEXT_CONTRACT`); "on" is not "authorized" — see
-> `CLAUDE.md` § "Unification Program".
+> `docs/prd/2026-07-30-mira-unification-program.md` (the program PRD; status M1, awaiting Mike) and
+> `docs/adr/0033-one-technician-brain.md`.
 
 ## TechnicianContext in one sentence
 

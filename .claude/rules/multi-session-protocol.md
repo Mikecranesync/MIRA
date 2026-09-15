@@ -8,7 +8,7 @@ it lives in this repo, applies to work in this repo, and must never be
 installed machine-wide (`~/.claude`) or into unrelated repositories.
 
 **Precedence:** system instructions, security constraints, this repository's
-other rules (`.claude/rules/`, root `CLAUDE.md`, `docs/environments.md`), and
+other rules (`.claude/rules/`, root `AGENTS.md`, `docs/environments.md`), and
 explicit human authorization take precedence over this protocol. Directory-
 level instructions may refine it but must not silently weaken its gates.
 

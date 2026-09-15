@@ -37,9 +37,9 @@ Source of truth for "what we use." Anything not on this list either doesn't exis
 | ChromaDB | Legacy in `mira-sidecar` (deprecated, ADR-0008) |
 
 ## LLMs & inference
-- **Cloud cascade (default):** Groq → Cerebras → Gemini (OpenAI-compat). Set via `INFERENCE_BACKEND=cloud`.
+- **Cloud cascade (default):** Groq → Cerebras → Together (Gemini banned) (OpenAI-compat). Set via `INFERENCE_BACKEND=cloud`.
 - **Local fallback:** Open WebUI → Ollama → `qwen2.5vl:7b`. `INFERENCE_BACKEND=local`.
-- **Vision:** Gemini native; Groq via `GROQ_VISION_MODEL`; local via qwen2.5vl.
+- **Vision:** Groq via `GROQ_VISION_MODEL`; local via qwen2.5vl; print-photo interpretation via PrintSynth (the sole owner-authorized Anthropic carve-out, #2661). Gemini is banned.
 - **Embeddings:** `nomic-embed-text-v1.5` (768-d) for text; `nomic-embed-vision-v1.5` for image.
 - **Forbidden:** Anthropic (removed PR #610, PR #649). Any LangChain / LlamaIndex / TensorFlow / n8n.
 
@@ -76,7 +76,7 @@ Source of truth for "what we use." Anything not on this list either doesn't exis
 
 ## CI / agent review pipeline
 - GH Action `.github/workflows/code-review.yml` triggers on every PR to `main / develop / dev`.
-  shellcheck → ast-grep (IPs / secrets / raw FastAPI body / missing socket error handling) → cascade review (Groq → Cerebras → Gemini) → PR comment.
+  shellcheck → ast-grep (IPs / secrets / raw FastAPI body / missing socket error handling) → cascade review (Groq → Cerebras → Together (Gemini banned)) → PR comment.
 - Self-fix script `scripts/pr_self_fix.sh <PR>` reads 🔴 IMPORTANT comments, asks LLM cascade for patches, applies + pushes (max 3 loops).
 - Pre-commit hook `.githooks/pre-commit`: shellcheck + rg credential scan + debug artifact scan.
 - Tools required locally: `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`.
@@ -86,4 +86,4 @@ Source of truth for "what we use." Anything not on this list either doesn't exis
 - Never log secrets or full PII; sanitization runs at `InferenceRouter.complete()` boundary.
 
 ## What we do NOT use
-- LangChain, LlamaIndex, TensorFlow, n8n, Anthropic SDK, OpenAI proper (we use OpenAI-*compat* via Groq/Cerebras/Gemini), Kubernetes.
+- LangChain, LlamaIndex, TensorFlow, n8n, Anthropic SDK, OpenAI proper (we use OpenAI-*compat* via Groq/Cerebras/Together), Kubernetes.

@@ -9,7 +9,7 @@ Modeled on `docs/runbooks/2026-06-23-simlab-relay-ingest-staging-validation.md`,
 the same shape for the SimLab producer. Read that one for the deeper failure-mode catalog
 of the relay itself; this runbook covers only what is FactoryLM-specific.
 
-**Environment law (`docs/environments.md`, root `CLAUDE.md` § Environments):**
+**Environment law (`docs/environments.md`; rule card `AGENTS.md` § Environment and deployment safety):**
 - dev → **staging** → prod, in that order. **Never** psql prod; **never** seed prod first.
 - Migrations via `apply-migrations.yml` (`dry-run` then `apply`). Seeds staging-first.
 - Read-only schema inspection via `db-inspect.yml` or psql against `factorylm/stg`.

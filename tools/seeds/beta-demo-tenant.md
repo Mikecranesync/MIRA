@@ -31,7 +31,7 @@ are not raw-SQL-safe. Apply each with the tool it was built for.)
 
 ## Apply order (DEV → STAGING → PROD — never prod first)
 
-Per `docs/environments.md` / root CLAUDE.md §Environments: KB seeds reach prod **only** after BM25
+Per `docs/environments.md` (rule card: `AGENTS.md` § Environment and deployment safety): KB seeds reach prod **only** after BM25
 retrieval is verified on staging-shape data (issue #1385). Use `apply-seeds.yml` for prod; run the
 commands below against a **dev/staging** DSN first.
 

@@ -136,4 +136,4 @@ Trigger it by hand after a staging deploy, from a Jarvis-node webhook, or cron.
 - `.github/workflows/deploy-staging.yml` — the deploy (honors `--ref`)
 - `tools/staging/staging-smoke.sh` — deterministic gate
 - `tools/staging/hermes-staging-review.sh` — async Hermes review
-- root `CLAUDE.md` § Environments — dev/staging/prod promotion doctrine
+- `docs/environments.md` (rule card: `AGENTS.md` § Environment and deployment safety) — dev/staging/prod promotion doctrine

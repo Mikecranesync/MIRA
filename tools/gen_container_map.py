@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Container-map generator (convergence CU-02, drift finding D-2).
 
-Regenerates the root CLAUDE.md "## Container Map" section from the compose
+Regenerates the docs/environments.md "## Container Map" section from the compose
 files, so the map is a machine-validated fact (convergence doctrine §11)
 instead of hand-maintained prose that silently goes stale.
 
@@ -18,8 +18,8 @@ drift finding to record, not something this script silently repairs.
 Modes
 -----
     python3 tools/gen_container_map.py            # print the generated section
-    python3 tools/gen_container_map.py --write    # rewrite CLAUDE.md in place
-    python3 tools/gen_container_map.py --check    # exit 1 if CLAUDE.md differs
+    python3 tools/gen_container_map.py --write    # rewrite docs/environments.md in place
+    python3 tools/gen_container_map.py --check    # exit 1 if docs/environments.md differs
 
 --check is the drift lock: it fails whenever the committed map disagrees with
 the compose files. CU-06 wires it into tests/test_architecture.py as the
@@ -42,7 +42,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-CLAUDE_MD = "CLAUDE.md"
+CLAUDE_MD = "docs/environments.md"  # the canonical env/compose doctrine; root CLAUDE.md is a thin adapter since 2026-09-13
 ROOT_COMPOSE = "docker-compose.yml"
 DEV_OVERLAY = "docker-compose.override.yml"
 PROD_COMPOSE = "docker-compose.saas.yml"
@@ -204,8 +204,10 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--write", action="store_true", help="rewrite CLAUDE.md in place")
-    mode.add_argument("--check", action="store_true", help="exit 1 if CLAUDE.md is stale")
+    mode.add_argument("--write", action="store_true", help="rewrite docs/environments.md in place")
+    mode.add_argument(
+        "--check", action="store_true", help="exit 1 if docs/environments.md is stale"
+    )
     args = parser.parse_args()
 
     try:
@@ -227,10 +229,10 @@ def main() -> int:
 
     if args.check:
         if current.strip("\n") == section.strip("\n"):
-            print("container-map: CLAUDE.md matches compose files")
+            print(f"container-map: {CLAUDE_MD} matches compose files")
             return 0
         print(
-            "container-map DRIFT: CLAUDE.md disagrees with the compose files — "
+            f"container-map DRIFT: {CLAUDE_MD} disagrees with the compose files — "
             "run `python3 tools/gen_container_map.py --write`",
             file=sys.stderr,
         )

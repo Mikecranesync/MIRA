@@ -16,7 +16,7 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - **Recent shipped:** PostHog server-side PLG funnel + video pipeline extensions (PR #1167). Atlas seed data fixes — duplicate KG triples (CRA-248) + sparse PM calendar (CRA-249) (PR #1169). QR permanent binding (PR #1166). Agentic RAG components 2+3 (PR #1165).
 - **Demo reshoot unblocked:** CRA-248 (3 duplicate VFD-07 work orders) and CRA-249 (PM calendar with 3 entries) are fixed. Re-run seed script then reshoot Atlas screens.
 - **Eval pass rate:** 77 % (stale — `rich.errors.MarkupError` crashing pytest sessionfinish is pre-existing, not a real regression; track in known-issues.md).
-- **Anthropic removal:** complete (PR #610 + #649); cascade Groq → Cerebras → Gemini. Do not reintroduce.
+- **Anthropic removal:** complete (PR #610 + #649); cascade Groq → Cerebras → Together (Gemini banned). Do not reintroduce.
 - **mira-sidecar:** still legacy; OEM migration to Open WebUI KB is the cutover gate (issue #195).
 
 ### What's done — broad strokes
@@ -38,7 +38,7 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - **Funnel digest weekly automation:** wire Cowork Sunday 02:00 to Discord `#weekly-review`.
 
 ### Active decisions and constraints
-- LLM cascade is **non-negotiable** Groq → Cerebras → Gemini. No single-provider calls; no Anthropic.
+- LLM cascade is **non-negotiable** Groq → Cerebras → Together (Gemini banned). No single-provider calls; no Anthropic.
 - Doppler `factorylm/prd` is the only legitimate secret store.
 - Anyone touching `mira.db` from outside `mira-bridge` must use WAL retry pattern (`Supervisor._ensure_table()`).
 - Magic-inbox PDF flow: relevance gate behind `RELEVANCE_GATE_ENABLED`; fail-open on Groq errors.
