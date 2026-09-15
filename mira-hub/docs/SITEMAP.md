@@ -48,6 +48,7 @@
 | `/knowledge/manuals` | static | `(hub)/knowledge/manuals/page.tsx` |
 | `/knowledge/map` | static | `(hub)/knowledge/map/page.tsx` |
 | `/knowledge/suggestions` | static | `(hub)/knowledge/suggestions/page.tsx` |
+| `/labs/chat-spike` | static | `labs/chat-spike/page.tsx` |
 | `/library` | static | `(hub)/library/page.tsx` |
 | `/login` | static | `login/page.tsx` |
 | `/m/[assetTag]` | dynamic | `m/[assetTag]/page.tsx` |
@@ -273,6 +274,7 @@
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |
 | `/api/work-orders/export.csv` | static | `api/work-orders/export.csv/route.ts` |
 | `/api/workflows` | static | `api/workflows/route.ts` |
+| `/labs/chat-spike/stream` | static | `labs/chat-spike/stream/route.ts` |
 
 ## Change history (the route changelog)
 
