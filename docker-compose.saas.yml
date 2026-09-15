@@ -881,6 +881,12 @@ services:
       # photo filed at a node/notebook is read by tesseract and its text is
       # indexed as a citable source (EVID-4). Off = photos stay viewable-only.
       - PHOTO_OCR_ENABLED=${PHOTO_OCR_ENABLED:-0}
+      # WebView CORS allowlist for the phone app (#3453, src/lib/webview-cors.ts):
+      # exact https origins that may call /api/equipment-notebooks/* with
+      # credentials from the Capacitor WebView. Empty (default) = no CORS
+      # headers at all; "*" is never honored. Without this line a Doppler value
+      # can never reach the container (compose passes only what it lists).
+      - MOBILE_WEBVIEW_ORIGINS=${MOBILE_WEBVIEW_ORIGINS:-}
       # Nameplate recognition runs IN THE HUB (src/lib/nameplate). TOGETHERAI_API_KEY
       # is already supplied further down with the AI-Reports LLM cascade, so the
       # recognizer is configured — but the VISION MODEL selectors were missing,
