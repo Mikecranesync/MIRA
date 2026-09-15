@@ -31,6 +31,7 @@ Specs follow the same template (Purpose · Scope · Architecture · API Contract
 - [`agentic-os`](./agentic-os-spec.md) — Heartbeat, self-healer, learning capture, funnel tracker; the Cowork scheduled tasks.
 - [`auth-tenancy`](./auth-tenancy-spec.md) — Magic-link, Google OAuth, trial gate, admin bypass, JWT, HMAC inbound webhooks.
 - [`deployment`](./deployment-spec.md) — Compose layout, nginx routing, node map, Doppler injection, smoke test.
+- [`fleet-gateway-mcp`](./fleet-gateway-mcp.md) — FactoryLM Fleet Gateway MCP v1: public HTTPS control plane, private/loopback CAO, seven locked tools (#3532).
 
 ## Interfaces
 - [`telegram-bot`](./telegram-bot-spec.md) — Primary field-tech surface; polling-only, voice WO, photo intake, slash commands.
