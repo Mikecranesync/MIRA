@@ -133,6 +133,26 @@ Hard fail on any of:
   `{bench_verified, manual_cited}`.
 - an `inferred` relationship not marked `inferred` (if the pack ever emits one).
 
+**Crane-safety supplement (family-gated — `_crane_domain_violations`).** For a
+crane family only (`magnetek`/`impulse`/`crane`/`hoist`/`columbus mckinnon`; a
+PowerFlex/DuraPulse pack is unaffected, so the base rubric is never weakened),
+any crane-safety-critical content in the pack must carry a **cited corrective
+action**. Uncited crane-safety guidance is a hard fail. Applies across every
+surface the pack can carry a fault on:
+- a `live_decode.fault_codes` name matching a crane-safety keyword
+  (brake / upper·lower·travel limit / load check / safe torque / STO /
+  answer-back / encoder / hoist) with no matching `provenance.sources` excerpt.
+- a crane-safety `parameters[]` or `keypad_navigation[]` entry with an empty
+  `source_citation`.
+- **a crane-safety `fault_entries[]` entry (schema_version 3 runtime surface)
+  with an empty `action` OR an empty `source_citation.excerpt`/`page`.** This is
+  the runtime half: a mnemonic-only crane drive (G+ Mini) keeps
+  `live_decode.fault_codes = {}` and carries every fault in `fault_entries[]`, so
+  the safety codes (`BE*` brake, `LL*`/`UL*` limits, `LC` load check, `STO`,
+  `PG*` encoder) are only visible here. Safety is triggered by the fault-**id**
+  prefix as well as the name, so a garbled/keyword-free name (a Run B fault-bleed
+  defect) can't let a safety code slip through uncited.
+
 ### E. Reproducible grading report (`grading/report.py` + `grade.py` CLI)
 Emit BOTH `grading_report.json` (machine-readable) and `grading_report.md`
 (human-readable) containing: pack name; source manual identity; source PDF

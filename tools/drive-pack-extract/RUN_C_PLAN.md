@@ -25,8 +25,13 @@ items 3–5) and #2685 (GS20 — same schema class; one shared fix).
 > `schema_version` 3 + loader `_fault_entries` + `DrivePack.fault_entry()`
 > (case-sensitive), 77-fault candidate round-trip green, GS10/PF40/PF525 +
 > extractor suite unchanged. Item **3 (grading `domain_rules.py` runtime crane
-> hard-fail) is OUTSTANDING** — deferred to keep the schema/loader slice
-> reviewable; must land before C2 promotion.
+> hard-fail) LANDED** — `_crane_domain_violations` now extends the family-gated
+> crane hard-fail to the `fault_entries[]` runtime surface: a crane-safety
+> entry (by `BE*/LL*/UL*/LC/STO/PG` id prefix or safety keyword in its name)
+> must carry a non-empty `action` **and** a cited `source_citation` (page +
+> excerpt). No threshold change; `GRADING_SPEC.md` §D updated; 7 fixture tests
+> in `tests/test_crane_domain.py` incl. the real 77-entry candidate (all cited,
+> no new violation). C2 promotion precondition met.
 1. Extend `mira-bots/shared/drive_packs/schema.py` so mnemonic fault
    identifiers are first-class. Direction locked by Run B evidence
    (`runA/COMPARISON_CONTRACT.json` → `delta.schema_direction_evidence`):
