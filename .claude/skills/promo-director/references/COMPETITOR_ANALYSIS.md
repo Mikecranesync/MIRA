@@ -1,8 +1,34 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-21
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-21
+
+### Most actionable change for MIRA playbook
+
+Rockwell + Augury's "insight to action" framing (July 2026) is the most direct new competitive signal: a combined detection+execution stack (Augury Reliability Agent → Fiix MAX work orders) is now a single SKU. MIRA's counterplay should sharpen "cited sources + per-asset validation" — the part neither can match — rather than competing on "agentic" framing, which is now crowded.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — acquired by Autodesk for $3.6B all-cash (announced May 28, deal closed Aug 3, 2026); now "An Autodesk Company". No dedicated launch video found; press release: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — competitor identity shift, not a video event
+- **Fiix + Augury** — Rockwell Automation + Augury strategic partnership (July 23, 2026): Fiix MAX AI + Augury Reliability Agent as combined "insight to action" offering; initial availability September 2026: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" launch at AVEVA World Milan (May 18, 2026): role-based AI agents built on Machine Health; "Industrial Context Graph" synthesizes machine signals + AVEVA CONNECT operational context + Gemini; press release: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — video interview with CEO Elan Greenberg: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+
+**Automation / SCADA**
+- Nothing material post-May 3; Siemens CES 2026 keynote and Rockwell ROKStudios already captured in prior delta
+
+**B2B SaaS (pattern transfer)**
+- **Figma** — Config 2026 keynote (June 23–25, Moscone): https://www.youtube.com/watch?v=2ZCc4k_IV5w — theme: "everything on the canvas"; AI agent live for Professional/Enterprise since May 20; deep-dive agents session: https://www.youtube.com/watch?v=0HqSSIPZkbI
+- **Cursor** — Compile 2026 (June 16, SF): Composer 3 (1.5T-param model trained on SpaceX Colossus; Claude Opus / GPT-5.5 class); Origin (GitHub competitor for AI agents); SpaceX acquisition ($60B, closed Aug 15, 2026) — no dedicated YouTube launch video found; coverage: https://alphasignal.ai/news/cursor-drops-composer-3-a-1-5t-parameter-model-trained-on-spacex-s-supercomputer
+- **Anthropic** — Code with Claude 2026 developer conference: SF keynote https://www.youtube.com/watch?v=GMIWm5y90xA; London: https://www.youtube.com/watch?v=6amLO7I9xdg; "What's New in Claude Code": https://www.youtube.com/watch?v=2g8A53SIv3w; Claude 6 (Jun 9); Opus 5 (Aug, near-frontier at half price); Cowork (Aug 12)
+- **Notion** — 3.5 Developer Platform (May 13); 3.6 External Agents (Jul 1): Claude + Cursor as first two external agents running autonomously inside Notion: https://www.notion.com/releases/2026-07-01
 
 ---
 
@@ -61,6 +87,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 ### MaintainX
 
+**Autodesk acquisition (May–Aug 2026)**
+- Announced May 28, 2026; closed Aug 3, 2026; all-cash $3.6B
+- Now operating as "MaintainX, An Autodesk Company" (YouTube channel unchanged)
+- Strategic rationale: Autodesk building unified ops platform connecting design/build lifecycle to maintenance execution
+- No dedicated launch video; acquisition news page: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/
+- Pattern shift: MaintainX is no longer a stand-alone CMMS competitor — it is Autodesk's maintenance layer, backed by $7B+ ARR and 250k+ customer relationships. Competitive framing against MIRA changes.
+
 **CoPilot launch (Feb 6, 2025)**
 - URL: https://www.youtube.com/watch?v=TopihF3IzSo
 - Title: "Meet MaintainX CoPilot® for Smarter Maintenance"
@@ -92,7 +125,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 ### Fiix
 
-No dedicated promo/launch video found for 2025–2026. Product page positions AI-powered work orders. Starting at $45/mo. Rating: 4.5/5 (627 reviews). Rockwell Automation subsidiary — may be consolidating under Rockwell brand.
+**Rockwell + Augury agentic AI partnership (Jul 23, 2026)**
+- Joint offering: Augury Reliability Agent (detection) + Fiix MAX AI (work order execution) = "insight to action" pipeline
+- Framing: "from early issue detection and diagnosis to maintenance planning, execution and continuous improvement through a connected reliability workflow"
+- Initial availability: September 2026
+- No dedicated YouTube video; partnership press release: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+- Competitive note: Fiix is now the CMMS leg of a detection+execution stack. MIRA's counterplay is knowledge citation + per-asset validation, not just agentic action.
+
+No dedicated promo/launch video found for Fiix standalone in 2025–2026. Starting at $45/mo. Rating: 4.5/5 (627 reviews). Rockwell Automation subsidiary.
 
 ---
 
@@ -144,7 +184,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Industrial AI Workforce launch (May 18, 2026)**
+- Press: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- Video interview with CEO Elan Greenberg (Machine Design, AVEVA World Milan): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- New framing: role-based AI agents ("Industrial AI Workforce") built on Machine Health; "Industrial Context Graph" synthesizes signals + AVEVA CONNECT + Gemini for contextual reasoning
+- Claim: moves manufacturers from reactive operations to "AI-driven, autonomous production"
+- No standalone YouTube channel video confirmed for this specific announcement
+
+**Pattern note (updated 2026-08-21):** Augury pivoted from "machine health sensor platform" to "Industrial AI Workforce" — explicitly competing on agentic AI, not just detection. The Rockwell partnership (Jul 2026) means Fiix CMMS is now the execution layer for Augury's agents. Dual-track strategy continues: technical deep-dives for practitioners + Bloomberg-style credibility pieces for enterprise. The "insight to action" framing is the new headline claim.
 
 ---
 
@@ -304,6 +351,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 developer conference (May–Jun 2026)**
+- SF opening keynote: https://www.youtube.com/watch?v=GMIWm5y90xA — latest from engineering and product leads
+- "What's New in Claude Code" (technical, ~20 min): https://www.youtube.com/watch?v=2g8A53SIv3w
+- London: https://www.youtube.com/watch?v=6amLO7I9xdg; Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo
+- Claude 6 (Jun 9, 2026); Opus 5 (Aug 2026, near-frontier at half price); Claude Cowork (Aug 12)
+- Pattern: Anthropic adopted the conference-as-launch-vehicle format (SF + London + Tokyo legs); content lives on YouTube organically; developer audience primary
+
 ---
 
 ### Cursor
@@ -316,6 +370,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Compile 2026 (Jun 16, 2026 — SF developer conference)**
+- Composer 3: 1.5T-param model trained from scratch on SpaceX Colossus (1M H100-equivalent GPUs); targets Claude Opus / GPT-5.5 class performance
+- Origin: GitHub competitor built for AI agents — 296K clones/hour; AI-powered merge conflict resolution; waitlist open, ships fall 2026
+- No dedicated YouTube launch video found; news: https://alphasignal.ai/news/cursor-drops-composer-3-a-1-5t-parameter-model-trained-on-spacex-s-supercomputer
+- SpaceX acquisition: $60B all-stock (largest VC-backed startup acquisition ever); closed Aug 15, 2026. TechCrunch: https://techcrunch.com/2026/08/15/spacex-officially-closes-its-cursor-acquisition/
+- Pattern: Cursor's go-to-market remains changelog + developer word-of-mouth even post-acquisition; still no brand ad spend visible
 
 ---
 
@@ -340,6 +401,11 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5 Developer Platform (May 13, 2026) + 3.6 External Agents (Jul 1, 2026)**
+- 3.5: Developer Platform for AI agents — workspace as a hub for external tools to read/write
+- 3.6: Claude and Cursor are the first two External Agents in Notion; run autonomously alongside team workflows: https://www.notion.com/releases/2026-07-01
+- Pattern: Notion is now a multi-agent orchestration surface, not just a productivity app; external agents as first-class citizens signals mainstream acceptance of "external AI = trusted teammate"
+
 ---
 
 ### Figma
@@ -354,6 +420,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 23–25, 2026 — Moscone Center SF)**
+- Main keynote: https://www.youtube.com/watch?v=2ZCc4k_IV5w ("Design and product-building are changing, and so are the roles we play in the process")
+- Agents deep-dive: https://www.youtube.com/watch?v=0HqSSIPZkbI
+- Theme: "everything on the canvas" — code, motion, shaders, custom tools, AI agent all unified on one surface
+- Figma AI agent rolled out to Professional/Enterprise on May 20, 2026; builds, edits, automates within design system guardrails
+- Partnerships: Anthropic (Claude) + OpenAI (Codex) integrations announced
+- Conference-as-launch-vehicle pattern holds: all major announcements delivered live, keynote lives organically on YouTube
 
 ---
 
@@ -395,6 +469,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **Acquired by Autodesk ($3.6B, Aug 2026)** — now Autodesk's maintenance layer; competitive positioning changes.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **Pivoted to "Industrial AI Workforce" framing (May 2026)** — now explicitly agentic AI, not just detection. Rockwell partnership makes Fiix CMMS the execution layer.
+- **Cursor**: remained changelog + developer word-of-mouth even after Compile 2026 and SpaceX acquisition. Zero brand ad spend visible — pure product-led growth at $2B ARR and growing.
+- **Anthropic**: adopted multi-city developer conference format (Code with Claude 2026: SF/London/Tokyo) as primary video launch vehicle. Conference keynotes live organically on YouTube; no standalone brand ads.
