@@ -634,6 +634,7 @@ CLAUDE.md
   settings.json
   agents/
     investigator.md
+    repo-archaeologist.md
     contract-architect.md
     test-engineer.md
     implementer.md
@@ -648,6 +649,8 @@ CLAUDE.md
     deployments.md
   skills/
     defect-workflow/
+      SKILL.md
+    repo-archaeologist/
       SKILL.md
     diagnostic-contract-check/
       SKILL.md
@@ -1114,6 +1117,15 @@ Report each item as:
 Evidence must include exact commands, IDs, URLs, paths, or artifact metadata.
 Stop immediately on the user’s stated stop conditions.
 ```
+
+### 10.9 Repo Archaeologist (standing — Foreman / Answer Radar)
+
+File: `.claude/agents/repo-archaeologist.md`  
+Skill (constant load): `.claude/skills/repo-archaeologist/SKILL.md`
+
+Standing **Grok-side**, read-only miner. Answers “what do we already have?” **before any builder** and again **after an Answer Radar failure**. Searches beyond `main` (open/closed PRs, branches, abandoned prototypes). Adjacent to investigator — investigator reproduces a defect; this role maps existing implementations so the team does not build a third copy.
+
+Do not write production code. Deliver a map with exactly one verdict: REUSE / CONNECT / FINISH / CONSOLIDATE / REPAIR / REVIVE / BUILD.
 
 ---
 
