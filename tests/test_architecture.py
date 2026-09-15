@@ -1647,3 +1647,118 @@ def test_registry_tags_checker_catches_violations():
     commented = "mod-a: # note\n  path: a/\n"
     entries, tag_lines, _ = scan_registry_tags(commented)
     assert entries == 1 and tag_lines == 0, "trailing-comment key evaded the entry count"
+
+
+# ---------------------------------------------------------------------------
+# Contract 16: cmms_equipment rows are created ONLY by shared.asset_bridge.create_equipment (#3708)
+#
+# POST /api/assets (mira-hub) creates a machine as a whole: the cmms_equipment
+# row, its kg_entities node, and cmms_equipment.uns_path. Every consumer that
+# needs a machine's location anchors on that node, so a bare
+# `INSERT INTO cmms_equipment` from Python creates a machine MIRA refuses to
+# talk about. Python code therefore has exactly ONE creation path —
+# `create_equipment` (refuse legacy tenants before inserting, insert, bridge,
+# one call) — and this contract forbids the insert literal anywhere else. A
+# textual ban on the literal is control-flow-proof by construction: there is
+# no second path to pair (Codex round 2 F2 on #3715).
+# ---------------------------------------------------------------------------
+
+_CMMS_EQUIPMENT_WRITE_GLOBS = [
+    "mira-bots/**/*.py",
+    "mira-core/**/*.py",
+    "mira-crawler/**/*.py",
+    "mira-mcp/**/*.py",
+    "mira-pipeline/**/*.py",
+    "mira-relay/**/*.py",
+    "tools/**/*.py",
+]
+
+_CMMS_EQUIPMENT_CREATOR = "mira-bots/shared/asset_bridge.py"
+_CMMS_EQUIPMENT_CREATOR_REASON = (
+    "THE creation helper — create_equipment() refuses non-UUID tenants before inserting, "
+    "inserts, and bridges the row (kg_entities node + uns_path) in one call."
+)
+
+_CMMS_EQUIPMENT_INSERT_RE = re.compile(
+    r"\binsert\s+into\s+(public\.)?cmms_equipment\b", re.IGNORECASE
+)
+
+
+def scan_cmms_equipment_writer(
+    rel: str, source: str, creator: str = _CMMS_EQUIPMENT_CREATOR
+) -> list[str]:
+    """Return violations for one file (empty list = clean)."""
+    if rel == creator:
+        return []
+    return [
+        f"{rel}:{_line_of(source, m.start())}: INSERT INTO cmms_equipment outside "
+        "shared.asset_bridge.create_equipment — Python creates machines through that ONE "
+        "helper only (Contract 16)"
+        for m in _CMMS_EQUIPMENT_INSERT_RE.finditer(source)
+    ]
+
+
+def _cmms_equipment_write_surface_files() -> list[Path]:
+    seen: set[Path] = set()
+    for pattern in _CMMS_EQUIPMENT_WRITE_GLOBS:
+        for p in _ROOT.glob(pattern):
+            if not p.is_file() or p.suffix != ".py":
+                continue
+            parts = p.parts
+            if (
+                "__pycache__" in parts
+                or "tests" in parts
+                or "node_modules" in parts
+                or ".venv" in parts
+                or p.name.startswith("test_")
+            ):
+                continue
+            seen.add(p)
+    return sorted(seen)
+
+
+def test_cmms_equipment_is_created_only_by_the_asset_bridge():
+    """No Python writer mints a machine outside create_equipment. Doctrine: issue #3708,
+    .claude/rules/uns-compliance.md, mira-bots/shared/asset_bridge.py."""
+    offenders: list[str] = []
+    for path in _cmms_equipment_write_surface_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        offenders.extend(scan_cmms_equipment_writer(rel, path.read_text(errors="replace")))
+    assert not offenders, (
+        "cmms_equipment inserted outside shared.asset_bridge.create_equipment — the machine "
+        "would have no kg_entities node / uns_path and MIRA would refuse it (#3708).\n\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_cmms_equipment_creator_is_real():
+    """The one exempt file exists, inserts, and exposes the helper the writers use."""
+    src = (_ROOT / _CMMS_EQUIPMENT_CREATOR).read_text()
+    assert _CMMS_EQUIPMENT_INSERT_RE.search(src), "the creator no longer inserts cmms_equipment?"
+    assert "def create_equipment(" in src and "require_uuid_tenant(" in src
+    assert len(_CMMS_EQUIPMENT_CREATOR_REASON) >= 30
+
+
+def test_cmms_equipment_checker_catches_violations():
+    """The guard must FAIL on the obvious forks (so a green run means something)."""
+    bare = "def f(cur, i):\n    cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+    assert scan_cmms_equipment_writer("x.py", bare), "checker missed a bare insert"
+    assert scan_cmms_equipment_writer(
+        "x.py", bare.replace("INSERT INTO cmms_equipment", "insert  into public.cmms_equipment")
+    ), "checker missed a case/schema-qualified variant"
+    # Codex round 2 F2: insert on one branch, bridge on another — there is no
+    # "pairing" to fool any more; the literal itself is the violation.
+    branchy = (
+        "def f(cur, i, create, t, tag):\n"
+        "    if create:\n        cur.execute('INSERT INTO cmms_equipment (id) VALUES (%s)', (i,))\n"
+        "    else:\n        bridge_asset(cur, t, i, tag)\n"
+    )
+    assert scan_cmms_equipment_writer("x.py", branchy), "branch-split insert must be reported"
+    assert scan_cmms_equipment_writer("x.py", bare + "    bridge_asset(cur, t, i, tag)\n"), (
+        "a bridge call next to a raw insert does not license the insert"
+    )
+    assert scan_cmms_equipment_writer(_CMMS_EQUIPMENT_CREATOR, bare) == [], (
+        "the creator itself is exempt"
+    )
+    assert scan_cmms_equipment_writer("x.py", "create_equipment(cur, t, tag, columns={})\n") == []
+    assert scan_cmms_equipment_writer("x.py", "SELECT 1 FROM cmms_equipment\n") == []
