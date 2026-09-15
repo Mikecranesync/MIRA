@@ -5,7 +5,7 @@
 #
 # Aborts the pull (exit 0, logs a reason) if ANY of:
 #   - a rebase is in progress  (.git/rebase-merge or .git/rebase-apply)
-#   - the tree is dirty        (git status --porcelain non-empty = active work)
+#   - the tree is dirty        (tracked files modified; untracked files ignored)
 #   - a session is active      (/tmp/mira-claude-active.lock mtime < 2h)
 #   - the branch is not `main` (never pull into a feature branch)
 # Otherwise it runs the pull.
@@ -44,8 +44,16 @@ if [ -d "${GITDIR}/rebase-merge" ] || [ -d "${GITDIR}/rebase-apply" ]; then
 fi
 
 # 2. Dirty tree = active work?
-if [ -n "$("$GIT" status --porcelain 2>/dev/null)" ]; then
-  skip "working tree is dirty (uncommitted changes present)"
+# --untracked-files=no is deliberate: a bare `status --porcelain` also lists `??`
+# entries, so ONE stray untracked file (a scratch doc, a leftover report) pinned
+# this pull for four consecutive nights and the nightly eval silently graded a
+# stale HEAD (#2952). Untracked files are not active work — `pull --rebase
+# --autostash` cannot lose them. Tradeoff: if an incoming commit adds a path
+# where an untracked file already sits, the pull now aborts ("untracked working
+# tree file would be overwritten") instead of skipping. That fails loudly and
+# without data loss, which beats a silent multi-night stall.
+if [ -n "$("$GIT" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+  skip "working tree is dirty (tracked files modified)"
 fi
 
 # 3. Active session lock < LOCK_MAX_AGE old?
