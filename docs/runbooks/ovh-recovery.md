@@ -145,6 +145,31 @@ can't make) and reboots. CHARLIE then proves `ssh -i ~/.ssh/id_ed25519 -o Prefer
 -o UserKnownHostsFile=<prod pin> ubuntu@40.160.141.61 id` against the **production** host key, and
 continues § 2 → § 3.
 
+**✅ DONE 2026-09-15 ~00:10Z (rescue work complete; awaiting netboot→normal from Mike).**
+- Authenticated to rescue (Debian 12 on `/dev/sda1`) with `OVH_VPS_INITIAL_ROOT_PASSWORD` — Mike
+  stored the OVH one-time rescue password under that existing name. Rescue host key pinned (TOFU).
+- Real rootfs = **`/dev/sdb1`** (`cloudimg-rootfs`, **Ubuntu 24.04.4 LTS**). Mounted read-only, inspected:
+  **clean stock image, never bootstrapped** — no `/opt/mira`, no Docker, empty `/var/www`, only
+  `ubuntu` (uid 1000). No app/customer state ⇒ no STOP.
+- **Exact expiry cause found:** cloud-init `cc_set_passwords` ran `passwd --expire ubuntu` at delivery
+  (21:10:28Z) → `sp_lstchg=0`, a one-shot first-login force-change (`once-per-instance`; logs confirm
+  it did **not** re-run on later boots). It is **not** a permanent policy. My three earlier SSH
+  password changes already set `sp_lstchg` to today, so the disk's authoritative `chage -l` shows the
+  account **healthy: Password expires never, status `P`**. ⇒ **minimum aging fix = none** (already cleared).
+- **Keys installed (chroot, ownership via the disk's `/etc/passwd`):** CHARLIE `SHA256:9QDf…` →
+  `/home/ubuntu/.ssh/authorized_keys` (ubuntu:ubuntu, 600) **and** `/root/.ssh/authorized_keys`
+  (root, 600) as insurance against any re-expire (root is immune to the ubuntu one-shot).
+- **Security note:** auth.log shows an internet brute-force against `root` from `120.48.125.245`
+  (no success; likely what tripped OVH's anti-hack rescue). `PasswordAuthentication` is currently
+  `yes` on the box — it is **left on** until key auth is proven post-reboot (constraint: don't disable
+  the only working access before the replacement is verified). `bootstrap-host.sh` (§2) then hardens
+  to keys-only, which stops the brute-force.
+- Unmounted in reverse, verified nothing under `/mnt/sys`, `sync`. **No password rotated in rescue**
+  (still three total from the SSH loop; live value = `OVH_VPS_UBUNTU_PASSWORD`).
+
+**Remaining: Mike flips netboot → hard disk (normal) + reboots; then CHARLIE proves key auth against
+the production pin `SHA256:yslC…8FrY` and continues § 2 → § 3 (private stage only).**
+
 4. **Scoped Doppler service tokens**: one for `factorylm/stg` (private test) and, only at cutover,
    one for `factorylm/prd`. Never a personal token on the host.
 5. **Tailscale auth key** (optional, for the Bravo embedder + private testing over the tailnet).
