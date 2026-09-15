@@ -24,9 +24,6 @@
     "health-score:worker": "bun run scripts/health-score-worker.ts"
   },
   "dependencies": {
-    "@factorylm/interaction": "workspace:*",
-    "@factorylm/theme": "workspace:*",
-    "@factorylm/ui": "workspace:*",
     "@node-saml/node-saml": "^5.0.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",

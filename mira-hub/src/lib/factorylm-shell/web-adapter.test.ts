@@ -55,12 +55,13 @@ describe("attachments", () => {
   });
 
   it("asks for the rear camera on attachCamera and not on attachPhoto", async () => {
-    const pickFile = vi.fn(async () => file("p.jpg", "image/jpeg"));
+    const pickFile: WebAdapterDeps["pickFile"] & ReturnType<typeof vi.fn> =
+      vi.fn(async (_accept: string, _capture?: "environment" | "user") => file("p.jpg", "image/jpeg"));
     const a = createWebAdapter(deps({ pickFile }));
     await a.attachCamera();
     await a.attachPhoto();
-    expect(pickFile.mock.calls[0][1]).toBe("environment");
-    expect(pickFile.mock.calls[1][1]).toBeUndefined();
+    expect(pickFile.mock.calls[0]?.[1]).toBe("environment");
+    expect(pickFile.mock.calls[1]?.[1]).toBeUndefined();
   });
 
   it("marks a selected file ready, never uploaded", async () => {
@@ -81,15 +82,15 @@ describe("scanMachine — unsupported on web, and not faked", () => {
 
 describe("shareArtifact", () => {
   it("shares via Web Share and reports shared", async () => {
-    const share = vi.fn(async () => {});
+    const share = vi.fn(async (_data: { title?: string; text?: string; url?: string }) => {});
     expect(await createWebAdapter(deps({ share })).shareArtifact("art_7")).toBe("shared");
-    expect(share.mock.calls[0][0].url).toBe("https://app.factorylm.com/artifacts/art_7");
+    expect(share.mock.calls[0]?.[0].url).toBe("https://app.factorylm.com/artifacts/art_7");
   });
 
   it("percent-encodes the artifact id", async () => {
-    const share = vi.fn(async () => {});
+    const share = vi.fn(async (_data: { title?: string; text?: string; url?: string }) => {});
     await createWebAdapter(deps({ share })).shareArtifact("a b/c");
-    expect(share.mock.calls[0][0].url).toBe("https://app.factorylm.com/artifacts/a%20b%2Fc");
+    expect(share.mock.calls[0]?.[0].url).toBe("https://app.factorylm.com/artifacts/a%20b%2Fc");
   });
 
   it("reports cancelled when the browser has no Web Share", async () => {
