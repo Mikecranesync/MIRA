@@ -192,3 +192,120 @@
 .fl-demo-notice__hint { margin: 0; color: var(--fl-workspace-muted); }
 .fl-attachment-menu__demo { margin: 0 0 var(--fl-workspace-space-2); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); line-height: 1.45; }
 .fl-attachment-menu__demo-hint { margin: 0 0 var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+
+/* --- Public demo machine view (SimLab conveyor jam) ---------------------------
+   Lives in shell.css deliberately: the colour-discipline guard scans exactly
+   shell.css, conversation.css and workspace.css for literal colours, so a new
+   stylesheet here would be an unguarded one. Tokens only.
+
+   Doctrine (.claude/rules/ui-style.md + industrial-hmi-scada-design): muted
+   normal, colour reserved for state, no blink, no gradients, no fake 3D. The
+   conversation stays the page; this strip is bounded so it cannot outgrow it. */
+.fl-machine {
+  display: grid;
+  gap: var(--fl-workspace-space-3);
+  padding: var(--fl-workspace-space-3);
+  border-block-end: 1px solid var(--fl-workspace-line);
+  background: var(--fl-workspace-surface);
+  color: var(--fl-workspace-ink);
+}
+.fl-machine__status { display: grid; gap: var(--fl-workspace-space-2); }
+.fl-machine__title { margin: 0; font-size: var(--fl-workspace-fs); font-weight: 600; color: var(--fl-workspace-ink); }
+.fl-machine__freshness { margin: 0; font-size: var(--fl-workspace-fs-xs); color: var(--fl-workspace-muted); }
+.fl-machine__freshness-state { font-weight: 600; }
+/* Freshness is state: trustworthy data is quiet, untrustworthy data is not. */
+.fl-machine__freshness[data-connection="stale"] .fl-machine__freshness-state { color: var(--fl-workspace-warn); }
+.fl-machine__freshness[data-connection="offline"] .fl-machine__freshness-state { color: var(--fl-workspace-fault); }
+.fl-machine__error { margin: 0; font-size: var(--fl-workspace-fs-xs); color: var(--fl-workspace-fault); font-family: var(--fl-workspace-mono); }
+.fl-machine__controls { display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); align-items: center; }
+.fl-machine__control {
+  padding-inline: var(--fl-workspace-space-3);
+  border: 1px solid var(--fl-workspace-line);
+  border-radius: var(--fl-workspace-radius);
+  background: var(--fl-workspace-bg);
+  color: var(--fl-workspace-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.fl-machine__control[data-action="inject"] { border-color: var(--fl-workspace-accent); color: var(--fl-workspace-accent); font-weight: 600; }
+.fl-machine__control:hover:not(:disabled) { border-color: var(--fl-workspace-accent); }
+.fl-machine__control:disabled { cursor: progress; color: var(--fl-workspace-muted); border-color: var(--fl-workspace-line); }
+.fl-machine__hint, .fl-machine__empty { margin: 0; font-size: var(--fl-workspace-fs-xs); color: var(--fl-workspace-muted); }
+.fl-machine__empty code { font-family: var(--fl-workspace-mono); }
+
+/* Diagram: bounded so the conversation stays dominant on every viewport. */
+.fl-machine__diagram { inline-size: 100%; max-block-size: 7rem; block-size: auto; }
+.fl-machine__belt { fill: var(--fl-workspace-bg); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
+.fl-machine__belt-run { stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 2; stroke-dasharray: 6 6; }
+.fl-machine__case { fill: var(--fl-workspace-surface); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
+.fl-machine__stop-bar { stroke: var(--fl-workspace-warn); stroke-width: 3; stroke-linecap: round; }
+
+/* State colour on the zone, not on the belt texture: a blocked zone is the
+   thing that changed, and the belt underneath is unremarkable. */
+.fl-machine__zone[data-condition="blocked"] .fl-machine__belt { stroke: var(--fl-workspace-warn-line); fill: var(--fl-workspace-warn-tint); }
+.fl-machine__zone[data-condition="faulted"] .fl-machine__belt { stroke: var(--fl-workspace-fault-line); fill: var(--fl-workspace-fault-tint); }
+.fl-machine__zone[data-condition="running"] .fl-machine__belt { stroke: var(--fl-workspace-ok-line); }
+.fl-machine__zone[data-condition="unknown"] .fl-machine__belt,
+.fl-machine__zone[data-condition="stopped"] .fl-machine__belt { stroke: var(--fl-workspace-off-line); }
+
+.fl-machine__packer-body { fill: var(--fl-workspace-bg); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
+.fl-machine__packer-infeed { fill: var(--fl-workspace-bg); stroke: var(--fl-workspace-line-strong, var(--fl-workspace-line)); stroke-width: 1; }
+.fl-machine__packer[data-condition="running"] .fl-machine__packer-body { stroke: var(--fl-workspace-ok-line); }
+.fl-machine__packer[data-condition="faulted"] .fl-machine__packer-body { stroke: var(--fl-workspace-fault-line); fill: var(--fl-workspace-fault-tint); }
+.fl-machine__packer[data-condition="unknown"] .fl-machine__packer-body { stroke: var(--fl-workspace-off-line); }
+.fl-machine__packer-fault line { stroke: var(--fl-workspace-fault); stroke-width: 3; stroke-linecap: round; }
+
+/* Motion. Two independent facts: the belt turns (process.speed_fpm) and the
+   product advances (blocked/faulted). During the jam they disagree, and that
+   disagreement IS the story -- belts at 60 fpm, cases held against the packer. */
+.fl-machine__zone[data-belt="running"] .fl-machine__belt-run {
+  animation: fl-belt-run 0.9s linear infinite;
+}
+.fl-machine__zone[data-product="moving"] .fl-machine__case {
+  animation: fl-case-advance var(--fl-belt-duration, 3s) linear infinite;
+  animation-delay: calc(var(--fl-case-index, 0) * var(--fl-belt-duration, 3s) / -4);
+}
+/* Held and stopped both mean "not advancing"; neither blinks, neither creeps. */
+.fl-machine__zone[data-product="held"] .fl-machine__case,
+.fl-machine__zone[data-product="stopped"] .fl-machine__case { animation: none; }
+@keyframes fl-belt-run { to { stroke-dashoffset: -12; } }
+@keyframes fl-case-advance { from { transform: translateX(0); } to { transform: translateX(168px); } }
+
+/* Asset list: the accessible, searchable, testable copy of everything above. */
+.fl-machine__assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--fl-workspace-space-2); margin: 0; padding: 0; list-style: none; }
+.fl-machine__asset { display: grid; gap: var(--fl-workspace-space-1); padding: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); }
+.fl-machine__asset[data-condition="blocked"] { border-color: var(--fl-workspace-warn-line); }
+.fl-machine__asset[data-condition="faulted"] { border-color: var(--fl-workspace-fault-line); }
+.fl-machine__asset-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--fl-workspace-space-2); margin: 0; }
+.fl-machine__asset-name { font-size: var(--fl-workspace-fs); font-weight: 600; }
+.fl-machine__asset-state { font-size: var(--fl-workspace-fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fl-workspace-muted); }
+.fl-machine__asset-state[data-condition="running"] { color: var(--fl-workspace-ok-ink); }
+.fl-machine__asset-state[data-condition="blocked"] { color: var(--fl-workspace-warn); }
+.fl-machine__asset-state[data-condition="faulted"] { color: var(--fl-workspace-fault); }
+.fl-machine__asset-reason { margin: 0; font-size: var(--fl-workspace-fs-xs); color: var(--fl-workspace-muted); line-height: 1.4; }
+.fl-machine__signals { display: grid; gap: var(--fl-workspace-space-1); margin: var(--fl-workspace-space-1) 0 0; }
+.fl-machine__signal { display: flex; justify-content: space-between; gap: var(--fl-workspace-space-2); font-size: var(--fl-workspace-fs-xs); }
+.fl-machine__signal dt { color: var(--fl-workspace-muted); }
+.fl-machine__signal dd { margin: 0; font-family: var(--fl-workspace-mono); color: var(--fl-workspace-ink); }
+
+.fl-machine__alarms { display: grid; gap: var(--fl-workspace-space-1); margin: 0; padding: 0; list-style: none; }
+.fl-machine__alarm { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-1) var(--fl-workspace-space-2); border-inline-start: 3px solid var(--fl-workspace-off-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); font-size: var(--fl-workspace-fs-xs); }
+.fl-machine__alarm[data-severity="warn"] { border-inline-start-color: var(--fl-workspace-warn-line); background: var(--fl-workspace-warn-tint); }
+.fl-machine__alarm[data-severity="fault"],
+.fl-machine__alarm[data-severity="critical"] { border-inline-start-color: var(--fl-workspace-fault-line); background: var(--fl-workspace-fault-tint); }
+.fl-machine__alarm-code { font-family: var(--fl-workspace-mono); font-weight: 600; }
+.fl-machine__alarm-message { flex: 1 1 14rem; min-inline-size: 0; }
+.fl-machine__alarm-since { color: var(--fl-workspace-muted); }
+
+@media (max-width: 48rem) {
+  .fl-machine { gap: var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2); }
+  .fl-machine__diagram { max-block-size: 5rem; }
+  .fl-machine__assets { grid-template-columns: 1fr; }
+}
+
+/* A visitor who asked for less motion gets none -- including the belt, whose
+   whole job is to imply movement. The state words and colours carry it. */
+@media (prefers-reduced-motion: reduce) {
+  .fl-machine__belt-run,
+  .fl-machine__case { animation: none !important; }
+}
