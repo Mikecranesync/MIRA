@@ -9,7 +9,7 @@ The Docker image uses mira_crawler.* paths via PYTHONPATH.
 
 from __future__ import annotations
 
-import httpx  # ensure httpx is in sys.modules before any patch.dict(sys.modules) runs
+import httpx  # noqa: F401  # ensure httpx is in sys.modules before any patch.dict(sys.modules) runs
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -47,18 +47,16 @@ def _fake_chunks(n: int = 3) -> list[dict]:
 
 
 class TestDiscoverManufacturer:
-
     @patch.dict("os.environ", {"APIFY_API_TOKEN": ""})
     def test_skips_without_api_token(self):
         import importlib
 
         import tasks.discover as mod
+
         importlib.reload(mod)
 
         # Call the underlying function directly (not as Celery task)
-        result = mod.discover_manufacturer(
-            "Rockwell", "https://literature.rockwellautomation.com"
-        )
+        result = mod.discover_manufacturer("Rockwell", "https://literature.rockwellautomation.com")
         assert result["error"] == "no_token"
         assert result["urls_found"] == 0
 
@@ -73,14 +71,15 @@ class TestDiscoverManufacturer:
         ]
 
         with (
-            patch.dict("sys.modules", {"apify_client": MagicMock(ApifyClient=MagicMock(return_value=mock_client))}),
+            patch.dict(
+                "sys.modules",
+                {"apify_client": MagicMock(ApifyClient=MagicMock(return_value=mock_client))},
+            ),
             patch("tasks.ingest.ingest_url") as mock_ingest,
         ):
             from tasks.discover import discover_manufacturer
 
-            result = discover_manufacturer(
-                "ABB", "https://library.e.abb.com", "cheerio", 200
-            )
+            result = discover_manufacturer("ABB", "https://library.e.abb.com", "cheerio", 200)
 
         assert result["manufacturer"] == "ABB"
         assert result["urls_found"] == 2
@@ -102,12 +101,12 @@ class TestDiscoverManufacturer:
 
 
 class TestIngestUrl:
-
     @patch.dict("os.environ", {"MIRA_TENANT_ID": ""})
     def test_fails_without_tenant_id(self):
         import importlib
 
         import tasks.ingest as mod
+
         importlib.reload(mod)
 
         result = mod.ingest_url("https://ibiblio.org/test.pdf")
@@ -132,6 +131,7 @@ class TestIngestUrl:
             patch("ingest.quality.quality_gate", return_value=(True, "")),
         ):
             from tasks.ingest import ingest_url
+
             result = ingest_url("https://ibiblio.org/manual.pdf", "ABB", "ACS580")
 
         assert result["inserted"] == 5
@@ -154,6 +154,7 @@ class TestIngestUrl:
             patch("ingest.store.insert_chunk") as mock_insert,
         ):
             from tasks.ingest import ingest_url
+
             result = ingest_url("https://ibiblio.org/page.html")
 
         assert result["inserted"] == 0
@@ -173,6 +174,7 @@ class TestIngestUrl:
             patch("ingest.converter.extract_from_html", return_value=[]),
         ):
             from tasks.ingest import ingest_url
+
             result = ingest_url("https://ibiblio.org/empty.html")
 
         assert result["error"] == "no_content"
@@ -193,6 +195,7 @@ class TestIngestUrl:
             patch("ingest.store.insert_chunk") as mock_insert,
         ):
             from tasks.ingest import ingest_url
+
             result = ingest_url("https://ibiblio.org/manual.pdf")
 
         assert result["inserted"] == 0
@@ -205,7 +208,6 @@ class TestIngestUrl:
 
 
 class TestFoundationalKB:
-
     def test_target_counts(self):
         from tasks.foundational import APIFY_TARGETS, DIRECT_TARGETS
 
@@ -226,7 +228,12 @@ class TestFoundationalKB:
         for t in APIFY_TARGETS:
             assert "name" in t
             assert "start_url" in t
-            assert t["crawler_type"] in ("cheerio", "playwright:chrome", "playwright:adaptive", "playwright:firefox")
+            assert t["crawler_type"] in (
+                "cheerio",
+                "playwright:chrome",
+                "playwright:adaptive",
+                "playwright:firefox",
+            )
 
     def test_fans_out_correctly(self):
         with (
@@ -255,7 +262,6 @@ class TestFoundationalKB:
 
 
 class TestCeleryConfig:
-
     def test_app_imports(self):
         from celery_app import app
 
@@ -325,9 +331,7 @@ class TestCeleryConfig:
         assert "mira_crawler.tasks.ingest.*" in cfg.task_routes
         # Conversation-eval scorer routes to the historian queue (the only prod
         # worker with NEON_DATABASE_URL). Route key is the exact task name.
-        assert cfg.task_routes["mira_eval.score_conversation_eval"] == {
-            "queue": "historian"
-        }
+        assert cfg.task_routes["mira_eval.score_conversation_eval"] == {"queue": "historian"}
 
     def test_sane_defaults(self):
         import celeryconfig as cfg
