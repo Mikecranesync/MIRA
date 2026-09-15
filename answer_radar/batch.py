@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from answer_radar.freeze import freeze_question
+from answer_radar.kb_health import require_kb
 from answer_radar.runner import run_question
 from answer_radar.schema import QuestionRecord
 from answer_radar.seeds import seed_questions
@@ -36,6 +37,14 @@ async def run_batch(
     """Freeze every question, then answer each one blind, in order."""
     out_dir.mkdir(parents=True, exist_ok=True)
     frozen_dir = out_dir / "frozen"
+
+    # Prove the corpus is reachable BEFORE asking anything. Without this the harness
+    # cannot tell "MIRA knew nothing" from "the benchmark could not reach the knowledge
+    # base" — both produce uncited answers and honesty directives. Publishing the second
+    # as the first is what invalidated the 2026-09-05 VCAD 0/6 scorecard. Raises
+    # KBUnreachableError rather than producing a number nobody can attribute.
+    health = require_kb()
+    print(f"[kb    ] reachable — {health.detail}", file=sys.stderr)
 
     results: list[dict] = []
     for q in questions:
@@ -56,6 +65,14 @@ async def run_batch(
                 "question": q.to_dict(),
                 "frozen_snapshot": str(frozen_path),
                 "evaluation": record.to_dict(),
+                # Recorded per question so a scorecard can never be read without knowing
+                # whether the corpus was reachable when it was produced.
+                "kb_health": {
+                    "reachable": health.reachable,
+                    "probe_rows": health.rows,
+                    "tenant_id": health.tenant_id,
+                    "detail": health.detail,
+                },
             }
         )
 
