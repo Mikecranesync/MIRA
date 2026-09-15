@@ -108,10 +108,22 @@ KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 EOF
   sshd -t
-  if systemctl list-unit-files ssh.service >/dev/null 2>&1 && systemctl is-enabled ssh >/dev/null 2>&1; then
-    systemctl reload ssh
+  # Ubuntu 24.04 is SOCKET-ACTIVATED: `ssh.socket` is enabled and `ssh.service`
+  # reports "disabled", so the old `is-enabled ssh` probe fell through to
+  # `systemctl reload sshd` -- a unit that does not exist there. Under `set -e`
+  # that aborted the whole bootstrap BEFORE the clone and the Doppler CLI, while
+  # still exiting 0 overall, so it read as success. Observed on the #3800
+  # recovery VPS 2026-09-15.
+  #
+  # Under socket activation each connection spawns a fresh sshd that reads
+  # sshd_config.d anyway, so a reload is a convenience, never a requirement:
+  # try both unit names and treat "neither exists" as fine.
+  if systemctl reload ssh 2>/dev/null; then
+    log "sshd: reloaded ssh.service"
+  elif systemctl reload sshd 2>/dev/null; then
+    log "sshd: reloaded sshd.service"
   else
-    systemctl reload sshd
+    log "sshd: config written; no reload needed (socket-activated) or unit absent"
   fi
 else
   log "sshd: NOT hardened — no authorized key present (pass --admin-key). Password login stays on."
