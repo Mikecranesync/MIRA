@@ -920,8 +920,24 @@ class RAGWorker:
                     kg_context=local_kg_context,
                 )
             else:
-                no_kb = retrieval_attempted and not photo_b64
+                # No usable chunks. Admit the gap on any non-photo turn — including
+                # when retrieval never RAN (falsy tenant, see the `if effective_tenant`
+                # gate above). The old condition was `retrieval_attempted and not
+                # photo_b64`, which made a skipped retrieval report no_kb=False: not
+                # looking was recorded as evidence of no gap, so the honesty directive
+                # and the citation requirement both stayed off and the turn answered
+                # from parametric memory, uncited. Never looking is MORE reason to
+                # admit ignorance, not less (#3602).
+                no_kb = not photo_b64
                 self._last_no_kb = no_kb
+                if no_kb and not retrieval_attempted:
+                    # Loud: this is a misconfiguration, not a corpus gap. Silent
+                    # skipping is what let this go unnoticed across a whole eval run.
+                    logger.warning(
+                        "RETRIEVAL_SKIPPED no_tenant=1 asset=%r — recall was never "
+                        "called; answering without KB grounding",
+                        state.get("asset_identified", "unknown"),
+                    )
                 if no_kb:
                     logger.info(
                         "NO_KB_COVERAGE asset=%r — checking for clarification shortcut",
