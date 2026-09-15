@@ -127,6 +127,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     data-navigation-visible={state.navigationVisible}
     data-top-layer={topLayer(state) ?? ""}
     data-conversation-surface={conversationSurface}
+    /* Lets the stylesheet move the flexible grid row onto the conversation
+       when a host inserts a machine panel above it — see shell.css. */
+    data-machine-panel={machinePanel ? "true" : undefined}
   >
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={mobile} trapsTab={top === "navigation"}>

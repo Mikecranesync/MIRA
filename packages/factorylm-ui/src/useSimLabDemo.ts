@@ -20,6 +20,17 @@ export interface UseSimLabDemoOptions {
   readonly ticksPerPoll?: number;
   /** Beyond this age the view stops claiming the data is live. */
   readonly staleAfterMs?: number;
+  /**
+   * Reset the line once before the first read, so the visitor starts from a
+   * known healthy baseline (default: true).
+   *
+   * SimLab is a stateful process: whatever scenario was last loaded is still
+   * loaded. Without this the demo inherits it, and the first thing a visitor
+   * sees is a jam nobody injected — which is how the browser proof first
+   * failed. Set false when pointing at a SimLab someone else is driving, since
+   * the reset is global to that instance.
+   */
+  readonly resetOnStart?: boolean;
   /** Injectable for tests; nothing here reads the clock directly. */
   readonly now?: () => number;
 }
@@ -124,7 +135,7 @@ export async function readStatics(client: SimLabClient, signal?: AbortSignal): P
  * recovery is automatic and visible rather than needing a reload.
  */
 export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoController {
-  const { client, pollMs = 1500, ticksPerPoll = 2, staleAfterMs = 6000 } = options;
+  const { client, pollMs = 1500, ticksPerPoll = 2, staleAfterMs = 6000, resetOnStart = true } = options;
 
   /**
    * The clock lives in a ref, and is NOT an effect dependency.
@@ -146,25 +157,41 @@ export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoControll
   const stateRef = useRef(state);
   stateRef.current = state;
   const staticsRef = useRef<Statics | null>(null);
+  const baselineRef = useRef(false);
   // A control in flight pauses the loop's own ticking, so a reset cannot race a
   // poll that is about to advance the simulation past the baseline.
   const controlRef = useRef(false);
-  const liveRef = useRef(true);
 
   useEffect(() => {
-    liveRef.current = true;
+    /**
+     * Liveness is per EFFECT INSTANCE, not a shared ref — and that distinction
+     * is the whole bug.
+     *
+     * It was a `useRef` shared by every run of this effect. React StrictMode
+     * mounts, tears down, and mounts again; the first run's cleanup set the ref
+     * false, the second run's body set it true, and the first run's still-in-
+     * flight cycle then saw `true`, called `schedule()`, and started a SECOND
+     * loop holding an already-aborted controller. Every one of its reads threw
+     * "signal is aborted without reason", so the view flapped to `offline`
+     * against a perfectly healthy simulator while the other loop kept fixing it.
+     *
+     * A closure variable cannot be resurrected by a later mount, so the stale
+     * cycle stops where it was told to. Found in the browser; no unit test had
+     * remounted fast enough to see it.
+     */
+    let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
 
     const settle = (outcome: PollOutcome) => {
-      if (!liveRef.current) return;
+      if (!live) return;
       setState((previous) => outcome.ok
         ? outcome.state
         : unavailableDemoState(previous.observedAt === null ? null : previous, outcome.error, now()));
     };
 
     const cycle = async () => {
-      if (!liveRef.current) return;
+      if (!live) return;
       if (!staticsRef.current) {
         try {
           staticsRef.current = await readStatics(client, controller.signal);
@@ -174,7 +201,18 @@ export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoControll
           return;
         }
       }
-      if (!liveRef.current) return;
+      if (!live) return;
+      if (resetOnStart && !baselineRef.current) {
+        baselineRef.current = true;
+        try {
+          await client.resetScenario(controller.signal);
+        } catch (error) {
+          settle({ ok: false, error: describe(error) });
+          schedule();
+          return;
+        }
+      }
+      if (!live) return;
       const result = await pollOnce(client, staticsRef.current, {
         // A control owns the clock while it runs; the loop only observes.
         ticks: controlRef.current ? 0 : ticksPerPoll,
@@ -187,7 +225,7 @@ export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoControll
     };
 
     const schedule = () => {
-      if (!liveRef.current) return;
+      if (!live) return;
       timer = setTimeout(() => { void cycle(); }, pollMs);
     };
 
@@ -195,16 +233,16 @@ export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoControll
 
     return () => {
       // Two of these three are load-bearing and one is belt-and-braces.
-      // `liveRef` stops the in-flight cycle from scheduling a successor;
-      // `abort` cancels the reads that cycle has already issued (a browser will
-      // not finish them, and a fake that ignored the signal made this guard
-      // look broken). `clearTimeout` is the belt-and-braces one — its callback
-      // would return at the live check anyway.
-      liveRef.current = false;
+      // `live` stops the in-flight cycle from scheduling a successor; `abort`
+      // cancels the reads that cycle has already issued (a browser will not
+      // finish them, and a fake that ignored the signal made this guard look
+      // broken). `clearTimeout` is the belt-and-braces one — its callback would
+      // return at the live check anyway.
+      live = false;
       if (timer) clearTimeout(timer);
       controller.abort();
     };
-  }, [client, pollMs, ticksPerPoll, staleAfterMs, now]);
+  }, [client, pollMs, ticksPerPoll, staleAfterMs, resetOnStart, now]);
 
   const runControl = useCallback(async (action: () => Promise<void>) => {
     controlRef.current = true;
@@ -212,16 +250,17 @@ export function useSimLabDemo(options: UseSimLabDemoOptions): SimLabDemoControll
     try {
       await action();
     } catch (error) {
-      if (liveRef.current) {
-        setState((previous) => unavailableDemoState(
-          previous.observedAt === null ? null : previous,
-          describe(error),
-          now(),
-        ));
-      }
+      // No mounted-guard here: React 18+ makes a setState on an unmounted
+      // component a no-op, and a ref shared across effect instances is exactly
+      // what caused the resurrection bug above.
+      setState((previous) => unavailableDemoState(
+        previous.observedAt === null ? null : previous,
+        describe(error),
+        now(),
+      ));
     } finally {
       controlRef.current = false;
-      if (liveRef.current) setBusy(false);
+      setBusy(false);
     }
   }, [now]);
 

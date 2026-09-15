@@ -217,6 +217,13 @@ export function MachineView({ state, demo, onInject, onReset, busy = false }: Ma
         >
           <p className="fl-machine__asset-head">
             <span className="fl-machine__asset-name">{asset.name}</span>
+            {/* The active PLC fault code, when the machine is publishing one.
+                It is the first thing a technician reads off a panel and the
+                thing they will search a fault-code table for, so it is shown
+                verbatim rather than left inside the condition sentence. */}
+            {asset.faultCode
+              ? <code className="fl-machine__asset-fault">{asset.faultCode}</code>
+              : null}
             <span className="fl-machine__asset-state" data-condition={asset.condition}>
               {CONDITION_LABEL[asset.condition]}
             </span>

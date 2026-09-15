@@ -371,6 +371,50 @@ def test_evidence_endpoint_names_the_faulted_asset(client: Any) -> None:
     assert not any("rubric" in route for route in PUBLIC_DEMO_ENDPOINTS)
 
 
+def _cors_probe(client: Any, origin: str) -> Any:
+    return client.get("/simlab/snapshot", headers={"Origin": origin})
+
+
+def test_browser_access_is_off_by_default(monkeypatch: Any, tmp_path: Any) -> None:
+    """No CORS headers unless someone asked for them.
+
+    A page served from another origin cannot read these endpoints without CORS,
+    and the public demo host is exactly that. But the default surface is
+    headless (CI, the eval runner, `curl`), so the middleware is opt-in: nothing
+    about existing behaviour moves unless ``SIMLAB_CORS_ORIGINS`` is set.
+    """
+    monkeypatch.delenv("SIMLAB_CORS_ORIGINS", raising=False)
+    response = _cors_probe(_build_client(tmp_path), "http://localhost:4199")
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in {k.lower() for k in response.headers}
+
+
+def test_browser_access_is_granted_only_to_the_named_origin(monkeypatch: Any, tmp_path: Any) -> None:
+    """And when it is asked for, it is asked for by name — not `*`."""
+    monkeypatch.setenv("SIMLAB_CORS_ORIGINS", "http://localhost:4199")
+    client = _build_client(tmp_path)
+
+    allowed = _cors_probe(client, "http://localhost:4199")
+    assert allowed.headers.get("access-control-allow-origin") == "http://localhost:4199"
+
+    other = _cors_probe(client, "http://evil.example")
+    assert other.headers.get("access-control-allow-origin") != "http://evil.example"
+
+
+def _build_client(tmp_path: Any) -> Any:
+    from fastapi.testclient import TestClient
+
+    from simlab.api import build_app
+    from simlab.approval import ApprovalStore
+    from simlab.engine import SimEngine
+    from simlab.lines.juice_bottling import build_line
+
+    return TestClient(build_app(
+        engine=SimEngine(build_line(), seed=42),
+        approvals=ApprovalStore(str(tmp_path / "approvals.db")),
+    ))
+
+
 @pytest.mark.parametrize("tag_name", ["run_state", "accumulation_percent"])
 def test_undriven_tags_stay_undriven(client: Any, tag_name: str) -> None:
     """Two tags exist on these assets and never move, in any scenario.

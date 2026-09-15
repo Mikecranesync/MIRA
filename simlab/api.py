@@ -119,6 +119,25 @@ def build_app(
         version="0.1.0",
     )
 
+    # Browser access (opt-in): a page served from another origin — the public
+    # demo host on localhost — cannot read these endpoints without CORS, and no
+    # amount of correct client code changes that. OFF by default so nothing
+    # about the existing headless/CI behaviour moves; set
+    # SIMLAB_CORS_ORIGINS="http://localhost:4199" (comma-separated) to enable.
+    # Read-only surface either way: the middleware grants no capability the
+    # endpoints do not already have.
+    cors_origins = [o.strip() for o in os.getenv("SIMLAB_CORS_ORIGINS", "").split(",") if o.strip()]
+    if cors_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
+        logger.info("SimLab CORS enabled for %s", ", ".join(cors_origins))
+
     # ------------------------------------------------------------------
     # Metadata / line structure
     # ------------------------------------------------------------------

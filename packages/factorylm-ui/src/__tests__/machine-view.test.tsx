@@ -176,6 +176,15 @@ describe("every state is a word, not only a colour", () => {
     expect(asset(view, "conveyorzone01").textContent).toContain("Running");
   });
 
+  it("shows the active PLC fault code verbatim, because that is what gets looked up", () => {
+    // Caught by the browser proof: CP001 was read from the snapshot, carried on
+    // the demo state, and never rendered. A technician reads the code off the
+    // panel and searches the fault-code table for it.
+    expect(asset(render(JAMMED()), "casepacker01").textContent).toContain("CP001");
+    // Absent when the machine is not publishing one — never an empty badge.
+    expect(asset(render(HEALTHY()), "casepacker01").querySelector(".fl-machine__asset-fault")).toBeNull();
+  });
+
   it("lists the active alarms with code, message and onset", () => {
     const alarms = render(JAMMED()).container.querySelectorAll(".fl-machine__alarm");
     expect(alarms).toHaveLength(2);
@@ -214,6 +223,10 @@ describe("every state is a word, not only a colour", () => {
     const mobile = shell.slice(shell.indexOf("@media (max-width: 48rem)"));
     expect(mobile).toMatch(/\.fl-machine__diagram\s*\{[^}]*max-block-size:\s*5rem/s);
     expect(mobile).toMatch(/\.fl-machine__assets\s*\{\s*grid-template-columns:\s*1fr/);
+    // On a phone the panel is bounded and scrolls inside itself, so the
+    // conversation is never pushed off the bottom of the screen.
+    expect(mobile).toMatch(/\.fl-machine\s*\{[^}]*max-block-size:\s*52dvh/s);
+    expect(mobile).toMatch(/\.fl-machine\s*\{[^}]*overflow-y:\s*auto/s);
   });
 });
 

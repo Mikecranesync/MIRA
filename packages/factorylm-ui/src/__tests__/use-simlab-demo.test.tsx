@@ -7,7 +7,7 @@
  * poll it was meant to reset.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { act } from "react";
+import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   SimLabClient,
@@ -230,6 +230,74 @@ describe("one poll cycle", () => {
 // --- the loop --------------------------------------------------------------
 
 describe("the polling loop", () => {
+  it("survives a StrictMode remount without a stale cycle resurrecting itself", async () => {
+    /**
+     * The browser-only defect, reproduced.
+     *
+     * StrictMode mounts, tears down, and mounts again. Liveness used to be a
+     * `useRef` shared by both runs, so the first run's cleanup set it false, the
+     * second run's body set it true, and the first run's still-in-flight cycle
+     * then saw `true` and scheduled a SECOND loop — one holding the controller
+     * that had just been aborted. Every read on it threw "signal is aborted
+     * without reason", and the view flapped to `offline` against a healthy
+     * simulator while the good loop kept repairing it.
+     *
+     * The tell is the error text, so that is what this asserts: no reading on
+     * screen may be attributed to an abort we caused ourselves.
+     */
+    const sim = new FakeSim();
+    sim.delayMs = 8; // a cycle must still be in flight when the first cleanup runs
+    const container = document.createElement("div");
+    document.body.append(container);
+    let latest: SimLabDemoController | null = null;
+    function Probe() {
+      latest = useSimLabDemo({ client: sim.client(), pollMs: 4 });
+      return null;
+    }
+    let root: Root;
+    act(() => {
+      root = createRoot(container);
+      root.render(<StrictMode><Probe /></StrictMode>);
+    });
+    harnesses.push({ controller: () => latest!, cleanup: () => act(() => { root.unmount(); container.remove(); }) });
+
+    await settle(150);
+    expect(latest!.state.error).toBeNull();
+    expect(latest!.state.connection).toBe("live");
+  });
+
+  it("resets the line once before the first read, so the visitor starts healthy", async () => {
+    // SimLab is a stateful process and keeps whatever scenario was last loaded.
+    // Without this the demo inherits it and opens on a jam nobody injected —
+    // which is exactly how the first browser proof failed, against a SimLab
+    // still jammed from the run before.
+    const sim = new FakeSim();
+    sim.jam = true;
+    const harness = mount(sim.client(), { pollMs: 4 });
+    await settle(60);
+    expect(sim.calls.filter((call) => call.includes("/scenario/reset"))).toHaveLength(1);
+    expect(harness.controller().state.alarms).toEqual([]);
+    expect(harness.controller().state.assets.every((a) => a.condition === "running")).toBe(true);
+  });
+
+  it("leaves the line alone when told not to reset", async () => {
+    const sim = new FakeSim();
+    sim.jam = true;
+    const container = document.createElement("div");
+    document.body.append(container);
+    let latest: SimLabDemoController | null = null;
+    function Probe() {
+      latest = useSimLabDemo({ client: sim.client(), pollMs: 4, resetOnStart: false });
+      return null;
+    }
+    let root: Root;
+    act(() => { root = createRoot(container); root.render(<Probe />); });
+    harnesses.push({ controller: () => latest!, cleanup: () => act(() => { root.unmount(); container.remove(); }) });
+    await settle(60);
+    expect(sim.calls.some((call) => call.includes("/scenario/reset"))).toBe(false);
+    expect(latest!.state.alarms.length).toBeGreaterThan(0);
+  });
+
   it("starts in connecting and reaches live", async () => {
     const sim = new FakeSim();
     const harness = mount(sim.client());
