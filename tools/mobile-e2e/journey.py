@@ -637,6 +637,69 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
     return passage
 
 
+
+def verify_history(dev: Device, question: str) -> None:
+    """Prove the turn SURVIVES a cold restart — the last hop of the technician path.
+
+    FORCE-STOP, not background. A backgrounded app can redraw the thread from
+    in-memory React state and look identical to a restored one, so backgrounding
+    proves nothing about persistence. `am force-stop` kills the process, so
+    anything that comes back had to be re-read from storage or re-fetched from
+    the Hub.
+
+    Sign-in is deliberately NOT re-driven here. If the app demands credentials
+    after a restart, that is the finding — the session did not persist — and it
+    should fail loudly rather than be papered over by logging in again.
+
+    Asserts two things, because they can fail independently:
+      1. the question text is back   -> the thread/history was restored
+      2. a citation chip is back     -> the EVIDENCE was restored with it, not
+                                        just the prose (a turn that reloads
+                                        without its citations is a grounded
+                                        answer that has quietly become an
+                                        ungrounded one)
+    """
+    log("history", "force-stop + cold relaunch")
+    dev.shell("am", "force-stop", PKG)
+    time.sleep(3)
+    dev.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        if dev.top_package() == PKG:
+            break
+        time.sleep(2)
+    else:
+        raise Fail("app did not return to the foreground after force-stop")
+    time.sleep(6)
+    dev.dismiss_anr()
+
+    if dev.find("Sign in") is not None or dev.find("Password") is not None:
+        dev.screenshot("history-signed-out")
+        raise Fail("cold restart landed on sign-in — the session did not persist")
+
+    # The question may be a few words long; match on a distinctive slice rather
+    # than the whole string, which wraps across nodes in the transcript.
+    needle = " ".join(question.split()[:4])
+    found = None
+    for _ in range(3):
+        found = dev.find(needle)
+        if found is not None:
+            break
+        time.sleep(4)
+    if found is None:
+        dev.screenshot("history-missing-turn")
+        raise Fail(f"after restart the thread does not show the question ({needle!r})")
+
+    chip = dev.find(".pdf") or dev.find("p.")
+    if chip is None:
+        dev.screenshot("history-missing-citation")
+        raise Fail("thread restored but its citation chip did not — evidence was lost on reload")
+
+    dev.screenshot("history-restored")
+    log("history", f"turn and citation survived a cold restart ({needle!r})")
+
+
 def nameplate(dev: Device, image: Path | None) -> None:
     if image is None:
         log("nameplate", "SKIP -- no --nameplate given. A synthetic image would not "
@@ -701,14 +764,14 @@ def main() -> int:
     ap.add_argument("--allow-physical", action="store_true")
     ap.add_argument(
         "--stop-after",
-        choices=["signin", "notebook", "upload", "ask", "citation", "nameplate"],
+        choices=["signin", "notebook", "upload", "ask", "citation", "history", "nameplate"],
         default="nameplate",
         help="Stop early. Use 'signin' to smoke-test the harness itself without "
              "writing a notebook or uploading anything to a real tenant.",
     )
     args = ap.parse_args()
 
-    stages = ["signin", "notebook", "upload", "ask", "citation", "nameplate"]
+    stages = ["signin", "notebook", "upload", "ask", "citation", "history", "nameplate"]
     last = stages.index(args.stop_after)
 
     def wanted(stage: str) -> bool:
@@ -740,6 +803,8 @@ def main() -> int:
             ask(dev, args.question, args.expect_page)
         if wanted("citation"):
             verify_citation(dev, args.expect_page)
+        if wanted("history"):
+            verify_history(dev, args.question)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:
