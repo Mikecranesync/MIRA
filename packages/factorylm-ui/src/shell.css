@@ -173,3 +173,22 @@
 @media (prefers-reduced-motion: reduce) {
   .fl-shell__sidebar { transition: none; }
 }
+
+/* --- Public demo (issue 3811) -------------------------------------------------
+   The public surface is the SAME shell with fewer capabilities, so the notice
+   is an ordinary strip inside <main>, not a landing chrome wrapped around it.
+   Tokens only -- no literal colours (.claude/rules/ui-style.md). */
+.fl-demo-notice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-workspace-space-2); margin: 0; padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-raised, var(--fl-workspace-bg)); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-demo-notice__text { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-workspace-space-2); flex: 1 1 22rem; min-inline-size: 0; margin: 0; line-height: 1.45; }
+/* The badge is the first thing read, so it carries the weight rather than colour:
+   muted-normal, and state colour stays reserved for machine state. */
+.fl-demo-notice__badge { flex: 0 0 auto; padding: 0.1rem var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.fl-demo-notice__actions { display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); }
+.fl-demo-notice__action { padding-inline: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); font: inherit; cursor: pointer; }
+/* One primary action. Three equal buttons make the visitor choose before they
+   know what any of them mean; the accent marks the intended next step. */
+.fl-demo-notice__action[data-intent="try-your-equipment"] { border-color: var(--fl-workspace-accent); color: var(--fl-workspace-accent); font-weight: 600; }
+.fl-demo-notice__action:hover { border-color: var(--fl-workspace-accent); }
+.fl-demo-notice__hint { margin: 0; color: var(--fl-workspace-muted); }
+.fl-attachment-menu__demo { margin: 0 0 var(--fl-workspace-space-2); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs); line-height: 1.45; }
+.fl-attachment-menu__demo-hint { margin: 0 0 var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }

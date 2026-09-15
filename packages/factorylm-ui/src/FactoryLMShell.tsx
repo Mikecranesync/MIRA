@@ -3,6 +3,7 @@ import { useEffect, useRef, type Dispatch, type ReactNode } from "react";
 import { AssistantThread } from "./assistant/AssistantThread";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
+import { DemoNotice } from "./DemoNotice";
 import { Inspector } from "./Inspector";
 import { Overlay, type LayerName } from "./Overlay";
 import type { HostHooks } from "./parts";
@@ -126,6 +127,9 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     </Overlay>
     <main className="fl-shell__main">
       <ThreadHeader state={state} dispatch={dispatch} />
+      {/* Public surface only; a no-op elsewhere. Inside <main>, above the
+          conversation, so it is read before any answer it qualifies. */}
+      <DemoNotice state={state} hooks={hooks} />
       {conversationSurface === "assistant"
         ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
