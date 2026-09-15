@@ -143,7 +143,9 @@ Or entirely outside Celery (identical code path):
 ```bash
 ssh -f -N -L 14099:localhost:4099 factorylm-prod     # staging pipeline is not public
 doppler run -p factorylm -c stg -- \
-  python tools/journey_swarm/executor.py --scenario tech-journey-core
+  uv run --isolated --with-requirements mira-crawler/requirements-celery.txt \
+  --python 3.12 python tools/journey_swarm/executor.py \
+  --scenario tech-journey-core --base-url http://127.0.0.1:14099
 ```
 
 ### Pause / kill switch
