@@ -13,7 +13,11 @@
  *
  * `deps` is injected so every branch is unit-testable without a browser.
  */
-import type { Attachment, PlatformAdapter } from "@factorylm/interaction";
+// Relative, not an alias. The alias would live in tsconfig.json, which the UI
+// lifecycle guard (#3626) holds frozen -- and a path alias is not worth an
+// audited legacy-ui exception for a single type-only import. Step 2 mounts the
+// shell for real and can carry the alias under a reviewed exception then.
+import type { Attachment, PlatformAdapter } from "../../../packages/factorylm-interaction/src";
 
 export interface WebAdapterDeps {
   /** Opens a file chooser and resolves with the chosen file, or null if dismissed. */
