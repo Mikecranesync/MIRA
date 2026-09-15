@@ -22,8 +22,12 @@ describe("shared FactoryLM shell", () => {
       expect(view.container.querySelector("main")).not.toBeNull();
       expect(view.container.querySelector('[aria-label="FactoryLM navigation"]')).not.toBeNull();
       expect(view.container.querySelector("header")).not.toBeNull();
-      expect(view.buttonNamed("New chat")).not.toBeNull();
-      expect(view.buttonNamed("New chat")?.disabled).toBe(true);
+      // The public demo keeps no history, so its thread control is "Start over"
+      // (product decision, #3811) -- the same button, named for what it does on
+      // that surface. Every other surface keeps "New chat".
+      const newThread = surface === "public" ? "Start over" : "New chat";
+      expect(view.buttonNamed(newThread)).not.toBeNull();
+      expect(view.buttonNamed(newThread)?.disabled).toBe(true);
       expect(view.container.querySelector('[aria-label="Conversation placeholder"]')).toBeNull();
       expect(view.container.querySelector('[aria-label="Conversation"]')).not.toBeNull();
       expect(view.container.querySelector('form[aria-label="Composer"]')).not.toBeNull();

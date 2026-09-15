@@ -2,6 +2,17 @@ export type SurfaceKind = "public" | "web" | "mobile" | "hub";
 export type ThemeName = "light" | "dark";
 export type ViewportKind = "desktop" | "tablet" | "mobile";
 
+/**
+ * What an anonymous visitor is being invited to do when they reach for a
+ * capability the public demo deliberately does not carry.
+ *
+ * The public surface is a real product preview, not a marketing page and not a
+ * fake anonymous workspace, so a gated capability must CONVERT rather than
+ * vanish: a control that silently disappears teaches the visitor the product
+ * cannot do the thing, which is the opposite of a preview's job.
+ */
+export type ConversionIntent = "sign-in" | "create-workspace" | "try-your-equipment";
+
 export interface SurfaceProfile {
   readonly kind: SurfaceKind;
   readonly publicDemo: boolean;

@@ -74,6 +74,12 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
   useEffect(() => {
     root.current?.toggleAttribute("inert", Boolean(inert));
   }, [inert]);
+  // "New chat" implies a list to add to. The public demo keeps no history, so the
+  // control is named for what it actually does there. Declared once: labelling
+  // only the enabled branch would leave the disabled state still saying
+  // "New chat" on the same surface.
+  const newThreadLabel = state.profile.publicDemo ? "Start over" : "New chat";
+
   return <aside ref={root} className="fl-shell__sidebar" aria-label="FactoryLM navigation">
     <div className="fl-shell__nav-head">
       <div className="fl-shell__brand">FactoryLM</div>
@@ -93,18 +99,42 @@ export function Sidebar({ state, dispatch, onOpenItem, onSelectProject, footer, 
         type="button"
         onClick={() => { onNewChat(); dispatch({ type: "set-navigation-visible", visible: false }); }}
       >
-        <ComposeIcon className="fl-shell__nav-icon" />New chat
+        {/* "New chat" implies a list to add to. The public demo keeps no
+            history, so the same control is labelled for what it actually does
+            there: discard this demo conversation and begin again. */}
+        <ComposeIcon className="fl-shell__nav-icon" />{newThreadLabel}
       </button>
       : <>
         {/* No host to create a thread (the disconnected lab): honestly disabled, with the reason
             linked, instead of a dim input or a button that does nothing. */}
         <button className="fl-shell__new-chat" type="button" disabled aria-describedby="fl-new-chat-reason">
-          <ComposeIcon className="fl-shell__nav-icon" />New chat
+          <ComposeIcon className="fl-shell__nav-icon" />{newThreadLabel}
         </button>
-        <p id="fl-new-chat-reason" className="fl-shell__hint">Not available in this workspace yet.</p>
+        <p id="fl-new-chat-reason" className="fl-shell__hint">{state.profile.publicDemo
+          ? "Start a fresh demo conversation once a host is connected."
+          : "Not available in this workspace yet."}</p>
       </>}
 
-    {typeof onCreateProject === "function"
+    {state.profile.publicDemo
+      // Projects persist; the public demo does not. Convert instead of showing a
+      // disabled control -- "not available" reads as a missing feature, when the
+      // truth is it needs a workspace of your own.
+      ? (typeof hooks?.onConvert === "function"
+        ? <button
+          className="fl-shell__new-project"
+          type="button"
+          data-intent="create-workspace"
+          onClick={() => { hooks.onConvert?.("create-workspace"); dispatch({ type: "set-navigation-visible", visible: false }); }}
+        >
+          <FolderIcon className="fl-shell__nav-icon" />Create workspace to save Projects
+        </button>
+        : <>
+          <button className="fl-shell__new-project" type="button" disabled aria-describedby="fl-demo-project-reason">
+            <FolderIcon className="fl-shell__nav-icon" />New project
+          </button>
+          <p id="fl-demo-project-reason" className="fl-shell__hint">Projects are saved to a workspace of your own.</p>
+        </>)
+      : typeof onCreateProject === "function"
       ? <button
         className="fl-shell__new-project"
         type="button"
