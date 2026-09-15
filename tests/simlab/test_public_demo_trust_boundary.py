@@ -65,6 +65,7 @@ PUBLIC_DEMO_ENDPOINTS: tuple[str, ...] = (
     "/simlab/snapshot",
     "/simlab/alarms",
     "/simlab/history",
+    "/simlab/assets/{asset_id}/tags",
     "/simlab/assets/{asset_id}/docs",
     "/simlab/docs/{asset_id}/{filename}",
     "/simlab/lines/{line_id}/assets",
@@ -222,6 +223,7 @@ def public_payloads(client: Any, asset_ids: list[str]) -> dict[str, Any]:
         "line_assets": client.get("/simlab/lines/line01/assets").json(),
     }
     for asset_id in asset_ids:
+        payloads[f"tags:{asset_id}"] = client.get(f"/simlab/assets/{asset_id}/tags").json()
         payloads[f"docs:{asset_id}"] = client.get(f"/simlab/assets/{asset_id}/docs").json()
         payloads[f"snapshot:{asset_id}"] = client.get(
             "/simlab/snapshot", params={"asset": asset_id}
@@ -367,6 +369,47 @@ def test_evidence_endpoint_names_the_faulted_asset(client: Any) -> None:
     assert evidence["asset_id"] == scenario.expected_asset
     assert not any("evidence" in route for route in PUBLIC_DEMO_ENDPOINTS)
     assert not any("rubric" in route for route in PUBLIC_DEMO_ENDPOINTS)
+
+
+@pytest.mark.parametrize("tag_name", ["run_state", "accumulation_percent"])
+def test_undriven_tags_stay_undriven(client: Any, tag_name: str) -> None:
+    """Two tags exist on these assets and never move, in any scenario.
+
+    ``SimEngine._update_run_states`` assigns ``asset.packml_default`` at reset and
+    nothing ever transitions it, so ``status.run_state`` is ``"Idle"`` on every
+    asset in every scenario. Nothing writes ``process.accumulation_percent``, so
+    it is ``0.0`` everywhere.
+
+    The public demo therefore does NOT render either one — showing "Idle" beside
+    a belt the same payload says is turning at 60 fpm, or a 0 % accumulation bar
+    beside a zone the same payload calls blocked, is a contradiction a technician
+    reads instantly. ``UNDRIVEN_TAGS`` in
+    ``packages/factorylm-interaction/src/simlab.ts`` is the other half of this
+    pair, and the TypeScript suite asserts they are absent from every rendered
+    signal set.
+
+    This test is the justification for that omission, and its expiry: if the
+    simulator ever starts driving one of these, this goes red and the tag should
+    be rendered rather than kept hidden.
+
+    Sampled across ticks as well as scenarios. A single-tick sample is not enough:
+    mutation MUT-P1 made ``run_state`` alternate with tick parity and a tick-120
+    snapshot still saw one value on every asset in every scenario, so the guard
+    passed while the tag had become genuinely dynamic.
+    """
+    observed: set[Any] = set()
+    for scenario_id in sorted(SCENARIOS):
+        client.post(f"/simlab/scenario/{scenario_id}/start")
+        for step in (0, 1, 1, 8, 30, 80):
+            if step:
+                client.post("/simlab/scenario/tick", params={"n": step})
+            tags = client.get("/simlab/snapshot").json()["tags"]
+            observed |= {v for k, v in tags.items() if k.endswith(f".{tag_name}")}
+
+    assert len(observed) == 1, (
+        f"{tag_name} now varies ({sorted(observed)!r}) — the simulator drives it, so the "
+        "public demo should render it instead of omitting it"
+    )
 
 
 def test_every_scenario_names_its_own_faulted_asset_as_the_expected_answer() -> None:
