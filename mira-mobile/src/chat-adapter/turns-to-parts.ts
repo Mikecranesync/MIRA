@@ -26,6 +26,25 @@ import { answerBody } from "../lib/chat-copy";
 import { isStoppedTurn, type NotebookServerTurn } from "../api/resources";
 import type { AdapterMessage, MessagePart } from "./contract";
 
+/** A live turn whose transport failed (provider error or an HTTP status line). */
+export function isFailedLiveStatus(status: string): boolean {
+  return status === "error" || status.startsWith("http ");
+}
+
+/**
+ * A live turn that actually completed — the only kind that may feed the
+ * model's history (a stopped or failed attempt has no answer to stand behind
+ * and would present the question as already handled). Keyed on completion,
+ * not on enumerating the ways a turn can fail (ADR-0040 §4, F1/F4 lesson).
+ */
+export function isCompletedLiveTurn(t: { a: { status: string; sawStatus?: boolean } }): boolean {
+  // Rule 6: no terminal `status` frame means the answer was cut off — a
+  // truncated stream resolves normally, so it reaches liveTurns through the
+  // success path with a partial answer and must not become prior context.
+  if (t.a.sawStatus === false) return false;
+  return t.a.status !== "stopped" && !isFailedLiveStatus(t.a.status);
+}
+
 /** Evidence-array entries that are neither citations nor known evidence
  *  kinds — preserved as inspectable unknown parts (PRD §9.2). */
 export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown[] {
@@ -180,6 +199,11 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
       ];
     }
     const failed = t.answerStatus === "error";
+    // A failed turn never completed, so it wears no success chrome — the same
+    // rule the stopped branch above enforces. A provider failure persists
+    // `answerText=null` and therefore misses `isStoppedTurn`; if the row
+    // carries evidence anyway (a later server change, a partial write), it
+    // must not rehydrate as a cited, graded answer (F1, fleet-001-review-e9).
     return [
       user,
       {
@@ -187,10 +211,10 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
         role: "assistant",
         parts: assistantParts({
           text: answerBody(t.answerText, t.answerStatus),
-          citations: normalizeCitations(t.evidence),
-          machine: machineEvidenceEntries(t.evidence ?? []),
-          visual: visualObservationEntries(t.evidence ?? []),
-          basis: t.basis,
+          citations: failed ? [] : normalizeCitations(t.evidence),
+          machine: failed ? [] : machineEvidenceEntries(t.evidence ?? []),
+          visual: failed ? [] : visualObservationEntries(t.evidence ?? []),
+          basis: failed ? undefined : t.basis,
           safetyTrigger: safetyNotice?.trigger,
           identityDisputed: hasIdentityDispute(t.evidence),
           unknown: unknownEvidenceEntries(t.evidence),
@@ -260,7 +284,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
       },
     ];
   }
-  const failed = a.status === "error" || a.status.startsWith("http ");
+  const failed = isFailedLiveStatus(a.status);
   return [
     user,
     {
