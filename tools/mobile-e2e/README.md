@@ -32,6 +32,7 @@ So this harness covers the whole chain, and is explicit about the three things i
 | Ingest → embed | yes | server-side; assert separately with the DB probe below |
 | Grounded cited answer | yes | |
 | Citation resolves to a passage | yes | |
+| **History survives a cold restart** | yes | `am force-stop` then relaunch; asserts the turn AND its citation chip come back, and that the session did not drop to sign-in |
 | Nameplate → extraction | partial | needs a **real photo** via `--nameplate`; see below |
 | **Cellular behaviour** | **no** | emulator uses the host network |
 | **Camera capture** | **no** | and see the P1 defect below |
