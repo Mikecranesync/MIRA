@@ -11,6 +11,7 @@ Static reference for how MIRA is built. For *flows* (how a feature executes) see
 | [real-vs-simulated.md](real-vs-simulated.md) | **Demo credibility** — what's real production data, what's mock, what's bench-only |
 | [environment-quick-ref.md](environment-quick-ref.md) | dev/staging/prod quick card (Doppler, Neon branch, bot token, VPS) |
 | [branch-and-pr-status.md](branch-and-pr-status.md) | Snapshot of main + open PRs by theme (**regenerate before trusting**) |
+| [factorylm-end-to-end-interoperability.md](factorylm-end-to-end-interoperability.md) | Production-snapshot assessment of the complete factory-to-context-to-diagnosis-to-work-order-to-CMMS loop |
 
 ## Existing deep references
 - **System & C4:** `SYSTEM_OVERVIEW.md`, `c4-context.md`, `c4-containers.md`, `c4-components.md`, `c4-deployment.md`, `c4-dynamic-fault-flow.md`
