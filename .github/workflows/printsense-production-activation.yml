@@ -223,7 +223,7 @@ jobs:
               # so empty IS the intended production state (docker-compose.saas.yml
               # documents this). Asserting the raw var equalled the model id could
               # never pass and made this gate red for 100+ consecutive runs.
-              # ${VAR:-default} mirrors Python's `or` (unset AND empty both take
+              # ${VAR:-default} mirrors the Python or-form (unset AND empty both take
               # the default), so this still FAILS if someone pins a different model.
               test "${TOGETHERAI_VISION_MODEL:-MiniMaxAI/MiniMax-M3}" = "MiniMaxAI/MiniMax-M3"
               test "$PRINT_PROVIDER_POLICY" = "strict"
