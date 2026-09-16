@@ -10,10 +10,10 @@ name: Deploy to VPS
 on:
   # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
   # Push → smoke-test.yml → deploy-vps.yml (also gated by Staging Gate verification).
-  workflow_run:
-    workflows: ["Smoke Test"]
-    types: [completed]
-    branches: [main]
+  # AUTO-DEPLOY DISABLED for the OVH cutover (#3800): a merge to main must NOT
+  # deploy production. workflow_dispatch only until the first OVH deploy is
+  # explicitly authorized. (Was: workflow_run on "Smoke Test" completing @ main.)
+  # workflow_run: [disabled for OVH cutover]
 
   # Manual deploy bypass — for hotfixes when you need to deploy without
   # waiting for smoke. Still runs health checks post-deploy.
@@ -476,7 +476,7 @@ jobs:
       - name: Preserve pre-deploy bot logs (redacted)
         continue-on-error: true
         run: |
-          SSH_CMD="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes root@165.245.138.91" \
+          SSH_CMD="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes ubuntu@40.160.141.61" \
           OUT_DIR="$RUNNER_TEMP/predeploy-logs" \
           bash tools/predeploy_log_capture.sh
 
@@ -513,7 +513,7 @@ jobs:
           [[ "$ALLOW_MOVING_FALLBACK" =~ ^[01]$ ]] || { echo "::error::Invalid fallback flag"; exit 1; }
           SERVICES_B64="$(printf '%s' "$NORMALIZED_SERVICES" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            root@165.245.138.91 "bash -s -- '$SERVICES_B64' '$DEPLOY_SHA' '$ALLOW_MOVING_FALLBACK'" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s -- '$SERVICES_B64' '$DEPLOY_SHA' '$ALLOW_MOVING_FALLBACK'" << 'ENDSSH'
 
           set -euo pipefail
           SERVICES="$(printf '%s' "$1" | base64 -d)"
@@ -570,8 +570,10 @@ jobs:
           # SSH. Idempotent — replaces the full crontab cleanly. Non-fatal: a cron
           # hiccup must not block the service deploy (container rebuild is the critical
           # path), so warn-don't-fail, mirroring the hub health check below.
-          bash scripts/install_crons.sh \
-            || echo "::warning::install_crons.sh failed — host crontab may be stale; re-run manually: ssh root@165.245.138.91 'cd /opt/mira && bash scripts/install_crons.sh'"
+          # install_crons.sh (full agent crontab) intentionally NOT run in the
+          # minimal Hub+web production model (#3800) — those crons expect
+          # pipeline/bots/etc. that are not deployed. Restored with the full stack.
+          echo "skipping install_crons.sh (minimal Hub+web model, #3800)"
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
           # mira-ask added 2026-06-06 (closes ops gap surfaced by AskMira P0 fix
@@ -580,7 +582,7 @@ jobs:
           # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
           # mira-web added 2026-07-04 - no stated exclusion rationale existed
           # (docs/known-issues.md); marketing-site PRs silently did not auto-deploy.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-web mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
+          TARGETS="${SERVICES:-mira-hub mira-web}"  # #3800 OVH cutover: minimal Hub+web; other services deferred
           echo "Rebuild targets: $TARGETS"
 
           # NOTE (2026-08-09): the stale-container cleanup that used to run HERE has
@@ -634,7 +636,7 @@ jobs:
 
           echo "=== Build images (old containers keep serving) ==="
           # Build BEFORE any teardown. Nothing user-facing is interrupted here.
-          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml build $TARGETS
 
           echo "=== Swap to new containers (health-gated) ==="
           # --wait blocks until every recreated service is healthy (8 of the 9 targets
@@ -696,7 +698,7 @@ jobs:
           swap_rc=0
           # shellcheck disable=SC2086  # WAIT_FLAGS and TARGETS are intentionally word-split
           doppler run --project factorylm --config prd -- \
-            docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+            docker compose -f docker-compose.saas.yml -f docker-compose.production.yml up -d --no-deps --force-recreate \
             $WAIT_FLAGS $TARGETS 2>&1 | tee "$swap_out" || swap_rc=$?
 
           if [ "$swap_rc" -ne 0 ]; then
@@ -705,7 +707,7 @@ jobs:
               stale_cleanup
               # shellcheck disable=SC2086
               doppler run --project factorylm --config prd -- \
-                docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+                docker compose -f docker-compose.saas.yml -f docker-compose.production.yml up -d --no-deps --force-recreate \
                 $WAIT_FLAGS $TARGETS
             else
               echo "ERROR: health-gated swap failed (rc=$swap_rc) and it is NOT a name conflict."
@@ -786,10 +788,10 @@ jobs:
         # KNOWN_PENDING here — the guard then becomes strict on its own.
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            root@165.245.138.91 'bash -s' << 'ENDSSH'
+            ubuntu@40.160.141.61 'sudo bash -s' << 'ENDSSH'
           set -uo pipefail
           SE=/etc/nginx/sites-enabled
-          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm updates.factorylm.com"
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview recovery-ovh remoteme stg-factorylm updates.factorylm.com"
           KNOWN_PENDING="factorylm-landing.bak.2026-05-13-csp factorylm-landing.bak.20260509-203650 mira.bak.20260426-082325 mira.bak.20260506-094431 mira.bak.20260509-121505 mira.bak.before-scan-restore-20260518-215310 mira.bak.cra-20260504-024235 mira.bak.inbox mira.bak.phase1 mira.bak.scan-deploy-20260504-224027"
 
           known=""; unknown=""
@@ -824,5 +826,5 @@ jobs:
       - name: Notify failure
         if: failure()
         run: |
-          echo "::error::VPS deploy failed — check logs above. SSH to 165.245.138.91 and run:"
+          echo "::error::VPS deploy failed — check logs above. SSH to 40.160.141.61 (ubuntu) and run:"
           echo "::error::  cd /opt/mira && doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=50"
