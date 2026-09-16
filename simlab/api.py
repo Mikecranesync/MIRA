@@ -62,10 +62,12 @@ def _is_public_demo_path(path: str) -> bool:
             return True
     return False
 
+
 # Lazy FastAPI import — sim core loads bare without it.
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import HTMLResponse, PlainTextResponse
+
     _HAS_FASTAPI = True
 except ImportError:  # pragma: no cover
     _HAS_FASTAPI = False
@@ -146,9 +148,7 @@ def build_app(
         hmac_key = os.getenv("SIMLAB_RELAY_HMAC_KEY", "").strip()
         api_key = os.getenv("SIMLAB_RELAY_API_KEY", "").strip()
         engine.add_publisher(
-            RelayIngestPublisher(
-                relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key
-            )
+            RelayIngestPublisher(relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key)
         )
         logger.info(
             "SimLab live relay feed enabled -> %s (tenant=%s, auth=%s)",
@@ -500,6 +500,7 @@ def build_app(
 # ---------------------------------------------------------------------------
 # Module-level app (default juice line, underfill armed but not started)
 # ---------------------------------------------------------------------------
+
 
 def _make_default_app() -> Any:
     if not _HAS_FASTAPI:

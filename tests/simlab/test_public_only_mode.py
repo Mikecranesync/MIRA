@@ -115,6 +115,6 @@ def test_allowlist_is_the_only_source_of_truth() -> None:
                 p == "*" or p == s for p, s in zip(pattern, segments)
             ):
                 matched.add(pattern)
-    assert matched == set(PUBLIC_DEMO_PATHS), (
-        "unused patterns (dead permission): " + str(set(PUBLIC_DEMO_PATHS) - matched)
+    assert matched == set(PUBLIC_DEMO_PATHS), "unused patterns (dead permission): " + str(
+        set(PUBLIC_DEMO_PATHS) - matched
     )
