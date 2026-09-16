@@ -8,12 +8,14 @@
 import { describe, expect, it } from "bun:test";
 import {
   NotebookChatClient,
+  chatGate,
   chatUnavailable,
   framesToParts,
   notebookChatPath,
   parseFrame,
   parseStream,
   splitSseFrames,
+  type ChatFailureReason,
   type ChatFrame,
   type NotebookChatOptions,
 } from "../notebook-chat";
@@ -274,6 +276,65 @@ describe("when the real path cannot answer, nothing takes its place", () => {
       const result = await client(options).chat.ask({ message: "Why did the conveyor stop?" });
       expect(result.ok).toBe(false);
       expect(result).not.toHaveProperty("parts");
+    }
+  });
+});
+
+describe("the account/fault gate", () => {
+  const ALL: readonly ChatFailureReason[] = [
+    "unauthenticated",
+    "not_configured",
+    "unreachable",
+    "http_error",
+    "malformed_stream",
+  ];
+
+  it("classifies exactly the two reasons the route DECIDES as account gates", () => {
+    // This is the whole honesty rule in one assertion. `unauthenticated` and
+    // `not_configured` are the route working as designed: there is no session
+    // and no notebook, so there is nothing to ground an answer in. Everything
+    // else is a genuine fault and must stay one.
+    const account = ALL.filter((reason) => chatGate(reason) === "account");
+    expect([...account].sort()).toEqual(["not_configured", "unauthenticated"]);
+  });
+
+  it("classifies every fault as a fault — a broken hub is never a sign-up prompt", () => {
+    const fault = ALL.filter((reason) => chatGate(reason) === "fault");
+    expect([...fault].sort()).toEqual(["http_error", "malformed_stream", "unreachable"]);
+  });
+
+  it("gives every reason a gate — a new one cannot default into the friendlier branch", () => {
+    // If a reason is ever added to the union without an entry in the map, the
+    // lookup yields undefined and this fails. The `Record<…>` type catches it
+    // at compile time; this catches it if the map is ever loosened.
+    for (const reason of ALL) {
+      expect(["account", "fault"]).toContain(chatGate(reason));
+    }
+  });
+
+  it("carries the gate on the result the host actually reads", async () => {
+    const unauthenticated = await client({ status: 401 }).chat.ask({ message: "q" });
+    expect(unauthenticated.ok).toBe(false);
+    if (!unauthenticated.ok) expect(unauthenticated.gate).toBe("account");
+
+    const unconfigured = await client({ notebookId: undefined }).chat.ask({ message: "q" });
+    expect(unconfigured.ok).toBe(false);
+    if (!unconfigured.ok) expect(unconfigured.gate).toBe("account");
+
+    const broken = await client({ throws: true }).chat.ask({ message: "q" });
+    expect(broken.ok).toBe(false);
+    if (!broken.ok) expect(broken.gate).toBe("fault");
+  });
+
+  it("names the door in both account sentences, and in neither fault sentence", () => {
+    // A visitor who cannot be answered because they have no workspace must be
+    // told what to do about it. A visitor hitting a 500 must NOT be upsold.
+    for (const reason of ["unauthenticated", "not_configured"] as const) {
+      expect(chatUnavailable(reason).message).toContain("Create a workspace");
+    }
+    for (const reason of ["unreachable", "http_error", "malformed_stream"] as const) {
+      expect(chatUnavailable(reason).message).not.toContain("Create a workspace");
+      expect(chatUnavailable(reason).message).not.toMatch(/sign[ -]?in/i);
     }
   });
 });

@@ -16,10 +16,18 @@
  *
  * The route begins with `sessionOr401` and scopes retrieval to
  * `(tenant ∧ notebook ∧ not-rejected)`. An anonymous visitor has no session and
- * no tenant, so **the real chat path cannot serve an anonymous turn today**.
- * That is an authorization decision, not a wiring gap, and it is recorded in
- * HANDOFF.md rather than invented here. Until it is made, the demo host holds a
- * configured notebook id and credentials or it reports the turn unavailable.
+ * no tenant, so **the real chat path cannot serve an anonymous turn**.
+ *
+ * **That is settled, not pending** (owner decision, 2026-09-15): the public demo
+ * does NOT get anonymous chat. The visitor sees the machine, injects the jam,
+ * watches it fault — and asking is what a workspace unlocks. So a declined turn
+ * resolves to `gate: "account"` and the host renders the door. A demo account or
+ * a public rate-limited route is reconsidered only once the demo is live on the
+ * marketing site and visitors are measurably reaching the ask.
+ *
+ * The client itself is unchanged by that decision: it posts to the real route
+ * with whatever credentials the host has, and reports honestly when there are
+ * none. It has no opinion about sign-up, and no fallback answerer.
  *
  * ## Frame order, from the route's own contract
  *
@@ -55,9 +63,27 @@ export type ChatFailureReason =
   | "http_error"
   | "malformed_stream";
 
+/**
+ * Why there is no answer, in the only distinction that changes what to DO.
+ *
+ * `account` - the route worked exactly as designed and declined an anonymous
+ * turn. Nothing is broken; the visitor needs a workspace. The honest end of
+ * that turn is an invitation.
+ *
+ * `fault` - something is actually wrong (unreachable, 5xx, unreadable stream).
+ * The honest end of that turn is an error the visitor can see and we can fix.
+ * It must NEVER be dressed up as a sign-up prompt: that misleads the visitor
+ * about the product AND hides the bug from us.
+ *
+ * The split is a frozen total map rather than an `if` at each call site, so a
+ * new failure reason cannot quietly default into the friendlier branch.
+ */
+export type ChatGate = "account" | "fault";
+
 export interface ChatUnavailable {
   readonly ok: false;
   readonly reason: ChatFailureReason;
+  readonly gate: ChatGate;
   /** One sentence a visitor can read. Never a stack trace, never a guess. */
   readonly message: string;
 }
@@ -70,19 +96,45 @@ export interface ChatAnswer {
 
 export type ChatResult = ChatAnswer | ChatUnavailable;
 
-/** A sentence for each failure, in the visitor's language rather than HTTP's. */
+/**
+ * A sentence for each failure, in the visitor's language rather than HTTP's.
+ *
+ * The two `account` sentences say what MIRA would have needed and what the
+ * visitor can do about it. They do not apologise for a failure, because there
+ * was none - and they do not promise an answer waits behind the door, only that
+ * the door is where grounded answers get their grounding.
+ */
 const FAILURE_MESSAGE: Readonly<Record<ChatFailureReason, string>> = Object.freeze({
   unauthenticated:
-    "This preview is not signed in, so MIRA cannot run a grounded answer. Create a workspace to ask about your own equipment.",
+    "MIRA answers from a workspace's approved documents, and this preview is not signed in — so there is nothing here to ground an answer in. Create a workspace to ask about your own equipment.",
   not_configured:
-    "This preview has no notebook configured, so there is nothing for MIRA to ground an answer in.",
+    "MIRA answers from a workspace's approved documents, and this preview has none attached — so there is nothing here to ground an answer in. Create a workspace to ask about your own equipment.",
   unreachable: "MIRA is unreachable from this preview right now. Nothing was answered.",
   http_error: "MIRA could not complete this answer. Nothing was invented in its place.",
   malformed_stream: "MIRA's reply could not be read. Nothing was invented in its place.",
 });
 
+/**
+ * Total, frozen, and deliberately explicit for EVERY reason.
+ *
+ * `Record<ChatFailureReason, ChatGate>` makes a new reason a compile error here
+ * rather than a silent `undefined` at a call site - and the missing entry fails
+ * in the file that owns the union, not three packages downstream.
+ */
+const FAILURE_GATE: Readonly<Record<ChatFailureReason, ChatGate>> = Object.freeze({
+  unauthenticated: "account",
+  not_configured: "account",
+  unreachable: "fault",
+  http_error: "fault",
+  malformed_stream: "fault",
+});
+
+export function chatGate(reason: ChatFailureReason): ChatGate {
+  return FAILURE_GATE[reason];
+}
+
 export function chatUnavailable(reason: ChatFailureReason): ChatUnavailable {
-  return { ok: false, reason, message: FAILURE_MESSAGE[reason] };
+  return { ok: false, reason, gate: FAILURE_GATE[reason], message: FAILURE_MESSAGE[reason] };
 }
 
 // ---------------------------------------------------------------------------

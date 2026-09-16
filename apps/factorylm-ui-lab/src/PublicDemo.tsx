@@ -27,6 +27,7 @@ import {
   getFixture,
   shellReducer,
   type ChatResult,
+  type ConversionIntent,
   type InteractionTurn,
   type ShellState,
 } from "@factorylm/interaction";
@@ -55,7 +56,40 @@ export function parseDemoConfig(search: string): PublicDemoConfig {
   };
 }
 
-/** Build the assistant turn for a chat result — answer or honest refusal. */
+/**
+ * The doors this host can open, in the order the visitor should read them.
+ *
+ * First is primary (the stylesheet marks it). "Create workspace" leads because
+ * the visitor asking a question in a preview is, almost always, someone who has
+ * equipment of their own — not someone who already has an account and is
+ * signed out.
+ *
+ * `try-your-equipment` is deliberately absent HERE. It is the attachment menu's
+ * door (a visitor reaching for a file), and repeating it on a question the
+ * route declined would offer three ways to do one thing.
+ */
+export const ASK_CONVERSION_INTENTS: readonly ConversionIntent[] = ["create-workspace", "sign-in"];
+
+/**
+ * Build the assistant turn for a chat result — answer, invitation, or error.
+ *
+ * Three outcomes, and the difference between the last two is the whole point:
+ *
+ * - `ok`            — the real route answered. Its parts, its lifecycle.
+ * - `gate: account` — the route worked and declined an anonymous turn. That is
+ *                     not a failure, so it is NOT an error part and NOT a
+ *                     `failed` lifecycle. The turn COMPLETED: MIRA said what it
+ *                     would need, and the visitor is shown the door.
+ * - `gate: fault`   — something is actually broken. Error part, `failed`
+ *                     lifecycle, retry offered if the host provides one.
+ *
+ * Collapsing the middle case into the last is the tempting shortcut and the one
+ * to refuse: a red "MIRA could not answer" at the moment of highest intent
+ * teaches the visitor the product is broken, when what actually happened is
+ * that they do not have an account yet.
+ *
+ * Nothing is invented in either case. No canned answer, no sample diagnosis.
+ */
 export function assistantTurn(threadId: string, result: ChatResult, state: ShellState, at: string): InteractionTurn {
   const base = {
     id: `${threadId}-a-${state.thread.turns.length + 1}`,
@@ -66,8 +100,20 @@ export function assistantTurn(threadId: string, result: ChatResult, state: Shell
     updatedAt: at,
   };
   if (result.ok) return { ...base, parts: result.parts, lifecycle: result.lifecycle };
-  // No answer, and nothing in its place: the reason, rendered as an error the
-  // shell already knows how to show.
+
+  if (result.gate === "account") {
+    return {
+      ...base,
+      parts: [
+        { type: "conversion_prompt", prompt: { reason: result.message, intents: ASK_CONVERSION_INTENTS } },
+        { type: "status", status: "completed" },
+      ],
+      lifecycle: "completed",
+    };
+  }
+
+  // A real fault: the reason, rendered as the error it is. Never dressed up as
+  // a sign-up prompt — that would mislead the visitor AND hide the bug.
   return {
     ...base,
     parts: [
@@ -89,6 +135,34 @@ export function userTurn(threadId: string, text: string, state: ShellState, at: 
     createdAt: at,
     updatedAt: at,
   };
+}
+
+/**
+ * Bring the newest turn on screen once the answer (or the invitation) lands.
+ *
+ * The shell sets `.fl-shell { min-block-size: 100dvh }` — a MINIMUM, not a
+ * height — so when the machine panel makes the content taller than the viewport
+ * the PAGE scrolls, and `.fl-conversation`'s own `overflow-y: auto` never
+ * engages. Measured in the browser: with the jam injected, the document is
+ * 1170px tall in a 915px mobile viewport and the conversion prompt's buttons
+ * sit at y≈1003 — below the fold, on the one turn where the visitor is being
+ * asked to act. After this, they sit at y≈748.
+ *
+ * The host owns the page, so the host scrolls it. This deliberately does NOT
+ * reach into shell internals to find a turn element; the shared fix (bound the
+ * shell's height so the conversation is the scroller, and keep the newest turn
+ * pinned) belongs to the shell owner and is recorded in the handoff.
+ *
+ * A no-op when the page already fits — scrolling a page that does not scroll is
+ * how a "helpful" jump becomes a flicker.
+ */
+export function revealNewestTurn(): void {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") return;
+  window.requestAnimationFrame(() => {
+    const page = document.scrollingElement ?? document.body;
+    if (!page || page.scrollHeight <= page.clientHeight) return;
+    window.scrollTo({ top: page.scrollHeight, behavior: "smooth" });
+  });
 }
 
 export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
@@ -181,7 +255,10 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
           },
         });
       })
-      .finally(() => setAsking(false));
+      .finally(() => {
+        setAsking(false);
+        revealNewestTurn();
+      });
   }, [chat, machines, state]);
 
   const resetDemo = useCallback(async () => {

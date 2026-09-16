@@ -24,7 +24,7 @@ added — the licence audit reports the same 110 manifests as the baseline.
 | 1 | Pin the trust boundary | **DONE** | `tests/simlab/test_public_demo_trust_boundary.py` — 28 tests, every scenario; 6 mutations caught |
 | 2 | Typed SimLab bridge | **DONE** | `packages/factorylm-interaction/src/simlab.ts` + 28 tests; 7 mutations caught |
 | 3 | Public machine visualization | **DONE** | `packages/factorylm-ui/src/MachineView.tsx` + 23 tests; 8 mutations caught |
-| 4 | Visitor flow | **DONE, with one external requirement** | `useSimLabDemo.ts`, `notebook-chat.ts`, `apps/factorylm-ui-lab/src/PublicDemo.tsx`; 10 mutations caught. The real chat route cannot serve an anonymous turn — see **Decision needed**. |
+| 4 | Visitor flow | **DONE** | `useSimLabDemo.ts`, `notebook-chat.ts`, `apps/factorylm-ui-lab/src/PublicDemo.tsx`; 24 mutations caught. Anonymous chat is settled: the ask is the conversion moment — see **The decision, made**. |
 | 5 | Prove and package | **DONE** | Gates below; 8 screenshots captured against a real SimLab and visually inspected |
 
 ## Gates
@@ -88,27 +88,44 @@ test whose reads outlasted the window, a concurrency metric counting requests wh
 one cycle legitimately issues two, and a fake that ignored `AbortSignal`. All four
 tests were strengthened until the mutation went red.
 
-## Decision needed (one)
+## The decision, made (2026-09-15)
 
 **How may an anonymous visitor's question reach the shared chat route?**
+**Answer: it may not. Asking is what signing up unlocks.**
 
 `POST /api/equipment-notebooks/{id}/chat` begins with `sessionOr401` and scopes
-retrieval to `(tenant ∧ notebook ∧ not-rejected)`. An anonymous visitor has no
-session and no tenant, so the real path cannot serve them today. This is an
-authorization decision, not a wiring gap, and it is above an autonomous run's
-authority — so the adapter is implemented and contract-tested, the preview states
-the limit in plain language, and nothing canned fills the space.
+retrieval to `(tenant ∧ notebook ∧ not-rejected)`, so the real path cannot serve
+an anonymous turn. Owner decision: keep it that way. The visitor sees the line,
+injects the jam, watches Case Packer 01 fault with `CP001` — and the ask is the
+conversion moment. A demo tenant or a public rate-limited route is reconsidered
+**only** once the demo is live on the marketing site and there is evidence
+visitors are actually reaching the ask. No anonymous chat was invented.
 
-Plausible shapes, for the owner to choose between:
+What that changed here:
 
-- a demo tenant + a service session scoped to one read-only notebook;
-- a public, rate-limited route that reuses the same retrieval and citation
-  gate behind a demo-tenant identity;
-- keep it signed-in-only, and let the public demo convert
-  ("Create workspace") at the moment the visitor asks.
+- `chatGate()` splits the five failure reasons into `account`
+  (`unauthenticated`, `not_configured`) and `fault` (`unreachable`,
+  `http_error`, `malformed_stream`) — a total frozen `Record`, so a new reason
+  is a compile error rather than a silent slide into the friendlier branch.
+- A new `conversion_prompt` interaction part carries a reason plus the doors the
+  HOST can open; `parts.tsx` renders it as `role="status"` (nothing broke), and
+  states the limit rather than rendering dead buttons when there is no host or
+  no door.
+- `assistantTurn` routes `account` to that part with lifecycle **`completed`**,
+  and `fault` to the existing error part with lifecycle `failed`.
 
-Until that lands, the demo's honest unavailable state IS the behaviour; the
-browser proof shows exactly what a visitor sees.
+The rule runs both ways and both directions are pinned by tests: a visitor
+without an account must not be told the product is broken, and a broken hub must
+not be dressed up as a sales opportunity — that misleads them *and* hides the
+bug from us.
+
+**Defect found by looking at the screenshot, not by a test.** The taller card
+pushed the conversion buttons to y≈1003 in a 915px mobile viewport — below the
+fold on the one turn that asks the visitor to act. Cause: `.fl-shell` sets
+`min-block-size: 100dvh` (a *minimum*), so with the machine panel rendered the
+PAGE scrolls and `.fl-conversation`'s own `overflow-y: auto` never engages.
+`revealNewestTurn()` scrolls the page after the reply lands (buttons now y≈748);
+the shell-level fix is follow-up 5.
 
 ## Follow-ups (not blockers, not started)
 
@@ -127,6 +144,13 @@ browser proof shows exactly what a visitor sees.
    `mira-web` / `mira-hub` mount is a later PR, after #3812 and #3808 land.
 4. **`simlab/dashboard.html` is untouched** and remains the engineer-facing
    self-scoring oracle — deliberately not the public face.
+5. **The shell is not height-bound, so the PAGE scrolls instead of the
+   conversation.** `.fl-shell { min-block-size: 100dvh }` is a minimum; with a
+   machine panel the content exceeds it and `.fl-conversation`'s `overflow-y:
+   auto` never engages, so the newest turn is not pinned and can land below the
+   fold. `revealNewestTurn()` in the host is the scoped workaround; binding the
+   shell's height (and pinning the newest turn) belongs to the shell owner,
+   alongside follow-up 1.
 
 ## Reproduce
 

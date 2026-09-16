@@ -57,6 +57,12 @@ names both local ports.
 5. **Reset to healthy** returns SimLab, the machine view, and the visible
    conversation to the baseline.
 
+After the reply lands the host scrolls the page to its foot. The shell sets
+`min-block-size: 100dvh` — a minimum — so with the machine panel rendered the
+PAGE scrolls and `.fl-conversation`'s own `overflow-y` never engages; without
+that scroll the conversion buttons measured y≈1003 in a 915px mobile viewport,
+i.e. below the fold on the one turn that asks the visitor to act.
+
 ## What the demo may read, and what it may not
 
 SimLab is both the machine and the grader. The demo reads only:
@@ -90,33 +96,44 @@ contradiction. `test_undriven_tags_stay_undriven` pins this and is the omission'
 expiry date: if SimLab ever drives one, that test goes red and the tag should be
 rendered rather than kept hidden.
 
-## Chat: the external requirement
+## Chat: asking is what signing up unlocks
 
 `POST /api/equipment-notebooks/{id}/chat` begins with `sessionOr401` and scopes
 retrieval to `(tenant ∧ notebook ∧ not-rejected)`. **An anonymous visitor has no
-session, so the real chat path cannot serve an anonymous turn today.** That is an
-authorization decision, not a wiring gap.
+session, so the real chat path cannot serve an anonymous turn.**
 
-Until it is made, the demo states the limit:
+**Owner decision, 2026-09-15: that stays true. There is no anonymous chat.** The
+visitor sees the line, injects the jam, watches Case Packer 01 fault — and asking
+is what a workspace unlocks. A demo tenant or a public rate-limited route is
+reconsidered only once the demo is live on the marketing site and visitors are
+measurably reaching the ask.
 
-- no `notebook` configured → "This preview has no notebook configured, so there is
-  nothing for MIRA to ground an answer in."
-- 401/403 → "This preview is not signed in… Create a workspace to ask about your
-  own equipment."
-- hub unreachable → "MIRA is unreachable from this preview right now. Nothing was
-  answered."
+So a declined turn is an **invitation, not an error**. `chatGate()` splits the
+five failure reasons into two:
 
-There is no fallback answerer anywhere in the module, and a test asserts that no
-failure path produces a text part.
+| Gate | Reasons | What the visitor sees |
+|---|---|---|
+| `account` | `unauthenticated`, `not_configured` | a `conversion_prompt` part: what MIRA would have needed, then **Create workspace** / **Sign in**. Lifecycle `completed`. |
+| `fault` | `unreachable`, `http_error`, `malformed_stream` | an `error` part, lifecycle `failed`, retry if the host offers it. **Never** a sign-up prompt. |
 
-To run the real path locally, start `mira-hub` with a signed-in session and pass
-`&hub=…&notebook=<uuid>` for a notebook whose sources are the SimLab documents.
+That split is the honesty rule, and it runs both ways: a visitor without an
+account must not be told the product is broken, and a broken hub must not be
+dressed up as a sales opportunity — that would mislead them *and* hide the bug
+from us. `FAILURE_GATE` is a total `Record<ChatFailureReason, ChatGate>`, so a new
+reason is a compile error rather than a silent slide into the friendlier branch.
+
+There is still no fallback answerer anywhere in the module, and a test asserts
+that no failure path produces a text part.
+
+To run the real answering path locally, start `mira-hub` with a signed-in session
+and pass `&hub=…&notebook=<uuid>` for a notebook whose sources are the SimLab
+documents.
 
 ## Gates
 
 ```bash
 python -m pytest tests/simlab -q                    # 151 passed, 3 skipped
-cd apps/factorylm-ui-lab && bun run verify          # 318 pass, tsc clean, budget, licences
+cd apps/factorylm-ui-lab && bun run verify          # 344 pass, tsc clean, budget, licences
 python tools/ui_surface_lifecycle_guard.py --base origin/main --head HEAD
 ```
 
