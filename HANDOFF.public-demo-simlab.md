@@ -127,14 +127,26 @@ PAGE scrolls and `.fl-conversation`'s own `overflow-y: auto` never engages.
 `revealNewestTurn()` scrolls the page after the reply lands (buttons now y≈748);
 the shell-level fix is follow-up 5.
 
+## Related PRs opened from this work
+
+- **#3822** — `fix(ui)`: the narrow-viewport drawer (follow-up 1 below). Off `main`.
+- **#3823** — `chore(hooks)`: root `PLAN.md`/`HANDOFF.md` ownership guard, closing
+  the near-miss this run hit twice. Off `main`. It is why this branch carries
+  `PLAN.public-demo-simlab.md` / `HANDOFF.public-demo-simlab.md` rather than the
+  bare names.
+
 ## Follow-ups (not blockers, not started)
 
-1. **Shell drawer mismatch, wider than this demo.** `navigationIsLayer` keys on
-   `profile.kind === "mobile"` while `shell.css` turns the sidebar into a fixed
-   overlay below 48rem for *every* surface. A narrow `public`/`web`/`hub` surface
-   therefore gets a drawer with no scrim and no Escape-to-close, open by default.
-   `PublicDemo` closes it at mount on narrow viewports — a host-level workaround.
-   The shell-level fix belongs to the shell owner.
+1. **Shell drawer mismatch, wider than this demo — FIXED in #3822** (off `main`,
+   not stacked here). `navigationIsLayer` keyed on `profile.kind === "mobile"`
+   while `shell.css` turns the sidebar into a fixed overlay below 48rem for
+   *every* surface, so a narrow `public`/`web`/`hub` surface got a drawer with no
+   scrim and no Escape-to-close. #3822 makes the drawer a layer on any narrow
+   viewport and pins the CSS/TS breakpoint together so they cannot drift again.
+   `PublicDemo` still closes the drawer at mount on narrow viewports, and should
+   keep doing so: navigation opens by default on every surface, and a phone-sized
+   demo should land on the machine rather than a drawer. That is a host product
+   decision, not a workaround #3822 removes.
 2. **The built bundle ships React's development build.** `bun run build` produces a
    bundle that logs "Download the React DevTools…" and double-invokes effects under
    StrictMode, i.e. `process.env.NODE_ENV` is not pinned to `production`. It made
@@ -145,7 +157,7 @@ the shell-level fix is follow-up 5.
 4. **`simlab/dashboard.html` is untouched** and remains the engineer-facing
    self-scoring oracle — deliberately not the public face.
 5. **The shell is not height-bound, so the PAGE scrolls instead of the
-   conversation.** `.fl-shell { min-block-size: 100dvh }` is a minimum; with a
+   conversation.** (NOT fixed by #3822 — a separate defect in the same area.) `.fl-shell { min-block-size: 100dvh }` is a minimum; with a
    machine panel the content exceeds it and `.fl-conversation`'s `overflow-y:
    auto` never engages, so the newest turn is not pinned and can land below the
    fold. `revealNewestTurn()` in the host is the scoped workaround; binding the
