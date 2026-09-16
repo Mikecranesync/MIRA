@@ -7,7 +7,8 @@
 // composer counter. Studio = locked tile grid (generators land server-side
 // first — tiles never fake a generation).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, captureNameplatePhoto, capturePhoto, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
+import type { Attachment } from "@factorylm/interaction";
+import { PDF_MIME, canPickNatively, captureNameplatePhoto, capturePhoto, pickDocument, pickNameplatePhoto, pickPdf, pickPhoto } from "../lib/native-pick";
 import {
   getNotebookDetail,
   askNotebook,
@@ -152,6 +153,7 @@ export function NotebookScreen({
   chromeless = false,
   unifiedShell,
   initialQuestion,
+  initialAttachments,
   onInitialQuestionSent,
   initialSensorStart,
   onInitialSensorStartConsumed,
@@ -170,6 +172,9 @@ export function NotebookScreen({
   unifiedShell?: UnifiedShellHost;
   /** A composer-home send queued by UnifiedRoot before this notebook mounted. */
   initialQuestion?: string | null;
+  /** Files attached on HOME before this notebook existed; they ride the
+   *  first send instead of being dropped on the floor. */
+  initialAttachments?: readonly File[];
   onInitialQuestionSent?: () => void;
   /** Root-owned Add Photo/File entry consumed by this mount's initial sheet state. */
   onInitialAddSourcesConsumed?: () => void;
@@ -384,6 +389,130 @@ export function NotebookScreen({
   const stopGeneration = () => abortRef.current?.abort();
   const canStopGeneration =
     busy && abortRef.current !== null && canCancelChatTransport();
+
+  /**
+   * Composer attachments (ChatGPT-shaped): the native picker runs, the file is
+   * HELD, and the chip appears in the composer. Nothing uploads and nothing is
+   * asked until the technician sends — that is the whole point of a preview.
+   *
+   * The file itself stays in a ref keyed by the attachment id the shell shows.
+   * The shell only ever carries the small `Attachment` descriptor; the bytes
+   * never leave this screen, so there is still ONE upload door per kind and no
+   * second attachment system.
+   */
+  const heldAttachments = useRef(new Map<string, File>());
+  const carriedIn = useRef<string[]>([]);
+  const carriedConsumed = useRef(false);
+  if (!carriedConsumed.current && initialAttachments && initialAttachments.length > 0) {
+    carriedConsumed.current = true;
+    for (const file of initialAttachments) {
+      const id = crypto.randomUUID();
+      heldAttachments.current.set(id, file);
+      carriedIn.current.push(id);
+    }
+  }
+
+  const holdAttachment = (file: File, kind: "photo" | "pdf" | "file"): Attachment => {
+    const id = crypto.randomUUID();
+    heldAttachments.current.set(id, file);
+    return { id, name: file.name, mediaType: file.type, kind, status: "ready" };
+  };
+
+  const attachPhotoPending = async (): Promise<Attachment | null> => {
+    const file = await pickPhoto("photo.jpg");
+    return file ? holdAttachment(file, "photo") : null;
+  };
+
+  const attachCameraPending = async (): Promise<Attachment | null> => {
+    const file = await capturePhoto("photo.jpg");
+    return file ? holdAttachment(file, "photo") : null;
+  };
+
+  /**
+   * "File" is a GENERAL document picker, not a PDF gate. Whether the document
+   * is searchable is the server's call, not the picker's: the upload answers
+   * with `indexed` plus a `warning`, and a document that cannot be indexed is
+   * reported as stored-not-searchable rather than silently implied to be
+   * readable. `attachPdfSource` keeps its own separate door for the explicit
+   * "add a citable source" action.
+   */
+  const attachDocumentPending = async (): Promise<Attachment | null> => {
+    const file = await pickDocument();
+    if (!file) return null;
+    return holdAttachment(file, file.type === PDF_MIME ? "pdf" : "file");
+  };
+
+  /**
+   * Send WITH whatever the composer was holding. Photos go through the LOOK
+   * door (parked + linked server-side, then the `visualEvidence` rider Sensor
+   * uses); documents go through the same two-step source upload as
+   * `attachPdfSource`. Both are the existing doors — the only new thing is that
+   * the question is the technician's own words instead of a canned one.
+   */
+  const sendWithAttachments = async (raw: string, attachments: readonly Attachment[]) => {
+    // Anything carried in from HOME has no chip in THIS screen's composer (it
+    // was attached before this notebook existed), so the shell cannot name it.
+    // Merge it in once, here, or the technician's photo silently disappears
+    // between tapping send on home and the thread opening.
+    const carried: readonly Attachment[] = carriedIn.current.map((id) => {
+      const file = heldAttachments.current.get(id);
+      return {
+        id,
+        name: file?.name ?? "attachment",
+        mediaType: file?.type ?? "application/octet-stream",
+        kind: file && file.type.startsWith("image/") ? "photo" : file?.type === PDF_MIME ? "pdf" : "file",
+        status: "ready",
+      } satisfies Attachment;
+    });
+    carriedIn.current = [];
+    const held = [...carried, ...attachments]
+      .map((a) => ({ attachment: a, file: heldAttachments.current.get(a.id) }))
+      .filter((x): x is { attachment: Attachment; file: File } => Boolean(x.file));
+    if (held.length === 0) {
+      await sendQuestion(raw);
+      return;
+    }
+    const photo = held.find((x) => x.attachment.kind === "photo");
+    const documents = held.filter((x) => x.attachment.kind !== "photo");
+    // An attachment with no typed question still deserves a question.
+    const question = raw.trim() || (photo
+      ? "What am I looking at, and what should I check?"
+      : "What is in this document?");
+    setChatError(null);
+    setBusy(true);
+    setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
+    try {
+      for (const doc of documents) {
+        const r = await uploadSourceToNotebook(notebook, doc.file, { sourceRole: "manual" });
+        if (!r.attached) setChatError(uploadSourceWarningCopy(r.warning));
+      }
+      let visual: { fileId: string; capturedAt: string } | undefined;
+      if (photo) {
+        const look = await lookAtPhoto(notebook.id, photo.file, crypto.randomUUID(), question);
+        if (!look.fileId) {
+          setBusy(false);
+          setPending(null);
+          setQ(question);
+          setChatError("The photo didn't upload — try again.");
+          return;
+        }
+        visual = {
+          fileId: look.fileId,
+          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+        };
+      }
+      refresh();
+      setBusy(false);
+      setPending(null);
+      for (const x of held) heldAttachments.current.delete(x.attachment.id);
+      await sendQuestion(question, undefined, visual ? { visualEvidence: visual } : undefined);
+    } catch (e) {
+      setBusy(false);
+      setPending(null);
+      setQ(question); // the draft survives a failed attachment
+      setChatError(apiErrorCopy(e, "The attachment didn't upload — try again."));
+    }
+  };
 
   /**
    * ChatV2 attachment: photograph → the EXISTING LOOK path (parked + linked
@@ -827,12 +956,12 @@ export function NotebookScreen({
           canRetry={Boolean(failedSend) && !busy}
           chatError={chatError}
           handlers={{
-            onSend: (text) => void sendQuestion(text),
+            onSend: (text, attachments) => void sendWithAttachments(text, attachments ?? []),
             onStop: stopGeneration,
             onCitation: setViewCitation,
-            onAttachPhoto: () => void attachPhotoAndAsk(),
-            onAttachCamera: () => void attachCameraAndAsk(),
-            onAttachFile: () => void attachPdfSource(),
+            onAttachPhoto: attachPhotoPending,
+            onAttachCamera: attachCameraPending,
+            onAttachFile: attachDocumentPending,
             onRetry: () => failedSend && void sendQuestion("", failedSend),
             onScanMachine: async () => {
               openSensor("read-scan");
