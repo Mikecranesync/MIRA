@@ -3,10 +3,16 @@
 // every action back to the screen-owned handlers (send, stop, citation viewer,
 // attach flows). Run: cd mira-mobile && npx vitest run src/screens/__tests__/unified-chat
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const nativePick = vi.hoisted(() => ({ pickPhoto: vi.fn(), capturePhoto: vi.fn(), pickDocument: vi.fn() }));
+vi.mock("../src/lib/native-pick", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/lib/native-pick")>();
+  return { ...real, ...nativePick };
+});
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { UnifiedChat } from "../UnifiedChat";
-import type { NotebookServerTurn } from "../../api/resources";
-import { _resetTransientLayersForTest, closeTopTransientLayer } from "../../lib/transient-layer";
+import { UnifiedChat } from "../src/screens/UnifiedChat";
+import type { NotebookServerTurn } from "../src/api/resources";
+import { _resetTransientLayersForTest, closeTopTransientLayer } from "../src/lib/transient-layer";
 // jsdom ships no ResizeObserver or Element.scrollTo; the assistant-ui thread
 // viewport (ADR-0037) uses both to keep the scroll pinned as content grows.
 // The Android WebView has had them since Chrome 64 — test-environment shim only.
@@ -95,7 +101,7 @@ describe("UnifiedChat", () => {
     const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
     fireEvent.input(box, { target: { value: "What about braking?" } });
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
-    expect(h.onSend).toHaveBeenCalledWith("What about braking?", []);
+    expect(h.onSend).toHaveBeenCalledWith("What about braking?");
     expect(box.value).toBe("");
 
     fireEvent.click(document.querySelector('button[data-part-type="source"]') as HTMLButtonElement);
@@ -108,7 +114,11 @@ describe("UnifiedChat", () => {
     const { rerender } = render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
     fireEvent.click(screen.getByRole("button", { name: "Photo" }));
-    expect(h.onAttachPhoto).toHaveBeenCalledTimes(1);
+    // The SHELL picks natively now. The host's upload-and-ask handler is
+    // deliberately not called: it would send before the technician typed,
+    // which is exactly the preview this refactor exists to provide.
+    expect(nativePick.pickPhoto).toHaveBeenCalledTimes(1);
+    expect(h.onAttachPhoto).not.toHaveBeenCalled();
 
     rerender(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={{ q: "next", a: { answer: "", citations: [], status: "streaming" } }} busy={true} canStop={true} canRetry={false} chatError={null} handlers={h} meta={META} />);
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();

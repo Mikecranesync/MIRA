@@ -32,13 +32,13 @@ const nativePick = vi.hoisted(() => ({
   pickDocument: vi.fn(),
 }));
 
-vi.mock("../../api/client", async () => {
-  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+vi.mock("../src/api/client", async () => {
+  const actual = await vi.importActual<typeof import("../src/api/client")>("../src/api/client");
   return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
 });
 
-vi.mock("../../api/resources", async () => {
-  const actual = await vi.importActual<typeof import("../../api/resources")>("../../api/resources");
+vi.mock("../src/api/resources", async () => {
+  const actual = await vi.importActual<typeof import("../src/api/resources")>("../src/api/resources");
   return {
     ...actual,
     getAssetByTag: scanApi.getAssetByTag,
@@ -54,12 +54,12 @@ vi.mock("../../api/resources", async () => {
     ]),
   };
 });
-vi.mock("../../lib/native-pick", async () => {
-  const actual = await vi.importActual<typeof import("../../lib/native-pick")>("../../lib/native-pick");
+vi.mock("../src/lib/native-pick", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/native-pick")>("../src/lib/native-pick");
   return { ...actual, pickPhoto: nativePick.pickPhoto, capturePhoto: nativePick.capturePhoto, pickDocument: nativePick.pickDocument };
 });
 vi.mock("@capacitor/share", () => ({ Share: { share: vi.fn(async () => ({})) } }));
-vi.mock("../NotebookScreen", () => ({
+vi.mock("../src/screens/NotebookScreen", () => ({
   NotebookScreen: (props: {
     id: string;
     threadId?: string | null;
@@ -68,7 +68,6 @@ vi.mock("../NotebookScreen", () => ({
     backRef: MutableRefObject<(() => boolean) | null>;
     unifiedShell?: { projects: unknown[]; navigationFooter?: unknown; onOpenItem: (i: { kind: string; id: string; label: string }) => void };
     initialQuestion?: string | null;
-    initialAttachments?: readonly File[];
     initialSensorStart?: "read-scan" | null;
     onExit: () => void;
   }) => {
@@ -84,7 +83,6 @@ vi.mock("../NotebookScreen", () => ({
         data-open-add-sources={String(Boolean(props.openAddSources))}
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
-        data-initial-attachments={(props.initialAttachments ?? []).map((f) => f.name).join(",")}
         data-initial-sensor={props.initialSensorStart ?? ""}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
@@ -96,8 +94,8 @@ vi.mock("../NotebookScreen", () => ({
 // preferencesStore is the real @capacitor/preferences web path; under some
 // jsdom builds localStorage is not a full Storage and the root's load() throws,
 // which the catch turns into the error state. Mock it like everything else.
-vi.mock("../../lib/offline-queue", async () => {
-  const actual = await vi.importActual<typeof import("../../lib/offline-queue")>("../../lib/offline-queue");
+vi.mock("../src/lib/offline-queue", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/offline-queue")>("../src/lib/offline-queue");
   return {
     ...actual,
     preferencesStore: {
@@ -108,7 +106,7 @@ vi.mock("../../lib/offline-queue", async () => {
     },
   };
 });
-vi.mock("../../unified/UnifiedAboutUpdates", () => ({
+vi.mock("../src/unified/UnifiedAboutUpdates", () => ({
   UnifiedAboutUpdates: (p: { onBack: () => void; pendingOfflineWork: () => Promise<boolean> }) => (
     <div data-testid="about">
       <button onClick={p.onBack}>back</button>
@@ -119,11 +117,14 @@ vi.mock("../../unified/UnifiedAboutUpdates", () => ({
   ),
 }));
 
-import { UnifiedRoot } from "../UnifiedRoot";
+import { UnifiedRoot } from "../src/screens/UnifiedRoot";
+import { claimAttachments, clearAttachments } from "../src/unified/attachment-handoff";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
 
 afterEach(() => {
+  // The handoff is module state; a leftover stash would leak between tests.
+  clearAttachments();
   cleanup();
   prefStore.mem.clear();
   otaProbe.value = null;
@@ -249,10 +250,12 @@ describe("UnifiedRoot", () => {
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-initial-question")).toBe("what is leaking here");
-    // The bytes reached the notebook. Without this the photo is dropped on the
-    // floor between home and the thread, and the technician never learns.
-    expect(nb.getAttribute("data-initial-attachments")).toBe("bearing.jpg");
     expect(nb.getAttribute("data-open-add-sources")).toBe("false");
+    // The bytes reached the handoff the notebook's composer claims. Without
+    // this the photo is dropped on the floor between home and the thread and
+    // the technician is never told.
+    const handed = claimAttachments();
+    expect(handed.map((h) => h.file.name)).toEqual(["bearing.jpg"]);
   });
 
   it("gives source management its own drawer entry, separate from the composer", async () => {
