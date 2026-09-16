@@ -1,0 +1,71 @@
+# Permanent minimal-production overlay for FactoryLM/MIRA — Hub + web only.
+#
+# Promoted from tools/recovery/compose.recovery.yml (#3800 OVH recovery) after
+# auditing every override; only what minimal production actually requires is
+# kept. Layer ON TOP of the base SaaS compose — never replace it:
+#
+#   docker compose -f docker-compose.saas.yml -f docker-compose.production.yml \
+#     up -d --no-deps mira-hub mira-web
+#
+# Scope: only `mira-hub` is overridden. `mira-web` runs from the base SaaS
+# definition unchanged (already 127.0.0.1:3200, mira-net, mira-leads-data).
+#
+# Deferred services (pipeline, ingest, mcp, cmms-sync, telegram/slack bots,
+# ask, nango, redis, tika, foreman, Atlas/CMMS) are NOT started, and the Hub's
+# references to them are failed-closed below so it never hangs on a container
+# that is not deployed. Each is re-enabled in its own later change by removing
+# the corresponding line here and adding the service to the deploy target list.
+#
+# Neon comes from the base SaaS `${NEON_DATABASE_URL}` (Doppler factorylm/prd) —
+# this file hardcodes no secret and does not change the database target.
+services:
+  mira-hub:
+    # Localhost-only publish; nginx fronts it. Explicit !override guarantees the
+    # base (or any future) port list cannot expose the Hub on 0.0.0.0.
+    ports: !override
+      - "127.0.0.1:3101:3000"
+
+    # Drop the external `cmms-ext` network the base SaaS attaches. Atlas/CMMS is
+    # not restored; an absent external network makes `compose up` refuse to
+    # start. mira-net is the only network the minimal Hub needs.
+    networks: !override
+      - mira-net
+
+    environment:
+      # Behind nginx/TLS: NextAuth must trust the proxy's forwarded host.
+      AUTH_TRUST_HOST: "true"
+      # Keep server-side auth calls in-container (127.0.0.1:3000) instead of
+      # round-tripping the public URL back through nginx.
+      NEXTAUTH_URL_INTERNAL: http://127.0.0.1:3000/api/auth
+      # Fail closed on services intentionally NOT deployed in the minimal set —
+      # `disabled://` is the Hub's documented fail-fast scheme; the two
+      # `*.invalid` hosts never resolve (RFC 6761). Values kept verbatim from the
+      # proven recovery overlay to guarantee identical Hub behavior; remove each
+      # as its service is restored.
+      INGEST_URL: disabled://recovery
+      OPENWEBUI_BASE_URL: disabled://recovery
+      OPENWEBUI_API_KEY: ""
+      NANGO_SERVER_URL: disabled://recovery
+      MIRA_ASK_URL: http://mira-ask-not-started.invalid:8011
+      HUB_CMMS_API_URL: http://cmms-not-started.invalid:8080
+      # Embedder (nomic-embed-text) over Tailscale when Doppler provides it;
+      # unset => BM25-only retrieval. Never the base `host.docker.internal`
+      # default (there is no local Ollama on the production host).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+
+    # Preserve the EXISTING named upload-buffer volume. Under compose project
+    # `mira` this resolves to the live `mira_mira-hub-upload-buffers`; keeping the
+    # name identical means the deploy reuses it (no data loss). !override so the
+    # base cannot add other mounts.
+    volumes: !override
+      - mira-hub-upload-buffers:/app/.upload-buffers
+
+    # Production-sized cap (the OVH host has ~12 GiB; Hub idles ~70 MiB). Raised
+    # from the recovery overlay's small-box 1g. Override with MIRA_HUB_MEM.
+    deploy:
+      resources:
+        limits:
+          memory: ${MIRA_HUB_MEM:-2g}
+
+volumes:
+  mira-hub-upload-buffers:
