@@ -47,11 +47,11 @@ export interface ChatV2Handlers {
   onCitation: (c: ChatCitation) => void;
   /** Attach a photo from the gallery. Resolves to the held attachment so the
    *  composer can preview it, or null when the picker was dismissed. */
-  onAttachPhoto: () => Promise<Attachment | null> | Attachment | null | void;
+  onAttachPhoto: () => Promise<Attachment | null> | Attachment | null;
   /** Capture photo from native camera (not gallery). */
-  onAttachCamera: () => Promise<Attachment | null> | Attachment | null | void;
+  onAttachCamera: () => Promise<Attachment | null> | Attachment | null;
   /** Attach a document from the native document picker. */
-  onAttachFile: () => Promise<Attachment | null> | Attachment | null | void;
+  onAttachFile: () => Promise<Attachment | null> | Attachment | null;
   /** Retry the byte-identical failed body, when one is pending. */
   onRetry?: () => void;
 }

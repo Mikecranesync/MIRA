@@ -295,6 +295,24 @@ export function NotebookScreen({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [detail, liveTurns, busy, panel, pending]);
 
+  // These three MUST sit above the `detail.state` early returns below. They were
+  // originally declared next to the attach handlers, which is after those
+  // returns — so the loading render ran three fewer hooks than the loaded one
+  // and React threw #310 ("rendered more hooks than during the previous
+  // render"), blanking the app into OTA recovery the moment a notebook opened.
+  // Caught on the emulator, not by the unit tests, which mock NotebookScreen.
+  const heldAttachments = useRef(new Map<string, File>());
+  const carriedIn = useRef<string[]>([]);
+  const carriedConsumed = useRef(false);
+  if (!carriedConsumed.current && initialAttachments && initialAttachments.length > 0) {
+    carriedConsumed.current = true;
+    for (const file of initialAttachments) {
+      const id = crypto.randomUUID();
+      heldAttachments.current.set(id, file);
+      carriedIn.current.push(id);
+    }
+  }
+
   if (detail.state === "loading") return <Loading what="notebook" />;
   if (detail.state === "error")
     return (
@@ -400,17 +418,6 @@ export function NotebookScreen({
    * never leave this screen, so there is still ONE upload door per kind and no
    * second attachment system.
    */
-  const heldAttachments = useRef(new Map<string, File>());
-  const carriedIn = useRef<string[]>([]);
-  const carriedConsumed = useRef(false);
-  if (!carriedConsumed.current && initialAttachments && initialAttachments.length > 0) {
-    carriedConsumed.current = true;
-    for (const file of initialAttachments) {
-      const id = crypto.randomUUID();
-      heldAttachments.current.set(id, file);
-      carriedIn.current.push(id);
-    }
-  }
 
   const holdAttachment = (file: File, kind: "photo" | "pdf" | "file"): Attachment => {
     const id = crypto.randomUUID();
@@ -936,9 +943,12 @@ export function NotebookScreen({
             onSend: (text) => void sendQuestion(text),
             onStop: stopGeneration,
             onCitation: setViewCitation,
-            onAttachPhoto: () => void attachPhotoAndAsk(),
-            onAttachCamera: () => void attachCameraAndAsk(),
-            onAttachFile: () => void attachPdfSource(),
+            // ChatV2's own composer has no pending-attachment chip, so it keeps
+            // the original pick-upload-and-ask behaviour and returns null: there
+            // is nothing for it to preview. Only the unified shell previews.
+            onAttachPhoto: () => { void attachPhotoAndAsk(); return null; },
+            onAttachCamera: () => { void attachCameraAndAsk(); return null; },
+            onAttachFile: () => { void attachPdfSource(); return null; },
             onRetry: () => failedSend && void sendQuestion("", failedSend),
           }}
         />
