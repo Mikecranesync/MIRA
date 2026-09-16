@@ -8,8 +8,7 @@
  * uploads, and the citation viewer — it just renders chromeless.
  */
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
-import type { Attachment, ProjectItem } from "@factorylm/interaction";
-import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
+import type { ProjectItem } from "@factorylm/interaction";
 import { listNotebooks, type Me, type Notebook } from "../api/resources";
 import { hasActiveApiMutations } from "../api/client";
 import {
@@ -73,18 +72,6 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
-  // Files the technician attached on HOME, before any notebook existed. The
-  // composer chip is the shell's own state (it comes from what the adapter
-  // returns), so home does its own native pick and carries the bytes into the
-  // thread it is about to create. Keyed by the attachment id the chip shows.
-  const [homeFiles] = useState(() => new Map<string, File>());
-  const [queuedFiles, setQueuedFiles] = useState<readonly File[]>([]);
-
-  const holdHomeFile = (file: File, kind: "photo" | "pdf" | "file"): Attachment => {
-    const id = crypto.randomUUID();
-    homeFiles.set(id, file);
-    return { id, name: file.name, mediaType: file.type, kind, status: "ready" };
-  };
   const [showAbout, setShowAbout] = useState(false);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -353,35 +340,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           canRetry={false}
           chatError={null}
           handlers={{
-            onSend: (text, attachments) => {
+            // HOME has no notebook yet: the shell stashes whatever the composer
+            // is holding and this send creates the thread that claims it.
+            onSend: (text) => {
               const id = startNewThread();
-              if (!id) return;
-              setQueuedQuestion(text);
-              const files = (attachments ?? [])
-                .map((a) => homeFiles.get(a.id))
-                .filter((f): f is File => Boolean(f));
-              if (files.length > 0) setQueuedFiles(files);
-              for (const a of attachments ?? []) homeFiles.delete(a.id);
+              if (id) setQueuedQuestion(text);
             },
             onStop: () => {},
             onCitation: () => {},
-            // The native picker opens RIGHT HERE. These used to jump to Add
-            // Sources, which is a different job (managing a machine's citable
-            // sources) and made attaching a photo to a message impossible.
-            // Nothing is created until the technician actually sends.
-            onAttachPhoto: async () => {
-              const file = await pickPhoto("photo.jpg");
-              return file ? holdHomeFile(file, "photo") : null;
-            },
-            onAttachCamera: async () => {
-              const file = await capturePhoto("photo.jpg");
-              return file ? holdHomeFile(file, "photo") : null;
-            },
-            onAttachFile: async () => {
-              const file = await pickDocument();
-              if (!file) return null;
-              return holdHomeFile(file, file.type === PDF_MIME ? "pdf" : "file");
-            },
             onRetry: undefined,
             onNewChat: () => { startNewThread(); },
             onCreateProject: () => { onCreateProject(); },
@@ -392,6 +358,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             },
           }}
           host={host}
+          // No notebook exists yet, so nothing can upload here; the shell holds
+          // the bytes and hands them to the thread this send creates.
+          attachmentNotebookId={null}
           meta={{
             notebookId: "home",
             threadId: "home",
@@ -419,8 +388,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         onExit={() => setHomeVisible(true)}
         onOpenNotebook={open}
         initialQuestion={queuedQuestion}
-        initialAttachments={queuedFiles}
-        onInitialQuestionSent={() => { setQueuedQuestion(null); setQueuedFiles([]); }}
+        onInitialQuestionSent={() => setQueuedQuestion(null)}
         onInitialAddSourcesConsumed={() => setQueuedOpenAddSources(false)}
         initialSensorStart={queuedSensorStart}
         onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}

@@ -26,7 +26,7 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
-import type { InteractionPart, InteractionTurn } from "@factorylm/interaction";
+import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
 import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import type { NotebookServerTurn } from "../api/resources";
@@ -34,6 +34,7 @@ import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
+import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
 import {
   citationIndex,
   contextFor,
@@ -71,9 +72,36 @@ export interface UnifiedChatProps {
   readonly failedQuestion?: string | null;
   readonly groundingLine?: () => string | undefined;
   readonly suggestChips?: () => readonly { id: string; text: string }[] | undefined;
+  /** Notebook attachments upload into. `null` on HOME, where the bytes are
+   *  stashed for the thread the send is about to create. Defaults to the
+   *  notebook this shell is already rendering. */
+  readonly attachmentNotebookId?: string | null;
 }
 
-export interface UnifiedChatHandlers extends ChatV2Handlers {
+/**
+ * The unified surface's handler contract.
+ *
+ * `onSend` is widened HERE rather than in `ChatV2Handlers`: ChatV2 is a frozen
+ * legacy surface with no pending-attachment chip, so giving it an
+ * attachment-aware contract would change a rollback surface to serve the new
+ * shell. The two attach members are inherited unchanged and deliberately
+ * UNUSED on this surface — the shell picks natively through its own controller
+ * (`../unified/attachments`), so a host that still passes ChatV2's
+ * upload-and-ask handlers keeps compiling while the unified composer previews.
+ *
+ * `evidence` is the same rider the notebook send path already accepts for
+ * Sensor, so an attachment rides the ONE existing send path rather than a
+ * second one. A host that ignores the argument still compiles; it simply gets
+ * no attachment support.
+ */
+export interface UnifiedChatHandlers
+  extends Omit<ChatV2Handlers, "onSend" | "onAttachPhoto" | "onAttachCamera" | "onAttachFile"> {
+  readonly onSend: (text: string, evidence?: VisualEvidenceRider) => void;
+  /** Inherited from ChatV2 and UNUSED here — optional so neither host has to
+   *  pass a handler the unified composer never calls. */
+  readonly onAttachPhoto?: () => void;
+  readonly onAttachCamera?: () => void;
+  readonly onAttachFile?: () => void;
   readonly onScanMachine?: () => Promise<string | null> | string | null;
   readonly onNewChat?: () => void;
   readonly onCreateProject?: () => void;
@@ -106,6 +134,7 @@ export function UnifiedChat({
   failedQuestion,
   groundingLine,
   suggestChips,
+  attachmentNotebookId,
 }: UnifiedChatProps) {
   const capturedAt = useRef(new Date().toISOString());
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
@@ -138,12 +167,19 @@ export function UnifiedChat({
     });
   }, [layer]);
 
+  // Attachments are the SHELL's job now, not the screen's: the controller owns
+  // the native pick, holds the bytes, and uploads through the existing doors at
+  // send time. The host's own attach handlers are intentionally not wired here
+  // (see UnifiedChatHandlers) — they upload-and-ask immediately, which is the
+  // behaviour the preview flow replaces.
+  const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
+  const attachments = useUnifiedAttachments(attachTarget);
   const adapter = useMemo(() => createCapacitorAdapter({
-    onAttachPhoto: handlers.onAttachPhoto,
-    onAttachFile: handlers.onAttachFile,
-    onAttachCamera: handlers.onAttachCamera,
+    onAttachPhoto: attachments.attachPhoto,
+    onAttachFile: attachments.attachFile,
+    onAttachCamera: attachments.attachCamera,
     onScanMachine: handlers.onScanMachine,
-  }), [handlers.onAttachPhoto, handlers.onAttachFile, handlers.onAttachCamera, handlers.onScanMachine]);
+  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, handlers.onScanMachine]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's
@@ -210,8 +246,41 @@ export function UnifiedChat({
     onInitialQuestionSent?.();
   }, [busy, handlers, initialQuestion, onInitialQuestionSent]);
 
+  /**
+   * One send, composed. On HOME there is no notebook yet, so the bytes are
+   * stashed and the host's send creates the thread that claims them. In a
+   * notebook the uploads run first and the resulting rider goes out with the
+   * question on the host's existing send path.
+   */
+  const onSend = useCallback((text: string, pending: readonly Attachment[]) => {
+    if (pending.length === 0) {
+      handlers.onSend(text);
+      return;
+    }
+    if (!attachTarget) {
+      attachments.stashForHandoff(pending);
+      handlers.onSend(text);
+      return;
+    }
+    void attachments.compose(text, pending).then((composed) => {
+      if (composed.failure) {
+        // Do not send: a photo question with no photo would answer from nothing.
+        dispatch({ type: "set-send-error", error: composed.failure });
+        dispatch({ type: "set-draft", draft: composed.question });
+        return;
+      }
+      handlers.onSend(composed.question, composed.rider);
+      // Uploaded but not searchable stays visible rather than being swallowed.
+      if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
+      dispatch({ type: "set-draft", draft: text });
+    });
+  }, [attachTarget, attachments, handlers, dispatch]);
+
   const hooks: HostHooks = {
-    onSend: handlers.onSend,
+    onSend,
     renderText,
     onCopy,
     ...(canStop ? { onStop: handlers.onStop } : {}),
