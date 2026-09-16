@@ -461,7 +461,7 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
           chmod 600 ~/.ssh/vps_deploy_key
-          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+          install -m 600 ci/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
       # Pre-deploy log preservation (2026-08-04): the recreate below REMOVES
       # the old containers, and with the json-file driver their logs die with

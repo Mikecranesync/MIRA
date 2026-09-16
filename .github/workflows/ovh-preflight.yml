@@ -85,7 +85,7 @@ jobs:
         run: |
           umask 077; mkdir -p ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key; chmod 600 ~/.ssh/vps_deploy_key
-          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+          install -m 600 ci/known_hosts.factorylm-prod ~/.ssh/known_hosts
           SSH="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o ConnectTimeout=15 ubuntu@40.160.141.61"
           $SSH 'bash -s' <<'EOS'
           set -uo pipefail
