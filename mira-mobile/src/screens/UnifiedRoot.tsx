@@ -24,6 +24,7 @@ import { resolveScan } from "../lib/scan-landing";
 import {
   LEGACY_THREAD_ID,
   notebookIdFromProject,
+  sourcesRefFromItem,
   notebookMachines,
   notebookProjects,
   threadRefFromItem,
@@ -225,6 +226,13 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
       projects: notebookProjects(navigationNotebooks),
       machines: notebookMachines(navigationNotebooks),
       onOpenItem: (item: ProjectItem) => {
+        // Sources is its own destination now, not a side effect of attaching.
+        const sourcesFor = sourcesRefFromItem(item.id);
+        if (sourcesFor) {
+          open(sourcesFor);
+          setQueuedOpenAddSources(true);
+          return;
+        }
         const ref = threadRefFromItem(item.id);
         if (ref) open(ref.notebookId, ref.threadId);
       },
