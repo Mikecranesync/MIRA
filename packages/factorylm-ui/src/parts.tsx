@@ -1,4 +1,4 @@
-import type {
+import type { ConversionIntent,
   ProjectNode,
   ContextSnapshot,
   InteractionPart,
@@ -23,6 +23,17 @@ export interface HostHooks {
    * and do nothing (product-honesty defect, Codex review of #3643).
    */
   readonly onRetry?: (turnId: string) => void;
+  /**
+   * Convert a visitor who reached for a capability the public demo does not
+   * carry (attachments, scans, saved Projects). Offered ONLY when the host
+   * provides it -- same discipline as onNewChat/onCreateProject: without a host
+   * to convert to, the shell states the limit plainly rather than rendering a
+   * button that goes nowhere.
+   *
+   * Read only on a `publicDemo` profile; other surfaces own these capabilities
+   * outright and never need the conversion path.
+   */
+  readonly onConvert?: (intent: ConversionIntent) => void;
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
   /**

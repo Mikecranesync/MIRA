@@ -143,7 +143,33 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     </ul> : null}
 
     <Overlay layer="attachment-menu" active={state.attachmentMenuVisible} modal trapsTab={attachmentTrapsTab}>
-      {state.attachmentMenuVisible ? <AttachmentMenu
+      {state.attachmentMenuVisible && state.profile.publicDemo ? <div
+        className="fl-attachment-menu"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Attachment menu"
+        data-demo-conversion="true"
+      >
+        {/* The public demo carries no uploads and no machine scan: a visitor's
+            own file would be private tenant data, and a scan would fabricate a
+            machine context nobody confirmed. The control still OPENS -- it
+            converts instead of vanishing, so the visitor learns the product
+            does this, just not anonymously. */}
+        <p className="fl-attachment-menu__demo">
+          Attachments and machine scans need a workspace of your own, so the file
+          and the machine belong to you.
+        </p>
+        {typeof hooks?.onConvert === "function"
+          ? <button
+            type="button"
+            className="fl-attachment-menu__item"
+            data-intent="try-your-equipment"
+            onClick={() => { hooks.onConvert?.("try-your-equipment"); closeMenu(); }}
+          >Try with your equipment</button>
+          : <p className="fl-attachment-menu__demo-hint">Sign-in is not wired up in this preview.</p>}
+        <button type="button" className="fl-attachment-menu__close" aria-label="Close attachment menu" onClick={closeMenu}>Close</button>
+      </div> : null}
+      {state.attachmentMenuVisible && !state.profile.publicDemo ? <AttachmentMenu
         native={native}
         busy={busy !== null}
         onPhoto={() => attach("photo", adapter.attachPhoto)}

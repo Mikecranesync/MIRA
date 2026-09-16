@@ -1,5 +1,6 @@
 export { Composer, type ComposerProps, type ComposerKeyEvent, composerKeyAction } from "./Composer";
 export { Conversation, ConversationBar, RunCard, type ConversationProps, breadcrumb } from "./Conversation";
+export { DemoNotice, type DemoNoticeProps } from "./DemoNotice";
 export { FactoryLMShell, type FactoryLMShellProps, type ConversationSurface, BACK_EVENT, closeLayerAction, topLayer } from "./FactoryLMShell";
 export { focusableWithin, trapTab, useFocusReturn } from "./focus";
 export { Inspector } from "./Inspector";
