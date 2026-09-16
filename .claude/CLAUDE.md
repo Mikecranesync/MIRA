@@ -183,6 +183,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Multi-session protocol** — claims, isolation, actual-overlap checks, the adversarial-review gate (exact-SHA GREEN, fail-closed, 3-round max), human-gated merge/deploy, bounded continuation, session closeout. See `.claude/rules/multi-session-protocol.md`.
 - **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Sub-agent worktree isolation** — any parallel-dispatched sub-agent that Edits/Writes files runs in its own git worktree (or has confirmed there's no foreign WIP in the shared checkout it could clobber). See `.claude/rules/subagent-worktree-isolation.md`.
+- **Shared root files have an owner** — root `PLAN.md` / `HANDOFF.md` / `STATE.md` are tracked files owned by whichever run wrote them last; an autonomous run writes `PLAN.<slice>.md` / `HANDOFF.<slice>.md` instead. Floor: `tools/hooks/shared-root-file-guard.sh`. See `.claude/rules/shared-root-file-ownership.md`.
 - **Dangerous commands** — before `rm -rf`, `git reset --hard`, or any other irreversible command, print the resolved absolute path/target and confirm it matches intent before executing. See `.claude/rules/dangerous-commands-safety.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
@@ -229,6 +230,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/multi-session-protocol.md` — multi-session claims/isolation/review-gate/closeout governance
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
 - `.claude/rules/subagent-worktree-isolation.md` — parallel-dispatched sub-agents isolate via git worktree before touching files
+- `.claude/rules/shared-root-file-ownership.md` — root PLAN/HANDOFF have an owner; branch-scope the name instead of overwriting
 - `.claude/rules/dangerous-commands-safety.md` — print + confirm the resolved path before `rm -rf`/`git reset --hard`/etc.
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
 - `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)

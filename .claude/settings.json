@@ -101,6 +101,10 @@
           {
             "type": "command",
             "command": "bash tools/hooks/worktree-file-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/shared-root-file-guard.sh"
           }
         ]
       }
