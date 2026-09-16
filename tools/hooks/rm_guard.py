@@ -204,7 +204,7 @@ def _danger(p: str, home: str, repo_root: str) -> Optional[str]:
     # A bare drive root ("c:/") is the Windows equivalent of "/" — both name an
     # entire filesystem. `rm -rf /` under Git Bash resolves to the MSYS install
     # root, which is equally catastrophic.
-    if pn in ("/", "//") or re.fullmatch(r"[a-z]:/?", pn):
+    if pn in ("/", "//") or re.fullmatch(r"[A-Za-z]:/?", pn):
         return "the root filesystem ({})".format(p)
     if home:
         home_r = os.path.realpath(home)
