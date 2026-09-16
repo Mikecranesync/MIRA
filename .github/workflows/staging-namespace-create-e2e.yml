@@ -1,6 +1,7 @@
 name: Namespace inline-create E2E (post-deploy)
 
-# Runs tests/e2e/namespace-inline-create.spec.ts against the deployed hub.
+# Runs tests/e2e/namespace-inline-create.spec.ts against the deployed hub, plus
+# tests/e2e/tokens-loaded.spec.ts (#3707: are the --fl-* tokens declared at runtime).
 #
 # Default target is PRODUCTION (https://app.factorylm.com/hub) because the
 # DigitalOcean Cloud Firewall blocks staging :4101 from public internet —
@@ -88,7 +89,7 @@ jobs:
         working-directory: mira-hub
         env:
           HUB_URL: ${{ steps.target.outputs.url }}
-        run: npx playwright test tests/e2e/namespace-inline-create.spec.ts --reporter=list
+        run: npx playwright test tests/e2e/namespace-inline-create.spec.ts tests/e2e/tokens-loaded.spec.ts --reporter=list
 
       - name: Upload screenshots + test results
         if: always()

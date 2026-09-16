@@ -3,6 +3,10 @@ import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import Script from "next/script";
 import "./globals.css";
+// #3707: the FactoryLM design tokens. Generated from packages/factorylm-theme
+// by tools/design/sync_hub_tokens.py; :root custom properties only, so it
+// restyles nothing — it only makes every var(--fl-*) in V3 resolve.
+import "@/factorylm-ui/tokens.css";
 import { RefineProviders } from "./refine-providers";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/providers/toast-provider";
