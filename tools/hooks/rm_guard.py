@@ -139,10 +139,43 @@ def _expand(operand: str, env: dict, home: str) -> Optional[str]:
     return _VAR_RE.sub(repl, operand)
 
 
+#: MSYS/Cygwin drive prefixes, as Git Bash spells them. `/c/x` and
+#: `/cygdrive/c/x` both mean `C:\x` to the `rm` that actually runs.
+_MSYS_DRIVE_RE = re.compile(r"^/(?:cygdrive/)?([A-Za-z])(?:/(.*))?$")
+
+
+def _decode_msys_drive(path: str) -> str:
+    """Rewrite a Git Bash/MSYS drive path to its Windows form. Windows only.
+
+    `os.path.realpath` does not know this spelling: it reads the leading "/" as
+    "root of the current drive" and `c` as an ordinary directory, so
+    `/c/Users/x` resolved to `C:\\c\\Users\\x` — a path that does not exist.
+    The guard then compared that phantom against the repo root, correctly found
+    no match, and ALLOWED, while Git Bash's `rm` decoded `/c/` to `C:\\` and
+    deleted the real thing. Fail-open on the one guard whose job is to fail
+    closed (#3827).
+
+    `pwd` returns this form under Git Bash, so `rm -rf $(pwd)` at the repo root
+    is the live case, not a hypothetical.
+
+    Only the single-letter drive form is translated, so ordinary POSIX paths
+    (`/tmp/scratch`, `/usr/lib`) are untouched. Gated on Windows: on Linux
+    `/c/foo` is a legitimate absolute path and must keep resolving as one.
+    """
+    if os.name != "nt":
+        return path
+    match = _MSYS_DRIVE_RE.match(path.replace("\\", "/"))
+    if not match:
+        return path
+    drive, rest = match.group(1), match.group(2) or ""
+    return "{}:/{}".format(drive.upper(), rest)
+
+
 def _resolve(path: str, cwd: str) -> str:
     """Absolute, normalized, symlink-resolved path (read-only; never executes)."""
+    path = _decode_msys_drive(path)
     if not os.path.isabs(path):
-        path = os.path.join(cwd, path)
+        path = os.path.join(_decode_msys_drive(cwd), path)
     return os.path.realpath(path)
 
 

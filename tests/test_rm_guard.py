@@ -219,3 +219,108 @@ def test_ancestor_check_is_separator_and_case_insensitive():
     assert rm_guard._is_ancestor_or_equal("C:/Users/bob", win_child)
     # A sibling sharing a prefix is NOT an ancestor (the classic off-by-one).
     assert not rm_guard._is_ancestor_or_equal(r"C:\Users\bo", win_child)
+
+
+# --------------------------------------------------------------------------- #
+# MSYS/Git Bash drive paths (#3827) — the spelling `pwd` actually returns.
+# --------------------------------------------------------------------------- #
+
+
+def _msys(path) -> str:
+    """`C:/Users/x` -> `/c/Users/x`, the form Git Bash `pwd` prints."""
+    text = str(path).replace(chr(92), "/")
+    if len(text) > 1 and text[1] == ":":
+        return "/" + text[0].lower() + text[2:]
+    return text
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_repo_root_is_blocked(tmp_path):
+    """The live bypass: `/c/Users/.../proj` names the repo root to Git Bash.
+
+    Before the decode, `realpath` produced `C:/c/Users/...` — a path that does
+    not exist — so the guard compared a phantom against the repo root, found no
+    match, and ALLOWED, while `rm` deleted the real directory.
+    """
+    repo = _mkrepo(tmp_path)
+    assert _ev('rm -rf "{}"'.format(_msys(repo)), repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_repo_root_unquoted_is_blocked(tmp_path):
+    repo = _mkrepo(tmp_path)
+    assert _ev("rm -rf {}".format(_msys(repo)), repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_uppercase_drive_is_blocked(tmp_path):
+    """Windows drive letters are case-insensitive; `/C/...` must match too."""
+    repo = _mkrepo(tmp_path)
+    upper = _msys(repo)
+    upper = "/" + upper[1].upper() + upper[2:]
+    assert _ev('rm -rf "{}"'.format(upper), repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_cygdrive_repo_root_is_blocked(tmp_path):
+    """Cygwin spells the same target `/cygdrive/c/...`."""
+    repo = _mkrepo(tmp_path)
+    assert _ev('rm -rf "/cygdrive{}"'.format(_msys(repo)), repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_home_is_blocked(tmp_path):
+    repo = _mkrepo(tmp_path)
+    assert _ev('rm -rf "{}"'.format(_msys(repo.parent)), repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_bare_drive_is_blocked(tmp_path):
+    """`/c` is the whole drive — the MSYS spelling of a filesystem root."""
+    repo = _mkrepo(tmp_path)
+    assert _ev("rm -rf /c", repo) is not None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_msys_scoped_cleanup_still_allowed(tmp_path):
+    """The safe control, in MSYS form.
+
+    A normalization fix that starts denying legitimate scoped cleanup has
+    traded one failure mode for another; the guard's design goal is near-zero
+    false positives.
+    """
+    repo = _mkrepo(tmp_path)
+    assert _ev('rm -rf "{}/node_modules"'.format(_msys(repo)), repo) is None
+
+
+def test_ordinary_posix_paths_are_not_treated_as_drives(tmp_path):
+    """`/tmp/scratch` must never be rewritten to a drive.
+
+    Platform-independent so Linux CI pins it too: only a SINGLE-character first
+    segment is a drive spelling, so multi-character roots are left alone.
+    """
+    assert rm_guard._decode_msys_drive("/tmp/scratch") == "/tmp/scratch"
+    assert rm_guard._decode_msys_drive("/usr/lib") == "/usr/lib"
+    assert rm_guard._decode_msys_drive("/home/bob/proj") == "/home/bob/proj"
+
+
+def test_decode_is_windows_only():
+    """On Linux `/c/foo` is a legitimate absolute path and must stay one."""
+    decoded = rm_guard._decode_msys_drive("/c/Users/bob/proj")
+    if os.name == "nt":
+        assert decoded == "C:/Users/bob/proj"
+    else:
+        assert decoded == "/c/Users/bob/proj"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MSYS drive paths are a Windows/Git Bash spelling")
+def test_relative_target_resolves_against_an_msys_cwd(tmp_path):
+    """A relative target joined onto an MSYS-form cwd still lands on the repo.
+
+    The hook's own cwd comes from `os.getcwd()` (a Windows path), so this
+    branch is defensive — but an untested branch inside a safety guard is the
+    exact thing `.claude/rules/prove-the-test-fails.md` (added by this PR) says
+    not to ship, so it is pinned rather than assumed.
+    """
+    repo = _mkrepo(tmp_path)
+    assert _ev("rm -rf .", repo, cwd=_msys(repo)) is not None
