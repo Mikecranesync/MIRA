@@ -615,6 +615,54 @@ services:
       start_period: 30s
 
 
+  # ---------------------------------------------------------------------
+  # SimLab — the simulated juice-bottling line behind factorylm.com/demo.
+  #
+  # PUBLIC-DEMO MODE ONLY. SimLab is both the machine and the grader; this
+  # container serves the eleven read/control paths the visitor flow needs and
+  # 404s everything else, so the rubric, evidence packet, eval scorecard,
+  # approval gate and engineer dashboard are unreachable from a public origin.
+  # Without that the demo's claim — MIRA diagnoses a machine it was not told the
+  # answer to — would be falsifiable with curl. Enforced server-side in
+  # simlab/api.py (PUBLIC_DEMO_PATHS, default-deny) and pinned by
+  # tests/simlab/test_public_only_mode.py.
+  #
+  # No database, no volume, no outbound network. The whole world is in memory,
+  # so a restart is simply a clean line — persistence would add risk and buy
+  # nothing. Published to loopback only; nginx fronts it at /simlab/.
+  # ---------------------------------------------------------------------
+  mira-simlab:
+    build:
+      context: .
+      dockerfile: simlab/Dockerfile
+    container_name: mira-simlab
+    ports:
+      - "127.0.0.1:8099:8099"
+    environment:
+      - SIMLAB_PUBLIC_ONLY=1
+      # Browser origin allowed to read the API. Named origins only, never "*";
+      # empty disables CORS entirely (and therefore the browser demo).
+      - SIMLAB_CORS_ORIGINS=${SIMLAB_CORS_ORIGINS:-https://factorylm.com}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/simlab/healthz', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   mira-relay:
     build: ./mira-relay
     container_name: mira-relay

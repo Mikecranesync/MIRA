@@ -202,3 +202,41 @@ describe("built document", () => {
     expect(html).not.toMatch(/https?:\/\//);
   });
 });
+
+describe("the URL mirror keeps the path it was served from", () => {
+  it("mirrors the query onto the CURRENT pathname, never onto /", () => {
+    // The same bundle is now served from a real site at /demo-app/demo.html. A
+    // hardcoded "/" moved the visitor to the marketing home URL, so a refresh
+    // left the demo behind. Found by tracing the browser's final URL, not by
+    // any assertion that existed at the time.
+    //
+    // Rendered WITHOUT `onSearch` on purpose: the harness's renderApp injects
+    // one, which overrides the very default this test exists to pin.
+    const calls: string[] = [];
+    const original = window.history.replaceState;
+    (window.history as unknown as { replaceState: unknown }).replaceState = ((
+      _state: unknown,
+      _title: unknown,
+      url: string,
+    ) => { calls.push(url); }) as unknown as typeof window.history.replaceState;
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    let root: Root;
+    try {
+      act(() => {
+        root = createRoot(container);
+        root.render(<App search="?surface=public&demo=simlab" />);
+      });
+      expect(calls.length).toBeGreaterThan(0);
+      const path = window.location.pathname;
+      for (const url of calls) {
+        expect(url.startsWith(path)).toBe(true);
+      }
+    } finally {
+      (window.history as unknown as { replaceState: unknown }).replaceState = original;
+      act(() => { root!.unmount(); });
+      container.remove();
+    }
+  });
+});
