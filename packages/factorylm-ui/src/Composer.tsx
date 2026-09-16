@@ -53,10 +53,15 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const [failure, setFailure] = useState<string | null>(null);
   const machine = machineName(state, state.activeContext.machineId);
   const native = state.profile.nativeDevice;
-  const canSend = state.draft.trim().length > 0;
+
   // Pending attachments belong to the thread they were captured in; a loaded
   // thread never inherits another thread's pending evidence.
   const visiblePending = pending.filter((item) => item.threadId === state.thread.id);
+  // A photo with no typed question is a real technician action ("what is
+  // this?"), so an attachment alone may send. Without this the composer is a
+  // dead end: the chip sits there and Send stays disabled forever. Gated on a
+  // real host -- the fixture shell has no attachment pipeline to send into.
+  const canSend = state.draft.trim().length > 0 || (visiblePending.length > 0 && Boolean(hooks?.onSend));
 
   const closeMenu = () => dispatch({ type: "set-attachment-menu-visible", visible: false });
 
@@ -86,10 +91,18 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
 
   const send = () => {
     const text = state.draft.trim();
-    if (!text) return;
+    if (!canSend) return;
     if (hooks?.onSend) {
       try {
-        hooks.onSend(text);
+        const sent = visiblePending;
+        hooks.onSend(text, sent.map((item) => item.attachment));
+        // Clear only what we just handed over. Filtering by identity (not by
+        // thread, and not `setPending([])`) keeps an attachment captured in
+        // another thread, and one captured while this send was in flight.
+        if (sent.length > 0) {
+          const handed = new Set(sent.map((item) => item.attachment.id));
+          setPending((current) => current.filter((item) => !handed.has(item.attachment.id)));
+        }
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
       } catch (error) {
@@ -138,7 +151,10 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       >
         {item.attachment.name} · captured for {item.machineLabel}
         {item.machineId !== state.activeContext.machineId ? " · not the active machine" : ""}
-        {" · pending · not sent in this lab"}
+        {/* A real host sends what it is handed; only the fixture-only shell
+            must admit that nothing leaves. Saying "not sent in this lab" on a
+            device would be the shell lying about the host's behaviour. */}
+        {hooks?.onSend ? " · attached" : " · pending · not sent in this lab"}
       </li>)}
     </ul> : null}
 

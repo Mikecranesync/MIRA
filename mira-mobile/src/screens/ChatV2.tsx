@@ -23,6 +23,7 @@ import {
   AssistantRuntimeProvider,
   useMiraChatRuntime,
 } from "../chat-adapter/runtime";
+import type { Attachment } from "@factorylm/interaction";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import type { NotebookServerTurn } from "../api/resources";
 import type { MachineEvidenceEntry } from "../lib/replay";
@@ -37,17 +38,20 @@ import { Sheet } from "./Sheet";
 
 /** Callbacks the screen owns; ChatV2 never fetches, uploads, or persists. */
 export interface ChatV2Handlers {
-  /** The screen's send path — scope, history, riders, Retry body. */
-  onSend: (text: string) => void;
+  /** The screen's send path — scope, history, riders, Retry body.
+   *  `attachments` is what the composer was holding; ChatV2's own composer
+   *  has none and omits it, so the argument is optional. */
+  onSend: (text: string, attachments?: readonly Attachment[]) => void;
   onStop: () => void;
   /** Open the existing citation sheet (viewer chain unchanged). */
   onCitation: (c: ChatCitation) => void;
-  /** Attach a photo to this conversation (existing LOOK upload path). */
-  onAttachPhoto: () => void;
+  /** Attach a photo from the gallery. Resolves to the held attachment so the
+   *  composer can preview it, or null when the picker was dismissed. */
+  onAttachPhoto: () => Promise<Attachment | null> | Attachment | null | void;
   /** Capture photo from native camera (not gallery). */
-  onAttachCamera: () => void;
-  /** Attach a PDF as a citable source (existing two-step upload path). */
-  onAttachFile: () => void;
+  onAttachCamera: () => Promise<Attachment | null> | Attachment | null | void;
+  /** Attach a document from the native document picker. */
+  onAttachFile: () => Promise<Attachment | null> | Attachment | null | void;
   /** Retry the byte-identical failed body, when one is pending. */
   onRetry?: () => void;
 }
