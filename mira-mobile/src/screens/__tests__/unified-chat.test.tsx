@@ -95,7 +95,7 @@ describe("UnifiedChat", () => {
     const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
     fireEvent.input(box, { target: { value: "What about braking?" } });
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
-    expect(h.onSend).toHaveBeenCalledWith("What about braking?");
+    expect(h.onSend).toHaveBeenCalledWith("What about braking?", []);
     expect(box.value).toBe("");
 
     fireEvent.click(document.querySelector('button[data-part-type="source"]') as HTMLButtonElement);
