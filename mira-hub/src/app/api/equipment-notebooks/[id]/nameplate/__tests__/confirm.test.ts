@@ -68,7 +68,10 @@ vi.mock("@/lib/safe-download", () => ({
 // Slice 2: the promote lib is unit- and Postgres-proven separately; here we spy
 // it to prove the ROUTE never synthesizes the promoted set from `identity` and
 // passes through exactly the client-submitted ids.
-vi.mock("@/lib/visual-evidence-context", () => ({ promoteVisualObservations: vi.fn() }));
+vi.mock("@/lib/visual-evidence-context", () => ({
+  promoteVisualObservations: vi.fn(),
+  correctVisualObservations: vi.fn(),
+}));
 
 import { POST } from "../confirm/route";
 import { sessionOr401 } from "@/lib/session";
@@ -86,7 +89,7 @@ import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimI
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
 import { safeDownloadPdf } from "@/lib/safe-download";
-import { promoteVisualObservations } from "@/lib/visual-evidence-context";
+import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const NODE_ID = "99999999-8888-7777-6666-555555555555";
@@ -218,6 +221,7 @@ beforeEach(() => {
   // Default chunk read: no identity evidence.
   vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
   vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [] });
+  vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [] });
 });
 
 describe("auth, tenancy, and request shape", () => {
@@ -1029,6 +1033,85 @@ describe("visual-observation promotion (Slice 2)", () => {
     );
     expect(promoteVisualObservations).toHaveBeenCalledWith(
       expect.objectContaining({ observationIds: [OBS_1] }),
+    );
+  });
+});
+
+// ── Slice 3: corrections supersede the EXACT edited vision readings — the
+//    route forwards verbatim, derives nothing, and never fails the confirm. ──
+describe("visual-observation correction (Slice 3)", () => {
+  const ASSET_UUID = "a5e70000-0000-4000-8000-000000000001";
+  const OBS_1 = "01a10000-0000-4000-8000-0000000000a1";
+  const OBS_2 = "01a10000-0000-4000-8000-0000000000a2";
+  const boundNotebook = { ...(notebook as object), asset: { entityId: ASSET_UUID } } as never;
+
+  it("no corrections → correct lib not called, count 0 (a full identity is never turned into corrections)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as { visualCorrectedCount: number };
+    expect(body.visualCorrectedCount).toBe(0);
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+  });
+
+  it("forwards {observationId, value} pairs VERBATIM, scoped to the bound asset + this photo + the session user, and surfaces the count", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [{ supersededId: OBS_2, replacementId: "new-1" }] });
+    const res = await POST(
+      makeReq({
+        ...baseBody,
+        discover: false,
+        observationIds: [OBS_1],
+        corrections: [{ observationId: OBS_2, value: "GS10" }],
+      }),
+      makeParams(NOTEBOOK_ID),
+    );
+    const body = (await res.json()) as { visualPromotedCount: number; visualCorrectedCount: number };
+    expect(body.visualCorrectedCount).toBe(1);
+    expect(correctVisualObservations).toHaveBeenCalledTimes(1);
+    expect(correctVisualObservations).toHaveBeenCalledWith({
+      tenantId: TENANT_ID,
+      boundEntityId: ASSET_UUID,
+      fileId: PHOTO_FILE_ID,
+      corrections: [{ observationId: OBS_2, value: "GS10" }],
+      correctedBy: "u_1",
+    });
+    // Promotion and correction are independent calls on disjoint sets.
+    expect(promoteVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ observationIds: [OBS_1] }));
+  });
+
+  it("an unbound notebook forwards boundEntityId=null — the lib then corrects nothing", async () => {
+    await POST(
+      makeReq({ ...baseBody, discover: false, corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ boundEntityId: null }));
+  });
+
+  it("a correction failure never fails the confirm — count 0, nameplate still complete", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockRejectedValue(new Error("visual correction race"));
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualCorrectedCount: number };
+    expect(body.status).toBe("complete");
+    expect(body.visualCorrectedCount).toBe(0);
+  });
+
+  it("drops malformed correction entries (fail-safe shape guard)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    await POST(
+      makeReq({
+        ...baseBody,
+        discover: false,
+        corrections: [{ observationId: OBS_2, value: "GS10" }, { observationId: 7, value: "x" }, { value: "no id" }, null, "str"],
+      }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(correctVisualObservations).toHaveBeenCalledWith(
+      expect.objectContaining({ corrections: [{ observationId: OBS_2, value: "GS10" }] }),
     );
   });
 });

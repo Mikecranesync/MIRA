@@ -20,6 +20,8 @@ import type {
   ConfirmComponentStatus,
   ConfirmedManual,
   ManualCandidateView,
+  PersistedVisualObservation,
+  VisualCorrection,
 } from "../api/resources";
 import { EMPTY_COMPONENT_IDENTITY, confirmYieldedCitableSource } from "../api/resources";
 
@@ -373,6 +375,40 @@ export function canSubmitIdentity(identity: ComponentIdentity): boolean {
     identity.manufacturer.trim() &&
       (identity.model.trim() || identity.catalogNumber.trim()),
   );
+}
+
+/**
+ * Split this capture's persisted vision readings by what the technician is
+ * actually asserting at confirm (Slices 2 + 3). Pure, so it is testable without
+ * the screen:
+ *
+ *  - value UNCHANGED  → `observationIds` — confirm that exact reading (Slice 2).
+ *  - value EDITED     → `corrections`    — supersede that exact reading with the
+ *                       technician's value (Slice 3). The pre-edit reading is
+ *                       never confirmed.
+ *  - value EMPTIED    → neither. Clearing a field is not a confirmation and not
+ *                       a correction; the candidate is left untouched (an
+ *                       explicit "reject" action is a later slice).
+ *  - field not on the identity form (e.g. `certification`) → neither.
+ *
+ * The two outputs are disjoint by construction, so the server can never be
+ * asked to both promote and supersede the same observation.
+ */
+export function partitionVisualObservations(
+  identity: ComponentIdentity,
+  observations: readonly PersistedVisualObservation[],
+): { observationIds: string[]; corrections: VisualCorrection[] } {
+  const fields = identity as unknown as Record<string, string | undefined>;
+  const observationIds: string[] = [];
+  const corrections: VisualCorrection[] = [];
+  for (const o of observations) {
+    const submitted = fields[o.field];
+    if (typeof submitted !== "string") continue;
+    const value = submitted.trim();
+    if (value === o.value) observationIds.push(o.observationId);
+    else if (value !== "") corrections.push({ observationId: o.observationId, value });
+  }
+  return { observationIds, corrections };
 }
 
 /**

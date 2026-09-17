@@ -29,6 +29,7 @@ import {
   candidateAction,
   nameplateReducer,
   nameplateStatusCopy,
+  partitionVisualObservations,
   reasonFromRecognizeError,
   type NameplateManual,
 } from "../lib/nameplate-flow";
@@ -101,21 +102,14 @@ export function ComponentNameplateFlow({
     dispatch({ type: "confirm_submitted" });
     setTransportError(null);
     try {
-      // Confirm ONLY the readings the technician left unchanged: an observation
-      // whose recorded value still equals the submitted identity value. An edited
-      // field diverges → its id is omitted → the pre-edit reading is never
-      // stamped confirmed (under-promotion is safe; over-promotion is not). A
-      // field with no matching identity key (e.g. "certification") is omitted too.
-      const fields = identity as unknown as Record<string, string | undefined>;
-      const observationIds = visualObservations
-        .filter((o) => {
-          const submitted = fields[o.field];
-          return typeof submitted === "string" && submitted.trim() === o.value;
-        })
-        .map((o) => o.observationId);
+      // Unchanged readings → confirm that exact observation (Slice 2). Edited
+      // readings → supersede that exact observation with the technician's value
+      // (Slice 3). The pre-edit reading is never stamped confirmed, and the two
+      // sets are disjoint by construction. See partitionVisualObservations.
+      const { observationIds, corrections } = partitionVisualObservations(identity, visualObservations);
       const result = await confirmComponentNameplate(
         notebookId,
-        { fileId, identity, rawObservation, discover: true, observationIds },
+        { fileId, identity, rawObservation, discover: true, observationIds, corrections },
         confirmKey,
       );
       dispatch({ type: "confirm_result", result });

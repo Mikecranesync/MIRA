@@ -1155,6 +1155,9 @@ export interface ConfirmComponentResult {
    *  technician-confirmed (0 unless the client sent unchanged observation ids
    *  for a bound-asset capture). */
   visualPromotedCount?: number;
+  /** Slice 3: how many vision readings this confirm superseded with a
+   *  technician-provided replacement. */
+  visualCorrectedCount?: number;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1179,6 +1182,16 @@ export interface ConfirmComponentBody {
    *  confirming (only the readings whose value is unchanged). The server
    *  promotes only these, scoped to the bound asset + this photo. */
   observationIds?: string[];
+  /** Slice 3: the readings the technician EDITED — exact observation id plus
+   *  the value they read instead. The server supersedes the vision reading
+   *  and records a technician-provided replacement on the same photo. */
+  corrections?: VisualCorrection[];
+}
+
+/** One correction: replace THIS observation's value with what the technician read. */
+export interface VisualCorrection {
+  observationId: string;
+  value: string;
 }
 
 /** Confirm the COMPONENT identity read from the nameplate. This never touches
@@ -1224,6 +1237,7 @@ export async function confirmComponentNameplate(
     message: d.message != null ? String(d.message) : null,
     warning: d.warning != null ? String(d.warning) : null,
     visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
+    visualCorrectedCount: typeof d.visualCorrectedCount === "number" ? d.visualCorrectedCount : 0,
   };
 }
 

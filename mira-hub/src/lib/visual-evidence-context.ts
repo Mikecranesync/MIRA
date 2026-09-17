@@ -194,6 +194,141 @@ export async function promoteVisualObservations(opts: {
   });
 }
 
+/** A technician's correction of ONE persisted reading: the exact observation
+ *  being replaced and the value they read instead. */
+export type VisualCorrection = {
+  readonly observationId: string;
+  readonly value: string;
+};
+
+/** Matches the confirm route's identity-field cap (`readIdentity` slices to 200). */
+const MAX_CORRECTION_VALUE_CHARS = 200;
+
+/**
+ * Split a persisted `normalized_value` (`"<field>: <value>"`, as written by
+ * `recordNameplateObservations`) back into its field. Returns null when the
+ * row is not in that shape — the caller then SKIPS the correction (fail safe)
+ * rather than guessing a field name.
+ */
+export function fieldOfNormalizedValue(normalized: string | null | undefined): string | null {
+  if (typeof normalized !== "string") return null;
+  const idx = normalized.indexOf(": ");
+  if (idx <= 0) return null;
+  const field = normalized.slice(0, idx);
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(field) ? field : null;
+}
+
+/**
+ * Apply a technician's CORRECTIONS to exact persisted visual observations
+ * (Slice 3). Correction never destroys evidence — it changes which observation
+ * is active/trusted:
+ *
+ *  1. INSERT a replacement observation on the SAME session + evidence (same
+ *     photo): `normalized_value = "<field>: <corrected value>"`,
+ *     `extractor='technician'`, `review_state='corrected'` (a human-provided
+ *     reading is `verified` under the Python trust contract), `raw_value` NULL
+ *     (the human did not read raw text), `metadata.corrected_from` = the old id.
+ *  2. Supersede the old row exactly as Python `supersede_observation` does:
+ *     `SET evidence_state='SUPERSEDED', superseded_by=<new id>` — its
+ *     `raw_value` / `normalized_value` / `review_state` are left untouched, so
+ *     the vision reading is preserved as history and the Slice 1 active filter
+ *     (`evidence_state NOT IN ('REJECTED','SUPERSEDED')`, `superseded_by IS
+ *     NULL`) drops it from chat context. No DELETE, ever (migration 063).
+ *
+ * Scoping is IDENTICAL to `promoteVisualObservations`: the exact observation id
+ * ∧ tenant ∧ the notebook's server-bound `asset_id` ∧ this photo's `file_id`
+ * ∧ a LIVE candidate (`review_state='unreviewed'`, active, not superseded).
+ * A correction aimed at another asset, another capture, a confirmed/corrected/
+ * rejected row, or an unknown id changes nothing. Unbound / non-UUID key /
+ * non-UUID fileId / malformed ids / empty values / a value equal to the recorded
+ * one → skipped, never broadened. The row is locked (`FOR UPDATE`) inside the
+ * `withTenantContext` transaction so two concurrent confirms cannot both
+ * supersede the same reading.
+ *
+ * Returns the (supersededId, replacementId) pairs actually applied.
+ */
+export async function correctVisualObservations(opts: {
+  readonly tenantId: string;
+  readonly boundEntityId: string | null;
+  readonly fileId: string;
+  readonly corrections: readonly VisualCorrection[];
+  readonly correctedBy: string | null;
+}): Promise<{ corrected: { supersededId: string; replacementId: string }[] }> {
+  if (!isUuidKey(opts.boundEntityId)) return { corrected: [] };
+  if (!isUuidKey(opts.fileId)) return { corrected: [] };
+  const wanted = opts.corrections
+    .filter((c) => isUuidKey(c.observationId) && typeof c.value === "string" && c.value.trim() !== "")
+    .map((c) => ({ observationId: c.observationId, value: c.value.trim().slice(0, MAX_CORRECTION_VALUE_CHARS) }));
+  if (wanted.length === 0) return { corrected: [] };
+
+  return withTenantContext(opts.tenantId, async (c: QueryClient) => {
+    const corrected: { supersededId: string; replacementId: string }[] = [];
+    for (const w of wanted) {
+      // Same guard set as promotion; FOR UPDATE pins the row for this transaction.
+      const target = await c.query(
+        `SELECT o.observation_id::text AS id, o.session_id::text AS session_id,
+                o.evidence_id::text AS evidence_id, o.normalized_value
+           FROM observation o
+          WHERE o.observation_id = $1::uuid
+            AND o.tenant_id = $2::uuid
+            AND o.review_state = 'unreviewed'
+            AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
+            AND o.superseded_by IS NULL
+            AND o.session_id IN (
+              SELECT vs.session_id FROM visual_session vs
+               WHERE vs.tenant_id = $2::uuid AND vs.asset_id = $3::uuid
+            )
+            AND o.evidence_id IN (
+              SELECT e.evidence_id FROM evidence_item e
+               WHERE e.tenant_id = $2::uuid AND e.capture_meta->>'file_id' = $4
+            )
+          FOR UPDATE`,
+        [w.observationId, opts.tenantId, opts.boundEntityId, opts.fileId],
+      );
+      const row = target.rows[0];
+      if (!row) continue; // not ours / not live / not this capture → nothing
+      const field = fieldOfNormalizedValue(row.normalized_value as string | null);
+      if (!field) continue; // not a "<field>: <value>" row → cannot correct safely
+      if (`${field}: ${w.value}` === row.normalized_value) continue; // same value = a confirm, not a correction
+
+      const ins = await c.query(
+        `INSERT INTO observation
+           (session_id, tenant_id, evidence_id, obs_kind, raw_value, normalized_value,
+            evidence_state, confidence, extractor, review_state, metadata)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'property', NULL, $4, 'VISIBLE', NULL, 'technician', 'corrected', $5::jsonb)
+         RETURNING observation_id::text AS id`,
+        [
+          row.session_id,
+          opts.tenantId,
+          row.evidence_id,
+          `${field}: ${w.value}`,
+          JSON.stringify({ corrected_from: row.id, corrected_by: opts.correctedBy, field }),
+        ],
+      );
+      const replacementId = String(ins.rows[0].id);
+
+      // Mirror of Python `_SUPERSEDE_OBSERVATION_SQL`, re-guarded on the live
+      // state so a racing writer cannot supersede an already-superseded row.
+      const sup = await c.query(
+        `UPDATE observation
+            SET evidence_state = 'SUPERSEDED', superseded_by = $2::uuid
+          WHERE observation_id = $1::uuid
+            AND tenant_id = $3::uuid
+            AND superseded_by IS NULL
+            AND evidence_state <> 'SUPERSEDED'
+          RETURNING observation_id::text AS id`,
+        [row.id, replacementId, opts.tenantId],
+      );
+      if (sup.rows.length === 0) {
+        // Lost the race after our INSERT — do not leave a dangling replacement.
+        throw new Error(`visual correction race on observation ${row.id}`);
+      }
+      corrected.push({ supersededId: String(row.id), replacementId });
+    }
+    return { corrected };
+  });
+}
+
 export type VisualEvidenceRow = {
   readonly observationId: string;
   readonly sessionId: string;

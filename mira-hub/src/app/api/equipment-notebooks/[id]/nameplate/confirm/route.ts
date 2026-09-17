@@ -40,7 +40,7 @@ import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractabl
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
-import { promoteVisualObservations } from "@/lib/visual-evidence-context";
+import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
 
@@ -415,6 +415,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // ── Slice 3: apply the technician's CORRECTIONS to exact visual observations.
+  // The client partitions this capture's readings into unchanged (→ observationIds,
+  // promoted above) and edited-with-a-value (→ corrections). Each correction
+  // inserts a technician-provided replacement on the same photo and supersedes
+  // the vision reading (evidence_state='SUPERSEDED', superseded_by=<new>), so the
+  // stale value stops participating in chat context while the trail is kept —
+  // correction never destroys evidence, it changes which observation is active.
+  // Same scoping as promotion (exact id ∧ tenant ∧ bound asset ∧ this photo ∧ live
+  // candidate); the server derives NOTHING from `identity`. Fail-safe like above.
+  const submittedCorrections = Array.isArray(body.corrections)
+    ? (body.corrections as unknown[]).flatMap((c) => {
+        const o = c as { observationId?: unknown; value?: unknown } | null;
+        return o && typeof o.observationId === "string" && typeof o.value === "string"
+          ? [{ observationId: o.observationId, value: o.value }]
+          : [];
+      })
+    : [];
+  let visualCorrected: { supersededId: string; replacementId: string }[] = [];
+  if (submittedCorrections.length > 0) {
+    try {
+      const res = await correctVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        corrections: submittedCorrections,
+        correctedBy: ctx.userId ?? null,
+      });
+      visualCorrected = res.corrected;
+    } catch (err) {
+      console.warn(
+        `[nameplate-confirm] visual correction failed notebook=${notebookId} photo=${fileId}: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+
   // (c) The notebook's own identity is NOT patched here. See the header.
 
   const nameplate = {
@@ -442,6 +479,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // or foreign, the ids were invalid, or they were not live candidates of this
       // asset's capture — never a silent broadening.
       visualPromotedCount: visualPromotedIds.length,
+      // Slice 3: how many vision readings were superseded by a technician-provided
+      // replacement on this photo. Same fail-safe semantics as the count above.
+      visualCorrectedCount: visualCorrected.length,
       manual: null,
       candidate: null,
       applicability: null,
