@@ -122,14 +122,24 @@ describe("readScan — progressive context (§2.6)", () => {
 });
 
 describe("toNotebook keeps the asset binding the server stores", () => {
-  it("maps asset {entityId, selectedVia, confirmedBy, confirmedAt}", () => {
+  it("maps asset {entityId, name, assetTag, selectedVia, confirmedBy, confirmedAt}", () => {
     const nb = toNotebook({
       id: "nb-1",
       displayName: "CV-101",
       nodeId: "n",
       asset: { entityId: "asset-1", selectedVia: "qr", confirmedBy: null, confirmedAt: null },
     });
-    expect(nb.asset).toEqual({ entityId: "asset-1", selectedVia: "qr", confirmedBy: null, confirmedAt: null });
+    // name/assetTag absent on the wire → null (write-path RETURNING has no join).
+    expect(nb.asset).toEqual({ entityId: "asset-1", name: null, assetTag: null, selectedVia: "qr", confirmedBy: null, confirmedAt: null });
+  });
+  it("passes the server-resolved bound-asset name + tag through (Slice 0)", () => {
+    const nb = toNotebook({
+      id: "nb-1",
+      displayName: "Sensor v0 overnight 2026-08-28",
+      nodeId: "n",
+      asset: { entityId: "asset-1", name: "Discharge Conveyor", assetTag: "CV-101", selectedVia: "qr", confirmedBy: null, confirmedAt: null },
+    });
+    expect(nb.asset).toMatchObject({ name: "Discharge Conveyor", assetTag: "CV-101" });
   });
   it("is null when unbound — never an empty-string binding", () => {
     expect(toNotebook({ id: "nb-1", displayName: "x", nodeId: "n" }).asset).toBeNull();
@@ -163,7 +173,7 @@ describe("assetCardState (ported verbatim from mira-hub/src/lib/notebook-asset-c
     const c = assetCardState(
       resolvedAssetFromNotebook({
         displayName: "Discharge Conveyor",
-        asset: { entityId: "a", selectedVia: "qr", confirmedBy: null, confirmedAt: null },
+        asset: { entityId: "a", name: null, assetTag: null, selectedVia: "qr", confirmedBy: null, confirmedAt: null },
       }),
     );
     expect(c.tone).toBe("unconfirmed");
@@ -174,14 +184,14 @@ describe("assetCardState (ported verbatim from mira-hub/src/lib/notebook-asset-c
     const typed = assetCardState(
       resolvedAssetFromNotebook({
         displayName: "CV-101",
-        asset: { entityId: "a", selectedVia: "manual_entry", confirmedBy: null, confirmedAt: null },
+        asset: { entityId: "a", name: null, assetTag: null, selectedVia: "manual_entry", confirmedBy: null, confirmedAt: null },
       }),
     );
     expect(typed.detail).toMatch(/typed in/);
     const confirmed = assetCardState(
       resolvedAssetFromNotebook({
         displayName: "CV-101",
-        asset: { entityId: "a", selectedVia: "qr", confirmedBy: "u1", confirmedAt: "2026-08-28T00:00:00Z" },
+        asset: { entityId: "a", name: null, assetTag: null, selectedVia: "qr", confirmedBy: "u1", confirmedAt: "2026-08-28T00:00:00Z" },
       }),
     );
     expect(confirmed).toMatchObject({ tone: "confirmed", headline: "CV-101" });

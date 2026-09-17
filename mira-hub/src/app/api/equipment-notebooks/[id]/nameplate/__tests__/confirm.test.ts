@@ -65,6 +65,10 @@ vi.mock("@/lib/safe-download", () => ({
   safeDownloadPdf: vi.fn(),
   safePdfFilename: vi.fn(() => "520-um001.pdf"),
 }));
+// Slice 2: the promote lib is unit- and Postgres-proven separately; here we spy
+// it to prove the ROUTE never synthesizes the promoted set from `identity` and
+// passes through exactly the client-submitted ids.
+vi.mock("@/lib/visual-evidence-context", () => ({ promoteVisualObservations: vi.fn() }));
 
 import { POST } from "../confirm/route";
 import { sessionOr401 } from "@/lib/session";
@@ -82,6 +86,7 @@ import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimI
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
 import { safeDownloadPdf } from "@/lib/safe-download";
+import { promoteVisualObservations } from "@/lib/visual-evidence-context";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const NODE_ID = "99999999-8888-7777-6666-555555555555";
@@ -212,6 +217,7 @@ beforeEach(() => {
   vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);
   // Default chunk read: no identity evidence.
   vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
+  vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [] });
 });
 
 describe("auth, tenancy, and request shape", () => {
@@ -943,5 +949,86 @@ describe("canonical-evidence contract (085)", () => {
     const body = (await res.json()) as { ok: boolean; status: string };
     expect(body.ok).toBe(true);
     expect(body.status).toBe("complete"); // the confirm still completed
+  });
+});
+
+// ── Slice 2: promote only the EXACT persisted visual observations the client
+//    approved — the route never synthesizes the set from `identity`. ──────────
+describe("visual-observation promotion (Slice 2)", () => {
+  const ASSET_UUID = "a5e70000-0000-4000-8000-000000000001";
+  const OBS_1 = "01a10000-0000-4000-8000-0000000000a1";
+  const OBS_2 = "01a10000-0000-4000-8000-0000000000a2";
+  const boundNotebook = { ...(notebook as object), asset: { entityId: ASSET_UUID } } as never;
+
+  it("NEVER derives the promoted set from identity: a full identity with no observationIds promotes nothing", async () => {
+    // A populated identity is exactly the shape from which a naive server might
+    // infer "confirm everything". It must not: with no observationIds the promote
+    // lib is not even called, and the count is 0.
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualPromotedCount: number };
+    expect(body.status).toBe("complete");
+    expect(body.visualPromotedCount).toBe(0);
+    expect(promoteVisualObservations).not.toHaveBeenCalled();
+  });
+
+  it("passes the client-submitted ids VERBATIM to the promote lib, scoped to the bound asset + this photo, and surfaces the count", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    // The lib decides what actually flips (proven against real Postgres); the
+    // route only forwards. Here it reports one of the two ids promoted.
+    vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [OBS_1] });
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, OBS_2] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { visualPromotedCount: number };
+    expect(body.visualPromotedCount).toBe(1);
+    expect(promoteVisualObservations).toHaveBeenCalledTimes(1);
+    expect(promoteVisualObservations).toHaveBeenCalledWith({
+      tenantId: TENANT_ID,
+      boundEntityId: ASSET_UUID,
+      fileId: PHOTO_FILE_ID,
+      observationIds: [OBS_1, OBS_2],
+    });
+  });
+
+  it("an unbound notebook passes boundEntityId=null — the lib then promotes nothing", async () => {
+    // notebook has no `asset` → boundEntityId is null; the guard inside the lib
+    // (proven separately) returns 0. Here we assert the route forwards null,
+    // never a fabricated identity.
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(promoteVisualObservations).toHaveBeenCalledWith(
+      expect.objectContaining({ boundEntityId: null, observationIds: [OBS_1] }),
+    );
+  });
+
+  it("a promotion failure never fails the confirm — count 0, nameplate still complete", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(promoteVisualObservations).mockRejectedValue(new Error("db down"));
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualPromotedCount: number };
+    expect(body.status).toBe("complete");
+    expect(body.visualPromotedCount).toBe(0);
+  });
+
+  it("ignores non-string entries in observationIds (fail-safe shape guard)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, 42, null, { x: 1 }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(promoteVisualObservations).toHaveBeenCalledWith(
+      expect.objectContaining({ observationIds: [OBS_1] }),
+    );
   });
 });

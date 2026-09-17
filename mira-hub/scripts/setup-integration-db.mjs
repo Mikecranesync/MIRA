@@ -36,6 +36,10 @@ const defaultMigrationFiles = [
   "085_notebook_source_canonical_provenance.sql",
   "086_notebook_turn_owner.sql",
   "087_notebook_thread_identity.sql",
+  // Visual-evidence spine (ADR-0027 Phase 1) + the TEXT-tenant fix: visual_session,
+  // evidence_item, observation, region_of_interest, visual_question, answer_claim.
+  "063_visual_sessions.sql",
+  "069_visual_tenant_text.sql",
 ];
 
 function requireEnv(name) {

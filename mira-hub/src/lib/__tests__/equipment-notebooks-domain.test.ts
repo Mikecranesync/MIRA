@@ -40,7 +40,7 @@ const poolMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { attachSource, createNotebook, validateChatSources } from "../equipment-notebooks";
+import { attachSource, createNotebook, getNotebook, listNotebooks, validateChatSources } from "../equipment-notebooks";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -220,5 +220,85 @@ describe("validateChatSources", () => {
     );
     const res = await validateChatSources(TENANT, NB, [DOC]);
     expect(res).toEqual({ ok: false, error: "source_not_in_notebook" });
+  });
+});
+
+// Slice 0 — the read path resolves the technician-facing machine identity from
+// the CURRENTLY BOUND asset, not the notebook's frozen display_name. Built from
+// the real measured CV-101 row shape (display_name "Sensor v0 overnight …",
+// equipment_entity_id → the verified asset "Discharge Conveyor" / tag "CV-101").
+// The mobile drawer composes the label; here we prove the Hub SUPPLIES the
+// bound-asset identity and that the SQL resolves it from kg_entities.
+describe("bound-asset identity on the read path (Slice 0)", () => {
+  // The row a live listNotebooks/getNotebook returns AFTER the BOUND_ASSET_JOIN:
+  // stale display_name, real equipment_entity_id, resolved bound_asset_*.
+  const cv101Row = {
+    id: NB,
+    display_name: "Sensor v0 overnight 2026-08-28", // the stale frozen name
+    manufacturer: null,
+    model: null,
+    catalog_number: null,
+    serial_number: null,
+    equipment_type: null,
+    asset_tag: null, // the notebook's OWN frozen tag column — deliberately empty
+    location_label: null,
+    identity_status: "user_confirmed",
+    identity_confidence: null,
+    identity_source_type: null,
+    node_id: "node-1",
+    last_opened_at: null,
+    created_at: "2026-08-28T00:00:00Z",
+    equipment_entity_id: "64a24de7", // → the CV-101 asset's kg_entities key
+    asset_selected_via: "qr",
+    asset_confirmed_by: "u1",
+    asset_confirmed_at: "2026-09-01T00:00:00Z",
+    bound_asset_name: "Discharge Conveyor", // kg_entities.name (resolved live)
+    bound_asset_tag: "CV-101", // properties->>'asset_tag' (resolved live)
+  };
+
+  it("getNotebook resolves the bound asset's live name + tag onto the binding", async () => {
+    rowsByMatch.push({ re: /SELECT[\s\S]*FROM equipment_notebooks n/, rows: [cv101Row] });
+    const nb = await getNotebook(TENANT, NB);
+    expect(nb).not.toBeNull();
+    // The stale name is still the notebook's displayName …
+    expect(nb!.displayName).toBe("Sensor v0 overnight 2026-08-28");
+    // … but the binding now carries the CURRENT asset identity the label uses.
+    expect(nb!.asset).toMatchObject({
+      entityId: "64a24de7",
+      name: "Discharge Conveyor",
+      assetTag: "CV-101",
+    });
+  });
+
+  it("listNotebooks threads the same resolved identity", async () => {
+    rowsByMatch.push({ re: /SELECT[\s\S]*FROM equipment_notebooks n/, rows: [cv101Row] });
+    const [nb] = await listNotebooks(TENANT);
+    expect(nb.asset).toMatchObject({ name: "Discharge Conveyor", assetTag: "CV-101" });
+  });
+
+  it("emits the SQL contract that resolves the label from the bound asset, not a hard-coded tag", async () => {
+    rowsByMatch.push({ re: /SELECT[\s\S]*FROM equipment_notebooks n/, rows: [cv101Row] });
+    await getNotebook(TENANT, NB);
+    const sql = callFor(/SELECT[\s\S]*FROM equipment_notebooks n/)!.sql;
+    // Resolves from kg_entities, keyed on the stored binding (either entity_id
+    // or id), preferring the verified equipment/asset identity node.
+    expect(sql).toMatch(/FROM kg_entities/);
+    expect(sql).toMatch(/coalesce\(ae\.entity_id, ae\.id::text\) = n\.equipment_entity_id/);
+    expect(sql).toMatch(/properties->>'asset_tag'/);
+    expect(sql).toMatch(/approval_state = 'verified'/);
+    // LATERAL + LIMIT 1 → one row per notebook (no list duplication).
+    expect(sql).toMatch(/LEFT JOIN LATERAL/);
+    expect(sql).toMatch(/LIMIT 1/);
+    // Nothing hard-codes CV-101 — the fix is asset-driven.
+    expect(sql).not.toMatch(/CV-101/);
+  });
+
+  it("leaves an unbound notebook's binding null (no bound-asset resolution)", async () => {
+    rowsByMatch.push({
+      re: /SELECT[\s\S]*FROM equipment_notebooks n/,
+      rows: [{ ...cv101Row, equipment_entity_id: null, bound_asset_name: null, bound_asset_tag: null }],
+    });
+    const nb = await getNotebook(TENANT, NB);
+    expect(nb!.asset).toBeNull();
   });
 });
