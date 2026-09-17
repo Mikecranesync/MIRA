@@ -155,6 +155,17 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
             must admit that nothing leaves. Saying "not sent in this lab" on a
             device would be the shell lying about the host's behaviour. */}
         {hooks?.onSend ? " · attached" : " · pending · not sent in this lab"}
+        {/* Attaching is a two-step commit — pick, then send — so the technician
+            must be able to back out of the pick. Without this the wrong photo
+            is unrecoverable short of reloading the thread. Removing only drops
+            it from the composer; nothing was uploaded yet (upload happens on
+            send), so there is no server-side state to undo. */}
+        <button
+          type="button"
+          className="fl-composer__pending-remove"
+          aria-label={`Remove ${item.attachment.name}`}
+          onClick={() => setPending((current) => current.filter((p) => p.attachment.id !== item.attachment.id))}
+        >×</button>
       </li>)}
     </ul> : null}
 

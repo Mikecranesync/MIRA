@@ -226,8 +226,18 @@ export function UnifiedChat({
   // error surface was unreachable exactly where it was needed. Mirror the host's
   // error into shell state so the in-thread surface (with Retry) is the one the
   // technician sees.
+  // Mirror only on a CHANGE in the host's error. `state.draft` is a dependency
+  // (the restore below reads it), so an unconditional dispatch re-ran on every
+  // keystroke and on the draft this effect itself restores — forcing
+  // `chatError ?? null` and silently erasing an error the attachment path had
+  // just set locally. An upload that failed then looked like nothing happened:
+  // the question reappeared in the composer with no explanation.
+  const mirroredChatError = useRef<string | null>(null);
   useEffect(() => {
-    dispatch({ type: "set-send-error", error: chatError ?? null });
+    const next = chatError ?? null;
+    if (mirroredChatError.current === next) return;
+    mirroredChatError.current = next;
+    dispatch({ type: "set-send-error", error: next });
     // The composer clears the draft at send time, so by the time a failure
     // arrives the question is gone. Put it back — host-owned, because only the
     // host knows what was in flight. The reducer has no idea what failed.
