@@ -20,12 +20,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
-import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
+import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { parseNameplateLines } from "@/lib/nameplate/passes";
 import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
+import { recordNameplateObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
 
@@ -180,6 +181,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ...rawText.filter(isComplianceMark).map((mark) => toFact({ field: "certification", value: mark, rawText })),
     ];
     const review = summarizeForReview(evidence);
+
+    // Slice 1 (owner decision B): a nameplate photographed inside an ASSET-BOUND
+    // notebook also lands in the VisualSession ledger, bound to that asset, so a
+    // later chat turn can retrieve it by canonical asset id (never by label).
+    // Every reading is written `candidate` — a vision pass never self-promotes to
+    // verified. Fail-open: a ledger failure must never cost the recognition the
+    // technician is standing there waiting for.
+    if (notebook.asset?.entityId) {
+      try {
+        const visualFacts = evidence
+          .filter((f) => f.status !== "rejected" && f.value != null && f.value.trim() !== "")
+          .map((f) => ({ field: f.field, rawText: f.rawText, value: f.value as string, confidence: f.confidence }));
+        const recorded = await recordNameplateObservations({
+          tenantId: ctx.tenantId,
+          equipmentEntityId: notebook.asset.entityId,
+          fileId: parked.fileId,
+          photoHash: sha256Hex(buffer),
+          facts: visualFacts,
+          createdBy: ctx.userId ?? null,
+          title: notebook.asset.name ?? notebook.displayName ?? null,
+        });
+        if (!recorded) {
+          console.warn(
+            `[nameplate] visual ledger skipped for notebook ${notebookId}: non-UUID asset key or no citable facts`,
+          );
+        }
+      } catch (err) {
+        console.error("[nameplate] visual ledger write failed (continuing without it):", err);
+      }
+    }
 
     return NextResponse.json({
       fileId: parked.fileId,

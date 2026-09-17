@@ -84,6 +84,7 @@ import {
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
+import { loadVisualEvidenceForAsset, renderVisualEvidenceSection } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -961,6 +962,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
     : "";
 
+  // Slice 1 (owner decision B): the machine's PHOTOGRAPHED nameplate evidence,
+  // retrieved by the notebook's SERVER-bound asset id (never a label/tag/client
+  // id → a stale display name cannot change retrieval, and one machine's photos
+  // cannot surface under another). Loads only for a bound, non-disputed notebook
+  // — unbound or disputed → nothing (owner: "if no equipment is explicitly
+  // bound, return no visual evidence"). Own try/catch: a ledger read failure
+  // never drops the document/machine context already built.
+  let visualSection = "";
+  if (boundAsset.state === "resolved" && !identityDisputed) {
+    try {
+      const visualRows = await withTenantContext(ctx.tenantId, (c) =>
+        loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),
+      );
+      visualSection = renderVisualEvidenceSection(visualRows);
+    } catch (err) {
+      console.error("[notebook-chat] visual evidence load failed (continuing without it):", err);
+    }
+  }
+
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers
   // from notebook facts (identity + coverage) instead of the first excerpt, and
@@ -1035,9 +1055,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
     : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
+  // Visual (photographed nameplate) evidence rides after machine evidence; with
+  // none the string is byte-identical to before.
+  const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
   const systemPrompt = general
-    ? withMachine + machineContext
-    : appendManualContext(withMachine, chunks) + machineContext + coverageDirective;
+    ? withVisual + machineContext
+    : appendManualContext(withVisual, chunks) + machineContext + coverageDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides

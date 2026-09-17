@@ -75,6 +75,10 @@ describe("PUT /asset", () => {
     const body = await res.json();
     expect(body.notebook.asset).toEqual({
       entityId: ASSET_UUID,
+      // Resolved bound-asset identity (Slice 0) is null on the bind RETURNING
+      // path — it has no LATERAL join; it populates on the next read.
+      name: null,
+      assetTag: null,
       selectedVia: "qr",
       confirmedBy: null,
       confirmedAt: null,
