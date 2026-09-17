@@ -188,12 +188,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Every reading is written `candidate` — a vision pass never self-promotes to
     // verified. Fail-open: a ledger failure must never cost the recognition the
     // technician is standing there waiting for.
+    // Hoisted so the persisted observation ids can ride the response (Slice 2):
+    // the client keeps them and sends back the exact subset it approves at confirm.
+    let recorded: Awaited<ReturnType<typeof recordNameplateObservations>> = null;
     if (notebook.asset?.entityId) {
       try {
         const visualFacts = evidence
           .filter((f) => f.status !== "rejected" && f.value != null && f.value.trim() !== "")
           .map((f) => ({ field: f.field, rawText: f.rawText, value: f.value as string, confidence: f.confidence }));
-        const recorded = await recordNameplateObservations({
+        recorded = await recordNameplateObservations({
           tenantId: ctx.tenantId,
           equipmentEntityId: notebook.asset.entityId,
           fileId: parked.fileId,
@@ -236,6 +239,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       confidence: candidate.confidence ?? null,
       attachment,
+      // Slice 2: the persisted VisualSession observation ids for THIS capture, so
+      // the client can confirm the exact readings it approves (never a sibling, a
+      // prior capture, or another asset). Empty/absent when nothing was recorded
+      // (unbound notebook, non-UUID asset key, or no citable facts).
+      visualSessionId: recorded?.sessionId ?? null,
+      visualObservations: recorded?.observations ?? [],
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "recognition_failed";

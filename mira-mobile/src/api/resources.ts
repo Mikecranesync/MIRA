@@ -968,6 +968,16 @@ export const EMPTY_COMPONENT_IDENTITY: ComponentIdentity = {
   rpm: "",
 };
 
+/** One persisted VisualSession observation for THIS capture (Slice 2). The
+ *  `field`/`value` let the client confirm ONLY the exact readings it is still
+ *  affirming — a field the technician edited no longer matches `value`, so its
+ *  id is dropped and the pre-edit reading is never stamped confirmed. */
+export interface PersistedVisualObservation {
+  observationId: string;
+  field: string;
+  value: string;
+}
+
 export interface RecognizeComponentResult {
   fileId: string;
   candidate: Partial<ComponentIdentity>;
@@ -976,6 +986,11 @@ export interface RecognizeComponentResult {
   rawObservation: unknown;
   confidence: number | null;
   attachment: { linkId: string; notebookId: string } | null;
+  /** The persisted observation ids for this capture (empty when the notebook is
+   *  unbound or nothing was recorded). Carried to confirm to promote the exact
+   *  approved subset. */
+  visualObservations: PersistedVisualObservation[];
+  visualSessionId: string | null;
 }
 
 /** Nameplate photo of a COMPONENT inside this notebook's machine. The photo is
@@ -1001,6 +1016,16 @@ export async function recognizeComponentNameplate(
     attachment: att
       ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }
       : null,
+    visualObservations: Array.isArray(d.visualObservations)
+      ? (d.visualObservations as Record<string, unknown>[])
+          .filter((o) => o && typeof o.observationId === "string")
+          .map((o) => ({
+            observationId: String(o.observationId),
+            field: String(o.field ?? ""),
+            value: String(o.value ?? ""),
+          }))
+      : [],
+    visualSessionId: d.visualSessionId != null ? String(d.visualSessionId) : null,
   };
 }
 
@@ -1126,6 +1151,10 @@ export interface ConfirmComponentResult {
   discoveryReason?: string | null;
   /** The manufacturer's own manual-request page (validated by the server). */
   oemRequestUrl?: string | null;
+  /** Slice 2: how many persisted visual observations this confirm promoted to
+   *  technician-confirmed (0 unless the client sent unchanged observation ids
+   *  for a bound-asset capture). */
+  visualPromotedCount?: number;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1146,6 +1175,10 @@ export interface ConfirmComponentBody {
   confidence?: number | null;
   /** Ask the server to go find the official manual for this component. */
   discover?: boolean;
+  /** Slice 2: the EXACT persisted visual observation ids the technician is
+   *  confirming (only the readings whose value is unchanged). The server
+   *  promotes only these, scoped to the bound asset + this photo. */
+  observationIds?: string[];
 }
 
 /** Confirm the COMPONENT identity read from the nameplate. This never touches
@@ -1190,6 +1223,7 @@ export async function confirmComponentNameplate(
     applicability: d.applicability ?? null,
     message: d.message != null ? String(d.message) : null,
     warning: d.warning != null ? String(d.warning) : null,
+    visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
   };
 }
 

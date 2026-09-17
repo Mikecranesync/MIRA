@@ -40,6 +40,7 @@ import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractabl
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { promoteVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
 
@@ -379,6 +380,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   nameplateIngestFailed = nameplateDocId === null;
 
+  // ── Slice 2: promote ONLY the exact visual observations the technician approved.
+  // Orthogonal to the nameplate-text ingest above — this flips the persisted
+  // VisualSession candidate readings (migration 063) whose ids the client
+  // EXPLICITLY sends to review_state='confirmed', scoped by canonical identity to
+  // the notebook's SERVER-bound asset and THIS photo. It never promotes a sibling
+  // the client did not send, an older/newer capture, or another asset — the guards
+  // live in promoteVisualObservations. The backend trusts the submitted id SET and
+  // derives nothing from `identity`: a field the technician EDITED is confirmed
+  // only if the client chose to send its id (a corrected reading's pre-edit value
+  // must never be auto-stamped). Confirm has no dispute channel (it resolves the
+  // binding via getNotebook, not resolveBoundAsset), so the reachable asset failure
+  // is unbound/foreign — caught by isUuidKey(boundEntityId) + the asset_id subquery.
+  // Fail-safe: any error promotes nothing (never broadens); the count is surfaced
+  // so a lost promotion is observable, not silent.
+  const submittedObservationIds = Array.isArray(body.observationIds)
+    ? body.observationIds.filter((v): v is string => typeof v === "string")
+    : [];
+  let visualPromotedIds: string[] = [];
+  if (submittedObservationIds.length > 0) {
+    try {
+      const promoted = await promoteVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        observationIds: submittedObservationIds,
+      });
+      visualPromotedIds = promoted.promotedIds;
+    } catch (err) {
+      console.warn(
+        `[nameplate-confirm] visual promotion failed notebook=${notebookId} photo=${fileId}: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+
   // (c) The notebook's own identity is NOT patched here. See the header.
 
   const nameplate = {
@@ -401,6 +438,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status,
       notebookId,
       nameplate,
+      // Slice 2: how many persisted visual observations this confirm promoted to
+      // technician-confirmed. 0 when the client sent none, the notebook is unbound
+      // or foreign, the ids were invalid, or they were not live candidates of this
+      // asset's capture — never a silent broadening.
+      visualPromotedCount: visualPromotedIds.length,
       manual: null,
       candidate: null,
       applicability: null,

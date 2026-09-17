@@ -19,6 +19,7 @@ import {
   getNotebookDetail,
   recognizeComponentNameplate,
   type ComponentIdentity,
+  type PersistedVisualObservation,
 } from "../api/resources";
 import {
   INITIAL_NAMEPLATE_STATE,
@@ -56,6 +57,11 @@ export function ComponentNameplateFlow({
   const [confirmKey] = useState(() => crypto.randomUUID());
   // Opaque provider lineage from recognize, echoed back to confirm untouched.
   const [rawObservation, setRawObservation] = useState<unknown>(null);
+  // Slice 2: the persisted visual observations for this capture. At confirm we
+  // send back ONLY the ids whose value the technician left unchanged — an edited
+  // field no longer matches its recorded value, so its pre-edit reading is never
+  // promoted to "confirmed". Empty for an unbound notebook.
+  const [visualObservations, setVisualObservations] = useState<PersistedVisualObservation[]>([]);
   const started = useRef(false);
 
   // Photo → file + candidate reading. The server retains the photo as a
@@ -72,6 +78,7 @@ export function ComponentNameplateFlow({
         onDone();
         if (!r.fileId) return dispatch({ type: "recognize_failed" });
         setRawObservation(r.rawObservation);
+        setVisualObservations(r.visualObservations);
         dispatch({
           type: "recognized",
           fileId: r.fileId,
@@ -94,9 +101,21 @@ export function ComponentNameplateFlow({
     dispatch({ type: "confirm_submitted" });
     setTransportError(null);
     try {
+      // Confirm ONLY the readings the technician left unchanged: an observation
+      // whose recorded value still equals the submitted identity value. An edited
+      // field diverges → its id is omitted → the pre-edit reading is never
+      // stamped confirmed (under-promotion is safe; over-promotion is not). A
+      // field with no matching identity key (e.g. "certification") is omitted too.
+      const fields = identity as unknown as Record<string, string | undefined>;
+      const observationIds = visualObservations
+        .filter((o) => {
+          const submitted = fields[o.field];
+          return typeof submitted === "string" && submitted.trim() === o.value;
+        })
+        .map((o) => o.observationId);
       const result = await confirmComponentNameplate(
         notebookId,
-        { fileId, identity, rawObservation, discover: true },
+        { fileId, identity, rawObservation, discover: true, observationIds },
         confirmKey,
       );
       dispatch({ type: "confirm_result", result });

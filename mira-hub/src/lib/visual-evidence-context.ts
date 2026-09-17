@@ -65,6 +65,14 @@ export type NameplateVisualFact = {
  * asset-bound key, key is not a UUID, or no facts). CALLER MUST fail open —
  * wrap in try/catch so a ledger failure never breaks nameplate recognition.
  */
+/** One persisted observation's stable identity, returned to the recognize
+ *  response so the client can later confirm this EXACT reading (Slice 2). */
+export type PersistedObservation = {
+  readonly observationId: string;
+  readonly field: string;
+  readonly value: string;
+};
+
 export async function recordNameplateObservations(opts: {
   readonly tenantId: string;
   /** The notebook's bound asset key (`equipment_entity_id`). Must be a UUID. */
@@ -76,7 +84,7 @@ export async function recordNameplateObservations(opts: {
   readonly facts: readonly NameplateVisualFact[];
   readonly createdBy: string | null;
   readonly title: string | null;
-}): Promise<{ sessionId: string; evidenceId: string; observationIds: string[] } | null> {
+}): Promise<{ sessionId: string; evidenceId: string; observations: PersistedObservation[] } | null> {
   // Write-side UUID guard (advisor #1): an asset-bound notebook whose key is not
   // a UUID is skipped, not thrown — logged by the caller.
   if (!isUuidKey(opts.equipmentEntityId)) return null;
@@ -102,19 +110,85 @@ export async function recordNameplateObservations(opts: {
     );
     const evidenceId = String(e.rows[0].id);
 
-    const observationIds: string[] = [];
+    const observations: PersistedObservation[] = [];
     for (const f of facts) {
+      const value = f.value.trim();
       const o = await c.query(
         `INSERT INTO observation
            (session_id, tenant_id, evidence_id, obs_kind, raw_value, normalized_value,
             evidence_state, confidence, extractor, review_state)
          VALUES ($1::uuid, $2::uuid, $3::uuid, 'property', $4, $5, 'VISIBLE', $6, 'nameplate', 'unreviewed')
          RETURNING observation_id::text AS id`,
-        [sessionId, opts.tenantId, evidenceId, f.rawText, `${f.field}: ${f.value.trim()}`, f.confidence],
+        [sessionId, opts.tenantId, evidenceId, f.rawText, `${f.field}: ${value}`, f.confidence],
       );
-      observationIds.push(String(o.rows[0].id));
+      observations.push({ observationId: String(o.rows[0].id), field: f.field, value });
     }
-    return { sessionId, evidenceId, observationIds };
+    return { sessionId, evidenceId, observations };
+  });
+}
+
+/**
+ * Promote ONLY the exact persisted observations a technician explicitly confirms.
+ *
+ * Slice 2 trust-loop. Flips `review_state` from `unreviewed` → `confirmed` for
+ * the submitted `observationIds`, and ONLY where EVERY canonical-identity guard
+ * holds (see the WHERE clause). It NEVER matches on component, field name, asset
+ * label, tag, notebook label, client id, or capture type — only on the exact
+ * observation UUIDs, scoped to the bound asset and this photo.
+ *
+ * Guards, in order (each fails safe by promoting nothing, never by broadening):
+ *  - unbound / non-UUID bound asset → 0 (an unconfirmed asset context must not promote).
+ *  - non-UUID fileId → 0 (no photo identity → nothing to scope to).
+ *  - every submitted id that is not a UUID is DROPPED before the query (invalid
+ *    identifiers fail safely; a malformed id in `ANY($::uuid[])` would otherwise
+ *    throw). Empty after filtering → 0, no query.
+ *
+ * The UPDATE itself additionally requires each row to be a LIVE candidate
+ * (`review_state='unreviewed'`, active evidence_state, not superseded), belong to
+ * a `visual_session` on the bound `asset_id` (cross-machine guard), and belong to
+ * `evidence_item` carrying this `file_id` (cross-capture guard). An id for a
+ * sibling not submitted, an older/newer capture, another asset, or an already
+ * confirmed/rejected row therefore promotes nothing.
+ *
+ * Returns the ids actually promoted (RETURNING) — the caller surfaces the count
+ * so "only that observation was confirmed" is observable in production, not just
+ * in tests. CALLER should treat a throw as a failed confirmation (do not swallow).
+ */
+export async function promoteVisualObservations(opts: {
+  readonly tenantId: string;
+  /** The notebook's SERVER-bound asset key (`equipment_entity_id`, Slice 0). */
+  readonly boundEntityId: string | null;
+  /** The confirmed photo (hub_uploads file id) — scopes promotion to this capture. */
+  readonly fileId: string;
+  /** The exact observation ids the technician approved (the client-decided subset). */
+  readonly observationIds: readonly string[];
+}): Promise<{ promotedIds: string[] }> {
+  if (!isUuidKey(opts.boundEntityId)) return { promotedIds: [] };
+  if (!isUuidKey(opts.fileId)) return { promotedIds: [] };
+  const ids = opts.observationIds.filter((id) => isUuidKey(id));
+  if (ids.length === 0) return { promotedIds: [] };
+
+  return withTenantContext(opts.tenantId, async (c: QueryClient) => {
+    const res = await c.query(
+      `UPDATE observation o
+          SET review_state = 'confirmed'
+        WHERE o.observation_id = ANY($1::uuid[])
+          AND o.tenant_id = $2::uuid
+          AND o.review_state = 'unreviewed'
+          AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
+          AND o.superseded_by IS NULL
+          AND o.session_id IN (
+            SELECT vs.session_id FROM visual_session vs
+             WHERE vs.tenant_id = $2::uuid AND vs.asset_id = $3::uuid
+          )
+          AND o.evidence_id IN (
+            SELECT e.evidence_id FROM evidence_item e
+             WHERE e.tenant_id = $2::uuid AND e.capture_meta->>'file_id' = $4
+          )
+        RETURNING o.observation_id::text AS id`,
+      [ids, opts.tenantId, opts.boundEntityId, opts.fileId],
+    );
+    return { promotedIds: res.rows.map((r) => String(r.id)) };
   });
 }
 
