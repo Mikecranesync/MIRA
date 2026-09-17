@@ -9,6 +9,11 @@ vi.mock("../src/lib/native-pick", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/native-pick")>();
   return { ...real, ...nativePick };
 });
+const resources = vi.hoisted(() => ({ lookAtPhoto: vi.fn(), uploadSourceToNotebook: vi.fn(), getNotebookDetail: vi.fn() }));
+vi.mock("../src/api/resources", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/api/resources")>();
+  return { ...real, ...resources };
+});
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { UnifiedChat } from "../src/screens/UnifiedChat";
 import type { NotebookServerTurn } from "../src/api/resources";
@@ -175,6 +180,34 @@ describe("UnifiedChat", () => {
     );
 
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("what is P06.01"));
+  });
+
+  // An upload that fails must SAY so. The host-error mirror effect depends on
+  // `state.draft`, so an unconditional `chatError ?? null` dispatch re-ran on
+  // the very draft the attachment-failure path restores and erased the local
+  // error — the technician saw the question reappear with no explanation.
+  it("keeps an attachment failure visible while the host reports no error", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockRejectedValue(new Error("Network request failed"));
+    const h = handlers();
+    render(
+      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false}
+        chatError={null} handlers={h} meta={META} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "what is this" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+
+    // The question comes back AND the reason stays on screen.
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/upload|network/i));
+    expect(box.value).toBe("what is this");
+    // Still there after the effect re-runs on the restored draft.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole("alert")).not.toBeNull();
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {
