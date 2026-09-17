@@ -65,6 +65,16 @@ on:
       - "mira-hub/src/lib/session.ts"
       - "mira-hub/src/lib/tenant-context.ts"
       - "mira-hub/src/lib/db.ts"
+      # visual-evidence-regression inputs: the trust-loop SQL, its real-schema
+      # proof, the migration list it depends on, and the routes that call it.
+      - "mira-hub/src/lib/visual-evidence-context.ts"
+      - "mira-hub/src/lib/__tests__/visual-evidence-context.integration.test.ts"
+      - "mira-hub/scripts/setup-integration-db.mjs"
+      - "mira-hub/db/migrations/063_visual_sessions.sql"
+      - "mira-hub/db/migrations/069_visual_tenant_text.sql"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/**"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts"
+      - ".github/workflows/beta-gate.yml"
       - "mira-hub/src/lib/inference/**"
       - "mira-hub/src/app/api/equipment-notebooks/**"
       - "mira-hub/src/app/api/files/**"
@@ -377,6 +387,86 @@ jobs:
           if-no-files-found: ignore
 
   # ── Workstream B: deterministic admission regression (no secrets) ─────────
+  # Visual-evidence trust loop (PR #3832 IR §8): the real-schema proof for the
+  # 069 TEXT-tenant_id defect used to run only when a human typed the command in
+  # the test's docstring — the unit config excludes *.integration.test.ts, so a
+  # green `mira-hub-unit` never executed it. This job applies the REAL migration
+  # files (setup-integration-db.mjs default list, which includes 063 + 069) to a
+  # disposable Postgres and runs the suite. No secrets. It must fail LOUD if the
+  # suite skips: the file `describe.skip`s when TEST_DATABASE_URL is unset, and a
+  # skipped suite would otherwise read as green.
+  visual-evidence-regression:
+    name: Visual-evidence isolation (disposable Postgres, migrations 063+069)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      # No MIRA_INTEGRATION_MIGRATIONS override: the script's DEFAULT list is the
+      # one that carries 063_visual_sessions.sql + 069_visual_tenant_text.sql.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Apply the integration schema (default migration list incl. 063 + 069)
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: Assert the schema of record — visual_* tenant_id is TEXT, ids stay uuid
+        env:
+          PGPASSWORD: testpw
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends postgresql-client >/dev/null 2>&1 || true
+          psql -h 127.0.0.1 -U postgres -d mira_test -Atc "
+            SELECT table_name||'.'||column_name||'='||data_type
+              FROM information_schema.columns
+             WHERE table_name IN ('visual_session','evidence_item','observation')
+               AND column_name IN ('tenant_id','asset_id','observation_id')
+             ORDER BY 1" | tee /tmp/visual-schema.txt
+          grep -qx "visual_session.tenant_id=text" /tmp/visual-schema.txt
+          grep -qx "evidence_item.tenant_id=text" /tmp/visual-schema.txt
+          grep -qx "observation.tenant_id=text" /tmp/visual-schema.txt
+          grep -qx "visual_session.asset_id=uuid" /tmp/visual-schema.txt
+          grep -qx "observation.observation_id=uuid" /tmp/visual-schema.txt
+
+      - name: Visual-evidence isolation suite (RED if a tenant_id ::uuid cast returns)
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts \
+            src/lib/__tests__/visual-evidence-context.integration 2>&1 | tee /tmp/visual-it.out
+          # A skipped suite is not a passing suite (memory: CI runs only NAMED tests).
+          if grep -qiE "skipped|no tests|Tests  0 " /tmp/visual-it.out; then
+            echo "::error::visual-evidence integration suite skipped or empty — the gate proved nothing"; exit 1
+          fi
+          # Floor on executed cases: P1–P9, R1–R5, round-trip = 14 at this tip.
+          n=$(grep -oE "Tests +[0-9]+ passed" /tmp/visual-it.out | grep -oE "[0-9]+" | head -1)
+          [ "${n:-0}" -ge 14 ] || { echo "::error::expected ≥14 passing cases, saw ${n:-0}"; exit 1; }
+
   admission-regression:
     name: Admission fix present (disposable Postgres, gate ON)
     runs-on: ubuntu-latest
