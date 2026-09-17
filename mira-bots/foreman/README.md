@@ -347,9 +347,11 @@ Key guarantees (AC A–H, issue #3566):
 - `MissionState` round-trips to JSON for durable GitHub storage
 - `evaluate_go_no_go()` returns exactly `"GO"` or `"NO-GO"` with human gates
 
-Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (73 tests)
+Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (88 tests)
 
 Mission spec: `docs/missions/AUTONOMOUS-FOREMAN-V1.md`
+
+**Provider:** Reviewer on Charlie may use **Claude** (default, current Fleet standing order) or **Codex** (accepted for when it returns). Mike decision 2026-09-17 (Option B in `docs/IR_PROVIDER_CONFLICT.md`).
 
 ## Independent Review Verdict Contract
 

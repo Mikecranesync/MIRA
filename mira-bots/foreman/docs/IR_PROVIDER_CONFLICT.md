@@ -1,7 +1,8 @@
 # Independent Review Provider Conflict
 
-**Status:** Open decision required from Mike  
-**Date:** 2026-09-17  
+**Status:** ✅ RESOLVED — Mike chose Option B (2026-09-17)  
+**Decision:** Allow Claude for adversarial/independent review on Charlie  
+**Implementation:** Landed in PR #3836 commit `[see final commit]`  
 **Context:** IR verdict contract (PR #3836)
 
 ## The Conflict
@@ -27,69 +28,62 @@ def dispatch_reviewer(
 
 **BUT:** Fleet standing order (as of 2026-09-17) is Claude-only. Codex is not available on Charlie for IR validation.
 
-## The Decision Required
+## Mike's Decision: Option B (2026-09-17)
 
-Mike must choose one:
+**✅ CHOSEN: Allow Claude for adversarial review**
 
-### Option A: Keep Codex requirement (mission_loop.py unchanged)
-- **Pro:** Already encoded in AC C of the mission policy
-- **Pro:** Codex was the original choice for adversarial review
-- **Con:** Cannot run live IR validation until Codex is available on Charlie
-- **Action:** Defer IR validation until Codex is provisioned
+Mike chose Option B on 2026-09-17. `dispatch_reviewer()` now accepts `provider in ("claude", "codex")`.
 
-### Option B: Allow Claude for adversarial review
-- **Pro:** Unblocks live IR validation immediately
-- **Pro:** Claude is the current Fleet standard
-- **Con:** Requires changing mission_loop.py `dispatch_reviewer` to accept `provider in ("codex", "claude")`
-- **Con:** Weakens the original AC C requirement (Codex-only)
-- **Action:** Update `dispatch_reviewer()` line 290-293 to allow both providers
+**Rationale:**
+- Unblocks live IR validation immediately with current Fleet standing order (Claude-only)
+- Keeps Codex accepted for when it may return later
+- Both providers now valid for adversarial review on Charlie
 
-### Option C: Codex for adversarial review, Claude for verifier (already implemented)
-- `dispatch_reviewer()` stays Codex-only (line 290-293)
-- `dispatch_verifier()` already allows `provider in ("codex", "claude")` (line 393-396)
-- **Pro:** Preserves adversarial review's Codex requirement
-- **Pro:** Allows verification step to run with Claude
-- **Con:** IR validation still blocked until Codex is available
-
-## Current State
-
-- **Verifier** (`dispatch_verifier`) already accepts `provider in ("codex", "claude")`
-- **Reviewer** (`dispatch_reviewer`) enforces `provider == "codex"` only
-- IR verdict contract (PR #3836) adds BLOCKED|ERROR terminal incomplete outcomes
-- Tests cover both reviewer and verifier verdict paths
-
-## Recommendation
-
-Choose **Option B** (allow Claude for adversarial review) IF:
-- Live IR validation is required before Codex is provisioned on Charlie
-- Fleet standing order remains Claude-only
-
-Choose **Option A** (keep Codex-only) IF:
-- Codex will be provisioned soon
-- The adversarial-review distinction is important enough to wait
-
-Choose **Option C** IF:
-- Verification (not adversarial review) is sufficient for IR validation
-- The distinction between "is it correct?" (reviewer/Codex) and "did it run?" (verifier/Claude) is preserved
-
-## Implementation (if Option B chosen)
-
+**Implementation:**
 ```python
-# mission_loop.py line 290-293
-if provider not in ("codex", "claude"):
+# mission_loop.py dispatch_reviewer()
+if provider not in ("claude", "codex"):
     return PolicyResult(
         allowed=False,
-        reason=f"Reviewer must use codex or claude provider, got {provider!r}.",
+        reason=f"Reviewer must use claude or codex provider, got {provider!r}.",
     )
 ```
 
-Add test:
-```python
-def test_reviewer_accepts_claude_provider(self):
-    policy = _fresh_policy()
-    result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-claude", provider="claude")
-    assert result.allowed is True
-```
+Default changed from `provider="codex"` to `provider="claude"` to match Fleet standing order.
+
+### Option A: NOT CHOSEN
+- Keep Codex-only requirement
+- Would defer IR validation until Codex provisioned
+
+### Option C: NOT CHOSEN
+- Codex for reviewer, Claude for verifier only
+- Would keep adversarial review blocked
+
+## Implementation Landed
+
+**Changes in this PR:**
+
+1. **mission_loop.py `dispatch_reviewer()`:**
+   - Default changed: `provider="claude"` (was `provider="codex"`)
+   - Validation: `provider not in ("claude", "codex")` rejected (was `provider != "codex"`)
+   - Docstring updated to reflect Mike's decision
+
+2. **test_mission_loop.py:**
+   - Old `test_reviewer_must_use_codex` replaced with `test_reviewer_accepts_claude_or_codex`
+   - New `test_reviewer_rejects_unknown_provider` verifies invalid providers still rejected
+   - Tests verify both claude and codex accepted, wrong providers rejected
+   - Default provider assertion updated to `"claude"`
+
+3. **Tests pass:** 88 mission_loop tests + 9 ir_verdict tests = 97 total green
+
+## Current State (Post-Decision)
+
+- **Reviewer** (`dispatch_reviewer`): accepts `provider in ("claude", "codex")` — ✅ Mike decision 2026-09-17
+- **Verifier** (`dispatch_verifier`): accepts `provider in ("codex", "claude")` — unchanged, already flexible
+- IR verdict contract (PR #3836) adds BLOCKED|ERROR terminal incomplete outcomes
+- Tests cover both reviewer and verifier verdict paths
+- Default is now `claude` to match Fleet standing order
+- Codex remains accepted for when it returns
 
 ## Related
 

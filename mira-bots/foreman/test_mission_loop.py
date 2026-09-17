@@ -159,11 +159,24 @@ class TestACExactSHAForReview:
         assert not result.allowed
         assert "charlie" in result.reason.lower()
 
-    def test_reviewer_must_use_codex(self):
+    def test_reviewer_accepts_claude_or_codex(self):
+        """Mike decision 2026-09-17: Allow Claude for adversarial review on Charlie."""
         policy = _fresh_policy()
-        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-1", provider="claude")
+        # Claude accepted (current standing order)
+        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-claude", provider="claude")
+        assert result.allowed
+        assert policy.state.reviewer.provider == "claude"
+        # Codex also accepted (may return later)
+        policy2 = _fresh_policy()
+        result2 = policy2.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-codex", provider="codex")
+        assert result2.allowed
+        assert policy2.state.reviewer.provider == "codex"
+
+    def test_reviewer_rejects_unknown_provider(self):
+        policy = _fresh_policy()
+        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-1", provider="gpt")
         assert not result.allowed
-        assert "codex" in result.reason.lower()
+        assert "claude or codex" in result.reason.lower()
 
     def test_valid_reviewer_dispatch_records_sha(self):
         policy = _fresh_policy()
@@ -172,7 +185,7 @@ class TestACExactSHAForReview:
         assert policy.state.reviewer is not None
         assert policy.state.reviewer.git_ref == HEAD_SHA
         assert policy.state.reviewer.node == "charlie"
-        assert policy.state.reviewer.provider == "codex"
+        assert policy.state.reviewer.provider == "claude"  # Default is now claude
 
 
 # ---------------------------------------------------------------------------

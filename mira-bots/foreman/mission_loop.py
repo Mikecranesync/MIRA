@@ -276,9 +276,13 @@ class ForemanPolicy:
         git_ref: str,
         session_id: str,
         node: str = "charlie",
-        provider: str = "codex",
+        provider: str = "claude",
     ) -> PolicyResult:
-        """Register a reviewer worker on Charlie/Codex against an exact SHA (AC C)."""
+        """Register a reviewer worker on Charlie (Claude or Codex) against an exact SHA.
+        
+        Mike decision 2026-09-17: Allow Claude for adversarial/independent review.
+        Standing order is Claude-only but Codex may return later, so both are accepted.
+        """
         check = self.can_dispatch_reviewer(git_ref)
         if not check.allowed:
             return check
@@ -287,10 +291,10 @@ class ForemanPolicy:
                 allowed=False,
                 reason=f"Reviewer must run on charlie, got {node!r}.",
             )
-        if provider != "codex":
+        if provider not in ("claude", "codex"):
             return PolicyResult(
                 allowed=False,
-                reason=f"Reviewer must use codex provider, got {provider!r}.",
+                reason=f"Reviewer must use claude or codex provider, got {provider!r}.",
             )
         self._state.verifier = None
         self._state.verifier_verdict = ""
