@@ -312,6 +312,13 @@ export async function openAssetNotebook(
 export interface NotebookAssetBinding {
   /** kg_entities.entity_id — the asset UUID as text. */
   entityId: string;
+  /** The bound asset's CURRENT identity, resolved live server-side (Slice 0):
+   *  `name` = the machine's display name ("Discharge Conveyor"), `assetTag` =
+   *  its sticker/search handle ("CV-101"). Null when the server has no bound
+   *  asset row to resolve — callers fall back to the notebook's own fields.
+   *  These override the notebook's frozen display_name in the machine label. */
+  name: string | null;
+  assetTag: string | null;
   selectedVia: AssetSelectionMethod | null;
   confirmedBy: string | null;
   confirmedAt: string | null;
@@ -373,6 +380,8 @@ export function toNotebook(d: Record<string, unknown>): Notebook {
       a && a.entityId
         ? {
             entityId: String(a.entityId),
+            name: a.name != null ? String(a.name) : null,
+            assetTag: a.assetTag != null ? String(a.assetTag) : null,
             selectedVia: a.selectedVia != null ? (String(a.selectedVia) as AssetSelectionMethod) : null,
             confirmedBy: a.confirmedBy != null ? String(a.confirmedBy) : null,
             confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,

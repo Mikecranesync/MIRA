@@ -12,8 +12,30 @@ function canonicalNotebookLabel(nb: Pick<Notebook, "displayName">): string {
   return nb.displayName.trim() || "Untitled notebook";
 }
 
+/**
+ * The technician-facing identity of a BOUND machine, resolved from the current
+ * asset — never the notebook's frozen `displayName` (Slice 0). Rendered as
+ * "CV-101 · Discharge Conveyor" (tag · name) so the drawer's substring search
+ * (ProjectTree `matches()` is a plain `label.includes(query)`, with no separate
+ * searchable field) finds the machine by the tag the technician reads off the
+ * sticker OR by its human name. This is why a stale `displayName`
+ * ("Sensor v0 overnight 2026-08-28") can no longer mask the bound asset.
+ * Returns null for an unbound notebook, so callers keep their prior fallback.
+ */
+function boundAssetLabel(nb: Notebook): string | null {
+  const asset = nb.asset;
+  if (!asset) return null;
+  const tag = asset.assetTag?.trim();
+  const name = asset.name?.trim();
+  if (tag && name) return `${tag} · ${name}`;
+  return tag || name || null;
+}
+
 export function machineNameFor(nb: Notebook): string {
-  return [nb.manufacturer, nb.model].filter(Boolean).join(" ") || canonicalNotebookLabel(nb);
+  return (
+    boundAssetLabel(nb) ??
+    ([nb.manufacturer, nb.model].filter(Boolean).join(" ") || canonicalNotebookLabel(nb))
+  );
 }
 
 export function projectIdForNotebook(notebookId: string): string {
@@ -73,7 +95,10 @@ export function notebookMachines(notebooks: readonly Notebook[]): readonly Machi
 export function notebookProjects(notebooks: readonly Notebook[]): readonly Project[] {
   return notebooks.map((nb) => ({
     id: projectIdForNotebook(nb.id),
-    name: canonicalNotebookLabel(nb),
+    // A bound machine's Project name is its current asset identity (tag · name),
+    // so a stale display_name can't mask CV-101 in the drawer (Slice 0). Unbound
+    // notebooks keep their display_name.
+    name: boundAssetLabel(nb) ?? canonicalNotebookLabel(nb),
     children: [
       ...(nb.asset ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }] : []),
       ...threadRows(nb),
