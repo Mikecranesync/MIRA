@@ -247,15 +247,6 @@ export function UnifiedChat({
     }
   }, [chatError, failedQuestion, pending, liveTurns, state.draft]);
 
-  const initialSentRef = useRef<string | null>(null);
-  useEffect(() => {
-    const text = initialQuestion?.trim();
-    if (!text || busy || initialSentRef.current === text) return;
-    initialSentRef.current = text;
-    handlers.onSend(text);
-    onInitialQuestionSent?.();
-  }, [busy, handlers, initialQuestion, onInitialQuestionSent]);
-
   /**
    * One send, composed. On HOME there is no notebook yet, so the bytes are
    * stashed and the host's send creates the thread that claims them. In a
@@ -263,12 +254,17 @@ export function UnifiedChat({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[]) => {
-    if (pending.length === 0) {
+    if (!attachTarget) {
+      if (pending.length > 0) attachments.stashForHandoff(pending);
       handlers.onSend(text);
       return;
     }
-    if (!attachTarget) {
-      attachments.stashForHandoff(pending);
+    // Nothing held here and nothing carried from HOME: the plain, synchronous
+    // text send, unchanged. `hasCarried()` is what keeps the HOME handoff from
+    // being skipped — the composer's own pending list is empty in the notebook
+    // the handoff just opened, so a pending-only check sent the question and
+    // left the photo behind for the NEXT send.
+    if (pending.length === 0 && !attachments.hasCarried()) {
       handlers.onSend(text);
       return;
     }
@@ -288,6 +284,18 @@ export function UnifiedChat({
       dispatch({ type: "set-draft", draft: text });
     });
   }, [attachTarget, attachments, handlers, dispatch]);
+
+  // The question HOME queued for the thread it just created. It goes through
+  // `onSend` (not straight to the host) so the attachments HOME stashed are
+  // composed and uploaded for THIS turn.
+  const initialSentRef = useRef<string | null>(null);
+  useEffect(() => {
+    const text = initialQuestion?.trim();
+    if (!text || busy || initialSentRef.current === text) return;
+    initialSentRef.current = text;
+    onSend(text, []);
+    onInitialQuestionSent?.();
+  }, [busy, onSend, initialQuestion, onInitialQuestionSent]);
 
   const hooks: HostHooks = {
     onSend,

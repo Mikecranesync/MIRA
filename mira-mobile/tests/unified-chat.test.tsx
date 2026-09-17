@@ -15,7 +15,11 @@ vi.mock("../src/api/resources", async (importOriginal) => {
   return { ...real, ...resources };
 });
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { UnifiedChat } from "../src/screens/UnifiedChat";
+import { useUnifiedAttachments } from "../src/unified/attachments";
+import { clearAttachments } from "../src/unified/attachment-handoff";
+import type { Attachment } from "@factorylm/interaction";
 import type { NotebookServerTurn } from "../src/api/resources";
 import { _resetTransientLayersForTest, closeTopTransientLayer } from "../src/lib/transient-layer";
 // jsdom ships no ResizeObserver or Element.scrollTo; the assistant-ui thread
@@ -78,6 +82,10 @@ const META = {
 afterEach(() => {
   cleanup();
   _resetTransientLayersForTest();
+  // The HOME handoff is module-level single-slot state; a test that stashes
+  // must not leak into the next one.
+  clearAttachments();
+  vi.clearAllMocks();
 });
 
 describe("UnifiedChat", () => {
@@ -208,6 +216,33 @@ describe("UnifiedChat", () => {
     // Still there after the effect re-runs on the restored draft.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByRole("alert")).not.toBeNull();
+  });
+
+  // HOME stashes the bytes and creates the thread; the queued question then has
+  // to COMPOSE them, or the very turn the technician attached the photo to is
+  // answered without it (no /look/ upload, no visualEvidence rider).
+  it("uploads a HOME-stashed attachment for the question that thread was created with", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-home-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+
+    // Stash exactly as the HOME shell does before it opens the new notebook.
+    const home = renderHook(() => useUnifiedAttachments(null));
+    let picked: Attachment | null = null;
+    await act(async () => { picked = await home.result.current.attachPhoto(); });
+    act(() => { home.result.current.stashForHandoff([picked as Attachment]); });
+    home.unmount();
+
+    const h = handlers();
+    render(
+      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false}
+        chatError={null} handlers={h} meta={META} initialQuestion="what is this" />,
+    );
+
+    await waitFor(() => expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(
+      "what is this",
+      expect.objectContaining({ visualEvidence: expect.objectContaining({ fileId: "file-home-9" }) }),
+    ));
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {
