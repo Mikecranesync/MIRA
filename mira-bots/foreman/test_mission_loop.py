@@ -622,3 +622,88 @@ class TestVerifierRecordBinding:
         result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
         assert result.verdict == "NO-GO"
         assert not any("re-review the current revision" in g for g in result.human_gates)
+
+
+# ---------------------------------------------------------------------------
+# IR verdict contract — BLOCKED | ERROR terminal incomplete outcomes
+# ---------------------------------------------------------------------------
+
+
+class TestIRVerdictContract:
+    """IR verdict contract (PR #3836): BLOCKED | ERROR are terminal incomplete outcomes."""
+
+    def test_reviewer_verdict_accepts_blocked(self):
+        policy = _fresh_policy()
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-blocked")
+        result = policy.record_reviewer_verdict("BLOCKED")
+        assert result.allowed is True
+        assert policy.state.reviewer_verdict == "BLOCKED"
+
+    def test_reviewer_verdict_accepts_error(self):
+        policy = _fresh_policy()
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-error")
+        result = policy.record_reviewer_verdict("ERROR")
+        assert result.allowed is True
+        assert policy.state.reviewer_verdict == "ERROR"
+
+    def test_verifier_verdict_accepts_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-1")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-blocked")
+        result = policy.record_verifier_verdict("BLOCKED")
+        assert result.allowed is True
+        assert policy.state.verifier_verdict == "BLOCKED"
+
+    def test_verifier_verdict_accepts_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-2")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-error")
+        result = policy.record_verifier_verdict("ERROR")
+        assert result.allowed is True
+        assert policy.state.verifier_verdict == "ERROR"
+
+    def test_no_go_when_reviewer_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-blocked-2")
+        policy.record_reviewer_verdict("BLOCKED")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_reviewer_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-error-2")
+        policy.record_reviewer_verdict("ERROR")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_verifier_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-3")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-blocked-2")
+        policy.record_verifier_verdict("BLOCKED")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_verifier_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-4")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-error-2")
+        policy.record_verifier_verdict("ERROR")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"

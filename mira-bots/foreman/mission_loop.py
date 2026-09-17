@@ -99,9 +99,9 @@ class MissionState:
     head_sha: str = ""
     implementer: Optional[Worker] = None
     reviewer: Optional[Worker] = None
-    reviewer_verdict: str = ""  # "PASS" | "FAIL" | ""
+    reviewer_verdict: str = ""  # "PASS" | "FAIL" | "BLOCKED" | "ERROR" | ""
     verifier: Optional[Worker] = None
-    verifier_verdict: str = ""  # "PASS" | "FAIL" | ""
+    verifier_verdict: str = ""  # "PASS" | "FAIL" | "BLOCKED" | "ERROR" | ""
     go_no_go: str = ""  # "GO" | "NO-GO" | ""
     remaining_human_gates: list[str] = field(default_factory=list)
 
@@ -305,16 +305,20 @@ class ForemanPolicy:
         return PolicyResult(allowed=True, reason="reviewer dispatched")
 
     def record_reviewer_verdict(self, verdict: str) -> PolicyResult:
-        """Record PASS or FAIL from the Charlie/Codex reviewer."""
+        """Record verdict from the Charlie/Codex reviewer.
+        
+        PASS | FAIL are terminal outcomes (review is complete).
+        BLOCKED | ERROR are terminal incomplete outcomes (review stopped, not approval).
+        """
         if self._state.reviewer is None:
             return PolicyResult(
                 allowed=False,
                 reason="no reviewer was dispatched — a verdict cannot be recorded",
             )
-        if verdict not in ("PASS", "FAIL"):
+        if verdict not in ("PASS", "FAIL", "BLOCKED", "ERROR"):
             return PolicyResult(
                 allowed=False,
-                reason=f"verdict must be 'PASS' or 'FAIL', got {verdict!r}",
+                reason=f"verdict must be 'PASS' | 'FAIL' | 'BLOCKED' | 'ERROR', got {verdict!r}",
             )
         self._state.reviewer_verdict = verdict
         if self._state.reviewer is not None:
@@ -411,16 +415,20 @@ class ForemanPolicy:
         return PolicyResult(allowed=True, reason="verifier dispatched")
 
     def record_verifier_verdict(self, verdict: str) -> PolicyResult:
-        """Record PASS or FAIL from the verifier. Separate from the reviewer's."""
+        """Record verdict from the verifier. Separate from the reviewer's.
+        
+        PASS | FAIL are terminal outcomes (verification is complete).
+        BLOCKED | ERROR are terminal incomplete outcomes (verification stopped, not approval).
+        """
         if self._state.verifier is None:
             return PolicyResult(
                 allowed=False,
                 reason="no verifier was dispatched — a verdict cannot be recorded",
             )
-        if verdict not in ("PASS", "FAIL"):
+        if verdict not in ("PASS", "FAIL", "BLOCKED", "ERROR"):
             return PolicyResult(
                 allowed=False,
-                reason=f"verdict must be 'PASS' or 'FAIL', got {verdict!r}",
+                reason=f"verdict must be 'PASS' | 'FAIL' | 'BLOCKED' | 'ERROR', got {verdict!r}",
             )
         self._state.verifier_verdict = verdict
         if self._state.verifier is not None:

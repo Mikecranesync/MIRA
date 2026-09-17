@@ -365,11 +365,19 @@ tied to the exact tip SHA. Empty exit = ERROR, not "try again."
 - Staging-gate PASS does not count as Independent Review (different framing required)
 - After 2 empty IR exits on the same tip, stop and diagnose (do not relaunch indefinitely)
 - PASS on tip blocks relaunch (review is complete for that SHA)
+- **`_send_and_wait` returning `"(no response)"` must NEVER be treated as a review verdict**
+  - `bot.py` line 375: `return result.result or "(no response)"`
+  - This is a fallback string when the agent returns no result
+  - It is NOT a verdict and must not be recorded as one
+  - Caller must validate the response is a valid verdict (PASS|FAIL|BLOCKED|ERROR) before recording
 
 Tests: `python3 -m pytest mira-bots/foreman/test_ir_verdict.py -v` (9 tests)
 
+**Wiring:** `mission_loop.py` now accepts BLOCKED|ERROR as terminal incomplete outcomes (not approval).
+Tests: `python3 -m pytest mira-bots/foreman/test_mission_loop.py::TestIRVerdictContract -v` (8 tests)
+
 See `specialists/adversarial-reviewer.md` for verdict format requirements and
-enforcement details.
+enforcement details. See `docs/IR_PROVIDER_CONFLICT.md` for the Codex-vs-Claude decision required.
 
 ## Support
 
