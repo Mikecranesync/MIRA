@@ -149,12 +149,16 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         data-captured-machine-id={item.machineId ?? ""}
         data-context-mismatch={item.machineId !== state.activeContext.machineId}
       >
-        {item.attachment.name} · captured for {item.machineLabel}
-        {item.machineId !== state.activeContext.machineId ? " · not the active machine" : ""}
-        {/* A real host sends what it is handed; only the fixture-only shell
-            must admit that nothing leaves. Saying "not sent in this lab" on a
-            device would be the shell lying about the host's behaviour. */}
-        {hooks?.onSend ? " · attached" : " · pending · not sent in this lab"}
+        {/* One element, not bare text nodes: the row is a flex container, and
+            each loose text node would become its own flex item and stack. */}
+        <span className="fl-composer__pending-label">
+          {item.attachment.name} · captured for {item.machineLabel}
+          {item.machineId !== state.activeContext.machineId ? " · not the active machine" : ""}
+          {/* A real host sends what it is handed; only the fixture-only shell
+              must admit that nothing leaves. Saying "not sent in this lab" on a
+              device would be the shell lying about the host's behaviour. */}
+          {hooks?.onSend ? " · attached" : " · pending · not sent in this lab"}
+        </span>
         {/* Attaching is a two-step commit — pick, then send — so the technician
             must be able to back out of the pick. Without this the wrong photo
             is unrecoverable short of reloading the thread. Removing only drops

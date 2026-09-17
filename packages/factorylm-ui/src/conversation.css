@@ -155,9 +155,10 @@
 .fl-composer__failure { margin: 0 0 var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-fault-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__pending { margin: 0 0 var(--fl-workspace-space-2); padding: 0; list-style: none; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__pending [data-context-mismatch="true"] { color: var(--fl-workspace-warn-ink); }
-.fl-composer__pending li { display: flex; align-items: center; gap: var(--fl-workspace-space-1); }
-/* The remove control is a real tap target on a gloved hand, not a decorative glyph. */
-.fl-composer__pending-remove { flex: 0 0 auto; min-inline-size: 44px; min-block-size: 44px; margin-inline-start: auto; border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
+/* The chip keeps its ordinary inline text flow — making the row a flex
+   container turned each text node into its own flex item and stacked the
+   label vertically. The remove control just joins that flow. */
+.fl-composer__pending-remove { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; min-inline-size: 32px; min-block-size: 32px; margin-inline-start: var(--fl-workspace-space-1); padding: 0; border: 0; border-radius: var(--fl-workspace-radius-sm); background: transparent; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
 .fl-composer__pending-remove:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 
 /* While the attachment sheet is open the sticky composer must stack above the
