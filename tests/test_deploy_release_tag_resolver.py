@@ -209,7 +209,9 @@ def test_validated_inputs_are_the_only_values_forwarded_to_ssh(tmp_path):
 
     assert result.returncode == 0, result.stderr
     encoded_services = base64.b64encode(b"mira-hub mira-pipeline").decode()
-    assert ssh_call.read_text().splitlines()[-1] == (f"bash -s -- '{encoded_services}' '{SHA}' '0'")
+    assert ssh_call.read_text().splitlines()[-1] == (
+        f"sudo bash -s -- '{encoded_services}' '{SHA}' '0'"
+    )
     remote_script = ssh_stdin.read_text()
     assert 'SERVICES="$(printf \'%s\' "$1" | base64 -d)"' in remote_script
     assert 'DEPLOY_SHA="$2"' in remote_script
