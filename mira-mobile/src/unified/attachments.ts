@@ -73,6 +73,11 @@ export function useUnifiedAttachments(notebookId: string | null) {
     for (const item of carried.current) held.current.set(item.attachment.id, item.file);
   }
 
+  /** True when HOME handed this composer bytes it has not yet sent. The initial
+   *  question must compose (and so upload) those, or the very turn the
+   *  technician attached them to is answered without them. */
+  const hasCarried = useCallback(() => carried.current.length > 0, []);
+
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
     const attachment = describe(file);
@@ -151,5 +156,5 @@ export function useUnifiedAttachments(notebookId: string | null) {
     return { question, rider, warning };
   }, [notebookId]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff };
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried };
 }
