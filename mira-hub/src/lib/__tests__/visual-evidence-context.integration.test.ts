@@ -270,6 +270,31 @@ run("visual-evidence-context (integration)", () => {
     });
   });
 
+  describe("P9: a promotion is visible through the UNCHANGED Slice 1 read path (order-independent)", () => {
+    it("promote → loadVisualEvidenceForAsset shows that exact row as verified; its sibling stays candidate", async () => {
+      // Own rows so this holds regardless of what P1–P8 did to the shared fixtures.
+      const session = await insertSession(TENANT_A, ASSET_A1);
+      const evidence = await insertEvidence(session, TENANT_A, FILE_1);
+      const target = await insertObservation(session, TENANT_A, evidence, "voltage: 480V (P9)");
+      const sibling = await insertObservation(session, TENANT_A, evidence, "frequency: 60Hz (P9)");
+
+      const before = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1, 100));
+      expect(before.find((r) => r.observationId === target.id)).toMatchObject({ trust: "candidate" });
+
+      const out = await promoteVisualObservations({
+        tenantId: TENANT_A,
+        boundEntityId: ASSET_A1,
+        fileId: FILE_1,
+        observationIds: [target.id],
+      });
+      expect(out.promotedIds).toEqual([target.id]);
+
+      const after = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1, 100));
+      expect(after.find((r) => r.observationId === target.id)).toMatchObject({ text: "voltage: 480V (P9)", trust: "verified", fileId: FILE_1 });
+      expect(after.find((r) => r.observationId === sibling.id)).toMatchObject({ text: "frequency: 60Hz (P9)", trust: "candidate" });
+    });
+  });
+
   describe("loadVisualEvidenceForAsset — real Postgres executes without error, and isolates by asset + tenant", () => {
     it("R1+R4: returns exactly asset A1's active observations, fileId + photoHash populated, trust reflects review_state", async () => {
       const rows = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1));
