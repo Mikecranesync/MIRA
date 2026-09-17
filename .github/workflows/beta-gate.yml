@@ -455,16 +455,29 @@ jobs:
 
       - name: Visual-evidence isolation suite (RED if a tenant_id ::uuid cast returns)
         working-directory: mira-hub
+        env:
+          # The guard below PARSES the summary line. Vitest colors its output on
+          # the runner (`Tests [22m [1m[32m14 passed`), which made the first cut
+          # of this step fail on a 14/14 run. Force plain output and ALSO strip
+          # any escape codes that slip through — never parse a colored stream.
+          NO_COLOR: "1"
+          FORCE_COLOR: "0"
+          CI: "true"
         run: |
           set -euo pipefail
           node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts \
-            src/lib/__tests__/visual-evidence-context.integration 2>&1 | tee /tmp/visual-it.out
+            src/lib/__tests__/visual-evidence-context.integration 2>&1 | tee /tmp/visual-it.raw
+          sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' /tmp/visual-it.raw > /tmp/visual-it.out
           # A skipped suite is not a passing suite (memory: CI runs only NAMED tests).
-          if grep -qiE "skipped|no tests|Tests  0 " /tmp/visual-it.out; then
+          # Match vitest's SUMMARY lines only ("Tests  3 skipped", "Test Files  1 skipped",
+          # "No test files found", "Tests  0 passed") — never free text, so the guard
+          # cannot trip on its own echoed source or a test title.
+          if grep -qE "^ *(Test Files|Tests) +.*[0-9]+ skipped|^ *No test files found|^ *Tests +0 passed" /tmp/visual-it.out; then
             echo "::error::visual-evidence integration suite skipped or empty — the gate proved nothing"; exit 1
           fi
           # Floor on executed cases: P1–P9, R1–R5, round-trip = 14 at this tip.
           n=$(grep -oE "Tests +[0-9]+ passed" /tmp/visual-it.out | grep -oE "[0-9]+" | head -1)
+          echo "executed passing cases: ${n:-0}"
           [ "${n:-0}" -ge 14 ] || { echo "::error::expected ≥14 passing cases, saw ${n:-0}"; exit 1; }
 
   admission-regression:
