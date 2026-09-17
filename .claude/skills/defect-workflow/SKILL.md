@@ -10,7 +10,8 @@ The full doctrine: `docs/agents/subagent-development-handbook.md` §14.1. Contra
 ## Phases
 
 1. **Intake.** Record the exact interaction, observed vs expected output, current commit, related battery fixture, severity, safety impact, and the user's stop conditions.
-2. **Independent investigation** — `investigator` agent (read-only). Required: reproduction, real execution path, competing hypotheses with falsifying evidence, recommended red tests. No production edit in this phase.
+1b. **Repo Archaeologist** (standing, read-only) — before any builder, and after an Answer Radar failure: what already exists on `main`, open/closed PRs, branches, and abandoned work? Dispatch `.claude/agents/repo-archaeologist.md`. Do not skip to implementer on BUILD until that search went beyond `main`.
+2. **Independent investigation** — `investigator` agent (read-only). Required: reproduction, real execution path, competing hypotheses with falsifying evidence, recommended red tests. No production edit in this phase. Archaeologist maps reuse; investigator reproduces the defect.
 3. **Contracts** — check `docs/contracts/contract-index.yaml`; involve `contract-architect` if the behavior isn't precisely specified. New IDs only when no current rule fits.
 4. **Red tests** — `test-engineer` (test files only): the defect test failing for the expected reason + the opposite-direction preservation test. Battery fixtures for conversational behavior (grader checks the FINAL reply). Capture red output.
 5. **Implementation** — `implementer`, one writer per file, isolated worktree, smallest root-cause fix. Engine edits need `codegraph_impact` first and the staging gate before merge.
