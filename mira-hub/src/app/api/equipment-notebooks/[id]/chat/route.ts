@@ -977,7 +977,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
       visualSection = renderVisualEvidenceSection(visualRows);
     } catch (err) {
-      console.error("[notebook-chat] visual evidence load failed (continuing without it):", err);
+      console.error(
+        `[notebook-chat] visual evidence load failed code=${(err as { code?: string }).code ?? "?"} ` +
+          "(continuing without it):",
+        err,
+      );
     }
   }
 

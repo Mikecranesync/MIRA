@@ -409,9 +409,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       visualPromotedIds = promoted.promotedIds;
     } catch (err) {
       console.warn(
-        `[nameplate-confirm] visual promotion failed notebook=${notebookId} photo=${fileId}: ${
-          (err as Error).message
-        }`,
+        `[nameplate-confirm] visual promotion failed notebook=${notebookId} photo=${fileId} ` +
+          `code=${(err as { code?: string }).code ?? "?"}: ${(err as Error).message}`,
       );
     }
   }

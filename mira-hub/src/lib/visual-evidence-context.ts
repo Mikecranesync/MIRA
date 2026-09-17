@@ -18,7 +18,9 @@
  * machine's evidence cannot surface under another.
  *
  * ISOLATION: cross-TENANT is enforced by RLS + the explicit `o.tenant_id` /
- * `vs.tenant_id` predicates (both UUID). Cross-MACHINE separation rests on
+ * `vs.tenant_id` predicates (TEXT since migration 069 — no `::uuid` cast; a
+ * cast would throw `42883 operator does not exist: text = uuid` on every
+ * call, see .claude/rules/mira-hub-migrations.md §1/§2). Cross-MACHINE separation rests on
  * `visual_session.asset_id` being written correctly at capture — which the
  * write path here does, and nothing else writes it. `asset_id` is a soft link
  * (migration 063: no FK), so a mis-tagged session is indistinguishable from a
@@ -94,7 +96,7 @@ export async function recordNameplateObservations(opts: {
   return withTenantContext(opts.tenantId, async (c: QueryClient) => {
     const s = await c.query(
       `INSERT INTO visual_session (tenant_id, asset_id, title, created_by, metadata)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb)
+       VALUES ($1, $2::uuid, $3, $4, $5::jsonb)
        RETURNING session_id::text AS id`,
       [opts.tenantId, opts.equipmentEntityId, opts.title, opts.createdBy, JSON.stringify({ source: "nameplate_photo" })],
     );
@@ -102,7 +104,7 @@ export async function recordNameplateObservations(opts: {
 
     const e = await c.query(
       `INSERT INTO evidence_item (session_id, tenant_id, source_type, original_hash, capture_meta)
-       VALUES ($1::uuid, $2::uuid, 'nameplate', $3, $4::jsonb)
+       VALUES ($1::uuid, $2, 'nameplate', $3, $4::jsonb)
        RETURNING evidence_id::text AS id`,
       // content stays NULL — the bytes live in hub_uploads (parked); capture_meta
       // carries the file id so the citation opens the original photo.
@@ -117,7 +119,7 @@ export async function recordNameplateObservations(opts: {
         `INSERT INTO observation
            (session_id, tenant_id, evidence_id, obs_kind, raw_value, normalized_value,
             evidence_state, confidence, extractor, review_state)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'property', $4, $5, 'VISIBLE', $6, 'nameplate', 'unreviewed')
+         VALUES ($1::uuid, $2, $3::uuid, 'property', $4, $5, 'VISIBLE', $6, 'nameplate', 'unreviewed')
          RETURNING observation_id::text AS id`,
         [sessionId, opts.tenantId, evidenceId, f.rawText, `${f.field}: ${value}`, f.confidence],
       );
@@ -173,17 +175,17 @@ export async function promoteVisualObservations(opts: {
       `UPDATE observation o
           SET review_state = 'confirmed'
         WHERE o.observation_id = ANY($1::uuid[])
-          AND o.tenant_id = $2::uuid
+          AND o.tenant_id = $2
           AND o.review_state = 'unreviewed'
           AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
           AND o.superseded_by IS NULL
           AND o.session_id IN (
             SELECT vs.session_id FROM visual_session vs
-             WHERE vs.tenant_id = $2::uuid AND vs.asset_id = $3::uuid
+             WHERE vs.tenant_id = $2 AND vs.asset_id = $3::uuid
           )
           AND o.evidence_id IN (
             SELECT e.evidence_id FROM evidence_item e
-             WHERE e.tenant_id = $2::uuid AND e.capture_meta->>'file_id' = $4
+             WHERE e.tenant_id = $2 AND e.capture_meta->>'file_id' = $4
           )
         RETURNING o.observation_id::text AS id`,
       [ids, opts.tenantId, opts.boundEntityId, opts.fileId],
@@ -227,7 +229,7 @@ export async function loadVisualEvidenceForAsset(
        FROM observation o
        JOIN visual_session vs ON vs.session_id = o.session_id AND vs.tenant_id = o.tenant_id
        LEFT JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
-      WHERE o.tenant_id = $1::uuid
+      WHERE o.tenant_id = $1
         AND vs.asset_id = $2::uuid
         AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
         AND o.review_state <> 'rejected'
