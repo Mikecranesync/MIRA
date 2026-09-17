@@ -270,17 +270,17 @@ export async function correctVisualObservations(opts: {
                 o.evidence_id::text AS evidence_id, o.normalized_value
            FROM observation o
           WHERE o.observation_id = $1::uuid
-            AND o.tenant_id = $2::uuid
+            AND o.tenant_id = $2
             AND o.review_state = 'unreviewed'
             AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
             AND o.superseded_by IS NULL
             AND o.session_id IN (
               SELECT vs.session_id FROM visual_session vs
-               WHERE vs.tenant_id = $2::uuid AND vs.asset_id = $3::uuid
+               WHERE vs.tenant_id = $2 AND vs.asset_id = $3::uuid
             )
             AND o.evidence_id IN (
               SELECT e.evidence_id FROM evidence_item e
-               WHERE e.tenant_id = $2::uuid AND e.capture_meta->>'file_id' = $4
+               WHERE e.tenant_id = $2 AND e.capture_meta->>'file_id' = $4
             )
           FOR UPDATE`,
         [w.observationId, opts.tenantId, opts.boundEntityId, opts.fileId],
@@ -295,7 +295,7 @@ export async function correctVisualObservations(opts: {
         `INSERT INTO observation
            (session_id, tenant_id, evidence_id, obs_kind, raw_value, normalized_value,
             evidence_state, confidence, extractor, review_state, metadata)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'property', NULL, $4, 'VISIBLE', NULL, 'technician', 'corrected', $5::jsonb)
+         VALUES ($1::uuid, $2, $3::uuid, 'property', NULL, $4, 'VISIBLE', NULL, 'technician', 'corrected', $5::jsonb)
          RETURNING observation_id::text AS id`,
         [
           row.session_id,
@@ -313,7 +313,7 @@ export async function correctVisualObservations(opts: {
         `UPDATE observation
             SET evidence_state = 'SUPERSEDED', superseded_by = $2::uuid
           WHERE observation_id = $1::uuid
-            AND tenant_id = $3::uuid
+            AND tenant_id = $3
             AND superseded_by IS NULL
             AND evidence_state <> 'SUPERSEDED'
           RETURNING observation_id::text AS id`,
