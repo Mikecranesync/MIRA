@@ -33,12 +33,14 @@ an explicit list of what was not checked. No session or no checkout is a FAIL.
 
 ## Independent Review Verdict Contract
 
-**Charlie IR sessions must post a durable [INDEPENDENT-REVIEW] verdict comment** on GitHub
-with repo/pr/head_sha/base_sha/task_id/session_id and one of: PASS, FAIL, BLOCKED, or ERROR.
+**REQUIRED:** Charlie IR sessions MUST post a durable `[INDEPENDENT-REVIEW]` verdict comment
+on GitHub with repo/pr/head_sha/base_sha/task_id/session_id and one of: PASS, FAIL, BLOCKED,
+or ERROR before exiting.
 
 **Empty exit = ERROR.** A stopped session with `review_verdict=null` and no matching GitHub
-comment is treated as ERROR, never as "try again." Coordinator policy (`ir_verdict.py`)
-enforces:
+comment is treated as ERROR, never as "try again." Null verdict is not a retry signal.
+
+Coordinator policy (`ir_verdict.py`) enforces:
 
 - PASS on an older tip is stale when head moves (does not approve the new head)
 - `review_verdict=null` or missing GitHub comment → ERROR (not silent approval)
