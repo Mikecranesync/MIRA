@@ -351,6 +351,26 @@ Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (73 test
 
 Mission spec: `docs/missions/AUTONOMOUS-FOREMAN-V1.md`
 
+## Independent Review Verdict Contract
+
+The IR verdict coordinator contract (`ir_verdict.py`) ensures empty Charlie IR sessions
+cannot be treated as success. Pure policy module (no I/O) used by Foreman routines.
+
+**Core contract:** A review is never complete without a persisted artifact (GitHub comment)
+tied to the exact tip SHA. Empty exit = ERROR, not "try again."
+
+**Key rules:**
+- PASS on an older tip is stale when head moves (does not approve the new head)
+- `review_verdict=null` or missing GitHub comment → ERROR (not silent approval)
+- Staging-gate PASS does not count as Independent Review (different framing required)
+- After 2 empty IR exits on the same tip, stop and diagnose (do not relaunch indefinitely)
+- PASS on tip blocks relaunch (review is complete for that SHA)
+
+Tests: `python3 -m pytest mira-bots/foreman/test_ir_verdict.py -v` (9 tests)
+
+See `specialists/adversarial-reviewer.md` for verdict format requirements and
+enforcement details.
+
 ## Support
 
 - **Logs:** `docker logs -f factorylm-foreman`
