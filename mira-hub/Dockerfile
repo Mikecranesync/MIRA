@@ -30,7 +30,7 @@ ENV NEXT_PUBLIC_PIPELINE_API_URL=$NEXT_PUBLIC_PIPELINE_API_URL
 RUN npm run build
 
 FROM base AS runner
-WORKDIR /app
+WORKDIR /app/mira-hub
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -48,10 +48,13 @@ ENV MIRA_BUILD_TIME=$MIRA_BUILD_TIME
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# With the compiler root at the repo root, `.next/standalone` mirrors the repo layout
-# (server.js + node_modules under standalone/mira-hub/, plus whatever the tracer pulled
-# from sibling dirs). Copy ONLY the Hub subtree: that is exactly the runtime file set the
-# image shipped before, and keeps the traced siblings out of the image.
+# With the compiler root at the repo root, `.next/standalone` mirrors the repo layout:
+# server.js + node_modules live under standalone/mira-hub/, and Turbopack's hashed
+# server externals (`.next/node_modules/pg-<hash>`) are RELATIVE symlinks that assume
+# that nesting. So the Hub subtree is copied to /app/mira-hub — never flattened to /app,
+# which breaks those links and leaves the image unable to load `pg` (found the hard way).
+# Only the Hub subtree is copied: the tracer's sibling pulls (wiki/, mira-web/, tools/)
+# stay out of the image, and the runtime file set matches what shipped before.
 COPY --from=builder /app/mira-hub/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/mira-hub/.next/standalone/mira-hub ./
 COPY --from=builder --chown=nextjs:nodejs /app/mira-hub/.next/static ./.next/static
