@@ -316,6 +316,20 @@ export function HubShellHost() {
     if (sel) select(sel);
   }, [notebooks, select]);
 
+  /**
+   * Open a source in the shell's viewer. The reducer's OWN thread is the empty
+   * stub (`syncThread`); the real turns exist only in the render-time projection
+   * `view`. `select-source` resolves the id against the reducer's thread, so a
+   * bare dispatch was a silent no-op (found by the live click proof, 2026-09-18).
+   * Hand the reducer the projected thread first — same thread id, so the draft
+   * is untouched — then select. The next render's projection re-hydrates over a
+   * thread that now contains the source, so the selection survives.
+   */
+  const openSource = useCallback((sourceId: string) => {
+    dispatch({ type: "hydrate", data: { thread: view.thread, projects: view.projects, machines: view.machines, activeContext: view.activeContext } });
+    dispatch({ type: "select-source", sourceId });
+  }, [view]);
+
   // Answer text renders through the classic notebook's markdown + inline
   // citation marks, gated on the turn's own source parts.
   const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
@@ -327,8 +341,8 @@ export function HubShellHost() {
       if (c) own.push(c);
     }
     // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
-    return <AnswerMarkdown content={text} citations={own} onCite={(c) => dispatch({ type: "select-source", sourceId: sourceIdFor(turn.id, c.citationId) })} />;
-  }, [citations]);
+    return <AnswerMarkdown content={text} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
+  }, [citations, openSource]);
 
   const onCopy = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
@@ -346,6 +360,7 @@ export function HubShellHost() {
     onSend,
     renderText,
     onCopy,
+    onSource: (source) => openSource(source.id),
     onNewChat: selection ? onNewChat : undefined,
     ...(busy ? { onStop } : {}),
     ...(failedBody ? { onRetry } : {}),

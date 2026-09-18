@@ -32,6 +32,7 @@ import type {
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
@@ -139,11 +140,41 @@ export function visualObservationPart(entry: VisualObservationEntry): Interactio
 
 const SAFETY_STOP_MESSAGE =
   "Stop. This request involves a hazard. Follow the site lockout/tagout and safety procedure before proceeding; MIRA will not guide the unsafe step.";
+const ELECTRICAL_DIRECTIVE_MESSAGE =
+  "Energized electrical work: this answer is framed by the NFPA 70E directive. De-energize, lock out, and verify absence of voltage before any hands-on step.";
+
+/**
+ * The notebook route persists two kinds of `safety_notice` and discriminates
+ * them with its OWN sentinel, not prose (chat/route.ts: `safetyTrigger ===
+ * ENERGIZED_ELECTRICAL_HAZARD`): the energized-electrical DIRECTIVE, whose
+ * answer still streams and completes, carries the sentinel as its trigger; a
+ * terminal refusal (input-side hard stop, or an unsafe answer rejected by
+ * output validation) carries the matched phrase / violation. Mirroring that
+ * rule here keeps live and re-hydrated lifecycles identical (Codex #3839 round
+ * 2 F1) and keeps refusal prose out of model history (F2).
+ */
+export function isTerminalSafetyNotice(entry: SafetyNoticeEntry): boolean {
+  return entry.trigger !== ENERGIZED_ELECTRICAL_HAZARD;
+}
+
+/** Every `safety_notice` entry on a persisted row (a rejected unsafe answer can carry the directive AND the violation). */
+export function safetyNoticesOf(evidence: readonly unknown[]): SafetyNoticeEntry[] {
+  return evidence.filter(isSafetyNoticeEntry);
+}
+
+export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
+  return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
+}
 
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
+  const terminal = isTerminalSafetyNotice(entry);
   return {
     type: "safety_notice",
-    notice: { severity: "stop", message: SAFETY_STOP_MESSAGE, ...(entry.trigger ? { trigger: entry.trigger } : {}) },
+    notice: {
+      severity: terminal ? "stop" : "warning",
+      message: terminal ? SAFETY_STOP_MESSAGE : ELECTRICAL_DIRECTIVE_MESSAGE,
+      ...(entry.trigger ? { trigger: entry.trigger } : {}),
+    },
   };
 }
 
@@ -209,7 +240,7 @@ export function lifecycleFromStream(result: StreamResult, opts: { stopped?: bool
   if (opts.stopped) return "stopped";
   if (!result.sawStatus) return "failed";
   if (result.status === "error") return "failed";
-  return result.safetyNotice ? "safety_stop" : "completed";
+  return result.safetyNotice && isTerminalSafetyNotice(result.safetyNotice) ? "safety_stop" : "completed";
 }
 
 /** A persisted GET row → its two turns (question, answer). STOPPED-TURN CONTRACT
@@ -221,7 +252,11 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   const disputed = hasIdentityDispute(row.evidence);
   const context = contextFor(meta, disputed);
   const threadId = threadIdFor(meta);
-  const { citations, machineEvidence, visualEvidence, safetyNotice } = splitEvidence(row.evidence);
+  const { citations, machineEvidence, visualEvidence } = splitEvidence(row.evidence);
+  // All safety entries, not `splitEvidence`'s single slot: a rejected unsafe
+  // answer persists the directive AND the violation, and the violation decides.
+  const notices = safetyNoticesOf(row.evidence);
+  const terminalStop = notices.some(isTerminalSafetyNotice);
 
   const question: InteractionTurn = {
     id: `${row.id}-q`,
@@ -246,19 +281,20 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     }
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
-    if (safetyNotice) parts.push(safetyNoticePart(safetyNotice));
+    for (const n of notices) parts.push(safetyNoticePart(n));
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
     parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
   }
 
-  // Same precedence as `lifecycleFromStream`: a persisted refusal stays a safety_stop.
+  // Same precedence as `lifecycleFromStream`: a persisted TERMINAL refusal stays a
+  // safety_stop; a directive-framed answer completed live and completes here too.
   const lifecycle: Lifecycle = stopped
     ? "stopped"
     : row.answerStatus === "error"
       ? "failed"
-      : safetyNotice
+      : terminalStop
         ? "safety_stop"
         : "completed";
   const answer: InteractionTurn = {

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { StreamResult, PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import {
   answerTurnId,
   basisKind,
   citationIndex,
   contextFor,
   hasIdentityDispute,
+  hasTerminalSafetyStop,
+  isTerminalSafetyNotice,
   lifecycleFromStream,
   partsFromStream,
   sourceFor,
@@ -193,9 +196,30 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
     expect(a.lifecycle).toBe("safety_stop");
     expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
+    expect(a.parts[3]).toMatchObject({ notice: { severity: "stop", trigger: "arc flash" } });
     // A stopped or failed row with a stale safety marker keeps its stronger lifecycle.
     const [, stoppedTurn] = turnsFromPersisted(row({ answerStatus: "error", answerText: "Ver", evidence: [{ kind: "safety_notice", trigger: "x" }] }), meta);
     expect(stoppedTurn.lifecycle).toBe("stopped");
+  });
+
+  it("the energized-electrical DIRECTIVE is an answer, not a refusal: completed live AND after reload, rendered as a warning (Codex #3839 round 2 F1)", () => {
+    // The server's own sentinel is the discriminator (chat/route.ts branches on the same constant).
+    const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+    expect(isTerminalSafetyNotice(directive)).toBe(false);
+    expect(isTerminalSafetyNotice({ kind: "safety_notice", trigger: "bypass the interlock" })).toBe(true);
+    // Persisted: a directive-framed answered row completes with its citations and a warning notice.
+    const [, a] = turnsFromPersisted(row({ evidence: [directive, citation] }), meta);
+    expect(a.lifecycle).toBe("completed");
+    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
+    expect(a.parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    // Live: the directive turn streams an ordinary evidence frame (no safety frame), so it completes — identical lifecycle.
+    expect(lifecycleFromStream(stream())).toBe("completed");
+    // A rejected unsafe answer persists the directive AND the violation; the violation decides: safety_stop, both notices rendered.
+    const [, rejected] = turnsFromPersisted(row({ evidence: [directive, { kind: "safety_notice", trigger: "unsafe_answer:live-work" }], basis: null }), meta);
+    expect(rejected.lifecycle).toBe("safety_stop");
+    expect(rejected.parts.filter((p) => p.type === "safety_notice")).toHaveLength(2);
+    expect(hasTerminalSafetyStop([directive])).toBe(false);
+    expect(hasTerminalSafetyStop([directive, { kind: "safety_notice", trigger: "x" }])).toBe(true);
   });
 
   it("source parts carry turn-scoped ids: two answers that both cite [1] never share a shell source (Codex #3839 F1)", () => {

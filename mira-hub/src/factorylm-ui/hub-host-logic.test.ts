@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
   enabledDocIds,
@@ -93,6 +94,22 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
       { role: "user", content: "q2" },
       { role: "user", content: "q3" },
       { role: "user", content: "q4" }, { role: "assistant", content: "I couldn't find that", status: "insufficient_evidence" },
+    ]);
+  });
+  it("history drops a TERMINAL safety refusal's text but keeps a directive-framed answer (Codex #3839 round 2 F2)", () => {
+    expect(historyRows([
+      { id: "1", question: "q1", answerStatus: "answered", answerText: "a1", evidence: [] },
+      // Hard stop: persisted as an ordinary answered row whose text is the refusal sentence.
+      { id: "2", question: "bypass the interlock", answerStatus: "answered", answerText: "⛔ SAFETY STOP …", evidence: [{ kind: "safety_notice", trigger: "bypass the interlock" }] },
+      // Energized-electrical directive: a real answer, framed by NFPA 70E — stays.
+      { id: "3", question: "q3", answerStatus: "answered", answerText: "De-energize first, then …", evidence: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }] },
+      // Rejected unsafe answer: directive AND violation persisted — the violation decides.
+      { id: "4", question: "q4", answerStatus: "answered", answerText: "⛔ SAFETY STOP …", evidence: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }, { kind: "safety_notice", trigger: "unsafe_answer:x" }] },
+    ])).toEqual([
+      { role: "user", content: "q1" }, { role: "assistant", content: "a1", status: "answered" },
+      { role: "user", content: "bypass the interlock" },
+      { role: "user", content: "q3" }, { role: "assistant", content: "De-energize first, then …", status: "answered" },
+      { role: "user", content: "q4" },
     ]);
   });
   it("grounding line never over-claims", () => {

@@ -8,7 +8,7 @@ import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
-import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 export interface HubSelection {
   readonly notebookId: string;
@@ -54,12 +54,19 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
 }
 
 /** Multi-turn memory for the route: persisted rows first, then any completed
- *  live exchange. Stopped/errored answers never enter history (STRM-2). */
+ *  live exchange. Stopped/errored answers never enter history (STRM-2), and
+ *  neither does a TERMINAL safety refusal's text (Codex #3839 round 2 F2): the
+ *  server persists a hard stop as answerStatus "answered" with the refusal
+ *  sentence as its text, but that sentence was never an answer and must not
+ *  steer retrieval or the model on the next turn. A directive-framed answer
+ *  (energized-electrical) is a real answer and stays. The question is kept in
+ *  both cases so the thread's shape is preserved. */
 export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "assistant"; content: string; status?: "answered" | "insufficient_evidence" | "error"; stopped?: boolean }[] {
   const out: { role: "user" | "assistant"; content: string; status?: "answered" | "insufficient_evidence" | "error"; stopped?: boolean }[] = [];
   for (const row of rows) {
     const stopped = row.answerStatus === "error" && !!row.answerText;
     out.push({ role: "user", content: row.question });
+    if (hasTerminalSafetyStop(row.evidence)) continue;
     if (row.answerText && !stopped && row.answerStatus !== "error") {
       out.push({ role: "assistant", content: row.answerText, status: row.answerStatus as "answered" | "insufficient_evidence" });
     }
