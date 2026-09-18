@@ -520,10 +520,15 @@ export async function retrieveNodeChunks(
     allowedDocIds.length > 0 && (opts.approvedSourceDocIds?.length ?? 0) > 0
       ? opts.approvedSourceDocIds!.filter((d) => allowedDocIds.includes(d))
       : [];
-  const approvedParams = approvedSourceDocIds.length > 0 ? [approvedSourceDocIds] : [];
-  const approvalClauseMain = approvedSourceFilterSql(
-    approvedSourceDocIds.length > 0 ? 5 + docParams.length : null,
-  );
+  // Bind the admission set ONLY when the gate is on. With the gate off,
+  // `approvedSourceFilterSql` emits no clause, so binding the array anyway leaves
+  // Postgres with more values than placeholders — every notebook-chat send with a
+  // confirmed source 500'd ("bind message supplies 6 parameters, but prepared
+  // statement requires 5") wherever MIRA_ENFORCE_APPROVED_RETRIEVAL was unset
+  // (staging, dev). Prod has the gate on and never saw it.
+  const admitApproved = approvedSourceDocIds.length > 0 && approvalGateEnabled();
+  const approvedParams = admitApproved ? [approvedSourceDocIds] : [];
+  const approvalClauseMain = approvedSourceFilterSql(admitApproved ? 5 + docParams.length : null);
 
   // Canonical-files mode: the validated doc set IS the boundary — chunks keep
   // their original ingest-time node stamp, so a doc linked to a second notebook
@@ -588,7 +593,7 @@ export async function retrieveNodeChunks(
       exactDocClause = "AND doc_id = ANY($5::uuid[])";
     }
     let approvalClauseExact = approvedSourceFilterSql(null);
-    if (approvedSourceDocIds.length > 0) {
+    if (admitApproved) {
       exactParams.push(approvedSourceDocIds);
       approvalClauseExact = approvedSourceFilterSql(exactParams.length);
     }
