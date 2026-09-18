@@ -447,10 +447,22 @@ run("visual-evidence-context (integration)", () => {
       expect(after.find((r) => r.observationId === siblingOk.id)).toMatchObject({ text: "frequency: 60Hz", trust: "candidate" });
     });
 
-    it("C8: a retry with the same correction supersedes nothing (the old row is no longer a live candidate)", async () => {
+    it("C8 (Codex round 3 F1): a retry with the same correction writes nothing and is reported SATISFIED with the existing pair — never as lost", async () => {
+      const ptr = await q(`SELECT superseded_by::text AS rep FROM observation WHERE observation_id = $1::uuid`, [misread.id]);
+      const replacementId = ptr.rows[0].rep as string;
       const again = await correctVisualObservations({
         tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
         corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+      });
+      expect(again).toEqual({ corrected: [{ supersededId: misread.id, replacementId }], mismatched: [] });
+      const reps = await q(`SELECT count(*)::int AS n FROM observation WHERE metadata->>'corrected_from' = $1`, [misread.id]);
+      expect(reps.rows[0].n).toBe(1);
+    });
+
+    it("C8b: a retry with a DIFFERENT value for the already-corrected reading is not satisfied and writes nothing", async () => {
+      const again = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS20" }], correctedBy: "it-tech",
       });
       expect(again).toEqual({ corrected: [], mismatched: [] });
       const reps = await q(`SELECT count(*)::int AS n FROM observation WHERE metadata->>'corrected_from' = $1`, [misread.id]);

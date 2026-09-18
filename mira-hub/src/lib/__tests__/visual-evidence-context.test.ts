@@ -214,14 +214,16 @@ describe("correctVisualObservations — correction changes which observation is 
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/FOR UPDATE/);
-    expect(sql).toMatch(/review_state = 'unreviewed'/);
+    // Liveness is decided in code (a superseded target may be a satisfied replay); the SQL scopes ownership only.
+    expect(sql).not.toMatch(/review_state = 'unreviewed'/);
+    expect(sql).toMatch(/o\.tenant_id = \$2/);
     expect(sql).toMatch(/vs\.asset_id = \$3::uuid/);
     expect(sql).toMatch(/capture_meta->>'file_id' = \$4/);
     expect(params).toEqual([UUID2, base.tenantId, UUID, FILE]);
   });
 
   it("skips a value equal to the recorded one — that is a confirm, not a correction", async () => {
-    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS10" }] }));
+    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS10", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: " GS10 " }] });
     expect(out).toEqual({ corrected: [], mismatched: [] });
@@ -229,7 +231,7 @@ describe("correctVisualObservations — correction changes which observation is 
   });
 
   it("skips a row whose normalized_value is not '<field>: <value>' rather than guessing a field", async () => {
-    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "GS1O" }] }));
+    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "GS1O", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] })).toEqual({ corrected: [], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(1);
@@ -238,7 +240,7 @@ describe("correctVisualObservations — correction changes which observation is 
   it("Codex F1: REFUSES a correction that contradicts the identity confirmed by the same request — SELECT only, reported in `mismatched`", async () => {
     // Confirmed identity says model=GS10; the technician's correction of the model
     // reading says GS20. Recording both would make two contradictory verified facts.
-    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O" }] }));
+    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS20" }], expected: { model: "GS10" } });
     expect(out).toEqual({ corrected: [], mismatched: [{ observationId: UUID2, field: "model" }] });
@@ -250,7 +252,7 @@ describe("correctVisualObservations — correction changes which observation is 
     const mk = () =>
       vi
         .fn()
-        .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O" }] })
+        .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] })
         .mockResolvedValueOnce({ rows: [{ id: NEW }] })
         .mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
     // Agrees (identity "gs10", correction "GS10") → applied.
@@ -271,11 +273,51 @@ describe("correctVisualObservations — correction changes which observation is 
     expect(query).toHaveBeenCalledTimes(3);
   });
 
+  it("Codex round 3 F1: a REPLAYED correction (target already superseded by this exact value) is reported satisfied — two SELECTs, nothing written", async () => {
+    const NEW = "64a24de7-0000-4000-8000-00000000000e";
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "SUPERSEDED", superseded_by: NEW }] })
+      .mockResolvedValueOnce({ rows: [{ normalized_value: "model: GS10", review_state: "corrected" }] }); // the replacement
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] });
+    expect(out).toEqual({ corrected: [{ supersededId: UUID2, replacementId: NEW }], mismatched: [] });
+    expect(query).toHaveBeenCalledTimes(2);
+    const [repSql, repParams] = query.mock.calls[1] as unknown as [string, unknown[]];
+    expect(repSql).toMatch(/SELECT normalized_value, review_state FROM observation/);
+    expect(repParams).toEqual([NEW, base.tenantId]);
+  });
+
+  it("Codex round 3 F1: a superseded target whose replacement holds a DIFFERENT value is NOT satisfied — skipped, nothing written", async () => {
+    const NEW = "64a24de7-0000-4000-8000-00000000000e";
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "SUPERSEDED", superseded_by: NEW }] })
+      .mockResolvedValueOnce({ rows: [{ normalized_value: "model: GS20", review_state: "corrected" }] });
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] });
+    expect(out).toEqual({ corrected: [], mismatched: [] });
+    expect(query).toHaveBeenCalledTimes(2); // no INSERT, no supersede
+  });
+
+  it("a confirmed / rejected / already-superseded-without-pointer row is not a live candidate — skipped after the ownership SELECT", async () => {
+    for (const row of [
+      { review_state: "confirmed", evidence_state: "VISIBLE", superseded_by: null },
+      { review_state: "unreviewed", evidence_state: "REJECTED", superseded_by: null },
+      { review_state: "unreviewed", evidence_state: "SUPERSEDED", superseded_by: null },
+    ]) {
+      const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", ...row }] }));
+      vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+      expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] })).toEqual({ corrected: [], mismatched: [] });
+      expect(query).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("inserts a technician/corrected replacement on the SAME photo, then supersedes the old row with a pointer", async () => {
     const NEW = "64a24de7-0000-4000-8000-00000000000e";
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "sess", evidence_id: "evid", normalized_value: "model: GS1O" }] }) // SELECT
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "sess", evidence_id: "evid", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] }) // SELECT
       .mockResolvedValueOnce({ rows: [{ id: NEW }] }) // INSERT
       .mockResolvedValueOnce({ rows: [{ id: UUID2 }] }); // UPDATE supersede
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
@@ -303,7 +345,7 @@ describe("correctVisualObservations — correction changes which observation is 
   it("throws (→ transaction rollback) if the supersede loses a race after the INSERT — no dangling replacement", async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O" }] })
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] })
       .mockResolvedValueOnce({ rows: [{ id: "new" }] })
       .mockResolvedValueOnce({ rows: [] }); // someone else superseded it first
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
@@ -313,7 +355,7 @@ describe("correctVisualObservations — correction changes which observation is 
   it("caps the correction value at 200 chars (matches readIdentity)", async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: x" }] })
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: x", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null }] })
       .mockResolvedValueOnce({ rows: [{ id: "new" }] })
       .mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
