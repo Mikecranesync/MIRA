@@ -65,7 +65,13 @@ describe("unified attachments controller", () => {
 
   it("uploads the photo through the LOOK door and returns the visual-evidence rider", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
-    api.lookAtPhoto.mockResolvedValue({ fileId: "file-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-9",
+      observation: {
+        text: "A carton containing individually boxed ball bearings.",
+        capturedAt: "2026-09-16T21:17:20",
+      },
+    });
     const get = mount("nb-1");
 
     let a: Attachment | null = null;
@@ -75,10 +81,33 @@ describe("unified attachments controller", () => {
 
     expect(api.lookAtPhoto).toHaveBeenCalledTimes(1);
     expect(composed).toEqual({
-      question: "why is it leaking",
-      rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T00:00:00Z" } },
+      question: "Visual observation (21:17:20, phone photo): A carton containing individually boxed ball bearings.\n\nwhy is it leaking",
+      rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T21:17:20" } },
       warning: undefined,
     });
+  });
+
+  it("fails closed when the photo was saved but LOOK returned no observation", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-9",
+      observation: null,
+      reason: "provider_error",
+      message: "Could not describe the photo. The photo has been saved to this notebook.",
+    });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    let composed;
+    await act(async () => { composed = await get().compose("what is in this box", [a as Attachment]); });
+
+    expect(composed).toMatchObject({
+      question: "what is in this box",
+      failure: expect.stringMatching(/photo was saved, but MIRA couldn't analyze it/i),
+    });
+    expect(composed).not.toHaveProperty("rider.visualEvidence");
+    expect(get().hasCarried()).toBe(true);
   });
 
   it("refuses to send a photo question when the photo did not upload", async () => {
@@ -126,7 +155,10 @@ describe("unified attachments controller", () => {
     act(() => { home().stashForHandoff([a as Attachment]); });
     cleanup();
 
-    api.lookAtPhoto.mockResolvedValue({ fileId: "file-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-9",
+      observation: { text: "A leaking pump seal.", capturedAt: "2026-09-16T00:00:00Z" },
+    });
     const notebook = mount("nb-1"); // the thread the send created
     let composed;
     await act(async () => { composed = await notebook().compose("what is leaking", []); });
@@ -146,7 +178,10 @@ describe("unified attachments controller", () => {
   it("retains a failed attachment so the next compose re-uploads it", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockResolvedValueOnce({ fileId: null })
-      .mockResolvedValue({ fileId: "file-retry", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({
+        fileId: "file-retry",
+        observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00Z" },
+      });
     const get = mount("nb-1");
 
     let a: Attachment | null = null;
@@ -168,7 +203,10 @@ describe("unified attachments controller", () => {
   it("retains a thrown attachment failure for the next compose", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"))
-      .mockResolvedValue({ fileId: "file-thrown", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({
+        fileId: "file-thrown",
+        observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00Z" },
+      });
     const get = mount("nb-1");
 
     let a: Attachment | null = null;

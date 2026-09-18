@@ -25,7 +25,11 @@ import {
 } from "../api/resources";
 import { uploadSourceWarningCopy } from "../lib/resource-copy";
 import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
+import { lookQuestion } from "../lib/sensor";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "./attachment-handoff";
+
+const PHOTO_ANALYSIS_UNAVAILABLE =
+  "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
 
 /** The rider shape the notebook's send path already accepts for Sensor. */
 export interface VisualEvidenceRider {
@@ -121,6 +125,7 @@ export function useUnifiedAttachments(notebookId: string | null) {
     const question = text || (photo
       ? "What am I looking at, and what should I check?"
       : "What is in this document?");
+    let composedQuestion = question;
 
     // A failure must leave the bytes armed for another attempt. `held` still
     // has them (they are dropped only on success, below), but `carried` was
@@ -153,16 +158,28 @@ export function useUnifiedAttachments(notebookId: string | null) {
           retain();
           return { question, failure: "The photo didn't upload — try again." };
         }
+        if (!look.observation) {
+          // A saved file ID proves storage, not visual understanding. Do not
+          // let retrieval answer the technician from an unrelated manual when
+          // LOOK could not describe the image.
+          retain();
+          return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
+        }
+        composedQuestion = lookQuestion(
+          look.observation.text,
+          look.observation.capturedAt,
+          question,
+        );
         rider = {
           visualEvidence: {
             fileId: look.fileId,
-            capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+            capturedAt: look.observation.capturedAt,
           },
         };
       }
 
       for (const item of items) held.current.delete(item.attachment.id);
-      return { question, rider, warning };
+      return { question: composedQuestion, rider, warning };
     } catch (error) {
       retain();
       throw error;
