@@ -337,22 +337,44 @@ export async function correctVisualObservations(opts: {
       if (!field) continue; // not a "<field>: <value>" row → cannot correct safely
       const wantedValue = `${field}: ${w.value}`;
 
+      // ONE technician truth per field — checked BEFORE both the replay and the
+      // fresh-write branches (Codex F1): a replayed correction that disagrees
+      // with the identity confirmed by THIS request is a contradiction too, and
+      // must never be reported as satisfied.
+      const confirmed = expected[field];
+      if (typeof confirmed === "string" && !sameNameplateValue(confirmed, w.value)) {
+        mismatched.push({ observationId: String(row.id), field });
+        continue;
+      }
+
       // Replay of a correction that already committed (lost response, or a
       // retry after another part of the confirm returned a retryable outcome):
-      // the target is superseded and its replacement is a technician-corrected
-      // row carrying EXACTLY this field and value. Report it as satisfied with
-      // the existing (supersededId, replacementId) pair and write nothing. Bound
-      // to tenant ∧ asset ∧ photo (the SELECT above) ∧ this observation ∧ this
-      // value — a superseded target whose replacement says something else is
-      // NOT satisfied and falls through to the liveness check, which skips it.
+      // the target is superseded and its replacement is THE active technician
+      // correction of this exact target — same session and evidence (photo),
+      // technician-authored, review_state corrected, itself active and not
+      // superseded, pointing back through metadata.corrected_from — carrying
+      // EXACTLY this field and value (Codex F3: a same-tenant corrected row with
+      // matching text, or a replacement that was later superseded, is NOT
+      // satisfaction). Report it as satisfied with the existing pair and write
+      // nothing; anything else falls through to the liveness check and skips.
       if (row.superseded_by) {
         const rep = await c.query(
-          `SELECT normalized_value, review_state FROM observation
-            WHERE observation_id = $1::uuid AND tenant_id = $2`,
-          [row.superseded_by, opts.tenantId],
+          `SELECT r.normalized_value
+             FROM observation r
+            WHERE r.observation_id = $1::uuid
+              AND r.tenant_id = $2
+              AND r.session_id = $3::uuid
+              AND r.evidence_id = $4::uuid
+              AND r.extractor = 'technician'
+              AND r.review_state = 'corrected'
+              AND r.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
+              AND r.superseded_by IS NULL
+              AND r.metadata->>'corrected_from' = $5
+            FOR UPDATE`,
+          [row.superseded_by, opts.tenantId, row.session_id, row.evidence_id, row.id],
         );
         const r = rep.rows[0];
-        if (r && r.review_state === "corrected" && r.normalized_value === wantedValue) {
+        if (r && r.normalized_value === wantedValue) {
           corrected.push({ supersededId: String(row.id), replacementId: String(row.superseded_by) });
           continue;
         }
@@ -363,13 +385,6 @@ export async function correctVisualObservations(opts: {
       if (row.evidence_state === "REJECTED" || row.evidence_state === "SUPERSEDED") continue;
       if (row.superseded_by) continue;
       if (wantedValue === row.normalized_value) continue; // same value = a confirm, not a correction
-      const confirmed = expected[field];
-      if (typeof confirmed === "string" && !sameNameplateValue(confirmed, w.value)) {
-        // The technician confirmed one value for this field and typed another
-        // as the correction. Refuse to record the second truth; report it.
-        mismatched.push({ observationId: String(row.id), field });
-        continue;
-      }
 
       const ins = await c.query(
         `INSERT INTO observation

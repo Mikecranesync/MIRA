@@ -482,5 +482,27 @@ run("visual-evidence-context (integration)", () => {
       const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id = $1`, [TENANT_A]);
       expect(n.rows[0].n).toBe(1);
     });
+
+    it("C8d (Codex F1): a replay that contradicts the identity confirmed by the same request is a mismatch, never satisfied", async () => {
+      const out = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+        expected: { model: "GS20" },
+      });
+      expect(out).toEqual({ corrected: [], mismatched: [{ observationId: misread.id, field: "model" }] });
+    });
+
+    it("C8c (Codex F3): once the replacement is itself superseded, the replay is no longer satisfied and still writes nothing (run last: mutates the replacement)", async () => {
+      const ptr = await q(`SELECT superseded_by::text AS rep FROM observation WHERE observation_id = $1::uuid`, [misread.id]);
+      const replacementId = ptr.rows[0].rep as string;
+      await q(`UPDATE observation SET evidence_state = 'SUPERSEDED' WHERE observation_id = $1::uuid`, [replacementId]);
+      const again = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+      });
+      expect(again).toEqual({ corrected: [], mismatched: [] });
+      const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id = $1`, [TENANT_A]);
+      expect(n.rows[0].n).toBe(1);
+    });
   });
 });

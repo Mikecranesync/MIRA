@@ -885,15 +885,25 @@ describe("canonical-evidence contract (085)", () => {
       NAMEPLATE_DOC_ID,
       expect.objectContaining({
         originFileId: PHOTO_FILE_ID,
-        matchEvidence: { confirm_client_key: "ck-abc" },
+        // Codex F2: the key AND a digest of what was confirmed — a key alone
+        // cannot tell a replay from an edited retry.
+        matchEvidence: { confirm_client_key: "ck-abc", confirm_payload_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
       }),
     );
   });
 
-  it("a replay carrying the SAME clientKey reuses the existing derived doc — no re-park, no re-ingest, no supersede", async () => {
+  it("a replay carrying the SAME clientKey AND the same confirmed payload reuses the existing derived doc — no re-park, no re-ingest, no supersede", async () => {
+    // Learn the digest the route stores for this exact payload, then replay against it.
+    happyIngestMocks();
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }), makeParams(NOTEBOOK_ID));
+    const stored = (vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence: { confirm_payload_sha256: string } }).matchEvidence.confirm_payload_sha256;
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(ingestTextToNode).mockClear();
+    vi.mocked(attachSource).mockClear();
+    vi.mocked(supersedePriorOriginSources).mockClear();
     vi.mocked(findVisibleOriginSource).mockResolvedValue({
       docId: NAMEPLATE_DOC_ID,
-      matchEvidence: { confirm_client_key: "ck-abc" },
+      matchEvidence: { confirm_client_key: "ck-abc", confirm_payload_sha256: stored },
     });
     const res = await POST(
       makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }),
@@ -1099,6 +1109,81 @@ describe("visual-observation correction (Slice 3)", () => {
     expect(body.visualCorrectedCount).toBe(0);
     expect(body.visualCorrectionMismatches).toEqual([{ observationId: OBS_2, field: "model" }]);
     expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ expected: expect.objectContaining({ model: "GS10" }) }));
+  });
+
+  it("Codex F4: the same observation in BOTH arrays is rejected 400 before ANY side effect — a client partition is not a server invariant", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, OBS_2], corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "observation_in_both_sets", observationIds: [OBS_2] });
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+    expect(promoteVisualObservations).not.toHaveBeenCalled();
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+  });
+
+  it("Codex F5: the lists are de-duplicated and bounded at the boundary — over-limit is an explicit 400 with no side effect, duplicates collapse", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const many = Array.from({ length: 51 }, (_, i) => ({ observationId: `01a10000-0000-4000-8000-${String(i).padStart(12, "0")}`, value: "x" }));
+    const over = await POST(makeReq({ ...baseBody, discover: false, corrections: many }), makeParams(NOTEBOOK_ID));
+    expect(over.status).toBe(400);
+    expect(await over.json()).toEqual({ error: "too_many_visual_entries", max: 50 });
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
+    vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [OBS_1] });
+    await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, OBS_1, OBS_1], corrections: [{ observationId: OBS_2, value: "GS10" }, { observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(promoteVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ observationIds: [OBS_1] }));
+    // First occurrence wins for a duplicated correction target.
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ corrections: [{ observationId: OBS_2, value: "GS10" }] }));
+  });
+
+  it("Codex F2: the idempotency record binds the client key to WHAT was confirmed — a true replay reuses the doc, an edited retry under the same key materializes anew and supersedes the prior reading", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
+    // Attempt 1: nothing visible yet → materialize; capture the stored (key, payload hash).
+    vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    const attach1 = vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence?: { confirm_client_key: string; confirm_payload_sha256: string } };
+    expect(attach1.matchEvidence?.confirm_client_key).toBe("k1");
+    expect(attach1.matchEvidence?.confirm_payload_sha256).toMatch(/^[0-9a-f]{64}$/);
+    const storedHash = attach1.matchEvidence!.confirm_payload_sha256;
+    const existing = { docId: NAMEPLATE_DOC_ID, matchEvidence: { confirm_client_key: "k1", confirm_payload_sha256: storedHash } } as never;
+
+    // Attempt 2 — TRUE REPLAY (same key, same identity, same corrections): reuse, no re-park.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(findVisibleOriginSource).mockResolvedValue(existing);
+    const replay = await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    expect(replay.status).toBe(200);
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect((await replay.json()).nameplate.docId).toBe(NAMEPLATE_DOC_ID);
+
+    // Attempt 3 — EDITED RETRY (same key, model edited GS10 → GS20, correction edited too): NOT a replay.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(supersedePriorOriginSources).mockClear();
+    await POST(
+      makeReq({ ...baseBody, identity: { ...IDENTITY, model: "GS20" }, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1); // a new derived document for the edited identity
+    // The prior reading of this photo is superseded so the stale GS10 document does not stay active beside the GS20 correction.
+    expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, PHOTO_FILE_ID, NAMEPLATE_DOC_ID);
+    const attach3 = vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence?: { confirm_payload_sha256: string } };
+    expect(attach3.matchEvidence?.confirm_payload_sha256).not.toBe(storedHash);
+
+    // A legacy record with the key but no stored payload hash is never treated as a replay.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: NAMEPLATE_DOC_ID, matchEvidence: { confirm_client_key: "k1" } } as never);
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1);
   });
 
   it("an unbound notebook forwards boundEntityId=null — the lib then corrects nothing", async () => {

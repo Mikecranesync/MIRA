@@ -283,9 +283,40 @@ describe("correctVisualObservations — correction changes which observation is 
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] });
     expect(out).toEqual({ corrected: [{ supersededId: UUID2, replacementId: NEW }], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(2);
+    // Codex F3: the replacement must be THE active technician correction of this exact
+    // target — same session + evidence (photo), technician/corrected, itself active and
+    // not superseded, pointing back through metadata.corrected_from — and locked.
     const [repSql, repParams] = query.mock.calls[1] as unknown as [string, unknown[]];
-    expect(repSql).toMatch(/SELECT normalized_value, review_state FROM observation/);
-    expect(repParams).toEqual([NEW, base.tenantId]);
+    expect(repSql).toMatch(/r\.session_id = \$3::uuid/);
+    expect(repSql).toMatch(/r\.evidence_id = \$4::uuid/);
+    expect(repSql).toMatch(/r\.extractor = 'technician'/);
+    expect(repSql).toMatch(/r\.review_state = 'corrected'/);
+    expect(repSql).toMatch(/r\.evidence_state NOT IN \('REJECTED', 'SUPERSEDED'\)/);
+    expect(repSql).toMatch(/r\.superseded_by IS NULL/);
+    expect(repSql).toMatch(/r\.metadata->>'corrected_from' = \$5/);
+    expect(repSql).toMatch(/FOR UPDATE/);
+    expect(repParams).toEqual([NEW, base.tenantId, "s", "e", UUID2]);
+  });
+
+  it("Codex F3: a replacement that is itself superseded / rejected / on another photo / not pointing back is NOT satisfaction — the scoped lookup returns no row and nothing is written", async () => {
+    const NEW = "64a24de7-0000-4000-8000-00000000000e";
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "SUPERSEDED", superseded_by: NEW }] })
+      .mockResolvedValueOnce({ rows: [] }); // the scoped replacement lookup finds nothing acceptable
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] })).toEqual({ corrected: [], mismatched: [] });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("Codex F1: a REPLAY that contradicts the identity confirmed by THIS request is a mismatch, never satisfied — checked before the replay lookup (one SELECT only)", async () => {
+    const NEW = "64a24de7-0000-4000-8000-00000000000e";
+    // Active replacement says model: GS10; this request confirms identity model=GS20 and resubmits GS10.
+    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O", review_state: "unreviewed", evidence_state: "SUPERSEDED", superseded_by: NEW }] }));
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }], expected: { model: "GS20" } });
+    expect(out).toEqual({ corrected: [], mismatched: [{ observationId: UUID2, field: "model" }] });
+    expect(query).toHaveBeenCalledTimes(1); // target SELECT only — no replacement lookup, no write
   });
 
   it("Codex round 3 F1: a superseded target whose replacement holds a DIFFERENT value is NOT satisfied — skipped, nothing written", async () => {
