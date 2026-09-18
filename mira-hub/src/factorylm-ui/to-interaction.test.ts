@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StreamResult, PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
+  answerTurnId,
   basisKind,
   citationIndex,
   contextFor,
@@ -9,10 +10,13 @@ import {
   lifecycleFromStream,
   partsFromStream,
   sourceFor,
+  sourceIdFor,
   threadFromPersisted,
   turnsFromPersisted,
   type HubNotebookMeta,
 } from "./to-interaction";
+
+const LIVE = { turnId: "live-1-a" };
 
 const AT = "2026-09-17T12:00:00.000Z";
 
@@ -51,10 +55,13 @@ function stream(over: Partial<StreamResult> = {}): StreamResult {
 }
 
 describe("sourceFor / basisKind", () => {
-  it("maps a citation to a SourceReference without inventing a file", () => {
-    expect(sourceFor(citation)).toEqual({ id: "1", title: "GS10 User Manual", kind: "oem_documentation", locator: "p. 47" });
-    expect(sourceFor({ ...citation, page: null, fileId: "file-9" })).toMatchObject({ kind: "workspace_file", locator: "Set P9.01 to 2 for Modbus control." });
-    expect(sourceFor({ ...citation, page: null, quote: null })).toMatchObject({ locator: "cited passage" });
+  it("maps a citation to a TURN-SCOPED SourceReference without inventing a file", () => {
+    // Codex #3839 F1: the shell id is scoped to the answer turn; the visible number stays the citation's own.
+    expect(sourceFor(citation, "turn-1-a")).toEqual({ id: "turn-1-a:1", title: "GS10 User Manual", kind: "oem_documentation", locator: "p. 47" });
+    expect(sourceFor({ ...citation, page: null, fileId: "file-9" }, "t")).toMatchObject({ kind: "workspace_file", locator: "Set P9.01 to 2 for Modbus control." });
+    expect(sourceFor({ ...citation, page: null, quote: null }, "t")).toMatchObject({ locator: "cited passage" });
+    expect(sourceIdFor("turn-2-a", "1")).toBe("turn-2-a:1");
+    expect(answerTurnId("turn-2")).toBe("turn-2-a");
   });
 
   it("never upgrades an unknown basis to a stronger claim", () => {
@@ -85,7 +92,7 @@ describe("partsFromStream", () => {
     const parts = partsFromStream(stream({
       machineEvidence: { kind: "machine_evidence", assetId: "asset-uuid-1", anchorAt: AT, pre: 30, post: 30, rowCount: 4, freshness: "stale" },
       visualEvidence: { kind: "visual_observation", fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo" },
-    }));
+    }), LIVE);
     expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "machine_evidence", "visual_observation", "followups"]);
     expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "oem_documentation", authorized: false } });
     expect(parts[3]).toMatchObject({ evidence: { preSeconds: 30, postSeconds: 30, rowCount: 4, freshness: "stale", source: "recorded" } });
@@ -96,20 +103,27 @@ describe("partsFromStream", () => {
   it("machine evidence with reason unavailable keeps the reason; live freshness is source live", () => {
     const [, , , me] = partsFromStream(stream({
       machineEvidence: { kind: "machine_evidence", assetId: "a", anchorAt: AT, pre: 1, post: 1, rowCount: 0, freshness: "live", reason: "unavailable" },
-    }));
+    }), LIVE);
     expect(me).toMatchObject({ type: "machine_evidence", evidence: { source: "live", reason: "unavailable" } });
   });
 
-  it("a safety stop renders the stop notice with the trigger, still as an answered turn", () => {
-    const parts = partsFromStream(stream({ citations: [], basis: null, followups: [], safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" } }));
+  it("a safety stop renders the stop notice with the trigger AND is a first-class safety_stop lifecycle, never completed (Codex #3839 F2)", () => {
+    const safety = stream({ citations: [], basis: null, followups: [], safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" } });
+    const parts = partsFromStream(safety, LIVE);
     expect(parts).toEqual([
       { type: "text", text: "Check the Modbus link first." },
       { type: "safety_notice", notice: { severity: "stop", message: expect.stringContaining("lockout/tagout"), trigger: "bypass the interlock" } },
     ]);
+    expect(lifecycleFromStream(safety)).toBe("safety_stop");
+    // Precedence: stopped and failed still outrank safety_stop; an ordinary answered status does not.
+    expect(lifecycleFromStream(safety, { stopped: true })).toBe("stopped");
+    expect(lifecycleFromStream({ ...safety, sawStatus: false })).toBe("failed");
+    expect(lifecycleFromStream({ ...safety, status: "error" })).toBe("failed");
+    expect(lifecycleFromStream(stream())).toBe("completed");
   });
 
   it("truncation (no terminal status frame) keeps the partial text and claims NOTHING else", () => {
-    const parts = partsFromStream(stream({ sawStatus: false, status: "error" }));
+    const parts = partsFromStream(stream({ sawStatus: false, status: "error" }), LIVE);
     expect(parts).toEqual([
       { type: "text", text: "Check the Modbus link first." },
       { type: "error", error: { code: "provider_failure", message: "The answer ended before it completed.", retryable: true } },
@@ -118,20 +132,20 @@ describe("partsFromStream", () => {
   });
 
   it("a stopped turn is a stop, not an answer, even if the wire said answered", () => {
-    const parts = partsFromStream(stream(), { stopped: true });
+    const parts = partsFromStream(stream(), { stopped: true, ...LIVE });
     expect(parts.map((p) => p.type)).toEqual(["text", "error"]);
     expect(parts[1]).toMatchObject({ error: { code: "stopped", retryable: false } });
     expect(lifecycleFromStream(stream(), { stopped: true })).toBe("stopped");
   });
 
   it("provider failure with no text yields only the error part", () => {
-    expect(partsFromStream(stream({ content: "", citations: [], status: "error" }))).toEqual([
+    expect(partsFromStream(stream({ content: "", citations: [], status: "error" }), LIVE)).toEqual([
       { type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } },
     ]);
   });
 
   it("insufficient_evidence renders the abstention text and no sources", () => {
-    const parts = partsFromStream(stream({ content: "I couldn't find that in the selected sources.", citations: [], basis: null, followups: [], status: "insufficient_evidence" }));
+    const parts = partsFromStream(stream({ content: "I couldn't find that in the selected sources.", citations: [], basis: null, followups: [], status: "insufficient_evidence" }), LIVE);
     expect(parts).toEqual([{ type: "text", text: "I couldn't find that in the selected sources." }]);
     expect(lifecycleFromStream(stream({ status: "insufficient_evidence" }))).toBe("completed");
   });
@@ -175,6 +189,23 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.context).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
 
+  it("a persisted safety refusal hydrates as safety_stop, not completed (Codex #3839 F2)", () => {
+    const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
+    expect(a.lifecycle).toBe("safety_stop");
+    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
+    // A stopped or failed row with a stale safety marker keeps its stronger lifecycle.
+    const [, stoppedTurn] = turnsFromPersisted(row({ answerStatus: "error", answerText: "Ver", evidence: [{ kind: "safety_notice", trigger: "x" }] }), meta);
+    expect(stoppedTurn.lifecycle).toBe("stopped");
+  });
+
+  it("source parts carry turn-scoped ids: two answers that both cite [1] never share a shell source (Codex #3839 F1)", () => {
+    const [, a1] = turnsFromPersisted(row(), meta);
+    const [, a2] = turnsFromPersisted(row({ id: "turn-2", evidence: [{ ...citation, docId: "doc-2", page: 12 }] }), meta);
+    const src = (t: typeof a1) => t.parts.find((p) => p.type === "source");
+    expect(src(a1)).toMatchObject({ source: { id: "turn-1-a:1", locator: "p. 47" } });
+    expect(src(a2)).toMatchObject({ source: { id: "turn-2-a:1", locator: "p. 12" } });
+  });
+
   it("STRM-2: error + text is a stopped turn — partial shown, nothing claimed", () => {
     const [, a] = turnsFromPersisted(row({ answerStatus: "error", answerText: "Verify the Mod" }), meta);
     expect(a.lifecycle).toBe("stopped");
@@ -205,10 +236,17 @@ describe("threadFromPersisted / citationIndex", () => {
     expect(thread.updatedAt).toBe("2026-09-17T12:05:00.000Z");
   });
 
-  it("citationIndex resolves a shell source id back to the real citation, live rows winning", () => {
-    const live = { ...citation, citationId: "1", page: 48 };
-    const index = citationIndex([row()], [live]);
-    expect(index.get("1")?.page).toBe(48);
+  it("citationIndex is keyed per answer turn: persisted [1]s stay distinct and a live [1] replaces neither (Codex #3839 F1)", () => {
+    const older = row(); // turn-1, doc-1 p.47
+    const newer = row({ id: "turn-2", evidence: [{ ...citation, docId: "doc-2", page: 12 }] });
+    const live = { ...citation, citationId: "1", docId: "doc-live", page: 48 };
+    const index = citationIndex([older, newer], [live], LIVE.turnId);
+    expect(index.get(sourceIdFor("turn-1-a", "1"))).toMatchObject({ docId: "doc-1", page: 47 });
+    expect(index.get(sourceIdFor("turn-2-a", "1"))).toMatchObject({ docId: "doc-2", page: 12 });
+    expect(index.get(sourceIdFor(LIVE.turnId, "1"))).toMatchObject({ docId: "doc-live", page: 48 });
+    expect(index.has("1")).toBe(false); // no thread-wide key exists any more
+    // Without a live turn id, live citations are not indexed at all (never under a guessed key).
+    expect(citationIndex([older], [live]).size).toBe(1);
     expect(hasIdentityDispute([citation])).toBe(false);
   });
 });

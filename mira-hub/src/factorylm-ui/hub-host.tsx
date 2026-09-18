@@ -39,13 +39,14 @@ import {
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, threadFromPersisted } from "./to-interaction";
+import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
   enabledDocIds,
   fixtureFor,
   groundingLineFor,
   historyRows,
   initialSelection,
+  latestRequestGate,
   metaFor,
   newThreadId,
   shellThreadId,
@@ -96,6 +97,11 @@ export function HubShellHost() {
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof buildChatBody> & { threadId: string | null }; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Detail loads are independent of the chat stream: their own abort handle and
+  // a latest-request gate so a slow, superseded GET can never overwrite the
+  // detail of the selection that replaced it (Codex #3839 F3).
+  const detailAbortRef = useRef<AbortController | null>(null);
+  const [detailGate] = useState(() => latestRequestGate());
 
   const [state, dispatch] = useReducer(shellReducer, undefined, () =>
     shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
@@ -137,26 +143,41 @@ export function HubShellHost() {
   }, [loadNotebooks]);
 
   const loadDetail = useCallback(async (sel: HubSelection) => {
+    const token = detailGate.begin();
+    detailAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    detailAbortRef.current = ctrl;
     const q = sel.threadId === LEGACY_THREAD_ID ? "" : `?threadId=${encodeURIComponent(sel.threadId)}`;
-    const { status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${q}`);
-    if (status === 401) { setSignedOut(true); return; }
-    if (!data) return;
-    setDetail(data);
-  }, []);
+    let res: { status: number; data: Detail | null };
+    try {
+      res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${q}`, ctrl.signal);
+    } catch (err) {
+      if (isAbortError(err)) return; // superseded by a newer selection
+      throw err;
+    }
+    // Commit only if no newer load or selection change happened while this one was in flight.
+    if (!detailGate.isCurrent(token)) return;
+    if (res.status === 401) { setSignedOut(true); return; }
+    if (!res.data) return;
+    setDetail(res.data);
+  }, [detailGate]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     if (selection) void loadDetail(selection);
   }, [selection, loadDetail]);
+  useEffect(() => () => { detailGate.invalidate(); detailAbortRef.current?.abort(); }, [detailGate]);
 
-  /** Change what is open: abort any stream and drop the previous notebook's data. */
+  /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
     abortRef.current?.abort();
+    detailGate.invalidate();
+    detailAbortRef.current?.abort();
     setDetail(null);
     setLive(null);
     setFailedBody(null);
     syncThread(sel);
     setSelection(sel);
-  }, [syncThread]);
+  }, [syncThread, detailGate]);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -166,8 +187,10 @@ export function HubShellHost() {
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
+  // Turn-scoped keys (Codex #3839 F1): every answer numbers its citations from
+  // "[1]", so the index is keyed by (assistant turn id, citation number).
   const citations = useMemo(
-    () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? []),
+    () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? [], live ? `${live.id}-a` : null),
     [detail, live],
   );
 
@@ -179,17 +202,18 @@ export function HubShellHost() {
       id: `${live.id}-q`, threadId, role: "user", parts: [{ type: "text", text: live.question }],
       lifecycle: "completed", context, createdAt: live.startedAt, updatedAt: live.startedAt,
     };
+    const aId = `${live.id}-a`;
     let parts: InteractionPart[];
     let lifecycle: InteractionTurn["lifecycle"];
     if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped });
+      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
       parts = live.content ? [{ type: "text", text: live.content }] : [];
       lifecycle = live.stopped ? "stopped" : "running";
     }
     const a: InteractionTurn = {
-      id: `${live.id}-a`, threadId, role: "assistant", parts, lifecycle, context,
+      id: aId, threadId, role: "assistant", parts, lifecycle, context,
       createdAt: live.startedAt, updatedAt: new Date().toISOString(),
     };
     return [q, a];
@@ -302,7 +326,8 @@ export function HubShellHost() {
       const c = citations.get(part.source.id);
       if (c) own.push(c);
     }
-    return <AnswerMarkdown content={text} citations={own} onCite={(c) => dispatch({ type: "select-source", sourceId: c.citationId })} />;
+    // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
+    return <AnswerMarkdown content={text} citations={own} onCite={(c) => dispatch({ type: "select-source", sourceId: sourceIdFor(turn.id, c.citationId) })} />;
   }, [citations]);
 
   const onCopy = useCallback((turnId: string) => {
@@ -310,10 +335,10 @@ export function HubShellHost() {
     if (!turn) return;
     const body = turn.parts.filter((p): p is Extract<InteractionPart, { type: "text" }> => p.type === "text").map((p) => p.text).join("\n\n").trim();
     const sources = turn.parts.filter((p): p is Extract<InteractionPart, { type: "source" }> => p.type === "source")
-      .map((p) => `[${p.source.id}] ${p.source.title}${p.source.locator ? ` ${p.source.locator}` : ""}`);
+      .map((p) => `[${citations.get(p.source.id)?.citationId ?? p.source.id}] ${p.source.title}${p.source.locator ? ` ${p.source.locator}` : ""}`);
     const text = sources.length ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
-  }, [view.thread.turns]);
+  }, [view.thread.turns, citations]);
 
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 

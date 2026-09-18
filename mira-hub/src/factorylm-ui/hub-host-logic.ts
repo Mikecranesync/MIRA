@@ -96,6 +96,30 @@ export function fixtureFor(
   };
 }
 
+/**
+ * Latest-request gate for an async load whose result must only be committed if
+ * it still belongs to the CURRENT selection (Codex #3839 F3). Select A, select
+ * B, B resolves, then A resolves late: without this, A's detail would land
+ * under B's selection and a send could post B's thread with A's sources and
+ * history. `begin()` mints a token for a new load; `invalidate()` retires every
+ * outstanding token (on selection change / unmount); `isCurrent(token)` is the
+ * commit check. Pure, so the race is testable without mounting the host.
+ */
+export interface LatestRequestGate {
+  begin(): number;
+  invalidate(): void;
+  isCurrent(token: number): boolean;
+}
+
+export function latestRequestGate(): LatestRequestGate {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    invalidate: () => { current++; },
+    isCurrent: (token) => token === current,
+  };
+}
+
 /** A fresh client-minted thread id for "New chat" (server accepts [A-Za-z0-9][A-Za-z0-9._:-]{0,119}). */
 export function newThreadId(random: () => string = () => globalThis.crypto.randomUUID()): string {
   return random().replace(/[^A-Za-z0-9._:-]/g, "").slice(0, 120) || `t${Date.now()}`;

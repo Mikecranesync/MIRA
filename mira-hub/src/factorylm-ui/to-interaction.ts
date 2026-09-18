@@ -86,11 +86,27 @@ export function basisKind(basis: string): EvidenceBasisKind {
   return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
 }
 
-export function sourceFor(citation: EvidenceCitation): SourceReference {
+/**
+ * A shell `SourceReference.id` is TURN-SCOPED (Codex #3839 F1). Citation numbers
+ * restart at "1" in every answer, so a thread-wide id of "1" would make the
+ * older answer's marker resolve to the newer answer's evidence. The number the
+ * technician sees stays the citation's own (`AnswerMarkdown` matches markers
+ * on `EvidenceCitation.citationId`); only the shell's identity is scoped.
+ */
+export function sourceIdFor(turnId: string, citationId: string): string {
+  return `${turnId}:${citationId}`;
+}
+
+/** The assistant-turn id the mapper gives a persisted row (`turnsFromPersisted`). */
+export function answerTurnId(rowId: string): string {
+  return `${rowId}-a`;
+}
+
+export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
   return {
-    id: citation.citationId,
+    id: sourceIdFor(turnId, citation.citationId),
     title: citation.sourceTitle,
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
@@ -148,7 +164,7 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
  *  - `status === "error"` with text is a stop; without text a provider failure.
  *  - `status === "insufficient_evidence"` renders the abstention text only.
  */
-export function partsFromStream(result: StreamResult, opts: { stopped?: boolean } = {}): InteractionPart[] {
+export function partsFromStream(result: StreamResult, opts: { stopped?: boolean; turnId: string }): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
   const stopped = opts.stopped === true;
@@ -157,7 +173,7 @@ export function partsFromStream(result: StreamResult, opts: { stopped?: boolean 
   if (result.content) parts.push({ type: "text", text: result.content });
 
   if (!nonAnswer) {
-    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c) });
+    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
     if (result.basis) {
       // `authorized` is server-owned; the stream carries no such signal, so it is never asserted.
       parts.push({ type: "evidence_basis", basis: { kind: basisKind(result.basis), label: result.basis, authorized: false } });
@@ -182,10 +198,18 @@ export function partsFromStream(result: StreamResult, opts: { stopped?: boolean 
   return parts;
 }
 
+/**
+ * Lifecycle precedence: stopped > truncated/failed > safety_stop > completed.
+ * `safety_stop` is FIRST-CLASS in the interaction contract (Codex #3839 F2): a
+ * refusal on a hazardous request is not an answered turn, even though the
+ * stream ended with an ordinary status frame, so completed-answer actions
+ * (copy / regenerate / feedback) must not treat it as one.
+ */
 export function lifecycleFromStream(result: StreamResult, opts: { stopped?: boolean } = {}): Lifecycle {
   if (opts.stopped) return "stopped";
   if (!result.sawStatus) return "failed";
-  return result.status === "error" ? "failed" : "completed";
+  if (result.status === "error") return "failed";
+  return result.safetyNotice ? "safety_stop" : "completed";
 }
 
 /** A persisted GET row → its two turns (question, answer). STOPPED-TURN CONTRACT
@@ -210,12 +234,13 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     updatedAt: at,
   };
 
+  const answerId = answerTurnId(row.id);
   const parts: InteractionPart[] = [];
   const text = row.answerText ?? (row.answerStatus === "error" ? "" : "I couldn't find that in the selected sources.");
   if (text) parts.push({ type: "text", text });
   if (disputed) parts.push({ type: "identity_dispute" });
   if (!stopped && row.answerStatus !== "error") {
-    for (const c of citations) parts.push({ type: "source", source: sourceFor(c) });
+    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
     if (row.basis) {
       parts.push({ type: "evidence_basis", basis: { kind: basisKind(row.basis), label: row.basis, authorized: false } });
     }
@@ -228,12 +253,20 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
   }
 
+  // Same precedence as `lifecycleFromStream`: a persisted refusal stays a safety_stop.
+  const lifecycle: Lifecycle = stopped
+    ? "stopped"
+    : row.answerStatus === "error"
+      ? "failed"
+      : safetyNotice
+        ? "safety_stop"
+        : "completed";
   const answer: InteractionTurn = {
-    id: `${row.id}-a`,
+    id: answerId,
     threadId,
     role: "assistant",
     parts,
-    lifecycle: stopped ? "stopped" : row.answerStatus === "error" ? "failed" : "completed",
+    lifecycle,
     context,
     createdAt: at,
     updatedAt: at,
@@ -262,11 +295,22 @@ export function threadFromPersisted(
 }
 
 /** Citation lookup so the host's own viewer can open the real `EvidenceCitation`
- *  (docId + page + fileId) behind a shell `source` part's id. */
-export function citationIndex(rows: readonly PersistedTurn[], live: readonly EvidenceCitation[] = []): ReadonlyMap<string, EvidenceCitation> {
+ *  (docId + page + fileId) behind a shell `source` part's id. Keys are the
+ *  TURN-SCOPED ids `sourceFor` mints (Codex #3839 F1), so two answers that both
+ *  cite "[1]" keep their own evidence and a streaming answer's "[1]" never
+ *  replaces a persisted one. `liveTurnId` is the assistant-turn id the host
+ *  gives the in-flight exchange; live citations are ignored without it. */
+export function citationIndex(
+  rows: readonly PersistedTurn[],
+  live: readonly EvidenceCitation[] = [],
+  liveTurnId: string | null = null,
+): ReadonlyMap<string, EvidenceCitation> {
   const index = new Map<string, EvidenceCitation>();
-  for (const row of rows) for (const c of splitEvidence(row.evidence).citations) index.set(c.citationId, c);
-  for (const c of live) index.set(c.citationId, c);
+  for (const row of rows) {
+    const turnId = answerTurnId(row.id);
+    for (const c of splitEvidence(row.evidence).citations) index.set(sourceIdFor(turnId, c.citationId), c);
+  }
+  if (liveTurnId) for (const c of live) index.set(sourceIdFor(liveTurnId, c.citationId), c);
   return index;
 }
 

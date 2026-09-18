@@ -6,10 +6,35 @@ import {
   groundingLineFor,
   historyRows,
   initialSelection,
+  latestRequestGate,
   metaFor,
   newThreadId,
   shellThreadId,
 } from "./hub-host-logic";
+
+describe("latestRequestGate — a superseded detail load never commits (Codex #3839 F3)", () => {
+  it("select A, select B, B resolves, then A resolves late: only B is current", () => {
+    const gate = latestRequestGate();
+    const a = gate.begin();
+    const b = gate.begin();
+    expect(gate.isCurrent(b)).toBe(true); // B resolves first → commit
+    expect(gate.isCurrent(a)).toBe(false); // A resolves late → dropped
+  });
+  it("a selection change retires every outstanding token even before a new load begins", () => {
+    const gate = latestRequestGate();
+    const a = gate.begin();
+    gate.invalidate();
+    expect(gate.isCurrent(a)).toBe(false);
+    const c = gate.begin();
+    expect(gate.isCurrent(c)).toBe(true);
+  });
+  it("the same token stays current while nothing else happens (the happy path still commits)", () => {
+    const gate = latestRequestGate();
+    const t = gate.begin();
+    expect(gate.isCurrent(t)).toBe(true);
+    expect(gate.isCurrent(t)).toBe(true);
+  });
+});
 
 function nb(over: Partial<HubNotebook> = {}): HubNotebook {
   return {
