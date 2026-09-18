@@ -75,7 +75,7 @@ describe("notebookProjects", () => {
   });
 
   it("a bound notebook leads with a machine-link keyed by the canonical entityId, never a label", () => {
-    const nb = notebook({ asset: { entityId: "asset-uuid-1", selectedVia: null, confirmedBy: "u1", confirmedAt: "2026-09-17T00:00:00Z" } });
+    const nb = notebook({ asset: { entityId: "asset-uuid-1", name: null, assetTag: null, selectedVia: null, confirmedBy: "u1", confirmedAt: "2026-09-17T00:00:00Z" } });
     const [project] = notebookProjects([nb]);
     expect(project.children[0]).toEqual({ kind: "machine-link", id: "link-nb-1", label: "Automation Direct GS10", machineId: "asset-uuid-1" });
   });
@@ -89,8 +89,8 @@ describe("notebookProjects", () => {
 
 describe("notebookMachines", () => {
   it("dedupes by entityId and skips unbound notebooks", () => {
-    const bound = notebook({ asset: { entityId: "asset-uuid-1", selectedVia: null, confirmedBy: null, confirmedAt: null } });
-    const twin = notebook({ id: "nb-2", displayName: "Twin", asset: { entityId: "asset-uuid-1", selectedVia: null, confirmedBy: null, confirmedAt: null } });
+    const bound = notebook({ asset: { entityId: "asset-uuid-1", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } });
+    const twin = notebook({ id: "nb-2", displayName: "Twin", asset: { entityId: "asset-uuid-1", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } });
     const machines = notebookMachines([bound, twin, notebook({ id: "nb-3" })]);
     expect(machines).toHaveLength(1);
     expect(machines[0]).toMatchObject({ id: "asset-uuid-1", canonicalAssetId: "asset-uuid-1", status: "unknown" });

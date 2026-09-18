@@ -38,11 +38,11 @@ describe("initialSelection", () => {
 describe("metaFor — identity is server-owned", () => {
   const sel = { notebookId: "nb-1", threadId: "t1" };
   it("confirmed only when identity is user-confirmed AND the binding has confirmedAt", () => {
-    const bound = nb({ asset: { entityId: "asset-1", selectedVia: null, confirmedBy: "u", confirmedAt: "2026-09-17T00:00:00Z" } });
+    const bound = nb({ asset: { entityId: "asset-1", name: null, assetTag: null, selectedVia: null, confirmedBy: "u", confirmedAt: "2026-09-17T00:00:00Z" } });
     expect(metaFor(bound, sel, "tenant-1", "T")).toMatchObject({ asset: { id: "asset-1", name: "Automation Direct GS10" }, identityConfirmed: true, threadId: "notebook-nb-1:thread-t1" });
-    const selectedOnly = nb({ asset: { entityId: "asset-1", selectedVia: "qr", confirmedBy: null, confirmedAt: null } as never });
+    const selectedOnly = nb({ asset: { entityId: "asset-1", name: null, assetTag: null, selectedVia: "qr", confirmedBy: null, confirmedAt: null } as never });
     expect(metaFor(selectedOnly, sel, null, "T").identityConfirmed).toBe(false);
-    expect(metaFor(nb({ identityStatus: "candidate", asset: { entityId: "asset-1", selectedVia: null, confirmedBy: "u", confirmedAt: "x" } }), sel, null, "T").identityConfirmed).toBe(false);
+    expect(metaFor(nb({ identityStatus: "candidate", asset: { entityId: "asset-1", name: null, assetTag: null, selectedVia: null, confirmedBy: "u", confirmedAt: "x" } }), sel, null, "T").identityConfirmed).toBe(false);
   });
   it("unbound notebook → no asset, not confirmed", () => {
     expect(metaFor(nb(), sel, null, "T")).toMatchObject({ asset: null, identityConfirmed: false });
@@ -74,7 +74,7 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
     expect(groundingLineFor(null, 0)).toMatch(/Pick a project/);
     expect(groundingLineFor(nb(), 0)).toMatch(/no selected sources yet — answers will abstain/);
     expect(groundingLineFor(nb(), 1)).toBe("Answers cite 1 selected source for Conveyor CV-101.");
-    expect(groundingLineFor(nb({ asset: { entityId: "a", selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
+    expect(groundingLineFor(nb({ asset: { entityId: "a", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
   });
 });
 
