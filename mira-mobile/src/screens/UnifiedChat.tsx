@@ -302,7 +302,21 @@ export function UnifiedChat({
     renderText,
     onCopy,
     ...(canStop ? { onStop: handlers.onStop } : {}),
-    ...(canRetry && handlers.onRetry ? { onRetry: () => handlers.onRetry?.() } : {}),
+    // The host retry re-sends the rendered turn as plain text. That is right for
+    // a text turn and WRONG for one whose attachment never uploaded: it would
+    // ask the photo question with no photo — the outcome `compose` refuses on
+    // the first attempt (see attachments.ts). When the controller still holds
+    // the bytes, retry through the composed path so the photo rides the turn.
+    ...(canRetry && handlers.onRetry
+      ? { onRetry: () => {
+          if (attachments.hasCarried()) {
+            dispatch({ type: "set-send-error", error: null });
+            onSend(state.draft, []);
+            return;
+          }
+          handlers.onRetry?.();
+        } }
+      : {}),
     ...(handlers.onNewChat ? { onNewChat: handlers.onNewChat } : {}),
     ...(handlers.onCreateProject ? { onCreateProject: handlers.onCreateProject } : {}),
     onSource: (source) => {
