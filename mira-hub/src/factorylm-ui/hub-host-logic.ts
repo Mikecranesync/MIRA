@@ -29,6 +29,18 @@ export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
 }
 
+/**
+ * The notebook-detail query for a selection. ALWAYS names the thread — including
+ * the legacy one as `?threadId=legacy` (Codex #3839 review): the GET route treats
+ * an OMITTED threadId as "no thread predicate" and returns every thread's turns,
+ * whereas an explicit `legacy` is what selects `thread_id IS NULL`. Omitting it
+ * for the legacy selection hydrated the viewer's named-thread turns into the
+ * legacy conversation and then forwarded that mixed history on the next send.
+ */
+export function detailQueryFor(sel: HubSelection): string {
+  return `?threadId=${encodeURIComponent(sel.threadId)}`;
+}
+
 /** Server-owned identity → shell meta. `identityConfirmed` is true only when the
  *  notebook's identity is user-confirmed/verified AND the binding is confirmed. */
 export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: string | null, capturedAt: string): HubNotebookMeta {

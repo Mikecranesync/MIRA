@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
+  detailQueryFor,
   enabledDocIds,
   fixtureFor,
   groundingLineFor,
@@ -12,6 +13,18 @@ import {
   newThreadId,
   shellThreadId,
 } from "./hub-host-logic";
+
+describe("detailQueryFor — every detail load names its thread (Codex #3839 review: legacy must not hydrate every thread)", () => {
+  it("the legacy selection asks for ?threadId=legacy explicitly — never an omitted parameter", () => {
+    expect(detailQueryFor({ notebookId: "nb-1", threadId: "legacy" })).toBe("?threadId=legacy");
+  });
+  it("a named thread is passed through, URL-encoded", () => {
+    expect(detailQueryFor({ notebookId: "nb-1", threadId: "t/1 x" })).toBe("?threadId=t%2F1%20x");
+  });
+  it("no selection shape produces an empty query", () => {
+    for (const threadId of ["legacy", "abc", "3f2a:ok"]) expect(detailQueryFor({ notebookId: "nb", threadId })).toMatch(/^\?threadId=.+/);
+  });
+});
 
 describe("latestRequestGate — a superseded detail load never commits (Codex #3839 F3)", () => {
   it("select A, select B, B resolves, then A resolves late: only B is current", () => {

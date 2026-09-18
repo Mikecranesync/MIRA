@@ -41,6 +41,7 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
+  detailQueryFor,
   enabledDocIds,
   fixtureFor,
   groundingLineFor,
@@ -147,10 +148,10 @@ export function HubShellHost() {
     detailAbortRef.current?.abort();
     const ctrl = new AbortController();
     detailAbortRef.current = ctrl;
-    const q = sel.threadId === LEGACY_THREAD_ID ? "" : `?threadId=${encodeURIComponent(sel.threadId)}`;
     let res: { status: number; data: Detail | null };
     try {
-      res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${q}`, ctrl.signal);
+      // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
+      res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
     } catch (err) {
       if (isAbortError(err)) return; // superseded by a newer selection
       throw err;
