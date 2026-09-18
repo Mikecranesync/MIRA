@@ -258,6 +258,25 @@ describe("UnifiedRoot", () => {
     expect(handed.map((h) => h.file.name)).toEqual(["bearing.jpg"]);
   });
 
+  it("turns an attachment-only HOME send into a real first question", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(/bearing\.jpg/);
+
+    // The composer intentionally permits a photo with no typed text. HOME must
+    // queue the honest default question, or the notebook rejects the blank
+    // initial question and leaves the photo armed for some later message.
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What am I looking at, and what should I check?");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
   it("gives source management its own drawer entry, separate from the composer", async () => {
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 

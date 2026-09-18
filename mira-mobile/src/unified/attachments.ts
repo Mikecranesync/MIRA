@@ -30,6 +30,8 @@ import { claimAttachments, stashAttachments, type HeldAttachment } from "./attac
 
 const PHOTO_ANALYSIS_UNAVAILABLE =
   "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
+const MULTIPLE_PHOTOS_UNSUPPORTED =
+  "Send one photo at a time so MIRA can keep each answer tied to the right image.";
 
 /** The rider shape the notebook's send path already accepts for Sensor. */
 export interface VisualEvidenceRider {
@@ -55,6 +57,26 @@ function describe(file: File): Attachment {
     kind: file.type.startsWith("image/") ? "photo" : file.type === PDF_MIME ? "pdf" : "file",
     status: "ready",
   };
+}
+
+/** The same attachment-only question is used before and after HOME handoff. */
+export function questionForAttachments(raw: string, attachments: readonly Attachment[]): string {
+  const text = raw.trim();
+  if (text) return text;
+  return attachments.some((attachment) => attachment.kind === "photo")
+    ? "What am I looking at, and what should I check?"
+    : "What is in this document?";
+}
+
+/**
+ * The chat API accepts one `visualEvidence` rider, so pretending to support
+ * multiple photos would upload one and silently detach the rest. Throw before
+ * Composer releases its chips; the technician can remove one and send again.
+ */
+export function assertSupportedAttachments(attachments: readonly Attachment[]): void {
+  if (attachments.filter((attachment) => attachment.kind === "photo").length > 1) {
+    throw new Error(MULTIPLE_PHOTOS_UNSUPPORTED);
+  }
 }
 
 /**
@@ -119,12 +141,12 @@ export function useUnifiedAttachments(notebookId: string | null) {
     const text = raw.trim();
     if (items.length === 0 || !notebookId) return { question: text };
 
+    assertSupportedAttachments(items.map((item) => item.attachment));
+
     const photo = items.find((x) => x.attachment.kind === "photo");
     const documents = items.filter((x) => x.attachment.kind !== "photo");
     // An attachment with no typed question still deserves a question.
-    const question = text || (photo
-      ? "What am I looking at, and what should I check?"
-      : "What is in this document?");
+    const question = questionForAttachments(text, items.map((item) => item.attachment));
     let composedQuestion = question;
 
     // A failure must leave the bytes armed for another attempt. `held` still

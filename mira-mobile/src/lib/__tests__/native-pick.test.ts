@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The nameplate/PDF picker seam.
 //
 // The old path was a hidden <input type="file" capture="environment">. On
@@ -133,12 +134,19 @@ describe("pickPdf — native", () => {
 });
 
 describe("web", () => {
-  it("does NOT call the native plugin off-device", async () => {
+  it("uses a browser file input without calling the native plugin off-device", async () => {
     state.native = false;
-    // No DOM picker is opened here either — the caller keeps its <input> for web.
-    const f = await pickNameplatePhoto();
+    const pending = pickNameplatePhoto();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const selected = new File(["photo"], "browser.jpg", { type: "image/jpeg" });
+    Object.defineProperty(input, "files", { configurable: true, value: [selected] });
+    input?.dispatchEvent(new Event("change"));
+
+    const f = await pending;
     expect(pickImages).not.toHaveBeenCalled();
-    expect(f).toBeNull();
+    expect(f).toBe(selected);
+    expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
   it("reports that it cannot serve the pick, so the caller can fall back", async () => {

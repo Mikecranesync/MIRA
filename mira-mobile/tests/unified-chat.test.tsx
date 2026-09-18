@@ -248,6 +248,34 @@ describe("UnifiedChat", () => {
     ));
   });
 
+  it("refuses multiple photos before clearing their chips or uploading only one", async () => {
+    nativePick.pickPhoto
+      .mockResolvedValueOnce(new File(["a"], "left.jpg", { type: "image/jpeg" }))
+      .mockResolvedValueOnce(new File(["b"], "right.jpg", { type: "image/jpeg" }));
+    const h = handlers();
+    render(
+      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false}
+        chatError={null} handlers={h} meta={META} />,
+    );
+
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    }
+    await screen.findByText(/left\.jpg/);
+    await screen.findByText(/right\.jpg/);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.change(box, { target: { value: "compare these" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" }).textContent).toMatch(/one photo at a time/i));
+    expect(screen.getByText(/left\.jpg/)).toBeTruthy();
+    expect(screen.getByText(/right\.jpg/)).toBeTruthy();
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
+    expect(h.onSend).not.toHaveBeenCalled();
+  });
+
   it("routes the shared shell Scan machine action to the host scanner", async () => {
     const h = { ...handlers(), onScanMachine: vi.fn(async () => null) };
     render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);

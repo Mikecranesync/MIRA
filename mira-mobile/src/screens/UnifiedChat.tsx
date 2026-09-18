@@ -34,7 +34,12 @@ import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
-import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
+import {
+  assertSupportedAttachments,
+  questionForAttachments,
+  useUnifiedAttachments,
+  type VisualEvidenceRider,
+} from "../unified/attachments";
 import {
   citationIndex,
   contextFor,
@@ -254,9 +259,13 @@ export function UnifiedChat({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[]) => {
+    // Synchronous by design: Composer keeps both the draft and attachment chips
+    // when a host send throws. Waiting for compose() would clear the chips first
+    // and leave the technician unable to choose which photo should be sent.
+    assertSupportedAttachments(pending);
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
-      handlers.onSend(text);
+      handlers.onSend(questionForAttachments(text, pending));
       return;
     }
     // Nothing held here and nothing carried from HOME: the plain, synchronous
