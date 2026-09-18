@@ -101,14 +101,36 @@ export function HubShellHost() {
     shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
   );
 
+  /**
+   * Tell the reducer WHICH thread is open, from event handlers (never effects).
+   * The live turns are projected onto the state at render time via `hydrate`
+   * (see `view`); that reducer case resets the draft whenever the thread id
+   * differs from the one it holds, so the id must be kept in sync here or every
+   * keystroke would be wiped by the next render.
+   */
+  const syncThread = useCallback((sel: HubSelection) => {
+    const at = new Date().toISOString();
+    dispatch({
+      type: "hydrate",
+      data: {
+        thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at },
+      },
+    });
+  }, []);
+
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
     const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
-    setSelection((cur) => cur ?? initialSelection(data.notebooks));
-  }, []);
+    setSelection((cur) => {
+      if (cur) return cur;
+      const first = initialSelection(data.notebooks);
+      if (first) syncThread(first);
+      return first;
+    });
+  }, [syncThread]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
@@ -132,8 +154,9 @@ export function HubShellHost() {
     setDetail(null);
     setLive(null);
     setFailedBody(null);
+    syncThread(sel);
     setSelection(sel);
-  }, []);
+  }, [syncThread]);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -202,8 +225,15 @@ export function HubShellHost() {
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
-        const detailText = res.status === 412 ? "MIRA needs approved context for this machine before it will answer." : `MIRA couldn't answer that just now (HTTP ${res.status}).`;
-        throw new Error(detailText);
+        // The route's own error codes, in plain language; never a bare status code.
+        let code = "";
+        try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
+        const message =
+          code === "no_sources_selected" ? "This notebook has no selected sources yet. Add a manual to it, then ask."
+          : code === "approved_context" || res.status === 412 ? "MIRA needs approved context for this machine before it will answer."
+          : code === "notebook_not_found" ? "That notebook is gone. Pick another project."
+          : "MIRA couldn't answer that just now.";
+        throw new Error(message);
       }
       const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
