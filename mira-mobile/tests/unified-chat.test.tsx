@@ -254,4 +254,42 @@ describe("UnifiedChat", () => {
 
     await waitFor(() => expect(h.onScanMachine).toHaveBeenCalledTimes(1));
   });
+
+  // The device FAIL (Pixel 9a, criterion 7): after a failed photo upload the
+  // banner's "Try again" went through the HOST retry, which re-sends the
+  // rendered turn as plain text — POST /chat/ with no visualEvidence and no
+  // /look/ — and the answer rendered as an ordinary grounded answer. That is
+  // exactly the outcome `compose` refuses on the first attempt. The host retry
+  // is right for a text turn; it must not claim a turn whose bytes are still held.
+  it("retries a failed attachment through the composed path, not the host's text retry", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto
+      .mockRejectedValueOnce(new Error("Network request failed"))
+      .mockResolvedValue({ fileId: "file-retry-1", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+    const h = handlers();
+    // A prior turn exists, so the shell supplies a turnId and SendError prefers
+    // the host retry — the same condition the phone was in.
+    render(
+      <UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+        chatError={null} handlers={h} meta={META} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "what is this" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+
+    // The photo rides the retry, and the plain-text host path never claims it.
+    expect(h.onRetry).not.toHaveBeenCalled();
+    await waitFor(() => expect(resources.lookAtPhoto).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const last = h.onSend.mock.calls.at(-1);
+      expect(last?.[1]).toMatchObject({ visualEvidence: { fileId: "file-retry-1" } });
+    });
+  });
+
 });

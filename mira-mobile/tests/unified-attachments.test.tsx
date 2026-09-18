@@ -137,4 +137,50 @@ describe("unified attachments controller", () => {
     expect(composed?.rider?.visualEvidence.fileId).toBe("file-9");
     expect(claimAttachments()).toEqual([]); // claiming empties the handoff
   });
+
+  // A failed upload must not silently disarm the next send. `held` still has the
+  // bytes (they are dropped only on success), but `carried` was cleared before
+  // the upload ran and the composer already released its chip — so without
+  // retaining the items here the retry composes NOTHING and the photo question
+  // goes out with no photo, which is the one thing this module refuses to do.
+  it("retains a failed attachment so the next compose re-uploads it", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValueOnce({ fileId: null })
+      .mockResolvedValue({ fileId: "file-retry", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    let first;
+    await act(async () => { first = await get().compose("what is this", [a as Attachment]); });
+    expect(first).toMatchObject({ failure: expect.stringContaining("didn't upload") });
+
+    // The controller still owns the bytes, so the retry can re-upload them.
+    expect(get().hasCarried()).toBe(true);
+
+    let second;
+    await act(async () => { second = await get().compose("what is this", []); });
+    expect(api.lookAtPhoto).toHaveBeenCalledTimes(2);
+    expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-retry" } } });
+  });
+
+  // Same guarantee when the upload THROWS rather than returning no fileId.
+  it("retains a thrown attachment failure for the next compose", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"))
+      .mockResolvedValue({ fileId: "file-thrown", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    await act(async () => {
+      await get().compose("what is this", [a as Attachment]).catch(() => undefined);
+    });
+
+    expect(get().hasCarried()).toBe(true);
+    let second;
+    await act(async () => { second = await get().compose("what is this", []); });
+    expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-thrown" } } });
+  });
+
 });

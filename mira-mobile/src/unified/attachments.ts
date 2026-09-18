@@ -122,38 +122,51 @@ export function useUnifiedAttachments(notebookId: string | null) {
       ? "What am I looking at, and what should I check?"
       : "What is in this document?");
 
+    // A failure must leave the bytes armed for another attempt. `held` still
+    // has them (they are dropped only on success, below), but `carried` was
+    // cleared above and the composer has already released its chip — so a retry
+    // would compose NOTHING and send the photo question with no photo, the one
+    // outcome this module refuses. Put the items back on every failure path.
+    const retain = () => { carried.current = items; };
+
     let warning: string | undefined;
-    if (documents.length > 0) {
-      // The source-upload door needs the namespace node, which the shell does
-      // not carry. Resolve it from the notebook the shell already names rather
-      // than threading a new prop through the frozen screen.
-      const detail = await getNotebookDetail(notebookId);
-      for (const doc of documents) {
-        const result = await uploadSourceToNotebook(detail.notebook, doc.file, { sourceRole: "manual" });
-        // Indexing failures stay honest: the file uploaded, it is just not
-        // searchable, and the technician is told so rather than left to assume.
-        if (!result.attached) warning = uploadSourceWarningCopy(result.warning);
+    try {
+      if (documents.length > 0) {
+        // The source-upload door needs the namespace node, which the shell does
+        // not carry. Resolve it from the notebook the shell already names rather
+        // than threading a new prop through the frozen screen.
+        const detail = await getNotebookDetail(notebookId);
+        for (const doc of documents) {
+          const result = await uploadSourceToNotebook(detail.notebook, doc.file, { sourceRole: "manual" });
+          // Indexing failures stay honest: the file uploaded, it is just not
+          // searchable, and the technician is told so rather than left to assume.
+          if (!result.attached) warning = uploadSourceWarningCopy(result.warning);
+        }
       }
-    }
 
-    let rider: VisualEvidenceRider | undefined;
-    if (photo) {
-      const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question);
-      if (!look.fileId) {
-        // Never send a photo question without the photo: that would answer
-        // from nothing while looking like it answered from the picture.
-        return { question, failure: "The photo didn't upload — try again." };
+      let rider: VisualEvidenceRider | undefined;
+      if (photo) {
+        const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question);
+        if (!look.fileId) {
+          // Never send a photo question without the photo: that would answer
+          // from nothing while looking like it answered from the picture.
+          retain();
+          return { question, failure: "The photo didn't upload — try again." };
+        }
+        rider = {
+          visualEvidence: {
+            fileId: look.fileId,
+            capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+          },
+        };
       }
-      rider = {
-        visualEvidence: {
-          fileId: look.fileId,
-          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
-        },
-      };
-    }
 
-    for (const item of items) held.current.delete(item.attachment.id);
-    return { question, rider, warning };
+      for (const item of items) held.current.delete(item.attachment.id);
+      return { question, rider, warning };
+    } catch (error) {
+      retain();
+      throw error;
+    }
   }, [notebookId]);
 
   return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried };
