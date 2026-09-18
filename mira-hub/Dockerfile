@@ -1,15 +1,25 @@
+## Build context is the REPO ROOT (docker-compose.*.yml: context: ., dockerfile: mira-hub/Dockerfile).
+## Hub mount PR 1 (#3839): the shared FactoryLM shell sources live in ../packages/factorylm-*
+## and compile into the Hub bundle at build time. They resolve react / @assistant-ui through
+## a symlinked node_modules that IS the Hub's, so there is exactly one React. Nothing from
+## packages/ is needed at runtime; the runner stage is unchanged.
 FROM node:22-alpine AS base
 
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-WORKDIR /app
-COPY package.json package-lock.json ./
+WORKDIR /app/mira-hub
+COPY mira-hub/package.json mira-hub/package-lock.json ./
 RUN npm install --no-audit
 
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/mira-hub/node_modules ./mira-hub/node_modules
+COPY mira-hub ./mira-hub
+COPY packages/factorylm-interaction ./packages/factorylm-interaction
+COPY packages/factorylm-ui ./packages/factorylm-ui
+COPY packages/factorylm-theme ./packages/factorylm-theme
+RUN ln -s ../mira-hub/node_modules packages/node_modules
+WORKDIR /app/mira-hub
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_BASE_PATH=/hub
 ARG NEXT_PUBLIC_API_BASE=/hub
@@ -38,9 +48,13 @@ ENV MIRA_BUILD_TIME=$MIRA_BUILD_TIME
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# With the compiler root at the repo root, `.next/standalone` mirrors the repo layout
+# (server.js + node_modules under standalone/mira-hub/, plus whatever the tracer pulled
+# from sibling dirs). Copy ONLY the Hub subtree: that is exactly the runtime file set the
+# image shipped before, and keeps the traced siblings out of the image.
+COPY --from=builder /app/mira-hub/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/mira-hub/.next/standalone/mira-hub ./
+COPY --from=builder --chown=nextjs:nodejs /app/mira-hub/.next/static ./.next/static
 
 USER nextjs
 EXPOSE 3000

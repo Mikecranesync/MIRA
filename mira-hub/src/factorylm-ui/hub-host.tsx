@@ -1,0 +1,323 @@
+"use client";
+/**
+ * Hub host for the shared FactoryLM shell (Hub mount PR 1, #3839).
+ *
+ * The shell (`packages/factorylm-ui`) renders; this host owns everything the
+ * charter says a host owns: auth, the notebook/thread tree, hydration, the send
+ * path through the ONE canonical conversation backend
+ * (`POST /api/equipment-notebooks/[id]/chat`), stop/retry, and the citation
+ * lookup. No new chat store, stream parser, evidence system or backend — the
+ * stream reader, chat body, and persisted-turn rules are the classic notebook's
+ * (`notebook-chat-utils.ts`), mapped onto `InteractionPart` by
+ * `to-interaction.ts`.
+ *
+ * Scope decisions fixed by the owner (2026-09-17): a composer with no notebook
+ * selected is disabled-with-reason, never routed to a general endpoint; `/v3`
+ * is a temporary authenticated canary; `/feed` stays the default landing.
+ */
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import {
+  PROFILES,
+  createShellState,
+  shellReducer,
+  type InteractionPart,
+  type InteractionTurn,
+  type ProjectItem,
+  type ShellState,
+} from "@factorylm/interaction";
+import { FactoryLMShell, type HostHooks } from "@factorylm/ui";
+import { API_BASE } from "@/lib/config";
+import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
+import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import {
+  buildChatBody,
+  isAbortError,
+  readNotebookStream,
+  type PersistedTurn,
+  type StreamResult,
+} from "@/components/equipment/notebook-chat-utils";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
+import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
+import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
+import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, threadFromPersisted } from "./to-interaction";
+import {
+  enabledDocIds,
+  fixtureFor,
+  groundingLineFor,
+  historyRows,
+  initialSelection,
+  metaFor,
+  newThreadId,
+  shellThreadId,
+  type HubSelection,
+} from "./hub-host-logic";
+
+type Detail = { notebook: EquipmentNotebook; sources: NotebookSource[]; turns: (PersistedTurn & { createdAt?: string })[] };
+
+/** One in-flight or just-finished exchange the server has not yet returned as a row. */
+type Live = {
+  readonly id: string;
+  readonly question: string;
+  readonly content: string;
+  readonly citations: EvidenceCitation[];
+  readonly result: StreamResult | null;
+  readonly stopped: boolean;
+  readonly startedAt: string;
+};
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
+  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", headers: { accept: "application/json" }, signal });
+  const data = res.ok ? ((await res.json()) as T) : null;
+  return { status: res.status, data };
+}
+
+const EMPTY_FIXTURE = {
+  id: "hub-empty",
+  title: "FactoryLM",
+  review: { themes: ["light", "dark"] as const, viewports: ["desktop"] as const, surfaces: ["hub"] as const },
+  thread: {
+    id: "hub-empty:thread", tenantId: "tenant", notebookId: "", title: "FactoryLM", mode: "ask" as const,
+    visibility: "workspace" as const, turns: [], createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z",
+  },
+  projects: [],
+  machines: [],
+  activeContext: { tenantId: "tenant", machineIdentity: "not_applicable" as const, evidenceAuthorization: "not_applicable" as const, capturedAt: "1970-01-01T00:00:00.000Z" },
+  offline: { state: "online" as const, pendingChanges: 0 },
+};
+
+export function HubShellHost() {
+  // One capture timestamp per mount (state, not a ref: it is read during render).
+  const [capturedAt] = useState(() => new Date().toISOString());
+  const [signedOut, setSignedOut] = useState(false);
+  const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
+  const [selection, setSelection] = useState<HubSelection | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [live, setLive] = useState<Live | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof buildChatBody> & { threadId: string | null }; question: string } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const [state, dispatch] = useReducer(shellReducer, undefined, () =>
+    shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
+  );
+
+  // --- data: notebooks (projects/threads), then the selected notebook's detail ---
+  const loadNotebooks = useCallback(async () => {
+    const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
+    if (status === 401) { setSignedOut(true); return; }
+    if (!data) return;
+    setNotebooks(data.notebooks);
+    setSelection((cur) => cur ?? initialSelection(data.notebooks));
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
+    void loadNotebooks();
+  }, [loadNotebooks]);
+
+  const loadDetail = useCallback(async (sel: HubSelection) => {
+    const q = sel.threadId === LEGACY_THREAD_ID ? "" : `?threadId=${encodeURIComponent(sel.threadId)}`;
+    const { status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${q}`);
+    if (status === 401) { setSignedOut(true); return; }
+    if (!data) return;
+    setDetail(data);
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
+    if (selection) void loadDetail(selection);
+  }, [selection, loadDetail]);
+
+  /** Change what is open: abort any stream and drop the previous notebook's data. */
+  const select = useCallback((sel: HubSelection) => {
+    abortRef.current?.abort();
+    setDetail(null);
+    setLive(null);
+    setFailedBody(null);
+    setSelection(sel);
+  }, []);
+
+  // --- derived shell inputs ---
+  const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
+  const machines = useMemo(() => notebookMachines(notebooks ?? []), [notebooks]);
+  const meta = useMemo(
+    () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt) : null),
+    [detail, selection, capturedAt],
+  );
+  const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
+  const citations = useMemo(
+    () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? []),
+    [detail, live],
+  );
+
+  const liveTurns = useMemo<InteractionTurn[]>(() => {
+    if (!live || !meta) return [];
+    const context = contextFor(meta);
+    const threadId = shellThreadId(selection!);
+    const q: InteractionTurn = {
+      id: `${live.id}-q`, threadId, role: "user", parts: [{ type: "text", text: live.question }],
+      lifecycle: "completed", context, createdAt: live.startedAt, updatedAt: live.startedAt,
+    };
+    let parts: InteractionPart[];
+    let lifecycle: InteractionTurn["lifecycle"];
+    if (live.result) {
+      parts = partsFromStream(live.result, { stopped: live.stopped });
+      lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
+    } else {
+      parts = live.content ? [{ type: "text", text: live.content }] : [];
+      lifecycle = live.stopped ? "stopped" : "running";
+    }
+    const a: InteractionTurn = {
+      id: `${live.id}-a`, threadId, role: "assistant", parts, lifecycle, context,
+      createdAt: live.startedAt, updatedAt: new Date().toISOString(),
+    };
+    return [q, a];
+  }, [live, meta, selection]);
+
+  // Live data is a pure projection over the UI state: the reducer's `hydrate`
+  // replaces thread/projects/machines/context and keeps drawer, draft, mode and
+  // the open source. Applying it in render (not an effect) means no cascading
+  // re-render and no moment where the shell shows stale turns.
+  const view = useMemo<ShellState>(() => {
+    if (!detail || !meta || !selection) {
+      return notebooks ? shellReducer(state, { type: "hydrate", data: { thread: EMPTY_FIXTURE.thread, projects, machines } }) : state;
+    }
+    const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
+    const thread = { ...base.thread, turns: [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns] };
+    return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
+  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
+
+  // --- the send path: the canonical notebook-chat route, streamed ---
+  const send = useCallback(async (body: ReturnType<typeof buildChatBody> & { threadId: string | null }, question: string) => {
+    if (!selection) return;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    const id = `live-${Date.now()}`;
+    setFailedBody(null);
+    dispatch({ type: "set-send-error", error: null });
+    setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString() });
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(selection.notebookId)}/chat/`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal,
+      });
+      if (res.status === 401) { setSignedOut(true); return; }
+      if (!res.ok || !res.body) {
+        const detailText = res.status === 412 ? "MIRA needs approved context for this machine before it will answer." : `MIRA couldn't answer that just now (HTTP ${res.status}).`;
+        throw new Error(detailText);
+      }
+      const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
+        setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
+      });
+      setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
+      // The server row is the source of truth; refresh it (also picks up a
+      // thread created by this first turn) and let the live turn go.
+      await loadDetail(selection);
+      await loadNotebooks();
+      setLive((cur) => (cur && cur.id === id ? null : cur));
+    } catch (err) {
+      if (isAbortError(err)) {
+        const partial = (err as { partial?: string }).partial ?? "";
+        setLive((cur) => (cur && cur.id === id ? { ...cur, content: partial, stopped: true, result: null } : cur));
+        return;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      setLive((cur) => (cur && cur.id === id ? null : cur));
+      setFailedBody({ body, question });
+      dispatch({ type: "set-send-error", error: message });
+      dispatch({ type: "set-draft", draft: question });
+    } finally {
+      if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
+    }
+  }, [selection, loadDetail, loadNotebooks]);
+
+  const onSend = useCallback((text: string) => {
+    const q = text.trim();
+    if (!q || busy) return;
+    if (!selection || !detail) {
+      dispatch({ type: "set-send-error", error: "Pick a project first — answers come from a notebook's selected sources." });
+      dispatch({ type: "set-draft", draft: q });
+      return;
+    }
+    const history = historyRows(detail.turns);
+    const body = { ...buildChatBody(q, docIds, history), threadId: selection.threadId === LEGACY_THREAD_ID ? null : selection.threadId };
+    void send(body, q);
+  }, [busy, selection, detail, docIds, send]);
+
+  const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
+  const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
+
+  const onNewChat = useCallback(() => {
+    if (selection) select({ notebookId: selection.notebookId, threadId: newThreadId() });
+  }, [selection, select]);
+
+  const onOpenItem = useCallback((item: ProjectItem) => {
+    const ref = threadRefFromItem(item.id);
+    if (ref) select(ref);
+  }, [select]);
+  const onSelectProject = useCallback((projectId: string) => {
+    const notebookId = notebookIdFromProject(projectId);
+    if (!notebookId) return;
+    const nb = notebooks?.find((n) => n.id === notebookId);
+    const sel = nb ? initialSelection([nb]) : null;
+    if (sel) select(sel);
+  }, [notebooks, select]);
+
+  // Answer text renders through the classic notebook's markdown + inline
+  // citation marks, gated on the turn's own source parts.
+  const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
+    if (turn.role === "user") return text;
+    const own: EvidenceCitation[] = [];
+    for (const part of turn.parts) {
+      if (part.type !== "source") continue;
+      const c = citations.get(part.source.id);
+      if (c) own.push(c);
+    }
+    return <AnswerMarkdown content={text} citations={own} onCite={(c) => dispatch({ type: "select-source", sourceId: c.citationId })} />;
+  }, [citations]);
+
+  const onCopy = useCallback((turnId: string) => {
+    const turn = view.thread.turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    const body = turn.parts.filter((p): p is Extract<InteractionPart, { type: "text" }> => p.type === "text").map((p) => p.text).join("\n\n").trim();
+    const sources = turn.parts.filter((p): p is Extract<InteractionPart, { type: "source" }> => p.type === "source")
+      .map((p) => `[${p.source.id}] ${p.source.title}${p.source.locator ? ` ${p.source.locator}` : ""}`);
+    const text = sources.length ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
+    if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
+  }, [view.thread.turns]);
+
+  const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
+
+  const hooks: HostHooks = {
+    onSend,
+    renderText,
+    onCopy,
+    onNewChat: selection ? onNewChat : undefined,
+    ...(busy ? { onStop } : {}),
+    ...(failedBody ? { onRetry } : {}),
+    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
+    busy,
+  };
+
+  if (signedOut) {
+    return (
+      <main style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+        <p>Sign in to ask MIRA.</p>
+        <a href={`${API_BASE}/login`}><button type="button">Sign in</button></a>
+      </main>
+    );
+  }
+
+  return (
+    <div className="hub-shell-host" data-testid="hub-shell">
+      <FactoryLMShell
+        state={view}
+        dispatch={dispatch}
+        adapter={adapter}
+        hooks={hooks}
+        conversationSurface="assistant"
+        onOpenItem={onOpenItem}
+        onSelectProject={onSelectProject}
+      />
+    </div>
+  );
+}

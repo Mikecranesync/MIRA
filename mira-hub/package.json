@@ -24,6 +24,7 @@
     "health-score:worker": "bun run scripts/health-score-worker.ts"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.17",
     "@node-saml/node-saml": "^5.0.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",
