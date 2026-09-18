@@ -1,3 +1,19 @@
+# Hot Cache — 2026-09-18 — PR governance continuation
+
+PR #3835 was rebased with an explicit old-tip lease from `9088484ff` onto main
+`392b278f2`; its new exact head is `4234b0dd8`. The Android Gradle task selected and
+passed `MainActivityRecoveryTest` (1/1), but no PR CI job executes native JVM tests, and
+#3839 currently owns `ci.yml`; #3835 is therefore BLOCKED despite green ordinary CI.
+PR #3829 remains at `c0181074b`; its body now accurately includes the branch's
+`SendError.tsx` change and has a fresh exact-head/body category-2 PASS. A full open-PR
+inventory found overlapping shared-core branches #3815/#3822/#3690, but no competing
+active lease; merges must still be serialized. PR #3837 remains at `747c22f8d` and is an
+honest category-3 audited exception, BLOCKED on maintainer choice. No exception labels,
+merges, or deployments occurred. Exact comments, body hashes, commands, and next actions
+are in root `HANDOFF.md` on branch `codex/pr-governance-20260918`.
+
+---
+
 # Hot Cache — 2026-09-13 — Alpha pre-move shutdown state (physical relocation)
 
 Alpha is being SHUT DOWN for a physical move. State at shutdown: wiki-sync **PR #3671**
