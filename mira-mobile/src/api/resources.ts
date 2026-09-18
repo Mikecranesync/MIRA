@@ -1158,6 +1158,13 @@ export interface ConfirmComponentResult {
   /** Slice 3: how many vision readings this confirm superseded with a
    *  technician-provided replacement. */
   visualCorrectedCount?: number;
+  /** Slice 3 (Codex F1): corrections the server REFUSED because their value
+   *  contradicted the identity confirmed in the same request. */
+  visualCorrectionMismatches?: { observationId: string; field: string }[];
+  /** Slice 3 (Codex round 2 F1): true when corrections were submitted and the
+   *  server could not apply them (transient DB error, supersede race). The
+   *  confirm itself still succeeded; the technician's edits did not land. */
+  visualCorrectionFailed?: boolean;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1238,6 +1245,15 @@ export async function confirmComponentNameplate(
     warning: d.warning != null ? String(d.warning) : null,
     visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
     visualCorrectedCount: typeof d.visualCorrectedCount === "number" ? d.visualCorrectedCount : 0,
+    visualCorrectionMismatches: Array.isArray(d.visualCorrectionMismatches)
+      ? (d.visualCorrectionMismatches as unknown[]).flatMap((m) => {
+          const o = m as { observationId?: unknown; field?: unknown } | null;
+          return o && typeof o.observationId === "string" && typeof o.field === "string"
+            ? [{ observationId: o.observationId, field: o.field }]
+            : [];
+        })
+      : [],
+    visualCorrectionFailed: d.visualCorrectionFailed === true,
   };
 }
 

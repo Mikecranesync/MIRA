@@ -1117,9 +1117,12 @@ describe("visual-observation correction (Slice 3)", () => {
       makeParams(NOTEBOOK_ID),
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; visualCorrectedCount: number };
+    const body = (await res.json()) as { status: string; visualCorrectedCount: number; visualCorrectionFailed: boolean };
     expect(body.status).toBe("complete");
     expect(body.visualCorrectedCount).toBe(0);
+    // Codex round 2 F1: the failure is NAMED so the client cannot read count 0
+    // as "nothing to do" — the technician's edits did not land.
+    expect(body.visualCorrectionFailed).toBe(true);
   });
 
   it("drops malformed correction entries (fail-safe shape guard)", async () => {

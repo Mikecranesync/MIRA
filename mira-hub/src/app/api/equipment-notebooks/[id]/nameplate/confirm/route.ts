@@ -438,6 +438,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     : [];
   let visualCorrected: { supersededId: string; replacementId: string }[] = [];
   let visualCorrectionMismatches: { observationId: string; field: string }[] = [];
+  // Codex round 2 F1: the confirm stays fail-safe (the nameplate document is the
+  // primary deliverable), but a swallowed correction error must not read as
+  // success to the client. This flag says "you asked for corrections and the
+  // server could not apply them" so the client can offer a retry instead of
+  // reporting complete while the misread stays active.
+  let visualCorrectionFailed = false;
   if (submittedCorrections.length > 0) {
     try {
       const res = await correctVisualObservations({
@@ -457,6 +463,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         );
       }
     } catch (err) {
+      visualCorrectionFailed = true;
       console.warn(
         `[nameplate-confirm] visual correction failed notebook=${notebookId} photo=${fileId}: ${
           (err as Error).message
@@ -499,6 +506,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // confirmed by this same request. Explicit, never silently dropped — the client
       // can show the technician which field disagreed with itself.
       visualCorrectionMismatches,
+      // Codex round 2 F1: true when corrections were submitted and the server
+      // could not apply them (transient DB error, supersede race). The client
+      // must treat this as "edits not saved, retry", never as complete.
+      visualCorrectionFailed,
       manual: null,
       candidate: null,
       applicability: null,

@@ -112,7 +112,10 @@ export function ComponentNameplateFlow({
         { fileId, identity, rawObservation, discover: true, observationIds, corrections },
         confirmKey,
       );
-      dispatch({ type: "confirm_result", result });
+      // The reducer refuses `complete` unless the server applied every requested
+      // correction — the misread would otherwise stay active while the screen
+      // said done (Codex round 2 F1).
+      dispatch({ type: "confirm_result", result, correctionsRequested: corrections.length });
       // The notebook's sources changed on ANY outcome that retained a file.
       if (result.manual?.fileId) onDone();
     } catch (e) {
