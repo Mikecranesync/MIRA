@@ -86,6 +86,17 @@ export type AssetSelectionMethod = (typeof ASSET_SELECTION_METHODS)[number];
 export type NotebookAssetBinding = {
   /** kg_entities.entity_id — the cmms_equipment UUID as text. */
   entityId: string;
+  /**
+   * The bound asset's CURRENT technician-facing identity, resolved live from
+   * kg_entities on the read path (Slice 0) — never the notebook's frozen
+   * display_name/asset_tag. `name` is kg_entities.name (e.g. "Discharge
+   * Conveyor"); `assetTag` is properties->>'asset_tag' (e.g. "CV-101", the
+   * sticker/search handle). Both null on write-path RETURNING (no join there)
+   * and for a binding whose asset row is missing/unverified — callers fall back
+   * to the notebook's own fields. See docs/prd Slice 0 + dogfood-cv101-identity.
+   */
+  name: string | null;
+  assetTag: string | null;
   selectedVia: AssetSelectionMethod | null;
   /** Null means selected-but-unconfirmed; the UI must show that state. */
   confirmedBy: string | null;
@@ -148,6 +159,36 @@ const NOTEBOOK_COLS = `
 // table alias, so the `n.` form errors ("missing FROM-clause entry for n").
 const NOTEBOOK_COLS_BARE = NOTEBOOK_COLS.replace(/\bn\./g, "");
 
+// Slice 0 — resolve the technician-facing machine identity from the CURRENTLY
+// BOUND asset, not the notebook's frozen display_name/asset_tag. The CV-101 bug:
+// notebook display_name "Sensor v0 overnight 2026-08-28" masks its bound asset
+// (kg_entities.name "Discharge Conveyor", properties->>'asset_tag' "CV-101").
+//
+// The key equipment_notebooks.equipment_entity_id stores coalesce(entity_id,
+// id::text) of the asset's kg_entities row (createAndBindNotebookTx), so match
+// EITHER — a bridged/seeded asset carries entity_id (the CV-101 case); a
+// picker-created asset may key on id. LATERAL + LIMIT 1 keeps this strictly
+// single-row so a notebook is never duplicated in the list; the verified
+// equipment/asset identity node wins, preferring the entity_id-bearing row.
+// Runs under withTenantContext (RLS + the explicit ae.tenant_id = n.tenant_id,
+// both UUID); the notebook's OWN backing node (entity_id NULL, id = node_id)
+// can never match equipment_entity_id, so it is not a candidate here.
+// Only in the read paths (list/get) — NOT in NOTEBOOK_COLS, which
+// NOTEBOOK_COLS_BARE reuses for RETURNING clauses that have no FROM to join.
+const BOUND_ASSET_COLS = `ba.bound_asset_name, ba.bound_asset_tag`;
+const BOUND_ASSET_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT ae.name AS bound_asset_name,
+           ae.properties->>'asset_tag' AS bound_asset_tag
+      FROM kg_entities ae
+     WHERE ae.tenant_id = n.tenant_id
+       AND ae.entity_type IN ('equipment', 'asset')
+       AND ae.approval_state = 'verified'
+       AND coalesce(ae.entity_id, ae.id::text) = n.equipment_entity_id
+     ORDER BY (ae.entity_id IS NOT NULL) DESC
+     LIMIT 1
+  ) ba ON true`;
+
 function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNotebook {
   return {
     id: String(r.id),
@@ -171,6 +212,10 @@ function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNo
     asset: r.equipment_entity_id
       ? {
           entityId: String(r.equipment_entity_id),
+          // Live from the bound asset (Slice 0). Present only on the read paths
+          // (BOUND_ASSET_JOIN); undefined on write-path RETURNING → null.
+          name: (r.bound_asset_name as string) ?? null,
+          assetTag: (r.bound_asset_tag as string) ?? null,
           selectedVia: (r.asset_selected_via as AssetSelectionMethod) ?? null,
           confirmedBy: (r.asset_confirmed_by as string) ?? null,
           confirmedAt: r.asset_confirmed_at ? String(r.asset_confirmed_at) : null,
@@ -262,10 +307,10 @@ export async function listNotebooks(
     const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
     const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS},
+      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS},
               (SELECT count(*) FROM equipment_notebook_sources s
                 WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS source_count
-         FROM equipment_notebooks n
+         FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid${assetFilter}
         ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC
         LIMIT 100`,
@@ -283,8 +328,8 @@ export async function getNotebook(
 ): Promise<EquipmentNotebook | null> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS}
-         FROM equipment_notebooks n
+      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
+         FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`,
       [tenantId, notebookId],
     );
