@@ -423,7 +423,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // stale value stops participating in chat context while the trail is kept —
   // correction never destroys evidence, it changes which observation is active.
   // Same scoping as promotion (exact id ∧ tenant ∧ bound asset ∧ this photo ∧ live
-  // candidate); the server derives NOTHING from `identity`. Fail-safe like above.
+  // candidate); the server derives NO correction from `identity`. It does use the
+  // confirmed identity as a CONSTRAINT (Codex F1): a correction whose stored field
+  // is an identity field must agree with the value confirmed in this very request,
+  // or the one confirm would mint two contradictory technician-verified facts.
+  // Mismatches are skipped by the lib and reported below. Fail-safe like above.
   const submittedCorrections = Array.isArray(body.corrections)
     ? (body.corrections as unknown[]).flatMap((c) => {
         const o = c as { observationId?: unknown; value?: unknown } | null;
@@ -433,6 +437,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
     : [];
   let visualCorrected: { supersededId: string; replacementId: string }[] = [];
+  let visualCorrectionMismatches: { observationId: string; field: string }[] = [];
   if (submittedCorrections.length > 0) {
     try {
       const res = await correctVisualObservations({
@@ -441,8 +446,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         fileId,
         corrections: submittedCorrections,
         correctedBy: ctx.userId ?? null,
+        expected: identity,
       });
       visualCorrected = res.corrected;
+      visualCorrectionMismatches = res.mismatched;
+      if (visualCorrectionMismatches.length > 0) {
+        console.warn(
+          `[nameplate-confirm] ${visualCorrectionMismatches.length} correction(s) contradicted the confirmed identity ` +
+            `notebook=${notebookId} photo=${fileId} fields=${visualCorrectionMismatches.map((m) => m.field).join(",")}`,
+        );
+      }
     } catch (err) {
       console.warn(
         `[nameplate-confirm] visual correction failed notebook=${notebookId} photo=${fileId}: ${
@@ -482,6 +495,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Slice 3: how many vision readings were superseded by a technician-provided
       // replacement on this photo. Same fail-safe semantics as the count above.
       visualCorrectedCount: visualCorrected.length,
+      // Codex F1: corrections REFUSED because their value contradicted the identity
+      // confirmed by this same request. Explicit, never silently dropped — the client
+      // can show the technician which field disagreed with itself.
+      visualCorrectionMismatches,
       manual: null,
       candidate: null,
       applicability: null,

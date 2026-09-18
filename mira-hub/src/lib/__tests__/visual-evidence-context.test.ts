@@ -199,10 +199,10 @@ describe("correctVisualObservations — correction changes which observation is 
   const base = { tenantId: "11111111-1111-4111-8111-111111111111", boundEntityId: UUID, fileId: FILE, correctedBy: "u_1" };
 
   it("never enters the DB for an unbound asset, a non-UUID fileId, malformed ids, or empty values", async () => {
-    expect(await correctVisualObservations({ ...base, boundEntityId: null, corrections: [{ observationId: UUID2, value: "X" }] })).toEqual({ corrected: [] });
-    expect(await correctVisualObservations({ ...base, fileId: "nope", corrections: [{ observationId: UUID2, value: "X" }] })).toEqual({ corrected: [] });
-    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: "not-a-uuid", value: "X" }] })).toEqual({ corrected: [] });
-    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "   " }] })).toEqual({ corrected: [] });
+    expect(await correctVisualObservations({ ...base, boundEntityId: null, corrections: [{ observationId: UUID2, value: "X" }] })).toEqual({ corrected: [], mismatched: [] });
+    expect(await correctVisualObservations({ ...base, fileId: "nope", corrections: [{ observationId: UUID2, value: "X" }] })).toEqual({ corrected: [], mismatched: [] });
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: "not-a-uuid", value: "X" }] })).toEqual({ corrected: [], mismatched: [] });
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "   " }] })).toEqual({ corrected: [], mismatched: [] });
     expect(withTenantContext).not.toHaveBeenCalled();
   });
 
@@ -210,7 +210,7 @@ describe("correctVisualObservations — correction changes which observation is 
     const query = vi.fn(async () => ({ rows: [] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] });
-    expect(out).toEqual({ corrected: [] });
+    expect(out).toEqual({ corrected: [], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/FOR UPDATE/);
@@ -224,15 +224,51 @@ describe("correctVisualObservations — correction changes which observation is 
     const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS10" }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: " GS10 " }] });
-    expect(out).toEqual({ corrected: [] });
+    expect(out).toEqual({ corrected: [], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(1); // SELECT only
   });
 
   it("skips a row whose normalized_value is not '<field>: <value>' rather than guessing a field", async () => {
     const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "GS1O" }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
-    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] })).toEqual({ corrected: [] });
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] })).toEqual({ corrected: [], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("Codex F1: REFUSES a correction that contradicts the identity confirmed by the same request — SELECT only, reported in `mismatched`", async () => {
+    // Confirmed identity says model=GS10; the technician's correction of the model
+    // reading says GS20. Recording both would make two contradictory verified facts.
+    const query = vi.fn(async () => ({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O" }] }));
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS20" }], expected: { model: "GS10" } });
+    expect(out).toEqual({ corrected: [], mismatched: [{ observationId: UUID2, field: "model" }] });
+    expect(query).toHaveBeenCalledTimes(1); // no INSERT, no supersede
+  });
+
+  it("Codex F1: a correction that AGREES with the confirmed identity (case/whitespace aside) is applied; an unconstrained field is never blocked", async () => {
+    const NEW = "64a24de7-0000-4000-8000-00000000000f";
+    const mk = () =>
+      vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: UUID2, session_id: "s", evidence_id: "e", normalized_value: "model: GS1O" }] })
+        .mockResolvedValueOnce({ rows: [{ id: NEW }] })
+        .mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
+    // Agrees (identity "gs10", correction "GS10") → applied.
+    let query = mk();
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }], expected: { model: " gs10 " } })).toEqual({
+      corrected: [{ supersededId: UUID2, replacementId: NEW }],
+      mismatched: [],
+    });
+    expect(query).toHaveBeenCalledTimes(3);
+    // Identity carries no model at all → the model correction is unconstrained.
+    query = mk();
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect(await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS20" }], expected: { manufacturer: "Automation Direct" } })).toEqual({
+      corrected: [{ supersededId: UUID2, replacementId: NEW }],
+      mismatched: [],
+    });
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it("inserts a technician/corrected replacement on the SAME photo, then supersedes the old row with a pointer", async () => {
@@ -244,7 +280,7 @@ describe("correctVisualObservations — correction changes which observation is 
       .mockResolvedValueOnce({ rows: [{ id: UUID2 }] }); // UPDATE supersede
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
     const out = await correctVisualObservations({ ...base, corrections: [{ observationId: UUID2, value: "GS10" }] });
-    expect(out).toEqual({ corrected: [{ supersededId: UUID2, replacementId: NEW }] });
+    expect(out).toEqual({ corrected: [{ supersededId: UUID2, replacementId: NEW }], mismatched: [] });
     expect(query).toHaveBeenCalledTimes(3);
 
     const [insSql, insParams] = query.mock.calls[1] as unknown as [string, unknown[]];

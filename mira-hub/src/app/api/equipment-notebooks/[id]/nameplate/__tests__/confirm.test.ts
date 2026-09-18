@@ -221,7 +221,7 @@ beforeEach(() => {
   // Default chunk read: no identity evidence.
   vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
   vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [] });
-  vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [] });
+  vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
 });
 
 describe("auth, tenancy, and request shape", () => {
@@ -1055,7 +1055,7 @@ describe("visual-observation correction (Slice 3)", () => {
 
   it("forwards {observationId, value} pairs VERBATIM, scoped to the bound asset + this photo + the session user, and surfaces the count", async () => {
     vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
-    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [{ supersededId: OBS_2, replacementId: "new-1" }] });
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [{ supersededId: OBS_2, replacementId: "new-1" }], mismatched: [] });
     const res = await POST(
       makeReq({
         ...baseBody,
@@ -1065,8 +1065,9 @@ describe("visual-observation correction (Slice 3)", () => {
       }),
       makeParams(NOTEBOOK_ID),
     );
-    const body = (await res.json()) as { visualPromotedCount: number; visualCorrectedCount: number };
+    const body = (await res.json()) as { visualPromotedCount: number; visualCorrectedCount: number; visualCorrectionMismatches: unknown[] };
     expect(body.visualCorrectedCount).toBe(1);
+    expect(body.visualCorrectionMismatches).toEqual([]);
     expect(correctVisualObservations).toHaveBeenCalledTimes(1);
     expect(correctVisualObservations).toHaveBeenCalledWith({
       tenantId: TENANT_ID,
@@ -1074,9 +1075,30 @@ describe("visual-observation correction (Slice 3)", () => {
       fileId: PHOTO_FILE_ID,
       corrections: [{ observationId: OBS_2, value: "GS10" }],
       correctedBy: "u_1",
+      // Codex F1: the SANITIZED confirmed identity rides along as the constraint —
+      // the lib refuses a correction that contradicts it on the same field.
+      expected: expect.objectContaining({ manufacturer: "Allen-Bradley", model: "525", serialNumber: "SN-99" }),
     });
     // Promotion and correction are independent calls on disjoint sets.
     expect(promoteVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ observationIds: [OBS_1] }));
+  });
+
+  it("Codex F1: a correction that contradicts the identity confirmed in the SAME request is refused and reported, never silently dropped", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    // The lib decides the mismatch (it owns the stored field); the route must
+    // pass the confirmed identity in, keep the confirm a 200, and surface the
+    // refusal explicitly instead of counting it as a correction.
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [{ observationId: OBS_2, field: "model" }] });
+    const res = await POST(
+      makeReq({ ...baseBody, identity: { ...IDENTITY, model: "GS10" }, discover: false, corrections: [{ observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualCorrectedCount: number; visualCorrectionMismatches: { observationId: string; field: string }[] };
+    expect(body.status).toBe("complete");
+    expect(body.visualCorrectedCount).toBe(0);
+    expect(body.visualCorrectionMismatches).toEqual([{ observationId: OBS_2, field: "model" }]);
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ expected: expect.objectContaining({ model: "GS10" }) }));
   });
 
   it("an unbound notebook forwards boundEntityId=null — the lib then corrects nothing", async () => {

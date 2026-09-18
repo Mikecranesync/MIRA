@@ -210,6 +210,18 @@ const MAX_CORRECTION_VALUE_CHARS = 200;
  * row is not in that shape — the caller then SKIPS the correction (fail safe)
  * rather than guessing a field name.
  */
+/**
+ * Two nameplate values agree when they differ only in case or whitespace —
+ * "GS10" and " gs10 " are one reading, "GS10" and "GS20" are two. Used to
+ * refuse a correction that contradicts the identity confirmed in the same
+ * request (Codex F1); deliberately NOT a fuzzy match, so a one-character
+ * misread is still a contradiction and not silently accepted.
+ */
+export function sameNameplateValue(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  return norm(a) === norm(b);
+}
+
 export function fieldOfNormalizedValue(normalized: string | null | undefined): string | null {
   if (typeof normalized !== "string") return null;
   const idx = normalized.indexOf(": ");
@@ -245,24 +257,46 @@ export function fieldOfNormalizedValue(normalized: string | null | undefined): s
  * `withTenantContext` transaction so two concurrent confirms cannot both
  * supersede the same reading.
  *
- * Returns the (supersededId, replacementId) pairs actually applied.
+ * ONE technician truth per field (Codex F1, 2026-09-17): a confirm request also
+ * carries the identity the technician just confirmed, and that identity becomes
+ * a trusted nameplate document. A correction whose SERVER-DERIVED field is one
+ * of those identity fields must therefore agree with the confirmed value —
+ * otherwise the same request would mint two contradictory technician-verified
+ * facts (nameplate "Model: GS10" and a corrected observation "model: GS20").
+ * `expected` is that confirmed identity, keyed by field. A correction on a
+ * field the identity does not carry is unconstrained; a mismatching one is
+ * SKIPPED (no INSERT, no supersede) and reported in `mismatched` so the caller
+ * can surface it. The server still derives the FIELD from the stored row,
+ * never from the identity.
+ *
+ * Returns the (supersededId, replacementId) pairs actually applied, plus the
+ * corrections refused for contradicting the confirmed identity.
  */
+export type VisualCorrectionMismatch = { observationId: string; field: string };
+
 export async function correctVisualObservations(opts: {
   readonly tenantId: string;
   readonly boundEntityId: string | null;
   readonly fileId: string;
   readonly corrections: readonly VisualCorrection[];
   readonly correctedBy: string | null;
-}): Promise<{ corrected: { supersededId: string; replacementId: string }[] }> {
-  if (!isUuidKey(opts.boundEntityId)) return { corrected: [] };
-  if (!isUuidKey(opts.fileId)) return { corrected: [] };
+  /** The identity confirmed by the SAME request, keyed by nameplate field. */
+  readonly expected?: Readonly<Record<string, string | undefined>>;
+}): Promise<{
+  corrected: { supersededId: string; replacementId: string }[];
+  mismatched: VisualCorrectionMismatch[];
+}> {
+  if (!isUuidKey(opts.boundEntityId)) return { corrected: [], mismatched: [] };
+  if (!isUuidKey(opts.fileId)) return { corrected: [], mismatched: [] };
   const wanted = opts.corrections
     .filter((c) => isUuidKey(c.observationId) && typeof c.value === "string" && c.value.trim() !== "")
     .map((c) => ({ observationId: c.observationId, value: c.value.trim().slice(0, MAX_CORRECTION_VALUE_CHARS) }));
-  if (wanted.length === 0) return { corrected: [] };
+  if (wanted.length === 0) return { corrected: [], mismatched: [] };
+  const expected = opts.expected ?? {};
 
   return withTenantContext(opts.tenantId, async (c: QueryClient) => {
     const corrected: { supersededId: string; replacementId: string }[] = [];
+    const mismatched: VisualCorrectionMismatch[] = [];
     for (const w of wanted) {
       // Same guard set as promotion; FOR UPDATE pins the row for this transaction.
       const target = await c.query(
@@ -290,6 +324,13 @@ export async function correctVisualObservations(opts: {
       const field = fieldOfNormalizedValue(row.normalized_value as string | null);
       if (!field) continue; // not a "<field>: <value>" row → cannot correct safely
       if (`${field}: ${w.value}` === row.normalized_value) continue; // same value = a confirm, not a correction
+      const confirmed = expected[field];
+      if (typeof confirmed === "string" && !sameNameplateValue(confirmed, w.value)) {
+        // The technician confirmed one value for this field and typed another
+        // as the correction. Refuse to record the second truth; report it.
+        mismatched.push({ observationId: String(row.id), field });
+        continue;
+      }
 
       const ins = await c.query(
         `INSERT INTO observation
@@ -325,7 +366,7 @@ export async function correctVisualObservations(opts: {
       }
       corrected.push({ supersededId: String(row.id), replacementId });
     }
-    return { corrected };
+    return { corrected, mismatched };
   });
 }
 

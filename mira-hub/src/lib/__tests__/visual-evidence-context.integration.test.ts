@@ -383,14 +383,14 @@ run("visual-evidence-context (integration)", () => {
       const base = { tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1, correctedBy: "it-tech" };
       for (const target of [obsA1P2_serial.id, obsA2.id, obsB.id, obsAlreadyConfirmed.id, "deadbeef-0000-4000-8000-000000000000"]) {
         const out = await correctVisualObservations({ ...base, corrections: [{ observationId: target, value: "X" }] });
-        expect(out, target).toEqual({ corrected: [] });
+        expect(out, target).toEqual({ corrected: [], mismatched: [] });
       }
       const foreign = await correctVisualObservations({
         ...base,
         boundEntityId: "deadbeef-0000-4000-8000-000000000000",
         corrections: [{ observationId: misread.id, value: "GS10" }],
       });
-      expect(foreign).toEqual({ corrected: [] });
+      expect(foreign).toEqual({ corrected: [], mismatched: [] });
       // Nothing was superseded anywhere and no replacement row appeared.
       const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id IN ($1,$2)`, [TENANT_A, TENANT_B]);
       expect(n.rows[0].n).toBe(0);
@@ -452,7 +452,7 @@ run("visual-evidence-context (integration)", () => {
         tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
         corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
       });
-      expect(again).toEqual({ corrected: [] });
+      expect(again).toEqual({ corrected: [], mismatched: [] });
       const reps = await q(`SELECT count(*)::int AS n FROM observation WHERE metadata->>'corrected_from' = $1`, [misread.id]);
       expect(reps.rows[0].n).toBe(1);
     });
@@ -462,7 +462,7 @@ run("visual-evidence-context (integration)", () => {
         tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
         corrections: [{ observationId: siblingOk.id, value: "60Hz" }], correctedBy: "it-tech",
       });
-      expect(out).toEqual({ corrected: [] });
+      expect(out).toEqual({ corrected: [], mismatched: [] });
       expect((await ownerRow(siblingOk.id)).evidence_state).toBe("VISIBLE");
     });
 
