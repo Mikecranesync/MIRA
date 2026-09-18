@@ -202,6 +202,32 @@ const nodeRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveNodeChunks", () => {
+  // Regression: with the approval gate OFF the admission clause is not emitted, so
+  // the admission array must not be bound either. Binding it anyway produced
+  // "bind message supplies 6 parameters, but prepared statement requires 5" on
+  // every notebook-chat send with a confirmed source (staging/dev, gate unset).
+  it("binds exactly as many params as the SQL references, gate off AND gate on (admission set present)", async () => {
+    const opts = { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, approvedSourceDocIds: ["d-1"] };
+    const maxPlaceholder = (sql: string) => Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+
+    delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
+    const off = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(off.client, "t-1", "which register holds P042 output frequency", opts);
+    expect(off.calls.length).toBeGreaterThan(0);
+    for (const c of off.calls) {
+      expect(c.params.length).toBe(maxPlaceholder(c.sql));
+      expect(c.sql).not.toContain("is_private = true AND doc_id = ANY(");
+    }
+
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const on = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(on.client, "t-1", "which register holds P042 output frequency", opts);
+    expect(on.calls.length).toBeGreaterThan(0);
+    for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
+    // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
+    expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
+  });
+
   it("returns empty for empty query without touching DB", async () => {
     const { client, calls } = makeClient([]);
     const out = await retrieveNodeChunks(client, "t-1", "  ", { nodeId: "n-1", unsPath: null });
