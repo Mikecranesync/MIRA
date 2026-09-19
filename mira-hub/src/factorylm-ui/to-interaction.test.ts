@@ -63,6 +63,10 @@ function stream(over: Partial<StreamResultWithStatusMessage> = {}): StreamResult
     safetyNotice: null,
     sawStatus: true,
     ...over,
+    // #3854 makes this field required on StreamResult. Keep this branch
+    // compatible before and after that merge, including when a Partial
+    // override contains explicit undefined.
+    statusMessage: over.statusMessage ?? null,
   };
 }
 
