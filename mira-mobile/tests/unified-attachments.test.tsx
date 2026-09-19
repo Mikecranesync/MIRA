@@ -183,4 +183,29 @@ describe("unified attachments controller", () => {
     expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-thrown" } } });
   });
 
+
+  // A photo that PARKED but was never analysed must not be asked about. The
+  // server returns the saved file with `observation: null` on a vision-provider
+  // failure (502) or an unconfigured recognizer (503) — real paths, not
+  // exceptions (see lookAtPhoto in src/api/resources.ts). Sending anyway asks
+  // "what am I looking at" about a picture nothing has read, which is the same
+  // "answer from nothing while looking grounded" failure the fileId check
+  // prevents. Ported from the legacy surface (#3837) onto the surface the app
+  // actually renders.
+  it("refuses to ask about a photo the server could not analyze", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValue({ fileId: "parked-1", observation: null });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    let composed;
+    await act(async () => { composed = await get().compose("what is in this box", [a as Attachment]); });
+
+    expect(composed).toMatchObject({ failure: expect.stringContaining("couldn't analyze") });
+    expect(composed).not.toHaveProperty("rider");
+    // Held for another attempt, exactly like the other failure paths.
+    expect(get().hasCarried()).toBe(true);
+  });
+
 });
