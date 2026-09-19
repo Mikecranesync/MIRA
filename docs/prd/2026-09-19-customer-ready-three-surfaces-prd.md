@@ -29,6 +29,17 @@ Unit tests, CI badges and IR PASSes are **inputs**, not proof. The proof is the 
   **Deploy blocker:** `deploy-vps.yml` on main SSHes to dead DO IP `165.245.138.91`; prod is OVH `40.160.141.61`. #3825 repoints it (open, guard red, body needs fix).
 - **Public demo:** #3815 (SimLab conveyor) + #3828 (deploy) drafts, CI clean, container image never built.
 
+## 2a. Findings after the first queue pass (2026-09-19 20:30Z)
+
+- Landed: #3833, #3829, #3835, #3839 (Hub `/v3` shell mount), #3864, #3857, #3858, #3859 (prod identity → OVH + smoke runbook). #3721 closed as superseded by #3839.
+- **#3862 (P0, new):** a project created from the unified New-project form is unbound → client sends `mode:"general"` → the uploaded manual is never used. **Blocks the Golden Conversation on 1.2.1 as cut.** Needs a carrier (Mike, §5).
+- **#3837:** IR FAIL — its LOOK prefix is still substring-scanned by `matchSafetyStop` (= #3852 surface) and its chat-v2 test is red post-#3829; #3845 already drops the prefix. Disposition (Mike): close as superseded by #3845.
+- **#3861 (#3852 fix):** IR FAIL — removing the observation from classification un-stops real camera-observed hazards; the observation must stay classified (negation-aware) and come from the server-verified photo (`route.ts:923`), not a client prefix. In remediation (BRAVO-A).
+- **pydantic landmine:** bots pin `pydantic>=2.0` unbounded; 2.12 breaks the RAG worker on grounded answers (`engine.py:5686`). A container rebuild on the first OVH dispatch would pull it. Pin PR (BRAVO-A) must land **before #3825**.
+- **CI gaps:** Mobile Unit Tests can be red while `CI Gate` is green (mobile tests cannot block a merge); no CI job builds the Hub image (Docker Build Check = mira-ingest only). Both before Gate 4.
+- **Staging is gone** (see lane A step 2); `staging-gate` passes without a live host.
+- #3815 demo image NOT READY (grader import at load) per BRAVO-B; #3854 CONFLICTING with main (resolution posted, owner offline).
+
 ## 3. Lanes
 
 Rules for every lane: one worktree per lane; never touch another lane's branch; exact-SHA IR before any merge;
@@ -39,8 +50,11 @@ Mike's explicit go in the thread. Report with SHAs, not adjectives. Post lane st
 Has: `gh` (allow rule `Bash(gh pr *)`), Docker/Colima, Playwright, staging deploy workflow.
 1. Run the §21 queue to exhaustion: #3835 → #3839 → #3837 (after BRAVO-A/technician-pilot remediation) → #3721 → #3854 → #3825.
    Per PR: `gh pr update-branch` → six required contexts green → IR PASS at exact tip (alpha-remote / BRAVO-A) → attest → `gh pr merge --squash --match-head-commit`.
-2. After #3839 lands: `deploy-staging.yml` with the main SHA; then the **Hub stranger walk on staging** — fresh tenant, upload a manual
-   nobody has uploaded before, ask, cited answer, citation resolves. Capture desktop+mobile screenshots (Screenshot Rule) and the single canonical chat POST.
+2. ~~After #3839 lands: `deploy-staging.yml` …~~ **VOID (verified 2026-09-19 19:20Z): staging lived on the dead DO box; no staging host
+   answers, and `deploy-staging.yml` / `docker-compose.staging-vps.yml` still target `165.245.138.91`.** The Hub stranger walk therefore runs
+   on **prod** after #3825 lands and Mike's first OVH dispatch: fresh signup, upload a manual nobody has uploaded before, ask, cited answer,
+   citation resolves. Capture desktop+mobile screenshots (Screenshot Rule) and the single canonical chat POST. Rebuilding staging on OVH is
+   a BRAVO-B DevOps item, not a lane-A precondition.
 3. Re-verify the three 09-07 beta-gate failures explicitly (composer present on home; no 412 banner on first send; `New chat` enabled on cold launch).
 **Accept:** every queue PR merged with attestation + SHA listed on #3626; staging walk artifacts committed; the three 09-07 failures each marked PASS/FAIL with evidence.
 **Hand-off to Mike:** "#3825 merged; first OVH `deploy-vps.yml` dispatch is yours" with the exact `gh workflow run` line.
@@ -68,7 +82,8 @@ Has: Ollama, Doppler, Python 3.12, `gh` (confirm auth first — reply to uip267k
 Has: Docker, Doppler, `gh`, no Pixel.
 1. **#3815/#3828 known gap:** build the demo container image from the PR head, boot it, run the proxy + rate-limit tests the PR body says were manual
    (reconstructed commands in the closeout checklist); post results on #3815. Do not undraft — report readiness.
-2. **#3825 follow-ups** (read + PR on own branch, never Mike's branch): hard-fail the cmms preflight; purge the DO IP `165.245.138.91` from `docs/`, `tools/hooks/prod-guard.sh`, `CLAUDE.md`, `deployment/network.yml`; verify `ovh-preflight.yml` targets `40.160.141.61`.
+2. **#3825 follow-ups** (read + PR on own branch, never Mike's branch): hard-fail the cmms preflight; purge the DO IP `165.245.138.91` — **143 refs in 82 files** as of 2026-09-19, and the OVH IP appears in zero repo files (it lives in Doppler `PROD_HOST_IP`); start with the live controls (`deploy-vps.yml`, `deploy-staging.yml`, `deploy-nginx-stg.yml`, `docker-compose.staging-vps.yml`, `scripts/demo-preflight.sh`, `tools/hooks/prod-guard.sh`, `tools/staging/*.sh`), then docs; verify `ovh-preflight.yml` targets the Doppler host.
+4. **Rebuild staging on OVH** (new, verified gone 2026-09-19): `docker-compose.staging-vps.yml` + `deploy-staging.yml` re-pointed at the OVH host via Doppler, `stg.factorylm.com` front door, `INGEST_URL` enabled so uploads become citable. Until then no lane may plan on a staging walk.
 3. Post-merge prod smoke plan: the exact `bash install/smoke_test.sh` + `curl` lines against `factorylm.com` / `app.factorylm.com` that CHARLIE-A runs after Mike's first dispatch.
 **Accept:** demo image sha + boot log + test output on #3815; DO-IP purge PR open with grep-zero proof; smoke plan committed to `docs/runbooks/`.
 
