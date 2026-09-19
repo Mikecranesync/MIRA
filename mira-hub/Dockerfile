@@ -48,6 +48,13 @@ ENV MIRA_BUILD_TIME=$MIRA_BUILD_TIME
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
+# #3870: the node:22-alpine base ships its own npm CLI under
+# /usr/local/lib/node_modules/npm, and npm's bundled tar 7.5.11 (CVE-2026-59873
+# CRITICAL), pacote, sigstore and brace-expansion are what the image scan flags
+# beyond next/sharp — they are not in the Hub's dependency tree at all. The
+# runtime is `node server.js` and never invokes npm, so drop it from the image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # With the compiler root at the repo root, `.next/standalone` mirrors the repo layout:
 # server.js + node_modules live under standalone/mira-hub/, and Turbopack's hashed
 # server externals (`.next/node_modules/pg-<hash>`) are RELATIVE symlinks that assume
