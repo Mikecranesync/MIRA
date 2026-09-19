@@ -30,7 +30,6 @@ import { API_BASE } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
-  buildChatBody,
   isAbortError,
   readNotebookStream,
   type PersistedTurn,
@@ -38,7 +37,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
+import { notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
@@ -99,7 +98,7 @@ export function HubShellHost() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof buildChatBody> & { threadId: string | null }; question: string } | null>(null);
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Detail loads are independent of the chat stream: their own abort handle and
   // a latest-request gate so a slow, superseded GET can never overwrite the
@@ -237,7 +236,7 @@ export function HubShellHost() {
   }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof buildChatBody> & { threadId: string | null }, question: string) => {
+  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string) => {
     if (!selection) return;
     abortRef.current?.abort();
     const ctrl = new AbortController();
