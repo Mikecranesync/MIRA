@@ -29,6 +29,9 @@ describe("notebook tree", () => {
     expect(projects.map((p) => p.name)).toEqual(["Drive A", "General notes", "Drive A again"]);
     expect(projects[0].children.map((c) => `${c.kind}:${c.id}`)).toEqual([
       "machine-link:link-a", "thread:notebook-a:thread-thrd-1", "thread:notebook-a:thread-thrd-2",
+      // Source management has its own drawer destination now; it is no longer a
+      // side effect of tapping Photo in the composer.
+      "file:sources-a",
     ]);
     expect(notebookMachines(list)).toEqual([{ id: "asset-1", canonicalAssetId: "asset-1", name: "Siemens G120", unsPath: "", status: "unknown" }]);
     expect(notebookIdFromItem(threadItemId("b"))).toBe("b");
@@ -40,6 +43,7 @@ describe("notebook tree", () => {
     const [project] = notebookProjects([nb("blank", "", null)]);
     expect(project.children).toEqual([
       { kind: "thread", id: "notebook-blank:thread-legacy", label: "Untitled notebook" },
+      { kind: "file", id: "sources-blank", label: "Sources (0)" },
     ]);
   });
 

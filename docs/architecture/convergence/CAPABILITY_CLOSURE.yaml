@@ -555,9 +555,9 @@ capabilities:
         note: "Universal-composer behavior coverage from merged Task 5."
       - path: apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts
         note: "Cross-surface browser fixture matrix; local release proof, not part of the required unit check."
-      - path: mira-mobile/src/screens/__tests__/unified-chat.test.tsx
+      - path: mira-mobile/tests/unified-chat.test.tsx
         note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
-      - path: mira-mobile/src/screens/__tests__/unified-root.test.tsx
+      - path: mira-mobile/tests/unified-root.test.tsx
         note: "Whole-app mobile shell host behavior."
       - path: https://updates.factorylm.com/manifest.canary.json
         note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
