@@ -27,6 +27,10 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  claimNotebookTurnRequest: vi.fn(async () => ({
+    status: "claimed" as const,
+    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  })),
   recordTurn: vi.fn(async () => undefined),
   // I3: the route resolves the notebook's bound asset; unbound keeps the
   // pre-081 behaviour these suites assert.
@@ -95,6 +99,10 @@ beforeEach(() => {
   // Any provider call during a safety stop is a failure of the whole slice.
   vi.stubGlobal("fetch", vi.fn());
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+  domainMock.claimNotebookTurnRequest.mockResolvedValue({
+    status: "claimed",
+    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  });
 });
 
 describe("notebook chat safety hard-stop", () => {
@@ -158,6 +166,58 @@ describe("notebook chat safety hard-stop", () => {
         clientRequestId,
       }),
     );
+  });
+
+  it("replays the first persisted Safety STOP for the same client request without rerunning work", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-1",
+        question: "which cable to pull to stop it",
+        answerStatus: "answered",
+        answerText: SAFETY_STOP,
+        enabledSourceDocIds: [DOC_A],
+        evidence: [{ kind: "safety_notice", trigger: "exposed wire" }],
+        model: null,
+        basis: null,
+      },
+    });
+
+    const res = await POST(
+      chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const replayed = await readFrames(res);
+
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    expect(res.headers.get("X-Safety-Stop")).toBe("exposed wire");
+    expect(answerText(replayed).trim()).toBe(SAFETY_STOP);
+    expect(replayed.findIndex((f) => f.includes('"kind":"safety"'))).toBeLessThan(
+      replayed.findIndex((f) => f.includes('"kind":"content"')),
+    );
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("refuses a concurrent duplicate while the first request owns the key", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({ status: "in_progress" });
+
+    const res = await POST(
+      chatReq({
+        message: "which cable to pull to stop it",
+        sourceDocIds: [DOC_A],
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "request_in_progress" });
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
   });
 
   it("safety_notice trigger matches the X-Safety-Stop header", async () => {

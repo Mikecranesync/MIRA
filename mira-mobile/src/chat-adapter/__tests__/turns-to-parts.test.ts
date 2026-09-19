@@ -480,9 +480,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       0,
     )[1];
     expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
-    // ...and the terminal-truth rule still holds: no manufactured completion.
-    expect(a.lifecycle).toBe("failed");
-    expect(a.parts).toContainEqual({ type: "error", reason: "provider_failure" });
+    // The warning itself is terminal. A transport failure cannot attach the
+    // ordinary retryable provider-failure affordance to a validated STOP.
+    expect(a.lifecycle).toBe("completed");
+    expect(a.parts.some((p) => p.type === "error")).toBe(false);
   });
 
   it("FLEET-003: safety is STICKY when the technician stops the stream", () => {

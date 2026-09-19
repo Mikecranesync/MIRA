@@ -152,7 +152,9 @@ export function Bubble({
       )}
       {turn.truncated && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="truncated-caption">
-          Incomplete — the connection ended before the answer finished. Ask again to retry.
+          {turn.safetyNotice
+            ? "Safety stop retained — isolate the machine before proceeding."
+            : "Incomplete — the connection ended before the answer finished. Ask again to retry."}
         </p>
       )}
       {turn.status === "insufficient_evidence" && (
@@ -315,7 +317,12 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
-  const [failed, setFailed] = useState<SendBody | null>(null);
+  const [failed, setFailed] = useState<{
+    body: SendBody;
+    /** A clean truncation stays visible until Retry, then this optimistic pair
+     *  is replaced by the exact-body replay rather than duplicated. */
+    replaceTurnIds?: readonly [string, string];
+  } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -364,8 +371,19 @@ export function NotebookChat({
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
-        (partial, cites) => {
-          setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
+        (partial, cites, liveSafetyNotice) => {
+          setTurns((prev) =>
+            prev.map((x) =>
+              x.id === aId
+                ? {
+                    ...x,
+                    content: partial,
+                    citations: cites,
+                    ...(liveSafetyNotice ? { safetyNotice: liveSafetyNotice } : {}),
+                  }
+                : x,
+            ),
+          );
         },
       );
       // ADR-0038 rule 6: no terminal `status` frame arrived, so the stream was
@@ -383,6 +401,9 @@ export function NotebookChat({
               : x,
           ),
         );
+        if (!controller.signal.aborted && !safetyNotice) {
+          setFailed({ body, replaceTurnIds: [userTurn.id, aId] });
+        }
         return;
       }
       setTurns((prev) =>
@@ -433,7 +454,7 @@ export function NotebookChat({
         // identical body. Nothing is fabricated in the transcript.
         setTurns((prev) => prev.filter((x) => x.id !== aId && x.id !== userTurn.id));
         setInput((cur) => restoreComposer(cur, body.message));
-        setFailed(body);
+        setFailed({ body });
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -454,8 +475,12 @@ export function NotebookChat({
 
   const retry = useCallback(() => {
     if (!failed || busy) return;
-    setInput((cur) => (cur === failed.message ? "" : cur));
-    void post(failed);
+    if (failed.replaceTurnIds) {
+      const stale = new Set(failed.replaceTurnIds);
+      setTurns((prev) => prev.filter((turn) => !stale.has(turn.id)));
+    }
+    setInput((cur) => (cur === failed.body.message ? "" : cur));
+    void post(failed.body);
   }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
@@ -513,7 +538,11 @@ export function NotebookChat({
         )}
         {failed && !busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }} data-testid="send-failed">
-            <span>Couldn’t send — your question is still in the box.</span>
+            <span>
+              {failed.replaceTurnIds
+                ? "The answer was interrupted — retry the same request."
+                : "Couldn’t send — your question is still in the box."}
+            </span>
             <button
               type="button"
               onClick={retry}

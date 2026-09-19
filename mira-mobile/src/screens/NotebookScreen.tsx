@@ -346,6 +346,17 @@ export function NotebookScreen({
       ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
       ...(sensor?.visualEvidence ? { visualEvidence: sensor.visualEvidence } : {}),
     };
+    // A clean transport truncation stays visible until Retry. Replace that
+    // local partial when replay begins; the server owns the same request id,
+    // so the UI must not show two exchanges for one logical send.
+    if (replay) {
+      setLiveTurns((current) => {
+        const last = current.at(-1);
+        return last?.q === question && isTruncatedTurn(last.a) && last.a.safetyTrigger === undefined
+          ? current.slice(0, -1)
+          : current;
+      });
+    }
     const ctl = new AbortController();
     abortRef.current = ctl;
     setQ("");
@@ -364,7 +375,23 @@ export function NotebookScreen({
         signal: ctl.signal,
         onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
-      setLiveTurns((t) => [...t, { q: question, a }]);
+      if (isTruncatedTurn(a)) {
+        const interrupted: ChatTurn = {
+          answer: a.answer,
+          citations: [],
+          status: "",
+          sawStatus: false,
+          ...(a.safetyTrigger !== undefined ? { safetyTrigger: a.safetyTrigger } : {}),
+          ...(a.identityDisputed ? { identityDisputed: true as const } : {}),
+        };
+        setLiveTurns((t) => [...t, { q: question, a: interrupted }]);
+        if (a.safetyTrigger === undefined) {
+          setFailedSend(body);
+          setChatError("The answer was interrupted — retry the same request.");
+        }
+      } else {
+        setLiveTurns((t) => [...t, { q: question, a }]);
+      }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;
       if (ctl.signal.aborted) {
@@ -1012,7 +1039,9 @@ export function NotebookScreen({
                         hides that content may be missing. */}
                     <div className="meta answer-stopped">
                       {truncated
-                        ? "Incomplete — the connection ended before the answer finished. Ask again to retry."
+                        ? safety
+                          ? "Safety stop retained — isolate the machine before proceeding."
+                          : "Incomplete — the connection ended before the answer finished. Ask again to retry."
                         : "Stopped"}
                     </div>
                   </>

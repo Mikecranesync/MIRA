@@ -26,7 +26,12 @@ const { pool } = await vi.hoisted(async () => {
 
 vi.mock("@/lib/db", () => ({ default: pool }));
 
-import { listTurns, NotebookNotFoundError, recordTurn } from "../equipment-notebooks";
+import {
+  claimNotebookTurnRequest,
+  listTurns,
+  NotebookNotFoundError,
+  recordTurn,
+} from "../equipment-notebooks";
 
 const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;
 
@@ -109,8 +114,29 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
     expect(landed.rows[0].n).toBe(0);
   });
 
-  it("a retried client request id leaves exactly one durable turn", async () => {
+  it("claims before inference, hides pending state, and replays one exact terminal turn", async () => {
     const clientRequestId = "cccccccc-0000-4000-8000-00000000000c";
+    const requestPayload = { question: "idempotent safety question", image: null };
+    const [first, second] = await Promise.all([
+      claimNotebookTurnRequest(TENANT_A, nbA, {
+        ownerUserId: USER_A,
+        clientRequestId,
+        question: "idempotent safety question",
+        requestPayload,
+      }),
+      claimNotebookTurnRequest(TENANT_A, nbA, {
+        ownerUserId: USER_A,
+        clientRequestId,
+        question: "idempotent safety question",
+        requestPayload,
+      }),
+    ]);
+    expect([first.status, second.status].sort()).toEqual(["claimed", "in_progress"]);
+    const claim = first.status === "claimed" ? first : second;
+    if (claim.status !== "claimed") throw new Error("expected the first request to own the claim");
+    const whilePending = await listTurns(TENANT_A, nbA, 50, { viewerUserId: USER_A });
+    expect(whilePending.some((turn) => turn.question === "idempotent safety question")).toBe(false);
+
     const turn = {
       question: "idempotent safety question",
       answerStatus: "answered" as const,
@@ -120,9 +146,28 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
       model: null,
       ownerUserId: USER_A,
       clientRequestId,
+      claimToken: claim.claimToken,
     };
     await recordTurn(TENANT_A, nbA, turn);
-    await recordTurn(TENANT_A, nbA, turn);
+
+    const replay = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "idempotent safety question",
+      requestPayload,
+    });
+    expect(replay).toMatchObject({
+      status: "replay",
+      turn: {
+        question: "idempotent safety question",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP",
+        enabledSourceDocIds: [],
+        evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+        model: null,
+        basis: null,
+      },
+    });
     const landed = await q(
       `SELECT count(*)::int AS n FROM equipment_notebook_turns
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid

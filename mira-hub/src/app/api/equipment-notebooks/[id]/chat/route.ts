@@ -34,14 +34,18 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
+  abandonNotebookTurnRequest,
+  claimNotebookTurnRequest,
   getNotebook,
   listSources,
   normalizeNotebookThreadId,
+  NotebookNotFoundError,
   recordTurn,
   resolveBoundAsset,
   validateChatSources,
   type ResolvedAsset,
   originFileIdsByDoc,
+  type StoredNotebookTurn,
 } from "@/lib/equipment-notebooks";
 import {
   ELECTRICAL_HAZARD_DIRECTIVE,
@@ -101,9 +105,16 @@ import type {
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
+  NotebookChatFrame,
   SafetyNoticeEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
+  EvidenceBasis,
+} from "@/lib/notebook-chat-types";
+import {
+  isMachineEvidenceEntry,
+  isSafetyNoticeEntry,
+  isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
@@ -465,6 +476,116 @@ function safetyStopResponse(
   });
 }
 
+const REPLAY_BASES = new Set<EvidenceBasis>([
+  "general_reasoning",
+  "identified_component",
+  "oem_documentation",
+  "workspace_evidence",
+  "machine_history",
+  "live_machine_evidence",
+]);
+
+function replayBasisLabel(basis: EvidenceBasis): string {
+  switch (basis) {
+    case "general_reasoning":
+      return "General guidance — not grounded in this machine's documents.";
+    case "oem_documentation":
+      return "Grounded in this notebook's sources.";
+    case "machine_history":
+      return "Grounded in recorded machine history — not live.";
+    case "live_machine_evidence":
+      return "Grounded in live machine evidence.";
+    case "identified_component":
+      return "Grounded in the identified component.";
+    case "workspace_evidence":
+      return "Grounded in workspace evidence.";
+  }
+}
+
+/** Rebuild the canonical terminal projection from the immutable stored row.
+ *  A duplicate request never reaches retrieval/provider work. Safety is sent
+ *  before content and repeated in the response header, so a second transport
+ *  interruption remains fail-closed. */
+function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
+  const enc = new TextEncoder();
+  const citations = turn.evidence.filter(
+    (entry): entry is EvidenceCitation =>
+      typeof entry === "object" && entry !== null && typeof (entry as { docId?: unknown }).docId === "string",
+  );
+  const safetyNotice = turn.evidence.find(isSafetyNoticeEntry) ?? null;
+  const machineEvidence = turn.evidence.find(isMachineEvidenceEntry) ?? null;
+  const visualEvidence = turn.evidence.find(isVisualObservationEntry) ?? null;
+  const identityDisputed = turn.evidence.some(
+    (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
+  );
+  const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const emit = (frame: NotebookChatFrame) => controller.enqueue(enc.encode(sse(frame)));
+      if (identityDisputed) emit(IDENTITY_DISPUTE_FRAME);
+
+      const sources: NotebookSourcesFrame = {
+        kind: "sources",
+        citations: safetyNotice ? [] : citations,
+        sourceSnapshot: turn.enabledSourceDocIds,
+      };
+      if (safetyNotice) {
+        emit(sources);
+        emit({ kind: "safety", trigger: safetyNotice.trigger });
+        if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
+        if (turn.answerText) {
+          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        }
+      } else if (turn.answerStatus === "insufficient_evidence") {
+        emit(sources);
+        if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
+      } else {
+        if (turn.answerText) {
+          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        }
+        emit(sources);
+        if (basis) {
+          emit({
+            kind: "evidence",
+            basis,
+            label: replayBasisLabel(basis),
+            ...(machineEvidence ? { machineEvidence } : {}),
+            ...(visualEvidence ? { visualEvidence } : {}),
+            ...(identityDisputed ? { identityDisputed: true } : {}),
+          });
+        } else if (visualEvidence) {
+          emit(visualEvidenceMarker(visualEvidence));
+        }
+      }
+
+      const status: NotebookStatusFrame = turn.answerStatus === "insufficient_evidence"
+        ? {
+            kind: "status",
+            status: turn.answerStatus,
+            message: turn.answerText ?? (visualEvidence
+              ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+              : "I couldn't find that in the selected sources."),
+          }
+        : turn.answerStatus === "error"
+          ? { kind: "status", status: "error", message: "No answer provider available." }
+          : { kind: "status", status: "answered" };
+      emit(status);
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "X-Idempotent-Replay": "true",
+      ...(safetyNotice ? { "X-Safety-Stop": safetyNotice.trigger } : {}),
+    },
+  });
+}
+
 async function verifyVisualEntry(
   tenantId: string,
   notebookId: string,
@@ -640,6 +761,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
+  // Own the idempotency key BEFORE any photo/machine reads, retrieval, or
+  // provider work. A completed duplicate replays the immutable stored turn;
+  // a concurrent duplicate cannot start a second nondeterministic execution.
+  let requestClaimToken: string | null = null;
+  if (clientRequestId) {
+    try {
+      const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
+        ownerUserId: ctx.userId,
+        clientRequestId,
+        question: message,
+        threadId,
+        requestPayload: body,
+      });
+      if (claim.status === "replay") return replayNotebookTurnResponse(claim.turn);
+      if (claim.status === "in_progress") {
+        return NextResponse.json(
+          { error: "request_in_progress", message: "This request is still being completed." },
+          { status: 409, headers: { "Retry-After": "2" } },
+        );
+      }
+      if (claim.status === "mismatch") {
+        return NextResponse.json(
+          { error: "client_request_id_reused", message: "That request id belongs to a different chat request." },
+          { status: 409 },
+        );
+      }
+      requestClaimToken = claim.claimToken;
+    } catch (err) {
+      if (err instanceof NotebookNotFoundError) {
+        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+      }
+      throw err;
+    }
+  }
+  const abandonRequestClaim = () => clientRequestId
+    ? abandonNotebookTurnRequest(ctx.tenantId, notebookId, ctx.userId, clientRequestId)
+    : Promise.resolve();
+
   // Verify the claimed photo before any terminal refusal. This bounded,
   // tenant-scoped lookup does not make the photo grounding and never delays a
   // stop on provider/RAG work; it only preserves the attachment on the record.
@@ -706,6 +865,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ownerUserId: ctx.userId,
       threadId,
       clientRequestId,
+      claimToken: requestClaimToken,
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
@@ -728,6 +888,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // `error` is a sentence and `code` is the discriminator: mira-mobile renders
     // `data.error` verbatim (client.ts:198-208), so returning only the token
     // puts the literal string "uns_required" on the technician's phone.
+    await abandonRequestClaim();
     return NextResponse.json(
       {
         error:
@@ -832,6 +993,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // exists, the read failed. Say so and let the client retry (503), rather
     // than telling the technician the machine has no history.
     if (machineUnavailableReason === "fetch_failed") {
+      await abandonRequestClaim();
       return NextResponse.json(
         {
           error: "Machine Memory could not be read just now. Try again in a moment.",
@@ -842,6 +1004,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
     if (windowEmpty) {
+      await abandonRequestClaim();
       return NextResponse.json(
         {
           error: "Nothing was recorded in this window. Widen the window or check the gateway.",
@@ -851,6 +1014,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 422 },
       );
     }
+    await abandonRequestClaim();
     return NextResponse.json(
       {
         error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
@@ -918,6 +1082,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ownerUserId: ctx.userId,
       threadId,
       clientRequestId,
+      claimToken: requestClaimToken,
       question: message,
       answerStatus: "insufficient_evidence",
       answerText: visualEntry
@@ -1001,6 +1166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const refusal = buildApprovedContextRefusal(approvedSummary);
       // `error` is a sentence (mira-mobile renders it verbatim); `code` is the
       // discriminator.
+      await abandonRequestClaim();
       return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
     }
   }
@@ -1376,6 +1542,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             ownerUserId: ctx.userId,
             threadId,
             clientRequestId,
+            claimToken: requestClaimToken,
             question: message,
             answerStatus: "error",
             answerText: partialText,
@@ -1645,6 +1812,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ownerUserId: ctx.userId,
           threadId,
           clientRequestId,
+          claimToken: requestClaimToken,
           question: message,
           answerStatus,
           answerText: served ? answerText : null,

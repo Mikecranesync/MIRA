@@ -307,9 +307,20 @@ describe("CMPS-2 — failure keeps the question, Retry re-posts the identical bo
     const fetchImpl = vi.fn(async () =>
       new Response(null, { status: 200, headers: { "X-Safety-Stop": "exposed-conductor" } }),
     );
+    const updates: Array<{ content: string; safetyNotice: unknown }> = [];
     await expect(
-      postNotebookChat("/chat", body, new AbortController().signal, () => {}, fetchImpl as unknown as typeof fetch),
+      postNotebookChat(
+        "/chat",
+        body,
+        new AbortController().signal,
+        (content, _citations, safetyNotice) => updates.push({ content, safetyNotice }),
+        fetchImpl as unknown as typeof fetch,
+      ),
     ).rejects.toMatchObject({
+      safetyNotice: { kind: "safety_notice", trigger: "exposed-conductor" },
+    });
+    expect(updates[0]).toEqual({
+      content: "",
       safetyNotice: { kind: "safety_notice", trigger: "exposed-conductor" },
     });
   });
@@ -576,6 +587,23 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
 });
 
 describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", () => {
+  it("publishes safety before content and keeps it on later live updates", async () => {
+    const updates: Array<{ content: string; safetyNotice: unknown }> = [];
+    await readNotebookStream(
+      streamOf([
+        frame({ kind: "safety", trigger: "arc flash" }),
+        frame({ kind: "content", content: "Do not approach." }),
+        frame({ kind: "status", status: "answered" }),
+      ]),
+      (content, _citations, safetyNotice) => updates.push({ content, safetyNotice }),
+    );
+
+    expect(updates).toEqual([
+      { content: "", safetyNotice: { kind: "safety_notice", trigger: "arc flash" } },
+      { content: "Do not approach.", safetyNotice: { kind: "safety_notice", trigger: "arc flash" } },
+    ]);
+  });
+
   it("picks up the safety frame and exposes it as safetyNotice on the result", async () => {
     const out = await readNotebookStream(
       streamOf([

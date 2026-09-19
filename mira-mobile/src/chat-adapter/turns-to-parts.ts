@@ -215,6 +215,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
   // that never finished. Treated exactly like a stopped turn: partial text,
   // no citations, no basis, no follow-ups (PRD §10.9 / §7.6).
   if (isTruncatedTurn(a)) {
+    const safetyTerminal = a.safetyTrigger !== undefined;
     return [
       user,
       {
@@ -232,9 +233,11 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           // exactly the misread this slice exists to prevent.
           safetyTrigger: a.safetyTrigger,
           identityDisputed: a.identityDisputed === true,
-          error: "provider_failure",
+          ...(safetyTerminal ? {} : { error: "provider_failure" as const }),
         }),
-        lifecycle: "failed",
+        // Once the authoritative safety marker arrived, the warning itself is
+        // terminal and non-retryable even if the transport tail was lost.
+        lifecycle: safetyTerminal ? "completed" : "failed",
         status: a.status || null,
       },
     ];

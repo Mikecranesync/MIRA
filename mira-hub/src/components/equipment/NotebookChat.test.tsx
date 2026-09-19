@@ -209,6 +209,7 @@ describe("Bubble — truncated turn (ADR-0038 rule 6)", () => {
     const html = renderToStaticMarkup(<Bubble turn={withSafety} />);
     expect(html).toContain("Safety stop");
     expect(html).toContain('data-testid="truncated-caption"');
+    expect(html).not.toContain("Ask again to retry");
   });
 });
 

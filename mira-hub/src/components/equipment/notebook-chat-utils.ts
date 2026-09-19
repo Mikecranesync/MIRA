@@ -154,6 +154,12 @@ export type StreamResult = {
   sawStatus: boolean;
 };
 
+export type NotebookStreamListener = (
+  content: string,
+  citations: EvidenceCitation[],
+  safetyNotice: SafetyNoticeEntry | null,
+) => void;
+
 export const PHOTO_ABSTENTION_COPY =
   "I saw your photo, but I couldn't find anything about it in the selected sources.";
 
@@ -172,9 +178,10 @@ export function answerContentFor(
   return "No answer provider was available.";
 }
 
-/** Consume the notebook SSE body frame by frame. `onContent` fires after every
- *  `content` frame with the accumulated text so far (live rendering). Frames
- *  are `\n\n`-delimited `data:` lines — the same wire contract as before
+/** Consume the notebook SSE body frame by frame. `onUpdate` fires after every
+ *  `content` frame with the accumulated text so far and immediately when a
+ *  safety marker lands, even before content (live rendering). Frames are
+ *  `\n\n`-delimited `data:` lines — the same wire contract as before
  *  (content* → sources → evidence → [usage] → status → [followups] → [DONE]).
  *
  *  If the reader throws (an abort, a dropped connection) the partial `content`
@@ -190,7 +197,8 @@ export function answerContentFor(
  *  exactly as a healthy stream does. */
 export async function readNotebookStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onContent: (content: string, citations: EvidenceCitation[]) => void,
+  onUpdate: NotebookStreamListener,
+  initialSafetyNotice: SafetyNoticeEntry | null = null,
 ): Promise<StreamResult> {
   const dec = new TextDecoder();
   let buf = "";
@@ -205,7 +213,7 @@ export async function readNotebookStream(
     followups: [],
     machineEvidence: null,
     visualEvidence: null,
-    safetyNotice: null,
+    safetyNotice: initialSafetyNotice,
     sawStatus: false,
   };
   try {
@@ -230,11 +238,12 @@ export async function readNotebookStream(
         }
         else if (frame.kind === "safety") {
           out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
+          onUpdate(out.content, out.citations, out.safetyNotice);
         }
         else if (frame.kind === "followups") out.followups = frame.suggestions;
         else if (frame.kind === "content") {
           out.content += frame.content;
-          onContent(out.content, out.citations);
+          onUpdate(out.content, out.citations, out.safetyNotice);
         } else if (frame.kind === "status") {
           out.status = frame.status;
           out.statusMessage = frame.message?.trim() || null;
@@ -316,7 +325,7 @@ export async function postNotebookChat(
   url: string,
   body: ChatBody,
   signal: AbortSignal,
-  onContent: (content: string, citations: EvidenceCitation[]) => void,
+  onUpdate: NotebookStreamListener,
   fetchImpl: typeof fetch = fetch,
 ): Promise<StreamResult> {
   const res = await fetchImpl(url, {
@@ -330,17 +339,21 @@ export async function postNotebookChat(
   // as the safety identity before reading the body so an empty/broken stream
   // cannot fall back to the ordinary Retry path after the turn was persisted.
   const safetyHeader = res.headers.get("X-Safety-Stop");
+  const headerSafety = safetyHeader === null
+    ? null
+    : { kind: "safety_notice", trigger: safetyHeader } satisfies SafetyNoticeEntry;
+  if (headerSafety) onUpdate("", [], headerSafety);
   const carryHeaderSafety = (err: unknown): unknown => {
-    if (safetyHeader === null || !err || typeof err !== "object") return err;
+    if (!headerSafety || !err || typeof err !== "object") return err;
     const interrupted = err as Record<string, unknown>;
     if (!isSafetyNoticeEntry(interrupted.safetyNotice)) {
-      interrupted.safetyNotice = { kind: "safety_notice", trigger: safetyHeader } satisfies SafetyNoticeEntry;
+      interrupted.safetyNotice = headerSafety;
     }
     return err;
   };
   if (!res.body) throw carryHeaderSafety(new Error("no_stream"));
   try {
-    return await readNotebookStream(res.body.getReader(), onContent);
+    return await readNotebookStream(res.body.getReader(), onUpdate, headerSafety);
   } catch (err) {
     throw carryHeaderSafety(err);
   }
