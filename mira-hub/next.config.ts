@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 // Phase 1: NEXT_PUBLIC_BASE_PATH unset → basePath='/hub' (current behavior).
 // Phase 2: NEXT_PUBLIC_BASE_PATH='' → basePath='' (hub serves at root).
@@ -17,7 +18,15 @@ const nextConfig: NextConfig = {
   // out-of-root `../mira-bridge/**` exclude compiled locally yet crashed the
   // prod Turbopack build ("glob '../mira-bridge/**' is invalid, it has a prefix
   // that navigates out of the project root") — see below.
-  turbopack: { root: import.meta.dirname },
+  // Hub mount PR 1 (#3839): the shared FactoryLM shell lives in ../packages/factorylm-*,
+  // outside this app. The compiler root is the repo root so those sources compile, and
+  // tsconfig `paths` pin react / react-dom / @assistant-ui/react to THIS app's copies so
+  // the shell never resolves a second React (the mobile lane's useMemoCache trap).
+  // NOTE: outputFileTracingRoot must NOT be pinned back to this dir — in Next 16 it is the
+  // same knob as the Turbopack root, and pinning it makes ../packages unresolvable again.
+  // Consequence: .next/standalone mirrors the repo layout (server.js under mira-hub/);
+  // the Dockerfile copies it accordingly.
+  turbopack: { root: path.join(import.meta.dirname, "..") },
   basePath,
   assetPrefix: basePath,
   // Dev-only (ignored by `next build`): allow phone/tablet testing over the
@@ -38,6 +47,7 @@ const nextConfig: NextConfig = {
   // +5mb headroom covers multipart framing overhead.
   experimental: {
     proxyClientMaxBodySize: "55mb",
+    externalDir: true,
   },
   // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
   // Under `output: "standalone"`, @vercel/nft does not trace that dynamic

@@ -59,7 +59,9 @@ jobs:
       - name: Install mira-hub deps
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Install Playwright Chromium
         if: steps.changes.outputs.hub == 'true'
