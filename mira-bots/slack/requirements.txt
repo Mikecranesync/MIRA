@@ -10,6 +10,6 @@ psycopg2-binary>=2.9
 # PrintSense print interpreter (same isolated print-vision lane as Telegram).
 # SDKs are lazy-imported and inert unless PRINT_VISION_PROVIDER plus that
 # provider's key are set; pydantic backs the typed PrintSynth graph.
-pydantic>=2.0
+pydantic>=2.0,<2.12  # <2.12: 2.12+ breaks the RAG worker structured-output model build (unable to infer type for attribute "description"); see engine.py:5686
 anthropic>=0.116.0
 openai>=1.66.0
