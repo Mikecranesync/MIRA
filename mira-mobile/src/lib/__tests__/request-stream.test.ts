@@ -46,9 +46,18 @@ describe("requestStream", () => {
   });
 
   it("calls onChunk per body chunk, in order, and returns the whole text", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(streamOf(["a\n\n", "b\n\n", "c"]));
+    const response = streamOf(["a\n\n", "b\n\n", "c"]);
+    response.headers.set("X-Safety-Stop", "smoke");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
     const seen: string[] = [];
-    const r = await requestStream("/api/x", { json: { q: 1 }, onChunk: (c) => seen.push(c) });
+    const onResponseHeaders = vi.fn();
+    const r = await requestStream("/api/x", {
+      json: { q: 1 },
+      onResponseHeaders,
+      onChunk: (c) => seen.push(c),
+    });
+    expect(onResponseHeaders).toHaveBeenCalledOnce();
+    expect(onResponseHeaders.mock.calls[0][0].get("X-Safety-Stop")).toBe("smoke");
     expect(seen).toEqual(["a\n\n", "b\n\n", "c"]);
     expect(r.text).toBe("a\n\nb\n\nc");
     expect(r.status).toBe(200);

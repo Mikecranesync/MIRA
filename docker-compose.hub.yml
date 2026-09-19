@@ -3,8 +3,9 @@ services:
     mem_limit: 1g
     memswap_limit: 1g
     build:
-      context: ./mira-hub
-      dockerfile: Dockerfile
+      # Repo-root context: the Hub image compiles ../packages/factorylm-* (Hub mount PR 1, #3839).
+      context: .
+      dockerfile: mira-hub/Dockerfile
     container_name: mira-hub
     restart: unless-stopped
     ports:

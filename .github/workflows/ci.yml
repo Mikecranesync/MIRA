@@ -709,7 +709,9 @@ jobs:
       - name: Install mira-hub dependencies
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Run vitest unit suite
         # `bun run test` == `vitest run`; the include glob (src/**/*.test.ts)
@@ -1359,6 +1361,24 @@ jobs:
       - name: Scan mira-mcp
         run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-mcp:scan
 
+      - name: Build mira-hub
+        # Added 2026-09-19: the production Hub image (app.factorylm.com) had no
+        # automated build. #3839 moved mira-hub/Dockerfile to a REPO-ROOT build
+        # context (docker-compose.*.yml: context: ., dockerfile:
+        # mira-hub/Dockerfile) so it can COPY ../packages/factorylm-* for the
+        # shared FactoryLM shell, with a nested standalone runner — exactly the
+        # kind of COPY-path change that only fails at deploy time unless CI
+        # builds it. Context is `.` to match compose.
+        run: |
+          docker buildx build \
+            -f mira-hub/Dockerfile . \
+            --cache-from type=gha,scope=mira-hub \
+            --cache-to type=gha,mode=max,scope=mira-hub \
+            -t mira-hub:scan --load
+
+      - name: Scan mira-hub
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-hub:scan
+
       # --- mira-pipeline (added 2026-06-03 after the prod-chat outage) ------------
       # mira-pipeline was the only saas image NOT built in CI, so the Ignition
       # cutover's missing Dockerfile COPYs slipped to prod (ModuleNotFoundError:
@@ -1404,7 +1424,9 @@ jobs:
   #     changed it MUST equal `success`.
   #
   # Gated (must pass to merge): actionlint, migration-order-check,
-  #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
+  #   lint-and-type-check, test-unit, mira-hub-unit, mobile-unit-tests
+  #   (added 2026-09-19 — a red mobile suite was invisible to the gate on
+  #   #3837), mira-web-pack-tests,
   #   architecture-check, license-check, sast-semgrep, sast-bandit,
   #   precommit-hook-tests, capability-closure, docs-fault-codes,
   #   bench-harness-tests (promoted 2026-08-26 after 8 consecutive greens on
@@ -1431,6 +1453,7 @@ jobs:
       - lint-and-type-check
       - test-unit
       - mira-hub-unit
+      - mobile-unit-tests
       - mira-web-pack-tests
       - architecture-check
       - license-check
@@ -1456,6 +1479,7 @@ jobs:
           LINT_RESULT: ${{ needs.lint-and-type-check.result }}
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
+          MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
           ARCH_RESULT: ${{ needs.architecture-check.result }}
           LICENSE_RESULT: ${{ needs.license-check.result }}
@@ -1490,6 +1514,16 @@ jobs:
           require_success shared-line-guard     "$SHARED_LINE_RESULT"
           require_success lint-and-type-check   "$LINT_RESULT"
           require_success mira-hub-unit         "$HUB_UNIT_RESULT"
+          # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
+          # here, so a red mobile suite could not fail the merge (observed on
+          # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape
+          # as mira-hub-unit — the job has NO job-level `if:`; it always runs
+          # and self-skips its STEPS via dorny/paths-filter when nothing under
+          # its `mobile` filter changed, so its job result is `success` on an
+          # untouched PR and `failure` on a red suite. It is never job-level
+          # `skipped`, so plain require_success is the correct (fail-closed)
+          # evaluation — no docs-only carve-out needed or wanted.
+          require_success mobile-unit-tests     "$MOBILE_UNIT_RESULT"
           require_success mira-web-pack-tests   "$WEB_PACK_RESULT"
           require_success architecture-check    "$ARCH_RESULT"
           require_success license-check         "$LICENSE_RESULT"

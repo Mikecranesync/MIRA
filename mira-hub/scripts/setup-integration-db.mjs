@@ -26,7 +26,8 @@ const defaultMigrationFiles = [
   "072_hub_uploads_content_sha256.sql",
   // Equipment Notebook turns + ownership (086): the notebook lineage is
   // 073 → 081 (asset snapshot) → 084 (basis; FK to 027 namespace_direct_uploads)
-  // → 085 (provenance) → 086 (owner_user_id) → 087 (thread_id).
+  // → 085 (provenance) → 086 (owner_user_id) → 087 (thread_id)
+  // → 088 (request key) → 089 (pre-inference claim/replay lease).
   "027_namespace_direct_uploads.sql",
   "059_namespace_filing_cabinet.sql",
   "073_equipment_notebooks.sql",
@@ -36,6 +37,8 @@ const defaultMigrationFiles = [
   "085_notebook_source_canonical_provenance.sql",
   "086_notebook_turn_owner.sql",
   "087_notebook_thread_identity.sql",
+  "088_notebook_turn_idempotency.sql",
+  "089_notebook_turn_request_claim.sql",
   // Visual-evidence spine (ADR-0027 Phase 1) + the TEXT-tenant fix: visual_session,
   // evidence_item, observation, region_of_interest, visual_question, answer_claim.
   "063_visual_sessions.sql",
@@ -89,6 +92,13 @@ async function ensureBootstrap(client) {
   await client.query("CREATE EXTENSION IF NOT EXISTS ltree");
   await client.query("CREATE EXTENSION IF NOT EXISTS btree_gist");
   await client.query("DO $$ BEGIN CREATE ROLE factorylm_app NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$");
+  // withTenantContext uses `SET LOCAL ROLE factorylm_app`. Disposable hosted
+  // Postgres users are not superusers, so creating the role is insufficient:
+  // the connection user must be a member before any RLS integration test can
+  // exercise application SQL.
+  await client.query(`DO $$ BEGIN
+    EXECUTE format('GRANT factorylm_app TO %I', current_user);
+  END $$`);
   await client.query("GRANT USAGE ON SCHEMA public TO factorylm_app");
   await client.query(`
     CREATE TABLE IF NOT EXISTS integration_schema_migrations (

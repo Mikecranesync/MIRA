@@ -1,4 +1,6 @@
-import type { ConversionIntent,
+import type {
+  Attachment,
+  ConversionIntent,
   ProjectNode,
   ContextSnapshot,
   InteractionPart,
@@ -13,8 +15,15 @@ import { useState, type Dispatch, type ReactNode } from "react";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
-  /** The host's real send path; the shell clears its draft after calling it. */
-  readonly onSend?: (text: string) => void;
+  /**
+   * The host's real send path; the shell clears its draft after calling it.
+   *
+   * `attachments` carries whatever the composer is holding for this thread, in
+   * capture order, and is empty when there is none. It is REQUIRED rather than
+   * optional so a host cannot silently drop a technician's evidence by writing
+   * a one-argument handler and never noticing.
+   */
+  readonly onSend?: (text: string, attachments: readonly Attachment[]) => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**

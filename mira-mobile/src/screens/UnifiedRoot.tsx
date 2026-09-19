@@ -23,6 +23,7 @@ import { resolveScan } from "../lib/scan-landing";
 import {
   LEGACY_THREAD_ID,
   notebookIdFromProject,
+  sourcesRefFromItem,
   notebookMachines,
   notebookProjects,
   threadRefFromItem,
@@ -212,6 +213,13 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
       projects: notebookProjects(navigationNotebooks),
       machines: notebookMachines(navigationNotebooks),
       onOpenItem: (item: ProjectItem) => {
+        // Sources is its own destination now, not a side effect of attaching.
+        const sourcesFor = sourcesRefFromItem(item.id);
+        if (sourcesFor) {
+          open(sourcesFor);
+          setQueuedOpenAddSources(true);
+          return;
+        }
         const ref = threadRefFromItem(item.id);
         if (ref) open(ref.notebookId, ref.threadId);
       },
@@ -332,15 +340,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           canRetry={false}
           chatError={null}
           handlers={{
+            // HOME has no notebook yet: the shell stashes whatever the composer
+            // is holding and this send creates the thread that claims it.
             onSend: (text) => {
               const id = startNewThread();
               if (id) setQueuedQuestion(text);
             },
             onStop: () => {},
             onCitation: () => {},
-            onAttachPhoto: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
-            onAttachCamera: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
-            onAttachFile: () => { if (startNewThread()) setQueuedOpenAddSources(true); },
             onRetry: undefined,
             onNewChat: () => { startNewThread(); },
             onCreateProject: () => { onCreateProject(); },
@@ -351,6 +358,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             },
           }}
           host={host}
+          // No notebook exists yet, so nothing can upload here; the shell holds
+          // the bytes and hands them to the thread this send creates.
+          attachmentNotebookId={null}
           meta={{
             notebookId: "home",
             threadId: "home",
