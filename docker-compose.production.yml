@@ -63,6 +63,7 @@ services:
     # Production-sized cap (the OVH host has ~12 GiB; Hub idles ~70 MiB). Raised
     # from the recovery overlay's small-box 1g. Override with MIRA_HUB_MEM.
     mem_limit: ${MIRA_HUB_MEM:-2g}
+    memswap_limit: ${MIRA_HUB_MEM:-2g}
 
   mira-web:
     # Drop the external `cmms-ext` network (Atlas/CMMS is not restored yet; the

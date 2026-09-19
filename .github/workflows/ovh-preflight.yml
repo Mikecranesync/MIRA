@@ -49,6 +49,10 @@ jobs:
         run: |
           docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
           python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; p=str(h.get('ports')); n=list(h.get('networks') or []); assert '127.0.0.1:3101' in p, 'hub not localhost-bound: '+p; assert n==['mira-net'], 'hub networks != [mira-net]: '+str(n); print('hub bind OK', p, '| networks OK', n)"
+      - name: Hub mem_limit equals memswap_limit (Docker requires memswap >= mem)
+        run: |
+          docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
+          python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; mem=h.get('mem_limit'); swap=h.get('memswap_limit'); assert mem==swap, f'mem_limit={mem} != memswap_limit={swap} (Docker requires memswap>=mem)'; print(f'hub mem==memswap OK: {mem}')"
 
   # Safe: derive the deploy PUBLIC key from the secret (public material only).
   emit-deploy-pubkey:
