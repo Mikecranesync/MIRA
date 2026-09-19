@@ -243,6 +243,10 @@ export async function readNotebookStream(
       }
     }
   } catch (err) {
+    // `status` is the route's authoritative terminal frame. A reader failure
+    // after it (for example while waiting for follow-ups or [DONE]) cannot
+    // retroactively turn a completed answer into a stop/truncation.
+    if (out.sawStatus) return out;
     throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
       partial: out.content,
       ...(out.safetyNotice ? { safetyNotice: out.safetyNotice } : {}),
@@ -450,4 +454,19 @@ export function stoppedTurnFromAbort<T extends { content: string }>(turn: T, err
   return isSafetyNoticeEntry(interrupted.safetyNotice)
     ? { ...stopped, safetyNotice: interrupted.safetyNotice }
     : stopped;
+}
+
+/** A non-user reader failure ordinarily follows the retry/rollback path. The
+ *  sole exception is an already-received safety hard-stop: retain its partial
+ *  and validated warning so a network reset cannot erase it. */
+export function retainedSafetyStreamFailure(
+  err: unknown,
+): { partial: string; safetyNotice: SafetyNoticeEntry } | null {
+  const interrupted = err && typeof err === "object" ? (err as Record<string, unknown>) : {};
+  return isSafetyNoticeEntry(interrupted.safetyNotice)
+    ? {
+        partial: typeof interrupted.partial === "string" ? interrupted.partial : "",
+        safetyNotice: interrupted.safetyNotice,
+      }
+    : null;
 }

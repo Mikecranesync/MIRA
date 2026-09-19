@@ -18,6 +18,7 @@ import {
   isEnterToSend,
   machineReplayCaption,
   postNotebookChat,
+  retainedSafetyStreamFailure,
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
@@ -414,6 +415,20 @@ export function NotebookChat({
         // arrived; no other evidence survives. No retry, no provider call.
         setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurnFromAbort(x, err) : x)));
       } else {
+        const retained = retainedSafetyStreamFailure(err);
+        if (retained) {
+          // A transport failure remains an interrupted/retryable turn, not a
+          // technician Stop, but it cannot erase a safety frame already sent.
+          setTurns((prev) =>
+            prev.map((x) =>
+              x.id === aId
+                ? { ...stoppedTurn(x, retained.partial, "truncated"), safetyNotice: retained.safetyNotice }
+                : x,
+            ),
+          );
+          setFailed(body);
+          return;
+        }
         // Failure keeps the question (CMPS-2): roll back the optimistic
         // exchange, put the text back in the composer, offer Retry with the
         // identical body. Nothing is fabricated in the transcript.

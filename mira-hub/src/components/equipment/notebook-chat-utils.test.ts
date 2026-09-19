@@ -13,6 +13,7 @@ import {
   persistedTurns,
   postNotebookChat,
   readNotebookStream,
+  retainedSafetyStreamFailure,
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
@@ -608,6 +609,30 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
       safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
     });
   });
+
+  it("returns terminal truth when the reader aborts after the status frame", async () => {
+    const out = await readNotebookStream(
+      streamOf(
+        [
+          frame({ kind: "content", content: "P042 sets decel time." }),
+          frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+          frame({ kind: "evidence", basis: "oem_documentation" }),
+          frame({ kind: "status", status: "answered" }),
+          frame({ kind: "followups", suggestions: ["Never reached"] }),
+        ],
+        { abortAfter: 4 },
+      ),
+      () => {},
+    );
+
+    expect(out).toMatchObject({
+      content: "P042 sets decel time.",
+      status: "answered",
+      basis: "oem_documentation",
+      sawStatus: true,
+    });
+    expect(out.followups).toEqual([]);
+  });
 });
 
 describe("stoppedTurnFromAbort — preserve safety, discard unsupported evidence", () => {
@@ -632,6 +657,24 @@ describe("stoppedTurnFromAbort — preserve safety, discard unsupported evidence
     expect(stoppedTurnFromAbort({ content: "" }, { partial: "partial", safetyNotice: { kind: "safety_notice" } })).not.toHaveProperty(
       "safetyNotice",
     );
+  });
+
+  it("retains a validated safety warning from a non-abort reader failure", () => {
+    expect(
+      retainedSafetyStreamFailure(
+        Object.assign(new TypeError("network reset"), {
+          partial: "SAFETY STOP",
+          safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+        }),
+      ),
+    ).toEqual({
+      partial: "SAFETY STOP",
+      safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+    });
+  });
+
+  it("does not retain an ordinary non-abort failure without a safety warning", () => {
+    expect(retainedSafetyStreamFailure(Object.assign(new TypeError("network reset"), { partial: "maybe" }))).toBeNull();
   });
 });
 
