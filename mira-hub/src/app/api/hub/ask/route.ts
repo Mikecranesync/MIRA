@@ -11,6 +11,8 @@ import {
 } from "@/lib/manual-rag";
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
+import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
  *  Deliberately generous for a technician typing questions, and far below what
@@ -80,8 +82,12 @@ export type HubAskResponse = {
   answer: string;
   citations: ManualSource[];
   provider: string | null;
-  /** What the answer rests on — drives the shell's honesty badge (L5). */
-  basis: "manual" | "general_reasoning" | null;
+  /** What the answer rests on — the shared basis vocabulary (`EvidenceBasis`,
+   *  migration 084, `EvidenceBasisKind` in the shell), so the L5 badge is
+   *  server-driven and an unknown value never maps to a stronger claim.
+   *  `oem_documentation` = the answer cited a retrieved manual chunk;
+   *  `general_reasoning` = answered from general knowledge; null = no answer. */
+  basis: EvidenceBasis | null;
 };
 
 // L0 of the ChatGPT-first lock (wiki/architecture/chatgpt-first-maintenance-genie.md
@@ -93,8 +99,9 @@ const SYSTEM_PROMPT = [
   "You are MIRA, a maintenance intelligence assistant for industrial",
   "equipment. You are answering a signed-in maintenance technician asking a",
   "GENERAL question — one not yet bound to a specific machine in their",
-  "namespace. Their own uploaded manuals and the shared OEM library have",
-  "already been searched; any supporting excerpts appear in CONTEXT.",
+  "namespace. Their own uploaded manuals and the shared OEM library are",
+  "searched for every question; any supporting excerpts appear in CONTEXT,",
+  "which also says when that search was unavailable.",
   "",
   "Rules:",
   "- Answer the question. Answer it from your general maintenance and",
@@ -141,6 +148,21 @@ export async function POST(req: Request) {
   }
   const manufacturer = (body.manufacturer ?? "").trim() || null;
 
+  // SAFETY HARD-STOP — before the rate limiter, before retrieval, before any
+  // provider call, exactly as the asset, node and notebook chat routes gate.
+  // The classifier carries the educational carve-out ("what is LOTO?" is a
+  // question, not a hazard report), so the general questions this route exists
+  // for still answer; a hazard report never reaches a model that has been told
+  // to answer rather than refuse. Same body shape as the other routes' stops:
+  // the stop text as the answer, `X-Safety-Stop` naming the trigger.
+  const safetyTrigger = matchSafetyStop(question);
+  if (safetyTrigger) {
+    return NextResponse.json(
+      { answer: SAFETY_STOP, citations: [], provider: null, basis: null } as HubAskResponse,
+      { headers: { "X-Safety-Stop": safetyTrigger } },
+    );
+  }
+
   // Cost control BEFORE retrieval or inference. This endpoint is authenticated,
   // but authentication is not an allowance: one trial or compromised account
   // could otherwise drive unbounded paid cascade completions. Keyed on the
@@ -159,6 +181,7 @@ export async function POST(req: Request) {
   }
 
   let chunks: ManualChunk[] = [];
+  let retrievalFailed = false;
   {
     // #2178 — the RAW owner pool (BYPASSRLS), NOT withTenantContext.
     //
@@ -189,8 +212,11 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       console.error("[hub/ask] retrieval failed:", err);
-      // Continue — the model can still refuse with no context. A retrieval
-      // outage must not become a fabricated answer.
+      // Continue and answer from general knowledge, but SAY the search was
+      // unavailable (F3): an outage must never be reported to the technician
+      // as "your documents did not match", and must never become a fabricated
+      // citation — with no chunks nothing can be cited.
+      retrievalFailed = true;
     } finally {
       client.release();
     }
@@ -205,7 +231,9 @@ export async function POST(req: Request) {
       role: "user",
       content: context
         ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
-        : `CONTEXT: (no manual excerpt matched this question — answer from general knowledge)\n\n---\n\nUSER QUESTION:\n${question}`,
+        : retrievalFailed
+          ? `CONTEXT: (plant-document search was UNAVAILABLE for this question — the manuals were NOT searched; answer from general knowledge and say the document search was unavailable, not that the documents did not match)\n\n---\n\nUSER QUESTION:\n${question}`
+          : `CONTEXT: (no manual excerpt matched this question — answer from general knowledge)\n\n---\n\nUSER QUESTION:\n${question}`,
     },
   ];
 
@@ -252,6 +280,6 @@ export async function POST(req: Request) {
     answer: result.content,
     citations,
     provider: result.provider,
-    basis: citations.length > 0 ? "manual" : "general_reasoning",
+    basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
   } as HubAskResponse);
 }
