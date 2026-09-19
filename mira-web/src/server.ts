@@ -340,6 +340,32 @@ app.use(async (c, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// /demo — the public FactoryLM conveyor demo.
+//
+// This serves a PRE-BUILT static bundle (apps/factorylm-ui-lab -> dist),
+// vendored into public/demo/ exactly the way mira-chat.js and lucide.min.js
+// already are. mira-web stays Hono + vanilla JS: it ships no React source and
+// gains no build step, it just serves files. The React lives inside the bundle.
+//
+// The bundle's CSP is `connect-src 'self' ...`, which is why SimLab is proxied
+// under THIS origin at /simlab/ (see deployment/nginx-factorylm-marketing.conf)
+// rather than called cross-origin. Same origin means no CSP edit and no CORS.
+//
+// `/demo` redirects to the bundle with the demo's own query contract filled in.
+// `simlab=` is deliberately EMPTY: the client joins it to "/simlab/..." and an
+// empty base yields a same-origin relative URL, so no host is baked into the
+// committed artifact.
+// Assets live under /demo-app/, NOT /demo/*: this server already serves
+// `/demo/work-orders` and `/demo/tenant-work-orders` as JSON product routes, and
+// a `/demo/*` static mount declared above them would shadow both. Keeping the
+// bundle on its own prefix makes that collision impossible rather than relying
+// on serveStatic falling through on a miss.
+app.get("/demo", (c) =>
+  c.redirect("/demo-app/demo.html?surface=public&demo=simlab&simlab=", 302),
+);
+app.use("/demo-app/*", serveStatic({ root: "./public" }));
+
 app.use("/public/*", serveStatic({ root: "./" }));
 // Marketing/site imagery served at the conventional /images/* path so the
 // landing page can reference assets the way every other web app does

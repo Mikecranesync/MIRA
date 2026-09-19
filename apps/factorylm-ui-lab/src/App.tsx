@@ -75,7 +75,12 @@ export interface AppProps {
 }
 
 function replaceSearch(search: string): void {
-  window.history.replaceState(null, "", `/${search}`);
+  // Keep the CURRENT path. The hardcoded "/" was harmless while this only ever
+  // ran at the lab's root, but the same bundle is now served from a real site at
+  // /demo-app/demo.html — and rewriting that to "/" silently moved the visitor
+  // to the marketing home URL, so a refresh left the demo entirely. Mirror the
+  // query, never the path.
+  window.history.replaceState(null, "", `${window.location.pathname}${search}`);
 }
 
 export function App({ search = window.location.search, onSearch = replaceSearch }: AppProps = {}) {

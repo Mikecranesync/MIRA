@@ -26,6 +26,7 @@ import {
   ASK_CONVERSION_INTENTS,
   DEFAULT_DEMO_CONFIG,
   assistantTurn,
+  conversionDestination,
   parseDemoConfig,
   revealNewestTurn,
   userTurn,
@@ -58,7 +59,12 @@ describe("demo configuration comes from the query string, never from a commit", 
 
   it("reads every knob, and an absent notebook stays absent rather than becoming a string", () => {
     const config = parseDemoConfig("?simlab=http://127.0.0.1:8098&hub=http://hub.test&notebook=nb-7");
-    expect(config).toEqual({ simlabUrl: "http://127.0.0.1:8098", hubUrl: "http://hub.test", notebookId: "nb-7" });
+    expect(config).toEqual({
+      simlabUrl: "http://127.0.0.1:8098",
+      hubUrl: "http://hub.test",
+      appOrigin: "https://app.factorylm.com",
+      notebookId: "nb-7",
+    });
     // `notebookId` must be ABSENT, not `undefined`-valued: the chat client's
     // unconfigured branch keys on the property, and a present-but-undefined key
     // is what would let a "configured" preview silently have no notebook.
@@ -215,5 +221,31 @@ describe("the answer the visitor is asked to act on is brought on screen", () =>
     } finally {
       page.restore();
     }
+  });
+});
+
+describe("the conversion CTA hands off to the real product", () => {
+  it("sends sign-in to the Hub login and both equipment intents to signup", () => {
+    // The demo cannot answer an anonymous question by design, so this
+    // navigation IS the funnel's exit. A CTA that records an intent and goes
+    // nowhere would make the whole flow a dead end.
+    const app = "https://app.factorylm.com";
+    expect(conversionDestination("sign-in", app)).toBe("https://app.factorylm.com/login");
+    expect(conversionDestination("create-workspace", app)).toBe("https://app.factorylm.com/signup");
+    expect(conversionDestination("try-your-equipment", app)).toBe("https://app.factorylm.com/signup");
+  });
+
+  it("defaults to production and never emits a double slash", () => {
+    expect(DEFAULT_DEMO_CONFIG.appOrigin).toBe("https://app.factorylm.com");
+    expect(conversionDestination("sign-in", "https://app.factorylm.com/")).toBe(
+      "https://app.factorylm.com/login",
+    );
+  });
+
+  it("is overridable for local verification without baking a host into the bundle", () => {
+    expect(parseDemoConfig("?app=http://127.0.0.1:3101").appOrigin).toBe("http://127.0.0.1:3101");
+    expect(conversionDestination("create-workspace", "http://127.0.0.1:3101")).toBe(
+      "http://127.0.0.1:3101/signup",
+    );
   });
 });

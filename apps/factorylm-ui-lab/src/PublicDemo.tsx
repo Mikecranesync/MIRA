@@ -35,15 +35,20 @@ import { FactoryLMShell, MachineView, useSimLabDemo } from "@factorylm/ui";
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
 
+const DEFAULT_APP_ORIGIN = "https://app.factorylm.com";
+
 export interface PublicDemoConfig {
   readonly simlabUrl: string;
   readonly hubUrl: string;
   readonly notebookId?: string;
+  /** Where Create workspace / Sign in send the visitor. */
+  readonly appOrigin: string;
 }
 
 export const DEFAULT_DEMO_CONFIG: PublicDemoConfig = {
   simlabUrl: "http://127.0.0.1:8099",
   hubUrl: "http://127.0.0.1:3000",
+  appOrigin: DEFAULT_APP_ORIGIN,
 };
 
 export function parseDemoConfig(search: string): PublicDemoConfig {
@@ -52,6 +57,7 @@ export function parseDemoConfig(search: string): PublicDemoConfig {
   return {
     simlabUrl: params.get("simlab") ?? DEFAULT_DEMO_CONFIG.simlabUrl,
     hubUrl: params.get("hub") ?? DEFAULT_DEMO_CONFIG.hubUrl,
+    appOrigin: params.get("app") ?? DEFAULT_DEMO_CONFIG.appOrigin,
     ...(notebookId ? { notebookId } : {}),
   };
 }
@@ -165,6 +171,33 @@ export function revealNewestTurn(): void {
   });
 }
 
+/**
+ * Where a conversion actually sends the visitor.
+ *
+ * The demo deliberately cannot answer an anonymous question (the shared chat
+ * route begins with `sessionOr401`), so these buttons are the ONLY exit from
+ * the funnel — a CTA that records an intent and goes nowhere is the failure
+ * this map exists to prevent.
+ *
+ * `/login` and `/signup` are the Hub's real pages and are already the two links
+ * `mira-web` uses elsewhere, so this adds no new contract.
+ *
+ * Overridable via `?app=` for local verification against a dev Hub; the default
+ * is production because that is where a factorylm.com visitor must land.
+ */
+
+export function conversionDestination(intent: ConversionIntent, appOrigin: string): string {
+  const base = appOrigin.replace(/\/+$/, "");
+  switch (intent) {
+    case "sign-in":
+      return `${base}/login`;
+    case "create-workspace":
+    case "try-your-equipment":
+      // Both mean "I have equipment of my own" — that starts with an account.
+      return `${base}/signup`;
+  }
+}
+
 export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
   const simlab = useMemo(
     () => new SimLabClient({
@@ -275,7 +308,14 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
     hooks={{
       onSend,
       busy: asking,
-      onConvert: (intent) => setConversions((seen) => [...seen, intent]),
+      onConvert: (intent) => {
+        setConversions((seen) => [...seen, intent]);
+        // The handoff. The demo cannot answer an anonymous question by design,
+        // so this navigation IS the funnel's exit — not an analytics event.
+        if (typeof window !== "undefined") {
+          window.location.assign(conversionDestination(intent, config.appOrigin));
+        }
+      },
     }}
     machinePanel={<MachineView
       state={state}
