@@ -143,6 +143,22 @@ describe("partsFromStream", () => {
     expect(lifecycleFromStream(stream({ sawStatus: false, status: "error" }))).toBe("failed");
   });
 
+  it("truncation preserves an already-received Safety STOP but drops every evidence claim", () => {
+    const parts = partsFromStream(stream({
+      sawStatus: false,
+      status: "error",
+      content: "Partial stop text.",
+      safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" },
+      visualEvidence: visual,
+    }), LIVE);
+    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
+    expect(parts[1]).toMatchObject({
+      type: "safety_notice",
+      notice: { severity: "stop", trigger: "bypass the interlock" },
+    });
+    expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
+  });
+
   it("a stopped turn is a stop, not an answer, even if the wire said answered", () => {
     const parts = partsFromStream(stream(), { stopped: true, ...LIVE });
     expect(parts.map((p) => p.type)).toEqual(["text", "error"]);

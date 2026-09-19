@@ -213,6 +213,10 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       : "");
 
   if (text) parts.push({ type: "text", text });
+  // A safety frame is an authoritative server determination even when the
+  // stream loses its terminal status. Preserve that warning while continuing
+  // to suppress every evidence claim on the truncated path.
+  if (truncated && result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
 
   if (!nonAnswer) {
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
