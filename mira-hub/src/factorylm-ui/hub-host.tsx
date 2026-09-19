@@ -13,7 +13,8 @@
  *
  * Scope (owner, 2026-09-19 — supersedes the 2026-09-17 note): the host lands on
  * HOME with the composer enabled (ChatGPT-first lock L0); a HOME send becomes a
- * new thread in the preferred notebook on the ONE canonical route, creating a
+ * new thread in an UNBOUND notebook on the ONE canonical route (never the
+ * last-opened machine notebook, whose identity would ride the turn), creating a
  * "General" project when the workspace has none; New chat and New project are
  * always available. `/feed` remains the default landing until Gate 6.
  */
@@ -311,8 +312,7 @@ export function HubShellHost() {
    * route in general mode (no sources selected), so it persists, streams and
    * lands under Recent like every other conversation.
    */
-  const sendFromHome = useCallback(async (q: string) => {
-    const plan = homeSendPlan(notebooks ?? []);
+  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string) => {
     let notebookId: string | null = plan.kind === "existing" ? plan.notebookId : null;
     if (plan.kind === "create") {
       setBusy(true);
@@ -320,23 +320,32 @@ export function HubShellHost() {
       catch (err) { dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
       finally { setBusy(false); }
     }
-    if (!notebookId) return;
+    // No id means the create was refused (401 → signed-out screen) — hand the
+    // technician their question back rather than dropping it.
+    if (!notebookId) { dispatch({ type: "set-draft", draft: q }); return; }
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
     await send(chatBodyFor(q, [], [], sel), q, sel);
-  }, [notebooks, createNotebook, select, send]);
+  }, [createNotebook, select, send]);
 
   const onSend = useCallback((text: string) => {
     const q = text.trim();
     if (!q || busy) return;
-    if (!selection) { void sendFromHome(q); return; }
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
-    // RETURNS, so a send before the notebook loaded used to discard the
+    // RETURNS, so a send before the data loaded used to discard the
     // technician's question. Throwing is the Composer's documented contract
-    // for "keep the draft, show this plain-language error".
+    // for "keep the draft, show this plain-language error". On HOME that is
+    // the guard against creating a duplicate "General" before the list is
+    // known (#3875 F2); inside a notebook, against sending before its detail.
+    if (!selection) {
+      const plan = homeSendPlan(notebooks);
+      if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
+      void sendFromHome(plan, q);
+      return;
+    }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [busy, selection, detail, docIds, send, sendFromHome]);
+  }, [busy, selection, notebooks, detail, docIds, send, sendFromHome]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);

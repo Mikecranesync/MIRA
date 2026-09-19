@@ -72,19 +72,35 @@ export function landingSelection(notebooks: readonly HubNotebook[]): HubSelectio
 }
 
 export type HomeSendPlan =
+  | { kind: "loading" }
   | { kind: "existing"; notebookId: string }
   | { kind: "create"; body: { displayName: string; identitySourceType: "user" } };
 
+/** A notebook with no machine behind it: no canonical binding and no
+ *  manufacturer/model identity. Only such a notebook may host a HOME question,
+ *  because the canonical route's general-mode prompt still appends the
+ *  notebook's machine context (equipment, asset path, loaded documents). */
+export function isUnboundNotebook(nb: Pick<HubNotebook, "asset" | "manufacturer" | "model">): boolean {
+  return !nb.asset && !(nb.manufacturer ?? "").trim() && !(nb.model ?? "").trim();
+}
+
 /**
- * A HOME send is a new thread in the PREFERRED notebook — the first one, the
- * same rule mobile's `preferredNotebookId` applies — so the conversation lives
- * on the ONE canonical backend (persisted, streamed, listed under Recent).
- * With no notebook at all it creates one, using the exact body the legacy
- * "New notebook" button posts: a stranger must always be able to ask.
+ * A HOME send is a new thread in an UNBOUND notebook, so the answer is truly
+ * general: the list is ordered by last opened, so `notebooks[0]` would be the
+ * machine notebook the technician was just in, and its identity would ride the
+ * turn as machine context (alpha-remote #3875 F1). With no unbound notebook it
+ * creates one ("General") through the exact body the legacy New-notebook
+ * button posts. Until the list has loaded it must NOT send (F2): the Composer's
+ * throw-keeps-the-draft contract covers that case; a send before the list is
+ * known would create a duplicate "General".
  */
-export function homeSendPlan(notebooks: readonly HubNotebook[]): HomeSendPlan {
-  const first = notebooks[0];
-  if (first) return { kind: "existing", notebookId: first.id };
+export function homeSendPlan(notebooks: readonly HubNotebook[] | null): HomeSendPlan {
+  if (!notebooks) return { kind: "loading" };
+  const unbound = notebooks.filter(isUnboundNotebook);
+  // A notebook's NAME is machine context too ("Conveyor 4" colours the answer),
+  // so the one literally called General wins; any other unbound one is next.
+  const general = unbound.find((nb) => nb.displayName.trim().toLowerCase() === "general") ?? unbound[0];
+  if (general) return { kind: "existing", notebookId: general.id };
   return { kind: "create", body: { displayName: "General", identitySourceType: "user" } };
 }
 
@@ -159,7 +175,7 @@ export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: num
 }
 
 /** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
-export const NO_PROJECT_ERROR = "That project is still loading — try again in a moment.";
+export const NO_PROJECT_ERROR = "Still loading your projects — try again in a moment.";
 
 /**
  * The canonical route's request body for one send. With no enabled sources the
