@@ -7,8 +7,8 @@
 #   docker compose -f docker-compose.saas.yml -f docker-compose.production.yml \
 #     up -d --no-deps mira-hub mira-web
 #
-# Scope: only `mira-hub` is overridden. `mira-web` runs from the base SaaS
-# definition unchanged (already 127.0.0.1:3200, mira-net, mira-leads-data).
+# Scope: `mira-hub` + `mira-web` are overridden. Both run localhost-only on
+# mira-net; external cmms-ext network is dropped (Atlas/CMMS not yet restored).
 #
 # Deferred services (pipeline, ingest, mcp, cmms-sync, telegram/slack bots,
 # ask, nango, redis, tika, foreman, Atlas/CMMS) are NOT started, and the Hub's
@@ -62,10 +62,14 @@ services:
 
     # Production-sized cap (the OVH host has ~12 GiB; Hub idles ~70 MiB). Raised
     # from the recovery overlay's small-box 1g. Override with MIRA_HUB_MEM.
-    deploy:
-      resources:
-        limits:
-          memory: ${MIRA_HUB_MEM:-2g}
+    mem_limit: ${MIRA_HUB_MEM:-2g}
+
+  mira-web:
+    # Drop the external `cmms-ext` network (Atlas/CMMS is not restored yet; the
+    # absent network would prevent `compose up` from starting). mira-net is the
+    # only network mira-web needs in the minimal model.
+    networks: !override
+      - mira-net
 
 volumes:
   mira-hub-upload-buffers:
