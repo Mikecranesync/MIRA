@@ -118,7 +118,9 @@ jobs:
 
       - name: Install mira-hub deps
         working-directory: mira-hub
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Install gate python deps
         run: pip install --quiet httpx pytest pyyaml
@@ -227,7 +229,9 @@ jobs:
 
       - name: Install mira-hub deps
         working-directory: mira-hub
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Install probe python deps
         run: pip install --quiet httpx pytest
@@ -513,7 +517,9 @@ jobs:
 
       - name: Install mira-hub deps
         working-directory: mira-hub
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Apply the integration schema
         working-directory: mira-hub
