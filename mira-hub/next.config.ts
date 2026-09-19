@@ -6,27 +6,6 @@ import path from "node:path";
 // Baked at build time — changing this requires a container rebuild.
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
 
-// The bare specifiers the shared shell (../packages/factorylm-*) imports for React and
-// the assistant-ui runtime, each pinned to THIS app's node_modules copy. Exported so the
-// unit test can assert every entry resolves under mira-hub/node_modules. See the
-// One-React invariant note on `turbopack` below.
-//
-// Value shape: Turbopack resolves a `resolveAlias` target as an import request in the
-// context of the Next APP dir (this dir, `[project]/mira-hub`), NOT the turbopack root,
-// and it rejects absolute filesystem paths ("server relative imports are not implemented
-// yet" — verified against next 16.2.4, a `path.join(import.meta.dirname, ...)` value
-// fails the build). So the target is written relative to this dir. Proof the context is
-// this dir and not the repo root: the local build has no <repo>/node_modules at all and
-// resolves every alias.
-const hubModule = (name: string) => `./node_modules/${name}`;
-export const ONE_REACT_ALIASES: Record<string, string> = {
-  react: hubModule("react"),
-  "react-dom": hubModule("react-dom"),
-  "react/jsx-runtime": hubModule("react/jsx-runtime"),
-  "react-dom/client": hubModule("react-dom/client"),
-  "@assistant-ui/react": hubModule("@assistant-ui/react"),
-};
-
 const nextConfig: NextConfig = {
   output: "standalone",
   // Compiler / file-tracing root. The monorepo has lockfiles above mira-hub, so
@@ -45,27 +24,20 @@ const nextConfig: NextConfig = {
   // Consequence: .next/standalone mirrors the repo layout (server.js under mira-hub/);
   // the Dockerfile copies it accordingly.
   //
-  // One-React invariant (#3839 follow-up, review M1): with the compiler root at the
-  // repo root, a package under ../packages/ that imports "react" walks UP from its own
-  // dir and finds whatever <repo>/node_modules holds — the root package.json declares
-  // apps/factorylm-ui-lab as a workspace, so a repo-root `bun install` hoists the lab's
-  // React there, and the shell would silently load a SECOND React (the mobile lane's
-  // useMemoCache trap). Two mechanisms hold the invariant:
-  //   1. `turbopack.resolveAlias` (below) pins the bare specifiers the shell imports —
-  //      react, react-dom, react/jsx-runtime, react-dom/client, @assistant-ui/react —
-  //      to THIS app's node_modules copies (app-relative paths, see ONE_REACT_ALIASES),
-  //      on every build.
-  //   2. Build-time symlink `packages/node_modules -> ../mira-hub/node_modules`
-  //      (Dockerfile builder stage; locally `ln -sfn ../mira-hub/node_modules
-  //      packages/node_modules`), which also routes the shell's other transitive deps
-  //      to the Hub's copies.
-  // tsconfig `paths` does NOT pin React (it maps only @/* and @factorylm/*) — the alias
-  // is the compile-time guarantee; the symlink is belt-and-suspenders.
-  // Guarded by src/factorylm-ui/next-config-one-react.test.ts.
-  turbopack: {
-    root: path.join(import.meta.dirname, ".."),
-    resolveAlias: ONE_REACT_ALIASES,
-  },
+  // One React (#3839 follow-up): Turbopack bundles Next's own vendored React
+  // (next/dist/compiled/react*) for every app-dir module, the ../packages shell
+  // sources included, so a second React cannot reach the bundle from
+  // <repo>/node_modules or anywhere else. A `turbopack.resolveAlias` pin of the
+  // react specifiers was tried and refuted with instrumented builds: it changed
+  // nothing about what is bundled, and the react/jsx-runtime entry actually
+  // redirected the app-wide client JSX runtime to the installed copy (harmless only
+  // while byte-identical), so it was dropped. What IS load-bearing is the
+  // build-time symlink `packages/node_modules -> ../mira-hub/node_modules`: tsc has
+  // no resolveAlias and walks up from ../packages, so without it the type-check
+  // cannot find react / @assistant-ui types for the shared packages. The Dockerfile
+  // builder stage and every CI install step create it (locally:
+  // `ln -sfn ../mira-hub/node_modules packages/node_modules`).
+  turbopack: { root: path.join(import.meta.dirname, "..") },
   basePath,
   assetPrefix: basePath,
   // Dev-only (ignored by `next build`): allow phone/tablet testing over the
