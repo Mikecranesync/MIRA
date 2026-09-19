@@ -76,7 +76,11 @@ const PERSISTED_SAFETY = {
   question: "can I change the belt while it's running?",
   answerStatus: "answered",
   answerText: "Do not work on this equipment while energized. Apply LOTO first.",
-  evidence: [{ kind: "safety_notice", trigger: "loto" }, CITATION],
+  evidence: [
+    { kind: "safety_notice", trigger: "loto" },
+    { kind: "safety_stop", trigger: "loto" },
+    CITATION,
+  ],
   basis: "general_reasoning",
 };
 
@@ -162,7 +166,11 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "answered",
           answerText: "Do not work on this equipment while energized.",
-          evidence: [{ kind: "safety_notice", trigger: null }, CITATION],
+          evidence: [
+            { kind: "safety_notice", trigger: null },
+            { kind: "safety_stop", trigger: "loto" },
+            CITATION,
+          ],
           basis: "general_reasoning",
         },
       ]),
@@ -205,7 +213,10 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "error",
           answerText: "Do not work on this equipment while ener",
-          evidence: [{ kind: "safety_notice", trigger: "loto" }],
+          evidence: [
+            { kind: "safety_notice", trigger: "loto" },
+            { kind: "safety_stop", trigger: "loto" },
+          ],
           basis: null,
         },
       ]),
@@ -248,8 +259,8 @@ const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
  *  the exact shape that would ship citation chips on a hard stop if the guards
  *  were missing. */
 const LIVE_SAFETY = parseChatSse(
-  frame({ kind: "content", text: "Do not work on this while energized." }) +
-    frame({ kind: "safety", trigger: "arc flash" }) +
+  frame({ kind: "safety", trigger: "arc flash" }) +
+    frame({ kind: "content", text: "Do not work on this while energized." }) +
     frame({ kind: "sources", citations: [CITATION] }) +
     frame({ kind: "status", status: "answered" }),
 );
@@ -281,6 +292,38 @@ describe.each(SURFACES)("FLEET-003 live safety frame — %s", (_name, available)
     expect(banner.getAttribute("role")).toBe("alert");
     // The `sources` frame arrived on a safety turn; it must not become a chip.
     await waitFor(() => expect(screen.queryByText(/GS10 manual/)).toBeNull());
+  });
+
+  it("a network failure after the safety marker keeps the STOP terminal and offers no Retry", async () => {
+    askNotebook.mockImplementation(async (_id: string, _msg: string, _scope: unknown, opts: {
+      onUpdate?: (t: ChatTurn) => void;
+    }) => {
+      opts.onUpdate?.({
+        answer: "",
+        citations: [CITATION],
+        status: "",
+        safetyTrigger: "arc flash",
+        evidenceBasis: "oem_documentation",
+        followups: ["Unsafe follow-up"],
+      });
+      throw new Error("network reset");
+    });
+    mount(available);
+
+    const input = (await screen.findByRole("textbox", {
+      name: "Ask a question",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "there is smoke" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(await screen.findByTestId("safety-notice")).toBeTruthy();
+    expect(screen.queryByText("Retry")).toBeNull();
+    expect(input.value).toBe("");
+    expect(screen.queryByText(/GS10 manual/)).toBeNull();
+    expect(screen.queryByText(/Grounded/i)).toBeNull();
+    expect(screen.queryByText("Unsafe follow-up")).toBeNull();
   });
 
   it("an ordinary live answer keeps its citation chip and shows no banner", async () => {

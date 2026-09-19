@@ -209,6 +209,7 @@ describe("Bubble — truncated turn (ADR-0038 rule 6)", () => {
     const html = renderToStaticMarkup(<Bubble turn={withSafety} />);
     expect(html).toContain("Safety stop");
     expect(html).toContain('data-testid="truncated-caption"');
+    expect(html).not.toContain("Ask again to retry");
   });
 });
 
@@ -451,8 +452,9 @@ describe("chatBodyFor — zero sources converge on Mobile's `mode: \"general\"` 
   });
 
   it("with sources it is the grounded body, byte-identical to buildChatBody (no mode key)", () => {
-    const body = chatBodyFor("Which coil?", ["d1"], turns);
-    expect(body).toEqual(buildChatBody("Which coil?", ["d1"], turns));
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const body = chatBodyFor("Which coil?", ["d1"], turns, clientRequestId);
+    expect(body).toEqual(buildChatBody("Which coil?", ["d1"], turns, clientRequestId));
     expect("mode" in body).toBe(false);
   });
 });

@@ -313,6 +313,8 @@ describe("ChatV2 (default surface)", () => {
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
     // CMPS-2: the retry re-sends the identical question, not a recomputed one.
     expect(askNotebook.mock.calls[1][1]).toBe("what trips the overload");
+    expect(askNotebook.mock.calls[0][3].clientRequestId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(askNotebook.mock.calls[1][3].clientRequestId).toBe(askNotebook.mock.calls[0][3].clientRequestId);
   });
 
   it("shows attachment failure copy even though there is no send to Retry", async () => {

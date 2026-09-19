@@ -60,7 +60,7 @@ type Poly = number[][]; // 4 points, [x, y] in ORIGINAL image space
 
 // ── sharp (benchmark-only; must fail loud — see region-experiment.ts) ────────
 
-type SharpModule = typeof import("sharp");
+type SharpModule = typeof import("sharp").default;
 let sharpMod: SharpModule | null | undefined;
 async function getSharp(): Promise<SharpModule> {
   if (sharpMod === undefined) {

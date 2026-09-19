@@ -34,14 +34,18 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
+  abandonNotebookTurnRequest,
+  claimNotebookTurnRequest,
   getNotebook,
   listSources,
   normalizeNotebookThreadId,
+  NotebookNotFoundError,
   recordTurn,
   resolveBoundAsset,
   validateChatSources,
   type ResolvedAsset,
   originFileIdsByDoc,
+  type StoredNotebookTurn,
 } from "@/lib/equipment-notebooks";
 import {
   ELECTRICAL_HAZARD_DIRECTIVE,
@@ -84,7 +88,12 @@ import {
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
-import { loadVisualEvidenceForAsset, renderVisualEvidenceSection } from "@/lib/visual-evidence-context";
+import {
+  loadVisualEvidenceForAsset,
+  renderVisualEvidenceSection,
+  loadVisualEvidenceForPhoto,
+  renderLookObservationSection,
+} from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -95,14 +104,24 @@ import type {
   EvidenceCitation,
   MachineEvidenceEntry,
   NotebookContentFrame,
-  NotebookEvidenceFrame,
+  NotebookBasisEvidenceFrame,
+  NotebookEvidenceMarkerFrame,
   NotebookFollowupsFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
+  NotebookChatFrame,
   SafetyNoticeEntry,
+  SafetyStopEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
+  EvidenceBasis,
+} from "@/lib/notebook-chat-types";
+import {
+  isMachineEvidenceEntry,
+  isSafetyNoticeEntry,
+  isSafetyStopEntry,
+  isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
@@ -414,26 +433,39 @@ function sse(obj: unknown): string {
  *  which persist `basis: null` — project the same basis (none) as their
  *  persisted row. The answered path's final evidence frame still carries the
  *  basis + the marker. Older clients ignore unknown fields on a known kind;
- *  the Hub's stream reader tolerates a basis-less frame (`out.basis =
- *  undefined`, restored by the final frame where there is one). */
-const IDENTITY_DISPUTE_FRAME = { kind: "evidence", identityDisputed: true } as const satisfies Pick<
-  NotebookEvidenceFrame,
-  "kind" | "identityDisputed"
->;
+ *  current readers accumulate only fields actually present, so an early
+ *  marker cannot erase a later or earlier basis-bearing frame. */
+const IDENTITY_DISPUTE_FRAME = {
+  kind: "evidence",
+  identityDisputed: true,
+} as const satisfies NotebookEvidenceMarkerFrame;
 
-function safetyStopResponse(trigger: string, docIds: string[], identityDisputed = false): Response {
+function visualEvidenceMarker(visualEvidence: VisualObservationEntry): NotebookEvidenceMarkerFrame {
+  return { kind: "evidence", visualEvidence };
+}
+
+function safetyStopResponse(
+  trigger: string,
+  docIds: string[],
+  identityDisputed = false,
+  visualEntry: VisualObservationEntry | null = null,
+): Response {
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
       const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
       controller.enqueue(enc.encode(sse(sources)));
+      // The warning must arrive before any content byte so a Stop, proxy cut,
+      // or network failure can never strand the technician with an unmarked
+      // partial hard-stop.
+      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
+      controller.enqueue(enc.encode(sse(safety)));
+      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       for (const word of SAFETY_STOP.split(" ")) {
         const frame: NotebookContentFrame = { kind: "content", content: word + " " };
         controller.enqueue(enc.encode(sse(frame)));
       }
-      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
-      controller.enqueue(enc.encode(sse(safety)));
       const status: NotebookStatusFrame = { kind: "status", status: "answered" };
       controller.enqueue(enc.encode(sse(status)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -451,6 +483,150 @@ function safetyStopResponse(trigger: string, docIds: string[], identityDisputed 
   });
 }
 
+const REPLAY_BASES = new Set<EvidenceBasis>([
+  "general_reasoning",
+  "identified_component",
+  "oem_documentation",
+  "workspace_evidence",
+  "machine_history",
+  "live_machine_evidence",
+]);
+
+function replayBasisLabel(basis: EvidenceBasis): string {
+  switch (basis) {
+    case "general_reasoning":
+      return "General guidance — not grounded in this machine's documents.";
+    case "oem_documentation":
+      return "Grounded in this notebook's sources.";
+    case "machine_history":
+      return "Grounded in recorded machine history — not live.";
+    case "live_machine_evidence":
+      return "Grounded in live machine evidence.";
+    case "identified_component":
+      return "Grounded in the identified component.";
+    case "workspace_evidence":
+      return "Grounded in workspace evidence.";
+  }
+}
+
+/** Rebuild the canonical terminal projection from the immutable stored row.
+ *  A duplicate request never reaches retrieval/provider work. Safety is sent
+ *  before content and repeated in the response header, so a second transport
+ *  interruption remains fail-closed. */
+function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
+  const enc = new TextEncoder();
+  const citations = turn.evidence.filter(
+    (entry): entry is EvidenceCitation =>
+      typeof entry === "object" && entry !== null && typeof (entry as { docId?: unknown }).docId === "string",
+  );
+  const explicitSafetyStop = turn.evidence.find(isSafetyStopEntry) ?? null;
+  const safetyNotices = turn.evidence.filter(isSafetyNoticeEntry);
+  const safetyNotice = explicitSafetyStop
+    ? (safetyNotices.find((entry) => entry.trigger === explicitSafetyStop.trigger) ?? safetyNotices.at(-1) ?? null)
+    : (safetyNotices.at(-1) ?? null);
+  // Compatibility for terminal rows written before the explicit marker
+  // shipped: directive answers have a basis; hard stops are answered with no
+  // basis. New rows always carry `safety_stop` so this inference can sunset.
+  const terminalSafetyNotice = safetyNotice && (
+    explicitSafetyStop !== null || (turn.answerStatus === "answered" && turn.basis === null)
+  ) ? safetyNotice : null;
+  const machineEvidence = turn.evidence.find(isMachineEvidenceEntry) ?? null;
+  const visualEvidence = turn.evidence.find(isVisualObservationEntry) ?? null;
+  const identityDisputed = turn.evidence.some(
+    (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
+  );
+  const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const emit = (frame: NotebookChatFrame) => controller.enqueue(enc.encode(sse(frame)));
+      if (identityDisputed) emit(IDENTITY_DISPUTE_FRAME);
+
+      const sources: NotebookSourcesFrame = {
+        kind: "sources",
+        citations: terminalSafetyNotice ? [] : citations,
+        sourceSnapshot: turn.enabledSourceDocIds,
+      };
+      if (terminalSafetyNotice) {
+        emit(sources);
+        emit({ kind: "safety", trigger: terminalSafetyNotice.trigger });
+        if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
+        if (turn.answerText) {
+          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        }
+      } else if (turn.answerStatus === "insufficient_evidence") {
+        emit(sources);
+        if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
+      } else {
+        if (turn.answerText) {
+          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+        }
+        emit(sources);
+        if (basis) {
+          emit({
+            kind: "evidence",
+            basis,
+            label: replayBasisLabel(basis),
+            ...(machineEvidence ? { machineEvidence } : {}),
+            ...(visualEvidence ? { visualEvidence } : {}),
+            ...(identityDisputed ? { identityDisputed: true } : {}),
+          });
+        } else if (visualEvidence) {
+          emit(visualEvidenceMarker(visualEvidence));
+        }
+      }
+
+      const status: NotebookStatusFrame = turn.answerStatus === "insufficient_evidence"
+        ? {
+            kind: "status",
+            status: turn.answerStatus,
+            message: turn.answerText ?? (visualEvidence
+              ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+              : "I couldn't find that in the selected sources."),
+          }
+        : turn.answerStatus === "error"
+          ? { kind: "status", status: "error", message: "No answer provider available." }
+          : { kind: "status", status: "answered" };
+      emit(status);
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "X-Idempotent-Replay": "true",
+      ...(terminalSafetyNotice ? { "X-Safety-Stop": terminalSafetyNotice.trigger } : {}),
+    },
+  });
+}
+
+async function verifyVisualEntry(
+  tenantId: string,
+  notebookId: string,
+  visualClaimFileId: string | null,
+): Promise<VisualObservationEntry | null> {
+  if (!visualClaimFileId) return null;
+  try {
+    const photo = await photoLinkedToTarget(tenantId, visualClaimFileId, "equipment_notebook", notebookId);
+    if (!photo) {
+      console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
+      return null;
+    }
+    return {
+      kind: "visual_observation",
+      fileId: photo.fileId,
+      capturedAt: photo.capturedAt,
+      provenance: "phone_photo",
+    };
+  } catch (err) {
+    console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -462,6 +638,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     history?: unknown;
     mode?: string;
     threadId?: unknown;
+    clientRequestId?: unknown;
     /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
@@ -518,6 +695,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (body.threadId != null && !threadId) {
     return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
   }
+  const clientRequestId = body.clientRequestId == null
+    ? null
+    : typeof body.clientRequestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientRequestId)
+      ? body.clientRequestId
+      : null;
+  if (body.clientRequestId != null && !clientRequestId) {
+    return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
+  }
   // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
   // pass it to the model for continuity, and use it to rewrite the retrieval
   // query so a referential follow-up ("what about Ethernet?", "the other one")
@@ -538,9 +723,69 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // trigger keeps the terminal SAFETY_STOP exactly as before.
   const electricalHazardDirective = safetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
 
+  // Own/replay the idempotency key before consulting mutable source approval
+  // or membership. The key is bound to the full original request payload, so
+  // a completed turn remains replayable even if a source is later detached;
+  // a changed payload fails closed instead of inheriting that terminal truth.
+  let requestClaimToken: string | null = null;
+  if (clientRequestId) {
+    try {
+      const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
+        ownerUserId: ctx.userId,
+        clientRequestId,
+        question: message,
+        threadId,
+        requestPayload: body,
+      });
+      if (claim.status === "replay") return replayNotebookTurnResponse(claim.turn);
+      if (claim.status === "in_progress") {
+        return NextResponse.json(
+          { error: "request_in_progress", message: "This request is still being completed." },
+          { status: 409, headers: { "Retry-After": "2" } },
+        );
+      }
+      if (claim.status === "mismatch") {
+        return NextResponse.json(
+          { error: "client_request_id_reused", message: "That request id belongs to a different chat request." },
+          { status: 409 },
+        );
+      }
+      requestClaimToken = claim.claimToken;
+    } catch (err) {
+      if (err instanceof NotebookNotFoundError) {
+        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+      }
+      throw err;
+    }
+  }
+  const abandonRequestClaim = () => clientRequestId && requestClaimToken
+    ? abandonNotebookTurnRequest(
+        ctx.tenantId,
+        notebookId,
+        ctx.userId,
+        clientRequestId,
+        requestClaimToken,
+      )
+    : Promise.resolve();
+  const releaseClaimOnFailure = async <T>(operation: () => Promise<T>): Promise<T> => {
+    try {
+      return await operation();
+    } catch (err) {
+      await abandonRequestClaim().catch((releaseErr) => {
+        console.error(
+          "[notebook-chat] request claim release failed:",
+          releaseErr instanceof Error ? releaseErr.message : releaseErr,
+        );
+      });
+      throw err;
+    }
+  };
+
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
-  const validated = await validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []);
+  const validated = await releaseClaimOnFailure(() =>
+    validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []),
+  );
   if (!validated.ok) {
     // 086 / private conversations §2: `no_sources_selected` is returned from an
     // early `requestedDocIds.length === 0` check that never touches the
@@ -551,7 +796,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // nonexistent id is a 404 with nothing spent and nothing written. The
     // grounded path needs no extra query — validateChatSources already proved
     // membership for every id in docIds.
-    if (validated.error === "no_sources_selected" && !(await getNotebook(ctx.tenantId, notebookId))) {
+    if (
+      validated.error === "no_sources_selected" &&
+      !(await releaseClaimOnFailure(() => getNotebook(ctx.tenantId, notebookId)))
+    ) {
+      await abandonRequestClaim();
       return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
     }
     // "Smoke is coming from the panel" in a notebook with nothing attached must
@@ -584,6 +833,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : validated.error === "no_sources_selected"
             ? 422
             : 403;
+      await abandonRequestClaim();
       return NextResponse.json({ error: validated.error }, { status });
     }
   }
@@ -593,9 +843,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
+  // Verify the claimed photo before any terminal refusal. This bounded,
+  // tenant-scoped lookup does not make the photo grounding and never delays a
+  // stop on provider/RAG work; it only preserves the attachment on the record.
+  const visualEntry = await releaseClaimOnFailure(() =>
+    verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
+  );
+
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
-  const boundAsset: ResolvedAsset = await resolveBoundAsset(ctx.tenantId, notebookId);
+  const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
+    resolveBoundAsset(ctx.tenantId, notebookId),
+  );
   // Private conversations §3: a client-supplied asset id is a REQUEST, not
   // truth. Machine history / live evidence is served only for the notebook's
   // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
@@ -649,19 +908,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger && !electricalHazardDirective) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
-    await recordTurn(ctx.tenantId, notebookId, {
+    const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
+    await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [safetyEntry, ...disputeEntries],
+      evidence: [safetyEntry, safetyStopEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
       model: null,
       ...assetSnapshot,
-    });
-    return safetyStopResponse(safetyTrigger, docIds, identityDisputed);
+    }));
+    return safetyStopResponse(safetyTrigger, docIds, identityDisputed, visualEntry);
   }
   // Evaluated AFTER the safety stop, deliberately: a hazard report is never
   // answered with "re-select the machine". The stop above persisted about no
@@ -675,6 +937,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // `error` is a sentence and `code` is the discriminator: mira-mobile renders
     // `data.error` verbatim (client.ts:198-208), so returning only the token
     // puts the literal string "uns_required" on the technician's phone.
+    await abandonRequestClaim();
     return NextResponse.json(
       {
         error:
@@ -779,6 +1042,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // exists, the read failed. Say so and let the client retry (503), rather
     // than telling the technician the machine has no history.
     if (machineUnavailableReason === "fetch_failed") {
+      await abandonRequestClaim();
       return NextResponse.json(
         {
           error: "Machine Memory could not be read just now. Try again in a moment.",
@@ -789,6 +1053,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
     if (windowEmpty) {
+      await abandonRequestClaim();
       return NextResponse.json(
         {
           error: "Nothing was recorded in this window. Widen the window or check the gateway.",
@@ -798,6 +1063,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 422 },
       );
     }
+    await abandonRequestClaim();
     return NextResponse.json(
       {
         error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
@@ -813,34 +1079,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // General mode reads nothing at all: no retrieval SQL, no doc scope. The
   // `nodeId === null` arm is the same case — only the general path can reach
   // here without `validated.ok`, since every other branch returned above.
-  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
-    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
-      nodeId,
-      unsPath: null, // notebook nodes are standalone; scope is the doc set
-      topK: 6,
-      docIds,
-      rawQuery: message,
-      // validateChatSources() has already proven tenant + notebook membership
-      // for every id in docIds — the validated doc set is the boundary, so a
-      // document linked from another notebook's node stays retrievable here.
-      validatedDocScope: true,
-      // Workstream A (#3437/#3468): the SAME server-derived set is the
-      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
-      // validateChatSources derives it (tenant-owned, notebook-linked,
-      // enabled, user_confirmed/verified, not superseded); the client's
-      // `body.sourceDocIds` was only an intersection request. Tenant-private
-      // chunks of these docs are admitted without ever being marked globally
-      // verified — confirmation is admission, not corpus promotion.
-      approvedSourceDocIds: docIds,
-    }),
-  );
+  const chunks: ManualChunk[] = general || nodeId === null
+    ? []
+    : await releaseClaimOnFailure(() =>
+        withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+            nodeId,
+            unsPath: null, // notebook nodes are standalone; scope is the doc set
+            topK: 6,
+            docIds,
+            rawQuery: message,
+            // validateChatSources() has already proven tenant + notebook membership
+            // for every id in docIds — the validated doc set is the boundary, so a
+            // document linked from another notebook's node stays retrievable here.
+            validatedDocScope: true,
+            // Workstream A (#3437/#3468): the SAME server-derived set is the
+            // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+            // validateChatSources derives it (tenant-owned, notebook-linked,
+            // enabled, user_confirmed/verified, not superseded); the client's
+            // `body.sourceDocIds` was only an intersection request. Tenant-private
+            // chunks of these docs are admitted without ever being marked globally
+            // verified — confirmation is admission, not corpus promotion.
+            approvedSourceDocIds: docIds,
+          }),
+        ),
+      );
 
   const enc = new TextEncoder();
 
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
   // with sources selected and nothing retrieved and nothing else grounding the
-  // turn, MIRA still refuses without calling a provider.
+  // turn, MIRA still refuses without calling a provider. A verified photo does
+  // NOT open the gate (#3788): the route cannot read the photo's observation
+  // text (LOOK returns it to the phone and does not persist it), so answering
+  // from zero chunks would be model reasoning dressed as a photo answer. The
+  // photo rides the abstain instead — persisted, streamed, and named in the
+  // status message — so nothing the technician captured is lost.
   //
   // The third clause is the Sensor REPLAY correction. A served, non-empty
   // machine window IS grounding — it is recorded observation, re-fetched by the
@@ -855,21 +1130,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // behaviour byte-identical.
   if (chunks.length === 0 && !general && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
-    await recordTurn(ctx.tenantId, notebookId, {
+    await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
       question: message,
       answerStatus: "insufficient_evidence",
-      answerText: null,
+      answerText: visualEntry
+        ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+        : null,
       enabledSourceDocIds: docIds,
-      evidence: [...disputeEntries],
+      // #3788: the verified photo is part of the record of this refusal, so a
+      // history read renders the same card the live turn showed.
+      evidence: [...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
       // asked about this conveyor" silently under-count refusals.
       ...assetSnapshot,
-    });
+    }));
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const sources: NotebookSourcesFrame = {
@@ -880,10 +1161,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const status: NotebookStatusFrame = {
           kind: "status",
           status: "insufficient_evidence",
-          message: "I couldn't find that in the selected sources.",
+          message: visualEntry
+            ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+            : "I couldn't find that in the selected sources.",
         };
         if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
         controller.enqueue(enc.encode(sse(sources)));
+        // #3788: the verified photo rides the abstain as a basis-less evidence
+        // MARKER frame — the same grammar as `IDENTITY_DISPUTE_FRAME` (readers
+        // treat `basis`/`label` as absent). No basis is claimed because nothing
+        // grounded an answer; the frame only says "this photo was verified for
+        // this turn", which is exactly what the persisted `evidence[]` says.
+        if (visualEntry) {
+          controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
+        }
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
@@ -898,34 +1189,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
-
-  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
-  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
-  // raster MIME), then re-derive the WHOLE entry server-side — including
-  // `capturedAt`, which comes from the stored file row, never from the client.
-  // Anything else (a manual PDF that merely happens to be linked, a foreign
-  // file, a stored-only type) → ignored silently; the turn still answers.
-  // Never a citation, never in sourceSnapshot, never moves `basis`.
-  let visualEntry: VisualObservationEntry | null = null;
-  if (visualClaimFileId) {
-    try {
-      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
-      if (photo) {
-        visualEntry = {
-          kind: "visual_observation",
-          fileId: photo.fileId,
-          capturedAt: photo.capturedAt,
-          provenance: "phone_photo",
-        };
-      } else {
-        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
-      }
-    } catch (err) {
-      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
-      visualEntry = null;
-    }
-  }
+  const citations = await releaseClaimOnFailure(() =>
+    buildCitations(ctx.tenantId, notebookId, chunks, message),
+  );
 
   // Approved-context gate — for MACHINE evidence only (D3). Mirrors the asset
   // chat route's summary: live real signals count as approved context; the
@@ -955,6 +1221,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const refusal = buildApprovedContextRefusal(approvedSummary);
       // `error` is a sentence (mira-mobile renders it verbatim); `code` is the
       // discriminator.
+      await abandonRequestClaim();
       return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
     }
   }
@@ -982,6 +1249,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           "(continuing without it):",
         err,
       );
+    }
+  }
+
+  // #3788 — the LOOK observation for the photo attached THIS turn. Keyed ONLY on
+  // the SERVER-VERIFIED file id (`visualEntry.fileId`, already checked by
+  // `photoLinkedToTarget` in verifyVisualEntry), so a client string can never
+  // reach it and it works on an UNBOUND notebook (keyed by file id, not asset).
+  // It rides in the injection-hardened user-data channel (buildManualUserContent
+  // below), NEVER the system prompt. Fail-open: a load failure must not drop the
+  // turn. No stored observation → "" → no block, the turn still answers.
+  let lookContext = "";
+  if (visualEntry) {
+    try {
+      const lookRow = await withTenantContext(ctx.tenantId, (c) =>
+        loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
+      );
+      lookContext = renderLookObservationSection(lookRow);
+    } catch (err) {
+      console.error("[notebook-chat] look observation load failed (continuing without it):", err);
     }
   }
 
@@ -1078,7 +1364,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
   );
 
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
@@ -1105,6 +1391,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       clientAbort.abort();
     },
     async start(controller) {
+      try {
       // 086 §3: the dispute marker goes out before the first content byte, so
       // a Stop mid-answer (persisted WITH the dispute) has already shown it.
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
@@ -1329,6 +1616,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // 086: the owner is the authenticated technician (session), never the body.
             ownerUserId: ctx.userId,
             threadId,
+            clientRequestId,
+            claimToken: requestClaimToken,
             question: message,
             answerStatus: "error",
             answerText: partialText,
@@ -1340,6 +1629,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           });
         } catch (err) {
           console.error("[notebook-chat] recordTurn (stopped) failed:", err instanceof Error ? err.message : err);
+          await abandonRequestClaim().catch((releaseErr) => {
+            console.error(
+              "[notebook-chat] request claim release failed:",
+              releaseErr instanceof Error ? releaseErr.message : releaseErr,
+            );
+          });
         }
         if (seam) {
           const stoppedUsage: TurnUsage = activeProvider
@@ -1459,40 +1754,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "insufficient_evidence"
           : "answered";
 
-      // B2: release the ACCEPTED answer. Content precedes sources/evidence/
-      // status exactly as in the unbuffered grammar; chunked on whitespace so
-      // clients keep their incremental-render path. Time-to-first-accepted-
-      // content is logged — the gate trades first-token latency for the
-      // guarantee that no unvalidated byte is ever displayed.
-      if (gate && served && answerText) {
-        for (const piece of chunkForRelease(answerText)) {
-          controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
-        }
-        console.log(
-          `[notebook-chat] gate released ${answerText.length} chars at +${Date.now() - turnStartedAt}ms` +
-            (outputRejected ? ` (replacement for ${outputRejected.violation})` : ""),
-        );
-      }
-
       const sourcesFrame: NotebookSourcesFrame = {
         kind: "sources",
         citations: emittedCitations,
         sourceSnapshot: docIds,
       };
-      controller.enqueue(enc.encode(sse(sourcesFrame)));
-
-      // Evidence basis (spec §1.3) — emitted before `status` so a client that
-      // stops at `status` has still received it, same discipline as `usage`.
-      // Says out loud what the answer rests on, so general reasoning can never
-      // be mistaken for a manual.
-      // With machine evidence (§4.4): `live_machine_evidence` only when the
-      // asset's CURRENT signals roll up fresh; anything else is
-      // `machine_history` — a replay is never labelled live (contract §2.8).
-      // An empty or unavailable window claims NO machine basis (see
-      // `machineGrounded` above): the turn keeps the basis it would have had
-      // without the selection, and the entry rides along additively so the
-      // client can render the honest caption.
-      const evidenceFrame: NotebookEvidenceFrame = groundedMachineEntry
+      const evidenceFrame: NotebookBasisEvidenceFrame = groundedMachineEntry
         ? groundedMachineEntry.freshness === "live"
           ? {
               kind: "evidence",
@@ -1519,18 +1786,96 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               basis: "oem_documentation",
               label: "Grounded in this notebook's sources.",
             };
-      // The machine entry and the verified visual observation ride on the SAME
-      // frame, additively — the basis and label above are untouched by them.
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
+
+      // Complete the durable turn before touching the response controller.
+      // Cancellation during the semantic judge closes that controller; a
+      // later enqueue may throw, but terminal truth must already be replayable.
+      try {
+        await recordTurn(ctx.tenantId, notebookId, {
+          ownerUserId: ctx.userId,
+          threadId,
+          clientRequestId,
+          claimToken: requestClaimToken,
+          question: message,
+          answerStatus,
+          answerText: served ? answerText : null,
+          enabledSourceDocIds: docIds,
+          evidence: served
+            ? outputRejected?.kind === "unsafe_answer"
+              ? [
+                  ...hazardEntries,
+                  { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
+                  { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
+                  ...disputeEntries,
+                  ...(visualEntry ? [visualEntry] : []),
+                ]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
+          model: servedModel,
+          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
+          ...assetSnapshot,
+        });
+      } catch (err) {
+        console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
+        if (clientRequestId) {
+          await abandonRequestClaim().catch(() => undefined);
+          try {
+            controller.error(err);
+          } catch {
+            // The cancelled client already owns the transport failure.
+          }
+          return;
+        }
+      }
+
+      // An unsafe replacement is already a terminal Safety STOP. Emit its
+      // warning before the first stoppable content byte so an interruption can
+      // never erase the server's authoritative safety determination.
       if (outputRejected?.kind === "unsafe_answer") {
-        // The replacement IS the safety stop: same grammar as the input-side
-        // stop — a `safety` frame, no basis-bearing evidence frame. The
-        // rejected candidate's lane must not certify the replacement.
         controller.enqueue(
           enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
         );
+      }
+
+      // B2: release the ACCEPTED answer. Content precedes sources/basis/status
+      // for ordinary answers; chunked on whitespace so
+      // clients keep their incremental-render path. Time-to-first-accepted-
+      // content is logged — the gate trades first-token latency for the
+      // guarantee that no unvalidated byte is ever displayed.
+      if (gate && served && answerText) {
+        for (const piece of chunkForRelease(answerText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
+        }
+        console.log(
+          `[notebook-chat] gate released ${answerText.length} chars at +${Date.now() - turnStartedAt}ms` +
+            (outputRejected ? ` (replacement for ${outputRejected.violation})` : ""),
+        );
+      }
+
+      controller.enqueue(enc.encode(sse(sourcesFrame)));
+
+      // Evidence basis (spec §1.3) — emitted before `status` so a client that
+      // stops at `status` has still received it, same discipline as `usage`.
+      // Says out loud what the answer rests on, so general reasoning can never
+      // be mistaken for a manual.
+      // With machine evidence (§4.4): `live_machine_evidence` only when the
+      // asset's CURRENT signals roll up fresh; anything else is
+      // `machine_history` — a replay is never labelled live (contract §2.8).
+      // An empty or unavailable window claims NO machine basis (see
+      // `machineGrounded` above): the turn keeps the basis it would have had
+      // without the selection, and the entry rides along additively so the
+      // client can render the honest caption.
+      // The machine entry and the verified visual observation ride on the SAME
+      // frame, additively — the basis and label above are untouched by them.
+      if (outputRejected?.kind === "unsafe_answer") {
+        // The replacement IS the safety stop: same grammar as the input-side
+        // stop — no basis-bearing evidence frame. The rejected candidate's
+        // lane must not certify the replacement. Its safety frame was emitted
+        // before content above; only the verified-photo marker remains here.
+        if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       } else {
         controller.enqueue(enc.encode(sse(evidenceFrame)));
       }
@@ -1584,44 +1929,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
 
-      try {
-        await recordTurn(ctx.tenantId, notebookId, {
-          // 086: the owner is the authenticated technician (session), never the body.
-          ownerUserId: ctx.userId,
-          threadId,
-          question: message,
-          answerStatus,
-          answerText: served ? answerText : null,
-          enabledSourceDocIds: docIds,
-          // D5: the machine window rides INSIDE evidence[] next to the
-          // citations, discriminated by `kind`. Never in `citations` or
-          // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
-          // B2: an unsafe-rejected turn persists like an input-side safety stop
-          // — a safety_notice entry, no citations, no machine/visual entries,
-          // and NO basis claim. The rejected draft itself is never stored.
-          evidence: served
-            ? outputRejected?.kind === "unsafe_answer"
-              ? [
-                  ...hazardEntries,
-                  { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
-                  ...disputeEntries,
-                ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
-          model: servedModel,
-          // 084 (#3387): persist EXACTLY what the evidence frame streamed —
-          // and only for a served answer. A failed turn makes no basis claim,
-          // and an unsafe-rejected turn makes none either (its evidence frame
-          // was replaced by the safety frame above).
-          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
-          ...assetSnapshot,
-        });
-      } catch (err) {
-        // persistence failure must not break the stream already delivered —
-        // but it must not be invisible either.
-        console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
-      }
-
       // Durable spend ledger (migration 080). Deliberately LAST and non-fatal:
       // the answer is already streamed and already persisted as conversation
       // history, so a telemetry outage must not retroactively destroy a correct,
@@ -1629,17 +1936,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // logs a distinct `turn.usage.persist_failed` event, so a spend gap stays
       // diagnosable without becoming a chat outage.
       if (pendingUsage) {
-        await persistTurnUsage(
-          {
-            tenantId: ctx.tenantId,
-            notebookId,
-            question: message,
-            answerText: served ? answerText : null,
-            citationsPresent: emittedCitations.length > 0,
-            latencyMs: Date.now() - turnStartedAt,
-          },
-          pendingUsage,
-        );
+        // Yield once after close so the consumer observes its terminal body
+        // before telemetry starts. A ledger exception is non-fatal and must
+        // never turn an already-closed, valid answer into a transport error.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        try {
+          await persistTurnUsage(
+            {
+              tenantId: ctx.tenantId,
+              notebookId,
+              question: message,
+              answerText: served ? answerText : null,
+              citationsPresent: emittedCitations.length > 0,
+              latencyMs: Date.now() - turnStartedAt,
+            },
+            pendingUsage,
+          );
+        } catch (err) {
+          console.error("[notebook-chat] usage persistence failed:", err instanceof Error ? err.message : err);
+        }
+      }
+      } catch (err) {
+        req.signal?.removeEventListener("abort", onClientGone);
+        await abandonRequestClaim().catch((releaseErr) => {
+          console.error(
+            "[notebook-chat] request claim release failed:",
+            releaseErr instanceof Error ? releaseErr.message : releaseErr,
+          );
+        });
+        try {
+          controller.error(err);
+        } catch {
+          // A cancelled response controller is already terminal.
+        }
       }
     },
   });
