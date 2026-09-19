@@ -1466,6 +1466,30 @@ export async function recordTurn(
          SELECT id, tenant_id
            FROM equipment_notebooks
           WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), completed_claim AS (
+       UPDATE equipment_notebook_turns t
+          SET question = $3,
+              answer_status = $4,
+              answer_text = $5,
+              enabled_source_doc_ids = $6::jsonb,
+              evidence = $7::jsonb,
+              model = $8,
+              equipment_entity_id = $9,
+              asset_uns_path = $10,
+              basis = $11,
+              thread_id = $13,
+              client_request_state = 'complete',
+              client_request_started_at = NULL,
+              client_request_claim_token = NULL
+         FROM owned_notebook nb
+        WHERE $15::uuid IS NOT NULL
+          AND t.notebook_id = nb.id
+          AND t.tenant_id = nb.tenant_id
+          AND t.owner_user_id = $12
+          AND t.client_request_id = $14::uuid
+          AND t.client_request_state = 'pending'
+          AND t.client_request_claim_token = $15::uuid
+       RETURNING t.id
        ), inserted AS (
        INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
@@ -1476,27 +1500,14 @@ export async function recordTurn(
        SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8,
               $9, $10, $11, $12, $13, $14::uuid, 'complete', NULL, NULL
          FROM owned_notebook nb
+        WHERE $15::uuid IS NULL
        ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
          WHERE client_request_id IS NOT NULL
-       DO UPDATE SET
-         question = EXCLUDED.question,
-         answer_status = EXCLUDED.answer_status,
-         answer_text = EXCLUDED.answer_text,
-         enabled_source_doc_ids = EXCLUDED.enabled_source_doc_ids,
-         evidence = EXCLUDED.evidence,
-         model = EXCLUDED.model,
-         equipment_entity_id = EXCLUDED.equipment_entity_id,
-         asset_uns_path = EXCLUDED.asset_uns_path,
-         basis = EXCLUDED.basis,
-         thread_id = EXCLUDED.thread_id,
-         client_request_state = 'complete',
-         client_request_started_at = NULL,
-         client_request_claim_token = NULL
-       WHERE equipment_notebook_turns.client_request_state = 'pending'
-         AND $15::uuid IS NOT NULL
-         AND equipment_notebook_turns.client_request_claim_token = $15::uuid
+       DO NOTHING
        RETURNING id
        )
+       SELECT id FROM completed_claim
+       UNION ALL
        SELECT id FROM inserted
        UNION ALL
        SELECT t.id

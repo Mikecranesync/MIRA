@@ -291,6 +291,57 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
     expect(row.rows[0].answer_text).toBe("successor winner");
   });
 
+  it("does not let a stale claimant insert after the successor abandons", async () => {
+    const clientRequestId = "11111111-0000-4000-8000-000000000011";
+    const requestPayload = { message: "abandoned takeover", sourceDocIds: [] };
+    const first = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "abandoned takeover",
+      requestPayload,
+    });
+    if (first.status !== "claimed") throw new Error("expected the first lease");
+
+    await q(
+      `UPDATE equipment_notebook_turns
+          SET client_request_started_at = now() - interval '11 minutes'
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    const successor = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "abandoned takeover",
+      requestPayload,
+    });
+    if (successor.status !== "claimed") throw new Error("expected the successor lease");
+    await abandonNotebookTurnRequest(TENANT_A, nbA, USER_A, clientRequestId, successor.claimToken);
+
+    await expect(
+      recordTurn(TENANT_A, nbA, {
+        question: "abandoned takeover",
+        answerStatus: "answered",
+        answerText: "stale answer after abandon",
+        enabledSourceDocIds: [],
+        evidence: [],
+        model: null,
+        ownerUserId: USER_A,
+        clientRequestId,
+        claimToken: first.claimToken,
+      }),
+    ).rejects.toBeInstanceOf(NotebookNotFoundError);
+
+    const landed = await q(
+      `SELECT count(*)::int AS n
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    expect(landed.rows[0].n).toBe(0);
+  });
+
   it("fails closed on a keyed 088 row whose request payload was never backfilled", async () => {
     const clientRequestId = "eeeeeeee-0000-4000-8000-00000000000e";
     await q(

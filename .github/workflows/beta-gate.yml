@@ -496,7 +496,7 @@ jobs:
           fi
           n=$(grep -oE "Tests +[0-9]+ passed" /tmp/notebook-turn-owner-it.out | grep -oE "[0-9]+" | head -1)
           echo "executed passing cases: ${n:-0}"
-          [ "${n:-0}" -ge 6 ] || { echo "::error::expected ≥6 passing cases, saw ${n:-0}"; exit 1; }
+          [ "${n:-0}" -ge 7 ] || { echo "::error::expected ≥7 passing cases, saw ${n:-0}"; exit 1; }
 
   admission-regression:
     name: Admission fix present (disposable Postgres, gate ON)

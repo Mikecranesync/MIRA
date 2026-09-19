@@ -195,7 +195,7 @@ describe("recordTurn — owner from the session, atomic tenant ownership", () =>
     await recordTurn(TENANT, NB, { ...baseTurn, ownerUserId: USER_A, clientRequestId });
     const ins = calls.find((c) => /INSERT INTO equipment_notebook_turns/.test(c.sql))!;
     expect(ins.sql).toMatch(/client_request_id/);
-    expect(ins.sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO UPDATE/i);
+    expect(ins.sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO NOTHING/i);
     expect(ins.sql).toMatch(/client_request_claim_token\s*=\s*\$\d+::uuid/i);
     expect(ins.values).toContain(clientRequestId);
   });
@@ -212,6 +212,12 @@ describe("recordTurn — owner from the session, atomic tenant ownership", () =>
 
     expect(ins.sql).toMatch(
       /t\.client_request_state\s*=\s*'complete'[\s\S]+\$15::uuid\s+IS\s+NULL/i,
+    );
+    expect(ins.sql).toMatch(
+      /completed_claim AS \([\s\S]+UPDATE equipment_notebook_turns t[\s\S]+WHERE \$15::uuid IS NOT NULL[\s\S]+t\.client_request_claim_token = \$15::uuid[\s\S]+RETURNING t\.id/i,
+    );
+    expect(ins.sql).toMatch(
+      /inserted AS \([\s\S]+INSERT INTO equipment_notebook_turns[\s\S]+FROM owned_notebook nb[\s\S]+WHERE \$15::uuid IS NULL[\s\S]+ON CONFLICT[\s\S]+DO NOTHING/i,
     );
   });
 
